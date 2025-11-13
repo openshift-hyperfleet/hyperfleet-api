@@ -1,0 +1,50 @@
+name: Parse T-Rex Files
+
+on:
+    schedule:
+      - cron: '0 0 * * 0'  # Runs at midnight every Sunday
+    workflow_dispatch:
+
+jobs:
+  find-hyperfleet-files:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      with:
+        ref: main
+
+    - name: Find T-Rex files
+      id: find_files
+      run: |
+        # Find all files with 'hyperfleet' in their name, ignoring files that start with '.'
+        filename_matches=$(find . -type f -name '*hyperfleet*' ! -path './.*')
+
+        # Find all files with 'hyperfleet' in their content, ignoring files that start with '.'
+        content_matches=$(grep -rl 'hyperfleet' --exclude-dir='.*')
+
+        # Combine both results into a single list, removing duplicates
+        combined_results=$(echo -e "$filename_matches\n$content_matches" | sort -u | grep -v '^./\.')
+
+        # Format the combined results into a YAML array
+        formatted_results=$(echo "$combined_results" | awk '{print "- \"" $0 "\""}')
+
+        # Write the YAML array to a file
+        echo -e "$formatted_results" > hyperfleet_files.yaml
+
+        # Print the result to the log
+        echo "Files found:"
+        cat hyperfleet_files.yaml
+        
+    - name: Create Pull Request
+      uses: peter-evans/create-pull-request@v3
+      with:
+        signoff: true
+        branch: "hyperfleet-file-parser"
+        delete-branch: true
+        title: "Trex File Parser"
+        committer: GitHub <noreply@github.com>
+        author: ${{ github.actor }} <${{ github.actor }}@users.noreply.github.com>
+        labels: |
+          ok-to-test
+        reviewers: eemurphy, markturansky, gurnben

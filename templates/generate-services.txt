@@ -1,0 +1,137 @@
+package services
+
+import (
+	"context"
+	"{{.Repo}}/{{.Project}}/pkg/dao"
+	"{{.Repo}}/{{.Project}}/pkg/db"
+	"{{.Repo}}/{{.Project}}/pkg/logger"
+
+	"{{.Repo}}/{{.Project}}/pkg/api"
+	"{{.Repo}}/{{.Project}}/pkg/errors"
+)
+
+type {{.Kind}}Service interface {
+	Get(ctx context.Context, id string) (*api.{{.Kind}}, *errors.ServiceError)
+	Create(ctx context.Context, {{.KindLowerSingular}} *api.{{.Kind}}) (*api.{{.Kind}}, *errors.ServiceError)
+	Replace(ctx context.Context, {{.KindLowerSingular}} *api.{{.Kind}}) (*api.{{.Kind}}, *errors.ServiceError)
+	Delete(ctx context.Context, id string) *errors.ServiceError
+	All(ctx context.Context) (api.{{.Kind}}List, *errors.ServiceError)
+
+	FindByIDs(ctx context.Context, ids []string) (api.{{.Kind}}List, *errors.ServiceError)
+
+	// idempotent functions for the control plane, but can also be called synchronously by any actor
+	OnUpsert(ctx context.Context, id string) error
+	OnDelete(ctx context.Context, id string) error
+}
+
+func New{{.Kind}}Service(lockFactory db.LockFactory, {{.KindLowerSingular}}Dao dao.{{.Kind}}Dao, events EventService) {{.Kind}}Service {
+	return &sql{{.Kind}}Service{
+		lockFactory: lockFactory,
+		{{.KindLowerSingular}}Dao: {{.KindLowerSingular}}Dao,
+		events:      events,
+	}
+}
+
+var _ {{.Kind}}Service = &sql{{.Kind}}Service{}
+
+type sql{{.Kind}}Service struct {
+	lockFactory db.LockFactory
+	{{.KindLowerSingular}}Dao dao.{{.Kind}}Dao
+	events      EventService
+}
+
+func (s *sql{{.Kind}}Service) Get(ctx context.Context, id string) (*api.{{.Kind}}, *errors.ServiceError) {
+	{{.KindLowerSingular}}, err := s.{{.KindLowerSingular}}Dao.Get(ctx, id)
+	if err != nil {
+		return nil, handleGetError("{{.Kind}}", "id", id, err)
+	}
+	return {{.KindLowerSingular}}, nil
+}
+
+func (s *sql{{.Kind}}Service) Create(ctx context.Context, {{.KindLowerSingular}} *api.{{.Kind}}) (*api.{{.Kind}}, *errors.ServiceError) {
+	{{.KindLowerSingular}}, err := s.{{.KindLowerSingular}}Dao.Create(ctx, {{.KindLowerSingular}})
+	if err != nil {
+		return nil, handleCreateError("{{.Kind}}", err)
+	}
+
+	_, evErr := s.events.Create(ctx, &api.Event{
+		Source:    "{{.KindPlural}}",
+		SourceID:  {{.KindLowerSingular}}.ID,
+		EventType: api.CreateEventType,
+	})
+	if evErr != nil {
+		return nil, handleCreateError("{{.Kind}}", evErr)
+	}
+
+	return {{.KindLowerSingular}}, nil
+}
+
+func (s *sql{{.Kind}}Service) Replace(ctx context.Context, {{.KindLowerSingular}} *api.{{.Kind}}) (*api.{{.Kind}}, *errors.ServiceError) {
+	{{.KindLowerSingular}}, err := s.{{.KindLowerSingular}}Dao.Replace(ctx, {{.KindLowerSingular}})
+	if err != nil {
+		return nil, handleUpdateError("{{.Kind}}", err)
+	}
+
+	_, evErr := s.events.Create(ctx, &api.Event{
+		Source:    "{{.KindPlural}}",
+		SourceID:  {{.KindLowerSingular}}.ID,
+		EventType: api.UpdateEventType,
+	})
+	if evErr != nil {
+		return nil, handleUpdateError("{{.Kind}}", evErr)
+	}
+
+	return {{.KindLowerSingular}}, nil
+}
+
+func (s *sql{{.Kind}}Service) Delete(ctx context.Context, id string) *errors.ServiceError {
+	if err := s.{{.KindLowerSingular}}Dao.Delete(ctx, id); err != nil {
+		return handleDeleteError("{{.Kind}}", errors.GeneralError("Unable to delete {{.KindLowerSingular}}: %s", err))
+	}
+
+	_, evErr := s.events.Create(ctx, &api.Event{
+		Source:    "{{.KindPlural}}",
+		SourceID:  id,
+		EventType: api.DeleteEventType,
+	})
+	if evErr != nil {
+		return handleDeleteError("{{.Kind}}", evErr)
+	}
+
+	return nil
+}
+
+func (s *sql{{.Kind}}Service) FindByIDs(ctx context.Context, ids []string) (api.{{.Kind}}List, *errors.ServiceError) {
+	{{.KindLowerPlural}}, err := s.{{.KindLowerSingular}}Dao.FindByIDs(ctx, ids)
+	if err != nil {
+		return nil, errors.GeneralError("Unable to get all {{.KindLowerPlural}}: %s", err)
+	}
+	return {{.KindLowerPlural}}, nil
+}
+
+func (s *sql{{.Kind}}Service) All(ctx context.Context) (api.{{.Kind}}List, *errors.ServiceError) {
+	{{.KindLowerPlural}}, err := s.{{.KindLowerSingular}}Dao.All(ctx)
+	if err != nil {
+		return nil, errors.GeneralError("Unable to get all {{.KindLowerPlural}}: %s", err)
+	}
+	return {{.KindLowerPlural}}, nil
+}
+
+func (s *sql{{.Kind}}Service) OnUpsert(ctx context.Context, id string) error {
+	logger := logger.NewOCMLogger(ctx)
+
+	{{.KindLowerSingular}}, err := s.{{.KindLowerSingular}}Dao.Get(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	logger.Infof("Do idempotent somethings with this {{.KindLowerSingular}}: %s", {{.KindLowerSingular}}.ID)
+
+	return nil
+}
+
+func (s *sql{{.Kind}}Service) OnDelete(ctx context.Context, id string) error {
+	logger := logger.NewOCMLogger(ctx)
+	logger.Infof("This {{.KindLowerSingular}} has been deleted: %s", id)
+	return nil
+}

@@ -1,0 +1,143 @@
+package handlers
+
+import (
+	"net/http"
+
+	"github.com/gorilla/mux"
+
+	"{{.Repo}}/{{.Project}}/pkg/api"
+	"{{.Repo}}/{{.Project}}/pkg/api/openapi"
+	"{{.Repo}}/{{.Project}}/pkg/api/presenters"
+	"{{.Repo}}/{{.Project}}/pkg/errors"
+	"{{.Repo}}/{{.Project}}/pkg/services"
+)
+
+var _ RestHandler = {{.KindLowerSingular}}Handler{}
+
+type {{.KindLowerSingular}}Handler struct {
+	{{.KindLowerSingular}} services.{{.Kind}}Service
+	generic  services.GenericService
+}
+
+func New{{.Kind}}Handler({{.KindLowerSingular}} services.{{.Kind}}Service, generic services.GenericService) *{{.KindLowerSingular}}Handler {
+	return &{{.KindLowerSingular}}Handler{
+		{{.KindLowerSingular}}: {{.KindLowerSingular}},
+		generic:  generic,
+	}
+}
+
+func (h {{.KindLowerSingular}}Handler) Create(w http.ResponseWriter, r *http.Request) {
+	var {{.KindLowerSingular}} openapi.{{.Kind}}
+	cfg := &handlerConfig{
+		&{{.KindLowerSingular}},
+		[]validate{
+			validateEmpty(&{{.KindLowerSingular}}, "Id", "id"),
+		},
+		func() (interface{}, *errors.ServiceError) {
+			ctx := r.Context()
+			{{.KindLowerSingular}}Model := presenters.Convert{{.Kind}}({{.KindLowerSingular}})
+			{{.KindLowerSingular}}Model, err := h.{{.KindLowerSingular}}.Create(ctx, {{.KindLowerSingular}}Model)
+			if err != nil {
+				return nil, err
+			}
+			return presenters.Present{{.Kind}}({{.KindLowerSingular}}Model), nil
+		},
+		handleError,
+	}
+
+	handle(w, r, cfg, http.StatusCreated)
+}
+
+func (h {{.KindLowerSingular}}Handler) Patch(w http.ResponseWriter, r *http.Request) {
+	var patch openapi.{{.Kind}}PatchRequest
+
+	cfg := &handlerConfig{
+		&patch,
+		[]validate{},
+		func() (interface{}, *errors.ServiceError) {
+			ctx := r.Context()
+			id := mux.Vars(r)["id"]
+			found, err := h.{{.KindLowerSingular}}.Get(ctx, id)
+			if err != nil {
+				return nil, err
+			}
+
+            //patch a field{{range .Fields}}
+			if patch.{{.Name}} != nil {
+				found.{{.Name}} = patch.{{.Name}}
+			}{{end}}
+
+			{{.KindLowerSingular}}Model, err := h.{{.KindLowerSingular}}.Replace(ctx, found)
+			if err != nil {
+				return nil, err
+			}
+			return presenters.Present{{.Kind}}({{.KindLowerSingular}}Model), nil
+		},
+		handleError,
+	}
+
+	handle(w, r, cfg, http.StatusOK)
+}
+
+func (h {{.KindLowerSingular}}Handler) List(w http.ResponseWriter, r *http.Request) {
+	cfg := &handlerConfig{
+		Action: func() (interface{}, *errors.ServiceError) {
+			ctx := r.Context()
+
+			listArgs := services.NewListArguments(r.URL.Query())
+			var {{.KindLowerPlural}} []api.{{.Kind}}
+			paging, err := h.generic.List(ctx, "username", listArgs, &{{.KindLowerPlural}})
+			if err != nil {
+				return nil, err
+			}
+			{{.KindLowerSingular}}List := openapi.{{.Kind}}List{
+				Kind:  "{{.Kind}}List",
+				Page:  int32(paging.Page),
+				Size:  int32(paging.Size),
+				Total: int32(paging.Total),
+				Items: []openapi.{{.Kind}}{},
+			}
+
+			for _, {{.KindLowerSingular}} := range {{.KindLowerPlural}} {
+				converted := presenters.Present{{.Kind}}(&{{.KindLowerSingular}})
+				{{.KindLowerSingular}}List.Items = append({{.KindLowerSingular}}List.Items, converted)
+			}
+			if listArgs.Fields != nil {
+				filteredItems, err := presenters.SliceFilter(listArgs.Fields, {{.KindLowerSingular}}List.Items)
+				if err != nil {
+					return nil, err
+				}
+				return filteredItems, nil
+			}
+			return {{.KindLowerSingular}}List, nil
+		},
+	}
+
+	handleList(w, r, cfg)
+}
+
+func (h {{.KindLowerSingular}}Handler) Get(w http.ResponseWriter, r *http.Request) {
+	cfg := &handlerConfig{
+		Action: func() (interface{}, *errors.ServiceError) {
+			id := mux.Vars(r)["id"]
+			ctx := r.Context()
+			{{.KindLowerSingular}}, err := h.{{.KindLowerSingular}}.Get(ctx, id)
+			if err != nil {
+				return nil, err
+			}
+
+			return presenters.Present{{.Kind}}({{.KindLowerSingular}}), nil
+		},
+	}
+
+	handleGet(w, r, cfg)
+}
+
+func (h {{.KindLowerSingular}}Handler) Delete(w http.ResponseWriter, r *http.Request) {
+	cfg := &handlerConfig{
+		Action: func() (interface{}, *errors.ServiceError) {
+			return nil, errors.NotImplemented("delete")
+		},
+	}
+	handleDelete(w, r, cfg, http.StatusNoContent)
+}
