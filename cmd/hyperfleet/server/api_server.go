@@ -8,7 +8,6 @@ import (
 	"time"
 
 	_ "github.com/auth0/go-jwt-middleware"
-	sentryhttp "github.com/getsentry/sentry-go/http"
 	_ "github.com/golang-jwt/jwt/v4"
 	"github.com/golang/glog"
 	gorillahandlers "github.com/gorilla/handlers"
@@ -32,20 +31,6 @@ func NewAPIServer() Server {
 	s := &apiServer{}
 
 	mainRouter := s.routes()
-
-	// Sentryhttp middleware performs two operations:
-	// 1) Attaches an instance of *sentry.Hub to the request’s context. Accessit by using the sentry.GetHubFromContext() method on the request
-	//   NOTE this is the only way middleware, handlers, and services should be reporting to sentry, through the hub
-	// 2) Reports panics to the configured sentry service
-	if env().Config.Sentry.Enabled {
-		sentryhttpOptions := sentryhttp.Options{
-			Repanic:         true,
-			WaitForDelivery: false,
-			Timeout:         env().Config.Sentry.Timeout,
-		}
-		sentryMW := sentryhttp.New(sentryhttpOptions)
-		mainRouter.Use(sentryMW.Handle)
-	}
 
 	// referring to the router as type http.Handler allows us to add middleware via more handlers
 	var mainHandler http.Handler = mainRouter
@@ -74,20 +59,15 @@ func NewAPIServer() Server {
 		check(err, "Unable to create authentication handler")
 	}
 
-	// TODO: remove all cloud.redhat.com once migration to console.redhat.com is complete
-	// refer to: https://issues.redhat.com/browse/RHCLOUD-14695
+	// Configure CORS for Red Hat console and API access
 	mainHandler = gorillahandlers.CORS(
 		gorillahandlers.AllowedOrigins([]string{
 			// OCM UI local development URLs
 			"https://qa.foo.redhat.com:1337",
 			"https://prod.foo.redhat.com:1337",
 			"https://ci.foo.redhat.com:1337",
-			"https://cloud.redhat.com",   // TODO: remove
-			"https://console.redhat.com", // Production / candidate
-			// Staging and test environments
-			"https://qaprodauth.cloud.redhat.com", // TODO: remove
-			"https://qa.cloud.redhat.com",         // TODO: remove
-			"https://ci.cloud.redhat.com",         // TODO: remove
+			// Production and staging console URLs
+			"https://console.redhat.com",
 			"https://qaprodauth.console.redhat.com",
 			"https://qa.console.redhat.com",
 			"https://ci.console.redhat.com",

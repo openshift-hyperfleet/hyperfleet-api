@@ -30,7 +30,7 @@
 /coverage
 
 # Ignore built binaries
-/hyperfleet
+/hyperfleet-api
 
 # Ignore generated templates
 /templates/*-template.json
@@ -41,8 +41,8 @@
 # Ignore IntelliJ config
 .idea/
 
-# Don't push the testing password file
-secrets/db.password
+# Ignore secrets directory
+secrets
 
 # Ignore vendor directory
 /vendor/

@@ -9,28 +9,28 @@ import (
 	"gorm.io/gorm"
 )
 
-// Cluster 数据库模型
+// Cluster database model
 type Cluster struct {
-	Meta // 包含 ID, CreatedAt, UpdatedAt, DeletedAt
+	Meta // Contains ID, CreatedAt, UpdatedAt, DeletedAt
 
-	// 核心字段
+	// Core fields
 	Kind   string         `json:"kind" gorm:"default:'Cluster'"`
 	Name   string         `json:"name" gorm:"uniqueIndex;size:63;not null"`
 	Spec   datatypes.JSON `json:"spec" gorm:"type:jsonb;not null"`
 	Labels datatypes.JSON `json:"labels,omitempty" gorm:"type:jsonb"`
 	Href   string         `json:"href,omitempty" gorm:"size:500"`
 
-	// 版本控制
+	// Version control
 	Generation int32 `json:"generation" gorm:"default:1;not null"`
 
-	// Status 字段（展开到数据库列）
+	// Status fields (expanded to database columns)
 	StatusPhase              string         `json:"status_phase" gorm:"default:'NotReady'"`
 	StatusLastTransitionTime *time.Time     `json:"status_last_transition_time,omitempty"`
 	StatusObservedGeneration int32          `json:"status_observed_generation" gorm:"default:0"`
 	StatusUpdatedAt          *time.Time     `json:"status_updated_at,omitempty"`
 	StatusAdapters           datatypes.JSON `json:"status_adapters" gorm:"type:jsonb"`
 
-	// 审计字段
+	// Audit fields
 	CreatedBy string `json:"created_by" gorm:"size:255;not null"`
 	UpdatedBy string `json:"updated_by" gorm:"size:255;not null"`
 }
@@ -64,7 +64,7 @@ func (c *Cluster) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-// ToOpenAPI 转换为 OpenAPI 模型
+// ToOpenAPI converts to OpenAPI model
 func (c *Cluster) ToOpenAPI() *openapi.Cluster {
 	// Unmarshal Spec
 	var spec map[string]interface{}
@@ -104,7 +104,7 @@ func (c *Cluster) ToOpenAPI() *openapi.Cluster {
 		UpdatedBy:  c.UpdatedBy,
 	}
 
-	// 构建 ClusterStatus
+	// Build ClusterStatus
 	cluster.Status = openapi.ClusterStatus{
 		Phase:              c.StatusPhase,
 		ObservedGeneration: c.StatusObservedGeneration,
@@ -122,7 +122,7 @@ func (c *Cluster) ToOpenAPI() *openapi.Cluster {
 	return cluster
 }
 
-// FromOpenAPICreate 从 OpenAPI CreateRequest 创建 GORM 模型
+// ClusterFromOpenAPICreate creates GORM model from OpenAPI CreateRequest
 func ClusterFromOpenAPICreate(req *openapi.ClusterCreateRequest, createdBy string) *Cluster {
 	// Marshal Spec
 	specJSON, _ := json.Marshal(req.Spec)

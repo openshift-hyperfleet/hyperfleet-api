@@ -4,45 +4,309 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-hyperfleet is a Go-based REST API template for Red Hat TAP (Trusted Application Pipeline) that serves as a full-featured foundation for building new microservices. It provides CRUD operations for "dinosaurs" as example business logic to be replaced.
+HyperFleet API is a stateless REST API that serves as the pure data layer for the HyperFleet cluster lifecycle management system. It provides CRUD operations for clusters and node pools, accepts status updates from adapters, and stores all resource data in PostgreSQL. This API contains no business logic and creates no events - it is purely a data persistence and retrieval service.
+
+## Architecture Context
+
+HyperFleet API is one component in the HyperFleet architecture:
+
+- **HyperFleet API** (this service): Pure CRUD data layer with PostgreSQL
+- **Sentinel Service**: Centralized business logic and event publishing
+- **Adapters**: Execute operations (Hive, Hypershift, etc.) and report status back to API
+
+The API's role is strictly limited to:
+1. Accept resource creation/update/delete requests
+2. Persist resource data to PostgreSQL
+3. Accept status updates from adapters via POST `/{resourceType}/{id}/statuses`
+4. Serve resource data to Sentinel via GET `/{resourceType}`
+5. Calculate aggregate status from adapter conditions
+
+## Technology Stack
+
+### Core Technologies
+- **Language**: Go 1.24.9 with FIPS-compliant crypto (CGO_ENABLED=1, GOEXPERIMENT=boringcrypto)
+- **Database**: PostgreSQL 14.2 with GORM ORM
+- **API Specification**: TypeSpec → OpenAPI 3.0.3
+- **Code Generation**: openapi-generator-cli v7.16.0
+- **Container Runtime**: Podman
+- **Testing**: gotestsum, Gomega, Resty, Testcontainers
+
+### Why These Choices
+
+**Go 1.24**: Required for FIPS compliance in enterprise/government deployments
+
+**TypeSpec**: Provides type-safe API specification with better maintainability than writing OpenAPI YAML manually
+
+**GORM**: Provides database abstraction with migration support and PostgreSQL-specific features
+
+**Testcontainers**: Enables integration tests with real PostgreSQL instances without external dependencies
 
 ## Development Commands
 
 ### Building and Running
-- `make binary` - Build the hyperfleet binary
-- `make install` - Build and install binary to GOPATH/bin
-- `make run` - Run migrations and start the server (runs on localhost:8000)
+```bash
+make binary      # Build the hyperfleet-api binary
+make install     # Build and install binary to GOPATH/bin
+make run         # Run migrations and start server with authentication
+make run-no-auth # Run server without authentication (development mode)
+```
 
 ### Testing
-- `make test` - Run unit tests
-- `make test-integration` - Run integration tests
-- `make ci-test-unit` - Run unit tests with JSON output for CI
-- `make ci-test-integration` - Run integration tests with JSON output for CI
+```bash
+make test                # Run unit tests
+make test-integration    # Run integration tests
+make ci-test-unit        # Run unit tests with JSON output for CI
+make ci-test-integration # Run integration tests with JSON output for CI
+```
 
 ### Code Quality
-- `make verify` - Run source code verification (vet, formatting)
-- `make lint` - Run golangci-lint
+```bash
+make verify # Run source code verification (vet, formatting)
+make lint   # Run golangci-lint
+```
 
 ### Database Operations
-- `make db/setup` - Start PostgreSQL container locally
-- `make db/login` - Connect to local PostgreSQL database
-- `make db/teardown` - Stop and remove PostgreSQL container
-- `./hyperfleet migrate` - Run database migrations
+```bash
+make db/setup     # Start PostgreSQL container locally
+make db/login     # Connect to local PostgreSQL database
+make db/teardown  # Stop and remove PostgreSQL container
+./hyperfleet-api migrate # Run database migrations
+```
 
-### hyperfleet CLI Commands
+### Code Generation
+```bash
+make generate        # Regenerate Go models from openapi/openapi.yaml
+make generate-vendor # Generate using vendor dependencies (offline mode)
+```
 
-The `hyperfleet` binary provides three main subcommands for different operational tasks:
+## Project Structure
 
-#### `hyperfleet serve` - Start the API Server
+```
+hyperfleet-api/
+├── cmd/hyperfleet/              # Application entry point
+│   ├── migrate/                 # Database migration command
+│   ├── serve/                   # API server command
+│   └── environments/            # Environment configuration
+│       ├── development.go       # Local development settings
+│       ├── integration_testing.go # Integration test settings
+│       ├── unit_testing.go      # Unit test settings
+│       └── production.go        # Production settings
+├── pkg/
+│   ├── api/                     # API models and OpenAPI spec
+│   │   ├── openapi/             # Generated Go models
+│   │   │   ├── api/openapi.yaml # Embedded OpenAPI spec (44KB, fully resolved)
+│   │   │   └── model_*.go       # Generated model structs
+│   │   └── openapi_embed.go     # Go embed directive for OpenAPI spec
+│   ├── dao/                     # Data Access Objects
+│   │   ├── cluster.go           # Cluster CRUD operations
+│   │   ├── nodepool.go          # NodePool CRUD operations
+│   │   ├── adapter_status.go    # Status CRUD operations
+│   │   └── label.go             # Label operations
+│   ├── db/                      # Database layer
+│   │   ├── db.go                # GORM connection and session factory
+│   │   ├── transaction_middleware.go # HTTP middleware for DB transactions
+│   │   └── migrations/          # GORM migration files
+│   ├── handlers/                # HTTP request handlers
+│   │   ├── cluster_handler.go   # Cluster endpoint handlers
+│   │   ├── nodepool_handler.go  # NodePool endpoint handlers
+│   │   └── compatibility_handler.go # API compatibility endpoint
+│   ├── services/                # Service layer (status aggregation, search)
+│   │   ├── cluster_service.go   # Cluster business operations
+│   │   └── nodepool_service.go  # NodePool business operations
+│   ├── config/                  # Configuration management
+│   ├── logger/                  # Structured logging
+│   └── errors/                  # Error handling utilities
+├── openapi/
+│   └── openapi.yaml             # TypeSpec-generated OpenAPI spec (32KB, source)
+├── test/
+│   ├── integration/             # Integration tests for all endpoints
+│   └── factories/               # Test data factories
+└── Makefile                     # Build automation
+```
+
+## Core Components
+
+### 1. API Specification Workflow
+
+The API is specified using TypeSpec, which compiles to OpenAPI, which then generates Go models:
+
+```
+TypeSpec (.tsp files in hyperfleet-api-spec repo)
+    ↓ tsp compile
+openapi/openapi.yaml (32KB, uses $ref for DRY)
+    ↓ make generate (openapi-generator-cli in Podman)
+pkg/api/openapi/model_*.go (Go structs)
+pkg/api/openapi/api/openapi.yaml (44KB, fully resolved, embedded in binary)
+```
+
+**Key Points**:
+- TypeSpec definitions are maintained in a separate `hyperfleet-api-spec` repository
+- `openapi/openapi.yaml` is the source of truth for this repository (generated from TypeSpec)
+- `make generate` uses Podman to run openapi-generator-cli, ensuring consistent versions
+- Generated code includes JSON tags, validation, and type definitions
+- The fully resolved spec is embedded at compile time via `//go:embed`
+
+### 2. Database Layer
+
+**GORM Session Management**:
+```go
+// pkg/db/db.go
+type SessionFactory interface {
+    NewSession(ctx context.Context) *gorm.DB
+    Close() error
+}
+```
+
+**Transaction Middleware**:
+All HTTP requests automatically get a database session via middleware at pkg/db/transaction_middleware.go:13:
+```go
+func TransactionMiddleware(next http.Handler, connection SessionFactory) http.Handler {
+    // Creates session for each request
+    // Stores in context
+    // Auto-commits on success, rolls back on error
+}
+```
+
+**Schema**:
+```sql
+-- Core resource tables
+clusters (id, name, spec JSONB, generation, labels, created_at, updated_at)
+node_pools (id, name, owner_id FK, spec JSONB, labels, created_at, updated_at)
+
+-- Status tracking
+adapter_statuses (owner_type, owner_id, adapter, observed_generation, conditions JSONB)
+
+-- Labels for filtering
+labels (owner_type, owner_id, key, value)
+```
+
+**Migration System**:
+GORM AutoMigrate is used at startup via `./hyperfleet-api migrate` command.
+
+### 3. Data Access Objects (DAO)
+
+DAOs provide CRUD operations with GORM:
+
+**Example - Cluster DAO**:
+```go
+type ClusterDAO interface {
+    Create(ctx context.Context, cluster *api.Cluster) (*api.Cluster, error)
+    Get(ctx context.Context, id string) (*api.Cluster, error)
+    List(ctx context.Context, listArgs *ListArgs) (*api.ClusterList, error)
+    Update(ctx context.Context, cluster *api.Cluster) (*api.Cluster, error)
+    Delete(ctx context.Context, id string) error
+}
+```
+
+**Patterns**:
+- All DAO methods take `context.Context` for transaction propagation
+- Session is retrieved from context via `db.NewContext()`
+- List operations support pagination via `ListArgs`
+- Search is implemented via GORM WHERE clauses
+
+### 4. HTTP Handlers
+
+Handlers follow a consistent pattern at pkg/handlers/:
+
+```go
+func (h *clusterHandler) Create(w http.ResponseWriter, r *http.Request) {
+    // 1. Parse request body
+    var cluster openapi.Cluster
+    json.NewDecoder(r.Body).Decode(&cluster)
+
+    // 2. Call service/DAO
+    result, err := h.service.Create(r.Context(), &cluster)
+
+    // 3. Handle errors
+    if err != nil {
+        errors.SendError(w, r, err)
+        return
+    }
+
+    // 4. Send response
+    w.WriteHeader(http.StatusCreated)
+    json.NewEncoder(w).Encode(result)
+}
+```
+
+### 5. Status Aggregation Pattern
+
+The API calculates aggregate status from adapter-specific conditions:
+
+**Adapter Status Structure**:
+```json
+{
+  "adapter": "hive-adapter",
+  "observed_generation": 1,
+  "conditions": [
+    {
+      "type": "Ready",
+      "status": "True",
+      "reason": "ClusterProvisioned",
+      "message": "Cluster successfully provisioned"
+    }
+  ]
+}
+```
+
+**Aggregation Logic**:
+- Phase is `Ready` if all adapters report `Ready=True`
+- Phase is `Failed` if any adapter reports `Ready=False`
+- Phase is `NotReady` otherwise (progressing, unknown, or missing conditions)
+- `observed_generation` tracks which spec version the adapter has seen
+
+**Why This Pattern**:
+Kubernetes-style conditions allow multiple independent adapters to report status without coordination. The API simply aggregates these into a summary phase for client convenience.
+
+## API Resources
+
+### Cluster
+
+**Endpoints**:
+- `GET /api/hyperfleet/v1/clusters` - List with pagination and search
+- `POST /api/hyperfleet/v1/clusters` - Create new cluster
+- `GET /api/hyperfleet/v1/clusters/{cluster_id}` - Get single cluster
+- `GET /api/hyperfleet/v1/clusters/{cluster_id}/statuses` - Get adapter statuses
+- `POST /api/hyperfleet/v1/clusters/{cluster_id}/statuses` - Report status from adapter
+
+**Key Fields**:
+- `spec` (JSON): Cloud provider configuration (region, version, nodes, etc.)
+- `generation` (int): Increments on each spec change, enables optimistic concurrency
+- `labels` (map): Key-value pairs for categorization and filtering
+- `status.observed_generation`: Latest generation that adapters have processed
+
+### NodePool
+
+**Endpoints**:
+- `GET /api/hyperfleet/v1/nodepools` - List all node pools
+- `GET /api/hyperfleet/v1/clusters/{cluster_id}/nodepools` - List cluster's node pools
+- `POST /api/hyperfleet/v1/clusters/{cluster_id}/nodepools` - Create node pool
+- `GET /api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepool_id}` - Get single node pool
+- `GET /api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepool_id}/statuses` - Get statuses
+- `POST /api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepool_id}/statuses` - Report status
+
+**Key Fields**:
+- `owner_references.id`: Parent cluster ID (enforced via foreign key)
+- `spec` (JSON): Instance type, replica count, disk size, etc.
+- Status follows same pattern as Cluster
+
+## hyperfleet CLI Commands
+
+The `hyperfleet` binary provides two main subcommands:
+
+### `hyperfleet serve` - Start the API Server
+
 Serves the hyperfleet REST API with full authentication, database connectivity, and monitoring capabilities.
 
 **Basic Usage:**
 ```bash
-./hyperfleet serve                              # Start server on localhost:8000
-./hyperfleet serve --api-server-bindaddress :8080  # Custom bind address
+./hyperfleet-api serve                              # Start server on localhost:8000
+./hyperfleet-api serve --api-server-bindaddress :8080  # Custom bind address
+./hyperfleet-api serve --enable-authz=false --enable-jwt=false  # No authentication
 ```
 
 **Key Configuration Options:**
+
 - **Server Binding:**
   - `--api-server-bindaddress` - API server bind address (default: "localhost:8000")
   - `--api-server-hostname` - Server's public hostname
@@ -51,7 +315,7 @@ Serves the hyperfleet REST API with full authentication, database connectivity, 
 
 - **Database Configuration:**
   - `--db-host-file` - Database host file (default: "secrets/db.host")
-  - `--db-name-file` - Database name file (default: "secrets/db.name") 
+  - `--db-name-file` - Database name file (default: "secrets/db.name")
   - `--db-user-file` - Database username file (default: "secrets/db.user")
   - `--db-password-file` - Database password file (default: "secrets/db.password")
   - `--db-port-file` - Database port file (default: "secrets/db.port")
@@ -81,26 +345,19 @@ Serves the hyperfleet REST API with full authentication, database connectivity, 
   - `--metrics-server-bindaddress` - Metrics server address (default: "localhost:8080")
   - `--enable-metrics-https` - Enable HTTPS for metrics server
 
-- **Error Monitoring:**
-  - `--enable-sentry` - Enable Sentry error monitoring
-  - `--enable-sentry-debug` - Enable Sentry debug mode
-  - `--sentry-url` - Sentry instance base URL (default: "glitchtip.devshift.net")
-  - `--sentry-key-file` - Sentry key file (default: "secrets/sentry.key")
-  - `--sentry-project` - Sentry project ID (default: "53")
-  - `--sentry-timeout` - Sentry request timeout (default: 5s)
-
 - **Performance Tuning:**
   - `--http-read-timeout` - HTTP server read timeout (default: 5s)
   - `--http-write-timeout` - HTTP server write timeout (default: 30s)
   - `--label-metrics-inclusion-duration` - Telemetry collection timeframe (default: 168h)
 
-#### `hyperfleet migrate` - Run Database Migrations
+### `hyperfleet migrate` - Run Database Migrations
+
 Executes database schema migrations to set up or update the database structure.
 
 **Basic Usage:**
 ```bash
-./hyperfleet migrate                           # Run all pending migrations
-./hyperfleet migrate --enable-db-debug        # Run with database debug logging
+./hyperfleet-api migrate                           # Run all pending migrations
+./hyperfleet-api migrate --enable-db-debug        # Run with database debug logging
 ```
 
 **Configuration Options:**
@@ -116,29 +373,8 @@ Executes database schema migrations to set up or update the database structure.
 - Idempotent - safe to run multiple times
 - Logs each migration applied
 
-#### `hyperfleet clone` - Clone New hyperfleet Instance
-Creates a new microservice project based on the hyperfleet template, replacing template content with new service details.
+### Common Global Flags
 
-**Basic Usage:**
-```bash
-./hyperfleet clone --name my-service                           # Clone with custom name
-./hyperfleet clone --name my-service --destination ./my-proj   # Custom destination
-./hyperfleet clone --repo-base github.com/myorg --name my-service   # Custom git repo
-```
-
-**Configuration Options:**
-- `--name` - Name of the new service (default: "hyperfleet")
-- `--destination` - Target directory for new instance (default: "/tmp/clone-test")
-- `--repo-base` - Git Repository base URL (default: "github.com/openshift-online")
-
-**Clone Process:**
-- Creates new directory structure
-- Replaces template strings throughout codebase
-- Updates Go module paths and imports
-- Renames files and directories as needed
-- Maintains Git history and structure
-
-#### Common Global Flags
 All subcommands support these logging flags:
 - `--logtostderr` - Log to stderr instead of files (default: true)
 - `--alsologtostderr` - Log to both stderr and files
@@ -148,562 +384,248 @@ All subcommands support these logging flags:
 - `--vmodule` - Module-specific log levels
 - `--log_backtrace_at` - Emit stack trace at specific file:line
 
-**Example Production Server Startup:**
-```bash
-./hyperfleet serve \
-  --api-server-bindaddress ":8000" \
-  --enable-https \
-  --https-cert-file /etc/certs/tls.crt \
-  --https-key-file /etc/certs/tls.key \
-  --db-sslmode verify-full \
-  --enable-sentry \
-  --ocm-base-url https://api.openshift.com \
-  --disable-ocm-mock
-```
+## Development Workflow
 
-### Development Workflow
-- `make generate` - Regenerate OpenAPI client and models
-- `make clean` - Remove temporary generated files
-
-### OpenShift/Container Operations
-- `make crc/login` - Login to CodeReady Containers
-- `make image` - Build container image
-- `make push` - Push image to registry
-- `make deploy` - Deploy to OpenShift
-- `make undeploy` - Remove from OpenShift
-
-## Architecture
-
-### Core Components
-
-**Main Application (`cmd/hyperfleet/main.go`):**
-- CLI tool with subcommands: `migrate`, `serve`, `clone`
-- Uses Cobra for command structure
-
-**Environment Framework (`cmd/hyperfleet/environments/`):**
-- Configurable environments: development, testing, production
-- Visitor pattern for component initialization
-- Service locator pattern for dependency injection
-
-**API Layer (`pkg/api/`):**
-- OpenAPI-generated models and clients
-- Example "Dinosaur" entity with CRUD operations
-- Standardized error handling and metadata
-
-**Data Layer:**
-- **DAO Pattern** (`pkg/dao/`): Data Access Objects for database operations
-- **Database** (`pkg/db/`): GORM-based persistence with PostgreSQL
-- **Migrations** (`pkg/db/migrations/`): Database schema versioning
-
-**Service Layer (`pkg/services/`):**
-- Business logic separated from handlers
-- Generic service patterns for reuse
-- Event-driven architecture support
-
-**HTTP Layer (`pkg/handlers/`):**
-- REST API endpoints
-- Authentication/authorization middleware
-- OpenAPI specification compliance
-
-**Infrastructure:**
-- **Authentication** (`pkg/auth/`): OIDC integration with Red Hat SSO
-- **Clients** (`pkg/client/ocm/`): OCM (OpenShift Cluster Manager) integration
-- **Configuration** (`pkg/config/`): Environment-specific settings
-- **Logging** (`cmd/hyperfleet/server/logging/`): Structured logging with request middleware
-- **Metrics** (`pkg/handlers/prometheus_metrics.go`): Prometheus integration
-
-### Key Patterns
-
-1. **Separation of Concerns**: Clear boundaries between API, service, and data layers
-2. **Dependency Injection**: Service locator pattern in environments framework
-3. **Code Generation**: OpenAPI specs generate client code and documentation
-4. **Test-Driven Development**: Comprehensive test support with mocks and factories
-
-## Code Generation
-
-### How to Generate a New Kind
-
-The generator script creates complete CRUD functionality with **event-driven architecture** for a new resource type. The process is now fully automated with no manual steps required.
-
-**Single Command to Generate a New Kind:**
-```bash
-go run ./scripts/generator.go --kind KindName
-```
-
-**Complete Example:**
-```bash
-# Generate a new Kind called "FizzBuzz"
-go run ./scripts/generator.go --kind FizzBuzz
-
-# This creates a complete implementation with:
-# - API model and handlers
-# - Service and DAO layers with event-driven controllers
-# - Database migration
-# - Test files and factories
-# - OpenAPI specifications
-# - Service locators and routing
-# - Automatic controller registration for event handling
-```
-
-### What the Generator Creates
-
-The generator automatically creates and configures:
-
-1. **Generated Files** (no manual editing needed):
-   - `pkg/api/fizzbuzz.go` - API model
-   - `pkg/api/presenters/fizzbuzz.go` - Presenter conversion functions
-   - `pkg/handlers/fizzbuzz.go` - HTTP handlers
-   - `pkg/services/fizzbuzz.go` - Business logic with event handlers
-   - `pkg/dao/fizzbuzz.go` - Data access layer
-   - `pkg/dao/mocks/fizzbuzz.go` - Mock for testing
-   - `pkg/db/migrations/YYYYMMDDHHMM_add_fizzbuzzs.go` - Database migration
-   - `test/integration/fizzbuzzs_test.go` - Integration tests
-   - `test/factories/fizzbuzzs.go` - Test data factories
-   - `openapi/openapi.fizzbuzzs.yaml` - OpenAPI specification
-   - `plugins/fizzbuzzs/plugin.go` - Plugin with routes, controllers, presenters, and service locator
-
-2. **Updated Files** (automatically modified by generator):
-   - `cmd/hyperfleet/main.go` - Adds plugin import to trigger auto-registration
-   - `pkg/db/migrations/migration_structs.go` - Adds migration to MigrationList automatically
-   - `openapi/openapi.yaml` - Adds API references
-
-3. **Regenerated OpenAPI Client** (via `make generate`):
-   - `pkg/api/openapi/model_fizzbuzz.go` - Go model structs
-   - `pkg/api/openapi/model_fizzbuzz_all_of.go` - Composite model  
-   - `pkg/api/openapi/model_fizzbuzz_list.go` - List model
-   - `pkg/api/openapi/model_fizzbuzz_list_all_of.go` - List composite
-   - `pkg/api/openapi/model_fizzbuzz_patch_request.go` - Patch request model
-   - `pkg/api/openapi/docs/FizzBuzz*.md` - Generated API documentation
-   - Updated `pkg/api/openapi/api_default.go` - API client methods
-
-### Naming Patterns
-
-The generator uses consistent naming patterns:
-- **API paths**: snake_case (e.g., `/api/hyperfleet/v1/fizz_buzzs`)
-- **Go types**: PascalCase (e.g., `FizzBuzz`)
-- **Variables**: camelCase (e.g., `fizzBuzz`)
-- **Database tables**: snake_case (e.g., `fizz_buzzs`)
-
-### Template Fields Available
-
-When creating custom templates, these fields are available:
-- `{{.Kind}}` - PascalCase (e.g., "FizzBuzz")
-- `{{.KindPlural}}` - PascalCase plural (e.g., "FizzBuzzs")
-- `{{.KindLowerSingular}}` - camelCase singular (e.g., "fizzBuzz")
-- `{{.KindLowerPlural}}` - camelCase plural (e.g., "fizzBuzzs")
-- `{{.KindSnakeCasePlural}}` - snake_case plural for API paths (e.g., "fizz_buzzs")
-- `{{.Project}}` - Project name (e.g., "hyperfleet")
-- `{{.Repo}}` - Repository path (e.g., "github.com/openshift-online")
-- `{{.Cmd}}` - Command directory name (e.g., "hyperfleet")
-- `{{.ID}}` - Timestamp ID for migrations (e.g., "202507111234")
-
-### Generated Event Handlers
-
-Each generated service includes idempotent event handlers:
-
-```go
-// OnUpsert handles CREATE and UPDATE events
-func (s *sqlKindService) OnUpsert(ctx context.Context, id string) error {
-    logger := logger.NewOCMLogger(ctx)
-    
-    kind, err := s.kindDao.Get(ctx, id)
-    if err != nil {
-        return err
-    }
-    
-    logger.Infof("Do idempotent somethings with this kind: %s", kind.ID)
-    return nil
-}
-
-// OnDelete handles DELETE events
-func (s *sqlKindService) OnDelete(ctx context.Context, id string) error {
-    logger := logger.NewOCMLogger(ctx)
-    logger.Infof("This kind has been deleted: %s", id)
-    return nil
-}
-```
-
-**Key Handler Characteristics:**
-- **Idempotent**: Safe to run multiple times
-- **Logged**: Structured logging for debugging
-- **Error Handling**: Proper error propagation
-- **Context Aware**: Supports request tracing
-
-### Testing the Generated Kind
-
-After generation, verify the implementation:
-```bash
-# Run integration tests for the new Kind
-export GOPATH=/tmp/go
-go test -v ./test/integration -run TestFizzBuzz
-
-# Run all tests to ensure no regressions
-make test-integration
-
-# Test event-driven functionality
-# Events are automatically created during CRUD operations
-# Controllers process events asynchronously via PostgreSQL LISTEN/NOTIFY
-```
-
-### Expected Results
-
-- **All tests pass** immediately after generation
-- **API endpoints** respond correctly with proper HTTP status codes
-- **Database operations** work (CREATE, READ, UPDATE, DELETE, SEARCH)
-- **Event-driven controllers** automatically process database events
-- **Idempotent handlers** safely process CREATE/UPDATE/DELETE events
-- **OpenAPI client** includes the new Kind's methods
-- **Service locators** properly inject dependencies
-- **Integration tests** verify complete functionality
-- **Controller registration** automatically handles event processing
-
-### Event-Driven Architecture
-
-The generator creates a complete event-driven system:
-
-**Generated Service Interface:**
-```go
-type KindService interface {
-    // Standard CRUD operations
-    Get(ctx context.Context, id string) (*api.Kind, *errors.ServiceError)
-    Create(ctx context.Context, kind *api.Kind) (*api.Kind, *errors.ServiceError)
-    Replace(ctx context.Context, kind *api.Kind) (*api.Kind, *errors.ServiceError)
-    Delete(ctx context.Context, id string) *errors.ServiceError
-    All(ctx context.Context) (api.KindList, *errors.ServiceError)
-    FindByIDs(ctx context.Context, ids []string) (api.KindList, *errors.ServiceError)
-    
-    // Event-driven controller functions
-    OnUpsert(ctx context.Context, id string) error
-    OnDelete(ctx context.Context, id string) error
-}
-```
-
-**Automatic Controller Registration:**
-```go
-// Generated in cmd/hyperfleet/server/controllers.go
-kindServices := env().Services.Kinds()
-
-s.KindControllerManager.Add(&controllers.ControllerConfig{
-    Source: "Kinds",
-    Handlers: map[api.EventType][]controllers.ControllerHandlerFunc{
-        api.CreateEventType: {kindServices.OnUpsert},
-        api.UpdateEventType: {kindServices.OnUpsert},
-        api.DeleteEventType: {kindServices.OnDelete},
-    },
-})
-```
-
-**Event Flow:**
-1. **API Operation** (CREATE/UPDATE/DELETE) → **Event Creation** → **Database NOTIFY**
-2. **Controller Listener** → **Event Handlers** → **Business Logic**
-3. **Idempotent Processing** → **Structured Logging** → **Error Handling**
-
-### Key Improvements
-
-The generator has been enhanced to:
-1. **Plugin-based architecture** - entities are self-contained with auto-registration
-2. **Automatic migration registration** - adds migrations to migration_structs.go automatically
-3. **Auto-discovery** - plugins register routes, controllers, and presenters via init() functions
-4. **Dynamically detect** command directory structure
-5. **Generate correct** snake_case API paths
-6. **Use proper** service locator patterns with lock factories
-7. **Create complete** test suites with proper factory methods
-8. **Maintain consistency** with existing codebase patterns
-9. **Generate event-driven controllers** with idempotent handlers
-
-**Zero manual steps required** - the generator is fully automated!
-
-### Post-Generation Workflow
-
-After running the generator, simply build and test:
+### Environment Setup
 
 ```bash
-# 1. Build the binary
-make binary
+# Prerequisites: Go 1.24, Podman, PostgreSQL client tools
+go install gotest.tools/gotestsum@latest
+go mod download
 
-# 2. Set up the database
-make db/teardown
+# Initialize secrets directory with default values
+make secrets
+
+# Start PostgreSQL
 make db/setup
 
-# 3. Run migrations (your new migration is already registered)
-./hyperfleet migrate
-
-# 4. Run the server (routes and controllers are auto-registered via plugin)
-make run-no-auth
-
-# 5. Test the new entity
-curl -X POST http://localhost:8000/api/hyperfleet/v1/{kinds} \
-  -H "Content-Type: application/json" \
-  -d '{"species": "example"}' | jq
-
-curl http://localhost:8000/api/hyperfleet/v1/{kinds} | jq
-```
-
-No manual file edits required - everything is wired up automatically through the plugin system.
-
-### Adding Custom Fields to Entities
-
-The generator supports two approaches for adding custom fields to entities:
-
-#### Option 1: Specify Fields at Generation Time (Recommended)
-
-Use the `--fields` flag to specify custom fields when generating the entity:
-
-```bash
-# All fields nullable by default
-go run ./scripts/generator.go --kind Rocket \
-  --fields "name:string,fuel_type:string,max_speed:int,active:bool"
-
-# Mix of required and nullable fields
-go run ./scripts/generator.go --kind Rocket \
-  --fields "name:string:required,fuel_type:string,max_speed:int:optional,active:bool"
-```
-
-**Supported Field Types:**
-- `string` - Text data
-- `int` - 32-bit integer
-- `int64` - 64-bit integer
-- `bool` - Boolean true/false
-- `float` or `float64` - Floating point numbers
-- `time` - Timestamp (time.Time)
-
-**Field Nullability:**
-- **Default**: Fields are nullable (pointer types like `*string`, `*int`)
-- **`:required`**: Makes field non-nullable (base types like `string`, `int`)
-- **`:optional`**: Explicitly marks as nullable (same as default)
-- Required fields are added to OpenAPI `required` array
-- Nullable fields use pointer types in Go structs
-- All fields in PatchRequest are pointers (for partial updates)
-
-**Examples:**
-```bash
-# name is required (string), others nullable (*string, *int)
---fields "name:string:required,description:string,count:int"
-
-# All required (no pointers)
---fields "name:string:required,count:int:required,active:bool:required"
-
-# All nullable (default, with pointers)
---fields "name:string,count:int,active:bool"
-```
-
-**Field Naming:**
-- Use snake_case when specifying field names (e.g., `fuel_type`, `max_speed`)
-- Generator automatically converts to proper casing:
-  - Go struct fields: PascalCase (`FuelType`, `MaxSpeed`)
-  - JSON/API fields: snake_case (`fuel_type`, `max_speed`)
-  - Database columns: snake_case (`fuel_type`, `max_speed`)
-
-The generator automatically adds these fields to:
-- API model struct (with correct pointer/non-pointer types)
-- Database migration
-- OpenAPI specification (with `required` array for non-nullable fields)
-- Presenter conversion functions (with proper nil handling)
-- Test factories (with pointer helpers for nullable fields)
-- Integration tests (with appropriate test values)
-- PatchRequest struct (all fields as optional pointers)
-
-#### Option 2: Add Fields Manually Post-Generation
-
-If you need to add fields after the entity is generated, update these 5 files:
-
-**1. API Model** (`pkg/api/{kind}.go`):
-```go
-type Rocket struct {
-    Meta
-    Name      string    `json:"name"`
-    FuelType  string    `json:"fuel_type"`
-    MaxSpeed  int       `json:"max_speed"`
-    Active    bool      `json:"active"`
-    LaunchDate time.Time `json:"launch_date"`
-}
-
-type RocketPatchRequest struct {
-    Name       *string    `json:"name,omitempty"`
-    FuelType   *string    `json:"fuel_type,omitempty"`
-    MaxSpeed   *int       `json:"max_speed,omitempty"`
-    Active     *bool      `json:"active,omitempty"`
-    LaunchDate *time.Time `json:"launch_date,omitempty"`
-}
-```
-
-**2. Database Migration** (`pkg/db/migrations/xxx_add_rockets.go`):
-```go
-func addRockets() *gormigrate.Migration {
-    type Rocket struct {
-        Model
-        Name       string
-        FuelType   string
-        MaxSpeed   int
-        Active     bool
-        LaunchDate time.Time
-    }
-    // ... rest of migration
-}
-```
-
-**3. OpenAPI Specification** (`openapi/openapi.rockets.yaml`):
-```yaml
-components:
-  schemas:
-    Rocket:
-      allOf:
-        - $ref: 'openapi.yaml#/components/schemas/ObjectReference'
-        - type: object
-          properties:
-            name:
-              type: string
-            fuel_type:
-              type: string
-            max_speed:
-              type: integer
-              format: int32
-            active:
-              type: boolean
-            launch_date:
-              type: string
-              format: date-time
-
-    RocketPatchRequest:
-      type: object
-      properties:
-        name:
-          type: string
-        fuel_type:
-          type: string
-        max_speed:
-          type: integer
-          format: int32
-        active:
-          type: boolean
-        launch_date:
-          type: string
-          format: date-time
-```
-
-**4. Regenerate OpenAPI Client:**
-```bash
-make generate
-```
-
-**5. Add Validation (Optional)** in `pkg/handlers/{kind}.go`:
-```go
-func (h RocketHandler) Create(w http.ResponseWriter, r *http.Request) {
-    // ... existing code ...
-
-    // Add custom validation
-    if rocket.Name == "" {
-        errors.GeneralError(r, w, errors.ErrorBadRequest, "name cannot be empty")
-        return
-    }
-
-    if rocket.MaxSpeed < 0 {
-        errors.GeneralError(r, w, errors.ErrorBadRequest, "max_speed must be positive")
-        return
-    }
-
-    // ... rest of handler ...
-}
-```
-
-**Important Notes:**
-- Always use PascalCase for Go struct field names
-- Use snake_case for JSON tags and database columns
-- Use pointer types (*string, *int, etc.) in PatchRequest for optional updates
-- After adding fields manually, recreate the database for integration tests:
-  ```bash
-  make db/teardown
-  make db/setup
-  ./hyperfleet migrate
-  ```
-
-### Generator Troubleshooting
-
-If you encounter issues after running the generator, check these common problems:
-
-#### Compilation Errors
-
-**Issue**: Build fails with compilation errors
-**Solution**: Verify the generator completed successfully and run:
-```bash
+# Build binary
 make binary
+
+# Run migrations
+./hyperfleet-api migrate
+
+# Start server (no authentication)
+make run-no-auth
 ```
 
-If errors persist, check that the plugin import was added correctly to `cmd/hyperfleet/main.go`.
+### Code Generation
 
-#### Database Issues
+When the TypeSpec specification changes:
 
-**Issue**: Migration fails or tests fail with "relation does not exist"
-**Solution**: Recreate the database to apply new migrations:
 ```bash
-make db/teardown  # Stop and remove PostgreSQL container
-make db/setup     # Start fresh PostgreSQL container
-./hyperfleet migrate    # Apply all migrations
-make test-integration  # Run tests with new schema
-```
-
-**Note**: Always run `make` commands from the project root directory where the Makefile is located.
-
-#### Cleaning Up Test Generations
-
-When experimenting with the generator, you may need to completely remove a generated Kind. Here's the cleanup process:
-
-**Complete Kind Removal** (e.g., for TestWidget):
-```bash
-# Remove all generated files (replace TestWidget/testWidget with your Kind name)
-rm -rf \
-  pkg/api/testWidget.go \
-  pkg/api/presenters/testWidget.go \
-  pkg/handlers/testWidget.go \
-  pkg/services/testWidget.go \
-  pkg/dao/testWidget.go \
-  pkg/dao/mocks/testWidget.go \
-  pkg/db/migrations/*testWidget* \
-  test/integration/testWidgets_test.go \
-  test/factories/testWidgets.go \
-  openapi/openapi.testWidgets.yaml \
-  plugins/testWidgets/
-
-# Remove OpenAPI client files (generated by make generate)
-rm -rf \
-  pkg/api/openapi/model_test_widget*.go \
-  pkg/api/openapi/docs/TestWidget*.md
-
-# Reset modified files to clean state
-git checkout HEAD -- \
-  cmd/hyperfleet/main.go \
-  pkg/db/migrations/migration_structs.go \
-  openapi/openapi.yaml
-
-# Regenerate OpenAPI client to remove traces
+# Regenerate Go models from openapi/openapi.yaml
 make generate
+
+# This will:
+# 1. Remove pkg/api/openapi/*
+# 2. Build Docker image with openapi-generator-cli
+# 3. Generate model_*.go files
+# 4. Copy fully resolved openapi.yaml to pkg/api/openapi/api/
 ```
 
-## Authentication
+### Testing
 
-Local development uses Red Hat SSO authentication. Use the `ocm` CLI tool:
+**Unit Tests**:
 ```bash
-# Login to local service
-ocm login --token=${OCM_ACCESS_TOKEN} --url=http://localhost:8000
-
-# Test API endpoints
-ocm get /api/hyperfleet/v1/dinosaurs
-ocm post /api/hyperfleet/v1/dinosaurs '{"species": "foo"}'
+OCM_ENV=unit_testing make test
 ```
 
-## Database
+**Integration Tests**:
+```bash
+OCM_ENV=integration_testing make test-integration
+```
 
-- PostgreSQL database with GORM ORM
-- Migration-based schema management
-- DAO pattern for data access
-- Advisory locks for concurrency control
+Integration tests use Testcontainers to spin up real PostgreSQL instances. Each test gets a fresh database to ensure isolation.
 
-## Testing
+### Database Operations
 
-- Unit tests use mocks for external dependencies
-- Integration tests run against real database
-- Test factories in `test/factories/` for data setup
-- Environment-specific test configuration
+```bash
+# Connect to database
+make db/login
+
+# Inspect schema
+\dt
+
+# Stop database
+make db/teardown
+```
+
+## Configuration Management
+
+### Environment-Based Configuration
+
+The application uses `OCM_ENV` environment variable to select configuration:
+
+- `development` - Local development with localhost database
+- `unit_testing` - In-memory or minimal database
+- `integration_testing` - Testcontainers-based PostgreSQL
+- `production` - Production credentials from secrets
+
+**Environment Implementation**: See cmd/hyperfleet/environments/framework.go:66
+
+Each environment can override:
+- Database connection settings
+- OCM client configuration (mock vs real)
+- Service implementations
+- Handler configurations
+
+### Configuration Files
+
+Configuration is loaded from `secrets/` directory:
+
+```
+secrets/
+├── db.host          # Database hostname
+├── db.name          # Database name
+├── db.password      # Database password
+├── db.port          # Database port
+├── db.user          # Database username
+├── ocm-service.clientId
+├── ocm-service.clientSecret
+└── ocm-service.token
+```
+
+Initialize with defaults: `make secrets`
+
+## Logging
+
+Structured logging is provided via pkg/logger/logger.go:36:
+
+```go
+log := logger.NewOCMLogger(ctx)
+log.Infof("Processing cluster %s", clusterID)
+log.Extra("cluster_id", clusterID).Extra("operation", "create").Info("Cluster created")
+```
+
+**Log Context**:
+- `[opid=xxx]` - Operation ID for request tracing
+- `[accountID=xxx]` - User account ID from JWT
+- `[tx_id=xxx]` - Database transaction ID
+
+## Error Handling
+
+Errors use a structured error type defined in pkg/errors/:
+
+```go
+type ServiceError struct {
+    HttpCode int
+    Code     string
+    Reason   string
+}
+```
+
+**Pattern**:
+```go
+if err != nil {
+    serviceErr := errors.GeneralError("Failed to create cluster")
+    errors.SendError(w, r, serviceErr)
+    return
+}
+```
+
+Errors are automatically converted to OpenAPI error responses with operation IDs for debugging.
+
+## Authentication & Authorization
+
+The API supports two modes:
+
+**No Auth** (development):
+```bash
+make run-no-auth
+```
+
+**OCM JWT Auth** (production):
+- Validates JWT tokens from Red Hat SSO
+- Extracts account ID and username from claims
+- Enforces organization-based access control
+
+**Implementation**: JWT middleware validates tokens and populates context with user information.
+
+## Key Design Patterns
+
+### 1. Context-Based Session Management
+
+Database sessions are stored in request context via middleware. This ensures:
+- Automatic transaction lifecycle
+- Thread-safe session access
+- Proper cleanup on request completion
+
+### 2. Polymorphic Status Tables
+
+`adapter_statuses` uses `owner_type` + `owner_id` to support multiple resource types:
+```sql
+SELECT * FROM adapter_statuses
+WHERE owner_type = 'Cluster' AND owner_id = '123'
+```
+
+This avoids creating separate status tables for each resource type.
+
+### 3. Generation-Based Optimistic Concurrency
+
+The `generation` field increments on each spec update:
+```go
+cluster.Generation++  // On each update
+```
+
+Adapters report `observed_generation` in status to indicate which version they've processed. This enables:
+- Detecting when spec has changed since adapter last processed
+- Preventing race conditions in distributed systems
+- Tracking reconciliation progress
+
+### 4. Embedded OpenAPI Specification
+
+The OpenAPI spec is embedded at compile time using Go 1.16+ `//go:embed`:
+
+```go
+//go:embed openapi/api/openapi.yaml
+var openapiFS embed.FS
+```
+
+This means:
+- No file I/O at runtime
+- Spec is always available even in containers
+- Swagger UI works without external files
+- Binary is self-contained
+
+## Testing Strategy
+
+### Integration Test Coverage
+
+All 12 API endpoints have integration test coverage in test/integration/:
+
+- Cluster CRUD operations
+- NodePool CRUD operations
+- Status reporting and aggregation
+- Pagination behavior
+- Search functionality
+- Error cases (not found, validation errors)
+
+### Test Data Factories
+
+Test factories in test/factories/ provide consistent test data:
+
+```go
+factories.NewClusterBuilder().
+    WithName("test-cluster").
+    WithSpec(clusterSpec).
+    Build()
+```
+
+### Testcontainers Pattern
+
+Integration tests use Testcontainers to create isolated PostgreSQL instances:
+
+```go
+// Each test suite gets a fresh database
+container := testcontainers.PostgreSQL()
+defer container.Terminate()
+```
+
+This ensures:
+- No state leakage between tests
+- Tests can run in parallel
+- No external database dependency
 
 ### Database Issues During Testing
 
@@ -713,7 +635,152 @@ If integration tests fail with PostgreSQL-related errors (missing columns, trans
 # From project root directory
 make db/teardown  # Stop and remove PostgreSQL container
 make db/setup     # Start fresh PostgreSQL container
+./hyperfleet-api migrate # Apply migrations
 make test-integration  # Run tests again
 ```
 
 **Note:** Always run `make` commands from the project root directory where the Makefile is located.
+
+## Common Development Tasks
+
+### Debugging Database Issues
+
+```bash
+# Connect to database
+make db/login
+
+# Check what GORM created
+\dt                    # List tables
+\d clusters            # Describe clusters table
+\d adapter_statuses    # Check status table
+
+# Inspect data
+SELECT id, name, generation FROM clusters;
+SELECT owner_type, owner_id, adapter, conditions FROM adapter_statuses;
+```
+
+### Viewing OpenAPI Specification
+
+```bash
+# Start server
+make run-no-auth
+
+# View raw OpenAPI spec
+curl http://localhost:8000/openapi
+
+# Use Swagger UI
+open http://localhost:8000/openapi-ui
+```
+
+## Server Configuration
+
+The server is configured in cmd/hyperfleet/server/:
+
+**Ports**:
+- `8000` - Main API server
+- `8080` - Metrics endpoint
+- `8083` - Health check endpoint
+
+**Middleware Chain**:
+1. Request logging
+2. Operation ID injection
+3. JWT authentication (if enabled)
+4. Database transaction creation
+5. Route handler
+
+**Implementation**: See cmd/hyperfleet/server/server.go:19
+
+## Common Pitfalls
+
+### 1. Forgetting to Run Migrations
+
+**Symptom**: Server starts but endpoints return errors about missing tables
+
+**Solution**: Always run `./hyperfleet-api migrate` after pulling code or changing schemas
+
+### 2. Using Wrong OpenAPI File
+
+**Problem**: There are two openapi.yaml files:
+- `openapi/openapi.yaml` (32KB, source, has $ref)
+- `pkg/api/openapi/api/openapi.yaml` (44KB, generated, fully resolved)
+
+**Rule**: Only edit the source file. The generated file is overwritten by `make generate`.
+
+### 3. Context Session Access
+
+**Wrong**:
+```go
+db := gorm.Open(...)  // Creates new connection
+```
+
+**Right**:
+```go
+db := db.NewContext(ctx)  // Gets session from middleware
+```
+
+Always use the context-based session to participate in the HTTP request transaction.
+
+### 4. Status Phase Calculation
+
+The API automatically calculates status.phase from adapter conditions. Don't set phase manually - it will be overwritten.
+
+## Performance Considerations
+
+### Database Indexes
+
+Ensure indexes exist for common queries:
+```sql
+CREATE INDEX idx_clusters_name ON clusters(name);
+CREATE INDEX idx_adapter_statuses_owner ON adapter_statuses(owner_type, owner_id);
+CREATE INDEX idx_labels_owner ON labels(owner_type, owner_id);
+```
+
+### JSONB Queries
+
+Spec and conditions are stored as JSONB, enabling:
+```sql
+-- Query by spec field
+SELECT * FROM clusters WHERE spec->>'region' = 'us-west-2';
+
+-- Query by condition
+SELECT * FROM adapter_statuses
+WHERE conditions @> '[{"type": "Ready", "status": "True"}]';
+```
+
+### Connection Pooling
+
+GORM manages connection pooling automatically. Configure via:
+```go
+db.DB().SetMaxOpenConns(100)
+db.DB().SetMaxIdleConns(10)
+```
+
+## Deployment
+
+The API is designed to be stateless and horizontally scalable:
+
+- No in-memory state
+- All data in PostgreSQL
+- No event creation or message queues
+- Kubernetes-ready (multiple replicas)
+
+**Health Check**: `GET /healthcheck` returns 200 OK when database is accessible
+
+**Metrics**: Prometheus metrics available at `/metrics`
+
+## References
+
+- **Architecture Documentation**: `/Users/ymsun/Documents/workspace/src/github.com/openshift-hyperfleet/architecture`
+- **TypeSpec Repository**: `hyperfleet-api-spec` (API specification source)
+- **GORM Documentation**: https://gorm.io/docs/
+- **OpenAPI Generator**: https://openapi-generator.tech/
+- **Testcontainers**: https://testcontainers.com/
+
+## Getting Help
+
+Common issues and solutions:
+
+1. **Database connection errors**: Check `make db/setup` was run and container is running
+2. **Generated code issues**: Run `make generate` to regenerate from OpenAPI spec
+3. **Test failures**: Ensure PostgreSQL container is running and `OCM_ENV` is set
+4. **Build errors**: Verify Go version is 1.24+ with `go version`

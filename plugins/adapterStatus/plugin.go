@@ -4,7 +4,6 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet/cmd/hyperfleet/environments"
 	"github.com/openshift-hyperfleet/hyperfleet/cmd/hyperfleet/environments/registry"
 	"github.com/openshift-hyperfleet/hyperfleet/pkg/dao"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/db"
 	"github.com/openshift-hyperfleet/hyperfleet/pkg/services"
 )
 
@@ -14,7 +13,6 @@ type ServiceLocator func() services.AdapterStatusService
 func NewServiceLocator(env *environments.Env) ServiceLocator {
 	return func() services.AdapterStatusService {
 		return services.NewAdapterStatusService(
-			db.NewAdvisoryLockFactory(env.Database.SessionFactory),
 			dao.NewAdapterStatusDao(&env.Database.SessionFactory),
 		)
 	}

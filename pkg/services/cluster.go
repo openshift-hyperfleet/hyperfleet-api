@@ -8,7 +8,6 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet/pkg/api/openapi"
 	"github.com/openshift-hyperfleet/hyperfleet/pkg/dao"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/db"
 	"github.com/openshift-hyperfleet/hyperfleet/pkg/errors"
 	"github.com/openshift-hyperfleet/hyperfleet/pkg/logger"
 )
@@ -30,22 +29,18 @@ type ClusterService interface {
 	OnDelete(ctx context.Context, id string) error
 }
 
-func NewClusterService(lockFactory db.LockFactory, clusterDao dao.ClusterDao, adapterStatusDao dao.AdapterStatusDao, events EventService) ClusterService {
+func NewClusterService(clusterDao dao.ClusterDao, adapterStatusDao dao.AdapterStatusDao) ClusterService {
 	return &sqlClusterService{
-		lockFactory:      lockFactory,
 		clusterDao:       clusterDao,
 		adapterStatusDao: adapterStatusDao,
-		events:           events,
 	}
 }
 
 var _ ClusterService = &sqlClusterService{}
 
 type sqlClusterService struct {
-	lockFactory      db.LockFactory
 	clusterDao       dao.ClusterDao
 	adapterStatusDao dao.AdapterStatusDao
-	events           EventService
 }
 
 func (s *sqlClusterService) Get(ctx context.Context, id string) (*api.Cluster, *errors.ServiceError) {
@@ -62,15 +57,7 @@ func (s *sqlClusterService) Create(ctx context.Context, cluster *api.Cluster) (*
 		return nil, handleCreateError("Cluster", err)
 	}
 
-	_, evErr := s.events.Create(ctx, &api.Event{
-		Source:    "Clusters",
-		SourceID:  cluster.ID,
-		EventType: api.CreateEventType,
-	})
-	if evErr != nil {
-		return nil, handleCreateError("Cluster", evErr)
-	}
-
+	// REMOVED: Event creation - no event-driven components
 	return cluster, nil
 }
 
@@ -80,15 +67,7 @@ func (s *sqlClusterService) Replace(ctx context.Context, cluster *api.Cluster) (
 		return nil, handleUpdateError("Cluster", err)
 	}
 
-	_, evErr := s.events.Create(ctx, &api.Event{
-		Source:    "Clusters",
-		SourceID:  cluster.ID,
-		EventType: api.UpdateEventType,
-	})
-	if evErr != nil {
-		return nil, handleUpdateError("Cluster", evErr)
-	}
-
+	// REMOVED: Event creation - no event-driven components
 	return cluster, nil
 }
 
@@ -97,15 +76,7 @@ func (s *sqlClusterService) Delete(ctx context.Context, id string) *errors.Servi
 		return handleDeleteError("Cluster", errors.GeneralError("Unable to delete cluster: %s", err))
 	}
 
-	_, evErr := s.events.Create(ctx, &api.Event{
-		Source:    "Clusters",
-		SourceID:  id,
-		EventType: api.DeleteEventType,
-	})
-	if evErr != nil {
-		return handleDeleteError("Cluster", evErr)
-	}
-
+	// REMOVED: Event creation - no event-driven components
 	return nil
 }
 

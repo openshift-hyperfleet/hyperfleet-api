@@ -404,7 +404,7 @@ go build -o /tmp/hyperfleet ./cmd/hyperfleet
 # Run database migrations
 make db/teardown
 make db/setup
-./hyperfleet migrate
+./hyperfleet-api migrate
 
 # Run integration tests
 make test-integration

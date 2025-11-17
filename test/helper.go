@@ -331,7 +331,7 @@ func (helper *Helper) CleanDB() error {
 
 	// TODO: this list should not be static or otherwise not hard-coded here.
 	for _, table := range []string{
-		"events",
+		// REMOVED: "events" - Events table no longer used - no event-driven components
 		"migrations",
 	} {
 		if g2.Migrator().HasTable(table) {
@@ -339,9 +339,8 @@ func (helper *Helper) CleanDB() error {
 				helper.T.Errorf("error dropping table %s: %v", table, err)
 				return err
 			}
-		} else {
-			helper.T.Errorf("Unable to drop table %q, it does not exist", table)
 		}
+		// No error if table doesn't exist - it may not have been created yet
 	}
 	return nil
 }

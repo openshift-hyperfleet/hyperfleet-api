@@ -45,10 +45,8 @@ func runServe(cmd *cobra.Command, args []string) {
 		healthcheckServer.Start()
 	}()
 
-	go func() {
-		controllersServer := server.NewControllersServer()
-		controllersServer.Start()
-	}()
+	// REMOVED: ControllersServer - Sentinel handles orchestration
+	// Controllers are no longer run inside the API service
 
 	select {}
 }

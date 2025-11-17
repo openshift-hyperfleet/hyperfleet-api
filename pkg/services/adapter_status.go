@@ -5,7 +5,6 @@ import (
 
 	"github.com/openshift-hyperfleet/hyperfleet/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet/pkg/dao"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/db"
 	"github.com/openshift-hyperfleet/hyperfleet/pkg/errors"
 )
 
@@ -20,9 +19,8 @@ type AdapterStatusService interface {
 	All(ctx context.Context) (api.AdapterStatusList, *errors.ServiceError)
 }
 
-func NewAdapterStatusService(lockFactory db.LockFactory, adapterStatusDao dao.AdapterStatusDao) AdapterStatusService {
+func NewAdapterStatusService(adapterStatusDao dao.AdapterStatusDao) AdapterStatusService {
 	return &sqlAdapterStatusService{
-		lockFactory:      lockFactory,
 		adapterStatusDao: adapterStatusDao,
 	}
 }
@@ -30,7 +28,6 @@ func NewAdapterStatusService(lockFactory db.LockFactory, adapterStatusDao dao.Ad
 var _ AdapterStatusService = &sqlAdapterStatusService{}
 
 type sqlAdapterStatusService struct {
-	lockFactory      db.LockFactory
 	adapterStatusDao dao.AdapterStatusDao
 }
 

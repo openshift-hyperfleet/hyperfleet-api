@@ -8,7 +8,6 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet/pkg/api/openapi"
 	"github.com/openshift-hyperfleet/hyperfleet/pkg/dao"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/db"
 	"github.com/openshift-hyperfleet/hyperfleet/pkg/errors"
 	"github.com/openshift-hyperfleet/hyperfleet/pkg/logger"
 )
@@ -30,22 +29,18 @@ type NodePoolService interface {
 	OnDelete(ctx context.Context, id string) error
 }
 
-func NewNodePoolService(lockFactory db.LockFactory, nodePoolDao dao.NodePoolDao, adapterStatusDao dao.AdapterStatusDao, events EventService) NodePoolService {
+func NewNodePoolService(nodePoolDao dao.NodePoolDao, adapterStatusDao dao.AdapterStatusDao) NodePoolService {
 	return &sqlNodePoolService{
-		lockFactory:      lockFactory,
 		nodePoolDao:      nodePoolDao,
 		adapterStatusDao: adapterStatusDao,
-		events:           events,
 	}
 }
 
 var _ NodePoolService = &sqlNodePoolService{}
 
 type sqlNodePoolService struct {
-	lockFactory      db.LockFactory
 	nodePoolDao      dao.NodePoolDao
 	adapterStatusDao dao.AdapterStatusDao
-	events           EventService
 }
 
 func (s *sqlNodePoolService) Get(ctx context.Context, id string) (*api.NodePool, *errors.ServiceError) {
@@ -62,15 +57,7 @@ func (s *sqlNodePoolService) Create(ctx context.Context, nodePool *api.NodePool)
 		return nil, handleCreateError("NodePool", err)
 	}
 
-	_, evErr := s.events.Create(ctx, &api.Event{
-		Source:    "NodePools",
-		SourceID:  nodePool.ID,
-		EventType: api.CreateEventType,
-	})
-	if evErr != nil {
-		return nil, handleCreateError("NodePool", evErr)
-	}
-
+	// REMOVED: Event creation - no event-driven components
 	return nodePool, nil
 }
 
@@ -80,15 +67,7 @@ func (s *sqlNodePoolService) Replace(ctx context.Context, nodePool *api.NodePool
 		return nil, handleUpdateError("NodePool", err)
 	}
 
-	_, evErr := s.events.Create(ctx, &api.Event{
-		Source:    "NodePools",
-		SourceID:  nodePool.ID,
-		EventType: api.UpdateEventType,
-	})
-	if evErr != nil {
-		return nil, handleUpdateError("NodePool", evErr)
-	}
-
+	// REMOVED: Event creation - no event-driven components
 	return nodePool, nil
 }
 
@@ -97,15 +76,7 @@ func (s *sqlNodePoolService) Delete(ctx context.Context, id string) *errors.Serv
 		return handleDeleteError("NodePool", errors.GeneralError("Unable to delete nodePool: %s", err))
 	}
 
-	_, evErr := s.events.Create(ctx, &api.Event{
-		Source:    "NodePools",
-		SourceID:  id,
-		EventType: api.DeleteEventType,
-	})
-	if evErr != nil {
-		return handleDeleteError("NodePool", evErr)
-	}
-
+	// REMOVED: Event creation - no event-driven components
 	return nil
 }
 

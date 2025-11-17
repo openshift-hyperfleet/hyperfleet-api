@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/getsentry/sentry-go"
 	"github.com/golang/glog"
 	"github.com/openshift-hyperfleet/hyperfleet/pkg/util"
 )
@@ -30,7 +29,6 @@ type logger struct {
 	accountID string
 	// TODO username is unused, should we be logging it? Could be pii
 	username  string
-	sentryHub *sentry.Hub
 	extra     extra
 }
 
@@ -41,7 +39,6 @@ func NewOCMLogger(ctx context.Context) OCMLogger {
 		level:     1,
 		extra:     make(extra),
 		accountID: util.GetAccountIDFromContext(ctx),
-		sentryHub: sentry.GetHubFromContext(ctx),
 	}
 	return logger
 }
@@ -109,39 +106,23 @@ func (l *logger) Extra(key string, value interface{}) OCMLogger {
 }
 
 func (l *logger) Info(message string) {
-	l.log(message, sentry.LevelInfo, glog.V(glog.Level(l.level)).Infoln)
+	l.log(message, glog.V(glog.Level(l.level)).Infoln)
 }
 
 func (l *logger) Warning(message string) {
-	l.log(message, sentry.LevelWarning, glog.Warningln)
+	l.log(message, glog.Warningln)
 }
 
 func (l *logger) Error(message string) {
-	l.log(message, sentry.LevelError, glog.Errorln)
+	l.log(message, glog.Errorln)
 }
 
 func (l *logger) Fatal(message string) {
-	l.log(message, sentry.LevelFatal, glog.Fatalln)
+	l.log(message, glog.Fatalln)
 }
 
-func (l *logger) log(message string, level sentry.Level, glogFunc func(args ...interface{})) {
+func (l *logger) log(message string, glogFunc func(args ...interface{})) {
 	prefixed := l.prepareLogPrefix(message, l.extra)
 	glogFunc(prefixed)
-	if level != sentry.LevelInfo && level != sentry.LevelWarning {
-		l.captureSentryEvent(level, message)
-	}
 }
 
-func (l *logger) captureSentryEvent(level sentry.Level, message string) {
-	event := sentry.NewEvent()
-	event.Level = level
-	event.Message = message
-	event.Extra = l.extra
-	captureFunc := sentry.CaptureEvent
-	if l.sentryHub == nil {
-		sentry.CaptureException(fmt.Errorf("sentry hub not present in logger"))
-	} else {
-		captureFunc = l.sentryHub.CaptureEvent
-	}
-	captureFunc(event)
-}

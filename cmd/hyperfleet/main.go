@@ -6,12 +6,11 @@ import (
 	"github.com/golang/glog"
 	"github.com/spf13/cobra"
 
-	"github.com/openshift-hyperfleet/hyperfleet/cmd/hyperfleet/clone"
 	"github.com/openshift-hyperfleet/hyperfleet/cmd/hyperfleet/migrate"
 	"github.com/openshift-hyperfleet/hyperfleet/cmd/hyperfleet/servecmd"
 
 	// Import plugins to trigger their init() functions
-	_ "github.com/openshift-hyperfleet/hyperfleet/plugins/events"
+	// _ "github.com/openshift-hyperfleet/hyperfleet/plugins/events" // REMOVED: Events plugin no longer exists
 	_ "github.com/openshift-hyperfleet/hyperfleet/plugins/generic"
 	_ "github.com/openshift-hyperfleet/hyperfleet/plugins/adapterStatus"
 	_ "github.com/openshift-hyperfleet/hyperfleet/plugins/clusters"
@@ -43,10 +42,9 @@ func main() {
 	// All subcommands under root
 	migrateCmd := migrate.NewMigrateCommand()
 	serveCmd := servecmd.NewServeCommand()
-	provisionCmd := clone.NewCloneCommand()
 
 	// Add subcommand(s)
-	rootCmd.AddCommand(migrateCmd, serveCmd, provisionCmd)
+	rootCmd.AddCommand(migrateCmd, serveCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		glog.Fatalf("error running command: %v", err)

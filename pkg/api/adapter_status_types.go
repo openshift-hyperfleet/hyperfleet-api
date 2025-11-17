@@ -8,19 +8,19 @@ import (
 	"gorm.io/gorm"
 )
 
-// AdapterStatus 数据库模型
+// AdapterStatus database model
 type AdapterStatus struct {
-	Meta // 包含 ID, CreatedAt, UpdatedAt, DeletedAt
+	Meta // Contains ID, CreatedAt, UpdatedAt, DeletedAt
 
-	// 多态关联
+	// Polymorphic association
 	ResourceType string `json:"resource_type" gorm:"size:20;index:idx_resource;not null"`
 	ResourceID   string `json:"resource_id" gorm:"size:255;index:idx_resource;not null"`
 
-	// Adapter 信息
+	// Adapter information
 	Adapter            string `json:"adapter" gorm:"size:255;not null;uniqueIndex:idx_resource_adapter"`
 	ObservedGeneration int32  `json:"observed_generation" gorm:"not null"`
 
-	// 存储为 JSON
+	// Stored as JSON
 	Conditions datatypes.JSON `json:"conditions" gorm:"type:jsonb;not null"`
 	Data       datatypes.JSON `json:"data,omitempty" gorm:"type:jsonb"`
 	Metadata   datatypes.JSON `json:"metadata,omitempty" gorm:"type:jsonb"`
@@ -42,7 +42,7 @@ func (as *AdapterStatus) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-// ToOpenAPI 转换为 OpenAPI 模型
+// ToOpenAPI converts to OpenAPI model
 func (as *AdapterStatus) ToOpenAPI() *openapi.AdapterStatus {
 	// Unmarshal Conditions
 	var conditions []openapi.Condition
@@ -71,7 +71,7 @@ func (as *AdapterStatus) ToOpenAPI() *openapi.AdapterStatus {
 	}
 }
 
-// AdapterStatusFromOpenAPICreate 从 CreateRequest 创建 GORM 模型
+// AdapterStatusFromOpenAPICreate creates GORM model from CreateRequest
 func AdapterStatusFromOpenAPICreate(
 	resourceType, resourceID string,
 	req *openapi.AdapterStatusCreateRequest,

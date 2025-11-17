@@ -7,15 +7,15 @@ RUN \
     microdnf clean all
 
 COPY \
-    hyperfleet \
+    hyperfleet-api \
     /usr/local/bin/
 
 EXPOSE 8000
 
-ENTRYPOINT ["/usr/local/bin/hyperfleet", "serve"]
+ENTRYPOINT ["/usr/local/bin/hyperfleet-api", "serve"]
 
-LABEL name="hyperfleet" \
+LABEL name="hyperfleet-api" \
       vendor="Red Hat" \
       version="0.0.1" \
-      summary="hyperfleet API" \
-      description="hyperfleet API"
+      summary="HyperFleet API" \
+      description="HyperFleet API"

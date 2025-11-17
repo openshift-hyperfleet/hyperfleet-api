@@ -10,13 +10,10 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet/pkg/api/presenters"
 	"github.com/openshift-hyperfleet/hyperfleet/pkg/auth"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/controllers"
 	"github.com/openshift-hyperfleet/hyperfleet/pkg/dao"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/db"
 	"github.com/openshift-hyperfleet/hyperfleet/pkg/handlers"
 	"github.com/openshift-hyperfleet/hyperfleet/pkg/services"
 	"github.com/openshift-hyperfleet/hyperfleet/plugins/adapterStatus"
-	"github.com/openshift-hyperfleet/hyperfleet/plugins/events"
 	"github.com/openshift-hyperfleet/hyperfleet/plugins/generic"
 	"github.com/openshift-hyperfleet/hyperfleet/plugins/nodePools"
 )
@@ -27,10 +24,8 @@ type ServiceLocator func() services.ClusterService
 func NewServiceLocator(env *environments.Env) ServiceLocator {
 	return func() services.ClusterService {
 		return services.NewClusterService(
-			db.NewAdvisoryLockFactory(env.Database.SessionFactory),
 			dao.NewClusterDao(&env.Database.SessionFactory),
 			dao.NewAdapterStatusDao(&env.Database.SessionFactory),
-			events.Service(&env.Services),
 		)
 	}
 }
@@ -90,19 +85,8 @@ func init() {
 		clustersRouter.Use(authzMiddleware.AuthorizeApi)
 	})
 
-	// Controller registration
-	server.RegisterController("Clusters", func(manager *controllers.KindControllerManager, services *environments.Services) {
-		clusterServices := Service(services)
-
-		manager.Add(&controllers.ControllerConfig{
-			Source: "Clusters",
-			Handlers: map[api.EventType][]controllers.ControllerHandlerFunc{
-				api.CreateEventType: {clusterServices.OnUpsert},
-				api.UpdateEventType: {clusterServices.OnUpsert},
-				api.DeleteEventType: {clusterServices.OnDelete},
-			},
-		})
-	})
+	// REMOVED: Controller registration - Sentinel handles orchestration
+	// Controllers are no longer run inside the API service
 
 	// Presenter registration
 	presenters.RegisterPath(api.Cluster{}, "clusters")

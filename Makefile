@@ -6,40 +6,11 @@ CGO_ENABLED := 1
 # Enable users to override the golang used to accomodate custom installations
 GO ?= go
 
-# Allow overriding `oc` command.
-# Used by pr_check.py to ssh deploy inside private Hive cluster via bastion host.
-oc:=oc
-
-# The version needs to be different for each deployment because otherwise the
-# cluster will not pull the new image from the internal registry:
+# Version information for build metadata
 version:=$(shell date +%s)
-# Tag for the image:
-image_tag:=$(version)
-
-# The namespace and the environment are calculated from the name of the user to
-# avoid clashes in shared infrastructure:
-environment:=${USER}
-namespace:=ocm-${USER}
 
 # a tool for managing containers and images, etc. You can set it as docker
 container_tool ?= podman
-
-# In the development environment we are pushing the image directly to the image
-# registry inside the development cluster. That registry has a different name
-# when it is accessed from outside the cluster and when it is accessed from
-# inside the cluster. We need the external name to push the image, and the
-# internal name to pull it.
-external_apps_domain?=apps-crc.testing
-external_image_registry?=default-route-openshift-image-registry.$(external_apps_domain)
-internal_image_registry?=image-registry.openshift-image-registry.svc:5000
-
-# The name of the image repository needs to start with the name of an existing
-# namespace because when the image is pushed to the internal registry of a
-# cluster it will assume that that namespace exists and will try to create a
-# corresponding image stream inside that namespace. If the namespace doesn't
-# exist the push fails. This doesn't apply when the image is pushed to a public
-# repository, like `docker.io` or `quay.io`.
-image_repository:=$(namespace)/hyperfleet
 
 # Database connection details
 db_name:=hyperfleet
@@ -64,22 +35,18 @@ integration_test_json_output ?= ${PWD}/integration-test-results.json
 # Prints a list of useful targets.
 help:
 	@echo ""
-	@echo "OpenShift CLuster Manager Example Service"
+	@echo "HyperFleet API - Cluster Lifecycle Management Service"
 	@echo ""
 	@echo "make verify               verify source code"
 	@echo "make lint                 run golangci-lint"
 	@echo "make binary               compile binaries"
 	@echo "make install              compile binaries and install in GOPATH bin"
+	@echo "make secrets              initialize secrets directory with default values"
 	@echo "make run                  run the application"
 	@echo "make run/docs             run swagger and host the api spec"
 	@echo "make test                 run unit tests"
 	@echo "make test-integration     run integration tests"
 	@echo "make generate             generate openapi modules"
-	@echo "make image                build docker image"
-	@echo "make push                 push docker image"
-	@echo "make deploy               deploy via templates to local openshift instance"
-	@echo "make undeploy             undeploy from local openshift instance"
-	@echo "make project              create and use an Example project"
 	@echo "make clean                delete temporary generated files"
 	@echo "$(fake)"
 .PHONY: help
@@ -155,7 +122,7 @@ lint:
 # NOTE it may be necessary to use CGO_ENABLED=0 for backwards compatibility with centos7 if not using centos7
 binary: check-gopath
 	echo "Building version: ${build_version}"
-	${GO} build -ldflags="$(ldflags)" ./cmd/hyperfleet
+	${GO} build -ldflags="$(ldflags)" -o hyperfleet-api ./cmd/hyperfleet
 .PHONY: binary
 
 # Install
@@ -171,6 +138,20 @@ install: check-gopath
 		)
 .PHONY: install
 
+# Initialize secrets directory with default values
+secrets:
+	@mkdir -p secrets
+	@printf "localhost" > secrets/db.host
+	@printf "$(db_name)" > secrets/db.name
+	@printf "$(db_password)" > secrets/db.password
+	@printf "$(db_port)" > secrets/db.port
+	@printf "$(db_user)" > secrets/db.user
+	@printf "ocm-hyperfleet-testing" > secrets/ocm-service.clientId
+	@printf "your-client-secret-here" > secrets/ocm-service.clientSecret
+	@printf "your-token-here" > secrets/ocm-service.token
+	@echo "Secrets directory initialized with default values"
+.PHONY: secrets
+
 # Runs the unit tests.
 #
 # Args:
@@ -178,7 +159,7 @@ install: check-gopath
 #
 # Examples:
 #   make test TESTFLAGS="-run TestSomething"
-test: install
+test: install secrets
 	OCM_ENV=unit_testing gotestsum --format short-verbose -- -p 1 -v $(TESTFLAGS) \
 		./pkg/... \
 		./cmd/...
@@ -191,8 +172,7 @@ test: install
 #
 # Examples:
 #   make test-unit-json TESTFLAGS="-run TestSomething"
-ci-test-unit: install
-	@echo $(db_password) > ${PWD}/secrets/db.password
+ci-test-unit: install secrets
 	OCM_ENV=unit_testing gotestsum --jsonfile-timing-events=$(unit_test_json_output) --format short-verbose -- -p 1 -v $(TESTFLAGS) \
 		./pkg/... \
 		./cmd/...
@@ -208,8 +188,7 @@ ci-test-unit: install
 #   make test-integration TESTFLAGS="-run TestAccounts"     acts as TestAccounts* and run TestAccountsGet, TestAccountsPost, etc.
 #   make test-integration TESTFLAGS="-run TestAccountsGet"  runs TestAccountsGet
 #   make test-integration TESTFLAGS="-short"                skips long-run tests
-ci-test-integration: install
-	@echo $(db_password) > ${PWD}/secrets/db.password
+ci-test-integration: install secrets
 	TESTCONTAINERS_RYUK_DISABLED=true OCM_ENV=integration_testing gotestsum --jsonfile-timing-events=$(integration_test_json_output) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) \
 			./test/integration
 .PHONY: ci-test-integration
@@ -224,8 +203,7 @@ ci-test-integration: install
 #   make test-integration TESTFLAGS="-run TestAccounts"     acts as TestAccounts* and run TestAccountsGet, TestAccountsPost, etc.
 #   make test-integration TESTFLAGS="-run TestAccountsGet"  runs TestAccountsGet
 #   make test-integration TESTFLAGS="-short"                skips long-run tests
-test-integration: install
-	@echo $(db_password) > ${PWD}/secrets/db.password
+test-integration: install secrets
 	TESTCONTAINERS_RYUK_DISABLED=true OCM_ENV=integration_testing gotestsum --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) \
 			./test/integration
 .PHONY: test-integration
@@ -233,8 +211,8 @@ test-integration: install
 # Regenerate openapi client and models
 generate:
 	rm -rf pkg/api/openapi
-	$(container_tool) build -t ams-openapi -f Dockerfile.openapi .
-	$(eval OPENAPI_IMAGE_ID=`$(container_tool) create -t ams-openapi -f Dockerfile.openapi .`)
+	$(container_tool) build -t hyperfleet-openapi -f Dockerfile.openapi .
+	$(eval OPENAPI_IMAGE_ID=`$(container_tool) create -t hyperfleet-openapi -f Dockerfile.openapi .`)
 	$(container_tool) cp $(OPENAPI_IMAGE_ID):/local/pkg/api/openapi ./pkg/api/openapi
 	$(container_tool) cp $(OPENAPI_IMAGE_ID):/local/data/generated/openapi/openapi.go ./data/generated/openapi/openapi.go
 .PHONY: generate
@@ -242,20 +220,20 @@ generate:
 # Regenerate openapi client and models using vendor (avoids downloading dependencies)
 generate-vendor:
 	rm -rf pkg/api/openapi
-	$(container_tool) build -t ams-openapi-vendor -f Dockerfile.openapi.vendor .
-	$(eval OPENAPI_IMAGE_ID=`$(container_tool) create -t ams-openapi-vendor -f Dockerfile.openapi.vendor .`)
+	$(container_tool) build -t hyperfleet-openapi-vendor -f Dockerfile.openapi.vendor .
+	$(eval OPENAPI_IMAGE_ID=`$(container_tool) create -t hyperfleet-openapi-vendor -f Dockerfile.openapi.vendor .`)
 	$(container_tool) cp $(OPENAPI_IMAGE_ID):/local/pkg/api/openapi ./pkg/api/openapi
 	$(container_tool) cp $(OPENAPI_IMAGE_ID):/local/data/generated/openapi/openapi.go ./data/generated/openapi/openapi.go
 .PHONY: generate-vendor
 
 run: binary
-	./hyperfleet migrate
-	./hyperfleet serve
+	./hyperfleet-api migrate
+	./hyperfleet-api serve
 .PHONY: run
 
 run-no-auth: binary
-	./hyperfleet migrate
-	./hyperfleet serve --enable-authz=false --enable-jwt=false
+	./hyperfleet-api migrate
+	./hyperfleet-api serve --enable-authz=false --enable-jwt=false
 
 # Run Swagger nd host the api docs
 run/docs:
@@ -267,7 +245,6 @@ run/docs:
 clean:
 	rm -rf \
 		$(binary) \
-		templates/*-template.json \
 		data/generated/openapi/*.json \
 .PHONY: clean
 
@@ -282,88 +259,6 @@ cmds:
 	done
 
 
-# NOTE multiline variables are a PITA in Make. To use them in `oc process` later on, we need to first
-# export them as environment variables, then use the environment variable in `oc process`
-%-template:
-	oc process \
-		--filename="templates/$*-template.yml" \
-		--local="true" \
-		--ignore-unknown-parameters="true" \
-		--param="ENVIRONMENT=$(OCM_ENV)" \
-		--param="GLOG_V=$(glog_v)" \
-		--param="DATABASE_HOST=$(db_host)" \
-		--param="DATABASE_NAME=$(db_name)" \
-		--param="DATABASE_PASSWORD=$(db_password)" \
-		--param="DATABASE_PORT=$(db_port)" \
-		--param="DATABASE_USER=$(db_user)" \
-		--param="DATABASE_SSLMODE=$(db_sslmode)" \
-		--param="IMAGE_REGISTRY=$(internal_image_registry)" \
-		--param="IMAGE_REPOSITORY=$(image_repository)" \
-		--param="IMAGE_TAG=$(image_tag)" \
-		--param="VERSION=$(version)" \
-		--param="AUTHZ_RULES=$$AUTHZ_RULES" \
-		--param="ENABLE_SENTRY"=false \
-		--param="SENTRY_KEY"=TODO \
-		--param="JWKS_URL=$(jwks_url)" \
-		--param="OCM_SERVICE_CLIENT_ID=$(CLIENT_ID)" \
-		--param="OCM_SERVICE_CLIENT_SECRET=$(CLIENT_SECRET)" \
-		--param="TOKEN=$(token)" \
-		--param="OCM_BASE_URL=$(OCM_BASE_URL)" \
-		--param="ENVOY_IMAGE=$(envoy_image)" \
-		--param="ENABLE_JQS="false \
-	> "templates/$*-template.json"
-
-
-.PHONY: project
-project:
-	$(oc) new-project "$(namespace)" || $(oc) project "$(namespace)" || true
-
-.PHONY: image
-image: cmds
-	$(container_tool) build -t "$(external_image_registry)/$(image_repository):$(image_tag)" .
-
-.PHONY: push
-push:	\
-	image \
-	project
-	$(container_tool) push "$(external_image_registry)/$(image_repository):$(image_tag)" --tls-verify=false
-
-deploy-%: project %-template
-	$(oc) apply --filename="templates/$*-template.json" | egrep --color=auto 'configured|$$'
-
-undeploy-%: project %-template
-	$(oc) delete --filename="templates/$*-template.json" | egrep --color=auto 'deleted|$$'
-
-
-.PHONY: template
-template: \
-	secrets-template \
-	db-template \
-	service-template \
-	route-template \
-	$(NULL)
-
-# Depending on `template` first helps clustering the "foo configured", "bar unchanged",
-# "baz deleted" messages at the end, after all the noisy templating.
-.PHONY: deploy
-deploy: \
-	push \
-	template \
-	deploy-secrets \
-	deploy-db \
-	deploy-service \
-	deploy-route \
-	$(NULL)
-
-.PHONY: undeploy
-undeploy: \
-	template \
-	undeploy-secrets \
-	undeploy-db \
-	undeploy-service \
-	undeploy-route \
-	$(NULL)
-
 .PHONY: db/setup
 db/setup:
 	@echo $(db_password) > $(db_password_file)
@@ -377,9 +272,3 @@ db/login:
 db/teardown:
 	$(container_tool) stop psql-hyperfleet
 	$(container_tool) rm psql-hyperfleet
-
-crc/login:
-	@echo "Logging into CRC"
-	@crc console --credentials -ojson | jq -r .clusterConfig.adminCredentials.password | oc login --username kubeadmin --insecure-skip-tls-verify=true https://api.crc.testing:6443
-	@oc whoami --show-token | $(container_tool) login --username kubeadmin --password-stdin "$(external_image_registry)" --tls-verify=false
-.PHONY: crc/login

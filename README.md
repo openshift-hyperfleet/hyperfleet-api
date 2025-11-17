@@ -1,6 +1,6 @@
 # HyperFleet API
 
-HyperFleet API - Simple REST API for cluster lifecycle management. Provides CRUD operations for clusters and status sub-resources. Pure data layer with PostgreSQL integration - no business logic or event creation. Stateless design enables horizontal scaling. Part of HyperFleet v2 event-driven architecture.
+HyperFleet API - Simple REST API for cluster lifecycle management. Provides CRUD operations for clusters and status sub-resources. Pure data layer with PostgreSQL integration - no business logic or event creation. Stateless design enables horizontal scaling.
 
 ![HyperFleet](rhtap-hyperfleet_sm.png)
 
@@ -21,7 +21,6 @@ HyperFleet API - Simple REST API for cluster lifecycle management. Provides CRUD
 * OpenAPI 3.0 code generation workflow
 * Cluster and NodePool lifecycle management
 * Adapter-based status reporting with Kubernetes-style conditions
-* Event-driven architecture with advisory locks
 * Pagination and search capabilities
 * Complete integration test coverage
 * Database migrations with GORM
@@ -190,7 +189,7 @@ All list endpoints return consistent pagination metadata:
 Before running hyperfleet-api, ensure these prerequisites are installed. See [PREREQUISITES.md](./PREREQUISITES.md) for details.
 
 - Go 1.24 or higher
-- Podman or Docker
+- Podman
 - PostgreSQL 13+
 - Make
 
@@ -208,7 +207,7 @@ make binary
 make db/setup
 
 # 4. Run database migrations
-./hyperfleet migrate
+./hyperfleet-api migrate
 
 # 5. Verify database schema
 make db/login
@@ -371,13 +370,6 @@ This embedded specification is:
 - owner_type and owner_id for polymorphic relationships
 - Supports filtering and search
 
-### Event System
-
-- Advisory locks prevent concurrent processing
-- Event channels notify on resource changes
-- Idempotent event handlers
-- Lock IDs based on resource operations
-
 ## OpenAPI Specification Structure
 
 **Source file (`openapi/openapi.yaml` - 32KB):**
@@ -407,7 +399,7 @@ make generate
 make binary
 
 # Run database migrations
-./hyperfleet migrate
+./hyperfleet-api migrate
 
 # Start server (no auth)
 make run-no-auth

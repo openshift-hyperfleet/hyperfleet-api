@@ -10,33 +10,33 @@ import (
 	"gorm.io/gorm"
 )
 
-// NodePool 数据库模型
+// NodePool database model
 type NodePool struct {
-	Meta // 包含 ID, CreatedAt, UpdatedAt, DeletedAt
+	Meta // Contains ID, CreatedAt, UpdatedAt, DeletedAt
 
-	// 核心字段
+	// Core fields
 	Kind   string         `json:"kind" gorm:"default:'NodePool'"`
 	Name   string         `json:"name" gorm:"size:255;not null"`
 	Spec   datatypes.JSON `json:"spec" gorm:"type:jsonb;not null"`
 	Labels datatypes.JSON `json:"labels,omitempty" gorm:"type:jsonb"`
 	Href   string         `json:"href,omitempty" gorm:"size:500"`
 
-	// Owner References（展开）
+	// Owner references (expanded)
 	OwnerID   string `json:"owner_id" gorm:"size:255;not null;index"`
 	OwnerKind string `json:"owner_kind" gorm:"size:50;not null"`
 	OwnerHref string `json:"owner_href,omitempty" gorm:"size:500"`
 
-	// 外键关系
+	// Foreign key relationship
 	Cluster *Cluster `gorm:"foreignKey:OwnerID;references:ID"`
 
-	// Status 字段（展开）
+	// Status fields (expanded)
 	StatusPhase              string         `json:"status_phase" gorm:"default:'NotReady'"`
 	StatusObservedGeneration int32          `json:"status_observed_generation" gorm:"default:0"`
 	StatusLastTransitionTime *time.Time     `json:"status_last_transition_time,omitempty"`
 	StatusUpdatedAt          *time.Time     `json:"status_updated_at,omitempty"`
 	StatusAdapters           datatypes.JSON `json:"status_adapters" gorm:"type:jsonb"`
 
-	// 审计字段
+	// Audit fields
 	CreatedBy string `json:"created_by" gorm:"size:255;not null"`
 	UpdatedBy string `json:"updated_by" gorm:"size:255;not null"`
 }
@@ -74,7 +74,7 @@ func (np *NodePool) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-// ToOpenAPI 转换为 OpenAPI 模型
+// ToOpenAPI converts to OpenAPI model
 func (np *NodePool) ToOpenAPI() *openapi.NodePool {
 	// Unmarshal Spec
 	var spec map[string]interface{}
@@ -125,7 +125,7 @@ func (np *NodePool) ToOpenAPI() *openapi.NodePool {
 		UpdatedBy: np.UpdatedBy,
 	}
 
-	// 构建 NodePoolStatus
+	// Build NodePoolStatus
 	nodePool.Status = openapi.NodePoolStatus{
 		Phase:              np.StatusPhase,
 		ObservedGeneration: np.StatusObservedGeneration,
@@ -143,7 +143,7 @@ func (np *NodePool) ToOpenAPI() *openapi.NodePool {
 	return nodePool
 }
 
-// NodePoolFromOpenAPICreate 从 OpenAPI CreateRequest 创建 GORM 模型
+// NodePoolFromOpenAPICreate creates GORM model from OpenAPI CreateRequest
 func NodePoolFromOpenAPICreate(req *openapi.NodePoolCreateRequest, ownerID, createdBy string) *NodePool {
 	// Marshal Spec
 	specJSON, _ := json.Marshal(req.Spec)
