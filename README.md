@@ -200,20 +200,25 @@ Before running hyperfleet-api, ensure these prerequisites are installed. See [PR
 go install gotest.tools/gotestsum@latest
 go mod download
 
-# 2. Build the binary
+# 2. Generate OpenAPI code
+make generate
+
+# 3. Build the binary
 make binary
 
-# 3. Setup PostgreSQL database
+# 4. Setup PostgreSQL database
 make db/setup
 
-# 4. Run database migrations
+# 5. Run database migrations
 ./hyperfleet-api migrate
 
-# 5. Verify database schema
+# 6. Verify database schema
 make db/login
 psql -h localhost -U hyperfleet hyperfleet
 \dt
 ```
+
+**Note**: The `pkg/api/openapi/` directory is not tracked in git. You must run `make generate` after cloning or pulling changes to the OpenAPI specification.
 
 ### Running the Service
 
@@ -321,6 +326,8 @@ pkg/api/openapi/api/openapi.yaml (44KB, fully resolved spec)
 - Type definitions for all API resources
 - Validation tags for required fields
 - Fully resolved OpenAPI specification
+
+**Important**: Generated files in `pkg/api/openapi/` are not tracked in git. Developers must run `make generate` after cloning or pulling changes to the OpenAPI specification.
 
 ### Runtime Embedding
 

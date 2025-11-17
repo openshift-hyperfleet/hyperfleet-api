@@ -46,3 +46,6 @@ secrets
 
 # Ignore vendor directory
 /vendor/
+
+# Ignore generated OpenAPI code
+/pkg/api/openapi/
