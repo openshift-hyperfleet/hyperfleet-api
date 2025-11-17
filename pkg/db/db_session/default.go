@@ -12,9 +12,9 @@ import (
 
 	"github.com/lib/pq"
 
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/config"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/db"
-	ocmlogger "github.com/openshift-hyperfleet/hyperfleet/pkg/logger"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
+	ocmlogger "github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
 type Default struct {

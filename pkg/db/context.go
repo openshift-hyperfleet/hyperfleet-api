@@ -3,8 +3,8 @@ package db
 import (
 	"context"
 
-	dbContext "github.com/openshift-hyperfleet/hyperfleet/pkg/db/db_context"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/logger"
+	dbContext "github.com/openshift-hyperfleet/hyperfleet-api/pkg/db/db_context"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
 // NewContext returns a new context with transaction stored in it.

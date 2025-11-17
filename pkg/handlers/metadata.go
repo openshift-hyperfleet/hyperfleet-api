@@ -22,7 +22,7 @@ import (
 	"net/http"
 
 	"github.com/golang/glog"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/api"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 )
 
 type metadataHandler struct{}

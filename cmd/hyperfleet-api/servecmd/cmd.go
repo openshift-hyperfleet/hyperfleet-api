@@ -4,8 +4,8 @@ import (
 	"github.com/golang/glog"
 	"github.com/spf13/cobra"
 
-	"github.com/openshift-hyperfleet/hyperfleet/cmd/hyperfleet/environments"
-	"github.com/openshift-hyperfleet/hyperfleet/cmd/hyperfleet/server"
+	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/environments"
+	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/server"
 )
 
 func NewServeCommand() *cobra.Command {

@@ -3,7 +3,7 @@ package presenters
 import (
 	"time"
 
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/util"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/util"
 )
 
 func PresentTime(t time.Time) *time.Time {

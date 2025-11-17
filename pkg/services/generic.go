@@ -14,11 +14,11 @@ import (
 	"github.com/yaacov/tree-search-language/pkg/walkers/ident"
 	sqlFilter "github.com/yaacov/tree-search-language/pkg/walkers/sql"
 
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/api"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/dao"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/db"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/errors"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/logger"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/dao"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
 type GenericService interface {

@@ -3,10 +3,10 @@ package environments
 import (
 	"sync"
 
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/auth"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/client/ocm"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/config"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/db"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/auth"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/client/ocm"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
 )
 
 const (

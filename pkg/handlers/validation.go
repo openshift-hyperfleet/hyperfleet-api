@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/errors"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 )
 
 func validateNotEmpty(i interface{}, fieldName string, field string) validate {

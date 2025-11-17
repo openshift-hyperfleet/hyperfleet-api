@@ -4,15 +4,15 @@ import (
 	"context"
 	"testing"
 
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/dao"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/db"
-	dbmocks "github.com/openshift-hyperfleet/hyperfleet/pkg/db/mocks"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/dao"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
+	dbmocks "github.com/openshift-hyperfleet/hyperfleet-api/pkg/db/mocks"
 
 	"github.com/onsi/gomega/types"
 	"github.com/yaacov/tree-search-language/pkg/tsl"
 
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/api"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/errors"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 
 	. "github.com/onsi/gomega"
 )

@@ -3,7 +3,7 @@ package db
 import (
 	"context"
 
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/db/transaction"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db/transaction"
 )
 
 // By default do no roll back transaction.

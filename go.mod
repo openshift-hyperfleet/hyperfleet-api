@@ -1,4 +1,4 @@
-module github.com/openshift-hyperfleet/hyperfleet
+module github.com/openshift-hyperfleet/hyperfleet-api
 
 go 1.24.0
 

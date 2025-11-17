@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/golang/glog"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/util"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/util"
 )
 
 type OCMLogger interface {

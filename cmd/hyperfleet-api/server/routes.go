@@ -7,12 +7,12 @@ import (
 	gorillahandlers "github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 
-	"github.com/openshift-hyperfleet/hyperfleet/cmd/hyperfleet/server/logging"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/api"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/auth"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/db"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/handlers"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/logger"
+	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/server/logging"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/auth"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/handlers"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
 type ServicesInterface interface {

@@ -5,11 +5,11 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/api"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/api/openapi"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/dao"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/errors"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/logger"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/dao"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
 type ClusterService interface {

@@ -1,8 +1,8 @@
 package presenters
 
 import (
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/api"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/api/openapi"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
 )
 
 // ConvertCluster converts openapi.Cluster to api.Cluster (GORM model)

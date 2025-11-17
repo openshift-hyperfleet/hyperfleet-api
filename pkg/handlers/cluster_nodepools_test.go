@@ -11,10 +11,10 @@ import (
 	"github.com/gorilla/mux"
 	. "github.com/onsi/gomega"
 
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/api"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/api/openapi"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/errors"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/services"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/services"
 )
 
 // Mock ClusterService

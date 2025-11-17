@@ -5,7 +5,7 @@ package db_context
 import (
 	"context"
 
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/db/transaction"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db/transaction"
 )
 
 type contextKey int

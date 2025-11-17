@@ -12,7 +12,7 @@ HyperFleet API is one component in the HyperFleet architecture:
 
 - **HyperFleet API** (this service): Pure CRUD data layer with PostgreSQL
 - **Sentinel Service**: Centralized business logic and event publishing
-- **Adapters**: Execute operations (Hive, Hypershift, etc.) and report status back to API
+- **Adapters**: Execute operations (DNS, Hypershift, etc.) and report status back to API
 
 The API's role is strictly limited to:
 1. Accept resource creation/update/delete requests
@@ -236,14 +236,18 @@ The API calculates aggregate status from adapter-specific conditions:
 **Adapter Status Structure**:
 ```json
 {
-  "adapter": "hive-adapter",
+  "adapter": "dns-adapter",
   "observed_generation": 1,
   "conditions": [
     {
+      "adapter": "dns-adapter",
       "type": "Ready",
       "status": "True",
+      "observed_generation": 1,
       "reason": "ClusterProvisioned",
-      "message": "Cluster successfully provisioned"
+      "message": "Cluster successfully provisioned",
+      "created_at": "2025-11-17T15:04:05Z",
+      "updated_at": "2025-11-17T15:04:05Z"
     }
   ]
 }
@@ -390,6 +394,11 @@ All subcommands support these logging flags:
 
 ```bash
 # Prerequisites: Go 1.24, Podman, PostgreSQL client tools
+
+# Generate OpenAPI code (required before go mod download)
+make generate
+
+# Install dependencies
 go install gotest.tools/gotestsum@latest
 go mod download
 

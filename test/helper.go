@@ -21,13 +21,13 @@ import (
 
 	amv1 "github.com/openshift-online/ocm-sdk-go/accountsmgmt/v1"
 
-	"github.com/openshift-hyperfleet/hyperfleet/cmd/hyperfleet/environments"
-	"github.com/openshift-hyperfleet/hyperfleet/cmd/hyperfleet/server"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/api/openapi"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/config"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/db"
-	"github.com/openshift-hyperfleet/hyperfleet/test/factories"
-	"github.com/openshift-hyperfleet/hyperfleet/test/mocks"
+	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/environments"
+	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/server"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
+	"github.com/openshift-hyperfleet/hyperfleet-api/test/factories"
+	"github.com/openshift-hyperfleet/hyperfleet-api/test/mocks"
 )
 
 const (

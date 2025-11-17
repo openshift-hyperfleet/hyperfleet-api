@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/api/openapi"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 )

@@ -9,8 +9,8 @@ import (
 	. "github.com/onsi/gomega"
 	"gopkg.in/resty.v1"
 
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/api/openapi"
-	"github.com/openshift-hyperfleet/hyperfleet/test"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
+	"github.com/openshift-hyperfleet/hyperfleet-api/test"
 )
 
 func TestClusterGet(t *testing.T) {

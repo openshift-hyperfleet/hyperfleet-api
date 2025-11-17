@@ -9,8 +9,8 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/config"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/db"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
 )
 
 var _ db.SessionFactory = &MockSessionFactory{}

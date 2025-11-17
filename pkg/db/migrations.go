@@ -5,7 +5,7 @@ import (
 
 	"github.com/go-gormigrate/gormigrate/v2"
 	"github.com/golang/glog"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/db/migrations"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db/migrations"
 
 	"gorm.io/gorm"
 )

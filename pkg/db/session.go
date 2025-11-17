@@ -6,7 +6,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/config"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
 )
 
 type SessionFactory interface {

@@ -76,6 +76,9 @@ ocm version             # OCM CLI (production auth only)
 Once all prerequisites are installed, follow the development workflow in README.md:
 
 ```bash
+# Generate OpenAPI code (required before go mod download)
+make generate
+
 # Install Go dependencies
 go mod download
 go install gotest.tools/gotestsum@latest

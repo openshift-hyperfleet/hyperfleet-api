@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/errors"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/logger"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
 func handleError(ctx context.Context, w http.ResponseWriter, code errors.ServiceErrorCode, reason string) {

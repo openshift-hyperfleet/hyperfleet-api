@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/jinzhu/inflection"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/errors"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 	"github.com/yaacov/tree-search-language/pkg/tsl"
 	"gorm.io/gorm"
 )

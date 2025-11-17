@@ -1,10 +1,10 @@
 package adapterStatus
 
 import (
-	"github.com/openshift-hyperfleet/hyperfleet/cmd/hyperfleet/environments"
-	"github.com/openshift-hyperfleet/hyperfleet/cmd/hyperfleet/environments/registry"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/dao"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/services"
+	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/environments"
+	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/environments/registry"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/dao"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/services"
 )
 
 // ServiceLocator Service Locator

@@ -5,9 +5,9 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/api"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/dao"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/errors"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/dao"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 )
 
 var _ dao.ClusterDao = &clusterDaoMock{}

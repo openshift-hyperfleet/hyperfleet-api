@@ -7,7 +7,7 @@ import (
 
 	. "github.com/onsi/gomega"
 
-	"github.com/openshift-hyperfleet/hyperfleet/test"
+	"github.com/openshift-hyperfleet/hyperfleet-api/test"
 )
 
 // TestCompatibilityGet tests the compatibility endpoint

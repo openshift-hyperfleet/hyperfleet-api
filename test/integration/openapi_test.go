@@ -25,7 +25,7 @@ import (
 	. "github.com/onsi/gomega"
 	"gopkg.in/resty.v1"
 
-	"github.com/openshift-hyperfleet/hyperfleet/test"
+	"github.com/openshift-hyperfleet/hyperfleet-api/test"
 )
 
 func TestOpenAPIGet(t *testing.T) {

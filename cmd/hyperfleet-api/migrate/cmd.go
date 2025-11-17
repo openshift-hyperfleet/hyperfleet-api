@@ -5,11 +5,11 @@ import (
 	"flag"
 
 	"github.com/golang/glog"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/db/db_session"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db/db_session"
 	"github.com/spf13/cobra"
 
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/config"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/db"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
 )
 
 var dbConfig = config.NewDatabaseConfig()

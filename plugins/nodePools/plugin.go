@@ -4,16 +4,16 @@ import (
 	"net/http"
 
 	"github.com/gorilla/mux"
-	"github.com/openshift-hyperfleet/hyperfleet/cmd/hyperfleet/environments"
-	"github.com/openshift-hyperfleet/hyperfleet/cmd/hyperfleet/environments/registry"
-	"github.com/openshift-hyperfleet/hyperfleet/cmd/hyperfleet/server"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/api"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/api/presenters"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/auth"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/dao"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/handlers"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/services"
-	"github.com/openshift-hyperfleet/hyperfleet/plugins/generic"
+	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/environments"
+	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/environments/registry"
+	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/server"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/presenters"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/auth"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/dao"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/handlers"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/services"
+	"github.com/openshift-hyperfleet/hyperfleet-api/plugins/generic"
 )
 
 // ServiceLocator Service Locator

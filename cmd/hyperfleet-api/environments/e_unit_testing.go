@@ -3,8 +3,8 @@ package environments
 import (
 	"os"
 
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/config"
-	dbmocks "github.com/openshift-hyperfleet/hyperfleet/pkg/db/mocks"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
+	dbmocks "github.com/openshift-hyperfleet/hyperfleet-api/pkg/db/mocks"
 )
 
 var _ EnvironmentImpl = &unitTestingEnvImpl{}

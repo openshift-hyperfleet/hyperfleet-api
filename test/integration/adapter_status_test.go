@@ -7,8 +7,8 @@ import (
 
 	. "github.com/onsi/gomega"
 
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/api/openapi"
-	"github.com/openshift-hyperfleet/hyperfleet/test"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
+	"github.com/openshift-hyperfleet/hyperfleet-api/test"
 )
 
 // TestClusterStatusPost tests creating adapter status for a cluster

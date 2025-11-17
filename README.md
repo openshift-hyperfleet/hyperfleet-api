@@ -137,16 +137,18 @@ Resources report status through adapter-specific condition sets following Kubern
 **Structure:**
 ```json
 {
-  "adapter": "hive-adapter",
+  "adapter": "dns-adapter",
   "observed_generation": 1,
   "conditions": [
     {
-      "adapter": "hive-adapter",
+      "adapter": "dns-adapter",
       "type": "Ready",
       "status": "True",
       "observed_generation": 1,
       "reason": "ClusterProvisioned",
-      "message": "Cluster successfully provisioned"
+      "message": "Cluster successfully provisioned",
+      "created_at": "2025-11-17T15:04:05Z",
+      "updated_at": "2025-11-17T15:04:05Z",
     }
   ],
   "data": {}
@@ -196,12 +198,12 @@ Before running hyperfleet-api, ensure these prerequisites are installed. See [PR
 ### Initial Setup
 
 ```bash
-# 1. Install dependencies
+# 1. Generate OpenAPI code (must run first as pkg/api/openapi is required by go.mod)
+make generate
+
+# 2. Install dependencies
 go install gotest.tools/gotestsum@latest
 go mod download
-
-# 2. Generate OpenAPI code
-make generate
 
 # 3. Build the binary
 make binary
@@ -480,16 +482,18 @@ curl -X POST http://localhost:8000/api/hyperfleet/v1/clusters/$CLUSTER_ID/nodepo
 curl -X POST http://localhost:8000/api/hyperfleet/v1/clusters/$CLUSTER_ID/statuses \
   -H "Content-Type: application/json" \
   -d '{
-    "adapter": "hive-adapter",
+    "adapter": "dns-adapter",
     "observed_generation": 1,
     "conditions": [
       {
-        "adapter": "hive-adapter",
+        "adapter": "dns-adapter",
         "type": "Ready",
         "status": "True",
         "observed_generation": 1,
         "reason": "ClusterProvisioned",
-        "message": "Cluster successfully provisioned"
+        "message": "Cluster successfully provisioned",
+        "created_at": "2025-11-17T15:04:05Z",
+        "updated_at": "2025-11-17T15:04:05Z"
       }
     ]
   }' | jq

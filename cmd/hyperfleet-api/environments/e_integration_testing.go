@@ -3,8 +3,8 @@ package environments
 import (
 	"os"
 
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/config"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/db/db_session"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db/db_session"
 )
 
 var _ EnvironmentImpl = &integrationTestingEnvImpl{}

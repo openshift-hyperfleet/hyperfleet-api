@@ -7,10 +7,10 @@ import (
 	"github.com/golang/glog"
 	"github.com/spf13/pflag"
 
-	"github.com/openshift-hyperfleet/hyperfleet/cmd/hyperfleet/environments/registry"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/client/ocm"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/config"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/errors"
+	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/environments/registry"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/client/ocm"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 )
 
 func init() {

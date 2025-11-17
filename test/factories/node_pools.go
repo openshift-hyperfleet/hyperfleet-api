@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/openshift-hyperfleet/hyperfleet/cmd/hyperfleet/environments"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/api"
-	"github.com/openshift-hyperfleet/hyperfleet/plugins/nodePools"
+	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/environments"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
+	"github.com/openshift-hyperfleet/hyperfleet-api/plugins/nodePools"
 )
 
 func (f *Factories) NewNodePool(id string) (*api.NodePool, error) {

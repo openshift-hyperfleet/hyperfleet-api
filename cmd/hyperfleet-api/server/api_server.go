@@ -14,7 +14,7 @@ import (
 	sdk "github.com/openshift-online/ocm-sdk-go"
 	"github.com/openshift-online/ocm-sdk-go/authentication"
 
-	"github.com/openshift-hyperfleet/hyperfleet/cmd/hyperfleet/environments"
+	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/environments"
 )
 
 type apiServer struct {

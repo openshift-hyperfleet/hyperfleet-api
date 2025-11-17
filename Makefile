@@ -64,7 +64,7 @@ git_sha:=$(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 git_dirty:=$(shell git diff --quiet 2>/dev/null || echo "-modified")
 build_version:=$(git_sha)$(git_dirty)
 build_time:=$(shell date -u '+%Y-%m-%d %H:%M:%S UTC')
-ldflags=-X github.com/openshift-hyperfleet/hyperfleet/pkg/api.Version=$(build_version) -X 'github.com/openshift-hyperfleet/hyperfleet/pkg/api.BuildTime=$(build_time)'
+ldflags=-X github.com/openshift-hyperfleet/hyperfleet-api/pkg/api.Version=$(build_version) -X 'github.com/openshift-hyperfleet/hyperfleet-api/pkg/api.BuildTime=$(build_time)'
 
 ### Envrionment-sourced variables with defaults
 # Can be overriden by setting environment var before running
@@ -122,12 +122,12 @@ lint:
 # NOTE it may be necessary to use CGO_ENABLED=0 for backwards compatibility with centos7 if not using centos7
 binary: check-gopath
 	echo "Building version: ${build_version}"
-	${GO} build -ldflags="$(ldflags)" -o hyperfleet-api ./cmd/hyperfleet
+	${GO} build -ldflags="$(ldflags)" -o hyperfleet-api ./cmd/hyperfleet-api
 .PHONY: binary
 
 # Install
 install: check-gopath
-	CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=boringcrypto ${GO} install -ldflags="$(ldflags)" ./cmd/hyperfleet
+	CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=boringcrypto ${GO} install -ldflags="$(ldflags)" ./cmd/hyperfleet-api
 	@ ${GO} version | grep -q "$(GO_VERSION)" || \
 		( \
 			printf '\033[41m\033[97m\n'; \
@@ -246,6 +246,7 @@ clean:
 	rm -rf \
 		$(binary) \
 		data/generated/openapi/*.json \
+		secrets \
 .PHONY: clean
 
 .PHONY: cmds
@@ -260,7 +261,7 @@ cmds:
 
 
 .PHONY: db/setup
-db/setup:
+db/setup: secrets
 	@echo $(db_password) > $(db_password_file)
 	$(container_tool) run --name psql-hyperfleet -e POSTGRES_DB=$(db_name) -e POSTGRES_USER=$(db_user) -e POSTGRES_PASSWORD=$(db_password) -p $(db_port):5432 -d $(db_image)
 

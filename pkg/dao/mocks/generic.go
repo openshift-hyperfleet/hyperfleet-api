@@ -3,7 +3,7 @@ package mocks
 import (
 	"context"
 
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/dao"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/dao"
 )
 
 var _ dao.GenericDao = &genericDaoMock{}

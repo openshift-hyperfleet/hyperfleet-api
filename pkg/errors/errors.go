@@ -7,7 +7,7 @@ import (
 
 	"github.com/golang/glog"
 
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/api/openapi"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
 )
 
 const (

@@ -7,7 +7,7 @@ import (
 	"os"
 
 	"github.com/golang/glog"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/errors"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 )
 
 // SendNotFound sends a 404 response with some details about the non existing resource.

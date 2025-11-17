@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/errors"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/logger"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
 // TransactionMiddleware creates a new HTTP middleware that begins a database transaction

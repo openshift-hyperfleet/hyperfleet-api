@@ -25,8 +25,8 @@ import (
 	. "github.com/onsi/gomega"
 	"gopkg.in/resty.v1"
 
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/api"
-	"github.com/openshift-hyperfleet/hyperfleet/test"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
+	"github.com/openshift-hyperfleet/hyperfleet-api/test"
 )
 
 func TestMetadataGet(t *testing.T) {

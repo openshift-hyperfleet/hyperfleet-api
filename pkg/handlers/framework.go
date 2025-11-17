@@ -6,8 +6,8 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/errors"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/logger"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
 // handlerConfig defines the common things each REST controller must do.

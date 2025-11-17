@@ -5,7 +5,7 @@ import (
 
 	gm "github.com/onsi/gomega"
 
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/api/openapi"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
 )
 
 // RegisterIntegration Register a test

@@ -1,7 +1,7 @@
 package presenters
 
 import (
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/api/openapi"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
 )
 
 func PresentReference(id, obj interface{}) openapi.ObjectReference {

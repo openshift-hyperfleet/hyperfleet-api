@@ -3,7 +3,7 @@ package handlers
 import (
 	"net/http"
 
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/errors"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 )
 
 type compatibilityHandler struct{}

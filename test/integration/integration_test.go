@@ -8,7 +8,7 @@ import (
 
 	"github.com/golang/glog"
 
-	"github.com/openshift-hyperfleet/hyperfleet/test"
+	"github.com/openshift-hyperfleet/hyperfleet-api/test"
 )
 
 func TestMain(m *testing.M) {

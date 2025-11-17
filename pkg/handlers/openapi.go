@@ -7,8 +7,8 @@ import (
 
 	"github.com/ghodss/yaml"
 	"github.com/golang/glog"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/api"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/errors"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 )
 
 //go:embed openapi-ui.html

@@ -31,5 +31,5 @@ RUN bash /usr/local/bin/docker-entrypoint.sh generate -i /local/openapi/openapi.
 RUN rm /local/pkg/api/openapi/go.mod /local/pkg/api/openapi/go.sum
 RUN rm -r /local/pkg/api/openapi/test
 # Run go generate
-RUN go generate /local/cmd/hyperfleet/main.go
+RUN go generate /local/cmd/hyperfleet-api/main.go
 RUN gofmt -w /local/pkg/api/openapi

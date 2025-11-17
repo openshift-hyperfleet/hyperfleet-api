@@ -13,7 +13,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/client/ocm"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/client/ocm"
 )
 
 type AuthorizationMiddleware interface {

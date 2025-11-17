@@ -8,9 +8,9 @@ import (
 
 	"github.com/gorilla/mux"
 
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/api"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/handlers"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/logger"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/handlers"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
 func NewMetricsServer() Server {

@@ -5,8 +5,8 @@ import (
 
 	"gorm.io/gorm/clause"
 
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/api"
-	"github.com/openshift-hyperfleet/hyperfleet/pkg/db"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
 )
 
 type ClusterDao interface {
