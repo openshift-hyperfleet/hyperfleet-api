@@ -1,0 +1,35 @@
+FROM openapitools/openapi-generator-cli:v7.16.0
+
+RUN apt-get update
+RUN apt-get install -y make sudo git wget
+
+# Install Go 1.24
+RUN wget https://go.dev/dl/go1.24.0.linux-amd64.tar.gz && \
+    tar -C /usr/local -xzf go1.24.0.linux-amd64.tar.gz && \
+    rm go1.24.0.linux-amd64.tar.gz
+
+RUN mkdir -p /local
+
+# Copy go.mod and go.sum first for better layer caching
+COPY go.mod go.sum /local/
+
+# Copy the rest of the project
+COPY . /local
+
+ENV PATH="/uhc/bin:/usr/local/go/bin:${PATH}"
+ENV GOPATH="/uhc"
+ENV GOBIN /usr/local/go/bin/
+ENV CGO_ENABLED=0
+
+# these git and go flags to avoid self signed certificate errors
+
+WORKDIR /local
+
+# Install go-bindata
+RUN go install -a github.com/go-bindata/go-bindata/...@v3.1.2
+RUN bash /usr/local/bin/docker-entrypoint.sh generate -i /local/openapi/openapi.yaml -g go -o /local/pkg/api/openapi
+RUN rm /local/pkg/api/openapi/go.mod /local/pkg/api/openapi/go.sum
+RUN rm -r /local/pkg/api/openapi/test
+# Run go generate
+RUN go generate /local/cmd/hyperfleet-api/main.go
+RUN gofmt -w /local/pkg/api/openapi
