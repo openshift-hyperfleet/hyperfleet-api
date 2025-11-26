@@ -151,9 +151,9 @@ func TestClusterNodePoolsHandler_Get(t *testing.T) {
 			mockClusterFunc: func(ctx context.Context, id string) (*api.Cluster, *errors.ServiceError) {
 				return &api.Cluster{
 					Meta: api.Meta{
-						ID:        clusterID,
-						CreatedAt: now,
-						UpdatedAt: now,
+						ID:          clusterID,
+						CreatedTime: now,
+						UpdatedTime: now,
 					},
 					Name: "test-cluster",
 				}, nil
@@ -161,9 +161,9 @@ func TestClusterNodePoolsHandler_Get(t *testing.T) {
 			mockNodePoolFunc: func(ctx context.Context, id string) (*api.NodePool, *errors.ServiceError) {
 				return &api.NodePool{
 					Meta: api.Meta{
-						ID:        nodePoolID,
-						CreatedAt: now,
-						UpdatedAt: now,
+						ID:          nodePoolID,
+						CreatedTime: now,
+						UpdatedTime: now,
 					},
 					Kind:    "NodePool",
 					Name:    "test-nodepool",
@@ -193,9 +193,9 @@ func TestClusterNodePoolsHandler_Get(t *testing.T) {
 			mockClusterFunc: func(ctx context.Context, id string) (*api.Cluster, *errors.ServiceError) {
 				return &api.Cluster{
 					Meta: api.Meta{
-						ID:        clusterID,
-						CreatedAt: now,
-						UpdatedAt: now,
+						ID:          clusterID,
+						CreatedTime: now,
+						UpdatedTime: now,
 					},
 					Name: "test-cluster",
 				}, nil
@@ -213,9 +213,9 @@ func TestClusterNodePoolsHandler_Get(t *testing.T) {
 			mockClusterFunc: func(ctx context.Context, id string) (*api.Cluster, *errors.ServiceError) {
 				return &api.Cluster{
 					Meta: api.Meta{
-						ID:        clusterID,
-						CreatedAt: now,
-						UpdatedAt: now,
+						ID:          clusterID,
+						CreatedTime: now,
+						UpdatedTime: now,
 					},
 					Name: "test-cluster",
 				}, nil
@@ -223,9 +223,9 @@ func TestClusterNodePoolsHandler_Get(t *testing.T) {
 			mockNodePoolFunc: func(ctx context.Context, id string) (*api.NodePool, *errors.ServiceError) {
 				return &api.NodePool{
 					Meta: api.Meta{
-						ID:        nodePoolID,
-						CreatedAt: now,
-						UpdatedAt: now,
+						ID:          nodePoolID,
+						CreatedTime: now,
+						UpdatedTime: now,
 					},
 					Kind:    "NodePool",
 					Name:    "test-nodepool",

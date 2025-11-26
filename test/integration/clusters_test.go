@@ -38,8 +38,8 @@ func TestClusterGet(t *testing.T) {
 	Expect(*clusterOutput.Id).To(Equal(clusterModel.ID), "found object does not match test object")
 	Expect(clusterOutput.Kind).To(Equal("Cluster"))
 	Expect(*clusterOutput.Href).To(Equal(fmt.Sprintf("/api/hyperfleet/v1/clusters/%s", clusterModel.ID)))
-	Expect(clusterOutput.CreatedAt).To(BeTemporally("~", clusterModel.CreatedAt))
-	Expect(clusterOutput.UpdatedAt).To(BeTemporally("~", clusterModel.UpdatedAt))
+	Expect(clusterOutput.CreatedTime).To(BeTemporally("~", clusterModel.CreatedTime))
+	Expect(clusterOutput.UpdatedTime).To(BeTemporally("~", clusterModel.UpdatedTime))
 }
 
 func TestClusterPost(t *testing.T) {

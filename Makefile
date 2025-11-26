@@ -211,6 +211,7 @@ test-integration: install secrets
 # Regenerate openapi client and models
 generate:
 	rm -rf pkg/api/openapi
+	mkdir -p data/generated/openapi
 	$(container_tool) build -t hyperfleet-openapi -f Dockerfile.openapi .
 	$(eval OPENAPI_IMAGE_ID=`$(container_tool) create -t hyperfleet-openapi -f Dockerfile.openapi .`)
 	$(container_tool) cp $(OPENAPI_IMAGE_ID):/local/pkg/api/openapi ./pkg/api/openapi
@@ -220,6 +221,7 @@ generate:
 # Regenerate openapi client and models using vendor (avoids downloading dependencies)
 generate-vendor:
 	rm -rf pkg/api/openapi
+	mkdir -p data/generated/openapi
 	$(container_tool) build -t hyperfleet-openapi-vendor -f Dockerfile.openapi.vendor .
 	$(eval OPENAPI_IMAGE_ID=`$(container_tool) create -t hyperfleet-openapi-vendor -f Dockerfile.openapi.vendor .`)
 	$(container_tool) cp $(OPENAPI_IMAGE_ID):/local/pkg/api/openapi ./pkg/api/openapi

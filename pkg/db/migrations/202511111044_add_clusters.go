@@ -16,13 +16,13 @@ func addClusters() *gormigrate.Migration {
 		ID: "202511111044",
 		Migrate: func(tx *gorm.DB) error {
 			// Create clusters table
-			// ClusterStatus is stored as JSONB in status_adapters, and status fields
+			// ClusterStatus is stored as JSONB in status_conditions, and status fields
 			// are flattened for efficient querying
 			createTableSQL := `
 				CREATE TABLE IF NOT EXISTS clusters (
 					id VARCHAR(255) PRIMARY KEY,
-					created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-					updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+					created_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+					updated_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 					deleted_at TIMESTAMPTZ NULL,
 
 					-- Core fields
@@ -39,8 +39,8 @@ func addClusters() *gormigrate.Migration {
 					status_phase VARCHAR(50) NOT NULL DEFAULT 'NotReady',
 					status_last_transition_time TIMESTAMPTZ NULL,
 					status_observed_generation INTEGER NOT NULL DEFAULT 0,
-					status_updated_at TIMESTAMPTZ NULL,
-					status_adapters JSONB NULL,
+					status_last_updated_time TIMESTAMPTZ NULL,
+					status_conditions JSONB NULL,
 
 					-- Audit fields
 					created_by VARCHAR(255) NOT NULL,

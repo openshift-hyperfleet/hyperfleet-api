@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"encoding/json"
 	"net/http"
 
 	"github.com/gorilla/mux"
@@ -79,26 +78,11 @@ func (h nodePoolStatusHandler) Create(w http.ResponseWriter, r *http.Request) {
 				return nil, err
 			}
 
-			// Check if adapter status already exists
-			existing, _ := h.adapterStatusService.FindByResourceAndAdapter(ctx, "NodePool", nodePoolID, req.Adapter)
+			// Create adapter status from request
+			newStatus := api.AdapterStatusFromOpenAPICreate("NodePool", nodePoolID, &req)
 
-			var adapterStatus *api.AdapterStatus
-			if existing != nil {
-				// Update existing
-				existing.ObservedGeneration = req.ObservedGeneration
-				conditionsJSON, _ := json.Marshal(req.Conditions)
-				existing.Conditions = conditionsJSON
-				if req.Data != nil {
-					dataJSON, _ := json.Marshal(req.Data)
-					existing.Data = dataJSON
-				}
-				adapterStatus, err = h.adapterStatusService.Replace(ctx, existing)
-			} else {
-				// Create new
-				newStatus := api.AdapterStatusFromOpenAPICreate("NodePool", nodePoolID, &req)
-				adapterStatus, err = h.adapterStatusService.Create(ctx, newStatus)
-			}
-
+			// Upsert (create or update based on resource_type + resource_id + adapter)
+			adapterStatus, err := h.adapterStatusService.Upsert(ctx, newStatus)
 			if err != nil {
 				return nil, err
 			}

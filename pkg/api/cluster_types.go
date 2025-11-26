@@ -27,8 +27,8 @@ type Cluster struct {
 	StatusPhase              string         `json:"status_phase" gorm:"default:'NotReady'"`
 	StatusLastTransitionTime *time.Time     `json:"status_last_transition_time,omitempty"`
 	StatusObservedGeneration int32          `json:"status_observed_generation" gorm:"default:0"`
-	StatusUpdatedAt          *time.Time     `json:"status_updated_at,omitempty"`
-	StatusAdapters           datatypes.JSON `json:"status_adapters" gorm:"type:jsonb"`
+	StatusLastUpdatedTime    *time.Time     `json:"status_last_updated_time,omitempty"`
+	StatusConditions         datatypes.JSON `json:"status_conditions" gorm:"type:jsonb"`
 
 	// Audit fields
 	CreatedBy string `json:"created_by" gorm:"size:255;not null"`
@@ -78,10 +78,10 @@ func (c *Cluster) ToOpenAPI() *openapi.Cluster {
 		_ = json.Unmarshal(c.Labels, &labels)
 	}
 
-	// Unmarshal StatusAdapters
-	var statusAdapters []openapi.ConditionAvailable
-	if len(c.StatusAdapters) > 0 {
-		_ = json.Unmarshal(c.StatusAdapters, &statusAdapters)
+	// Unmarshal StatusConditions
+	var statusConditions []openapi.ResourceCondition
+	if len(c.StatusConditions) > 0 {
+		_ = json.Unmarshal(c.StatusConditions, &statusConditions)
 	}
 
 	// Generate Href if not set (fallback)
@@ -91,32 +91,36 @@ func (c *Cluster) ToOpenAPI() *openapi.Cluster {
 	}
 
 	cluster := &openapi.Cluster{
-		Id:         &c.ID,
-		Kind:       c.Kind,
-		Href:       &href,
-		Name:       c.Name,
-		Spec:       spec,
-		Labels:     &labels,
-		Generation: c.Generation,
-		CreatedAt:  c.CreatedAt,
-		UpdatedAt:  c.UpdatedAt,
-		CreatedBy:  c.CreatedBy,
-		UpdatedBy:  c.UpdatedBy,
+		Id:          &c.ID,
+		Kind:        c.Kind,
+		Href:        &href,
+		Name:        c.Name,
+		Spec:        spec,
+		Labels:      &labels,
+		Generation:  c.Generation,
+		CreatedTime: c.CreatedTime,
+		UpdatedTime: c.UpdatedTime,
+		CreatedBy:   c.CreatedBy,
+		UpdatedBy:   c.UpdatedBy,
 	}
 
-	// Build ClusterStatus
+	// Build ClusterStatus - set required fields with defaults if nil
+	lastTransitionTime := time.Time{}
+	if c.StatusLastTransitionTime != nil {
+		lastTransitionTime = *c.StatusLastTransitionTime
+	}
+
+	lastUpdatedTime := time.Time{}
+	if c.StatusLastUpdatedTime != nil {
+		lastUpdatedTime = *c.StatusLastUpdatedTime
+	}
+
 	cluster.Status = openapi.ClusterStatus{
 		Phase:              c.StatusPhase,
 		ObservedGeneration: c.StatusObservedGeneration,
-		Adapters:           statusAdapters,
-	}
-
-	if c.StatusLastTransitionTime != nil {
-		cluster.Status.LastTransitionTime = *c.StatusLastTransitionTime
-	}
-
-	if c.StatusUpdatedAt != nil {
-		cluster.Status.UpdatedAt = *c.StatusUpdatedAt
+		Conditions:         statusConditions,
+		LastTransitionTime: lastTransitionTime,
+		LastUpdatedTime:    lastUpdatedTime,
 	}
 
 	return cluster
@@ -134,8 +138,8 @@ func ClusterFromOpenAPICreate(req *openapi.ClusterCreateRequest, createdBy strin
 	}
 	labelsJSON, _ := json.Marshal(labels)
 
-	// Marshal empty StatusAdapters
-	statusAdaptersJSON, _ := json.Marshal([]openapi.ConditionAvailable{})
+	// Marshal empty StatusConditions
+	statusConditionsJSON, _ := json.Marshal([]openapi.ResourceCondition{})
 
 	return &Cluster{
 		Kind:                     req.Kind,
@@ -145,7 +149,7 @@ func ClusterFromOpenAPICreate(req *openapi.ClusterCreateRequest, createdBy strin
 		Generation:               1,
 		StatusPhase:              "NotReady",
 		StatusObservedGeneration: 0,
-		StatusAdapters:           statusAdaptersJSON,
+		StatusConditions:         statusConditionsJSON,
 		CreatedBy:                createdBy,
 		UpdatedBy:                createdBy,
 	}

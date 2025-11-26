@@ -1,6 +1,7 @@
 package dao
 
 import (
+	"bytes"
 	"context"
 
 	"gorm.io/gorm/clause"
@@ -48,6 +49,23 @@ func (d *sqlClusterDao) Create(ctx context.Context, cluster *api.Cluster) (*api.
 
 func (d *sqlClusterDao) Replace(ctx context.Context, cluster *api.Cluster) (*api.Cluster, error) {
 	g2 := (*d.sessionFactory).New(ctx)
+
+	// Get the existing cluster to compare spec
+	existing, err := d.Get(ctx, cluster.ID)
+	if err != nil {
+		db.MarkForRollback(ctx, err)
+		return nil, err
+	}
+
+	// Compare spec: if changed, increment generation
+	if !bytes.Equal(existing.Spec, cluster.Spec) {
+		cluster.Generation = existing.Generation + 1
+	} else {
+		// Spec unchanged, preserve generation
+		cluster.Generation = existing.Generation
+	}
+
+	// Save the cluster
 	if err := g2.Omit(clause.Associations).Save(cluster).Error; err != nil {
 		db.MarkForRollback(ctx, err)
 		return nil, err
