@@ -26,15 +26,15 @@ func TestClusterStatusPost(t *testing.T) {
 	statusInput := openapi.AdapterStatusCreateRequest{
 		Adapter:            "test-adapter",
 		ObservedGeneration: cluster.Generation,
-		Conditions: []openapi.Condition{
+		Conditions: []openapi.ConditionRequest{
 			{
 				Type:   "Ready",
 				Status: "True",
 				Reason: openapi.PtrString("AdapterReady"),
 			},
 		},
-		Data: map[string]interface{}{
-			"test_key": "test_value",
+		Data: map[string]map[string]interface{}{
+			"test_key": {"value": "test_value"},
 		},
 	}
 
@@ -62,7 +62,7 @@ func TestClusterStatusGet(t *testing.T) {
 		statusInput := openapi.AdapterStatusCreateRequest{
 			Adapter:            fmt.Sprintf("adapter-%d", i),
 			ObservedGeneration: cluster.Generation,
-			Conditions: []openapi.Condition{
+			Conditions: []openapi.ConditionRequest{
 				{
 					Type:   "Ready",
 					Status: "True",
@@ -99,15 +99,15 @@ func TestNodePoolStatusPost(t *testing.T) {
 	statusInput := openapi.AdapterStatusCreateRequest{
 		Adapter:            "test-nodepool-adapter",
 		ObservedGeneration: 1,
-		Conditions: []openapi.Condition{
+		Conditions: []openapi.ConditionRequest{
 			{
 				Type:   "Ready",
 				Status: "False",
 				Reason: openapi.PtrString("Initializing"),
 			},
 		},
-		Data: map[string]interface{}{
-			"nodepool_data": "value",
+		Data: map[string]map[string]interface{}{
+			"nodepool_data": {"value": "test_value"},
 		},
 	}
 
@@ -135,7 +135,7 @@ func TestNodePoolStatusGet(t *testing.T) {
 		statusInput := openapi.AdapterStatusCreateRequest{
 			Adapter:            fmt.Sprintf("nodepool-adapter-%d", i),
 			ObservedGeneration: 1,
-			Conditions: []openapi.Condition{
+			Conditions: []openapi.ConditionRequest{
 				{
 					Type:   "Ready",
 					Status: "True",
@@ -171,7 +171,7 @@ func TestAdapterStatusPaging(t *testing.T) {
 		statusInput := openapi.AdapterStatusCreateRequest{
 			Adapter:            fmt.Sprintf("adapter-%d", i),
 			ObservedGeneration: cluster.Generation,
-			Conditions: []openapi.Condition{
+			Conditions: []openapi.ConditionRequest{
 				{
 					Type:   "Ready",
 					Status: "True",
@@ -204,15 +204,15 @@ func TestAdapterStatusIdempotency(t *testing.T) {
 	statusInput1 := openapi.AdapterStatusCreateRequest{
 		Adapter:            "idempotency-test-adapter",
 		ObservedGeneration: cluster.Generation,
-		Conditions: []openapi.Condition{
+		Conditions: []openapi.ConditionRequest{
 			{
 				Type:   "Ready",
 				Status: "False",
 				Reason: openapi.PtrString("Initializing"),
 			},
 		},
-		Data: map[string]interface{}{
-			"version": "1.0",
+		Data: map[string]map[string]interface{}{
+			"version": {"value": "1.0"},
 		},
 	}
 
@@ -226,15 +226,15 @@ func TestAdapterStatusIdempotency(t *testing.T) {
 	statusInput2 := openapi.AdapterStatusCreateRequest{
 		Adapter:            "idempotency-test-adapter",
 		ObservedGeneration: cluster.Generation,
-		Conditions: []openapi.Condition{
+		Conditions: []openapi.ConditionRequest{
 			{
 				Type:   "Ready",
 				Status: "True",
 				Reason: openapi.PtrString("AdapterReady"),
 			},
 		},
-		Data: map[string]interface{}{
-			"version": "2.0",
+		Data: map[string]map[string]interface{}{
+			"version": {"value": "2.0"},
 		},
 	}
 
@@ -279,7 +279,7 @@ func TestAdapterStatusPagingEdgeCases(t *testing.T) {
 		statusInput := openapi.AdapterStatusCreateRequest{
 			Adapter:            fmt.Sprintf("edge-adapter-%d", i),
 			ObservedGeneration: cluster.Generation,
-			Conditions: []openapi.Condition{
+			Conditions: []openapi.ConditionRequest{
 				{
 					Type:   "Ready",
 					Status: "True",
@@ -312,7 +312,7 @@ func TestAdapterStatusPagingEdgeCases(t *testing.T) {
 	singleStatus := openapi.AdapterStatusCreateRequest{
 		Adapter:            "single-adapter",
 		ObservedGeneration: singleCluster.Generation,
-		Conditions: []openapi.Condition{
+		Conditions: []openapi.ConditionRequest{
 			{
 				Type:   "Ready",
 				Status: "True",

@@ -20,8 +20,8 @@ func addAdapterStatus() *gormigrate.Migration {
 			createTableSQL := `
 				CREATE TABLE IF NOT EXISTS adapter_statuses (
 					id VARCHAR(255) PRIMARY KEY,
-					created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-					updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+					created_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+					updated_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 					deleted_at TIMESTAMPTZ NULL,
 
 					-- Polymorphic association
@@ -31,6 +31,9 @@ func addAdapterStatus() *gormigrate.Migration {
 					-- Adapter information
 					adapter VARCHAR(255) NOT NULL,
 					observed_generation INTEGER NOT NULL,
+
+					-- API-managed timestamps
+					last_report_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
 					-- Stored as JSONB
 					conditions JSONB NOT NULL,

@@ -49,3 +49,4 @@ secrets
 
 # Ignore generated OpenAPI code
 /pkg/api/openapi/
+/data/generated/

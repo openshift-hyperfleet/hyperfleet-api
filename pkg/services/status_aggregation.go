@@ -1,0 +1,174 @@
+package services
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"strings"
+	"unicode"
+
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
+)
+
+// requiredClusterAdapters defines the list of adapters that must be ready for a cluster to be "Ready"
+// All of these adapters must have:
+// 1. available === "True"
+// 2. observed_generation === cluster.generation
+//
+// Based on HyperFleet MVP scope (GCP cluster adapters):
+// - validation: Check GCP prerequisites
+// - dns: Create Cloud DNS records
+// - pullsecret: Store credentials in Secret Manager
+// - hypershift: Create HostedCluster CR
+// Note: placement is NOT required (handled separately)
+var requiredClusterAdapters = []string{
+	"validation",
+	"dns",
+	"pullsecret",
+	"hypershift",
+}
+
+// requiredNodePoolAdapters defines the list of adapters that must be ready for a nodepool to be "Ready"
+// Based on HyperFleet MVP scope (GCP nodepool adapters):
+// - validation: Check nodepool prerequisites
+// - hypershift: Create NodePool CR
+var requiredNodePoolAdapters = []string{
+	"validation",
+	"hypershift",
+}
+
+// adapterConditionSuffixMap allows overriding the default suffix for specific adapters
+// Currently empty - all adapters use "Successful" by default
+// Future example: To make dns use "Ready" instead, uncomment:
+//   "dns": "Ready",
+var adapterConditionSuffixMap = map[string]string{
+	// Add custom mappings here when needed
+}
+
+// MapAdapterToConditionType converts an adapter name to a semantic condition type
+// by converting the adapter name to PascalCase and appending a suffix.
+//
+// Current behavior: All adapters → {AdapterName}Successful
+// Examples:
+//   - "validator" → "ValidatorSuccessful"
+//   - "dns" → "DnsSuccessful"
+//   - "gcp-provisioner" → "GcpProvisionerSuccessful"
+//
+// Future customization: Override suffix in adapterConditionSuffixMap
+//   adapterConditionSuffixMap["dns"] = "Ready" → "DnsReady"
+func MapAdapterToConditionType(adapterName string) string {
+	// Get the suffix for this adapter, default to "Successful"
+	suffix, exists := adapterConditionSuffixMap[adapterName]
+	if !exists {
+		suffix = "Successful"
+	}
+
+	// Convert adapter name to PascalCase
+	// Remove hyphens and capitalize each part
+	parts := strings.Split(adapterName, "-")
+	var result strings.Builder
+
+	for _, part := range parts {
+		if len(part) > 0 {
+			// Capitalize first letter
+			runes := []rune(part)
+			runes[0] = unicode.ToUpper(runes[0])
+			result.WriteString(string(runes))
+		}
+	}
+
+	result.WriteString(suffix)
+	return result.String()
+}
+
+// ComputePhase calculates the overall phase for a resource based on adapter statuses
+// Phase is "Ready" when: numRequiredAdapters == numAdaptersAvailable
+//
+// An adapter is considered "available" when:
+// 1. Available condition status == "True"
+// 2. observed_generation == resource.generation (only checked if resourceGeneration > 0)
+//
+// Returns:
+// - "Ready": Number of required adapters == number of available adapters
+// - "Failed": At least one adapter has status == "False"
+// - "NotReady": Otherwise (missing adapters, stale generation, status == "Unknown", etc.)
+func ComputePhase(ctx context.Context, adapterStatuses api.AdapterStatusList, requiredAdapters []string, resourceGeneration int32) string {
+	log := logger.NewOCMLogger(ctx)
+	if len(adapterStatuses) == 0 {
+		return "NotReady"
+	}
+
+	// Build a map of adapter name -> (available status, observed generation)
+	adapterMap := make(map[string]struct {
+		available          string
+		observedGeneration int32
+	})
+
+	for _, adapterStatus := range adapterStatuses {
+		// Unmarshal conditions to find "Available"
+		var conditions []struct {
+			Type   string `json:"type"`
+			Status string `json:"status"`
+		}
+		if len(adapterStatus.Conditions) > 0 {
+			if err := json.Unmarshal(adapterStatus.Conditions, &conditions); err == nil {
+				for _, cond := range conditions {
+					if cond.Type == "Available" {
+						adapterMap[adapterStatus.Adapter] = struct {
+							available          string
+							observedGeneration int32
+						}{
+							available:          cond.Status,
+							observedGeneration: adapterStatus.ObservedGeneration,
+						}
+						break
+					}
+				}
+			}
+		}
+	}
+
+	// Count available adapters and check for failures
+	numAvailable := 0
+	anyFailed := false
+
+	// Iterate over required adapters
+	for _, adapterName := range requiredAdapters {
+		adapterInfo, exists := adapterMap[adapterName]
+
+		if !exists {
+			// Required adapter not found
+			log.Warning(fmt.Sprintf("Required adapter '%s' not found in adapter statuses", adapterName))
+			continue
+		}
+
+		// Check generation matching only if resourceGeneration > 0
+		if resourceGeneration > 0 && adapterInfo.observedGeneration != resourceGeneration {
+			// Adapter is processing old generation (stale)
+			log.Warning(fmt.Sprintf("Required adapter '%s' has stale generation: observed=%d, expected=%d",
+				adapterName, adapterInfo.observedGeneration, resourceGeneration))
+			continue
+		}
+
+		// Check available status
+		if adapterInfo.available == "False" {
+			anyFailed = true
+		} else if adapterInfo.available == "True" {
+			numAvailable++
+		} else {
+			// Status is neither "True" nor "False" (e.g., "Unknown")
+			log.Warning(fmt.Sprintf("Required adapter '%s' has unexpected available status: %s", adapterName, adapterInfo.available))
+		}
+	}
+
+	// Determine phase: Ready when numRequiredAdapters == numAdaptersAvailable
+	numRequired := len(requiredAdapters)
+	if numAvailable == numRequired && numRequired > 0 {
+		return "Ready"
+	}
+	if anyFailed {
+		return "Failed"
+	}
+	return "NotReady"
+}

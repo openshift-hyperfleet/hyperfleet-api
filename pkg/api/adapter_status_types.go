@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"time"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
 	"gorm.io/datatypes"
@@ -10,7 +11,7 @@ import (
 
 // AdapterStatus database model
 type AdapterStatus struct {
-	Meta // Contains ID, CreatedAt, UpdatedAt, DeletedAt
+	Meta // Contains ID, CreatedTime, UpdatedTime, DeletedAt
 
 	// Polymorphic association
 	ResourceType string `json:"resource_type" gorm:"size:20;index:idx_resource;not null"`
@@ -19,6 +20,10 @@ type AdapterStatus struct {
 	// Adapter information
 	Adapter            string `json:"adapter" gorm:"size:255;not null;uniqueIndex:idx_resource_adapter"`
 	ObservedGeneration int32  `json:"observed_generation" gorm:"not null"`
+
+	// API-managed timestamps
+	LastReportTime *time.Time `json:"last_report_time" gorm:"not null"` // Updated on every POST
+	CreatedTime    *time.Time `json:"created_time" gorm:"not null"`     // Set on first creation
 
 	// Stored as JSON
 	Conditions datatypes.JSON `json:"conditions" gorm:"type:jsonb;not null"`
@@ -45,21 +50,32 @@ func (as *AdapterStatus) BeforeCreate(tx *gorm.DB) error {
 // ToOpenAPI converts to OpenAPI model
 func (as *AdapterStatus) ToOpenAPI() *openapi.AdapterStatus {
 	// Unmarshal Conditions
-	var conditions []openapi.Condition
+	var conditions []openapi.AdapterCondition
 	if len(as.Conditions) > 0 {
 		_ = json.Unmarshal(as.Conditions, &conditions)
 	}
 
 	// Unmarshal Data
-	var data map[string]interface{}
+	var data map[string]map[string]interface{}
 	if len(as.Data) > 0 {
 		_ = json.Unmarshal(as.Data, &data)
 	}
 
 	// Unmarshal Metadata
-	var metadata *openapi.AdapterStatusMetadata
+	var metadata *openapi.AdapterStatusBaseMetadata
 	if len(as.Metadata) > 0 {
 		_ = json.Unmarshal(as.Metadata, &metadata)
+	}
+
+	// Set default times if nil (shouldn't happen in normal operation)
+	createdTime := time.Time{}
+	if as.CreatedTime != nil {
+		createdTime = *as.CreatedTime
+	}
+
+	lastReportTime := time.Time{}
+	if as.LastReportTime != nil {
+		lastReportTime = *as.LastReportTime
 	}
 
 	return &openapi.AdapterStatus{
@@ -68,6 +84,8 @@ func (as *AdapterStatus) ToOpenAPI() *openapi.AdapterStatus {
 		Conditions:         conditions,
 		Data:               data,
 		Metadata:           metadata,
+		CreatedTime:        createdTime,
+		LastReportTime:     lastReportTime,
 	}
 }
 
@@ -76,11 +94,30 @@ func AdapterStatusFromOpenAPICreate(
 	resourceType, resourceID string,
 	req *openapi.AdapterStatusCreateRequest,
 ) *AdapterStatus {
+	// Set timestamps
+	// CreatedTime and LastReportTime should be set from req.ObservedTime
+	now := time.Now()
+	if !req.ObservedTime.IsZero() {
+		now = req.ObservedTime
+	}
+
+	// Convert ConditionRequest to AdapterCondition (adding LastTransitionTime)
+	adapterConditions := make([]openapi.AdapterCondition, len(req.Conditions))
+	for i, condReq := range req.Conditions {
+		adapterConditions[i] = openapi.AdapterCondition{
+			Type:               condReq.Type,
+			Status:             condReq.Status,
+			Reason:             condReq.Reason,
+			Message:            condReq.Message,
+			LastTransitionTime: now,
+		}
+	}
+
 	// Marshal Conditions
-	conditionsJSON, _ := json.Marshal(req.Conditions)
+	conditionsJSON, _ := json.Marshal(adapterConditions)
 
 	// Marshal Data
-	data := make(map[string]interface{})
+	data := make(map[string]map[string]interface{})
 	if req.Data != nil {
 		data = req.Data
 	}
@@ -100,5 +137,7 @@ func AdapterStatusFromOpenAPICreate(
 		Conditions:         conditionsJSON,
 		Data:               dataJSON,
 		Metadata:           metadataJSON,
+		CreatedTime:        &now,
+		LastReportTime:     &now,
 	}
 }

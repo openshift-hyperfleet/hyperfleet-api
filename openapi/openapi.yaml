@@ -43,7 +43,7 @@ paths:
 
         **Note**: The `status` object in the response is read-only and computed by the service.
         It is NOT part of the request body. Initially, status.phase will be "NotReady" and
-        status.adapters will be empty until adapters POST their status.
+        status.conditions will be empty until status conditions are POSTed.
       parameters: []
       responses:
         '201':
@@ -183,7 +183,7 @@ paths:
     get:
       operationId: getNodePoolsStatuses
       summary: List all adapter statuses for nodepools
-      description: Returns current status object for each adapter that has reported status
+      description: Returns adapter status reports for this nodepool
       parameters:
         - name: cluster_id
           in: path
@@ -216,13 +216,13 @@ paths:
                 $ref: '#/components/schemas/Error'
     post:
       operationId: postNodePoolStatuses
-      summary: Create adapter status
+      summary: Create or update adapter status
       description: |-
-        Adapter creates its initial status object for this cluster.
-        Returns 409 if adapter already has a status object for this cluster 
+        Adapter creates or updates its status report for this nodepool.
+        If adapter already has a status, it will be updated (upsert by adapter name).
 
-        Response includes the status id and href for future operations.
-        Adapter should store the returned id/href to update its status later.
+        Response includes the full adapter status with all conditions.
+        Adapter should call this endpoint every time it evaluates the nodepool.
       parameters:
         - name: cluster_id
           in: path
@@ -258,7 +258,7 @@ paths:
     get:
       operationId: getClusterStatuses
       summary: List all adapter statuses for cluster
-      description: Returns current status object for each adapter that has reported status
+      description: Returns adapter status reports for this cluster
       parameters:
         - name: cluster_id
           in: path
@@ -282,13 +282,13 @@ paths:
           description: The server cannot find the requested resource.
     post:
       operationId: postClusterStatuses
-      summary: Create adapter status
+      summary: Create or update adapter status
       description: |-
-        Adapter creates its initial status object for this cluster.
-        Returns 409 if adapter already has a status object for this cluster 
+        Adapter creates or updates its status report for this cluster.
+        If adapter already has a status, it will be updated (upsert by adapter name).
 
-        Response includes the status id and href for future operations.
-        Adapter should store the returned id/href to update its status later.
+        Response includes the full adapter status with all conditions.
+        Adapter should call this endpoint every time it evaluates the cluster.
       parameters:
         - name: cluster_id
           in: path
@@ -374,7 +374,7 @@ components:
       required: false
       schema:
         type: string
-        default: created_at
+        default: created_time
       explode: false
     QueryParams.page:
       name: page
@@ -412,29 +412,91 @@ components:
           description: labels for the API resource as pairs of name:value strings
       allOf:
         - $ref: '#/components/schemas/ObjectReference'
+    AdapterCondition:
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/ConditionBase'
+      description: |-
+        Condition in AdapterStatus
+        Used for standard Kubernetes condition types: "Available", "Applied", "Health"
+        Note: observed_generation is at AdapterStatus level, not per-condition,
+        since all conditions in one AdapterStatus share the same observed generation
     AdapterStatus:
+      type: object
+      required:
+        - conditions
+        - created_time
+        - last_report_time
+      properties:
+        conditions:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdapterCondition'
+          description: |-
+            Kubernetes-style conditions tracking adapter state
+            Typically includes: Available, Applied, Health
+        created_time:
+          type: string
+          format: date-time
+          description: When this adapter status was first created (API-managed)
+        last_report_time:
+          type: string
+          format: date-time
+          description: |-
+            When this adapter last reported its status (API-managed)
+            Updated every time the adapter POSTs, even if conditions haven't changed
+            Used by Sentinel to detect adapter liveness
+      allOf:
+        - $ref: '#/components/schemas/AdapterStatusBase'
+      description: |-
+        AdapterStatus represents the complete status report from an adapter
+        Contains multiple conditions, job metadata, and adapter-specific data
+      example:
+        adapter: validator
+        observed_generation: 1
+        conditions:
+          - type: Available
+            status: 'True'
+            reason: All validations passed
+            message: All 30 validation tests passed
+            last_transition_time: '2021-01-01T10:00:00Z'
+          - type: Applied
+            status: 'True'
+            reason: Validation job applied
+            message: Validation job applied successfully
+            last_transition_time: '2021-01-01T10:00:00Z'
+          - type: Health
+            status: 'True'
+            reason: All adapter operations completed successfully
+            message: All adapter runtime operations completed successfully
+            last_transition_time: '2021-01-01T10:00:00Z'
+        metadata:
+          job_name: validator-job-abc123
+          job_namespace: hyperfleet-system
+          attempt: 1
+          started_time: '2021-01-01T10:00:00Z'
+          completed_time: '2021-01-01T10:02:00Z'
+          duration: 2m
+        data:
+          validation_results:
+            total_tests: 30
+            passed: 30
+            failed: 0
+        created_time: '2021-01-01T10:00:00Z'
+        last_report_time: '2021-01-01T10:02:00Z'
+    AdapterStatusBase:
       type: object
       required:
         - adapter
         - observed_generation
-        - conditions
       properties:
         adapter:
           type: string
-          description: Name of the adapter that generated this status (Validator, DNS...)
+          description: Adapter name (e.g., "validator", "dns", "provisioner")
         observed_generation:
           type: integer
           format: int32
-          description: Which generation for an entity (Clusters, NodePools) was current at the time of creating this status
-        conditions:
-          type: array
-          items:
-            $ref: '#/components/schemas/Condition'
-          description: Kubernetes-style conditions tracking adapter state
-        data:
-          type: object
-          additionalProperties: {}
-          description: Adapter-specific data (structure varies by adapter type)
+          description: Which generation of the resource this status reflects
         metadata:
           type: object
           properties:
@@ -445,102 +507,128 @@ components:
             attempt:
               type: integer
               format: int32
-            started_at:
+            started_time:
               type: string
-            completed_at:
+              format: date-time
+            completed_time:
               type: string
+              format: date-time
             duration:
               type: string
-          description: Metadata about the adapter job/execution
-      example:
-        adapter: validator
-        observed_generation: 1
-        conditions:
-          - adapter: validator
-            type: Available
-            status: 'True'
-            reason: All validations passed
-            message: All 30 validation tests passed
-            observed_generation: 1
-            created_at: '2021-01-01T00:00:00Z'
-            updated_at: '2021-01-01T00:00:00Z'
-          - adapter: validator
-            type: Applied
-            status: 'True'
-            reason: Validation job applied
-            message: Validation job applied successfully
-            observed_generation: 1
-            created_at: '2021-01-01T00:00:00Z'
-            updated_at: '2021-01-01T00:00:00Z'
-          - adapter: validator
-            type: Health
-            status: 'True'
-            reason: Validation job healthy
-            message: Validation job is healthy
-            observed_generation: 1
-            created_at: '2021-01-01T00:00:00Z'
-            updated_at: '2021-01-01T00:00:00Z'
+          description: Job execution metadata
         data:
-          providerProperty1: providerValue1
-          providerProperty2: providerValue2
-        metadata:
-          job_name: validator-job
-          job_namespace: default
-          attempt: 1
-          started_at: '2021-01-01T00:00:00Z'
-          completed_at: '2021-01-01T00:00:00Z'
-          duration: 10s
+          type: object
+          additionalProperties: {}
+          description: Adapter-specific data (structure varies by adapter type)
+      description: Base fields shared by AdapterStatus and AdapterStatusCreateRequest
     AdapterStatusCreateRequest:
       type: object
       required:
-        - adapter
-        - observed_generation
+        - observed_time
         - conditions
       properties:
-        adapter:
+        observed_time:
           type: string
-          description: Adapter identifier
-        observed_generation:
-          type: integer
-          format: int32
-          description: Which cluster generation this status reflects
+          format: date-time
+          description: |-
+            When the adapter observed this resource state
+            API will use this to set AdapterStatus.last_report_time
         conditions:
           type: array
           items:
-            $ref: '#/components/schemas/Condition'
-        data:
-          type: object
-          additionalProperties: {}
-          description: Adapter-specific data
+            $ref: '#/components/schemas/ConditionRequest'
+      allOf:
+        - $ref: '#/components/schemas/AdapterStatusBase'
+      description: Request payload for creating/updating adapter status
+      example:
+        adapter: validator
+        observed_generation: 1
+        observed_time: '2021-01-01T10:00:00Z'
+        conditions:
+          - type: Available
+            status: 'True'
+            reason: All validations passed
+            message: All 30 validation tests passed
+          - type: Applied
+            status: 'True'
+            reason: Validation job applied
+            message: Validation job applied successfully
+          - type: Health
+            status: 'True'
+            reason: All adapter operations completed successfully
+            message: All adapter runtime operations completed successfully
         metadata:
-          type: object
-          additionalProperties: {}
-          description: Job execution metadata
+          job_name: validator-job-abc123
+          job_namespace: hyperfleet-system
+          attempt: 1
+          started_time: '2021-01-01T10:00:00Z'
+          completed_time: '2021-01-01T10:02:00Z'
+          duration: 2m
+        data:
+          validation_results:
+            total_tests: 30
+            passed: 30
+            failed: 0
     AdapterStatusList:
       type: object
       required:
+        - kind
         - items
       properties:
+        kind:
+          type: string
+          enum:
+            - AdapterStatusList
         items:
           type: array
           items:
             $ref: '#/components/schemas/AdapterStatus'
       allOf:
         - $ref: '#/components/schemas/List'
+      description: List of adapter statuses with pagination metadata
+      example:
+        kind: AdapterStatusList
+        page: 1
+        size: 2
+        total: 2
+        items:
+          - adapter: validator
+            observed_generation: 1
+            conditions:
+              - type: Available
+                status: 'True'
+                reason: All validations passed
+                message: All 30 validation tests passed
+                last_transition_time: '2021-01-01T10:00:00Z'
+            metadata:
+              job_name: validator-job-abc123
+              duration: 2m
+            created_time: '2021-01-01T10:00:00Z'
+            last_report_time: '2021-01-01T10:02:00Z'
+          - adapter: dns
+            observed_generation: 1
+            conditions:
+              - type: Available
+                status: 'True'
+                reason: DNS configured
+                message: DNS records created
+                last_transition_time: '2021-01-01T10:01:00Z'
+            created_time: '2021-01-01T10:01:00Z'
+            last_report_time: '2021-01-01T10:01:30Z'
     Cluster:
       type: object
       required:
-        - created_at
-        - updated_at
+        - created_time
+        - updated_time
         - created_by
         - updated_by
         - generation
         - status
       properties:
-        created_at:
+        created_time:
           type: string
           format: date-time
-        updated_at:
+        updated_time:
           type: string
           format: date-time
         created_by:
@@ -567,31 +655,31 @@ components:
           environment: production
           team: platform
         spec: {}
-        created_at: '2021-01-01T00:00:00Z'
-        updated_at: '2021-01-01T00:00:00Z'
+        created_time: '2021-01-01T00:00:00Z'
+        updated_time: '2021-01-01T00:00:00Z'
         generation: 1
         status:
           phase: Ready
           last_transition_time: '2021-01-01T00:00:00Z'
           observed_generation: 1
-          updated_at: '2021-01-01T00:00:00Z'
-          adapters:
-            - adapter: validator
-              type: Available
+          last_updated_time: '2021-01-01T00:00:00Z'
+          conditions:
+            - type: ValidationSuccessful
               status: 'True'
               reason: All validations passed
               message: All 30 validation tests passed
               observed_generation: 1
-              created_at: '2021-01-01T00:00:00Z'
-              updated_at: '2021-01-01T00:00:00Z'
-            - adapter: dns
-              type: Available
+              created_time: '2021-01-01T10:00:00Z'
+              last_updated_time: '2021-01-01T10:00:00Z'
+              last_transition_time: '2021-01-01T10:00:00Z'
+            - type: DNSSuccessful
               status: 'True'
-              reason: DNS records created
-              message: custom.domain.com created
+              reason: DNS configured
+              message: DNS records created for custom.domain.com
               observed_generation: 1
-              created_at: '2021-01-01T00:00:00Z'
-              updated_at: '2021-01-01T00:00:00Z'
+              created_time: '2021-01-01T10:01:00Z'
+              last_updated_time: '2021-01-01T10:01:00Z'
+              last_transition_time: '2021-01-01T10:01:00Z'
         created_by: user-123@example.com
         updated_by: user-123@example.com
     ClusterBase:
@@ -653,8 +741,8 @@ components:
         - phase
         - last_transition_time
         - observed_generation
-        - updated_at
-        - adapters
+        - last_updated_time
+        - conditions
       properties:
         phase:
           type: string
@@ -664,115 +752,51 @@ components:
             - Failed
           description: |-
             Current cluster phase (native database column).
-            Updated when adapters report status.
-            Note: status.phase provides aggregated view from all adapter conditions.
+            Updated when conditions are reported.
+            Note: status.phase provides aggregated view from all conditions.
         last_transition_time:
           type: string
           format: date-time
           description: |-
-            When cluster last transitioned (updated by adapters, used by Sentinel for backoff)
-            Updated when adapters report status if the phase changes
+            When cluster last transitioned (used by Sentinel for backoff)
+            Updated when conditions are reported if the phase changes
         observed_generation:
           type: integer
           format: int32
           description: |-
-            Last generation processed by adapters
-            Updated when adapters report status.
-            This will be the lowest value of each adapter's observed_generation values
+            Last generation processed
+            Updated when conditions are reported.
+            This will be the lowest value of each condition's observed_generation values
             The phase value is based on this generation
-        updated_at:
+        last_updated_time:
           type: string
           format: date-time
           description: |-
-            Time of the last complete report from adapters
-            Updated when adapters report status.
-            Oldest `updated_at` from the adapter conditions
-        adapters:
+            Time of the last update
+            Updated when conditions are reported.
+            Computed as min(conditions[].last_updated_time) to detect stale adapters.
+            Uses earliest (not latest) timestamp to ensure Sentinel can detect if any adapter has stopped reporting.
+        conditions:
           type: array
           items:
-            $ref: '#/components/schemas/ConditionAvailable'
+            $ref: '#/components/schemas/ResourceCondition'
       description: |-
-        Cluster status aggregation from all adapters.
+        Cluster status computed from all status conditions.
 
         This object is computed by the service and CANNOT be modified directly.
-        It is aggregated from adapter status updates posted to `/clusters/{id}/statuses`.
+        It is aggregated from condition updates posted to `/clusters/{id}/statuses`.
 
-        Provides quick overview of which adapters have reported and aggregated phase.
-    Condition:
-      type: object
-      required:
-        - adapter
-        - type
-        - status
-        - observed_generation
-        - created_at
-        - updated_at
-      properties:
-        adapter:
-          type: string
-          description: Adapter name
-        type:
-          type: string
-        status:
-          type: string
-          enum:
-            - 'True'
-            - 'False'
-            - Unknown
-          description: Condition status
-        reason:
-          type: string
-          description: Machine-readable reason code
-        message:
-          type: string
-          description: Human-readable message
-        observed_generation:
-          type: integer
-          format: int32
-        created_at:
-          type: string
-          format: date-time
-          description: |-
-            Time when the condition was created
-            - In an adapter reporting conditions `updated_at==created_at`
-            - In the API, `created_at` doesn't change with new updates from adapters
-        updated_at:
-          type: string
-          format: date-time
-          description: Time when the condition was updated
-        last_transition_time:
-          type: string
-          format: date-time
-          description: When this condition last transitioned (computed by service when status changes)
-    ConditionAvailable:
-      type: object
-      required:
-        - type
-      properties:
-        type:
-          type: string
-          enum:
-            - Available
-      allOf:
-        - $ref: '#/components/schemas/ConditionBase'
-      description: |-
-        StatusAvailable is the status condition from an adapter that is used by CLM to compute the phase.
-        `phase=ready` when all adaptors report `Available=true`
+        Provides quick overview of all reported conditions and aggregated phase.
     ConditionBase:
       type: object
       required:
-        - adapter
         - type
         - status
-        - observed_generation
-        - created_at
-        - updated_at
+        - last_transition_time
       properties:
-        adapter:
-          type: string
-          description: Adapter name
         type:
           type: string
+          description: Condition type
         status:
           type: string
           enum:
@@ -786,24 +810,34 @@ components:
         message:
           type: string
           description: Human-readable message
-        observed_generation:
-          type: integer
-          format: int32
-        created_at:
+        last_transition_time:
           type: string
           format: date-time
           description: |-
-            Time when the condition was created
-            - In an adapter reporting conditions `updated_at==created_at`
-            - In the API, `created_at` doesn't change with new updates from adapters
-        updated_at:
+            When this condition last transitioned status (API-managed)
+            Only updated when status changes (True/False/Unknown), not when reason/message changes
+      description: Base condition fields shared by all condition types
+    ConditionRequest:
+      type: object
+      required:
+        - type
+        - status
+      properties:
+        type:
           type: string
-          format: date-time
-          description: Time when the condition was updated
+        status:
+          type: string
+          enum:
+            - 'True'
+            - 'False'
+            - Unknown
+        reason:
+          type: string
+        message:
+          type: string
       description: |-
-        Common data for status objects, part of:
-        - Status entity (stored in DB)
-        - Request payload
+        Condition data for create/update requests (from adapters)
+        observed_generation and observed_time are now at AdapterStatusCreateRequest level
     Error:
       type: object
       properties:
@@ -847,17 +881,17 @@ components:
     NodePool:
       type: object
       required:
-        - created_at
-        - updated_at
+        - created_time
+        - updated_time
         - created_by
         - updated_by
         - owner_references
         - status
       properties:
-        created_at:
+        created_time:
           type: string
           format: date-time
-        updated_at:
+        updated_time:
           type: string
           format: date-time
         created_by:
@@ -872,6 +906,45 @@ components:
           $ref: '#/components/schemas/NodePoolStatus'
       allOf:
         - $ref: '#/components/schemas/NodePoolBase'
+      example:
+        kind: NodePool
+        id: nodepool-123
+        href: https://api.hyperfleet.com/v1/nodepools/nodepool-123
+        name: worker-pool-1
+        labels:
+          environment: production
+          pooltype: worker
+        spec: {}
+        created_time: '2021-01-01T00:00:00Z'
+        updated_time: '2021-01-01T00:00:00Z'
+        created_by: user-123@example.com
+        updated_by: user-123@example.com
+        owner_references:
+          id: cluster-123
+          kind: Cluster
+          href: https://api.hyperfleet.com/v1/clusters/cluster-123
+        status:
+          phase: Ready
+          last_transition_time: '2021-01-01T10:00:00Z'
+          observed_generation: 1
+          last_updated_time: '2021-01-01T10:02:00Z'
+          conditions:
+            - type: ValidationSuccessful
+              status: 'True'
+              reason: All validations passed
+              message: NodePool validation passed
+              observed_generation: 1
+              created_time: '2021-01-01T10:00:00Z'
+              last_updated_time: '2021-01-01T10:00:00Z'
+              last_transition_time: '2021-01-01T10:00:00Z'
+            - type: NodePoolSuccessful
+              status: 'True'
+              reason: NodePool provisioned successfully
+              message: NodePool has been scaled to desired count
+              observed_generation: 1
+              created_time: '2021-01-01T10:01:00Z'
+              last_updated_time: '2021-01-01T10:01:00Z'
+              last_transition_time: '2021-01-01T10:01:00Z'
     NodePoolBase:
       type: object
       required:
@@ -932,11 +1005,17 @@ components:
             Cluster specification
             CLM doesn't know how to unmarshall the spec, it only stores and forwards to adapters to do their job
             But CLM will validate the schema before accepting the request
+      example:
+        name: worker-pool-1
+        labels:
+          environment: production
+          pooltype: worker
+        spec: {}
     NodePoolCreateResponse:
       type: object
       required:
-        - created_at
-        - updated_at
+        - created_time
+        - updated_time
         - created_by
         - updated_by
         - owner_references
@@ -944,10 +1023,10 @@ components:
         - name
         - spec
       properties:
-        created_at:
+        created_time:
           type: string
           format: date-time
-        updated_at:
+        updated_time:
           type: string
           format: date-time
         created_by:
@@ -1007,8 +1086,8 @@ components:
         - phase
         - observed_generation
         - last_transition_time
-        - updated_at
-        - adapters
+        - last_updated_time
+        - conditions
       properties:
         phase:
           type: string
@@ -1018,34 +1097,35 @@ components:
             - Failed
           description: |-
             Current NodePool phase (native database column).
-            Updated when adapters report status.
-            Note: status.phase provides aggregated view from all adapter conditions.
+            Updated when conditions are reported.
+            Note: status.phase provides aggregated view from all conditions.
         observed_generation:
           type: integer
           format: int32
           minimum: 1
           description: |-
-            Last generation processed by adapters
-            Updated when adapters report status.
-            This will be the lowest value of each adapter's observed_generation values
+            Last generation processed
+            Updated when conditions are reported.
+            This will be the lowest value of each condition's observed_generation values
             The phase value is based on this generation
         last_transition_time:
           type: string
           format: date-time
-          description: When NodePool last transitioned (updated by adapters, used by Sentinel for backoff)
-        updated_at:
+          description: When NodePool last transitioned (used by Sentinel for backoff)
+        last_updated_time:
           type: string
           format: date-time
           description: |-
-            Time of the last complete report from adapters
-            Updated when adapters report status.
-            Oldest `updated_at` from the adapter conditions
-        adapters:
+            Time of the last update
+            Updated when conditions are reported.
+            Computed as min(conditions[].last_updated_time) to detect stale adapters.
+            Uses earliest (not latest) timestamp to ensure Sentinel can detect if any adapter has stopped reporting.
+        conditions:
           type: array
           items:
-            $ref: '#/components/schemas/ConditionAvailable'
+            $ref: '#/components/schemas/ResourceCondition'
       description: |-
-        NodePool status aggregation from all adapters.
+        NodePool status computed from all status conditions.
 
         This object is computed by the service and CANNOT be modified directly.
     ObjectReference:
@@ -1065,6 +1145,34 @@ components:
       enum:
         - asc
         - desc
+    ResourceCondition:
+      type: object
+      required:
+        - observed_generation
+        - created_time
+        - last_updated_time
+      properties:
+        observed_generation:
+          type: integer
+          format: int32
+          description: Generation of the spec that this condition reflects
+        created_time:
+          type: string
+          format: date-time
+          description: When this condition was first created (API-managed)
+        last_updated_time:
+          type: string
+          format: date-time
+          description: |-
+            When the corresponding adapter last reported (API-managed)
+            Updated every time the adapter POSTs, even if condition status hasn't changed
+            Copied from AdapterStatus.last_report_time
+      allOf:
+        - $ref: '#/components/schemas/ConditionBase'
+      description: |-
+        Condition in Cluster/NodePool status
+        Used for semantic condition types: "ValidationSuccessful", "DNSSuccessful", "NodePoolSuccessful", etc.
+        Includes observed_generation and last_updated_time to track adapter-specific state
   securitySchemes:
     BearerAuth:
       type: http

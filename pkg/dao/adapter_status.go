@@ -2,10 +2,16 @@ package dao
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
+	"time"
 
+	"gorm.io/datatypes"
+	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
 )
 
@@ -13,6 +19,7 @@ type AdapterStatusDao interface {
 	Get(ctx context.Context, id string) (*api.AdapterStatus, error)
 	Create(ctx context.Context, adapterStatus *api.AdapterStatus) (*api.AdapterStatus, error)
 	Replace(ctx context.Context, adapterStatus *api.AdapterStatus) (*api.AdapterStatus, error)
+	Upsert(ctx context.Context, adapterStatus *api.AdapterStatus) (*api.AdapterStatus, error)
 	Delete(ctx context.Context, id string) error
 	FindByResource(ctx context.Context, resourceType, resourceID string) (api.AdapterStatusList, error)
 	FindByResourcePaginated(ctx context.Context, resourceType, resourceID string, offset, limit int) (api.AdapterStatusList, int64, error)
@@ -54,6 +61,47 @@ func (d *sqlAdapterStatusDao) Replace(ctx context.Context, adapterStatus *api.Ad
 		db.MarkForRollback(ctx, err)
 		return nil, err
 	}
+	return adapterStatus, nil
+}
+
+// Upsert creates or updates an adapter status based on resource_type, resource_id, and adapter
+// This implements the upsert semantic required by the new API spec
+func (d *sqlAdapterStatusDao) Upsert(ctx context.Context, adapterStatus *api.AdapterStatus) (*api.AdapterStatus, error) {
+	g2 := (*d.sessionFactory).New(ctx)
+
+	// Try to find existing adapter status
+	existing, err := d.FindByResourceAndAdapter(ctx, adapterStatus.ResourceType, adapterStatus.ResourceID, adapterStatus.Adapter)
+
+	if err != nil {
+		// If not found, create new
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return d.Create(ctx, adapterStatus)
+		}
+		// Other errors
+		db.MarkForRollback(ctx, err)
+		return nil, err
+	}
+
+	// Update existing record
+	// Keep the original ID and CreatedTime
+	adapterStatus.ID = existing.ID
+	if existing.CreatedTime != nil {
+		adapterStatus.CreatedTime = existing.CreatedTime
+	}
+
+	// Update LastReportTime to now
+	now := time.Now()
+	adapterStatus.LastReportTime = &now
+
+	// Preserve LastTransitionTime for conditions whose status hasn't changed
+	adapterStatus.Conditions = preserveLastTransitionTime(existing.Conditions, adapterStatus.Conditions)
+
+	// Save (update) the record
+	if err := g2.Omit(clause.Associations).Save(adapterStatus).Error; err != nil {
+		db.MarkForRollback(ctx, err)
+		return nil, err
+	}
+
 	return adapterStatus, nil
 }
 
@@ -112,4 +160,53 @@ func (d *sqlAdapterStatusDao) All(ctx context.Context) (api.AdapterStatusList, e
 		return nil, err
 	}
 	return statuses, nil
+}
+
+// preserveLastTransitionTime preserves LastTransitionTime for conditions whose status hasn't changed
+// This implements the Kubernetes condition semantic where LastTransitionTime is only updated when status changes
+func preserveLastTransitionTime(oldConditionsJSON, newConditionsJSON datatypes.JSON) datatypes.JSON {
+	// Unmarshal old conditions
+	var oldConditions []openapi.AdapterCondition
+	if len(oldConditionsJSON) > 0 {
+		if err := json.Unmarshal(oldConditionsJSON, &oldConditions); err != nil {
+			// If we can't unmarshal old conditions, return new conditions as-is
+			return newConditionsJSON
+		}
+	}
+
+	// Unmarshal new conditions
+	var newConditions []openapi.AdapterCondition
+	if len(newConditionsJSON) > 0 {
+		if err := json.Unmarshal(newConditionsJSON, &newConditions); err != nil {
+			// If we can't unmarshal new conditions, return new conditions as-is
+			return newConditionsJSON
+		}
+	}
+
+	// Build a map of old conditions by type for quick lookup
+	oldConditionsMap := make(map[string]openapi.AdapterCondition)
+	for _, oldCond := range oldConditions {
+		oldConditionsMap[oldCond.Type] = oldCond
+	}
+
+	// Update new conditions: preserve LastTransitionTime if status hasn't changed
+	for i := range newConditions {
+		if oldCond, exists := oldConditionsMap[newConditions[i].Type]; exists {
+			// If status hasn't changed, preserve the old LastTransitionTime
+			if oldCond.Status == newConditions[i].Status {
+				newConditions[i].LastTransitionTime = oldCond.LastTransitionTime
+			}
+			// If status changed, keep the new LastTransitionTime (already set to now)
+		}
+		// If this is a new condition type, keep the new LastTransitionTime
+	}
+
+	// Marshal back to JSON
+	updatedJSON, err := json.Marshal(newConditions)
+	if err != nil {
+		// If we can't marshal, return new conditions as-is
+		return newConditionsJSON
+	}
+
+	return updatedJSON
 }

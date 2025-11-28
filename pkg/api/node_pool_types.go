@@ -33,8 +33,8 @@ type NodePool struct {
 	StatusPhase              string         `json:"status_phase" gorm:"default:'NotReady'"`
 	StatusObservedGeneration int32          `json:"status_observed_generation" gorm:"default:0"`
 	StatusLastTransitionTime *time.Time     `json:"status_last_transition_time,omitempty"`
-	StatusUpdatedAt          *time.Time     `json:"status_updated_at,omitempty"`
-	StatusAdapters           datatypes.JSON `json:"status_adapters" gorm:"type:jsonb"`
+	StatusLastUpdatedTime    *time.Time     `json:"status_last_updated_time,omitempty"`
+	StatusConditions         datatypes.JSON `json:"status_conditions" gorm:"type:jsonb"`
 
 	// Audit fields
 	CreatedBy string `json:"created_by" gorm:"size:255;not null"`
@@ -88,10 +88,10 @@ func (np *NodePool) ToOpenAPI() *openapi.NodePool {
 		_ = json.Unmarshal(np.Labels, &labels)
 	}
 
-	// Unmarshal StatusAdapters
-	var statusAdapters []openapi.ConditionAvailable
-	if len(np.StatusAdapters) > 0 {
-		_ = json.Unmarshal(np.StatusAdapters, &statusAdapters)
+	// Unmarshal StatusConditions
+	var statusConditions []openapi.ResourceCondition
+	if len(np.StatusConditions) > 0 {
+		_ = json.Unmarshal(np.StatusConditions, &statusConditions)
 	}
 
 	// Generate Href if not set (fallback)
@@ -119,25 +119,29 @@ func (np *NodePool) ToOpenAPI() *openapi.NodePool {
 			Kind: &np.OwnerKind,
 			Href: &ownerHref,
 		},
-		CreatedAt: np.CreatedAt,
-		UpdatedAt: np.UpdatedAt,
-		CreatedBy: np.CreatedBy,
-		UpdatedBy: np.UpdatedBy,
+		CreatedTime: np.CreatedTime,
+		UpdatedTime: np.UpdatedTime,
+		CreatedBy:   np.CreatedBy,
+		UpdatedBy:   np.UpdatedBy,
 	}
 
-	// Build NodePoolStatus
+	// Build NodePoolStatus - set required fields with defaults if nil
+	lastTransitionTime := time.Time{}
+	if np.StatusLastTransitionTime != nil {
+		lastTransitionTime = *np.StatusLastTransitionTime
+	}
+
+	lastUpdatedTime := time.Time{}
+	if np.StatusLastUpdatedTime != nil {
+		lastUpdatedTime = *np.StatusLastUpdatedTime
+	}
+
 	nodePool.Status = openapi.NodePoolStatus{
 		Phase:              np.StatusPhase,
 		ObservedGeneration: np.StatusObservedGeneration,
-		Adapters:           statusAdapters,
-	}
-
-	if np.StatusLastTransitionTime != nil {
-		nodePool.Status.LastTransitionTime = *np.StatusLastTransitionTime
-	}
-
-	if np.StatusUpdatedAt != nil {
-		nodePool.Status.UpdatedAt = *np.StatusUpdatedAt
+		Conditions:         statusConditions,
+		LastTransitionTime: lastTransitionTime,
+		LastUpdatedTime:    lastUpdatedTime,
 	}
 
 	return nodePool
@@ -155,8 +159,8 @@ func NodePoolFromOpenAPICreate(req *openapi.NodePoolCreateRequest, ownerID, crea
 	}
 	labelsJSON, _ := json.Marshal(labels)
 
-	// Marshal empty StatusAdapters
-	statusAdaptersJSON, _ := json.Marshal([]openapi.ConditionAvailable{})
+	// Marshal empty StatusConditions
+	statusConditionsJSON, _ := json.Marshal([]openapi.ResourceCondition{})
 
 	kind := "NodePool"
 	if req.Kind != nil {
@@ -172,7 +176,7 @@ func NodePoolFromOpenAPICreate(req *openapi.NodePoolCreateRequest, ownerID, crea
 		OwnerKind:                "Cluster",
 		StatusPhase:              "NotReady",
 		StatusObservedGeneration: 0,
-		StatusAdapters:           statusAdaptersJSON,
+		StatusConditions:         statusConditionsJSON,
 		CreatedBy:                createdBy,
 		UpdatedBy:                createdBy,
 	}
