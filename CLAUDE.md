@@ -398,8 +398,7 @@ All subcommands support these logging flags:
 # Generate OpenAPI code (required before go mod download)
 make generate
 
-# Install dependencies
-go install gotest.tools/gotestsum@latest
+# Download Go module dependencies
 go mod download
 
 # Initialize secrets directory with default values
