@@ -83,16 +83,17 @@ func MapAdapterToConditionType(adapterName string) string {
 }
 
 // ComputePhase calculates the overall phase for a resource based on adapter statuses
-// Phase is "Ready" when: numRequiredAdapters == numAdaptersAvailable
+//
+// MVP Phase Logic (per architecture/hyperfleet/docs/status-guide.md):
+// - "Ready": All required adapters have Available=True for current generation
+// - "NotReady": Otherwise (any adapter has Available=False or hasn't reported yet)
 //
 // An adapter is considered "available" when:
 // 1. Available condition status == "True"
 // 2. observed_generation == resource.generation (only checked if resourceGeneration > 0)
 //
-// Returns:
-// - "Ready": Number of required adapters == number of available adapters
-// - "Failed": At least one adapter has status == "False"
-// - "NotReady": Otherwise (missing adapters, stale generation, status == "Unknown", etc.)
+// Note: Post-MVP will add more phases (Pending, Provisioning, Failed, Degraded)
+// based on Health condition and Applied condition states.
 func ComputePhase(ctx context.Context, adapterStatuses api.AdapterStatusList, requiredAdapters []string, resourceGeneration int32) string {
 	log := logger.NewOCMLogger(ctx)
 	if len(adapterStatuses) == 0 {
@@ -129,9 +130,8 @@ func ComputePhase(ctx context.Context, adapterStatuses api.AdapterStatusList, re
 		}
 	}
 
-	// Count available adapters and check for failures
+	// Count available adapters
 	numAvailable := 0
-	anyFailed := false
 
 	// Iterate over required adapters
 	for _, adapterName := range requiredAdapters {
@@ -152,23 +152,16 @@ func ComputePhase(ctx context.Context, adapterStatuses api.AdapterStatusList, re
 		}
 
 		// Check available status
-		if adapterInfo.available == "False" {
-			anyFailed = true
-		} else if adapterInfo.available == "True" {
+		if adapterInfo.available == "True" {
 			numAvailable++
-		} else {
-			// Status is neither "True" nor "False" (e.g., "Unknown")
-			log.Warning(fmt.Sprintf("Required adapter '%s' has unexpected available status: %s", adapterName, adapterInfo.available))
 		}
 	}
 
-	// Determine phase: Ready when numRequiredAdapters == numAdaptersAvailable
+	// MVP: Only Ready or NotReady
+	// Ready when all required adapters have Available=True for current generation
 	numRequired := len(requiredAdapters)
 	if numAvailable == numRequired && numRequired > 0 {
 		return "Ready"
-	}
-	if anyFailed {
-		return "Failed"
 	}
 	return "NotReady"
 }
