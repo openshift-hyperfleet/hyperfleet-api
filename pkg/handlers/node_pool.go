@@ -38,7 +38,10 @@ func (h nodePoolHandler) Create(w http.ResponseWriter, r *http.Request) {
 			ctx := r.Context()
 			// For standalone nodepools, owner_id would need to come from somewhere
 			// This is likely not a supported use case, but using empty string for now
-			nodePoolModel := api.NodePoolFromOpenAPICreate(&req, "", "system")
+			nodePoolModel, convErr := presenters.ConvertNodePool(&req, "", "system")
+			if convErr != nil {
+				return nil, errors.GeneralError("Failed to convert nodepool: %v", convErr)
+			}
 			nodePoolModel, err := h.nodePool.Create(ctx, nodePoolModel)
 			if err != nil {
 				return nil, err

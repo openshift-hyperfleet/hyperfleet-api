@@ -1,8 +1,10 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"net/http"
+	"os"
 
 	gorillahandlers "github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
@@ -13,6 +15,8 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/handlers"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/middleware"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/validators"
 )
 
 type ServicesInterface interface {
@@ -94,6 +98,34 @@ func (s *apiServer) routes() *mux.Router {
 
 func registerApiMiddleware(router *mux.Router) {
 	router.Use(MetricsMiddleware)
+
+	// Schema validation middleware (validates cluster/nodepool spec fields)
+	// Load schema from environment variable, default to repo base schema
+	schemaPath := os.Getenv("OPENAPI_SCHEMA_PATH")
+	if schemaPath == "" {
+		// Default: use base schema in repo (provider-agnostic)
+		// Production: Helm sets OPENAPI_SCHEMA_PATH=/etc/hyperfleet/schemas/openapi.yaml
+		schemaPath = "openapi/openapi.yaml"
+	}
+
+	// Initialize schema validator (non-blocking - will warn if schema not found)
+	// Use background context for initialization logging
+	ctx := context.Background()
+	log := logger.NewOCMLogger(ctx)
+
+	schemaValidator, err := validators.NewSchemaValidator(schemaPath)
+	if err != nil {
+		// Log warning but don't fail - schema validation is optional
+		log.Extra("schema_path", schemaPath).Extra("error", err.Error()).Warning("Failed to load schema validator")
+		log.Warning("Schema validation is disabled. Spec fields will not be validated.")
+		log.Info("To enable schema validation:")
+		log.Info("  - Local: Run from repo root, or set OPENAPI_SCHEMA_PATH=openapi/openapi.yaml")
+		log.Info("  - Production: Helm sets OPENAPI_SCHEMA_PATH=/etc/hyperfleet/schemas/openapi.yaml")
+	} else {
+		// Apply schema validation middleware
+		log.Extra("schema_path", schemaPath).Info("Schema validation enabled")
+		router.Use(middleware.SchemaValidationMiddleware(schemaValidator))
+	}
 
 	router.Use(
 		func(next http.Handler) http.Handler {

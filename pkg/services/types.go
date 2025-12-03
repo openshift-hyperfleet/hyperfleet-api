@@ -54,6 +54,12 @@ func NewListArguments(params url.Values) *ListArguments {
 	if v := strings.Trim(params.Get("orderBy"), " "); v != "" {
 		listArgs.OrderBy = strings.Split(v, ",")
 	}
+
+	// Set default sorting to created_time desc if orderBy not provided
+	if len(listArgs.OrderBy) == 0 {
+		listArgs.OrderBy = []string{"created_time desc"}
+	}
+
 	if v := strings.Trim(params.Get("fields"), " "); v != "" {
 		fields := strings.Split(v, ",")
 		idNotPresent := true

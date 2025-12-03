@@ -3,10 +3,10 @@ package services
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"time"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/dao"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
@@ -131,19 +131,19 @@ func (s *sqlClusterService) UpdateClusterStatusFromAdapters(ctx context.Context,
 		return nil, errors.GeneralError("Failed to get adapter statuses: %s", err)
 	}
 
-	// Build the list of ResourceCondition from adapter Available conditions
-	adapters := []openapi.ResourceCondition{}
-	maxObservedGeneration := int32(0)
+	// Build the list of ResourceCondition
+	adapters := []api.ResourceCondition{}
+	minObservedGeneration := int32(math.MaxInt32)
 
 	for _, adapterStatus := range adapterStatuses {
 		// Unmarshal Conditions from JSONB
-		var conditions []openapi.AdapterCondition
-		if unmarshalErr := json.Unmarshal(adapterStatus.Conditions, &conditions); unmarshalErr != nil {
+		var conditions []api.AdapterCondition
+		if err := json.Unmarshal(adapterStatus.Conditions, &conditions); err != nil {
 			continue // Skip if can't unmarshal
 		}
 
 		// Find the "Available" condition
-		var availableCondition *openapi.AdapterCondition
+		var availableCondition *api.AdapterCondition
 		for i := range conditions {
 			if conditions[i].Type == "Available" {
 				availableCondition = &conditions[i]
@@ -157,7 +157,7 @@ func (s *sqlClusterService) UpdateClusterStatusFromAdapters(ctx context.Context,
 		}
 
 		// Convert to ResourceCondition
-		condResource := openapi.ResourceCondition{
+		condResource := api.ResourceCondition{
 			Type:               MapAdapterToConditionType(adapterStatus.Adapter),
 			Status:             availableCondition.Status,
 			Reason:             availableCondition.Reason,
@@ -178,9 +178,10 @@ func (s *sqlClusterService) UpdateClusterStatusFromAdapters(ctx context.Context,
 
 		adapters = append(adapters, condResource)
 
-		// Track max observed generation
-		if adapterStatus.ObservedGeneration > maxObservedGeneration {
-			maxObservedGeneration = adapterStatus.ObservedGeneration
+		// Track min observed generation
+		// Use the LOWEST generation to ensure cluster status only advances when ALL adapters catch up
+		if adapterStatus.ObservedGeneration < minObservedGeneration {
+			minObservedGeneration = adapterStatus.ObservedGeneration
 		}
 	}
 
@@ -204,7 +205,12 @@ func (s *sqlClusterService) UpdateClusterStatusFromAdapters(ctx context.Context,
 	// Update cluster status fields
 	now := time.Now()
 	cluster.StatusPhase = newPhase
-	cluster.StatusObservedGeneration = maxObservedGeneration
+	// Set observed_generation to min across all adapters (0 if no adapters)
+	if len(adapterStatuses) == 0 {
+		cluster.StatusObservedGeneration = 0
+	} else {
+		cluster.StatusObservedGeneration = minObservedGeneration
+	}
 
 	// Marshal conditions to JSON
 	conditionsJSON, err := json.Marshal(adapters)

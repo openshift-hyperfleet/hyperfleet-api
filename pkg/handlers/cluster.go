@@ -36,11 +36,14 @@ func (h clusterHandler) Create(w http.ResponseWriter, r *http.Request) {
 		},
 		func() (interface{}, *errors.ServiceError) {
 			ctx := r.Context()
-			// Use the ClusterFromOpenAPICreate helper to convert the request
-			clusterModel := api.ClusterFromOpenAPICreate(&req, "system")
-			clusterModel, err := h.cluster.Create(ctx, clusterModel)
+			// Use the presenters.ConvertCluster helper to convert the request
+			clusterModel, err := presenters.ConvertCluster(&req, "system")
 			if err != nil {
-				return nil, err
+				return nil, errors.GeneralError("Failed to convert cluster: %v", err)
+			}
+			clusterModel, svcErr := h.cluster.Create(ctx, clusterModel)
+			if svcErr != nil {
+				return nil, svcErr
 			}
 			return presenters.PresentCluster(clusterModel), nil
 		},

@@ -220,7 +220,7 @@ func TestAdapterStatusIdempotency(t *testing.T) {
 	Expect(err).NotTo(HaveOccurred())
 	Expect(resp.StatusCode).To(Equal(http.StatusCreated))
 	Expect(status1.Adapter).To(Equal("idempotency-test-adapter"))
-	Expect(status1.Conditions[0].Status).To(Equal("False"))
+	Expect(string(status1.Conditions[0].Status)).To(Equal(string(openapi.FALSE)))
 
 	// Second POST: Update the same adapter with different conditions
 	statusInput2 := openapi.AdapterStatusCreateRequest{
@@ -242,7 +242,7 @@ func TestAdapterStatusIdempotency(t *testing.T) {
 	Expect(err).NotTo(HaveOccurred())
 	Expect(resp.StatusCode).To(Equal(http.StatusCreated))
 	Expect(status2.Adapter).To(Equal("idempotency-test-adapter"))
-	Expect(status2.Conditions[0].Status).To(Equal("True"))
+	Expect(status2.Conditions[0].Status).To(Equal(openapi.TRUE))
 
 	// GET all statuses - should have only ONE status for "idempotency-test-adapter"
 	list, _, err := client.DefaultAPI.GetClusterStatuses(ctx, cluster.ID).Execute()
@@ -260,7 +260,7 @@ func TestAdapterStatusIdempotency(t *testing.T) {
 
 	// Verify: should have exactly ONE entry for this adapter (updated, not duplicated)
 	Expect(adapterCount).To(Equal(1), "Adapter should be updated, not duplicated")
-	Expect(finalStatus.Conditions[0].Status).To(Equal("True"), "Conditions should be updated to latest")
+	Expect(finalStatus.Conditions[0].Status).To(Equal(openapi.TRUE), "Conditions should be updated to latest")
 }
 
 // TestAdapterStatusPagingEdgeCases tests edge cases in pagination
