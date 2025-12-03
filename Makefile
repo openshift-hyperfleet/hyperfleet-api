@@ -1,5 +1,8 @@
 .DEFAULT_GOAL := help
 
+# Include bingo-managed tool variables
+include .bingo/Variables.mk
+
 # CGO_ENABLED=0 is not FIPS compliant. large commercial vendors and FedRAMP require FIPS compliant crypto
 CGO_ENABLED := 1
 
@@ -57,7 +60,6 @@ GO_VERSION:=go1.24.
 
 ### Constants:
 version:=$(shell date +%s)
-GOLANGCI_LINT_BIN:=$(shell go env GOPATH)/bin/golangci-lint
 
 # Version information for ldflags
 git_sha:=$(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
@@ -110,10 +112,9 @@ verify: check-gopath
 .PHONY: verify
 
 # Runs our linter to verify that everything is following best practices
-# Requires golangci-lint to be installed @ $(go env GOPATH)/bin/golangci-lint
 # Linter is set to ignore `unused` stuff due to example being incomplete by definition
-lint:
-	$(GOLANGCI_LINT_BIN) run -e unused \
+lint: $(GOLANGCI_LINT)
+	$(GOLANGCI_LINT) run -e unused \
 		./cmd/... \
 		./pkg/...
 .PHONY: lint
@@ -122,7 +123,7 @@ lint:
 # NOTE it may be necessary to use CGO_ENABLED=0 for backwards compatibility with centos7 if not using centos7
 binary: check-gopath
 	echo "Building version: ${build_version}"
-	${GO} build -ldflags="$(ldflags)" -o hyperfleet-api ./cmd/hyperfleet-api
+	CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=boringcrypto ${GO} build -ldflags="$(ldflags)" -o hyperfleet-api ./cmd/hyperfleet-api
 .PHONY: binary
 
 # Install
@@ -159,8 +160,8 @@ secrets:
 #
 # Examples:
 #   make test TESTFLAGS="-run TestSomething"
-test: install secrets
-	OCM_ENV=unit_testing gotestsum --format short-verbose -- -p 1 -v $(TESTFLAGS) \
+test: install secrets $(GOTESTSUM)
+	OCM_ENV=unit_testing $(GOTESTSUM) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -v $(TESTFLAGS) \
 		./pkg/... \
 		./cmd/...
 .PHONY: test
@@ -172,8 +173,8 @@ test: install secrets
 #
 # Examples:
 #   make test-unit-json TESTFLAGS="-run TestSomething"
-ci-test-unit: install secrets
-	OCM_ENV=unit_testing gotestsum --jsonfile-timing-events=$(unit_test_json_output) --format short-verbose -- -p 1 -v $(TESTFLAGS) \
+ci-test-unit: install secrets $(GOTESTSUM)
+	OCM_ENV=unit_testing $(GOTESTSUM) --jsonfile-timing-events=$(unit_test_json_output) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -v $(TESTFLAGS) \
 		./pkg/... \
 		./cmd/...
 .PHONY: ci-test-unit
@@ -188,8 +189,8 @@ ci-test-unit: install secrets
 #   make test-integration TESTFLAGS="-run TestAccounts"     acts as TestAccounts* and run TestAccountsGet, TestAccountsPost, etc.
 #   make test-integration TESTFLAGS="-run TestAccountsGet"  runs TestAccountsGet
 #   make test-integration TESTFLAGS="-short"                skips long-run tests
-ci-test-integration: install secrets
-	TESTCONTAINERS_RYUK_DISABLED=true OCM_ENV=integration_testing gotestsum --jsonfile-timing-events=$(integration_test_json_output) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) \
+ci-test-integration: install secrets $(GOTESTSUM)
+	TESTCONTAINERS_RYUK_DISABLED=true OCM_ENV=integration_testing $(GOTESTSUM) --jsonfile-timing-events=$(integration_test_json_output) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) \
 			./test/integration
 .PHONY: ci-test-integration
 
@@ -203,8 +204,8 @@ ci-test-integration: install secrets
 #   make test-integration TESTFLAGS="-run TestAccounts"     acts as TestAccounts* and run TestAccountsGet, TestAccountsPost, etc.
 #   make test-integration TESTFLAGS="-run TestAccountsGet"  runs TestAccountsGet
 #   make test-integration TESTFLAGS="-short"                skips long-run tests
-test-integration: install secrets
-	TESTCONTAINERS_RYUK_DISABLED=true OCM_ENV=integration_testing gotestsum --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) \
+test-integration: install secrets $(GOTESTSUM)
+	TESTCONTAINERS_RYUK_DISABLED=true OCM_ENV=integration_testing $(GOTESTSUM) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) \
 			./test/integration
 .PHONY: test-integration
 

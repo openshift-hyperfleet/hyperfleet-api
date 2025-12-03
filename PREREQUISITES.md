@@ -30,14 +30,6 @@ PostgreSQL client tools provide the `psql` command-line interface for database i
   - Fedora: `dnf install postgresql`
 - **Note**: The PostgreSQL server itself runs in a container via `make db/setup`
 
-## gotestsum
-
-`gotestsum` is a Go test runner with enhanced output formatting.
-
-- **Purpose**: Required for running tests with formatted output
-- **Installation**: `go install gotest.tools/gotestsum@latest`
-- **Verification**: Run `gotestsum --version`
-
 ## jq
 
 `jq` is a lightweight and flexible command-line JSON processor.
@@ -62,9 +54,8 @@ Run these commands to verify all prerequisites are installed:
 ```bash
 # Required tools
 go version              # Should show 1.24 or higher
-podman --version        
+podman --version
 psql --version          # PostgreSQL client
-gotestsum --version     # Test runner
 jq --version            # JSON processor
 
 # Optional tools
@@ -81,7 +72,6 @@ make generate
 
 # Install Go dependencies
 go mod download
-go install gotest.tools/gotestsum@latest
 
 # Initialize configuration
 make secrets

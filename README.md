@@ -202,7 +202,6 @@ Before running hyperfleet-api, ensure these prerequisites are installed. See [PR
 make generate
 
 # 2. Install dependencies
-go install gotest.tools/gotestsum@latest
 go mod download
 
 # 3. Build the binary
