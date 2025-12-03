@@ -50,6 +50,7 @@ help:
 	@echo "make test                 run unit tests"
 	@echo "make test-integration     run integration tests"
 	@echo "make generate             generate openapi modules"
+	@echo "make generate-mocks       generate mock implementations for services"
 	@echo "make clean                delete temporary generated files"
 	@echo "$(fake)"
 .PHONY: help
@@ -218,6 +219,11 @@ generate:
 	$(container_tool) cp $(OPENAPI_IMAGE_ID):/local/pkg/api/openapi ./pkg/api/openapi
 	$(container_tool) cp $(OPENAPI_IMAGE_ID):/local/data/generated/openapi/openapi.go ./data/generated/openapi/openapi.go
 .PHONY: generate
+
+# Generate mock implementations for service interfaces
+generate-mocks:
+	${GO} generate ./pkg/services/...
+.PHONY: generate-mocks
 
 # Regenerate openapi client and models using vendor (avoids downloading dependencies)
 generate-vendor:
