@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -10,123 +9,13 @@ import (
 
 	"github.com/gorilla/mux"
 	. "github.com/onsi/gomega"
+	"go.uber.org/mock/gomock"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/services"
 )
-
-// Mock ClusterService
-type mockClusterService struct {
-	getFunc func(ctx context.Context, id string) (*api.Cluster, *errors.ServiceError)
-}
-
-func (m *mockClusterService) Get(ctx context.Context, id string) (*api.Cluster, *errors.ServiceError) {
-	if m.getFunc != nil {
-		return m.getFunc(ctx, id)
-	}
-	return nil, nil
-}
-
-func (m *mockClusterService) Create(ctx context.Context, cluster *api.Cluster) (*api.Cluster, *errors.ServiceError) {
-	return nil, nil
-}
-
-func (m *mockClusterService) Replace(ctx context.Context, cluster *api.Cluster) (*api.Cluster, *errors.ServiceError) {
-	return nil, nil
-}
-
-func (m *mockClusterService) Delete(ctx context.Context, id string) *errors.ServiceError {
-	return nil
-}
-
-func (m *mockClusterService) All(ctx context.Context) (api.ClusterList, *errors.ServiceError) {
-	return nil, nil
-}
-
-func (m *mockClusterService) FindByIDs(ctx context.Context, ids []string) (api.ClusterList, *errors.ServiceError) {
-	return nil, nil
-}
-
-func (m *mockClusterService) UpdateClusterStatusFromAdapters(ctx context.Context, clusterID string) (*api.Cluster, *errors.ServiceError) {
-	return nil, nil
-}
-
-func (m *mockClusterService) OnUpsert(ctx context.Context, id string) error {
-	return nil
-}
-
-func (m *mockClusterService) OnDelete(ctx context.Context, id string) error {
-	return nil
-}
-
-// Mock NodePoolService
-type mockNodePoolService struct {
-	getFunc func(ctx context.Context, id string) (*api.NodePool, *errors.ServiceError)
-}
-
-func (m *mockNodePoolService) Get(ctx context.Context, id string) (*api.NodePool, *errors.ServiceError) {
-	if m.getFunc != nil {
-		return m.getFunc(ctx, id)
-	}
-	return nil, nil
-}
-
-func (m *mockNodePoolService) Create(ctx context.Context, nodePool *api.NodePool) (*api.NodePool, *errors.ServiceError) {
-	return nil, nil
-}
-
-func (m *mockNodePoolService) Replace(ctx context.Context, nodePool *api.NodePool) (*api.NodePool, *errors.ServiceError) {
-	return nil, nil
-}
-
-func (m *mockNodePoolService) Delete(ctx context.Context, id string) *errors.ServiceError {
-	return nil
-}
-
-func (m *mockNodePoolService) All(ctx context.Context) (api.NodePoolList, *errors.ServiceError) {
-	return nil, nil
-}
-
-func (m *mockNodePoolService) FindByIDs(ctx context.Context, ids []string) (api.NodePoolList, *errors.ServiceError) {
-	return nil, nil
-}
-
-func (m *mockNodePoolService) UpdateNodePoolStatusFromAdapters(ctx context.Context, nodePoolID string) (*api.NodePool, *errors.ServiceError) {
-	return nil, nil
-}
-
-func (m *mockNodePoolService) OnUpsert(ctx context.Context, id string) error {
-	return nil
-}
-
-func (m *mockNodePoolService) OnDelete(ctx context.Context, id string) error {
-	return nil
-}
-
-// Mock GenericService
-type mockGenericService struct{}
-
-func (m *mockGenericService) Get(ctx context.Context, username string, id string, resource interface{}) *errors.ServiceError {
-	return nil
-}
-
-func (m *mockGenericService) Create(ctx context.Context, username string, resource interface{}) *errors.ServiceError {
-	return nil
-}
-
-func (m *mockGenericService) List(ctx context.Context, username string, listArgs *services.ListArguments, resources interface{}) (*api.PagingMeta, *errors.ServiceError) {
-	return nil, nil
-}
-
-func (m *mockGenericService) Update(ctx context.Context, username string, resource interface{}) *errors.ServiceError {
-	return nil
-}
-
-func (m *mockGenericService) Delete(ctx context.Context, username string, resource interface{}) *errors.ServiceError {
-	return nil
-}
 
 func TestClusterNodePoolsHandler_Get(t *testing.T) {
 	RegisterTestingT(t)
@@ -139,8 +28,7 @@ func TestClusterNodePoolsHandler_Get(t *testing.T) {
 		name               string
 		clusterID          string
 		nodePoolID         string
-		mockClusterFunc    func(ctx context.Context, id string) (*api.Cluster, *errors.ServiceError)
-		mockNodePoolFunc   func(ctx context.Context, id string) (*api.NodePool, *errors.ServiceError)
+		setupMocks         func(ctrl *gomock.Controller) (*services.MockClusterService, *services.MockNodePoolService, *services.MockGenericService)
 		expectedStatusCode int
 		expectedError      bool
 	}{
@@ -148,18 +36,21 @@ func TestClusterNodePoolsHandler_Get(t *testing.T) {
 			name:       "Success - Get nodepool by cluster and nodepool ID",
 			clusterID:  clusterID,
 			nodePoolID: nodePoolID,
-			mockClusterFunc: func(ctx context.Context, id string) (*api.Cluster, *errors.ServiceError) {
-				return &api.Cluster{
+			setupMocks: func(ctrl *gomock.Controller) (*services.MockClusterService, *services.MockNodePoolService, *services.MockGenericService) {
+				mockClusterSvc := services.NewMockClusterService(ctrl)
+				mockNodePoolSvc := services.NewMockNodePoolService(ctrl)
+				mockGenericSvc := services.NewMockGenericService(ctrl)
+
+				mockClusterSvc.EXPECT().Get(gomock.Any(), clusterID).Return(&api.Cluster{
 					Meta: api.Meta{
 						ID:          clusterID,
 						CreatedTime: now,
 						UpdatedTime: now,
 					},
 					Name: "test-cluster",
-				}, nil
-			},
-			mockNodePoolFunc: func(ctx context.Context, id string) (*api.NodePool, *errors.ServiceError) {
-				return &api.NodePool{
+				}, nil)
+
+				mockNodePoolSvc.EXPECT().Get(gomock.Any(), nodePoolID).Return(&api.NodePool{
 					Meta: api.Meta{
 						ID:          nodePoolID,
 						CreatedTime: now,
@@ -168,7 +59,9 @@ func TestClusterNodePoolsHandler_Get(t *testing.T) {
 					Kind:    "NodePool",
 					Name:    "test-nodepool",
 					OwnerID: clusterID,
-				}, nil
+				}, nil)
+
+				return mockClusterSvc, mockNodePoolSvc, mockGenericSvc
 			},
 			expectedStatusCode: http.StatusOK,
 			expectedError:      false,
@@ -177,11 +70,14 @@ func TestClusterNodePoolsHandler_Get(t *testing.T) {
 			name:       "Error - Cluster not found",
 			clusterID:  "non-existent",
 			nodePoolID: nodePoolID,
-			mockClusterFunc: func(ctx context.Context, id string) (*api.Cluster, *errors.ServiceError) {
-				return nil, errors.NotFound("Cluster not found")
-			},
-			mockNodePoolFunc: func(ctx context.Context, id string) (*api.NodePool, *errors.ServiceError) {
-				return nil, nil
+			setupMocks: func(ctrl *gomock.Controller) (*services.MockClusterService, *services.MockNodePoolService, *services.MockGenericService) {
+				mockClusterSvc := services.NewMockClusterService(ctrl)
+				mockNodePoolSvc := services.NewMockNodePoolService(ctrl)
+				mockGenericSvc := services.NewMockGenericService(ctrl)
+
+				mockClusterSvc.EXPECT().Get(gomock.Any(), "non-existent").Return(nil, errors.NotFound("Cluster not found"))
+
+				return mockClusterSvc, mockNodePoolSvc, mockGenericSvc
 			},
 			expectedStatusCode: http.StatusNotFound,
 			expectedError:      true,
@@ -190,18 +86,23 @@ func TestClusterNodePoolsHandler_Get(t *testing.T) {
 			name:       "Error - NodePool not found",
 			clusterID:  clusterID,
 			nodePoolID: "non-existent",
-			mockClusterFunc: func(ctx context.Context, id string) (*api.Cluster, *errors.ServiceError) {
-				return &api.Cluster{
+			setupMocks: func(ctrl *gomock.Controller) (*services.MockClusterService, *services.MockNodePoolService, *services.MockGenericService) {
+				mockClusterSvc := services.NewMockClusterService(ctrl)
+				mockNodePoolSvc := services.NewMockNodePoolService(ctrl)
+				mockGenericSvc := services.NewMockGenericService(ctrl)
+
+				mockClusterSvc.EXPECT().Get(gomock.Any(), clusterID).Return(&api.Cluster{
 					Meta: api.Meta{
 						ID:          clusterID,
 						CreatedTime: now,
 						UpdatedTime: now,
 					},
 					Name: "test-cluster",
-				}, nil
-			},
-			mockNodePoolFunc: func(ctx context.Context, id string) (*api.NodePool, *errors.ServiceError) {
-				return nil, errors.NotFound("NodePool not found")
+				}, nil)
+
+				mockNodePoolSvc.EXPECT().Get(gomock.Any(), "non-existent").Return(nil, errors.NotFound("NodePool not found"))
+
+				return mockClusterSvc, mockNodePoolSvc, mockGenericSvc
 			},
 			expectedStatusCode: http.StatusNotFound,
 			expectedError:      true,
@@ -210,18 +111,21 @@ func TestClusterNodePoolsHandler_Get(t *testing.T) {
 			name:       "Error - NodePool belongs to different cluster",
 			clusterID:  clusterID,
 			nodePoolID: nodePoolID,
-			mockClusterFunc: func(ctx context.Context, id string) (*api.Cluster, *errors.ServiceError) {
-				return &api.Cluster{
+			setupMocks: func(ctrl *gomock.Controller) (*services.MockClusterService, *services.MockNodePoolService, *services.MockGenericService) {
+				mockClusterSvc := services.NewMockClusterService(ctrl)
+				mockNodePoolSvc := services.NewMockNodePoolService(ctrl)
+				mockGenericSvc := services.NewMockGenericService(ctrl)
+
+				mockClusterSvc.EXPECT().Get(gomock.Any(), clusterID).Return(&api.Cluster{
 					Meta: api.Meta{
 						ID:          clusterID,
 						CreatedTime: now,
 						UpdatedTime: now,
 					},
 					Name: "test-cluster",
-				}, nil
-			},
-			mockNodePoolFunc: func(ctx context.Context, id string) (*api.NodePool, *errors.ServiceError) {
-				return &api.NodePool{
+				}, nil)
+
+				mockNodePoolSvc.EXPECT().Get(gomock.Any(), nodePoolID).Return(&api.NodePool{
 					Meta: api.Meta{
 						ID:          nodePoolID,
 						CreatedTime: now,
@@ -230,7 +134,9 @@ func TestClusterNodePoolsHandler_Get(t *testing.T) {
 					Kind:    "NodePool",
 					Name:    "test-nodepool",
 					OwnerID: "different-cluster-789", // Different cluster
-				}, nil
+				}, nil)
+
+				return mockClusterSvc, mockNodePoolSvc, mockGenericSvc
 			},
 			expectedStatusCode: http.StatusNotFound,
 			expectedError:      true,
@@ -241,10 +147,12 @@ func TestClusterNodePoolsHandler_Get(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			RegisterTestingT(t)
 
-			// Create mock services
-			mockClusterSvc := &mockClusterService{getFunc: tt.mockClusterFunc}
-			mockNodePoolSvc := &mockNodePoolService{getFunc: tt.mockNodePoolFunc}
-			mockGenericSvc := &mockGenericService{}
+			// Create gomock controller
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			// Setup mocks
+			mockClusterSvc, mockNodePoolSvc, mockGenericSvc := tt.setupMocks(ctrl)
 
 			// Create handler
 			handler := NewClusterNodePoolsHandler(mockClusterSvc, mockNodePoolSvc, mockGenericSvc)

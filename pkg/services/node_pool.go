@@ -12,6 +12,8 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
+//go:generate mockgen-v0.6.0 -source=node_pool.go -package=services -destination=node_pool_mock.go
+
 type NodePoolService interface {
 	Get(ctx context.Context, id string) (*api.NodePool, *errors.ServiceError)
 	Create(ctx context.Context, nodePool *api.NodePool) (*api.NodePool, *errors.ServiceError)

@@ -50,6 +50,8 @@ help:
 	@echo "make test                 run unit tests"
 	@echo "make test-integration     run integration tests"
 	@echo "make generate             generate openapi modules"
+	@echo "make generate-mocks       generate mock implementations for services"
+	@echo "make generate-all         generate all code (openapi + mocks)"
 	@echo "make clean                delete temporary generated files"
 	@echo "$(fake)"
 .PHONY: help
@@ -121,13 +123,13 @@ lint: $(GOLANGCI_LINT)
 
 # Build binaries
 # NOTE it may be necessary to use CGO_ENABLED=0 for backwards compatibility with centos7 if not using centos7
-binary: check-gopath
+binary: check-gopath generate-all
 	echo "Building version: ${build_version}"
 	CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=boringcrypto ${GO} build -ldflags="$(ldflags)" -o hyperfleet-api ./cmd/hyperfleet-api
 .PHONY: binary
 
 # Install
-install: check-gopath
+install: check-gopath generate-all
 	CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=boringcrypto ${GO} install -ldflags="$(ldflags)" ./cmd/hyperfleet-api
 	@ ${GO} version | grep -q "$(GO_VERSION)" || \
 		( \
@@ -218,6 +220,15 @@ generate:
 	$(container_tool) cp $(OPENAPI_IMAGE_ID):/local/pkg/api/openapi ./pkg/api/openapi
 	$(container_tool) cp $(OPENAPI_IMAGE_ID):/local/data/generated/openapi/openapi.go ./data/generated/openapi/openapi.go
 .PHONY: generate
+
+# Generate mock implementations for service interfaces
+generate-mocks: $(MOCKGEN)
+	${GO} generate ./pkg/services/...
+.PHONY: generate-mocks
+
+# Generate all code (openapi + mocks)
+generate-all: generate generate-mocks
+.PHONY: generate-all
 
 # Regenerate openapi client and models using vendor (avoids downloading dependencies)
 generate-vendor:

@@ -21,6 +21,8 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
+//go:generate mockgen-v0.6.0 -source=generic.go -package=services -destination=generic_mock.go
+
 type GenericService interface {
 	List(ctx context.Context, username string, args *ListArguments, resourceList interface{}) (*api.PagingMeta, *errors.ServiceError)
 }

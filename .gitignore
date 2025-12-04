@@ -50,3 +50,6 @@ secrets
 # Ignore generated OpenAPI code
 /pkg/api/openapi/
 /data/generated/
+
+# Ignore generated mock files
+*_mock.go

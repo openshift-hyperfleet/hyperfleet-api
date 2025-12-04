@@ -8,6 +8,8 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 )
 
+//go:generate mockgen-v0.6.0 -source=adapter_status.go -package=services -destination=adapter_status_mock.go
+
 type AdapterStatusService interface {
 	Get(ctx context.Context, id string) (*api.AdapterStatus, *errors.ServiceError)
 	Create(ctx context.Context, adapterStatus *api.AdapterStatus) (*api.AdapterStatus, *errors.ServiceError)
