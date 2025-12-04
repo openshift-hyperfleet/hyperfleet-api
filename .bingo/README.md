@@ -10,4 +10,4 @@ This is directory which stores Go modules with pinned buildable package that is 
 
 ## Requirements
 
-* Go 1.24.9 or later (see project CLAUDE.md for version requirements)
+* Go 1.24.x or 1.25.x

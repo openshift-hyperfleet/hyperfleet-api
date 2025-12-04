@@ -222,7 +222,7 @@ generate:
 .PHONY: generate
 
 # Generate mock implementations for service interfaces
-generate-mocks:
+generate-mocks: $(MOCKGEN)
 	${GO} generate ./pkg/services/...
 .PHONY: generate-mocks
 
