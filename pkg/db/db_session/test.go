@@ -214,7 +214,9 @@ func (f *Test) Close() error {
 }
 
 func (f *Test) ResetDB() {
-	resetDB(f.config)
+	if err := resetDB(f.config); err != nil {
+		panic(fmt.Sprintf("failed to reset test database: %v", err))
+	}
 	f.wasDisconnected = true
 }
 

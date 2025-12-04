@@ -51,11 +51,12 @@ func (s *apiServer) routes() *mux.Router {
 	}
 
 	authzMiddleware := auth.NewAuthzMiddlewareMock()
-	if env().Config.Server.EnableAuthz {
-		// TODO: authzMiddleware, err = auth.NewAuthzMiddleware()
-		// check(err, "Unable to create authz middleware")
-	}
-
+	// TODO: Create issue to track enabling authorization middleware
+	// if env().Config.Server.EnableAuthz {
+	// 	var err error
+	// 	authzMiddleware, err = auth.NewAuthzMiddleware()
+	// 	check(err, "Unable to create authz middleware")
+	// }
 	// mainRouter is top level "/"
 	mainRouter := mux.NewRouter()
 	mainRouter.NotFoundHandler = http.HandlerFunc(api.SendNotFound)

@@ -58,11 +58,17 @@ func NewOpenAPIHandler() (*openAPIHandler, error) {
 func (h *openAPIHandler) GetOpenAPI(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(h.openAPIDefinitions)
+	if _, err := w.Write(h.openAPIDefinitions); err != nil {
+		// Response already committed, can't report error
+		return
+	}
 }
 
 func (h *openAPIHandler) GetOpenAPIUI(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html")
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(h.uiContent)
+	if _, err := w.Write(h.uiContent); err != nil {
+		// Response already committed, can't report error
+		return
+	}
 }

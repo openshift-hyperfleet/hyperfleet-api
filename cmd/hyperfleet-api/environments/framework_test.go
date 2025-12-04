@@ -36,7 +36,7 @@ func TestLoadServices(t *testing.T) {
 		return
 	}
 
-	s := reflect.ValueOf(env.Services)
+	s := reflect.ValueOf(&env.Services).Elem()
 	sType := s.Type()
 
 	for i := 0; i < s.NumField(); i++ {

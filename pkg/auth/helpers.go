@@ -27,7 +27,14 @@ func writeJSONResponse(w http.ResponseWriter, code int, payload interface{}) {
 	w.WriteHeader(code)
 
 	if payload != nil {
-		response, _ := json.Marshal(payload)
-		_, _ = w.Write(response)
+		response, err := json.Marshal(payload)
+		if err != nil {
+			// Headers already sent, can't change status code
+			return
+		}
+		if _, err := w.Write(response); err != nil {
+			// Writing failed, nothing we can do at this point
+			return
+		}
 	}
 }

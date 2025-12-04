@@ -75,10 +75,11 @@ func (c *Client) newConnection() error {
 	return nil
 }
 
-func (c *Client) Close() {
+func (c *Client) Close() error {
 	if c.connection != nil {
-		c.connection.Close()
+		return c.connection.Close()
 	}
+	return nil
 }
 
 type service struct {

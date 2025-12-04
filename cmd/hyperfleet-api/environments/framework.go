@@ -155,7 +155,11 @@ func (e *Env) Teardown() {
 			glog.Errorf("Error closing database session factory: %s", err.Error())
 		}
 	}
-	e.Clients.OCM.Close()
+	if e.Clients.OCM != nil {
+		if err := e.Clients.OCM.Close(); err != nil {
+			glog.Errorf("Error closing OCM client: %v", err)
+		}
+	}
 }
 
 func setConfigDefaults(flags *pflag.FlagSet, defaults map[string]string) error {

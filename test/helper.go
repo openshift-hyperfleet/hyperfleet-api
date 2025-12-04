@@ -80,7 +80,8 @@ func NewHelper(t *testing.T) *Helper {
 		}
 		if logLevel := os.Getenv("LOGLEVEL"); logLevel != "" {
 			glog.Infof("Using custom loglevel: %s", logLevel)
-			pflag.CommandLine.Set("-v", logLevel)
+			// Intentionally ignore error from Set — acceptable for tests
+			_ = pflag.CommandLine.Set("-v", logLevel)
 		}
 		pflag.Parse()
 
@@ -177,7 +178,9 @@ func (helper *Helper) startHealthCheckServer() {
 }
 
 func (helper *Helper) RestartServer() {
-	helper.stopAPIServer()
+	if err := helper.stopAPIServer(); err != nil {
+		glog.Warningf("unable to stop api server on restart: %v", err)
+	}
 	helper.startAPIServer()
 	glog.V(10).Info("Test API server restarted")
 }
@@ -198,7 +201,9 @@ func (helper *Helper) Reset() {
 	// This new flag set ensures we don't hit conflicts defining the same flag twice
 	// Also on reset, we don't care to be re-defining 'v' and other glog flags
 	flagset := pflag.NewFlagSet(helper.NewID(), pflag.ContinueOnError)
-	env.AddFlags(flagset)
+	if err := env.AddFlags(flagset); err != nil {
+		glog.Fatalf("Unable to add environment flags on Reset: %s", err.Error())
+	}
 	pflag.Parse()
 
 	err := env.Initialize()
@@ -433,6 +438,10 @@ func parseJWTKeys() (*rsa.PrivateKey, *rsa.PublicKey, error) {
 	}
 
 	// Parse keys
+	// ParseRSAPrivateKeyFromPEMWithPassword is deprecated in the stdlib but there's
+	// no suitable alternative for our test fixture keys; explicitly silence the
+	// staticcheck warning here.
+	//nolint:staticcheck
 	privateKey, err := jwt.ParseRSAPrivateKeyFromPEMWithPassword(privateBytes, "passwd")
 	if err != nil {
 		err = fmt.Errorf("unable to parse JWT private key: %s", err)

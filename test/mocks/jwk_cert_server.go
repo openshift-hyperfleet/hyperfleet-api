@@ -30,7 +30,9 @@ func NewJWKCertServerMock(t *testing.T, pubKey crypto.PublicKey, jwkKID string, 
 				t.Errorf("Unable to marshal public jwk: %s", err)
 				return
 			}
-			fmt.Fprintf(w, `{"keys":[%s]}`, string(jwkBytes))
+			if _, err := fmt.Fprintf(w, `{"keys":[%s]}`, string(jwkBytes)); err != nil {
+				t.Errorf("error writing jwk response: %v", err)
+			}
 		},
 	)
 

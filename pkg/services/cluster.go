@@ -131,14 +131,14 @@ func (s *sqlClusterService) UpdateClusterStatusFromAdapters(ctx context.Context,
 		return nil, errors.GeneralError("Failed to get adapter statuses: %s", err)
 	}
 
-	// Build the list of ResourceCondition
+	// Build the list of ResourceCondition from adapter Available conditions
 	adapters := []openapi.ResourceCondition{}
 	maxObservedGeneration := int32(0)
 
 	for _, adapterStatus := range adapterStatuses {
 		// Unmarshal Conditions from JSONB
 		var conditions []openapi.AdapterCondition
-		if err := json.Unmarshal(adapterStatus.Conditions, &conditions); err != nil {
+		if unmarshalErr := json.Unmarshal(adapterStatus.Conditions, &conditions); unmarshalErr != nil {
 			continue // Skip if can't unmarshal
 		}
 

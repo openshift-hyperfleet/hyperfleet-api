@@ -25,7 +25,9 @@ func main() {
 	// This is needed to make `glog` believe that the flags have already been parsed, otherwise
 	// every log messages is prefixed by an error message stating the the flags haven't been
 	// parsed.
-	_ = flag.CommandLine.Parse([]string{})
+	if err := flag.CommandLine.Parse([]string{}); err != nil {
+		glog.Fatalf("Failed to parse flags: %v", err)
+	}
 
 	//pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
 

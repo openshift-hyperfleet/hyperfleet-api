@@ -8,6 +8,7 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/services"
 )
 
@@ -88,10 +89,10 @@ func (h nodePoolStatusHandler) Create(w http.ResponseWriter, r *http.Request) {
 			}
 
 			// Trigger status aggregation
-			_, aggregateErr := h.nodePoolService.UpdateNodePoolStatusFromAdapters(ctx, nodePoolID)
-			if aggregateErr != nil {
-				// Log error but don't fail the request
-				// The status will be computed on next update
+			if _, aggregateErr := h.nodePoolService.UpdateNodePoolStatusFromAdapters(ctx, nodePoolID); aggregateErr != nil {
+				// Log error but don't fail the request - the status will be computed on next update
+				log := logger.NewOCMLogger(ctx)
+				log.Extra("nodepool_id", nodePoolID).Extra("error", aggregateErr).Warning("Failed to aggregate nodepool status")
 			}
 
 			return adapterStatus.ToOpenAPI(), nil

@@ -52,13 +52,19 @@ func (as *AdapterStatus) ToOpenAPI() *openapi.AdapterStatus {
 	// Unmarshal Conditions
 	var conditions []openapi.AdapterCondition
 	if len(as.Conditions) > 0 {
-		_ = json.Unmarshal(as.Conditions, &conditions)
+		if err := json.Unmarshal(as.Conditions, &conditions); err != nil {
+			// If unmarshal fails, use empty slice
+			conditions = []openapi.AdapterCondition{}
+		}
 	}
 
 	// Unmarshal Data
 	var data map[string]map[string]interface{}
 	if len(as.Data) > 0 {
-		_ = json.Unmarshal(as.Data, &data)
+		if err := json.Unmarshal(as.Data, &data); err != nil {
+			// If unmarshal fails, use empty map
+			data = make(map[string]map[string]interface{})
+		}
 	}
 
 	// Unmarshal Metadata
@@ -113,20 +119,30 @@ func AdapterStatusFromOpenAPICreate(
 		}
 	}
 
-	// Marshal Conditions
-	conditionsJSON, _ := json.Marshal(adapterConditions)
-
-	// Marshal Data
-	data := make(map[string]map[string]interface{})
-	if req.Data != nil {
-		data = req.Data
+	// Marshal Conditions - if this fails, it's a programming error
+	conditionsJSON, err := json.Marshal(adapterConditions)
+	if err != nil {
+		// Fallback to empty array JSON
+		// Log marshal failure - this indicates a programming error
+		// logger.Errorf("Failed to marshal adapter conditions: %v", err)
+		conditionsJSON = []byte("[]")
 	}
-	dataJSON, _ := json.Marshal(data)
+
+	dataJSON := []byte("{}") // default fallback
+
+	if req.Data != nil {
+		if b, err := json.Marshal(req.Data); err == nil {
+			dataJSON = b
+		}
+	}
 
 	// Marshal Metadata (if provided)
-	var metadataJSON datatypes.JSON
+	metadataJSON := []byte("{}") // safe fallback
+
 	if req.Metadata != nil {
-		metadataJSON, _ = json.Marshal(req.Metadata)
+		if b, err := json.Marshal(req.Metadata); err == nil {
+			metadataJSON = b
+		}
 	}
 
 	return &AdapterStatus{

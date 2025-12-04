@@ -108,7 +108,9 @@ func waitForNotification(l *pq.Listener, callback func(id string)) {
 		case <-time.After(10 * time.Second):
 			logger.V(10).Infof("Received no events on channel during interval. Pinging source")
 			go func() {
-				l.Ping()
+				if err := l.Ping(); err != nil {
+					logger.V(10).Infof("Ping failed: %v", err)
+				}
 			}()
 			return
 		}

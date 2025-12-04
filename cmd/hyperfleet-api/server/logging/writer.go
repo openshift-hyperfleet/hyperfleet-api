@@ -44,7 +44,7 @@ func (writer *loggingWriter) prepareRequestLog() (string, error) {
 
 func (writer *loggingWriter) prepareResponseLog(elapsed string) (string, error) {
 	info := &ResponseInfo{
-		Header:  writer.ResponseWriter.Header(),
+		Header:  writer.Header(),
 		Body:    writer.responseBody,
 		Status:  writer.responseStatus,
 		Elapsed: elapsed,

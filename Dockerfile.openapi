@@ -1,7 +1,8 @@
 FROM openapitools/openapi-generator-cli:v7.16.0
 
-RUN apt-get update
-RUN apt-get install -y make sudo git wget
+# -o APT::Sandbox::User=root is a workaround for rootless podman setgroups error in Prow env
+RUN apt-get -o APT::Sandbox::User=root update
+RUN apt-get -o APT::Sandbox::User=root install -y make sudo git wget
 
 # Install Go 1.24
 RUN wget https://go.dev/dl/go1.24.0.linux-amd64.tar.gz && \
