@@ -1,0 +1,5 @@
+# ignore all files
+*
+
+# but the openapi contract, if it changes, we need to regenerate go types
+!openapi/openapi.yaml

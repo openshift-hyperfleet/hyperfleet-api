@@ -10,11 +10,9 @@ RUN wget https://go.dev/dl/go1.24.0.linux-amd64.tar.gz && \
 
 RUN mkdir -p /local
 
-# Copy go.mod and go.sum first for better layer caching
-COPY go.mod go.sum /local/
 
 # Copy the rest of the project
-COPY . /local
+COPY openapi/openapi.yaml /local/openapi/openapi.yaml
 
 ENV PATH="/uhc/bin:/usr/local/go/bin:${PATH}"
 ENV GOPATH="/uhc"
@@ -30,6 +28,3 @@ RUN go install -a github.com/go-bindata/go-bindata/...@v3.1.2
 RUN bash /usr/local/bin/docker-entrypoint.sh generate -i /local/openapi/openapi.yaml -g go -o /local/pkg/api/openapi
 RUN rm /local/pkg/api/openapi/go.mod /local/pkg/api/openapi/go.sum
 RUN rm -r /local/pkg/api/openapi/test
-# Run go generate
-RUN go generate /local/cmd/hyperfleet-api/main.go
-RUN gofmt -w /local/pkg/api/openapi
