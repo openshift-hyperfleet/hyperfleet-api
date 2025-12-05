@@ -260,6 +260,48 @@ curl -X POST http://localhost:8000/api/hyperfleet/v1/clusters \
   }' | jq
 ```
 
+### Configuration
+
+HyperFleet API can be configured via environment variables:
+
+#### Schema Validation
+
+**`OPENAPI_SCHEMA_PATH`**
+- **Description**: Path to the OpenAPI specification file used for validating cluster and nodepool spec fields
+- **Default**: `openapi/openapi.yaml` (repository base schema)
+- **Required**: No (service will start with default schema if not specified)
+- **Usage**:
+  - **Local development**: Uses default repository schema
+  - **Production**: Set via Helm deployment to inject provider-specific schema from ConfigMap
+
+**Example:**
+```bash
+# Local development (uses default)
+./hyperfleet-api serve
+
+# Custom schema path
+export OPENAPI_SCHEMA_PATH=/path/to/custom/openapi.yaml
+./hyperfleet-api serve
+
+# Production (Helm sets this automatically)
+# OPENAPI_SCHEMA_PATH=/etc/hyperfleet/schemas/openapi.yaml
+```
+
+**How it works:**
+1. The schema validator loads the OpenAPI specification at startup
+2. When POST/PATCH requests are made to create or update resources, the `spec` field is validated against the schema
+3. Invalid specs return HTTP 400 with detailed field-level error messages
+4. Unknown resource types or missing schemas are gracefully handled (validation skipped)
+
+**Provider-specific schemas:**
+In production deployments, cloud providers can inject their own OpenAPI schemas via Helm:
+```bash
+helm install hyperfleet-api ./chart \
+  --set-file provider.schema=gcp-schema.yaml
+```
+
+The injected schema is mounted at `/etc/hyperfleet/schemas/openapi.yaml` and automatically used for validation.
+
 ### Testing
 
 ```bash

@@ -2,9 +2,14 @@ package integration
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"os"
+	"strings"
 	"testing"
+	"time"
 
 	. "github.com/onsi/gomega"
 	"gopkg.in/resty.v1"
@@ -274,4 +279,346 @@ func TestClusterBoundaryValues(t *testing.T) {
 	Expect(err).NotTo(HaveOccurred(), "Should accept unicode in name")
 	Expect(resp.StatusCode).To(Equal(http.StatusCreated))
 	Expect(unicodeNameCluster.Name).To(Equal("テスト-δοκιμή-🚀"))
+}
+
+// TestClusterSchemaValidation tests schema validation for cluster specs
+// Note: This test validates against the base openapi.yaml schema which has an empty ClusterSpec
+// The base schema accepts any JSON object, so this test mainly verifies the middleware is working
+func TestClusterSchemaValidation(t *testing.T) {
+	RegisterTestingT(t)
+	h, client := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+
+	// Test 1: Valid cluster spec (base schema accepts any object)
+	validSpec := map[string]interface{}{
+		"region":   "us-central1",
+		"provider": "gcp",
+	}
+
+	validInput := openapi.ClusterCreateRequest{
+		Kind: "Cluster",
+		Name: "schema-valid-test",
+		Spec: validSpec,
+	}
+
+	cluster, resp, err := client.DefaultAPI.PostCluster(ctx).ClusterCreateRequest(validInput).Execute()
+	Expect(err).NotTo(HaveOccurred(), "Valid spec should be accepted")
+	Expect(resp.StatusCode).To(Equal(http.StatusCreated))
+	Expect(*cluster.Id).NotTo(BeEmpty())
+
+	// Test 2: Invalid spec type (spec must be object, not string)
+	// This should fail even with base schema
+	// Can't use the generated struct because Spec is typed as map[string]interface{}
+	// So we send raw JSON request
+	invalidTypeJSON := `{
+		"kind": "Cluster",
+		"name": "schema-invalid-type",
+		"spec": "invalid-string-spec"
+	}`
+
+	jwtToken := ctx.Value(openapi.ContextAccessToken)
+
+	resp2, err := resty.R().
+		SetHeader("Content-Type", "application/json").
+		SetHeader("Authorization", fmt.Sprintf("Bearer %s", jwtToken)).
+		SetBody(invalidTypeJSON).
+		Post(h.RestURL("/clusters"))
+
+	if resp2.StatusCode() == http.StatusBadRequest {
+		t.Logf("Schema validation correctly rejected invalid spec type")
+		// Verify error response contains details
+		var errorResponse openapi.Error
+		json.Unmarshal(resp2.Body(), &errorResponse)
+		Expect(errorResponse.Code).ToNot(BeNil())
+		Expect(errorResponse.Reason).ToNot(BeNil())
+	} else {
+		t.Logf("Base schema may accept any spec type, status: %d", resp2.StatusCode())
+	}
+
+	// Test 3: Empty spec (should be valid as spec is optional in base schema)
+	emptySpecInput := openapi.ClusterCreateRequest{
+		Kind: "Cluster",
+		Name: "schema-empty-spec",
+		Spec: map[string]interface{}{},
+	}
+
+	cluster3, resp3, err := client.DefaultAPI.PostCluster(ctx).ClusterCreateRequest(emptySpecInput).Execute()
+	Expect(err).NotTo(HaveOccurred(), "Empty spec should be accepted by base schema")
+	Expect(resp3.StatusCode).To(Equal(http.StatusCreated))
+	Expect(*cluster3.Id).NotTo(BeEmpty())
+}
+
+// TestClusterSchemaValidationWithProviderSchema tests schema validation with a provider-specific schema
+// This test will only work if OPENAPI_SCHEMA_PATH is set to a provider schema (e.g., gcp_openapi.yaml)
+// When using the base schema, this test will be skipped
+func TestClusterSchemaValidationWithProviderSchema(t *testing.T) {
+	RegisterTestingT(t)
+
+	// Check if we're using a provider schema or base schema
+	// If base schema, skip detailed validation tests
+	schemaPath := os.Getenv("OPENAPI_SCHEMA_PATH")
+	if schemaPath == "" || strings.HasSuffix(schemaPath, "openapi/openapi.yaml") {
+		t.Skip("Skipping provider schema validation test - using base schema")
+		return
+	}
+
+	h, client := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+
+	// Test with provider-specific schema (assumes GCP schema for this example)
+	// If using a different provider, adjust the spec accordingly
+
+	// Test 1: Invalid spec - missing required field
+	invalidSpec := map[string]interface{}{
+		"gcp": map[string]interface{}{
+			// Missing required "region" field
+			"zone": "us-central1-a",
+		},
+	}
+
+	invalidInput := openapi.ClusterCreateRequest{
+		Kind: "Cluster",
+		Name: "provider-schema-invalid",
+		Spec: invalidSpec,
+	}
+
+	_, resp, err := client.DefaultAPI.PostCluster(ctx).ClusterCreateRequest(invalidInput).Execute()
+	Expect(err).To(HaveOccurred(), "Should reject spec with missing required field")
+	Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
+	defer resp.Body.Close()
+
+	// Parse error response to verify field-level details
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("failed to read response body: %v", err)
+	}
+
+	var errorResponse openapi.Error
+	if err := json.Unmarshal(bodyBytes, &errorResponse); err != nil {
+		t.Fatalf("failed to unmarshal error response body: %v", err)
+	}
+
+	Expect(errorResponse.Code).ToNot(BeNil())
+	Expect(*errorResponse.Code).To(Equal("hyperfleet-8")) // Validation error code
+	Expect(errorResponse.Details).ToNot(BeEmpty(), "Should include field-level error details")
+
+	// Verify details contain field path
+	foundRegionError := false
+	for _, detail := range errorResponse.Details {
+		if detail.Field != nil && strings.Contains(*detail.Field, "region") {
+			foundRegionError = true
+			break
+		}
+	}
+	Expect(foundRegionError).To(BeTrue(), "Error details should mention missing 'region' field")
+}
+
+// TestClusterSchemaValidationErrorDetails tests that validation errors include detailed field information
+func TestClusterSchemaValidationErrorDetails(t *testing.T) {
+	RegisterTestingT(t)
+	h, _ := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+
+	// Send request with spec field as wrong type (not an object)
+	invalidTypeRequest := map[string]interface{}{
+		"kind": "Cluster",
+		"name": "error-details-test",
+		"spec": "not-an-object", // Invalid type
+	}
+
+	body, _ := json.Marshal(invalidTypeRequest)
+	jwtToken := ctx.Value(openapi.ContextAccessToken)
+
+	resp, err := resty.R().
+		SetHeader("Content-Type", "application/json").
+		SetHeader("Authorization", fmt.Sprintf("Bearer %s", jwtToken)).
+		SetBody(body).
+		Post(h.RestURL("/clusters"))
+
+	Expect(err).To(BeNil())
+
+	// Log response for debugging
+	t.Logf("Response status: %d, body: %s", resp.StatusCode(), string(resp.Body()))
+
+	Expect(resp.StatusCode()).To(Equal(http.StatusBadRequest), "Should return 400 for invalid spec type")
+
+	// Parse error response
+	var errorResponse openapi.Error
+	if err := json.Unmarshal(resp.Body(), &errorResponse); err != nil {
+		t.Fatalf("failed to unmarshal error response: %v, response body: %s", err, string(resp.Body()))
+	}
+
+	// Verify error structure
+	Expect(errorResponse.Kind).ToNot(BeNil())
+	Expect(*errorResponse.Kind).To(Equal("Error"))
+
+	Expect(errorResponse.Code).ToNot(BeNil())
+	// Both hyperfleet-8 (validation error) and hyperfleet-17 (invalid request format) are acceptable
+	// as they both indicate the spec field is invalid
+	validCodes := []string{"hyperfleet-8", "hyperfleet-17"}
+	Expect(validCodes).To(ContainElement(*errorResponse.Code), "Expected validation or format error code")
+
+	Expect(errorResponse.Reason).ToNot(BeNil())
+	Expect(*errorResponse.Reason).To(ContainSubstring("spec"))
+
+	Expect(errorResponse.Href).ToNot(BeNil())
+	Expect(errorResponse.OperationId).ToNot(BeNil())
+
+	t.Logf("Error response: code=%s, reason=%s", *errorResponse.Code, *errorResponse.Reason)
+}
+
+// TestClusterList_DefaultSorting tests that clusters are sorted by created_time desc by default
+func TestClusterList_DefaultSorting(t *testing.T) {
+	h, client := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+
+	// Create 3 clusters with delays to ensure different timestamps
+	var createdClusters []openapi.Cluster
+	for i := 1; i <= 3; i++ {
+		clusterInput := openapi.ClusterCreateRequest{
+			Kind: "Cluster",
+			Name: fmt.Sprintf("sort-test-%d-%s", i, h.NewID()),
+			Spec: map[string]interface{}{"test": fmt.Sprintf("value-%d", i)},
+		}
+
+		cluster, _, err := client.DefaultAPI.PostCluster(ctx).ClusterCreateRequest(clusterInput).Execute()
+		Expect(err).NotTo(HaveOccurred(), "Failed to create cluster %d", i)
+		createdClusters = append(createdClusters, *cluster)
+
+		// Add 100ms delay to ensure different created_time
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	// List clusters without orderBy parameter - should default to created_time desc
+	list, _, err := client.DefaultAPI.GetClusters(ctx).Execute()
+	Expect(err).NotTo(HaveOccurred(), "Failed to list clusters")
+	Expect(len(list.Items)).To(BeNumerically(">=", 3), "Should have at least 3 clusters")
+
+	// Find our test clusters in the response
+	var testClusters []openapi.Cluster
+	for _, item := range list.Items {
+		for _, created := range createdClusters {
+			if *item.Id == *created.Id {
+				testClusters = append(testClusters, item)
+				break
+			}
+		}
+	}
+
+	Expect(len(testClusters)).To(Equal(3), "Should find all 3 test clusters")
+
+	// Verify they are sorted by created_time desc (newest first)
+	// testClusters should be in reverse creation order
+	Expect(*testClusters[0].Id).To(Equal(*createdClusters[2].Id), "First cluster should be the last created")
+	Expect(*testClusters[1].Id).To(Equal(*createdClusters[1].Id), "Second cluster should be the middle created")
+	Expect(*testClusters[2].Id).To(Equal(*createdClusters[0].Id), "Third cluster should be the first created")
+
+	t.Logf("✓ Default sorting works: clusters sorted by created_time desc")
+}
+
+// TestClusterList_OrderByName tests custom sorting by name
+func TestClusterList_OrderByName(t *testing.T) {
+	h, client := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+
+	// Create clusters with names that will sort alphabetically
+	testPrefix := fmt.Sprintf("name-sort-%s", h.NewID())
+	names := []string{
+		fmt.Sprintf("%s-charlie", testPrefix),
+		fmt.Sprintf("%s-alpha", testPrefix),
+		fmt.Sprintf("%s-bravo", testPrefix),
+	}
+
+	var createdClusters []openapi.Cluster
+	for _, name := range names {
+		clusterInput := openapi.ClusterCreateRequest{
+			Kind: "Cluster",
+			Name: name,
+			Spec: map[string]interface{}{"test": "value"},
+		}
+
+		cluster, _, err := client.DefaultAPI.PostCluster(ctx).ClusterCreateRequest(clusterInput).Execute()
+		Expect(err).NotTo(HaveOccurred(), "Failed to create cluster %s", name)
+		createdClusters = append(createdClusters, *cluster)
+	}
+
+	// List with orderBy=name asc
+	list, _, err := client.DefaultAPI.GetClusters(ctx).OrderBy("name asc").Execute()
+	Expect(err).NotTo(HaveOccurred(), "Failed to list clusters with orderBy")
+	Expect(len(list.Items)).To(BeNumerically(">=", 3), "Should have at least 3 clusters")
+
+	// Find our test clusters in the response
+	var testClusters []openapi.Cluster
+	for _, item := range list.Items {
+		if strings.HasPrefix(item.Name, testPrefix) {
+			testClusters = append(testClusters, item)
+		}
+	}
+
+	Expect(len(testClusters)).To(Equal(3), "Should find all 3 test clusters")
+
+	// Verify they are sorted by name asc (alphabetically)
+	Expect(testClusters[0].Name).To(ContainSubstring("alpha"), "First should be alpha")
+	Expect(testClusters[1].Name).To(ContainSubstring("bravo"), "Second should be bravo")
+	Expect(testClusters[2].Name).To(ContainSubstring("charlie"), "Third should be charlie")
+
+	t.Logf("✓ Custom sorting works: clusters sorted by name asc")
+}
+
+// TestClusterList_OrderByNameDesc tests sorting by name descending
+func TestClusterList_OrderByNameDesc(t *testing.T) {
+	h, client := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+
+	// Create clusters with names that will sort alphabetically
+	testPrefix := fmt.Sprintf("desc-sort-%s", h.NewID())
+	names := []string{
+		fmt.Sprintf("%s-alpha", testPrefix),
+		fmt.Sprintf("%s-charlie", testPrefix),
+		fmt.Sprintf("%s-bravo", testPrefix),
+	}
+
+	for _, name := range names {
+		clusterInput := openapi.ClusterCreateRequest{
+			Kind: "Cluster",
+			Name: name,
+			Spec: map[string]interface{}{"test": "value"},
+		}
+
+		_, _, err := client.DefaultAPI.PostCluster(ctx).ClusterCreateRequest(clusterInput).Execute()
+		Expect(err).NotTo(HaveOccurred(), "Failed to create cluster %s", name)
+	}
+
+	// List with orderBy=name desc
+	list, _, err := client.DefaultAPI.GetClusters(ctx).OrderBy("name desc").Execute()
+	Expect(err).NotTo(HaveOccurred(), "Failed to list clusters with orderBy desc")
+
+	// Find our test clusters in the response
+	var testClusters []openapi.Cluster
+	for _, item := range list.Items {
+		if strings.HasPrefix(item.Name, testPrefix) {
+			testClusters = append(testClusters, item)
+		}
+	}
+
+	Expect(len(testClusters)).To(Equal(3), "Should find all 3 test clusters")
+
+	// Verify they are sorted by name desc (reverse alphabetically)
+	Expect(testClusters[0].Name).To(ContainSubstring("charlie"), "First should be charlie")
+	Expect(testClusters[1].Name).To(ContainSubstring("bravo"), "Second should be bravo")
+	Expect(testClusters[2].Name).To(ContainSubstring("alpha"), "Third should be alpha")
+
+	t.Logf("✓ Descending sorting works: clusters sorted by name desc")
 }

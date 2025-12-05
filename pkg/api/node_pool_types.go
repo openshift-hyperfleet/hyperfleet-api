@@ -1,18 +1,16 @@
 package api
 
 import (
-	"encoding/json"
 	"fmt"
 	"time"
 
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 )
 
 // NodePool database model
 type NodePool struct {
-	Meta // Contains ID, CreatedAt, UpdatedAt, DeletedAt
+	Meta // Contains ID, CreatedTime, UpdatedTime, DeletedAt
 
 	// Core fields
 	Kind   string         `json:"kind" gorm:"default:'NodePool'"`
@@ -53,7 +51,10 @@ func (l NodePoolList) Index() NodePoolIndex {
 }
 
 func (np *NodePool) BeforeCreate(tx *gorm.DB) error {
+	now := time.Now()
 	np.ID = NewID()
+	np.CreatedTime = now
+	np.UpdatedTime = now
 	if np.Kind == "" {
 		np.Kind = "NodePool"
 	}
@@ -61,7 +62,7 @@ func (np *NodePool) BeforeCreate(tx *gorm.DB) error {
 		np.OwnerKind = "Cluster"
 	}
 	if np.StatusPhase == "" {
-		np.StatusPhase = "NotReady"
+		np.StatusPhase = string(PhaseNotReady)
 	}
 	// Set Href if not already set
 	if np.Href == "" {
@@ -74,128 +75,9 @@ func (np *NodePool) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-// ToOpenAPI converts to OpenAPI model
-func (np *NodePool) ToOpenAPI() *openapi.NodePool {
-	// Unmarshal Spec
-	var spec map[string]interface{}
-	if len(np.Spec) > 0 {
-		if err := json.Unmarshal(np.Spec, &spec); err != nil {
-			spec = make(map[string]interface{})
-		}
-	}
-
-	// Unmarshal Labels
-	var labels map[string]string
-	if len(np.Labels) > 0 {
-		if err := json.Unmarshal(np.Labels, &labels); err != nil {
-			labels = make(map[string]string)
-		}
-	}
-
-	// Unmarshal StatusConditions (stored as ResourceCondition in DB)
-	var statusConditions []openapi.ResourceCondition
-	if len(np.StatusConditions) > 0 {
-		if err := json.Unmarshal(np.StatusConditions, &statusConditions); err != nil {
-			statusConditions = []openapi.ResourceCondition{}
-		}
-	}
-
-	// Generate Href if not set (fallback)
-	href := np.Href
-	if href == "" {
-		href = fmt.Sprintf("/api/hyperfleet/v1/clusters/%s/nodepools/%s", np.OwnerID, np.ID)
-	}
-
-	// Generate OwnerHref if not set (fallback)
-	ownerHref := np.OwnerHref
-	if ownerHref == "" {
-		ownerHref = "/api/hyperfleet/v1/clusters/" + np.OwnerID
-	}
-
-	kind := np.Kind
-	nodePool := &openapi.NodePool{
-		Id:     &np.ID,
-		Kind:   &kind,
-		Href:   &href,
-		Name:   np.Name,
-		Spec:   spec,
-		Labels: &labels,
-		OwnerReferences: openapi.ObjectReference{
-			Id:   &np.OwnerID,
-			Kind: &np.OwnerKind,
-			Href: &ownerHref,
-		},
-		CreatedTime: np.CreatedTime,
-		UpdatedTime: np.UpdatedTime,
-		CreatedBy:   np.CreatedBy,
-		UpdatedBy:   np.UpdatedBy,
-	}
-
-	// Build NodePoolStatus - set required fields with defaults if nil
-	lastTransitionTime := time.Time{}
-	if np.StatusLastTransitionTime != nil {
-		lastTransitionTime = *np.StatusLastTransitionTime
-	}
-
-	lastUpdatedTime := time.Time{}
-	if np.StatusLastUpdatedTime != nil {
-		lastUpdatedTime = *np.StatusLastUpdatedTime
-	}
-
-	nodePool.Status = openapi.NodePoolStatus{
-		Phase:              np.StatusPhase,
-		ObservedGeneration: np.StatusObservedGeneration,
-		Conditions:         statusConditions,
-		LastTransitionTime: lastTransitionTime,
-		LastUpdatedTime:    lastUpdatedTime,
-	}
-
-	return nodePool
-}
-
-// NodePoolFromOpenAPICreate creates GORM model from OpenAPI CreateRequest
-func NodePoolFromOpenAPICreate(req *openapi.NodePoolCreateRequest, ownerID, createdBy string) *NodePool {
-	// Marshal Spec
-	specJSON, err := json.Marshal(req.Spec)
-	if err != nil {
-		//logger.Errorf("Failed to marshal NodePool spec: %v", err)
-		specJSON = []byte("{}")
-	}
-
-	// Marshal Labels
-	labels := make(map[string]string)
-	if req.Labels != nil {
-		labels = *req.Labels
-	}
-	labelsJSON, err := json.Marshal(labels)
-	if err != nil {
-		labelsJSON = []byte("{}")
-	}
-
-	// Marshal empty StatusConditions
-	statusConditionsJSON, err := json.Marshal([]openapi.ResourceCondition{})
-	if err != nil {
-		statusConditionsJSON = []byte("[]")
-	}
-
-	kind := "NodePool"
-	if req.Kind != nil {
-		kind = *req.Kind
-	}
-
-	return &NodePool{
-		Kind:                     kind,
-		Name:                     req.Name,
-		Spec:                     specJSON,
-		Labels:                   labelsJSON,
-		OwnerID:                  ownerID,
-		OwnerKind:                "Cluster",
-		StatusPhase:              "NotReady",
-		StatusObservedGeneration: 0,
-		StatusConditions:         statusConditionsJSON,
-		CreatedBy:                createdBy,
-		UpdatedBy:                createdBy,
-	}
+func (np *NodePool) BeforeUpdate(tx *gorm.DB) error {
+	np.UpdatedTime = time.Now()
+	return nil
 }
 
 type NodePoolPatchRequest struct {

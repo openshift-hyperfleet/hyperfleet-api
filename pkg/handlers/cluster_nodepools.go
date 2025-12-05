@@ -139,8 +139,11 @@ func (h clusterNodePoolsHandler) Create(w http.ResponseWriter, r *http.Request) 
 				return nil, err
 			}
 
-			// Use the NodePoolFromOpenAPICreate helper to convert the request
-			nodePoolModel := api.NodePoolFromOpenAPICreate(&req, cluster.ID, "system")
+			// Use the presenters.ConvertNodePool helper to convert the request
+			nodePoolModel, convErr := presenters.ConvertNodePool(&req, cluster.ID, "system")
+			if convErr != nil {
+				return nil, errors.GeneralError("Failed to convert nodepool: %v", convErr)
+			}
 
 			// Create nodepool
 			nodePoolModel, err = h.nodePoolService.Create(ctx, nodePoolModel)

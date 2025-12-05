@@ -1,17 +1,15 @@
 package api
 
 import (
-	"encoding/json"
 	"time"
 
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 )
 
 // Cluster database model
 type Cluster struct {
-	Meta // Contains ID, CreatedAt, UpdatedAt, DeletedAt
+	Meta // Contains ID, CreatedTime, UpdatedTime, DeletedTime
 
 	// Core fields
 	Kind   string         `json:"kind" gorm:"default:'Cluster'"`
@@ -47,7 +45,10 @@ func (l ClusterList) Index() ClusterIndex {
 }
 
 func (c *Cluster) BeforeCreate(tx *gorm.DB) error {
+	now := time.Now()
 	c.ID = NewID()
+	c.CreatedTime = now
+	c.UpdatedTime = now
 	if c.Kind == "" {
 		c.Kind = "Cluster"
 	}
@@ -55,7 +56,7 @@ func (c *Cluster) BeforeCreate(tx *gorm.DB) error {
 		c.Generation = 1
 	}
 	if c.StatusPhase == "" {
-		c.StatusPhase = "NotReady"
+		c.StatusPhase = string(PhaseNotReady)
 	}
 	// Set Href if not already set
 	if c.Href == "" {
@@ -64,108 +65,9 @@ func (c *Cluster) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-// ToOpenAPI converts to OpenAPI model
-func (c *Cluster) ToOpenAPI() *openapi.Cluster {
-	// Unmarshal Spec
-	spec := make(map[string]interface{})
-	if len(c.Spec) > 0 {
-		_ = json.Unmarshal(c.Spec, &spec)
-	}
-
-	// Unmarshal Labels
-	var labels map[string]string
-	if len(c.Labels) > 0 {
-		if err := json.Unmarshal(c.Labels, &labels); err != nil {
-			labels = make(map[string]string)
-		}
-	}
-
-	// Unmarshal StatusConditions (stored as ResourceCondition in DB)
-	var statusConditions []openapi.ResourceCondition
-	if len(c.StatusConditions) > 0 {
-		if err := json.Unmarshal(c.StatusConditions, &statusConditions); err != nil {
-			statusConditions = []openapi.ResourceCondition{}
-		}
-	}
-
-	// Generate Href if not set (fallback)
-	href := c.Href
-	if href == "" {
-		href = "/api/hyperfleet/v1/clusters/" + c.ID
-	}
-
-	cluster := &openapi.Cluster{
-		Id:          &c.ID,
-		Kind:        c.Kind,
-		Href:        &href,
-		Name:        c.Name,
-		Spec:        spec,
-		Labels:      &labels,
-		Generation:  c.Generation,
-		CreatedTime: c.CreatedTime,
-		UpdatedTime: c.UpdatedTime,
-		CreatedBy:   c.CreatedBy,
-		UpdatedBy:   c.UpdatedBy,
-	}
-
-	// Build ClusterStatus - set required fields with defaults if nil
-	lastTransitionTime := time.Time{}
-	if c.StatusLastTransitionTime != nil {
-		lastTransitionTime = *c.StatusLastTransitionTime
-	}
-
-	lastUpdatedTime := time.Time{}
-	if c.StatusLastUpdatedTime != nil {
-		lastUpdatedTime = *c.StatusLastUpdatedTime
-	}
-
-	cluster.Status = openapi.ClusterStatus{
-		Phase:              c.StatusPhase,
-		ObservedGeneration: c.StatusObservedGeneration,
-		Conditions:         statusConditions,
-		LastTransitionTime: lastTransitionTime,
-		LastUpdatedTime:    lastUpdatedTime,
-	}
-
-	return cluster
-}
-
-// ClusterFromOpenAPICreate creates GORM model from OpenAPI CreateRequest
-func ClusterFromOpenAPICreate(req *openapi.ClusterCreateRequest, createdBy string) *Cluster {
-	// Marshal Spec
-	specJSON, err := json.Marshal(req.Spec)
-	if err != nil {
-		specJSON = []byte("{}")
-	}
-
-	// Marshal Labels
-	labels := make(map[string]string)
-	if req.Labels != nil {
-		labels = *req.Labels
-	}
-	labelsJSON, err := json.Marshal(labels)
-	if err != nil {
-		labelsJSON = []byte("{}")
-	}
-
-	// Marshal empty StatusConditions
-	statusConditionsJSON, err := json.Marshal([]openapi.ResourceCondition{})
-	if err != nil {
-		statusConditionsJSON = []byte("[]")
-	}
-
-	return &Cluster{
-		Kind:                     req.Kind,
-		Name:                     req.Name,
-		Spec:                     specJSON,
-		Labels:                   labelsJSON,
-		Generation:               1,
-		StatusPhase:              "NotReady",
-		StatusObservedGeneration: 0,
-		StatusConditions:         statusConditionsJSON,
-		CreatedBy:                createdBy,
-		UpdatedBy:                createdBy,
-	}
+func (c *Cluster) BeforeUpdate(tx *gorm.DB) error {
+	c.UpdatedTime = time.Now()
+	return nil
 }
 
 type ClusterPatchRequest struct {

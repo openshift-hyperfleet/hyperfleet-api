@@ -64,6 +64,12 @@ type ServiceErrorCode int
 
 type ServiceErrors []ServiceError
 
+// ValidationDetail represents a single field validation error
+type ValidationDetail struct {
+	Field string `json:"field"`
+	Error string `json:"error"`
+}
+
 func Find(code ServiceErrorCode) (bool, *ServiceError) {
 	for _, err := range Errors() {
 		if err.Code == code {
@@ -75,19 +81,19 @@ func Find(code ServiceErrorCode) (bool, *ServiceError) {
 
 func Errors() ServiceErrors {
 	return ServiceErrors{
-		ServiceError{ErrorInvalidToken, "Invalid token provided", http.StatusForbidden},
-		ServiceError{ErrorForbidden, "Forbidden to perform this action", http.StatusForbidden},
-		ServiceError{ErrorConflict, "An entity with the specified unique values already exists", http.StatusConflict},
-		ServiceError{ErrorNotFound, "Resource not found", http.StatusNotFound},
-		ServiceError{ErrorValidation, "General validation failure", http.StatusBadRequest},
-		ServiceError{ErrorGeneral, "Unspecified error", http.StatusInternalServerError},
-		ServiceError{ErrorNotImplemented, "HTTP Method not implemented for this endpoint", http.StatusMethodNotAllowed},
-		ServiceError{ErrorUnauthorized, "Account is unauthorized to perform this action", http.StatusForbidden},
-		ServiceError{ErrorUnauthenticated, "Account authentication could not be verified", http.StatusUnauthorized},
-		ServiceError{ErrorMalformedRequest, "Unable to read request body", http.StatusBadRequest},
-		ServiceError{ErrorBadRequest, "Bad request", http.StatusBadRequest},
-		ServiceError{ErrorFailedToParseSearch, "Failed to parse search query", http.StatusBadRequest},
-		ServiceError{ErrorDatabaseAdvisoryLock, "Database advisory lock error", http.StatusInternalServerError},
+		{Code: ErrorInvalidToken, Reason: "Invalid token provided", HttpCode: http.StatusForbidden},
+		{Code: ErrorForbidden, Reason: "Forbidden to perform this action", HttpCode: http.StatusForbidden},
+		{Code: ErrorConflict, Reason: "An entity with the specified unique values already exists", HttpCode: http.StatusConflict},
+		{Code: ErrorNotFound, Reason: "Resource not found", HttpCode: http.StatusNotFound},
+		{Code: ErrorValidation, Reason: "General validation failure", HttpCode: http.StatusBadRequest},
+		{Code: ErrorGeneral, Reason: "Unspecified error", HttpCode: http.StatusInternalServerError},
+		{Code: ErrorNotImplemented, Reason: "HTTP Method not implemented for this endpoint", HttpCode: http.StatusMethodNotAllowed},
+		{Code: ErrorUnauthorized, Reason: "Account is unauthorized to perform this action", HttpCode: http.StatusForbidden},
+		{Code: ErrorUnauthenticated, Reason: "Account authentication could not be verified", HttpCode: http.StatusUnauthorized},
+		{Code: ErrorMalformedRequest, Reason: "Unable to read request body", HttpCode: http.StatusBadRequest},
+		{Code: ErrorBadRequest, Reason: "Bad request", HttpCode: http.StatusBadRequest},
+		{Code: ErrorFailedToParseSearch, Reason: "Failed to parse search query", HttpCode: http.StatusBadRequest},
+		{Code: ErrorDatabaseAdvisoryLock, Reason: "Database advisory lock error", HttpCode: http.StatusInternalServerError},
 	}
 }
 
@@ -98,6 +104,8 @@ type ServiceError struct {
 	Reason string
 	// HttopCode is the HttpCode associated with the error when the error is returned as an API response
 	HttpCode int
+	// Details contains field-level validation errors (optional)
+	Details []ValidationDetail
 }
 
 // New Reason can be a string with format verbs, which will be replace by the specified values
@@ -107,7 +115,11 @@ func New(code ServiceErrorCode, reason string, values ...interface{}) *ServiceEr
 	exists, err := Find(code)
 	if !exists {
 		glog.Errorf("Undefined error code used: %d", code)
-		err = &ServiceError{ErrorGeneral, "Unspecified error", 500}
+		err = &ServiceError{
+			Code:     ErrorGeneral,
+			Reason:   "Unspecified error",
+			HttpCode: 500,
+		}
 	}
 
 	// If the reason is unspecified, use the default
@@ -139,7 +151,7 @@ func (e *ServiceError) IsForbidden() bool {
 }
 
 func (e *ServiceError) AsOpenapiError(operationID string) openapi.Error {
-	return openapi.Error{
+	openapiErr := openapi.Error{
 		Kind:        openapi.PtrString("Error"),
 		Id:          openapi.PtrString(strconv.Itoa(int(e.Code))),
 		Href:        Href(e.Code),
@@ -147,6 +159,20 @@ func (e *ServiceError) AsOpenapiError(operationID string) openapi.Error {
 		Reason:      openapi.PtrString(e.Reason),
 		OperationId: openapi.PtrString(operationID),
 	}
+
+	// Add validation details if present
+	if len(e.Details) > 0 {
+		details := make([]openapi.ErrorDetailsInner, len(e.Details))
+		for i, detail := range e.Details {
+			details[i] = openapi.ErrorDetailsInner{
+				Field: openapi.PtrString(detail.Field),
+				Error: openapi.PtrString(detail.Error),
+			}
+		}
+		openapiErr.Details = details
+	}
+
+	return openapiErr
 }
 
 func CodeStr(code ServiceErrorCode) *string {
@@ -187,6 +213,13 @@ func Conflict(reason string, values ...interface{}) *ServiceError {
 
 func Validation(reason string, values ...interface{}) *ServiceError {
 	return New(ErrorValidation, reason, values...)
+}
+
+// ValidationWithDetails creates a validation error with field-level details
+func ValidationWithDetails(reason string, details []ValidationDetail) *ServiceError {
+	err := New(ErrorValidation, "%s", reason)
+	err.Details = details
+	return err
 }
 
 func MalformedRequest(reason string, values ...interface{}) *ServiceError {

@@ -5,8 +5,8 @@ import (
 
 	"github.com/gorilla/mux"
 
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/presenters"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/services"
@@ -41,7 +41,7 @@ func (h clusterStatusHandler) List(w http.ResponseWriter, r *http.Request) {
 			// Convert to OpenAPI models
 			items := make([]openapi.AdapterStatus, 0, len(adapterStatuses))
 			for _, as := range adapterStatuses {
-				items = append(items, *as.ToOpenAPI())
+				items = append(items, presenters.PresentAdapterStatus(as))
 			}
 
 			// Return list response with pagination metadata
@@ -80,7 +80,10 @@ func (h clusterStatusHandler) Create(w http.ResponseWriter, r *http.Request) {
 			}
 
 			// Create adapter status from request
-			newStatus := api.AdapterStatusFromOpenAPICreate("Cluster", clusterID, &req)
+			newStatus, convErr := presenters.ConvertAdapterStatus("Cluster", clusterID, &req)
+			if convErr != nil {
+				return nil, errors.GeneralError("Failed to convert adapter status: %v", convErr)
+			}
 
 			// Upsert (create or update based on resource_type + resource_id + adapter)
 			adapterStatus, err := h.adapterStatusService.Upsert(ctx, newStatus)
@@ -95,7 +98,8 @@ func (h clusterStatusHandler) Create(w http.ResponseWriter, r *http.Request) {
 				log.Extra("cluster_id", clusterID).Extra("error", aggregateErr).Warning("Failed to aggregate cluster status")
 			}
 
-			return adapterStatus.ToOpenAPI(), nil
+			status := presenters.PresentAdapterStatus(adapterStatus)
+			return &status, nil
 		},
 		handleError,
 	}
