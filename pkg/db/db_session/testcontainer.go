@@ -50,8 +50,7 @@ func (f *Testcontainer) Init(config *config.DatabaseConfig) {
 		postgres.WithUsername(config.Username),
 		postgres.WithPassword(config.Password),
 		testcontainers.WithWaitStrategy(
-			wait.ForLog("database system is ready to accept connections").
-				WithOccurrence(2).
+			wait.ForListeningPort("5432/tcp").
 				WithStartupTimeout(60*time.Second)),
 	)
 	if err != nil {

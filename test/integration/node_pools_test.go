@@ -79,6 +79,7 @@ func TestNodePoolPost(t *testing.T) {
 		Post(h.RestURL(fmt.Sprintf("/clusters/%s/nodepools", cluster.ID)))
 
 	Expect(restyResp.StatusCode()).To(Equal(http.StatusBadRequest))
+	Expect(err).NotTo(HaveOccurred(), "Error posting object:  %v", err)
 }
 
 // TestNodePoolPatch is disabled because PATCH endpoints are not implemented

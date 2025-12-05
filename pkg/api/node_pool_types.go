@@ -79,19 +79,25 @@ func (np *NodePool) ToOpenAPI() *openapi.NodePool {
 	// Unmarshal Spec
 	var spec map[string]interface{}
 	if len(np.Spec) > 0 {
-		_ = json.Unmarshal(np.Spec, &spec)
+		if err := json.Unmarshal(np.Spec, &spec); err != nil {
+			spec = make(map[string]interface{})
+		}
 	}
 
 	// Unmarshal Labels
 	var labels map[string]string
 	if len(np.Labels) > 0 {
-		_ = json.Unmarshal(np.Labels, &labels)
+		if err := json.Unmarshal(np.Labels, &labels); err != nil {
+			labels = make(map[string]string)
+		}
 	}
 
-	// Unmarshal StatusConditions
+	// Unmarshal StatusConditions (stored as ResourceCondition in DB)
 	var statusConditions []openapi.ResourceCondition
 	if len(np.StatusConditions) > 0 {
-		_ = json.Unmarshal(np.StatusConditions, &statusConditions)
+		if err := json.Unmarshal(np.StatusConditions, &statusConditions); err != nil {
+			statusConditions = []openapi.ResourceCondition{}
+		}
 	}
 
 	// Generate Href if not set (fallback)
@@ -150,17 +156,27 @@ func (np *NodePool) ToOpenAPI() *openapi.NodePool {
 // NodePoolFromOpenAPICreate creates GORM model from OpenAPI CreateRequest
 func NodePoolFromOpenAPICreate(req *openapi.NodePoolCreateRequest, ownerID, createdBy string) *NodePool {
 	// Marshal Spec
-	specJSON, _ := json.Marshal(req.Spec)
+	specJSON, err := json.Marshal(req.Spec)
+	if err != nil {
+		//logger.Errorf("Failed to marshal NodePool spec: %v", err)
+		specJSON = []byte("{}")
+	}
 
 	// Marshal Labels
 	labels := make(map[string]string)
 	if req.Labels != nil {
 		labels = *req.Labels
 	}
-	labelsJSON, _ := json.Marshal(labels)
+	labelsJSON, err := json.Marshal(labels)
+	if err != nil {
+		labelsJSON = []byte("{}")
+	}
 
 	// Marshal empty StatusConditions
-	statusConditionsJSON, _ := json.Marshal([]openapi.ResourceCondition{})
+	statusConditionsJSON, err := json.Marshal([]openapi.ResourceCondition{})
+	if err != nil {
+		statusConditionsJSON = []byte("[]")
+	}
 
 	kind := "NodePool"
 	if req.Kind != nil {

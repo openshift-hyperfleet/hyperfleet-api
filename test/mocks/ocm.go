@@ -59,7 +59,7 @@ func (m *OCMAuthzValidatorMock) AccessReview(ctx context.Context, username, acti
 	return true, nil
 }
 
-func (m OCMAuthzValidatorMock) Reset() {
+func (m *OCMAuthzValidatorMock) Reset() {
 	m.Action = ""
 	m.ResourceType = ""
 }

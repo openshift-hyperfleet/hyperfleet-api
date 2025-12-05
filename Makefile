@@ -116,9 +116,7 @@ verify: check-gopath
 # Runs our linter to verify that everything is following best practices
 # Linter is set to ignore `unused` stuff due to example being incomplete by definition
 lint: $(GOLANGCI_LINT)
-	$(GOLANGCI_LINT) run -e unused \
-		./cmd/... \
-		./pkg/...
+	$(GOLANGCI_LINT) run ./...
 .PHONY: lint
 
 # Build binaries

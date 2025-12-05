@@ -20,7 +20,7 @@ import (
 func TestSQLTranslation(t *testing.T) {
 	RegisterTestingT(t)
 	var dbFactory db.SessionFactory = dbmocks.NewMockSessionFactory()
-	defer dbFactory.Close()
+	defer dbFactory.Close() //nolint:errcheck
 
 	g := dao.NewGenericDao(&dbFactory)
 	genericService := sqlGenericService{genericDao: g}
@@ -67,7 +67,7 @@ func TestSQLTranslation(t *testing.T) {
 		Expect(serviceErr).ToNot(HaveOccurred())
 		tslTree, err := tsl.ParseTSL(search)
 		Expect(err).ToNot(HaveOccurred())
-		_, sqlizer, serviceErr := genericService.treeWalkForSqlizer(listCtx, tslTree)
+		sqlizer, serviceErr := genericService.treeWalkForSqlizer(listCtx, tslTree)
 		Expect(serviceErr).ToNot(HaveOccurred())
 		sql, values, err := sqlizer.ToSql()
 		Expect(err).ToNot(HaveOccurred())

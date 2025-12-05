@@ -146,7 +146,9 @@ func (s apiServer) Start() {
 	// after the server exits but before the application terminates
 	// we need to explicitly close Go's sql connection pool.
 	// this needs to be called *exactly* once during an app's lifetime.
-	env().Database.SessionFactory.Close()
+	if err := env().Database.SessionFactory.Close(); err != nil {
+		glog.Errorf("Error closing database connection: %v", err)
+	}
 }
 
 func (s apiServer) Stop() error {

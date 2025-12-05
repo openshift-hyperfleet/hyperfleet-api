@@ -111,7 +111,9 @@ func validate(model interface{}, in map[string]bool, prefix string) *errors.Serv
 				if _, ok := in[star]; ok {
 					in = removeStar(in, name)
 				} else {
-					_ = validate(field, in, name)
+					if err := validate(field, in, name); err != nil {
+						return err
+					}
 				}
 			}
 		} else if t.Type.Kind() == reflect.Slice {
@@ -144,7 +146,11 @@ func validate(model interface{}, in map[string]bool, prefix string) *errors.Serv
 
 func removeStar(in map[string]bool, name string) map[string]bool {
 	pattern := `(` + name + `\..*)`
-	pat, _ := regexp.Compile(pattern)
+	pat, err := regexp.Compile(pattern)
+	if err != nil {
+		// Invalid pattern, return unchanged
+		return in
+	}
 	for k := range in {
 		matched := pat.FindAllString(k, -1)
 		for _, m := range matched {
@@ -185,7 +191,9 @@ func structToMap(item interface{}, in map[string]bool, prefix string) map[string
 		if kind == reflect.Struct {
 			if t.Type == reflect.TypeOf(&time.Time{}) {
 				if _, ok := in[name]; ok {
-					res[name] = field.(*time.Time).Format(time.RFC3339)
+					if timePtr, ok := field.(*time.Time); ok && timePtr != nil {
+						res[name] = timePtr.Format(time.RFC3339)
+					}
 				}
 			} else {
 				nexPrefix := name

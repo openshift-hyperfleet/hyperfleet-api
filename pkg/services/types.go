@@ -29,13 +29,19 @@ func NewListArguments(params url.Values) *ListArguments {
 		Search: "",
 	}
 	if v := strings.Trim(params.Get("page"), " "); v != "" {
-		listArgs.Page, _ = strconv.Atoi(v)
+		if page, err := strconv.Atoi(v); err == nil {
+			listArgs.Page = page
+		}
 	}
 	// Support both "size" (legacy) and "pageSize" (OpenAPI spec)
 	if v := strings.Trim(params.Get("pageSize"), " "); v != "" {
-		listArgs.Size, _ = strconv.ParseInt(v, 10, 0)
+		if size, err := strconv.ParseInt(v, 10, 0); err == nil {
+			listArgs.Size = size
+		}
 	} else if v := strings.Trim(params.Get("size"), " "); v != "" {
-		listArgs.Size, _ = strconv.ParseInt(v, 10, 0)
+		if size, err := strconv.ParseInt(v, 10, 0); err == nil {
+			listArgs.Size = size
+		}
 	}
 	if listArgs.Size > MaxListSize || listArgs.Size < 0 {
 		// MaxListSize is the maximum number of *parameters* that can be provided to a postgres WHERE IN clause

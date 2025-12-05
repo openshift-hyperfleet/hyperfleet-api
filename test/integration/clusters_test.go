@@ -70,7 +70,7 @@ func TestClusterPost(t *testing.T) {
 		SetHeader("Authorization", fmt.Sprintf("Bearer %s", jwtToken)).
 		SetBody(`{ this is invalid }`).
 		Post(h.RestURL("/clusters"))
-
+	Expect(err).ToNot(HaveOccurred(), "Error object:  %v", err)
 	Expect(restyResp.StatusCode()).To(Equal(http.StatusBadRequest))
 }
 
@@ -240,6 +240,7 @@ func TestClusterBoundaryValues(t *testing.T) {
 	if resp != nil {
 		t.Logf("Empty name test returned status: %d", resp.StatusCode)
 	}
+	Expect(err).ToNot(HaveOccurred())
 
 	// Test 3: Large spec JSON (test with ~10KB JSON)
 	largeSpec := make(map[string]interface{})

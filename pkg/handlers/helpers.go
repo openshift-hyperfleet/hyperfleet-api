@@ -3,7 +3,6 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
-	"reflect"
 )
 
 func writeJSONResponse(w http.ResponseWriter, code int, payload interface{}) {
@@ -15,24 +14,16 @@ func writeJSONResponse(w http.ResponseWriter, code int, payload interface{}) {
 	w.WriteHeader(code)
 
 	if payload != nil {
-		response, _ := json.Marshal(payload)
-		_, _ = w.Write(response)
+		response, err := json.Marshal(payload)
+		if err != nil {
+			// Headers already sent, can't change status code
+			return
+		}
+		if _, err := w.Write(response); err != nil {
+			// Writing failed, nothing we can do at this point
+			return
+		}
 	}
 }
 
 // Prepare a 'list' of non-db-backed resources
-func determineListRange(obj interface{}, page int, size int64) (list []interface{}, total int64) {
-	items := reflect.ValueOf(obj)
-	total = int64(items.Len())
-	low := int64(page-1) * size
-	high := low + size
-	if low < 0 || low >= total || high >= total {
-		low = 0
-		high = total
-	}
-	for i := low; i < high; i++ {
-		list = append(list, items.Index(int(i)).Interface())
-	}
-
-	return list, total
-}

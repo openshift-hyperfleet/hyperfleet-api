@@ -42,7 +42,10 @@ func GetUsernameFromContext(ctx context.Context) string {
 	if username == nil {
 		return ""
 	}
-	return username.(string)
+	if str, ok := username.(string); ok {
+		return str
+	}
+	return ""
 }
 
 // GetAuthPayloadFromContext Get authorization payload api object from context
@@ -76,34 +79,51 @@ func GetAuthPayloadFromContext(ctx context.Context) (*Payload, error) {
 
 	payload := &Payload{}
 	// default to the values we expect from RHSSO
-	payload.Username, _ = claims["username"].(string)
-	payload.FirstName, _ = claims["first_name"].(string)
-	payload.LastName, _ = claims["last_name"].(string)
-	payload.Email, _ = claims["email"].(string)
-	payload.ClientID, _ = claims["clientId"].(string)
+	if username, ok := claims["username"].(string); ok {
+		payload.Username = username
+	}
+	if firstName, ok := claims["first_name"].(string); ok {
+		payload.FirstName = firstName
+	}
+	if lastName, ok := claims["last_name"].(string); ok {
+		payload.LastName = lastName
+	}
+	if email, ok := claims["email"].(string); ok {
+		payload.Email = email
+	}
+	if clientID, ok := claims["clientId"].(string); ok {
+		payload.ClientID = clientID
+	}
 
 	// Check values, if empty, use alternative claims from RHD
 	if payload.Username == "" {
-		payload.Username, _ = claims["preferred_username"].(string)
+		if username, ok := claims["preferred_username"].(string); ok {
+			payload.Username = username
+		}
 	}
 
 	if payload.FirstName == "" {
-		payload.FirstName, _ = claims["given_name"].(string)
+		if firstName, ok := claims["given_name"].(string); ok {
+			payload.FirstName = firstName
+		}
 	}
 
 	if payload.LastName == "" {
-		payload.LastName, _ = claims["family_name"].(string)
+		if lastName, ok := claims["family_name"].(string); ok {
+			payload.LastName = lastName
+		}
 	}
 
 	// If given and family names are not present, use the name field
 	if payload.FirstName == "" || payload.LastName == "" {
-		name, _ := claims["name"].(string)
-		names := strings.Split(name, " ")
-		if len(names) > 1 {
-			payload.FirstName = names[0]
-			payload.LastName = names[1]
-		} else {
-			payload.FirstName = names[0]
+		if name, ok := claims["name"].(string); ok {
+			names := strings.Split(name, " ")
+			if len(names) > 1 {
+				payload.FirstName = names[0]
+				payload.LastName = names[1]
+			} else {
+				payload.FirstName = names[0]
+			}
 		}
 	}
 

@@ -42,7 +42,7 @@ var (
 	allFieldsAllowed       = map[string]string{}
 )
 
-// wrap all needed pieces for the LIST funciton
+// wrap all needed pieces for the LIST function
 type listContext struct {
 	ctx              context.Context
 	args             *ListArguments
@@ -172,7 +172,7 @@ func (s *sqlGenericService) buildSearchValues(listCtx *listContext, d *dao.Gener
 		return "", nil, serviceErr
 	}
 	// convert to sqlizer
-	_, sqlizer, serviceErr := s.treeWalkForSqlizer(listCtx, tslTree)
+	sqlizer, serviceErr := s.treeWalkForSqlizer(listCtx, tslTree)
 	if serviceErr != nil {
 		return "", nil, serviceErr
 	}
@@ -331,18 +331,18 @@ func (s *sqlGenericService) treeWalkForAddingTableName(listCtx *listContext, tsl
 	return tslTree, nil
 }
 
-func (s *sqlGenericService) treeWalkForSqlizer(listCtx *listContext, tslTree tsl.Node) (tsl.Node, squirrel.Sqlizer, *errors.ServiceError) {
+func (s *sqlGenericService) treeWalkForSqlizer(listCtx *listContext, tslTree tsl.Node) (squirrel.Sqlizer, *errors.ServiceError) {
 	// Check field names in tree
 	tslTree, serviceErr := db.FieldNameWalk(tslTree, *listCtx.disallowedFields)
 	if serviceErr != nil {
-		return tslTree, nil, serviceErr
+		return nil, serviceErr
 	}
 
 	// Convert the search tree into SQL [Squirrel] filter
 	sqlizer, err := sqlFilter.Walk(tslTree)
 	if err != nil {
-		return tslTree, nil, errors.BadRequest("%s", err.Error())
+		return nil, errors.BadRequest("%s", err.Error())
 	}
 
-	return tslTree, sqlizer, nil
+	return sqlizer, nil
 }

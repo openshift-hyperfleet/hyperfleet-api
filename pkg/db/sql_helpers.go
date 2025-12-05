@@ -25,7 +25,8 @@ func hasProperty(n tsl.Node) bool {
 	}
 
 	// If left side hand is not a `properties` identifier, return.
-	if l.Func != tsl.IdentOp || !startsWithProperties(l.Left.(string)) {
+	leftStr, ok := l.Left.(string)
+	if !ok || l.Func != tsl.IdentOp || !startsWithProperties(leftStr) {
 		return false
 	}
 
@@ -79,7 +80,11 @@ func propertiesNodeConverter(n tsl.Node) tsl.Node {
 	}
 
 	// Get the property name.
-	propetyName := l.Left.(string)[11:]
+	leftStr, ok := l.Left.(string)
+	if !ok || len(leftStr) <= 11 {
+		return n
+	}
+	propertyName := leftStr[11:]
 
 	// Build a new node that converts:
 	// ( properties.<name> = <value> ) to
@@ -88,7 +93,7 @@ func propertiesNodeConverter(n tsl.Node) tsl.Node {
 		Func: n.Func,
 		Left: tsl.Node{
 			Func: tsl.IdentOp,
-			Left: fmt.Sprintf("properties ->> '%s'", propetyName),
+			Left: fmt.Sprintf("properties ->> '%s'", propertyName),
 		},
 		Right: n.Right,
 	}
@@ -137,7 +142,12 @@ func FieldNameWalk(
 	default:
 		// o/w continue walking the tree.
 		if n.Left != nil {
-			l, err = FieldNameWalk(n.Left.(tsl.Node), disallowedFields)
+			leftNode, ok := n.Left.(tsl.Node)
+			if !ok {
+				err = errors.BadRequest("invalid node structure")
+				return
+			}
+			l, err = FieldNameWalk(leftNode, disallowedFields)
 			if err != nil {
 				return
 			}

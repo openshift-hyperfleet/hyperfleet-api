@@ -41,7 +41,8 @@ var requiredNodePoolAdapters = []string{
 // adapterConditionSuffixMap allows overriding the default suffix for specific adapters
 // Currently empty - all adapters use "Successful" by default
 // Future example: To make dns use "Ready" instead, uncomment:
-//   "dns": "Ready",
+//
+//	"dns": "Ready",
 var adapterConditionSuffixMap = map[string]string{
 	// Add custom mappings here when needed
 }
@@ -56,7 +57,8 @@ var adapterConditionSuffixMap = map[string]string{
 //   - "gcp-provisioner" → "GcpProvisionerSuccessful"
 //
 // Future customization: Override suffix in adapterConditionSuffixMap
-//   adapterConditionSuffixMap["dns"] = "Ready" → "DnsReady"
+//
+//	adapterConditionSuffixMap["dns"] = "Ready" → "DnsReady"
 func MapAdapterToConditionType(adapterName string) string {
 	// Get the suffix for this adapter, default to "Successful"
 	suffix, exists := adapterConditionSuffixMap[adapterName]

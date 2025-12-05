@@ -12,7 +12,7 @@ func TestConfigReadStringFile(t *testing.T) {
 	RegisterTestingT(t)
 
 	stringFile, err := createConfigFile("string", "example\n")
-	defer os.Remove(stringFile.Name())
+	defer os.Remove(stringFile.Name()) //nolint:errcheck
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -27,7 +27,7 @@ func TestConfigReadIntFile(t *testing.T) {
 	RegisterTestingT(t)
 
 	intFile, err := createConfigFile("int", "123")
-	defer os.Remove(intFile.Name())
+	defer os.Remove(intFile.Name()) //nolint:errcheck
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -42,7 +42,7 @@ func TestConfigReadBoolFile(t *testing.T) {
 	RegisterTestingT(t)
 
 	boolFile, err := createConfigFile("bool", "true")
-	defer os.Remove(boolFile.Name())
+	defer os.Remove(boolFile.Name()) //nolint:errcheck
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -57,7 +57,7 @@ func TestConfigReadQuotedFile(t *testing.T) {
 	RegisterTestingT(t)
 
 	stringFile, err := createConfigFile("string", "example")
-	defer os.Remove(stringFile.Name())
+	defer os.Remove(stringFile.Name()) //nolint:errcheck
 	if err != nil {
 		log.Fatal(err)
 	}

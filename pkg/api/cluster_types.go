@@ -67,7 +67,7 @@ func (c *Cluster) BeforeCreate(tx *gorm.DB) error {
 // ToOpenAPI converts to OpenAPI model
 func (c *Cluster) ToOpenAPI() *openapi.Cluster {
 	// Unmarshal Spec
-	var spec map[string]interface{}
+	spec := make(map[string]interface{})
 	if len(c.Spec) > 0 {
 		_ = json.Unmarshal(c.Spec, &spec)
 	}
@@ -75,13 +75,17 @@ func (c *Cluster) ToOpenAPI() *openapi.Cluster {
 	// Unmarshal Labels
 	var labels map[string]string
 	if len(c.Labels) > 0 {
-		_ = json.Unmarshal(c.Labels, &labels)
+		if err := json.Unmarshal(c.Labels, &labels); err != nil {
+			labels = make(map[string]string)
+		}
 	}
 
-	// Unmarshal StatusConditions
+	// Unmarshal StatusConditions (stored as ResourceCondition in DB)
 	var statusConditions []openapi.ResourceCondition
 	if len(c.StatusConditions) > 0 {
-		_ = json.Unmarshal(c.StatusConditions, &statusConditions)
+		if err := json.Unmarshal(c.StatusConditions, &statusConditions); err != nil {
+			statusConditions = []openapi.ResourceCondition{}
+		}
 	}
 
 	// Generate Href if not set (fallback)
@@ -129,17 +133,26 @@ func (c *Cluster) ToOpenAPI() *openapi.Cluster {
 // ClusterFromOpenAPICreate creates GORM model from OpenAPI CreateRequest
 func ClusterFromOpenAPICreate(req *openapi.ClusterCreateRequest, createdBy string) *Cluster {
 	// Marshal Spec
-	specJSON, _ := json.Marshal(req.Spec)
+	specJSON, err := json.Marshal(req.Spec)
+	if err != nil {
+		specJSON = []byte("{}")
+	}
 
 	// Marshal Labels
 	labels := make(map[string]string)
 	if req.Labels != nil {
 		labels = *req.Labels
 	}
-	labelsJSON, _ := json.Marshal(labels)
+	labelsJSON, err := json.Marshal(labels)
+	if err != nil {
+		labelsJSON = []byte("{}")
+	}
 
 	// Marshal empty StatusConditions
-	statusConditionsJSON, _ := json.Marshal([]openapi.ResourceCondition{})
+	statusConditionsJSON, err := json.Marshal([]openapi.ResourceCondition{})
+	if err != nil {
+		statusConditionsJSON = []byte("[]")
+	}
 
 	return &Cluster{
 		Kind:                     req.Kind,

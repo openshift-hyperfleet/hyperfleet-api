@@ -69,7 +69,10 @@ func (h clusterHandler) Patch(w http.ResponseWriter, r *http.Request) {
 				found.Name = *patch.Name
 			}
 			if patch.Spec != nil {
-				specJSON, _ := json.Marshal(*patch.Spec)
+				specJSON, err := json.Marshal(*patch.Spec)
+				if err != nil {
+					return nil, errors.GeneralError("Failed to marshal spec: %v", err)
+				}
 				found.Spec = specJSON
 			}
 			if patch.Generation != nil {
