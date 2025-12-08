@@ -212,11 +212,9 @@ test-integration: install secrets $(GOTESTSUM)
 # Regenerate openapi client and models
 generate:
 	rm -rf pkg/api/openapi
-	mkdir -p data/generated/openapi
 	$(container_tool) build -t hyperfleet-openapi -f Dockerfile.openapi .
 	$(eval OPENAPI_IMAGE_ID=`$(container_tool) create -t hyperfleet-openapi -f Dockerfile.openapi .`)
 	$(container_tool) cp $(OPENAPI_IMAGE_ID):/local/pkg/api/openapi ./pkg/api/openapi
-	$(container_tool) cp $(OPENAPI_IMAGE_ID):/local/data/generated/openapi/openapi.go ./data/generated/openapi/openapi.go
 .PHONY: generate
 
 # Generate mock implementations for service interfaces

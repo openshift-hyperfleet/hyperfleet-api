@@ -11,15 +11,13 @@ import (
 
 	// Import plugins to trigger their init() functions
 	// _ "github.com/openshift-hyperfleet/hyperfleet-api/plugins/events" // REMOVED: Events plugin no longer exists
-	_ "github.com/openshift-hyperfleet/hyperfleet-api/plugins/generic"
 	_ "github.com/openshift-hyperfleet/hyperfleet-api/plugins/adapterStatus"
 	_ "github.com/openshift-hyperfleet/hyperfleet-api/plugins/clusters"
+	_ "github.com/openshift-hyperfleet/hyperfleet-api/plugins/generic"
 	_ "github.com/openshift-hyperfleet/hyperfleet-api/plugins/nodePools"
 )
 
 // nolint
-//
-//go:generate go-bindata -o ../../data/generated/openapi/openapi.go -pkg openapi -prefix ../../openapi/ ../../openapi
 
 func main() {
 	// This is needed to make `glog` believe that the flags have already been parsed, otherwise
