@@ -38,7 +38,7 @@ func TestMain(m *testing.M) {
 			if _, err := os.Stat(schemaPath); err != nil {
 				glog.Warningf("Schema file not found at %s: %v, skipping OPENAPI_SCHEMA_PATH setup", schemaPath, err)
 			} else {
-				os.Setenv("OPENAPI_SCHEMA_PATH", schemaPath)
+				_ = os.Setenv("OPENAPI_SCHEMA_PATH", schemaPath)
 				glog.Infof("Set OPENAPI_SCHEMA_PATH=%s for integration tests", schemaPath)
 			}
 		}

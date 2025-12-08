@@ -23,7 +23,7 @@ func handleValidationError(w http.ResponseWriter, r *http.Request, err *errors.S
 	// Write JSON error response
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(err.HttpCode)
-	json.NewEncoder(w).Encode(err.AsOpenapiError(operationID))
+	_ = json.NewEncoder(w).Encode(err.AsOpenapiError(operationID))
 }
 
 // SchemaValidationMiddleware validates cluster and nodepool spec fields against OpenAPI schemas
@@ -44,7 +44,7 @@ func SchemaValidationMiddleware(validator *validators.SchemaValidator) func(http
 				handleValidationError(w, r, serviceErr)
 				return
 			}
-			r.Body.Close()
+			_ = r.Body.Close()
 
 			// Restore the request body for the next handler
 			r.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))

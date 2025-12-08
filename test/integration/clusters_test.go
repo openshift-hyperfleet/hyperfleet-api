@@ -320,7 +320,7 @@ func TestClusterSchemaValidation(t *testing.T) {
 
 	jwtToken := ctx.Value(openapi.ContextAccessToken)
 
-	resp2, err := resty.R().
+	resp2, _ := resty.R().
 		SetHeader("Content-Type", "application/json").
 		SetHeader("Authorization", fmt.Sprintf("Bearer %s", jwtToken)).
 		SetBody(invalidTypeJSON).
@@ -330,7 +330,7 @@ func TestClusterSchemaValidation(t *testing.T) {
 		t.Logf("Schema validation correctly rejected invalid spec type")
 		// Verify error response contains details
 		var errorResponse openapi.Error
-		json.Unmarshal(resp2.Body(), &errorResponse)
+		_ = json.Unmarshal(resp2.Body(), &errorResponse)
 		Expect(errorResponse.Code).ToNot(BeNil())
 		Expect(errorResponse.Reason).ToNot(BeNil())
 	} else {
@@ -389,7 +389,7 @@ func TestClusterSchemaValidationWithProviderSchema(t *testing.T) {
 	_, resp, err := client.DefaultAPI.PostCluster(ctx).ClusterCreateRequest(invalidInput).Execute()
 	Expect(err).To(HaveOccurred(), "Should reject spec with missing required field")
 	Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Parse error response to verify field-level details
 	bodyBytes, err := io.ReadAll(resp.Body)
@@ -539,7 +539,6 @@ func TestClusterList_OrderByName(t *testing.T) {
 		fmt.Sprintf("%s-bravo", testPrefix),
 	}
 
-	var createdClusters []openapi.Cluster
 	for _, name := range names {
 		clusterInput := openapi.ClusterCreateRequest{
 			Kind: "Cluster",
@@ -547,9 +546,8 @@ func TestClusterList_OrderByName(t *testing.T) {
 			Spec: map[string]interface{}{"test": "value"},
 		}
 
-		cluster, _, err := client.DefaultAPI.PostCluster(ctx).ClusterCreateRequest(clusterInput).Execute()
+		_, _, err := client.DefaultAPI.PostCluster(ctx).ClusterCreateRequest(clusterInput).Execute()
 		Expect(err).NotTo(HaveOccurred(), "Failed to create cluster %s", name)
-		createdClusters = append(createdClusters, *cluster)
 	}
 
 	// List with orderBy=name asc
