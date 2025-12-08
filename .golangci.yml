@@ -2,3 +2,4 @@ version: 2
 issues:
   exclude-dirs:
     - pkg/api/openapi  # Generated code
+    - data/generated/openapi # Generated file
