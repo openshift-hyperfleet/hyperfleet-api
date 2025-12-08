@@ -1,0 +1,15 @@
+apiVersion: v2
+name: hyperfleet-api
+description: HyperFleet API - Cluster Lifecycle Management Service
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+maintainers:
+  - name: HyperFleet Team
+    email: hyperfleet-team@redhat.com
+keywords:
+  - hyperfleet
+  - api
+  - kubernetes
+  - cluster-management
+home: https://github.com/openshift-hyperfleet/hyperfleet-api

@@ -464,6 +464,90 @@ make db/teardown   # Remove PostgreSQL container
 make db/login      # Connect to database shell
 ```
 
+## Container Image
+
+Build and push container images using the multi-stage Dockerfile:
+
+```bash
+# Build container image
+make image
+
+# Build with custom tag
+make image IMAGE_TAG=v1.0.0
+
+# Build and push to default registry
+make image-push
+
+# Build and push to personal Quay registry (for development)
+QUAY_USER=myuser make image-dev
+```
+
+Default image: `quay.io/openshift-hyperfleet/hyperfleet-api:latest`
+
+## Kubernetes Deployment
+
+### Using Helm Chart
+
+The project includes a Helm chart for Kubernetes deployment with configurable PostgreSQL support.
+
+**Development deployment (with built-in PostgreSQL):**
+```bash
+helm install hyperfleet-api ./charts/ \
+  --namespace hyperfleet-system \
+  --create-namespace
+```
+
+**Production deployment (with external database like GCP Cloud SQL):**
+```bash
+# First, create a secret with database credentials
+kubectl create secret generic hyperfleet-db-external \
+  --namespace hyperfleet-system \
+  --from-literal=db.host=<your-cloudsql-ip> \
+  --from-literal=db.port=5432 \
+  --from-literal=db.name=hyperfleet \
+  --from-literal=db.user=hyperfleet \
+  --from-literal=db.password=<your-password>
+
+# Deploy with external database
+helm install hyperfleet-api ./charts/ \
+  --namespace hyperfleet-system \
+  --set database.postgresql.enabled=false \
+  --set database.external.enabled=true \
+  --set database.external.secretName=hyperfleet-db-external
+```
+
+**Custom image deployment:**
+```bash
+helm install hyperfleet-api ./charts/ \
+  --namespace hyperfleet-system \
+  --set image.registry=quay.io/myuser \
+  --set image.repository=hyperfleet-api \
+  --set image.tag=v1.0.0
+```
+
+**Upgrade deployment:**
+```bash
+helm upgrade hyperfleet-api ./charts/ --namespace hyperfleet-system
+```
+
+**Uninstall:**
+```bash
+helm uninstall hyperfleet-api --namespace hyperfleet-system
+```
+
+### Helm Values
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `image.registry` | Container registry | `quay.io/openshift-hyperfleet` |
+| `image.repository` | Image repository | `hyperfleet-api` |
+| `image.tag` | Image tag | `latest` |
+| `database.postgresql.enabled` | Deploy built-in PostgreSQL | `true` |
+| `database.external.enabled` | Use external database | `false` |
+| `database.external.secretName` | Secret with db credentials | `""` |
+| `auth.enableJwt` | Enable JWT authentication | `true` |
+| `auth.enableAuthz` | Enable authorization | `true` |
+
 ## API Authentication
 
 **Development mode (no auth):**
