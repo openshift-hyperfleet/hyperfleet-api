@@ -124,7 +124,8 @@ func TestConvertNodePool_WithLabels(t *testing.T) {
 	Expect(err).To(BeNil())
 
 	var resultLabels map[string]string
-	json.Unmarshal(result.Labels, &resultLabels)
+	err = json.Unmarshal(result.Labels, &resultLabels)
+	Expect(err).To(BeNil())
 	Expect(resultLabels["environment"]).To(Equal("production"))
 	Expect(resultLabels["team"]).To(Equal("platform"))
 	Expect(resultLabels["region"]).To(Equal("us-east"))
@@ -144,7 +145,8 @@ func TestConvertNodePool_WithoutLabels(t *testing.T) {
 	Expect(err).To(BeNil())
 
 	var resultLabels map[string]string
-	json.Unmarshal(result.Labels, &resultLabels)
+	err = json.Unmarshal(result.Labels, &resultLabels)
+	Expect(err).To(BeNil())
 	Expect(len(resultLabels)).To(Equal(0)) // Empty map
 }
 
