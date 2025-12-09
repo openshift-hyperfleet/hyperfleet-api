@@ -55,9 +55,6 @@ func (np *NodePool) BeforeCreate(tx *gorm.DB) error {
 	np.ID = NewID()
 	np.CreatedTime = now
 	np.UpdatedTime = now
-	if np.Kind == "" {
-		np.Kind = "NodePool"
-	}
 	if np.OwnerKind == "" {
 		np.OwnerKind = "Cluster"
 	}

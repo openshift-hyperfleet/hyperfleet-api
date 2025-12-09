@@ -84,10 +84,6 @@ func (s *apiServer) routes() *mux.Router {
 	apiV1Router.HandleFunc("/openapi.html", openapiHandler.GetOpenAPIUI).Methods(http.MethodGet)
 	apiV1Router.HandleFunc("/openapi", openapiHandler.GetOpenAPI).Methods(http.MethodGet)
 
-	//  /api/hyperfleet/v1/compatibility
-	compatibilityHandler := handlers.NewCompatibilityHandler()
-	apiV1Router.HandleFunc("/compatibility", compatibilityHandler.Get).Methods(http.MethodGet)
-
 	registerApiMiddleware(apiV1Router)
 
 	// Auto-discovered routes (no manual editing needed)

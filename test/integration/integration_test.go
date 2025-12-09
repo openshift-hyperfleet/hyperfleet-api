@@ -27,9 +27,9 @@ func TestMain(m *testing.M) {
 		} else {
 			// filename is like: /path/to/repo/test/integration/integration_test.go
 			// Navigate up: integration_test.go -> integration -> test -> repo
-			integrationDir := filepath.Dir(filename)  // /path/to/repo/test/integration
-			testDir := filepath.Dir(integrationDir)   // /path/to/repo/test
-			repoRoot := filepath.Dir(testDir)         // /path/to/repo
+			integrationDir := filepath.Dir(filename) // /path/to/repo/test/integration
+			testDir := filepath.Dir(integrationDir)  // /path/to/repo/test
+			repoRoot := filepath.Dir(testDir)        // /path/to/repo
 
 			// Build schema path using filepath.Join for cross-platform compatibility
 			schemaPath := filepath.Join(repoRoot, "openapi", "openapi.yaml")

@@ -194,7 +194,7 @@ func TestConvertAdapterStatus_ConditionStatusConversion(t *testing.T) {
 	RegisterTestingT(t)
 
 	testCases := []struct {
-		openapiStatus openapi.ConditionStatus
+		openapiStatus  openapi.ConditionStatus
 		expectedDomain api.ConditionStatus
 	}{
 		{openapi.TRUE, api.ConditionTrue},
@@ -361,7 +361,7 @@ func TestPresentAdapterStatus_ConditionStatusConversion(t *testing.T) {
 	RegisterTestingT(t)
 
 	testCases := []struct {
-		domainStatus   api.ConditionStatus
+		domainStatus    api.ConditionStatus
 		expectedOpenAPI openapi.ConditionStatus
 	}{
 		{api.ConditionTrue, openapi.TRUE},

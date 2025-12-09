@@ -28,8 +28,8 @@ type logger struct {
 	level     int32
 	accountID string
 	// TODO username is unused, should we be logging it? Could be pii
-	username  string
-	extra     extra
+	username string
+	extra    extra
 }
 
 // NewOCMLogger creates a new logger instance with a default verbosity of 1
@@ -125,4 +125,3 @@ func (l *logger) log(message string, glogFunc func(args ...interface{})) {
 	prefixed := l.prepareLogPrefix(message, l.extra)
 	glogFunc(prefixed)
 }
-

@@ -9,12 +9,12 @@ import (
 var _ dao.GenericDao = &genericDaoMock{}
 
 type genericDaoMock struct {
-	preload  string
-	orderBy  string
-	joins    string
-	group    string
-	wheres   []dao.Where
-	model    interface{}
+	preload string
+	orderBy string
+	joins   string
+	group   string
+	wheres  []dao.Where
+	model   interface{}
 }
 
 func NewGenericDao() *genericDaoMock {

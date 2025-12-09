@@ -4,6 +4,9 @@ info:
   version: 1.0.0
   contact:
     name: HyperFleet Team
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0
   description: |-
     HyperFleet API provides simple CRUD operations for managing cluster resources and their status history.
 
@@ -29,6 +32,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ClusterList'
+        '400':
+          description: The server could not understand the request due to invalid syntax.
         default:
           description: An unexpected error response.
           content:
@@ -52,6 +57,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Cluster'
+        '400':
+          description: The server could not understand the request due to invalid syntax.
         default:
           description: An unexpected error response.
           content:
@@ -82,6 +89,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Cluster'
+        '400':
+          description: The server could not understand the request due to invalid syntax.
         default:
           description: An unexpected error response.
           content:
@@ -112,6 +121,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/NodePoolList'
+        '400':
+          description: The server could not understand the request due to invalid syntax.
         default:
           description: An unexpected error response.
           content:
@@ -136,6 +147,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/NodePoolCreateResponse'
+        '400':
+          description: The server could not understand the request due to invalid syntax.
         default:
           description: An unexpected error response.
           content:
@@ -173,6 +186,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/NodePool'
+        '400':
+          description: The server could not understand the request due to invalid syntax.
         default:
           description: An unexpected error response.
           content:
@@ -180,40 +195,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
   /api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepool_id}/statuses:
-    get:
-      operationId: getNodePoolsStatuses
-      summary: List all adapter statuses for nodepools
-      description: Returns adapter status reports for this nodepool
-      parameters:
-        - name: cluster_id
-          in: path
-          required: true
-          description: Cluster ID
-          schema:
-            type: string
-        - name: nodepool_id
-          in: path
-          required: true
-          schema:
-            type: string
-        - $ref: '#/components/parameters/QueryParams.page'
-        - $ref: '#/components/parameters/QueryParams.pageSize'
-        - $ref: '#/components/parameters/QueryParams.orderBy'
-        - $ref: '#/components/parameters/QueryParams.order'
-        - $ref: '#/components/parameters/SearchParams'
-      responses:
-        '200':
-          description: The request has succeeded.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AdapterStatusList'
-        default:
-          description: An unexpected error response.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
     post:
       operationId: postNodePoolStatuses
       summary: Create or update adapter status
@@ -254,16 +235,20 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/AdapterStatusCreateRequest'
-  /api/hyperfleet/v1/clusters/{cluster_id}/statuses:
     get:
-      operationId: getClusterStatuses
-      summary: List all adapter statuses for cluster
-      description: Returns adapter status reports for this cluster
+      operationId: getNodePoolsStatuses
+      summary: List all adapter statuses for nodepools
+      description: Returns adapter status reports for this nodepool
       parameters:
         - name: cluster_id
           in: path
           required: true
           description: Cluster ID
+          schema:
+            type: string
+        - name: nodepool_id
+          in: path
+          required: true
           schema:
             type: string
         - $ref: '#/components/parameters/QueryParams.page'
@@ -278,8 +263,15 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AdapterStatusList'
-        '404':
-          description: The server cannot find the requested resource.
+        '400':
+          description: The server could not understand the request due to invalid syntax.
+        default:
+          description: An unexpected error response.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/hyperfleet/v1/clusters/{cluster_id}/statuses:
     post:
       operationId: postClusterStatuses
       summary: Create or update adapter status
@@ -315,11 +307,17 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/AdapterStatusCreateRequest'
-  /api/hyperfleet/v1/compatibility:
     get:
-      operationId: getCompatibility
-      description: Returns the list of all nodepools
+      operationId: getClusterStatuses
+      summary: List all adapter statuses for cluster
+      description: Returns adapter status reports for this cluster
       parameters:
+        - name: cluster_id
+          in: path
+          required: true
+          description: Cluster ID
+          schema:
+            type: string
         - $ref: '#/components/parameters/QueryParams.page'
         - $ref: '#/components/parameters/QueryParams.pageSize'
         - $ref: '#/components/parameters/QueryParams.orderBy'
@@ -329,11 +327,13 @@ paths:
         '200':
           description: The request has succeeded.
           content:
-            text/plain:
+            application/json:
               schema:
-                type: string
-      security:
-        - BearerAuth: []
+                $ref: '#/components/schemas/AdapterStatusList'
+        '400':
+          description: The server could not understand the request due to invalid syntax.
+        '404':
+          description: The server cannot find the requested resource.
   /api/hyperfleet/v1/nodepools:
     get:
       operationId: getNodePools
@@ -352,6 +352,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/NodePoolList'
+        '400':
+          description: The server could not understand the request due to invalid syntax.
         default:
           description: An unexpected error response.
           content:
@@ -359,6 +361,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+
   parameters:
     QueryParams.order:
       name: order
@@ -702,7 +709,7 @@ components:
           default: Cluster
         name:
           type: string
-          minLength: 1
+          minLength: 3
           maxLength: 63
           pattern: ^[a-z0-9-]+$
           description: Cluster name (unique)
@@ -1194,11 +1201,7 @@ components:
         - Ready
         - Failed
       description: Phase of a resource (Cluster or NodePool)
-  securitySchemes:
-    BearerAuth:
-      type: http
-      scheme: bearer
 servers:
-  - url: http://localhost:8000
-    description: Development
+  - url: https://api.hyperfleet.redhat.com
+    description: Production
     variables: {}

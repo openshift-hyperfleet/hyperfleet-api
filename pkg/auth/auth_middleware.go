@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/http"
 
-
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 )
 

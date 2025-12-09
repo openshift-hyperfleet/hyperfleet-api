@@ -62,10 +62,10 @@ func (h clusterNodePoolsHandler) List(w http.ResponseWriter, r *http.Request) {
 			}
 
 			nodePoolList := struct {
-				Kind  string              `json:"kind"`
-				Page  int32               `json:"page"`
-				Size  int32               `json:"size"`
-				Total int32               `json:"total"`
+				Kind  string             `json:"kind"`
+				Page  int32              `json:"page"`
+				Size  int32              `json:"size"`
+				Total int32              `json:"total"`
 				Items []openapi.NodePool `json:"items"`
 			}{
 				Kind:  "NodePoolList",
@@ -128,6 +128,8 @@ func (h clusterNodePoolsHandler) Create(w http.ResponseWriter, r *http.Request) 
 		&req,
 		[]validate{
 			validateEmpty(&req, "Id", "id"),
+			validateName(&req, "Name", "name", 1, 255),
+			validateKind(&req, "Kind", "kind", "NodePool"),
 		},
 		func() (interface{}, *errors.ServiceError) {
 			ctx := r.Context()
