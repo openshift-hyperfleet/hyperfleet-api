@@ -77,23 +77,29 @@ spec:
           failureThreshold: 3
         resources:
           {{- toYaml .Values.resources | nindent 10 }}
+        {{- if or .Values.database.external.enabled .Values.database.postgresql.enabled }}
         volumeMounts:
         - name: secrets
           mountPath: /build/secrets
           readOnly: true
+        {{- end }}
         {{- if .Values.extraVolumeMounts }}
         {{- toYaml .Values.extraVolumeMounts | nindent 8 }}
         {{- end }}
+      {{- if or .Values.database.external.enabled .Values.database.postgresql.enabled .Values.extraVolumes }}
       volumes:
+      {{- if or .Values.database.external.enabled .Values.database.postgresql.enabled }}
       - name: secrets
         secret:
           {{- if .Values.database.external.enabled }}
           secretName: {{ .Values.database.external.secretName }}
-          {{- else if .Values.database.postgresql.enabled }}
+          {{- else }}
           secretName: {{ include "hyperfleet-api.fullname" . }}-db-secrets
           {{- end }}
+      {{- end }}
       {{- if .Values.extraVolumes }}
       {{- toYaml .Values.extraVolumes | nindent 6 }}
+      {{- end }}
       {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:

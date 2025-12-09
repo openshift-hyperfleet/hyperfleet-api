@@ -101,9 +101,10 @@ database:
 auth:
   # Enable JWT authentication
   enableJwt: true
-  # Enable authorization
-  enableAuthz: true
+  # Enable authorization (not required for MVP)
+  enableAuthz: false
   # JWKS URL for token verification
+  # Override with: --set auth.jwksUrl="https://your-idp/.../.well-known/jwks.json"
   jwksUrl: "https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/certs"
 
 # Additional environment variables
