@@ -48,6 +48,7 @@ Selector labels
 {{- define "hyperfleet-api.selectorLabels" -}}
 app.kubernetes.io/name: {{ include "hyperfleet-api.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/component: api
 {{- end }}
 
 {{/*

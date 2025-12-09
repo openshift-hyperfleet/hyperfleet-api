@@ -40,9 +40,20 @@ spec:
         image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
         imagePullPolicy: {{ .Values.image.pullPolicy }}
         workingDir: /app
+        args:
+        - serve
+        - --api-server-bindaddress={{ .Values.server.bindAddress | default ":8000" }}
+        - --health-check-server-bindaddress={{ .Values.server.healthBindAddress | default ":8083" }}
+        - --metrics-server-bindaddress={{ .Values.server.metricsBindAddress | default ":8080" }}
         ports:
         - name: http
           containerPort: 8000
+          protocol: TCP
+        - name: health
+          containerPort: 8083
+          protocol: TCP
+        - name: metrics
+          containerPort: 8080
           protocol: TCP
         env:
         {{- if .Values.auth.jwksUrl }}
@@ -61,16 +72,16 @@ spec:
         {{- end }}
         livenessProbe:
           httpGet:
-            path: /healthz
-            port: http
+            path: /healthcheck
+            port: health
           initialDelaySeconds: 30
           periodSeconds: 10
           timeoutSeconds: 5
           failureThreshold: 3
         readinessProbe:
           httpGet:
-            path: /healthz
-            port: http
+            path: /healthcheck
+            port: health
           initialDelaySeconds: 5
           periodSeconds: 5
           timeoutSeconds: 3
