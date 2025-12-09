@@ -231,7 +231,7 @@ func TestClusterBoundaryValues(t *testing.T) {
 	}
 	_, resp, err = client.DefaultAPI.PostCluster(ctx).ClusterCreateRequest(tooLongInput).Execute()
 	Expect(err).To(HaveOccurred(), "Should reject name exceeding 63 characters")
-	Expect(resp.StatusCode).To(Equal(http.StatusInternalServerError))
+	Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
 
 	// Test 2: Empty name
 	emptyNameInput := openapi.ClusterCreateRequest{
@@ -241,11 +241,9 @@ func TestClusterBoundaryValues(t *testing.T) {
 	}
 
 	_, resp, err = client.DefaultAPI.PostCluster(ctx).ClusterCreateRequest(emptyNameInput).Execute()
-	// Should either accept empty name or return 400
-	if resp != nil {
-		t.Logf("Empty name test returned status: %d", resp.StatusCode)
-	}
-	Expect(err).ToNot(HaveOccurred())
+	// Empty name should be rejected with 400
+	Expect(err).To(HaveOccurred(), "Should reject empty name")
+	Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
 
 	// Test 3: Large spec JSON (test with ~10KB JSON)
 	largeSpec := make(map[string]interface{})
@@ -268,17 +266,16 @@ func TestClusterBoundaryValues(t *testing.T) {
 	Expect(err).NotTo(HaveOccurred())
 	Expect(len(retrieved.Spec)).To(Equal(100))
 
-	// Test 4: Unicode in name
+	// Test 4: Unicode in name (should be rejected - pattern only allows [a-z0-9-])
 	unicodeNameInput := openapi.ClusterCreateRequest{
 		Kind: "Cluster",
 		Name: "テスト-δοκιμή-🚀",
 		Spec: map[string]interface{}{"test": "spec"},
 	}
 
-	unicodeNameCluster, resp, err := client.DefaultAPI.PostCluster(ctx).ClusterCreateRequest(unicodeNameInput).Execute()
-	Expect(err).NotTo(HaveOccurred(), "Should accept unicode in name")
-	Expect(resp.StatusCode).To(Equal(http.StatusCreated))
-	Expect(unicodeNameCluster.Name).To(Equal("テスト-δοκιμή-🚀"))
+	_, resp, err = client.DefaultAPI.PostCluster(ctx).ClusterCreateRequest(unicodeNameInput).Execute()
+	Expect(err).To(HaveOccurred(), "Should reject unicode in name (pattern is ^[a-z0-9-]+$)")
+	Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
 }
 
 // TestClusterSchemaValidation tests schema validation for cluster specs
@@ -485,7 +482,7 @@ func TestClusterList_DefaultSorting(t *testing.T) {
 	for i := 1; i <= 3; i++ {
 		clusterInput := openapi.ClusterCreateRequest{
 			Kind: "Cluster",
-			Name: fmt.Sprintf("sort-test-%d-%s", i, h.NewID()),
+			Name: fmt.Sprintf("sort-test-%d-%s", i, strings.ToLower(h.NewID())),
 			Spec: map[string]interface{}{"test": fmt.Sprintf("value-%d", i)},
 		}
 
@@ -532,7 +529,7 @@ func TestClusterList_OrderByName(t *testing.T) {
 	ctx := h.NewAuthenticatedContext(account)
 
 	// Create clusters with names that will sort alphabetically
-	testPrefix := fmt.Sprintf("name-sort-%s", h.NewID())
+	testPrefix := fmt.Sprintf("name-sort-%s", strings.ToLower(h.NewID()))
 	names := []string{
 		fmt.Sprintf("%s-charlie", testPrefix),
 		fmt.Sprintf("%s-alpha", testPrefix),
@@ -581,7 +578,7 @@ func TestClusterList_OrderByNameDesc(t *testing.T) {
 	ctx := h.NewAuthenticatedContext(account)
 
 	// Create clusters with names that will sort alphabetically
-	testPrefix := fmt.Sprintf("desc-sort-%s", h.NewID())
+	testPrefix := fmt.Sprintf("desc-sort-%s", strings.ToLower(h.NewID()))
 	names := []string{
 		fmt.Sprintf("%s-alpha", testPrefix),
 		fmt.Sprintf("%s-charlie", testPrefix),
@@ -619,4 +616,74 @@ func TestClusterList_OrderByNameDesc(t *testing.T) {
 	Expect(testClusters[2].Name).To(ContainSubstring("alpha"), "Third should be alpha")
 
 	t.Logf("✓ Descending sorting works: clusters sorted by name desc")
+}
+
+// TestClusterPost_EmptyKind tests that empty kind field returns 400
+func TestClusterPost_EmptyKind(t *testing.T) {
+	h, _ := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+	jwtToken := ctx.Value(openapi.ContextAccessToken)
+
+	// Send request with empty kind
+	invalidInput := `{
+		"kind": "",
+		"name": "test-cluster",
+		"spec": {}
+	}`
+
+	restyResp, err := resty.R().
+		SetHeader("Content-Type", "application/json").
+		SetHeader("Authorization", fmt.Sprintf("Bearer %s", jwtToken)).
+		SetBody(invalidInput).
+		Post(h.RestURL("/clusters"))
+
+	Expect(err).ToNot(HaveOccurred())
+	Expect(restyResp.StatusCode()).To(Equal(http.StatusBadRequest))
+
+	// Parse error response
+	var errorResponse map[string]interface{}
+	err = json.Unmarshal(restyResp.Body(), &errorResponse)
+	Expect(err).ToNot(HaveOccurred())
+
+	// Verify error message contains "kind is required"
+	reason, ok := errorResponse["reason"].(string)
+	Expect(ok).To(BeTrue())
+	Expect(reason).To(ContainSubstring("kind is required"))
+}
+
+// TestClusterPost_WrongKind tests that wrong kind field returns 400
+func TestClusterPost_WrongKind(t *testing.T) {
+	h, _ := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+	jwtToken := ctx.Value(openapi.ContextAccessToken)
+
+	// Send request with wrong kind
+	invalidInput := `{
+		"kind": "NodePool",
+		"name": "test-cluster",
+		"spec": {}
+	}`
+
+	restyResp, err := resty.R().
+		SetHeader("Content-Type", "application/json").
+		SetHeader("Authorization", fmt.Sprintf("Bearer %s", jwtToken)).
+		SetBody(invalidInput).
+		Post(h.RestURL("/clusters"))
+
+	Expect(err).ToNot(HaveOccurred())
+	Expect(restyResp.StatusCode()).To(Equal(http.StatusBadRequest))
+
+	// Parse error response
+	var errorResponse map[string]interface{}
+	err = json.Unmarshal(restyResp.Body(), &errorResponse)
+	Expect(err).ToNot(HaveOccurred())
+
+	// Verify error message contains "kind must be 'Cluster'"
+	reason, ok := errorResponse["reason"].(string)
+	Expect(ok).To(BeTrue())
+	Expect(reason).To(ContainSubstring("kind must be 'Cluster'"))
 }

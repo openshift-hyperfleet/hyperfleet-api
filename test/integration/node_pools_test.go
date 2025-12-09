@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"testing"
@@ -58,6 +59,7 @@ func TestNodePoolPost(t *testing.T) {
 
 	// POST responses per openapi spec: 201, 409, 500
 	nodePoolInput := openapi.NodePoolCreateRequest{
+		Kind: openapi.PtrString("NodePool"),
 		Name: "test-name",
 		Spec: map[string]interface{}{"test": "spec"},
 	}
@@ -166,6 +168,7 @@ func TestGetNodePoolByClusterIdAndNodePoolId(t *testing.T) {
 
 	// Create a nodepool for this cluster using the API
 	nodePoolInput := openapi.NodePoolCreateRequest{
+		Kind: openapi.PtrString("NodePool"),
 		Name: "test-nodepool-get",
 		Spec: map[string]interface{}{"instance_type": "m5.large", "replicas": 2},
 	}
@@ -202,4 +205,82 @@ func TestGetNodePoolByClusterIdAndNodePoolId(t *testing.T) {
 	_, resp, err = client.DefaultAPI.GetNodePoolById(ctx, cluster2.ID, nodePoolID).Execute()
 	Expect(err).To(HaveOccurred(), "Expected 404 when accessing nodepool from wrong cluster")
 	Expect(resp.StatusCode).To(Equal(http.StatusNotFound))
+}
+
+// TestNodePoolPost_EmptyKind tests that empty kind field returns 400
+func TestNodePoolPost_EmptyKind(t *testing.T) {
+	h, _ := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+	jwtToken := ctx.Value(openapi.ContextAccessToken)
+
+	// Create a cluster first
+	cluster, err := h.Factories.NewClusters(h.NewID())
+	Expect(err).NotTo(HaveOccurred())
+
+	// Send request with empty kind
+	invalidInput := `{
+		"kind": "",
+		"name": "test-nodepool",
+		"spec": {}
+	}`
+
+	restyResp, err := resty.R().
+		SetHeader("Content-Type", "application/json").
+		SetHeader("Authorization", fmt.Sprintf("Bearer %s", jwtToken)).
+		SetBody(invalidInput).
+		Post(h.RestURL(fmt.Sprintf("/clusters/%s/nodepools", cluster.ID)))
+
+	Expect(err).ToNot(HaveOccurred())
+	Expect(restyResp.StatusCode()).To(Equal(http.StatusBadRequest))
+
+	// Parse error response
+	var errorResponse map[string]interface{}
+	err = json.Unmarshal(restyResp.Body(), &errorResponse)
+	Expect(err).ToNot(HaveOccurred())
+
+	// Verify error message contains "kind is required"
+	reason, ok := errorResponse["reason"].(string)
+	Expect(ok).To(BeTrue())
+	Expect(reason).To(ContainSubstring("kind is required"))
+}
+
+// TestNodePoolPost_WrongKind tests that wrong kind field returns 400
+func TestNodePoolPost_WrongKind(t *testing.T) {
+	h, _ := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+	jwtToken := ctx.Value(openapi.ContextAccessToken)
+
+	// Create a cluster first
+	cluster, err := h.Factories.NewClusters(h.NewID())
+	Expect(err).NotTo(HaveOccurred())
+
+	// Send request with wrong kind
+	invalidInput := `{
+		"kind": "Cluster",
+		"name": "test-nodepool",
+		"spec": {}
+	}`
+
+	restyResp, err := resty.R().
+		SetHeader("Content-Type", "application/json").
+		SetHeader("Authorization", fmt.Sprintf("Bearer %s", jwtToken)).
+		SetBody(invalidInput).
+		Post(h.RestURL(fmt.Sprintf("/clusters/%s/nodepools", cluster.ID)))
+
+	Expect(err).ToNot(HaveOccurred())
+	Expect(restyResp.StatusCode()).To(Equal(http.StatusBadRequest))
+
+	// Parse error response
+	var errorResponse map[string]interface{}
+	err = json.Unmarshal(restyResp.Body(), &errorResponse)
+	Expect(err).ToNot(HaveOccurred())
+
+	// Verify error message contains "kind must be 'NodePool'"
+	reason, ok := errorResponse["reason"].(string)
+	Expect(ok).To(BeTrue())
+	Expect(reason).To(ContainSubstring("kind must be 'NodePool'"))
 }

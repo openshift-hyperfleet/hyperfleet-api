@@ -68,14 +68,15 @@ func TestNodePool_BeforeCreate_IDGeneration(t *testing.T) {
 	Expect(len(nodepool.ID)).To(BeNumerically(">", 0))
 }
 
-// TestNodePool_BeforeCreate_KindDefault tests Kind default value
-func TestNodePool_BeforeCreate_KindDefault(t *testing.T) {
+// TestNodePool_BeforeCreate_KindPreservation tests Kind is preserved (not auto-set)
+func TestNodePool_BeforeCreate_KindPreservation(t *testing.T) {
 	RegisterTestingT(t)
 
-	// Test default Kind
+	// Kind must be set before BeforeCreate (by handler validation)
 	nodepool := &NodePool{
 		Name:    "test-nodepool",
 		OwnerID: "cluster-123",
+		Kind:    "NodePool",
 	}
 
 	err := nodepool.BeforeCreate(nil)
@@ -230,6 +231,7 @@ func TestNodePool_BeforeCreate_Complete(t *testing.T) {
 	nodepool := &NodePool{
 		Name:    "test-nodepool",
 		OwnerID: "cluster-complete",
+		Kind:    "NodePool", // Kind must be set before BeforeCreate
 	}
 
 	err := nodepool.BeforeCreate(nil)
@@ -237,7 +239,7 @@ func TestNodePool_BeforeCreate_Complete(t *testing.T) {
 
 	// Verify all defaults
 	Expect(nodepool.ID).ToNot(BeEmpty())
-	Expect(nodepool.Kind).To(Equal("NodePool"))
+	Expect(nodepool.Kind).To(Equal("NodePool")) // Kind is preserved, not auto-set
 	Expect(nodepool.OwnerKind).To(Equal("Cluster"))
 	Expect(nodepool.StatusPhase).To(Equal("NotReady"))
 	Expect(nodepool.Href).To(Equal("/api/hyperfleet/v1/clusters/cluster-complete/nodepools/" + nodepool.ID))

@@ -40,7 +40,6 @@ func Service(s *environments.Services) services.NodePoolService {
 	return nil
 }
 
-
 func init() {
 	// Service registration
 	registry.RegisterService("NodePools", func(env interface{}) interface{} {

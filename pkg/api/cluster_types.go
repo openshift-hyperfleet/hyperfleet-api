@@ -49,9 +49,6 @@ func (c *Cluster) BeforeCreate(tx *gorm.DB) error {
 	c.ID = NewID()
 	c.CreatedTime = now
 	c.UpdatedTime = now
-	if c.Kind == "" {
-		c.Kind = "Cluster"
-	}
 	if c.Generation == 0 {
 		c.Generation = 1
 	}

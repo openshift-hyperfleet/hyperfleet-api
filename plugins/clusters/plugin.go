@@ -42,7 +42,6 @@ func Service(s *environments.Services) services.ClusterService {
 	return nil
 }
 
-
 func init() {
 	// Service registration
 	registry.RegisterService("Clusters", func(env interface{}) interface{} {

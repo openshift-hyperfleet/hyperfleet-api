@@ -67,13 +67,14 @@ func TestCluster_BeforeCreate_IDGeneration(t *testing.T) {
 	Expect(len(cluster.ID)).To(BeNumerically(">", 0))
 }
 
-// TestCluster_BeforeCreate_KindDefault tests Kind default value
-func TestCluster_BeforeCreate_KindDefault(t *testing.T) {
+// TestCluster_BeforeCreate_KindPreservation tests Kind is preserved (not auto-set)
+func TestCluster_BeforeCreate_KindPreservation(t *testing.T) {
 	RegisterTestingT(t)
 
-	// Test default Kind
+	// Kind must be set before BeforeCreate (by handler validation)
 	cluster := &Cluster{
 		Name: "test-cluster",
+		Kind: "Cluster",
 	}
 
 	err := cluster.BeforeCreate(nil)
@@ -189,6 +190,7 @@ func TestCluster_BeforeCreate_Complete(t *testing.T) {
 
 	cluster := &Cluster{
 		Name: "test-cluster",
+		Kind: "Cluster", // Kind must be set before BeforeCreate
 	}
 
 	err := cluster.BeforeCreate(nil)
@@ -196,7 +198,7 @@ func TestCluster_BeforeCreate_Complete(t *testing.T) {
 
 	// Verify all defaults
 	Expect(cluster.ID).ToNot(BeEmpty())
-	Expect(cluster.Kind).To(Equal("Cluster"))
+	Expect(cluster.Kind).To(Equal("Cluster")) // Kind is preserved, not auto-set
 	Expect(cluster.Generation).To(Equal(int32(1)))
 	Expect(cluster.StatusPhase).To(Equal("NotReady"))
 	Expect(cluster.Href).To(Equal("/api/hyperfleet/v1/clusters/" + cluster.ID))

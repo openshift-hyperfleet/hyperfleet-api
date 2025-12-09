@@ -243,6 +243,13 @@ func (helper *Helper) HealthCheckURL(path string) string {
 
 func (helper *Helper) NewApiClient() *openapi.APIClient {
 	config := openapi.NewConfiguration()
+	// Override the server URL to use the local test server
+	protocol := "http"
+	if helper.AppConfig.Server.EnableHTTPS {
+		protocol = "https"
+	}
+	config.Host = helper.AppConfig.Server.BindAddress
+	config.Scheme = protocol
 	client := openapi.NewAPIClient(config)
 	return client
 }
