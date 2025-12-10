@@ -3,6 +3,7 @@ package db
 import (
 	"fmt"
 	"reflect"
+	"regexp"
 	"strings"
 
 	"github.com/jinzhu/inflection"
@@ -10,6 +11,23 @@ import (
 	"github.com/yaacov/tree-search-language/pkg/tsl"
 	"gorm.io/gorm"
 )
+
+// Label key validation pattern: only lowercase letters, digits, and underscores to prevent SQL injection
+var labelKeyPattern = regexp.MustCompile(`^[a-z0-9_]+$`)
+
+// validateLabelKey validates a label key to prevent SQL injection
+// through field name interpolation. Only allows lowercase letters, digits, and underscores.
+func validateLabelKey(key string) *errors.ServiceError {
+	if key == "" {
+		return errors.BadRequest("label key cannot be empty")
+	}
+
+	if !labelKeyPattern.MatchString(key) {
+		return errors.BadRequest("label key '%s' is invalid: must contain only lowercase letters, digits, and underscores", key)
+	}
+
+	return nil
+}
 
 // Check if a field name starts with properties.
 func startsWithProperties(s string) bool {
@@ -33,6 +51,15 @@ func hasProperty(n tsl.Node) bool {
 	return true
 }
 
+// Field mapping rules for user-friendly syntax to database columns
+var statusFieldMappings = map[string]string{
+	"status.last_updated_time":     "status_last_updated_time",
+	"status.last_transition_time":  "status_last_transition_time",
+	"status.phase":                 "status_phase",
+	"status.observed_generation":   "status_observed_generation",
+	"status.conditions":            "status_conditions",
+}
+
 // getField gets the sql field associated with a name.
 func getField(name string, disallowedFields map[string]string) (field string, err *errors.ServiceError) {
 	// We want to accept names with trailing and leading spaces
@@ -42,6 +69,25 @@ func getField(name string, disallowedFields map[string]string) (field string, er
 	if strings.HasPrefix(trimmedName, "properties ->>") {
 		field = trimmedName
 		return
+	}
+
+	// Map user-friendly labels.xxx syntax to JSONB query: labels->>'xxx'
+	if strings.HasPrefix(trimmedName, "labels.") {
+		key := strings.TrimPrefix(trimmedName, "labels.")
+
+		// Validate label key to prevent SQL injection
+		if validationErr := validateLabelKey(key); validationErr != nil {
+			err = validationErr
+			return
+		}
+
+		field = fmt.Sprintf("labels->>'%s'", key)
+		return
+	}
+
+	// Map user-friendly status.xxx syntax to database columns
+	if mapped, ok := statusFieldMappings[trimmedName]; ok {
+		trimmedName = mapped
 	}
 
 	// Check for nested field, e.g., subscription_labels.key
@@ -55,7 +101,7 @@ func getField(name string, disallowedFields map[string]string) (field string, er
 		checkName = fieldParts[1]
 	}
 
-	// Check for allowed fields
+	// Check for disallowed fields
 	_, ok := disallowedFields[checkName]
 	if ok {
 		err = errors.BadRequest("%s is not a valid field name", name)

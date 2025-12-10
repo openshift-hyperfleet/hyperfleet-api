@@ -70,6 +70,12 @@ func addNodePools() *gormigrate.Migration {
 				return err
 			}
 
+			// Create index on status_last_updated_time for search optimization
+			// Sentinel queries frequently filter by this field to find stale resources
+			if err := tx.Exec("CREATE INDEX IF NOT EXISTS idx_node_pools_status_last_updated_time ON node_pools(status_last_updated_time);").Error; err != nil {
+				return err
+			}
+
 			// Add foreign key constraint to clusters
 			addFKSQL := `
 				ALTER TABLE node_pools
@@ -90,6 +96,9 @@ func addNodePools() *gormigrate.Migration {
 			}
 
 			// Drop indexes
+			if err := tx.Exec("DROP INDEX IF EXISTS idx_node_pools_status_last_updated_time;").Error; err != nil {
+				return err
+			}
 			if err := tx.Exec("DROP INDEX IF EXISTS idx_node_pools_status_phase;").Error; err != nil {
 				return err
 			}

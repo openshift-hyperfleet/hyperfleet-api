@@ -407,6 +407,10 @@ components:
       schema:
         type: string
       explode: false
+      description: |
+        Filter results using TSL (Tree Search Language) query syntax.
+
+        Examples: `status.phase='NotReady'`, `name in ('c1','c2')`, `labels.region='us-east'`
   schemas:
     APIResource:
       type: object
@@ -711,7 +715,7 @@ components:
           type: string
           minLength: 3
           maxLength: 63
-          pattern: ^[a-z0-9-]+$
+          pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
           description: Cluster name (unique)
         spec:
           allOf:

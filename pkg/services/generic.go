@@ -38,8 +38,15 @@ type sqlGenericService struct {
 }
 
 var (
-	SearchDisallowedFields = map[string]map[string]string{}
-	allFieldsAllowed       = map[string]string{}
+	SearchDisallowedFields = map[string]map[string]string{
+		"Cluster": {
+			"spec": "spec", // Provider-specific field, not searchable
+		},
+		"NodePool": {
+			"spec": "spec", // Provider-specific field, not searchable
+		},
+	}
+	allFieldsAllowed = map[string]string{}
 )
 
 // wrap all needed pieces for the LIST function
@@ -161,8 +168,14 @@ func (s *sqlGenericService) buildSearchValues(listCtx *listContext, d *dao.Gener
 	if err != nil {
 		return "", nil, errors.BadRequest("Failed to parse search query: %s", listCtx.args.Search)
 	}
+	// apply field name mapping first (status.xxx -> status_xxx, labels.xxx -> labels->>'xxx')
+	// this must happen before treeWalkForRelatedTables to prevent treating "status" and "labels" as related resources
+	tslTree, serviceErr := db.FieldNameWalk(tslTree, *listCtx.disallowedFields)
+	if serviceErr != nil {
+		return "", nil, serviceErr
+	}
 	// find all related tables
-	tslTree, serviceErr := s.treeWalkForRelatedTables(listCtx, tslTree, d)
+	tslTree, serviceErr = s.treeWalkForRelatedTables(listCtx, tslTree, d)
 	if serviceErr != nil {
 		return "", nil, serviceErr
 	}
@@ -332,11 +345,8 @@ func (s *sqlGenericService) treeWalkForAddingTableName(listCtx *listContext, tsl
 }
 
 func (s *sqlGenericService) treeWalkForSqlizer(listCtx *listContext, tslTree tsl.Node) (squirrel.Sqlizer, *errors.ServiceError) {
-	// Check field names in tree
-	tslTree, serviceErr := db.FieldNameWalk(tslTree, *listCtx.disallowedFields)
-	if serviceErr != nil {
-		return nil, serviceErr
-	}
+	// Note: FieldNameWalk is now called earlier in buildSearchValues to ensure field mapping
+	// happens before related table detection. No need to call it again here.
 
 	// Convert the search tree into SQL [Squirrel] filter
 	sqlizer, err := sqlFilter.Walk(tslTree)

@@ -8,7 +8,7 @@ HyperFleet API - Simple REST API for cluster lifecycle management. Provides CRUD
 
 ### Technology Stack
 
-- **Language**: Go 1.24.9
+- **Language**: Go 1.24 or higher
 - **API Definition**: TypeSpec → OpenAPI 3.0.3
 - **Code Generation**: openapi-generator-cli v7.16.0
 - **Database**: PostgreSQL with GORM ORM
@@ -30,7 +30,7 @@ HyperFleet API - Simple REST API for cluster lifecycle management. Provides CRUD
 
 ```
 hyperfleet-api/
-├── cmd/hyperfleet/              # Application entry point
+├── cmd/hyperfleet-api/          # Application entry point
 ├── pkg/
 │   ├── api/                     # API models and handlers
 │   │   ├── openapi/             # Generated Go models from OpenAPI
@@ -181,8 +181,24 @@ All list endpoints return consistent pagination metadata:
 - `?page=N` - Page number (default: 1)
 - `?pageSize=N` - Items per page (default: 100)
 
-**Search Parameters (clusters only):**
-- `?search=name='cluster-name'` - Filter by name
+**Search Parameters:**
+- Uses TSL (Tree Search Language) query syntax
+- Supported fields: `name`, `status.phase`, `labels.<key>`
+- Supported operators: `=`, `in`, `and`, `or`
+- Examples:
+  ```bash
+  # Simple query
+  curl -G http://localhost:8000/api/hyperfleet/v1/clusters \
+    --data-urlencode "search=name='my-cluster'"
+
+  # AND query
+  curl -G http://localhost:8000/api/hyperfleet/v1/clusters \
+    --data-urlencode "search=status.phase='Ready' and labels.env='production'"
+
+  # OR query
+  curl -G http://localhost:8000/api/hyperfleet/v1/clusters \
+    --data-urlencode "search=labels.env='dev' or labels.env='staging'"
+  ```
 
 ## Development Workflow
 
@@ -541,6 +557,14 @@ curl -X POST http://localhost:8000/api/hyperfleet/v1/clusters/$CLUSTER_ID/status
 
 # 4. Get cluster with aggregated status
 curl http://localhost:8000/api/hyperfleet/v1/clusters/$CLUSTER_ID | jq
+
+# 5. Search with AND condition
+curl -G http://localhost:8000/api/hyperfleet/v1/clusters \
+  --data-urlencode "search=status.phase='Ready' and labels.env='production'" | jq
+
+# 6. Search with OR condition
+curl -G http://localhost:8000/api/hyperfleet/v1/clusters \
+  --data-urlencode "search=labels.env='dev' or labels.env='staging'" | jq
 ```
 
 ## License

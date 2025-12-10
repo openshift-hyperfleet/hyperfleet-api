@@ -7,8 +7,9 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 )
 
-// Cluster/NodePool name pattern: lowercase alphanumeric and hyphens
-var namePattern = regexp.MustCompile(`^[a-z0-9-]+$`)
+// Cluster/NodePool name pattern: compliant with Kubernetes DNS Subdomain Names (RFC 1123)
+// Must start and end with alphanumeric, can contain hyphens in the middle
+var namePattern = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)
 
 func validateNotEmpty(i interface{}, fieldName string, field string) validate {
 	return func() *errors.ServiceError {
@@ -72,7 +73,7 @@ func validateName(i interface{}, fieldName string, field string, minLen, maxLen 
 
 		// Check pattern: lowercase alphanumeric and hyphens only
 		if !namePattern.MatchString(name) {
-			return errors.Validation("%s must contain only lowercase letters, numbers, and hyphens", field)
+			return errors.Validation("%s must start and end with lowercase letter or number, and contain only lowercase letters, numbers, and hyphens", field)
 		}
 
 		return nil
