@@ -67,10 +67,19 @@ func addClusters() *gormigrate.Migration {
 				return err
 			}
 
+			// Create index on status_last_updated_time for search optimization
+			// Sentinel queries frequently filter by this field to find stale resources
+			if err := tx.Exec("CREATE INDEX IF NOT EXISTS idx_clusters_status_last_updated_time ON clusters(status_last_updated_time);").Error; err != nil {
+				return err
+			}
+
 			return nil
 		},
 		Rollback: func(tx *gorm.DB) error {
 			// Drop indexes first
+			if err := tx.Exec("DROP INDEX IF EXISTS idx_clusters_status_last_updated_time;").Error; err != nil {
+				return err
+			}
 			if err := tx.Exec("DROP INDEX IF EXISTS idx_clusters_status_phase;").Error; err != nil {
 				return err
 			}

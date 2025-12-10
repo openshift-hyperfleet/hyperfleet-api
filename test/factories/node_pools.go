@@ -2,10 +2,15 @@ package factories
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"time"
+
+	"gorm.io/gorm"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/environments"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
 	"github.com/openshift-hyperfleet/hyperfleet-api/plugins/nodePools"
 )
 
@@ -65,4 +70,90 @@ func (f *Factories) NewNodePools(id string) (*api.NodePool, error) {
 
 func (f *Factories) NewNodePoolsList(name string, count int) ([]*api.NodePool, error) {
 	return f.NewNodePoolList(name, count)
+}
+
+// reloadNodePool reloads a node pool from the database to ensure all fields are current
+func reloadNodePool(dbSession *gorm.DB, nodePool *api.NodePool) error {
+	return dbSession.First(nodePool, "id = ?", nodePool.ID).Error
+}
+
+// NewNodePoolWithStatus creates a node pool with specific status phase and last_updated_time
+// dbFactory parameter is needed to update database fields
+func NewNodePoolWithStatus(f *Factories, dbFactory db.SessionFactory, id string, phase string, lastUpdatedTime *time.Time) (*api.NodePool, error) {
+	nodePool, err := f.NewNodePool(id)
+	if err != nil {
+		return nil, err
+	}
+
+	// Update database record with status fields
+	dbSession := dbFactory.New(context.Background())
+	updates := map[string]interface{}{
+		"status_phase": phase,
+	}
+	if lastUpdatedTime != nil {
+		updates["status_last_updated_time"] = lastUpdatedTime
+	}
+	err = dbSession.Model(nodePool).Updates(updates).Error
+	if err != nil {
+		return nil, err
+	}
+
+	// Reload to get updated values
+	if err := reloadNodePool(dbSession, nodePool); err != nil {
+		return nil, err
+	}
+	return nodePool, nil
+}
+
+// NewNodePoolWithLabels creates a node pool with specific labels
+func NewNodePoolWithLabels(f *Factories, dbFactory db.SessionFactory, id string, labels map[string]string) (*api.NodePool, error) {
+	nodePool, err := f.NewNodePool(id)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert labels to JSON and update
+	labelsJSON, err := json.Marshal(labels)
+	if err != nil {
+		return nil, err
+	}
+
+	dbSession := dbFactory.New(context.Background())
+	err = dbSession.Model(nodePool).Update("labels", labelsJSON).Error
+	if err != nil {
+		return nil, err
+	}
+
+	// Reload to get updated values
+	if err := reloadNodePool(dbSession, nodePool); err != nil {
+		return nil, err
+	}
+	return nodePool, nil
+}
+
+// NewNodePoolWithStatusAndLabels creates a node pool with both status and labels
+func NewNodePoolWithStatusAndLabels(f *Factories, dbFactory db.SessionFactory, id string, phase string, lastUpdatedTime *time.Time, labels map[string]string) (*api.NodePool, error) {
+	nodePool, err := NewNodePoolWithStatus(f, dbFactory, id, phase, lastUpdatedTime)
+	if err != nil {
+		return nil, err
+	}
+
+	if labels != nil {
+		labelsJSON, err := json.Marshal(labels)
+		if err != nil {
+			return nil, err
+		}
+
+		dbSession := dbFactory.New(context.Background())
+		err = dbSession.Model(nodePool).Update("labels", labelsJSON).Error
+		if err != nil {
+			return nil, err
+		}
+
+		if err := reloadNodePool(dbSession, nodePool); err != nil {
+			return nil, err
+		}
+	}
+
+	return nodePool, nil
 }

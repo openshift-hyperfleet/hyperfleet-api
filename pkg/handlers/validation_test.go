@@ -78,6 +78,9 @@ func TestValidateName_InvalidCharacters(t *testing.T) {
 		"test@cluster",  // special char
 		"test/cluster",  // slash
 		"test\\cluster", // backslash
+		"-test",         // starts with hyphen
+		"test-",         // ends with hyphen
+		"-test-",        // starts and ends with hyphen
 	}
 
 	for _, name := range invalidNames {

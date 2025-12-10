@@ -32,8 +32,8 @@ func TestSQLTranslation(t *testing.T) {
 			"error":  "hyperfleet-21: Failed to parse search query: garbage",
 		},
 		{
-			"search": "id in ('123')",
-			"error":  "hyperfleet-21: clusters.id is not a valid field name",
+			"search": "spec = '{}'",
+			"error":  "hyperfleet-21: spec is not a valid field name",
 		},
 	}
 	for _, test := range tests {
@@ -43,7 +43,6 @@ func TestSQLTranslation(t *testing.T) {
 		listCtx, model, serviceErr := genericService.newListContext(context.Background(), "", &ListArguments{Search: search}, &list)
 		Expect(serviceErr).ToNot(HaveOccurred())
 		d := g.GetInstanceDao(context.Background(), model)
-		(*listCtx.disallowedFields)["id"] = "id"
 		_, serviceErr = genericService.buildSearch(listCtx, &d)
 		Expect(serviceErr).To(HaveOccurred())
 		Expect(serviceErr.Code).To(Equal(errors.ErrorBadRequest))
@@ -57,6 +56,29 @@ func TestSQLTranslation(t *testing.T) {
 			"sql":    "username IN (?)",
 			"values": ConsistOf("ooo.openshift"),
 		},
+		// Test status.xxx field mapping
+		{
+			"search": "status.phase = 'NotReady'",
+			"sql":    "status_phase = ?",
+			"values": ConsistOf("NotReady"),
+		},
+		{
+			"search": "status.last_updated_time < '2025-01-01T00:00:00Z'",
+			"sql":    "status_last_updated_time < ?",
+			"values": ConsistOf("2025-01-01T00:00:00Z"),
+		},
+		// Test labels.xxx field mapping
+		{
+			"search": "labels.environment = 'production'",
+			"sql":    "labels->>'environment' = ?",
+			"values": ConsistOf("production"),
+		},
+		// Test ID query (should be allowed)
+		{
+			"search": "id = 'cls-123'",
+			"sql":    "id = ?",
+			"values": ConsistOf("cls-123"),
+		},
 	}
 	for _, test := range tests {
 		var list []api.Cluster
@@ -67,6 +89,10 @@ func TestSQLTranslation(t *testing.T) {
 		Expect(serviceErr).ToNot(HaveOccurred())
 		tslTree, err := tsl.ParseTSL(search)
 		Expect(err).ToNot(HaveOccurred())
+		// Apply field name mapping (status.xxx -> status_xxx, labels.xxx -> labels->>'xxx')
+		// This must happen before converting to sqlizer
+		tslTree, serviceErr = db.FieldNameWalk(tslTree, *listCtx.disallowedFields)
+		Expect(serviceErr).ToNot(HaveOccurred())
 		sqlizer, serviceErr := genericService.treeWalkForSqlizer(listCtx, tslTree)
 		Expect(serviceErr).ToNot(HaveOccurred())
 		sql, values, err := sqlizer.ToSql()
