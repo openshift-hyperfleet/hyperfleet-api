@@ -27,11 +27,21 @@ spec:
       serviceAccountName: {{ include "hyperfleet-api.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
-      {{- if .Values.database.postgresql.enabled }}
+      {{- if or .Values.database.postgresql.enabled .Values.database.external.enabled }}
       initContainers:
+      {{- if .Values.database.postgresql.enabled }}
       - name: wait-for-db
         image: busybox:1.36
         command: ['sh', '-c', 'until nc -z {{ include "hyperfleet-api.fullname" . }}-postgresql {{ .Values.database.postgresql.port }}; do echo waiting for postgresql; sleep 2; done']
+      {{- end }}
+      - name: db-migrate
+        image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        command: ["/app/hyperfleet-api", "migrate"]
+        volumeMounts:
+        - name: secrets
+          mountPath: /build/secrets
+          readOnly: true
       {{- end }}
       containers:
       - name: {{ .Chart.Name }}
@@ -88,8 +98,10 @@ spec:
           failureThreshold: 3
         resources:
           {{- toYaml .Values.resources | nindent 10 }}
-        {{- if or .Values.database.external.enabled .Values.database.postgresql.enabled }}
         volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        {{- if or .Values.database.external.enabled .Values.database.postgresql.enabled }}
         - name: secrets
           mountPath: /build/secrets
           readOnly: true
@@ -97,8 +109,9 @@ spec:
         {{- if .Values.extraVolumeMounts }}
         {{- toYaml .Values.extraVolumeMounts | nindent 8 }}
         {{- end }}
-      {{- if or .Values.database.external.enabled .Values.database.postgresql.enabled .Values.extraVolumes }}
       volumes:
+      - name: tmp
+        emptyDir: {}
       {{- if or .Values.database.external.enabled .Values.database.postgresql.enabled }}
       - name: secrets
         secret:
@@ -110,7 +123,6 @@ spec:
       {{- end }}
       {{- if .Values.extraVolumes }}
       {{- toYaml .Values.extraVolumes | nindent 6 }}
-      {{- end }}
       {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
