@@ -40,6 +40,12 @@ WORKDIR /app
 # Copy binary from builder
 COPY --from=builder /build/hyperfleet-api /app/hyperfleet-api
 
+# Copy OpenAPI schema for validation (uses the source spec, not the generated one)
+COPY --from=builder /build/openapi/openapi.yaml /app/openapi/openapi.yaml
+
+# Set default schema path (can be overridden by Helm for provider-specific schemas)
+ENV OPENAPI_SCHEMA_PATH=/app/openapi/openapi.yaml
+
 EXPOSE 8000
 
 ENTRYPOINT ["/app/hyperfleet-api"]
