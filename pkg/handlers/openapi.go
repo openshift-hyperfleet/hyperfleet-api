@@ -9,6 +9,7 @@ import (
 	"github.com/golang/glog"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
 //go:embed openapi-ui.html
@@ -60,6 +61,9 @@ func (h *openAPIHandler) GetOpenAPI(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	if _, err := w.Write(h.openAPIDefinitions); err != nil {
 		// Response already committed, can't report error
+		log := logger.NewOCMLogger(r.Context())
+		log.Extra("endpoint", r.URL.Path).Extra("method", r.Method).Extra("status_code", http.StatusOK).
+			Extra("error", err.Error()).Error("Failed to write OpenAPI specification response")
 		return
 	}
 }
@@ -69,6 +73,9 @@ func (h *openAPIHandler) GetOpenAPIUI(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	if _, err := w.Write(h.uiContent); err != nil {
 		// Response already committed, can't report error
+		log := logger.NewOCMLogger(r.Context())
+		log.Extra("endpoint", r.URL.Path).Extra("method", r.Method).Extra("status_code", http.StatusOK).
+			Extra("error", err.Error()).Error("Failed to write OpenAPI UI response")
 		return
 	}
 }

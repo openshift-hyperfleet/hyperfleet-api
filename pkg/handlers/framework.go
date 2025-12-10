@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -26,19 +25,19 @@ type handlerConfig struct {
 }
 
 type validate func() *errors.ServiceError
-type errorHandlerFunc func(ctx context.Context, w http.ResponseWriter, err *errors.ServiceError)
+type errorHandlerFunc func(r *http.Request, w http.ResponseWriter, err *errors.ServiceError)
 type httpAction func() (interface{}, *errors.ServiceError)
 
-func handleError(ctx context.Context, w http.ResponseWriter, err *errors.ServiceError) {
-	log := logger.NewOCMLogger(ctx)
-	operationID := logger.GetOperationID(ctx)
+func handleError(r *http.Request, w http.ResponseWriter, err *errors.ServiceError) {
+	log := logger.NewOCMLogger(r.Context())
+	operationID := logger.GetOperationID(r.Context())
 	// If this is a 400 error, its the user's issue, log as info rather than error
 	if err.HttpCode >= 400 && err.HttpCode <= 499 {
 		log.Infof(err.Error())
 	} else {
 		log.Error(err.Error())
 	}
-	writeJSONResponse(w, err.HttpCode, err.AsOpenapiError(operationID))
+	writeJSONResponse(w, r, err.HttpCode, err.AsOpenapiError(operationID))
 }
 
 func handle(w http.ResponseWriter, r *http.Request, cfg *handlerConfig, httpStatus int) {
@@ -48,20 +47,20 @@ func handle(w http.ResponseWriter, r *http.Request, cfg *handlerConfig, httpStat
 
 	bytes, err := io.ReadAll(r.Body)
 	if err != nil {
-		handleError(r.Context(), w, errors.MalformedRequest("Unable to read request body: %s", err))
+		handleError(r, w, errors.MalformedRequest("Unable to read request body: %s", err))
 		return
 	}
 
 	err = json.Unmarshal(bytes, &cfg.MarshalInto)
 	if err != nil {
-		handleError(r.Context(), w, errors.MalformedRequest("Invalid request format: %s", err))
+		handleError(r, w, errors.MalformedRequest("Invalid request format: %s", err))
 		return
 	}
 
 	for _, v := range cfg.Validate {
 		err := v()
 		if err != nil {
-			cfg.ErrorHandler(r.Context(), w, err)
+			cfg.ErrorHandler(r, w, err)
 			return
 		}
 	}
@@ -70,9 +69,9 @@ func handle(w http.ResponseWriter, r *http.Request, cfg *handlerConfig, httpStat
 
 	switch {
 	case serviceErr != nil:
-		cfg.ErrorHandler(r.Context(), w, serviceErr)
+		cfg.ErrorHandler(r, w, serviceErr)
 	default:
-		writeJSONResponse(w, httpStatus, result)
+		writeJSONResponse(w, r, httpStatus, result)
 	}
 
 }
@@ -84,7 +83,7 @@ func handleDelete(w http.ResponseWriter, r *http.Request, cfg *handlerConfig, ht
 	for _, v := range cfg.Validate {
 		err := v()
 		if err != nil {
-			cfg.ErrorHandler(r.Context(), w, err)
+			cfg.ErrorHandler(r, w, err)
 			return
 		}
 	}
@@ -93,9 +92,9 @@ func handleDelete(w http.ResponseWriter, r *http.Request, cfg *handlerConfig, ht
 
 	switch {
 	case serviceErr != nil:
-		cfg.ErrorHandler(r.Context(), w, serviceErr)
+		cfg.ErrorHandler(r, w, serviceErr)
 	default:
-		writeJSONResponse(w, httpStatus, result)
+		writeJSONResponse(w, r, httpStatus, result)
 	}
 
 }
@@ -108,9 +107,9 @@ func handleGet(w http.ResponseWriter, r *http.Request, cfg *handlerConfig) {
 	result, serviceErr := cfg.Action()
 	switch serviceErr {
 	case nil:
-		writeJSONResponse(w, http.StatusOK, result)
+		writeJSONResponse(w, r, http.StatusOK, result)
 	default:
-		cfg.ErrorHandler(r.Context(), w, serviceErr)
+		cfg.ErrorHandler(r, w, serviceErr)
 	}
 }
 
@@ -121,8 +120,8 @@ func handleList(w http.ResponseWriter, r *http.Request, cfg *handlerConfig) {
 
 	results, serviceError := cfg.Action()
 	if serviceError != nil {
-		cfg.ErrorHandler(r.Context(), w, serviceError)
+		cfg.ErrorHandler(r, w, serviceError)
 		return
 	}
-	writeJSONResponse(w, http.StatusOK, results)
+	writeJSONResponse(w, r, http.StatusOK, results)
 }

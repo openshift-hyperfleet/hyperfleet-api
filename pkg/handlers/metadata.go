@@ -18,11 +18,10 @@ package handlers
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 
-	"github.com/golang/glog"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
 type metadataHandler struct{}
@@ -46,6 +45,9 @@ func (h metadataHandler) Get(w http.ResponseWriter, r *http.Request) {
 	}
 	data, err := json.Marshal(body)
 	if err != nil {
+		log := logger.NewOCMLogger(r.Context())
+		log.Extra("endpoint", r.URL.Path).Extra("method", r.Method).Extra("error", err.Error()).
+			Error("Failed to marshal metadata response")
 		api.SendPanic(w, r)
 		return
 	}
@@ -53,8 +55,9 @@ func (h metadataHandler) Get(w http.ResponseWriter, r *http.Request) {
 	// Send the response:
 	_, err = w.Write(data)
 	if err != nil {
-		err = fmt.Errorf("can't send response body for request '%s'", r.URL.Path)
-		glog.Error(err)
+		log := logger.NewOCMLogger(r.Context())
+		log.Extra("endpoint", r.URL.Path).Extra("method", r.Method).Extra("error", err.Error()).
+			Error("Failed to send metadata response body")
 		return
 	}
 }

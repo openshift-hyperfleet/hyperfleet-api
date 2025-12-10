@@ -23,7 +23,10 @@ func handleValidationError(w http.ResponseWriter, r *http.Request, err *errors.S
 	// Write JSON error response
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(err.HttpCode)
-	_ = json.NewEncoder(w).Encode(err.AsOpenapiError(operationID))
+	if encodeErr := json.NewEncoder(w).Encode(err.AsOpenapiError(operationID)); encodeErr != nil {
+		log.Extra("endpoint", r.URL.Path).Extra("method", r.Method).Extra("status_code", err.HttpCode).
+			Extra("error", encodeErr.Error()).Error("Failed to encode validation error response")
+	}
 }
 
 // SchemaValidationMiddleware validates cluster and nodepool spec fields against OpenAPI schemas
@@ -44,7 +47,10 @@ func SchemaValidationMiddleware(validator *validators.SchemaValidator) func(http
 				handleValidationError(w, r, serviceErr)
 				return
 			}
-			_ = r.Body.Close()
+			if closeErr := r.Body.Close(); closeErr != nil {
+				log := logger.NewOCMLogger(r.Context())
+				log.Extra("error", closeErr.Error()).Warning("Failed to close request body")
+			}
 
 			// Restore the request body for the next handler
 			r.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
