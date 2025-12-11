@@ -1,0 +1,126 @@
+# Default values for hyperfleet-api
+# This is a YAML-formatted file.
+
+replicaCount: 1
+
+image:
+  registry: quay.io/openshift-hyperfleet
+  repository: hyperfleet-api
+  pullPolicy: Always
+  tag: "latest"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# Server bind addresses
+# Use ":PORT" format to bind to all interfaces (required for Kubernetes)
+server:
+  bindAddress: ":8000"
+  healthBindAddress: ":8083"
+  metricsBindAddress: ":8080"
+
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: ""
+
+podAnnotations: {}
+
+podSecurityContext:
+  fsGroup: 65532
+  runAsNonRoot: true
+  runAsUser: 65532
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: true
+  seccompProfile:
+    type: RuntimeDefault
+
+service:
+  type: ClusterIP
+  port: 8000
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 80
+
+# Database configuration
+database:
+  # For PRODUCTION: Use external database (GCP Cloud SQL, etc.)
+  # Set external.enabled=true and provide connection details
+  #
+  # For DEVELOPMENT: Use built-in PostgreSQL pod
+  # Set postgresql.enabled=true (default)
+
+  # External database configuration (production)
+  external:
+    enabled: false
+    # Name of existing secret with db.host, db.port, db.name, db.user, db.password keys
+    secretName: ""
+
+  # Built-in PostgreSQL for development/testing
+  postgresql:
+    enabled: true
+    image: docker.io/library/postgres:14.2
+    database: hyperfleet
+    user: hyperfleet
+    password: hyperfleet-dev-password
+    port: 5432
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+    persistence:
+      enabled: false
+      size: 1Gi
+      storageClass: ""
+
+# Authentication configuration
+auth:
+  # Enable JWT authentication
+  enableJwt: true
+  # Enable authorization (not required for MVP)
+  enableAuthz: false
+  # JWKS URL for token verification
+  # Override with: --set auth.jwksUrl="https://your-idp/.../.well-known/jwks.json"
+  jwksUrl: "https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/certs"
+
+# Additional environment variables
+env: []
+  # - name: GLOG_V
+  #   value: "10"
+
+# Volume mounts for additional configs
+extraVolumeMounts: []
+
+# Additional volumes
+extraVolumes: []

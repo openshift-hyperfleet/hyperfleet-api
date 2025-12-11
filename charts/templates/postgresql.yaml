@@ -1,0 +1,120 @@
+{{- if .Values.database.postgresql.enabled }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "hyperfleet-api.fullname" . }}-db-secrets
+  labels:
+    {{- include "hyperfleet-api.labels" . | nindent 4 }}
+type: Opaque
+stringData:
+  db.host: {{ include "hyperfleet-api.fullname" . }}-postgresql
+  db.port: {{ .Values.database.postgresql.port | quote }}
+  db.name: {{ .Values.database.postgresql.database }}
+  db.user: {{ .Values.database.postgresql.user }}
+  db.password: {{ .Values.database.postgresql.password }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "hyperfleet-api.fullname" . }}-postgresql
+  labels:
+    {{- include "hyperfleet-api.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgresql
+spec:
+  type: ClusterIP
+  ports:
+  - port: {{ .Values.database.postgresql.port }}
+    targetPort: postgresql
+    protocol: TCP
+    name: postgresql
+  selector:
+    {{- include "hyperfleet-api.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: postgresql
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "hyperfleet-api.fullname" . }}-postgresql
+  labels:
+    {{- include "hyperfleet-api.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgresql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "hyperfleet-api.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: postgresql
+  template:
+    metadata:
+      labels:
+        {{- include "hyperfleet-api.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: postgresql
+    spec:
+      containers:
+      - name: postgresql
+        image: {{ .Values.database.postgresql.image }}
+        ports:
+        - name: postgresql
+          containerPort: {{ .Values.database.postgresql.port }}
+          protocol: TCP
+        env:
+        - name: POSTGRES_DB
+          value: {{ .Values.database.postgresql.database }}
+        - name: POSTGRES_USER
+          value: {{ .Values.database.postgresql.user }}
+        - name: POSTGRES_PASSWORD
+          value: {{ .Values.database.postgresql.password }}
+        resources:
+          {{- toYaml .Values.database.postgresql.resources | nindent 10 }}
+        {{- if .Values.database.postgresql.persistence.enabled }}
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/postgresql/data
+        {{- end }}
+        readinessProbe:
+          exec:
+            command:
+            - pg_isready
+            - -U
+            - {{ .Values.database.postgresql.user }}
+            - -d
+            - {{ .Values.database.postgresql.database }}
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        livenessProbe:
+          exec:
+            command:
+            - pg_isready
+            - -U
+            - {{ .Values.database.postgresql.user }}
+            - -d
+            - {{ .Values.database.postgresql.database }}
+          initialDelaySeconds: 30
+          periodSeconds: 10
+      {{- if .Values.database.postgresql.persistence.enabled }}
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: {{ include "hyperfleet-api.fullname" . }}-postgresql
+      {{- end }}
+---
+{{- if .Values.database.postgresql.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "hyperfleet-api.fullname" . }}-postgresql
+  labels:
+    {{- include "hyperfleet-api.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgresql
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.database.postgresql.persistence.size }}
+  {{- if .Values.database.postgresql.persistence.storageClass }}
+  storageClassName: {{ .Values.database.postgresql.persistence.storageClass }}
+  {{- end }}
+{{- end }}
+{{- end }}

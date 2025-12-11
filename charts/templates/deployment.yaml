@@ -1,0 +1,138 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "hyperfleet-api.fullname" . }}
+  labels:
+    {{- include "hyperfleet-api.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "hyperfleet-api.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "hyperfleet-api.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "hyperfleet-api.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- if or .Values.database.postgresql.enabled .Values.database.external.enabled }}
+      initContainers:
+      {{- if .Values.database.postgresql.enabled }}
+      - name: wait-for-db
+        image: busybox:1.36
+        command: ['sh', '-c', 'until nc -z {{ include "hyperfleet-api.fullname" . }}-postgresql {{ .Values.database.postgresql.port }}; do echo waiting for postgresql; sleep 2; done']
+      {{- end }}
+      - name: db-migrate
+        image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        command: ["/app/hyperfleet-api", "migrate"]
+        volumeMounts:
+        - name: secrets
+          mountPath: /build/secrets
+          readOnly: true
+      {{- end }}
+      containers:
+      - name: {{ .Chart.Name }}
+        securityContext:
+          {{- toYaml .Values.securityContext | nindent 10 }}
+        image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        workingDir: /app
+        args:
+        - serve
+        - --api-server-bindaddress={{ .Values.server.bindAddress | default ":8000" }}
+        - --health-check-server-bindaddress={{ .Values.server.healthBindAddress | default ":8083" }}
+        - --metrics-server-bindaddress={{ .Values.server.metricsBindAddress | default ":8080" }}
+        ports:
+        - name: http
+          containerPort: 8000
+          protocol: TCP
+        - name: health
+          containerPort: 8083
+          protocol: TCP
+        - name: metrics
+          containerPort: 8080
+          protocol: TCP
+        env:
+        {{- if .Values.auth.jwksUrl }}
+        - name: JWKS_URL
+          value: {{ .Values.auth.jwksUrl | quote }}
+        {{- end }}
+        - name: ENABLE_JWT
+          value: {{ .Values.auth.enableJwt | quote }}
+        - name: ENABLE_AUTHZ
+          value: {{ .Values.auth.enableAuthz | quote }}
+        {{- if .Values.env }}
+        {{- range .Values.env }}
+        - name: {{ .name }}
+          value: {{ .value | quote }}
+        {{- end }}
+        {{- end }}
+        livenessProbe:
+          httpGet:
+            path: /healthcheck
+            port: health
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /healthcheck
+            port: health
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        resources:
+          {{- toYaml .Values.resources | nindent 10 }}
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        {{- if or .Values.database.external.enabled .Values.database.postgresql.enabled }}
+        - name: secrets
+          mountPath: /build/secrets
+          readOnly: true
+        {{- end }}
+        {{- if .Values.extraVolumeMounts }}
+        {{- toYaml .Values.extraVolumeMounts | nindent 8 }}
+        {{- end }}
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      {{- if or .Values.database.external.enabled .Values.database.postgresql.enabled }}
+      - name: secrets
+        secret:
+          {{- if .Values.database.external.enabled }}
+          secretName: {{ .Values.database.external.secretName }}
+          {{- else }}
+          secretName: {{ include "hyperfleet-api.fullname" . }}-db-secrets
+          {{- end }}
+      {{- end }}
+      {{- if .Values.extraVolumes }}
+      {{- toYaml .Values.extraVolumes | nindent 6 }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

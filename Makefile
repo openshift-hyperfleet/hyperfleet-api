@@ -15,6 +15,16 @@ version:=$(shell date +%s)
 # a tool for managing containers and images, etc. You can set it as docker
 container_tool ?= podman
 
+# Image configuration
+IMAGE_REGISTRY ?= quay.io/openshift-hyperfleet
+IMAGE_NAME ?= hyperfleet-api
+IMAGE_TAG ?= latest
+
+# Dev image configuration - set QUAY_USER to push to personal registry
+# Usage: QUAY_USER=myuser make image-dev
+QUAY_USER ?=
+DEV_TAG ?= dev-$(git_sha)
+
 # Database connection details
 db_name:=hyperfleet
 db_host=hyperfleet-db.$(namespace)
@@ -53,6 +63,9 @@ help:
 	@echo "make generate-mocks       generate mock implementations for services"
 	@echo "make generate-all         generate all code (openapi + mocks)"
 	@echo "make clean                delete temporary generated files"
+	@echo "make image                build container image"
+	@echo "make image-push           build and push container image"
+	@echo "make image-dev            build and push to personal Quay registry"
 	@echo "$(fake)"
 .PHONY: help
 
@@ -283,3 +296,35 @@ db/login:
 db/teardown:
 	$(container_tool) stop psql-hyperfleet
 	$(container_tool) rm psql-hyperfleet
+
+# Build container image (multi-stage build, no local binary needed)
+.PHONY: image
+image:
+	@echo "Building container image $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)..."
+	$(container_tool) build -t $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG) .
+	@echo "✅ Image built: $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)"
+
+# Build and push container image to registry
+.PHONY: image-push
+image-push: image
+	@echo "Pushing image $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)..."
+	$(container_tool) push $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)
+	@echo "✅ Image pushed: $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)"
+
+# Build and push to personal Quay registry (requires QUAY_USER)
+.PHONY: image-dev
+image-dev:
+ifndef QUAY_USER
+	@echo "❌ ERROR: QUAY_USER is not set"
+	@echo ""
+	@echo "Usage: QUAY_USER=myuser make image-dev"
+	@echo ""
+	@echo "This will build and push to: quay.io/$$QUAY_USER/$(IMAGE_NAME):$(DEV_TAG)"
+	@exit 1
+endif
+	@echo "Building dev image quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG)..."
+	$(container_tool) build -t quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG) .
+	@echo "Pushing dev image..."
+	$(container_tool) push quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG)
+	@echo ""
+	@echo "✅ Dev image pushed: quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG)"
