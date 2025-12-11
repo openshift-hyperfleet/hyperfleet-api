@@ -301,7 +301,9 @@ db/teardown:
 .PHONY: image
 image:
 	@echo "Building container image $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)..."
-	$(container_tool) build -t $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG) .
+	# --platform flag requires Docker >= 20.10 or Podman >= 3.4
+	# For older engines: use 'docker buildx build' or omit --platform
+	$(container_tool) build --platform linux/amd64 -t $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG) .
 	@echo "✅ Image built: $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)"
 
 # Build and push container image to registry
@@ -323,7 +325,9 @@ ifndef QUAY_USER
 	@exit 1
 endif
 	@echo "Building dev image quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG)..."
-	$(container_tool) build -t quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG) .
+	# --platform flag requires Docker >= 20.10 or Podman >= 3.4
+	# For older engines: use 'docker buildx build' or omit --platform
+	$(container_tool) build --platform linux/amd64 -t quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG) .
 	@echo "Pushing dev image..."
 	$(container_tool) push quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG)
 	@echo ""
