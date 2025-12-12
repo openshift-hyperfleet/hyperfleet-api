@@ -1,0 +1,29 @@
+# Pre-commit configuration for hyperfleet-api
+# Enforces Red Hat security compliance and AI-readiness best practices
+#
+# Setup:
+#   1. Run: pre-commit install
+#   2. Run: pre-commit install --hook-type pre-push
+#   3. Run: pre-commit run --all-files (to test)
+#
+# See: https://pre-commit.com/
+
+repos:
+  # Red Hat security and compliance hooks
+  # NOTE: This hook requires access to Red Hat's internal GitLab.
+  # External contributors: You can comment out this section or skip with:
+  #   SKIP=rh-pre-commit git commit -m "your message"
+  # See README.md "Pre-commit Hooks" section for more details.
+  - repo: https://gitlab.cee.redhat.com/infosec-public/developer-workbench/tools
+    rev: rh-pre-commit-2.3.2  # Use specific tag
+    hooks:
+      - id: rh-pre-commit
+
+  # AI-readiness hooks
+  - repo: https://github.com/openshift-hyperfleet/rh-hooks-ai
+    rev: v1.0.3  # Use latest release
+    hooks:
+      - id: check-rh-precommit
+      - id: validate-agents-md  # Runs on git push, requires AGENTS.md
+      - id: ai-attribution-reminder
+      # - id: check-version  # Optional: Checks for updates once per 24h (non-blocking)
