@@ -237,6 +237,55 @@ psql -h localhost -U hyperfleet hyperfleet
 
 **Note**: The `pkg/api/openapi/` directory is not tracked in git. You must run `make generate` after cloning or pulling changes to the OpenAPI specification.
 
+### Pre-commit Hooks (Optional)
+
+This project uses pre-commit hooks for code quality and security checks.
+
+**For Red Hat internal contributors:**
+```bash
+# Install pre-commit
+brew install pre-commit  # macOS
+# or
+pip install pre-commit
+
+# Install hooks
+pre-commit install
+pre-commit install --hook-type pre-push
+
+# Test
+pre-commit run --all-files
+```
+
+**For external contributors:**
+
+The `.pre-commit-config.yaml` includes `rh-pre-commit` which requires access to Red Hat's internal GitLab. External contributors have two options:
+
+1. **Skip the internal hook** (recommended):
+   ```bash
+   # Skip rh-pre-commit when committing
+   SKIP=rh-pre-commit git commit -m "your message"
+   ```
+
+2. **Comment out the internal hook**:
+   Edit `.pre-commit-config.yaml` and locate the repo block with `repo: https://gitlab.cee.redhat.com/...` (the Red Hat internal GitLab URL) or whose hooks include `id: rh-pre-commit`. Comment out or remove that entire repo block.
+
+The other hooks (`rh-hooks-ai`) are publicly accessible and will work for all contributors.
+
+**Updating hooks:**
+
+To update all hooks to their latest versions:
+```bash
+# Update all hooks to latest releases
+pre-commit autoupdate
+
+# Test updated hooks
+pre-commit run --all-files
+```
+
+This command updates the `rev` fields in `.pre-commit-config.yaml` to the latest available versions. Review the changes before committing to ensure compatibility.
+
+See [PRE_COMMIT_DEMO.md](./PRE_COMMIT_DEMO.md) for detailed setup instructions and troubleshooting.
+
 ### Running the Service
 
 **Local development (no authentication):**
