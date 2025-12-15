@@ -11,7 +11,7 @@ testcontainers project only supports Docker officially and some errors can appea
 
 If you encounter the following error:
 
-```
+```text
 Failed to start PostgreSQL testcontainer: create container: container create: Error response from daemon: container create: unable to find network with name or ID bridge: network not found: creating reaper failed
 ```
 It can happen because testcontainers spin up an additional [testcontainers/ryuk](https://github.com/testcontainers/moby-ryuk) container that manages the lifecycle of the containers used in the tests and performs cleanup in case there are fails.
@@ -25,7 +25,7 @@ TESTCONTAINERS_RYUK_DISABLED=true
 
 Or setting a property in `~/.testcontainers.properties`
 
-```
+```text
 ryuk.disabled=true
 ```
 
