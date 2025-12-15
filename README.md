@@ -139,23 +139,23 @@ Resources report status through adapter-specific condition sets following Kubern
 {
   "adapter": "dns-adapter",
   "observed_generation": 1,
+  "created_time": "2025-11-17T15:04:05Z",
+  "last_report_time": "2025-11-17T15:04:05Z",
   "conditions": [
     {
-      "adapter": "dns-adapter",
       "type": "Ready",
       "status": "True",
-      "observed_generation": 1,
       "reason": "ClusterProvisioned",
       "message": "Cluster successfully provisioned",
-      "created_at": "2025-11-17T15:04:05Z",
-      "updated_at": "2025-11-17T15:04:05Z",
+      "last_transition_time": "2025-11-17T15:04:05Z"
     }
   ],
   "data": {}
 }
 ```
 
-**Note**: The `created_at` and `updated_at` fields in conditions are optional and typically set by the service.
+**Note**: The `created_time`, `last_report_time`, and `last_transition_time` fields are set by the service.
+
 
 **Condition Types:**
 - `Ready` - Resource is operational
@@ -302,8 +302,8 @@ The service starts on `localhost:8000`:
 
 **Test the API:**
 ```bash
-# Check API compatibility
-curl http://localhost:8000/api/hyperfleet/v1/compatibility | jq
+# Check API metadata
+curl http://localhost:8000/api/hyperfleet | jq
 
 # List clusters
 curl http://localhost:8000/api/hyperfleet/v1/clusters | jq
@@ -674,16 +674,13 @@ curl -X POST http://localhost:8000/api/hyperfleet/v1/clusters/$CLUSTER_ID/status
   -d '{
     "adapter": "dns-adapter",
     "observed_generation": 1,
+    "observed_time": "2025-11-17T15:04:05Z",
     "conditions": [
       {
-        "adapter": "dns-adapter",
         "type": "Ready",
         "status": "True",
-        "observed_generation": 1,
         "reason": "ClusterProvisioned",
-        "message": "Cluster successfully provisioned",
-        "created_at": "2025-11-17T15:04:05Z",
-        "updated_at": "2025-11-17T15:04:05Z"
+        "message": "Cluster successfully provisioned"
       }
     ]
   }' | jq
