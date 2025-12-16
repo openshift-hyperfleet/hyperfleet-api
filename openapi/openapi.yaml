@@ -399,6 +399,9 @@ components:
       name: search
       in: query
       required: false
+      description: |-
+        Filter results using TSL (Tree Search Language) query syntax.
+        Examples: `status.phase='NotReady'`, `name in ('c1','c2')`, `labels.region='us-east'`
       schema:
         type: string
       explode: false
