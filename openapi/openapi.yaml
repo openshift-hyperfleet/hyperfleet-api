@@ -361,11 +361,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 components:
-  securitySchemes:
-    BearerAuth:
-      type: http
-      scheme: bearer
-
   parameters:
     QueryParams.order:
       name: order
@@ -407,10 +402,6 @@ components:
       schema:
         type: string
       explode: false
-      description: |
-        Filter results using TSL (Tree Search Language) query syntax.
-
-        Examples: `status.phase='NotReady'`, `name in ('c1','c2')`, `labels.region='us-east'`
   schemas:
     APIResource:
       type: object
@@ -713,9 +704,9 @@ components:
           default: Cluster
         name:
           type: string
-          minLength: 3
+          minLength: 1
           maxLength: 63
-          pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+          pattern: ^[a-z0-9-]+$
           description: Cluster name (unique)
         spec:
           allOf:
@@ -913,6 +904,7 @@ components:
         - updated_time
         - created_by
         - updated_by
+        - generation
         - owner_references
         - status
       properties:
@@ -928,6 +920,11 @@ components:
         updated_by:
           type: string
           format: email
+        generation:
+          type: integer
+          format: int32
+          minimum: 1
+          description: Generation field is updated on customer updates, reflecting the version of the "intent" of the customer
         owner_references:
           $ref: '#/components/schemas/ObjectReference'
         status:
@@ -943,6 +940,7 @@ components:
           environment: production
           pooltype: worker
         spec: {}
+        generation: 1
         created_time: '2021-01-01T00:00:00Z'
         updated_time: '2021-01-01T00:00:00Z'
         created_by: user-123@example.com
@@ -1046,6 +1044,7 @@ components:
         - updated_time
         - created_by
         - updated_by
+        - generation
         - owner_references
         - status
         - name
@@ -1063,6 +1062,11 @@ components:
         updated_by:
           type: string
           format: email
+        generation:
+          type: integer
+          format: int32
+          minimum: 1
+          description: Generation field is updated on customer updates, reflecting the version of the "intent" of the customer
         owner_references:
           $ref: '#/components/schemas/ObjectReference'
         status:
@@ -1206,6 +1210,6 @@ components:
         - Failed
       description: Phase of a resource (Cluster or NodePool)
 servers:
-  - url: https://api.hyperfleet.redhat.com
+  - url: https://hyperfleet.redhat.com
     description: Production
     variables: {}

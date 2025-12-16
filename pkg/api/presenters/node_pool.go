@@ -87,12 +87,13 @@ func PresentNodePool(nodePool *api.NodePool) openapi.NodePool {
 
 	kind := nodePool.Kind
 	result := openapi.NodePool{
-		Id:     &nodePool.ID,
-		Kind:   &kind,
-		Href:   &href,
-		Name:   nodePool.Name,
-		Spec:   spec,
-		Labels: &labels,
+		Id:         &nodePool.ID,
+		Kind:       &kind,
+		Href:       &href,
+		Name:       nodePool.Name,
+		Spec:       spec,
+		Labels:     &labels,
+		Generation: nodePool.Generation,
 		OwnerReferences: openapi.ObjectReference{
 			Id:   &nodePool.OwnerID,
 			Kind: &nodePool.OwnerKind,

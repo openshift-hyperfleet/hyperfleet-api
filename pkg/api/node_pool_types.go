@@ -19,6 +19,9 @@ type NodePool struct {
 	Labels datatypes.JSON `json:"labels,omitempty" gorm:"type:jsonb"`
 	Href   string         `json:"href,omitempty" gorm:"size:500"`
 
+	// Version control
+	Generation int32 `json:"generation" gorm:"default:1;not null"`
+
 	// Owner references (expanded)
 	OwnerID   string `json:"owner_id" gorm:"size:255;not null;index"`
 	OwnerKind string `json:"owner_kind" gorm:"size:50;not null"`
@@ -55,6 +58,9 @@ func (np *NodePool) BeforeCreate(tx *gorm.DB) error {
 	np.ID = NewID()
 	np.CreatedTime = now
 	np.UpdatedTime = now
+	if np.Generation == 0 {
+		np.Generation = 1
+	}
 	if np.OwnerKind == "" {
 		np.OwnerKind = "Cluster"
 	}
@@ -78,7 +84,8 @@ func (np *NodePool) BeforeUpdate(tx *gorm.DB) error {
 }
 
 type NodePoolPatchRequest struct {
-	Name   *string                 `json:"name,omitempty"`
-	Spec   *map[string]interface{} `json:"spec,omitempty"`
-	Labels *map[string]string      `json:"labels,omitempty"`
+	Name       *string                 `json:"name,omitempty"`
+	Spec       *map[string]interface{} `json:"spec,omitempty"`
+	Generation *int32                  `json:"generation,omitempty"`
+	Labels     *map[string]string      `json:"labels,omitempty"`
 }
