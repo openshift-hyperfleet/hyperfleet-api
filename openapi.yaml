@@ -1,0 +1,1218 @@
+openapi: 3.0.0
+info:
+  title: HyperFleet API
+  version: 1.0.1
+  contact:
+    name: HyperFleet Team
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0
+  description: |-
+    HyperFleet API provides simple CRUD operations for managing cluster resources and their status history.
+
+    **Architecture**: Simple CRUD only, no business logic, no event creation.
+    Sentinel operator handles all orchestration logic.
+    Adapters handle the specifics of managing spec
+tags: []
+paths:
+  /api/hyperfleet/v1/clusters:
+    get:
+      operationId: getClusters
+      summary: List clusters
+      parameters:
+        - $ref: '#/components/parameters/QueryParams.page'
+        - $ref: '#/components/parameters/QueryParams.pageSize'
+        - $ref: '#/components/parameters/QueryParams.orderBy'
+        - $ref: '#/components/parameters/QueryParams.order'
+        - $ref: '#/components/parameters/SearchParams'
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClusterList'
+        '400':
+          description: The server could not understand the request due to invalid syntax.
+        default:
+          description: An unexpected error response.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      operationId: postCluster
+      summary: Create cluster
+      description: |-
+        Create a new cluster resource.
+
+        **Note**: The `status` object in the response is read-only and computed by the service.
+        It is NOT part of the request body. Initially, status.phase will be "NotReady" and
+        status.conditions will be empty until status conditions are POSTed.
+      parameters: []
+      responses:
+        '201':
+          description: The request has succeeded and a new resource has been created as a result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cluster'
+        '400':
+          description: The server could not understand the request due to invalid syntax.
+        default:
+          description: An unexpected error response.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClusterCreateRequest'
+  /api/hyperfleet/v1/clusters/{cluster_id}:
+    get:
+      operationId: getClusterById
+      summary: Get cluster by ID
+      parameters:
+        - $ref: '#/components/parameters/SearchParams'
+        - name: cluster_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cluster'
+        '400':
+          description: The server could not understand the request due to invalid syntax.
+        default:
+          description: An unexpected error response.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/hyperfleet/v1/clusters/{cluster_id}/nodepools:
+    get:
+      operationId: getNodePoolsByClusterId
+      summary: List all nodepools for cluster
+      description: Returns the list of all nodepools for a cluster
+      parameters:
+        - name: cluster_id
+          in: path
+          required: true
+          description: Cluster ID
+          schema:
+            type: string
+        - $ref: '#/components/parameters/QueryParams.page'
+        - $ref: '#/components/parameters/QueryParams.pageSize'
+        - $ref: '#/components/parameters/QueryParams.orderBy'
+        - $ref: '#/components/parameters/QueryParams.order'
+        - $ref: '#/components/parameters/SearchParams'
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodePoolList'
+        '400':
+          description: The server could not understand the request due to invalid syntax.
+        default:
+          description: An unexpected error response.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      operationId: createNodePool
+      summary: Create nodepool
+      description: Create a NodePool for a cluster
+      parameters:
+        - name: cluster_id
+          in: path
+          required: true
+          description: Cluster ID
+          schema:
+            type: string
+      responses:
+        '201':
+          description: The request has succeeded and a new resource has been created as a result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodePoolCreateResponse'
+        '400':
+          description: The server could not understand the request due to invalid syntax.
+        default:
+          description: An unexpected error response.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NodePoolCreateRequest'
+  /api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepool_id}:
+    get:
+      operationId: getNodePoolById
+      summary: Get nodepool by ID
+      description: Returns specific nodepool
+      parameters:
+        - name: cluster_id
+          in: path
+          required: true
+          description: Cluster ID
+          schema:
+            type: string
+        - name: nodepool_id
+          in: path
+          required: true
+          description: NodePool ID
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodePool'
+        '400':
+          description: The server could not understand the request due to invalid syntax.
+        default:
+          description: An unexpected error response.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepool_id}/statuses:
+    post:
+      operationId: postNodePoolStatuses
+      summary: Create or update adapter status
+      description: |-
+        Adapter creates or updates its status report for this nodepool.
+        If adapter already has a status, it will be updated (upsert by adapter name).
+
+        Response includes the full adapter status with all conditions.
+        Adapter should call this endpoint every time it evaluates the nodepool.
+      parameters:
+        - name: cluster_id
+          in: path
+          required: true
+          description: Cluster ID
+          schema:
+            type: string
+        - name: nodepool_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '201':
+          description: The request has succeeded and a new resource has been created as a result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdapterStatus'
+        '400':
+          description: The server could not understand the request due to invalid syntax.
+        '404':
+          description: The server cannot find the requested resource.
+        '409':
+          description: The request conflicts with the current state of the server.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdapterStatusCreateRequest'
+    get:
+      operationId: getNodePoolsStatuses
+      summary: List all adapter statuses for nodepools
+      description: Returns adapter status reports for this nodepool
+      parameters:
+        - name: cluster_id
+          in: path
+          required: true
+          description: Cluster ID
+          schema:
+            type: string
+        - name: nodepool_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/QueryParams.page'
+        - $ref: '#/components/parameters/QueryParams.pageSize'
+        - $ref: '#/components/parameters/QueryParams.orderBy'
+        - $ref: '#/components/parameters/QueryParams.order'
+        - $ref: '#/components/parameters/SearchParams'
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdapterStatusList'
+        '400':
+          description: The server could not understand the request due to invalid syntax.
+        default:
+          description: An unexpected error response.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/hyperfleet/v1/clusters/{cluster_id}/statuses:
+    post:
+      operationId: postClusterStatuses
+      summary: Create or update adapter status
+      description: |-
+        Adapter creates or updates its status report for this cluster.
+        If adapter already has a status, it will be updated (upsert by adapter name).
+
+        Response includes the full adapter status with all conditions.
+        Adapter should call this endpoint every time it evaluates the cluster.
+      parameters:
+        - name: cluster_id
+          in: path
+          required: true
+          description: Cluster ID
+          schema:
+            type: string
+      responses:
+        '201':
+          description: The request has succeeded and a new resource has been created as a result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdapterStatus'
+        '400':
+          description: The server could not understand the request due to invalid syntax.
+        '404':
+          description: The server cannot find the requested resource.
+        '409':
+          description: The request conflicts with the current state of the server.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdapterStatusCreateRequest'
+    get:
+      operationId: getClusterStatuses
+      summary: List all adapter statuses for cluster
+      description: Returns adapter status reports for this cluster
+      parameters:
+        - name: cluster_id
+          in: path
+          required: true
+          description: Cluster ID
+          schema:
+            type: string
+        - $ref: '#/components/parameters/QueryParams.page'
+        - $ref: '#/components/parameters/QueryParams.pageSize'
+        - $ref: '#/components/parameters/QueryParams.orderBy'
+        - $ref: '#/components/parameters/QueryParams.order'
+        - $ref: '#/components/parameters/SearchParams'
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdapterStatusList'
+        '400':
+          description: The server could not understand the request due to invalid syntax.
+        '404':
+          description: The server cannot find the requested resource.
+  /api/hyperfleet/v1/nodepools:
+    get:
+      operationId: getNodePools
+      summary: List all nodepools for cluster
+      description: Returns the list of all nodepools
+      parameters:
+        - $ref: '#/components/parameters/QueryParams.page'
+        - $ref: '#/components/parameters/QueryParams.pageSize'
+        - $ref: '#/components/parameters/QueryParams.orderBy'
+        - $ref: '#/components/parameters/QueryParams.order'
+        - $ref: '#/components/parameters/SearchParams'
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodePoolList'
+        '400':
+          description: The server could not understand the request due to invalid syntax.
+        default:
+          description: An unexpected error response.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+components:
+  parameters:
+    QueryParams.order:
+      name: order
+      in: query
+      required: false
+      schema:
+        $ref: '#/components/schemas/OrderDirection'
+      explode: false
+    QueryParams.orderBy:
+      name: orderBy
+      in: query
+      required: false
+      schema:
+        type: string
+        default: created_time
+      explode: false
+    QueryParams.page:
+      name: page
+      in: query
+      required: false
+      schema:
+        type: integer
+        format: int32
+        default: 1
+      explode: false
+    QueryParams.pageSize:
+      name: pageSize
+      in: query
+      required: false
+      schema:
+        type: integer
+        format: int32
+        default: 20
+      explode: false
+    SearchParams:
+      name: search
+      in: query
+      required: false
+      description: |-
+        Filter results using TSL (Tree Search Language) query syntax.
+        Examples: `status.phase='NotReady'`, `name in ('c1','c2')`, `labels.region='us-east'`
+      schema:
+        type: string
+      explode: false
+  schemas:
+    APIResource:
+      type: object
+      properties:
+        labels:
+          type: object
+          additionalProperties:
+            type: string
+          description: labels for the API resource as pairs of name:value strings
+      allOf:
+        - $ref: '#/components/schemas/ObjectReference'
+    AdapterCondition:
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/ConditionBase'
+      description: |-
+        Condition in AdapterStatus
+        Used for standard Kubernetes condition types: "Available", "Applied", "Health"
+        Note: observed_generation is at AdapterStatus level, not per-condition,
+        since all conditions in one AdapterStatus share the same observed generation
+    AdapterStatus:
+      type: object
+      required:
+        - conditions
+        - created_time
+        - last_report_time
+      properties:
+        conditions:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdapterCondition'
+          description: |-
+            Kubernetes-style conditions tracking adapter state
+            Typically includes: Available, Applied, Health
+        created_time:
+          type: string
+          format: date-time
+          description: When this adapter status was first created (API-managed)
+        last_report_time:
+          type: string
+          format: date-time
+          description: |-
+            When this adapter last reported its status (API-managed)
+            Updated every time the adapter POSTs, even if conditions haven't changed
+            Used by Sentinel to detect adapter liveness
+      allOf:
+        - $ref: '#/components/schemas/AdapterStatusBase'
+      description: |-
+        AdapterStatus represents the complete status report from an adapter
+        Contains multiple conditions, job metadata, and adapter-specific data
+      example:
+        adapter: validator
+        observed_generation: 1
+        conditions:
+          - type: Available
+            status: 'True'
+            reason: All validations passed
+            message: All 30 validation tests passed
+            last_transition_time: '2021-01-01T10:00:00Z'
+          - type: Applied
+            status: 'True'
+            reason: Validation job applied
+            message: Validation job applied successfully
+            last_transition_time: '2021-01-01T10:00:00Z'
+          - type: Health
+            status: 'True'
+            reason: All adapter operations completed successfully
+            message: All adapter runtime operations completed successfully
+            last_transition_time: '2021-01-01T10:00:00Z'
+        metadata:
+          job_name: validator-job-abc123
+          job_namespace: hyperfleet-system
+          attempt: 1
+          started_time: '2021-01-01T10:00:00Z'
+          completed_time: '2021-01-01T10:02:00Z'
+          duration: 2m
+        data:
+          validation_results:
+            total_tests: 30
+            passed: 30
+            failed: 0
+        created_time: '2021-01-01T10:00:00Z'
+        last_report_time: '2021-01-01T10:02:00Z'
+    AdapterStatusBase:
+      type: object
+      required:
+        - adapter
+        - observed_generation
+      properties:
+        adapter:
+          type: string
+          description: Adapter name (e.g., "validator", "dns", "provisioner")
+        observed_generation:
+          type: integer
+          format: int32
+          description: Which generation of the resource this status reflects
+        metadata:
+          type: object
+          properties:
+            job_name:
+              type: string
+            job_namespace:
+              type: string
+            attempt:
+              type: integer
+              format: int32
+            started_time:
+              type: string
+              format: date-time
+            completed_time:
+              type: string
+              format: date-time
+            duration:
+              type: string
+          description: Job execution metadata
+        data:
+          type: object
+          additionalProperties: {}
+          description: Adapter-specific data (structure varies by adapter type)
+      description: Base fields shared by AdapterStatus and AdapterStatusCreateRequest
+    AdapterStatusCreateRequest:
+      type: object
+      required:
+        - observed_time
+        - conditions
+      properties:
+        observed_time:
+          type: string
+          format: date-time
+          description: |-
+            When the adapter observed this resource state
+            API will use this to set AdapterStatus.last_report_time
+        conditions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConditionRequest'
+      allOf:
+        - $ref: '#/components/schemas/AdapterStatusBase'
+      description: Request payload for creating/updating adapter status
+      example:
+        adapter: validator
+        observed_generation: 1
+        observed_time: '2021-01-01T10:00:00Z'
+        conditions:
+          - type: Available
+            status: 'True'
+            reason: All validations passed
+            message: All 30 validation tests passed
+          - type: Applied
+            status: 'True'
+            reason: Validation job applied
+            message: Validation job applied successfully
+          - type: Health
+            status: 'True'
+            reason: All adapter operations completed successfully
+            message: All adapter runtime operations completed successfully
+        metadata:
+          job_name: validator-job-abc123
+          job_namespace: hyperfleet-system
+          attempt: 1
+          started_time: '2021-01-01T10:00:00Z'
+          completed_time: '2021-01-01T10:02:00Z'
+          duration: 2m
+        data:
+          validation_results:
+            total_tests: 30
+            passed: 30
+            failed: 0
+    AdapterStatusList:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdapterStatus'
+      allOf:
+        - $ref: '#/components/schemas/List'
+      description: List of adapter statuses with pagination metadata
+      example:
+        kind: AdapterStatusList
+        page: 1
+        size: 2
+        total: 2
+        items:
+          - adapter: validator
+            observed_generation: 1
+            conditions:
+              - type: Available
+                status: 'True'
+                reason: All validations passed
+                message: All 30 validation tests passed
+                last_transition_time: '2021-01-01T10:00:00Z'
+            metadata:
+              job_name: validator-job-abc123
+              duration: 2m
+            created_time: '2021-01-01T10:00:00Z'
+            last_report_time: '2021-01-01T10:02:00Z'
+          - adapter: dns
+            observed_generation: 1
+            conditions:
+              - type: Available
+                status: 'True'
+                reason: DNS configured
+                message: DNS records created
+                last_transition_time: '2021-01-01T10:01:00Z'
+            created_time: '2021-01-01T10:01:00Z'
+            last_report_time: '2021-01-01T10:01:30Z'
+    BearerAuth:
+      type: object
+      required:
+        - type
+        - scheme
+      properties:
+        type:
+          type: string
+          enum:
+            - http
+        scheme:
+          type: string
+          enum:
+            - bearer
+    Cluster:
+      type: object
+      required:
+        - created_time
+        - updated_time
+        - created_by
+        - updated_by
+        - generation
+        - status
+      properties:
+        created_time:
+          type: string
+          format: date-time
+        updated_time:
+          type: string
+          format: date-time
+        created_by:
+          type: string
+          format: email
+        updated_by:
+          type: string
+          format: email
+        generation:
+          type: integer
+          format: int32
+          minimum: 1
+          description: Generation field is updated on customer updates, reflecting the version of the "intent" of the customer
+        status:
+          $ref: '#/components/schemas/ClusterStatus'
+      allOf:
+        - $ref: '#/components/schemas/ClusterBase'
+      example:
+        kind: Cluster
+        id: cluster-123
+        href: https://api.hyperfleet.com/v1/clusters/cluster-123
+        name: cluster-123
+        labels:
+          environment: production
+          team: platform
+        spec: {}
+        created_time: '2021-01-01T00:00:00Z'
+        updated_time: '2021-01-01T00:00:00Z'
+        generation: 1
+        status:
+          phase: Ready
+          last_transition_time: '2021-01-01T00:00:00Z'
+          observed_generation: 1
+          last_updated_time: '2021-01-01T00:00:00Z'
+          conditions:
+            - type: ValidationSuccessful
+              status: 'True'
+              reason: All validations passed
+              message: All 30 validation tests passed
+              observed_generation: 1
+              created_time: '2021-01-01T10:00:00Z'
+              last_updated_time: '2021-01-01T10:00:00Z'
+              last_transition_time: '2021-01-01T10:00:00Z'
+            - type: DNSSuccessful
+              status: 'True'
+              reason: DNS configured
+              message: DNS records created for custom.domain.com
+              observed_generation: 1
+              created_time: '2021-01-01T10:01:00Z'
+              last_updated_time: '2021-01-01T10:01:00Z'
+              last_transition_time: '2021-01-01T10:01:00Z'
+        created_by: user-123@example.com
+        updated_by: user-123@example.com
+    ClusterBase:
+      type: object
+      required:
+        - kind
+        - name
+        - spec
+      properties:
+        kind:
+          type: string
+          default: Cluster
+        name:
+          type: string
+          minLength: 1
+          maxLength: 63
+          pattern: ^[a-z0-9-]+$
+          description: Cluster name (unique)
+        spec:
+          allOf:
+            - $ref: '#/components/schemas/ClusterSpec'
+          description: |-
+            Cluster specification
+            CLM doesn't know how to unmarshall the spec, it only stores and forwards to adapters to do their job
+            But CLM will validate the schema before accepting the request
+      allOf:
+        - $ref: '#/components/schemas/APIResource'
+    ClusterCreateRequest:
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/ClusterBase'
+      example:
+        kind: Cluster
+        name: cluster-123
+        labels:
+          environment: production
+          team: platform
+        spec: {}
+    ClusterList:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Cluster'
+      allOf:
+        - $ref: '#/components/schemas/List'
+    ClusterSpec:
+      type: object
+      description: |-
+        Core cluster specification.
+        Accepts any properties as the spec is provider-agnostic.
+        This is represented as a simple object to allow flexibility.
+    ClusterStatus:
+      type: object
+      required:
+        - phase
+        - last_transition_time
+        - observed_generation
+        - last_updated_time
+        - conditions
+      properties:
+        phase:
+          allOf:
+            - $ref: '#/components/schemas/ResourcePhase'
+          description: |-
+            Current cluster phase (native database column).
+            Updated when conditions are reported.
+            Note: status.phase provides aggregated view from all conditions.
+        last_transition_time:
+          type: string
+          format: date-time
+          description: |-
+            When cluster last transitioned (used by Sentinel for backoff)
+            Updated when conditions are reported if the phase changes
+        observed_generation:
+          type: integer
+          format: int32
+          description: |-
+            Last generation processed
+            Updated when conditions are reported.
+            This will be the lowest value of each condition's observed_generation values
+            The phase value is based on this generation
+        last_updated_time:
+          type: string
+          format: date-time
+          description: |-
+            Time of the last update
+            Updated when conditions are reported.
+            Computed as min(conditions[].last_updated_time) to detect stale adapters.
+            Uses earliest (not latest) timestamp to ensure Sentinel can detect if any adapter has stopped reporting.
+        conditions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ResourceCondition'
+      description: |-
+        Cluster status computed from all status conditions.
+
+        This object is computed by the service and CANNOT be modified directly.
+        It is aggregated from condition updates posted to `/clusters/{id}/statuses`.
+
+        Provides quick overview of all reported conditions and aggregated phase.
+    ConditionBase:
+      type: object
+      required:
+        - type
+        - status
+        - last_transition_time
+      properties:
+        type:
+          type: string
+          description: Condition type
+        status:
+          allOf:
+            - $ref: '#/components/schemas/ConditionStatus'
+          description: Condition status
+        reason:
+          type: string
+          description: Machine-readable reason code
+        message:
+          type: string
+          description: Human-readable message
+        last_transition_time:
+          type: string
+          format: date-time
+          description: |-
+            When this condition last transitioned status (API-managed)
+            Only updated when status changes (True/False/Unknown), not when reason/message changes
+      description: Base condition fields shared by all condition types
+    ConditionRequest:
+      type: object
+      required:
+        - type
+        - status
+      properties:
+        type:
+          type: string
+        status:
+          $ref: '#/components/schemas/ConditionStatus'
+        reason:
+          type: string
+        message:
+          type: string
+      description: |-
+        Condition data for create/update requests (from adapters)
+        observed_generation and observed_time are now at AdapterStatusCreateRequest level
+    ConditionStatus:
+      type: string
+      enum:
+        - 'True'
+        - 'False'
+        - Unknown
+      description: Status value for conditions
+    Error:
+      type: object
+      properties:
+        id:
+          type: string
+        kind:
+          type: string
+          description: Resource kind
+        href:
+          type: string
+          description: Resource URI
+        code:
+          type: string
+        reason:
+          type: string
+        operation_id:
+          type: string
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+                description: Field path that failed validation
+              error:
+                type: string
+                description: Validation error message for this field
+          description: Field-level validation errors (optional)
+    List:
+      type: object
+      required:
+        - kind
+        - page
+        - size
+        - total
+        - items
+      properties:
+        kind:
+          type: string
+        page:
+          type: integer
+          format: int32
+        size:
+          type: integer
+          format: int32
+        total:
+          type: integer
+          format: int32
+        items:
+          type: array
+          items: {}
+    NodePool:
+      type: object
+      required:
+        - created_time
+        - updated_time
+        - created_by
+        - updated_by
+        - generation
+        - owner_references
+        - status
+      properties:
+        created_time:
+          type: string
+          format: date-time
+        updated_time:
+          type: string
+          format: date-time
+        created_by:
+          type: string
+          format: email
+        updated_by:
+          type: string
+          format: email
+        generation:
+          type: integer
+          format: int32
+          minimum: 1
+          description: Generation field is updated on customer updates, reflecting the version of the "intent" of the customer
+        owner_references:
+          $ref: '#/components/schemas/ObjectReference'
+        status:
+          $ref: '#/components/schemas/NodePoolStatus'
+      allOf:
+        - $ref: '#/components/schemas/NodePoolBase'
+      example:
+        kind: NodePool
+        id: nodepool-123
+        href: https://api.hyperfleet.com/v1/nodepools/nodepool-123
+        name: worker-pool-1
+        labels:
+          environment: production
+          pooltype: worker
+        spec: {}
+        generation: 1
+        created_time: '2021-01-01T00:00:00Z'
+        updated_time: '2021-01-01T00:00:00Z'
+        created_by: user-123@example.com
+        updated_by: user-123@example.com
+        owner_references:
+          id: cluster-123
+          kind: Cluster
+          href: https://api.hyperfleet.com/v1/clusters/cluster-123
+        status:
+          phase: Ready
+          last_transition_time: '2021-01-01T10:00:00Z'
+          observed_generation: 1
+          last_updated_time: '2021-01-01T10:02:00Z'
+          conditions:
+            - type: ValidationSuccessful
+              status: 'True'
+              reason: All validations passed
+              message: NodePool validation passed
+              observed_generation: 1
+              created_time: '2021-01-01T10:00:00Z'
+              last_updated_time: '2021-01-01T10:00:00Z'
+              last_transition_time: '2021-01-01T10:00:00Z'
+            - type: NodePoolSuccessful
+              status: 'True'
+              reason: NodePool provisioned successfully
+              message: NodePool has been scaled to desired count
+              observed_generation: 1
+              created_time: '2021-01-01T10:01:00Z'
+              last_updated_time: '2021-01-01T10:01:00Z'
+              last_transition_time: '2021-01-01T10:01:00Z'
+    NodePoolBase:
+      type: object
+      required:
+        - name
+        - spec
+      properties:
+        labels:
+          type: object
+          additionalProperties:
+            type: string
+          description: labels for the API resource as pairs of name:value strings
+        id:
+          type: string
+          description: Resource identifier
+        kind:
+          type: string
+          description: Resource kind
+        href:
+          type: string
+          description: Resource URI
+        name:
+          type: string
+          description: NodePool name (unique in a cluster)
+        spec:
+          allOf:
+            - $ref: '#/components/schemas/NodePoolSpec'
+          description: |-
+            Cluster specification
+            CLM doesn't know how to unmarshall the spec, it only stores and forwards to adapters to do their job
+            But CLM will validate the schema before accepting the request
+    NodePoolCreateRequest:
+      type: object
+      required:
+        - name
+        - spec
+      properties:
+        labels:
+          type: object
+          additionalProperties:
+            type: string
+          description: labels for the API resource as pairs of name:value strings
+        id:
+          type: string
+          description: Resource identifier
+        kind:
+          type: string
+          description: Resource kind
+        href:
+          type: string
+          description: Resource URI
+        name:
+          type: string
+          description: NodePool name (unique in a cluster)
+        spec:
+          allOf:
+            - $ref: '#/components/schemas/NodePoolSpec'
+          description: |-
+            Cluster specification
+            CLM doesn't know how to unmarshall the spec, it only stores and forwards to adapters to do their job
+            But CLM will validate the schema before accepting the request
+      example:
+        name: worker-pool-1
+        labels:
+          environment: production
+          pooltype: worker
+        spec: {}
+    NodePoolCreateResponse:
+      type: object
+      required:
+        - created_time
+        - updated_time
+        - created_by
+        - updated_by
+        - generation
+        - owner_references
+        - status
+        - name
+        - spec
+      properties:
+        created_time:
+          type: string
+          format: date-time
+        updated_time:
+          type: string
+          format: date-time
+        created_by:
+          type: string
+          format: email
+        updated_by:
+          type: string
+          format: email
+        generation:
+          type: integer
+          format: int32
+          minimum: 1
+          description: Generation field is updated on customer updates, reflecting the version of the "intent" of the customer
+        owner_references:
+          $ref: '#/components/schemas/ObjectReference'
+        status:
+          $ref: '#/components/schemas/NodePoolStatus'
+        labels:
+          type: object
+          additionalProperties:
+            type: string
+          description: labels for the API resource as pairs of name:value strings
+        id:
+          type: string
+          description: Resource identifier
+        kind:
+          type: string
+          description: Resource kind
+        href:
+          type: string
+          description: Resource URI
+        name:
+          type: string
+          description: NodePool name (unique in a cluster)
+        spec:
+          allOf:
+            - $ref: '#/components/schemas/NodePoolSpec'
+          description: |-
+            Cluster specification
+            CLM doesn't know how to unmarshall the spec, it only stores and forwards to adapters to do their job
+            But CLM will validate the schema before accepting the request
+    NodePoolList:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/NodePool'
+      allOf:
+        - $ref: '#/components/schemas/List'
+    NodePoolSpec:
+      type: object
+      description: |-
+        Core nodepool specification.
+        Accepts any properties as the spec is provider-agnostic.
+        This is represented as a simple object to allow flexibility.
+    NodePoolStatus:
+      type: object
+      required:
+        - phase
+        - observed_generation
+        - last_transition_time
+        - last_updated_time
+        - conditions
+      properties:
+        phase:
+          allOf:
+            - $ref: '#/components/schemas/ResourcePhase'
+          description: |-
+            Current NodePool phase (native database column).
+            Updated when conditions are reported.
+            Note: status.phase provides aggregated view from all conditions.
+        observed_generation:
+          type: integer
+          format: int32
+          minimum: 1
+          description: |-
+            Last generation processed
+            Updated when conditions are reported.
+            This will be the lowest value of each condition's observed_generation values
+            The phase value is based on this generation
+        last_transition_time:
+          type: string
+          format: date-time
+          description: When NodePool last transitioned (used by Sentinel for backoff)
+        last_updated_time:
+          type: string
+          format: date-time
+          description: |-
+            Time of the last update
+            Updated when conditions are reported.
+            Computed as min(conditions[].last_updated_time) to detect stale adapters.
+            Uses earliest (not latest) timestamp to ensure Sentinel can detect if any adapter has stopped reporting.
+        conditions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ResourceCondition'
+      description: |-
+        NodePool status computed from all status conditions.
+
+        This object is computed by the service and CANNOT be modified directly.
+    ObjectReference:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Resource identifier
+        kind:
+          type: string
+          description: Resource kind
+        href:
+          type: string
+          description: Resource URI
+    OrderDirection:
+      type: string
+      enum:
+        - asc
+        - desc
+    ResourceCondition:
+      type: object
+      required:
+        - observed_generation
+        - created_time
+        - last_updated_time
+      properties:
+        observed_generation:
+          type: integer
+          format: int32
+          description: Generation of the spec that this condition reflects
+        created_time:
+          type: string
+          format: date-time
+          description: When this condition was first created (API-managed)
+        last_updated_time:
+          type: string
+          format: date-time
+          description: |-
+            When the corresponding adapter last reported (API-managed)
+            Updated every time the adapter POSTs, even if condition status hasn't changed
+            Copied from AdapterStatus.last_report_time
+      allOf:
+        - $ref: '#/components/schemas/ConditionBase'
+      description: |-
+        Condition in Cluster/NodePool status
+        Used for semantic condition types: "ValidationSuccessful", "DNSSuccessful", "NodePoolSuccessful", etc.
+        Includes observed_generation and last_updated_time to track adapter-specific state
+    ResourcePhase:
+      type: string
+      enum:
+        - NotReady
+        - Ready
+        - Failed
+      description: Phase of a resource (Cluster or NodePool)
+servers:
+  - url: https://hyperfleet.redhat.com
+    description: Production
+    variables: {}
