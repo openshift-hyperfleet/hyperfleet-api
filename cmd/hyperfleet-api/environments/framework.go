@@ -22,10 +22,11 @@ func init() {
 		environment.Name = GetEnvironmentStrFromEnv()
 
 		environments = map[string]EnvironmentImpl{
-			DevelopmentEnv:        &devEnvImpl{environment},
-			UnitTestingEnv:        &unitTestingEnvImpl{environment},
-			IntegrationTestingEnv: &integrationTestingEnvImpl{environment},
-			ProductionEnv:         &productionEnvImpl{environment},
+			DevelopmentEnv:         &devEnvImpl{environment},
+			EmbeddedDevelopmentEnv: &embeddedDevelopmentEnvImpl{environment},
+			UnitTestingEnv:         &unitTestingEnvImpl{environment},
+			IntegrationTestingEnv:  &integrationTestingEnvImpl{environment},
+			ProductionEnv:          &productionEnvImpl{environment},
 		}
 	})
 }

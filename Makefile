@@ -55,6 +55,7 @@ help:
 	@echo "make binary               compile binaries"
 	@echo "make install              compile binaries and install in GOPATH bin"
 	@echo "make secrets              initialize secrets directory with default values"
+	@echo "make dev                  run with embedded PostgreSQL (testcontainers), no jwt/authz"
 	@echo "make run                  run the application"
 	@echo "make run/docs             run swagger and host the api spec"
 	@echo "make test                 run unit tests"
@@ -257,6 +258,16 @@ run: binary
 run-no-auth: binary
 	./hyperfleet-api migrate
 	./hyperfleet-api serve --enable-authz=false --enable-jwt=false
+
+# Run the API with an embedded PostgreSQL using testcontainers.
+# - Starts PostgreSQL (testcontainers)
+# - Runs migrations automatically (inside the testcontainer factory)
+# - Disables JWT + authz
+# Notes:
+# - For podman, you may need: TESTCONTAINERS_RYUK_DISABLED=true
+dev: binary secrets
+	TESTCONTAINERS_RYUK_DISABLED=true OCM_ENV=embedded_development ./hyperfleet-api serve
+.PHONY: dev
 
 # Run Swagger nd host the api docs
 run/docs:
