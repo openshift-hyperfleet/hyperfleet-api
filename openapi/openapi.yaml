@@ -135,6 +135,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+      security:
+        - BearerAuth: []
     post:
       operationId: createNodePool
       summary: Create nodepool
@@ -167,6 +169,8 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/NodePoolCreateRequest'
+      security:
+        - BearerAuth: []
   /api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepool_id}:
     get:
       operationId: getNodePoolById
@@ -200,6 +204,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+      security:
+        - BearerAuth: []
   /api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepool_id}/statuses:
     post:
       operationId: postNodePoolStatuses
@@ -313,6 +319,8 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/AdapterStatusCreateRequest'
+      security:
+        - BearerAuth: []
     get:
       operationId: getClusterStatuses
       summary: List all adapter statuses for cluster
@@ -340,6 +348,8 @@ paths:
           description: The server could not understand the request due to invalid syntax.
         '404':
           description: The server cannot find the requested resource.
+      security:
+        - BearerAuth: []
   /api/hyperfleet/v1/nodepools:
     get:
       operationId: getNodePools
@@ -366,6 +376,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+      security:
+        - BearerAuth: []
 components:
   parameters:
     QueryParams.order:
