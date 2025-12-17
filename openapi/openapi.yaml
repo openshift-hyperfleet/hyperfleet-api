@@ -40,6 +40,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+      security:
+        - BearerAuth: []
     post:
       operationId: postCluster
       summary: Create cluster
@@ -71,6 +73,8 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/ClusterCreateRequest'
+      security:
+        - BearerAuth: []
   /api/hyperfleet/v1/clusters/{cluster_id}:
     get:
       operationId: getClusterById
@@ -97,6 +101,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+      security:
+        - BearerAuth: []
   /api/hyperfleet/v1/clusters/{cluster_id}/nodepools:
     get:
       operationId: getNodePoolsByClusterId
@@ -1212,6 +1218,10 @@ components:
         - Ready
         - Failed
       description: Phase of a resource (Cluster or NodePool)
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
 servers:
   - url: https://hyperfleet.redhat.com
     description: Production

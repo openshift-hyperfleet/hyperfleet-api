@@ -84,8 +84,6 @@ func (np *NodePool) BeforeUpdate(tx *gorm.DB) error {
 }
 
 type NodePoolPatchRequest struct {
-	Name       *string                 `json:"name,omitempty"`
-	Spec       *map[string]interface{} `json:"spec,omitempty"`
-	Generation *int32                  `json:"generation,omitempty"`
-	Labels     *map[string]string      `json:"labels,omitempty"`
+	Spec   *map[string]interface{} `json:"spec,omitempty"`
+	Labels *map[string]string      `json:"labels,omitempty"`
 }
