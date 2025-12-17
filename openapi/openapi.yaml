@@ -725,9 +725,9 @@ components:
           default: Cluster
         name:
           type: string
-          minLength: 1
+          minLength: 3
           maxLength: 63
-          pattern: ^[a-z0-9-]+$
+          pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
           description: Cluster name (unique)
         spec:
           allOf:
@@ -1014,6 +1014,9 @@ components:
           description: Resource URI
         name:
           type: string
+          minLength: 3
+          maxLength: 63
+          pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
           description: NodePool name (unique in a cluster)
         spec:
           allOf:
@@ -1044,6 +1047,9 @@ components:
           description: Resource URI
         name:
           type: string
+          minLength: 3
+          maxLength: 63
+          pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
           description: NodePool name (unique in a cluster)
         spec:
           allOf:
@@ -1108,6 +1114,9 @@ components:
           description: Resource URI
         name:
           type: string
+          minLength: 3
+          maxLength: 63
+          pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
           description: NodePool name (unique in a cluster)
         spec:
           allOf:
