@@ -1022,7 +1022,7 @@ components:
           allOf:
             - $ref: '#/components/schemas/NodePoolSpec'
           description: |-
-            Cluster specification
+            NodePool specification
             CLM doesn't know how to unmarshall the spec, it only stores and forwards to adapters to do their job
             But CLM will validate the schema before accepting the request
     NodePoolCreateRequest:
@@ -1055,7 +1055,7 @@ components:
           allOf:
             - $ref: '#/components/schemas/NodePoolSpec'
           description: |-
-            Cluster specification
+            NodePool specification
             CLM doesn't know how to unmarshall the spec, it only stores and forwards to adapters to do their job
             But CLM will validate the schema before accepting the request
       example:
@@ -1122,7 +1122,7 @@ components:
           allOf:
             - $ref: '#/components/schemas/NodePoolSpec'
           description: |-
-            Cluster specification
+            NodePool specification
             CLM doesn't know how to unmarshall the spec, it only stores and forwards to adapters to do their job
             But CLM will validate the schema before accepting the request
     NodePoolList:
