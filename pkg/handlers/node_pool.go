@@ -68,10 +68,6 @@ func (h nodePoolHandler) Patch(w http.ResponseWriter, r *http.Request) {
 				return nil, err
 			}
 
-			//patch a field
-			if patch.Name != nil {
-				found.Name = *patch.Name
-			}
 			if patch.Spec != nil {
 				specJSON, err := json.Marshal(*patch.Spec)
 				if err != nil {

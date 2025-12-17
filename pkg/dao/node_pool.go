@@ -1,6 +1,7 @@
 package dao
 
 import (
+	"bytes"
 	"context"
 
 	"gorm.io/gorm/clause"
@@ -48,6 +49,23 @@ func (d *sqlNodePoolDao) Create(ctx context.Context, nodePool *api.NodePool) (*a
 
 func (d *sqlNodePoolDao) Replace(ctx context.Context, nodePool *api.NodePool) (*api.NodePool, error) {
 	g2 := (*d.sessionFactory).New(ctx)
+
+	// Get the existing nodePool to compare spec
+	existing, err := d.Get(ctx, nodePool.ID)
+	if err != nil {
+		db.MarkForRollback(ctx, err)
+		return nil, err
+	}
+
+	// Compare spec: if changed, increment generation
+	if !bytes.Equal(existing.Spec, nodePool.Spec) {
+		nodePool.Generation = existing.Generation + 1
+	} else {
+		// Spec unchanged, preserve generation
+		nodePool.Generation = existing.Generation
+	}
+
+	// Save the nodePool
 	if err := g2.Omit(clause.Associations).Save(nodePool).Error; err != nil {
 		db.MarkForRollback(ctx, err)
 		return nil, err

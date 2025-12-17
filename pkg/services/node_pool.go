@@ -186,8 +186,7 @@ func (s *sqlNodePoolService) UpdateNodePoolStatusFromAdapters(ctx context.Contex
 	}
 
 	// Compute overall phase using required adapters
-	// NodePool doesn't have a generation field, so we pass 0 which means "don't check generation"
-	newPhase := ComputePhase(ctx, adapterStatuses, requiredNodePoolAdapters, 0)
+	newPhase := ComputePhase(ctx, adapterStatuses, requiredNodePoolAdapters, nodePool.Generation)
 
 	// Calculate min(adapters[].last_report_time) for nodepool.status.last_updated_time
 	// This uses the OLDEST adapter timestamp to ensure Sentinel can detect stale adapters
