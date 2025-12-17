@@ -203,7 +203,8 @@ func TestPresentCluster_Complete(t *testing.T) {
 	cluster.CreatedTime = now
 	cluster.UpdatedTime = now
 
-	result := PresentCluster(cluster)
+	result, err := PresentCluster(cluster)
+	Expect(err).To(BeNil())
 
 	// Verify basic fields
 	Expect(*result.Id).To(Equal("cluster-abc123"))
@@ -249,7 +250,8 @@ func TestPresentCluster_HrefGeneration(t *testing.T) {
 	}
 	cluster.ID = "cluster-xyz789"
 
-	result := PresentCluster(cluster)
+	result, err := PresentCluster(cluster)
+	Expect(err).To(BeNil())
 
 	Expect(*result.Href).To(Equal("/api/hyperfleet/v1/clusters/cluster-xyz789"))
 }
@@ -268,7 +270,8 @@ func TestPresentCluster_EmptyStatusPhase(t *testing.T) {
 	}
 	cluster.ID = "cluster-empty-phase"
 
-	result := PresentCluster(cluster)
+	result, err := PresentCluster(cluster)
+	Expect(err).To(BeNil())
 
 	// Should use NOT_READY as default
 	Expect(result.Status.Phase).To(Equal(openapi.NOT_READY))
@@ -292,7 +295,8 @@ func TestPresentCluster_NilStatusTimestamps(t *testing.T) {
 	cluster.CreatedTime = now
 	cluster.UpdatedTime = now
 
-	result := PresentCluster(cluster)
+	result, err := PresentCluster(cluster)
+	Expect(err).To(BeNil())
 
 	// Verify zero time.Time is returned (not nil)
 	Expect(result.Status.LastTransitionTime.IsZero()).To(BeTrue())
@@ -345,7 +349,8 @@ func TestPresentCluster_StatusConditionsConversion(t *testing.T) {
 	cluster.CreatedTime = now
 	cluster.UpdatedTime = now
 
-	result := PresentCluster(cluster)
+	result, err := PresentCluster(cluster)
+	Expect(err).To(BeNil())
 
 	// Verify both conditions converted correctly
 	Expect(len(result.Status.Conditions)).To(Equal(2))
@@ -380,7 +385,8 @@ func TestConvertAndPresentCluster_RoundTrip(t *testing.T) {
 	cluster.UpdatedTime = now
 
 	// Present from domain back to OpenAPI
-	result := PresentCluster(cluster)
+	result, err := PresentCluster(cluster)
+	Expect(err).To(BeNil())
 
 	// Verify data integrity
 	Expect(*result.Id).To(Equal("cluster-roundtrip-123"))
@@ -400,4 +406,61 @@ func TestConvertAndPresentCluster_RoundTrip(t *testing.T) {
 	Expect(result.Status.Phase).To(Equal(openapi.NOT_READY))
 	Expect(result.Status.ObservedGeneration).To(Equal(int32(0)))
 	Expect(len(result.Status.Conditions)).To(Equal(0))
+}
+
+// TestPresentCluster_MalformedSpec tests error handling for malformed Spec JSON
+func TestPresentCluster_MalformedSpec(t *testing.T) {
+	RegisterTestingT(t)
+
+	cluster := &api.Cluster{
+		Kind:             "Cluster",
+		Name:             "malformed-spec-cluster",
+		Spec:             []byte("{invalid json}"), // Malformed JSON
+		Labels:           []byte("{}"),
+		StatusConditions: []byte("[]"),
+	}
+	cluster.ID = "cluster-malformed-spec"
+
+	_, err := PresentCluster(cluster)
+
+	Expect(err).ToNot(BeNil())
+	Expect(err.Error()).To(ContainSubstring("failed to unmarshal cluster spec"))
+}
+
+// TestPresentCluster_MalformedLabels tests error handling for malformed Labels JSON
+func TestPresentCluster_MalformedLabels(t *testing.T) {
+	RegisterTestingT(t)
+
+	cluster := &api.Cluster{
+		Kind:             "Cluster",
+		Name:             "malformed-labels-cluster",
+		Spec:             []byte("{}"),
+		Labels:           []byte("{not valid json"), // Malformed JSON
+		StatusConditions: []byte("[]"),
+	}
+	cluster.ID = "cluster-malformed-labels"
+
+	_, err := PresentCluster(cluster)
+
+	Expect(err).ToNot(BeNil())
+	Expect(err.Error()).To(ContainSubstring("failed to unmarshal cluster labels"))
+}
+
+// TestPresentCluster_MalformedStatusConditions tests error handling for malformed StatusConditions JSON
+func TestPresentCluster_MalformedStatusConditions(t *testing.T) {
+	RegisterTestingT(t)
+
+	cluster := &api.Cluster{
+		Kind:             "Cluster",
+		Name:             "malformed-conditions-cluster",
+		Spec:             []byte("{}"),
+		Labels:           []byte("{}"),
+		StatusConditions: []byte("[{incomplete"), // Malformed JSON
+	}
+	cluster.ID = "cluster-malformed-conditions"
+
+	_, err := PresentCluster(cluster)
+
+	Expect(err).ToNot(BeNil())
+	Expect(err.Error()).To(ContainSubstring("failed to unmarshal cluster status conditions"))
 }

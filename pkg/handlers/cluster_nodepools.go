@@ -57,8 +57,11 @@ func (h clusterNodePoolsHandler) List(w http.ResponseWriter, r *http.Request) {
 			// Build list response
 			items := make([]openapi.NodePool, 0, len(nodePools))
 			for _, nodePool := range nodePools {
-				converted := presenters.PresentNodePool(&nodePool)
-				items = append(items, converted)
+				presented, err := presenters.PresentNodePool(&nodePool)
+				if err != nil {
+					return nil, errors.GeneralError("Failed to present nodepool: %v", err)
+				}
+				items = append(items, presented)
 			}
 
 			nodePoolList := struct {
@@ -114,7 +117,11 @@ func (h clusterNodePoolsHandler) Get(w http.ResponseWriter, r *http.Request) {
 				return nil, errors.NotFound("NodePool '%s' not found for cluster '%s'", nodePoolID, clusterID)
 			}
 
-			return presenters.PresentNodePool(nodePool), nil
+			presented, presErr := presenters.PresentNodePool(nodePool)
+			if presErr != nil {
+				return nil, errors.GeneralError("Failed to present nodepool: %v", presErr)
+			}
+			return presented, nil
 		},
 	}
 
@@ -153,7 +160,11 @@ func (h clusterNodePoolsHandler) Create(w http.ResponseWriter, r *http.Request) 
 				return nil, err
 			}
 
-			return presenters.PresentNodePool(nodePoolModel), nil
+			presented, presErr := presenters.PresentNodePool(nodePoolModel)
+			if presErr != nil {
+				return nil, errors.GeneralError("Failed to present nodepool: %v", presErr)
+			}
+			return presented, nil
 		},
 		handleError,
 	}

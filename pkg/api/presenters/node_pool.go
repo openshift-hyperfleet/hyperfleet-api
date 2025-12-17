@@ -54,23 +54,29 @@ func ConvertNodePool(req *openapi.NodePoolCreateRequest, ownerID, createdBy stri
 }
 
 // PresentNodePool converts api.NodePool (GORM model) to openapi.NodePool
-func PresentNodePool(nodePool *api.NodePool) openapi.NodePool {
+func PresentNodePool(nodePool *api.NodePool) (openapi.NodePool, error) {
 	// Unmarshal Spec
 	var spec map[string]interface{}
 	if len(nodePool.Spec) > 0 {
-		_ = json.Unmarshal(nodePool.Spec, &spec)
+		if err := json.Unmarshal(nodePool.Spec, &spec); err != nil {
+			return openapi.NodePool{}, fmt.Errorf("failed to unmarshal nodepool spec: %w", err)
+		}
 	}
 
 	// Unmarshal Labels
 	var labels map[string]string
 	if len(nodePool.Labels) > 0 {
-		_ = json.Unmarshal(nodePool.Labels, &labels)
+		if err := json.Unmarshal(nodePool.Labels, &labels); err != nil {
+			return openapi.NodePool{}, fmt.Errorf("failed to unmarshal nodepool labels: %w", err)
+		}
 	}
 
 	// Unmarshal StatusConditions
 	var statusConditions []api.ResourceCondition
 	if len(nodePool.StatusConditions) > 0 {
-		_ = json.Unmarshal(nodePool.StatusConditions, &statusConditions)
+		if err := json.Unmarshal(nodePool.StatusConditions, &statusConditions); err != nil {
+			return openapi.NodePool{}, fmt.Errorf("failed to unmarshal nodepool status conditions: %w", err)
+		}
 	}
 
 	// Generate Href if not set (fallback)
@@ -145,5 +151,5 @@ func PresentNodePool(nodePool *api.NodePool) openapi.NodePool {
 		LastUpdatedTime:    lastUpdatedTime,
 	}
 
-	return result
+	return result, nil
 }
