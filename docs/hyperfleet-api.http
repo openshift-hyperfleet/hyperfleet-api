@@ -1,0 +1,202 @@
+### HyperFleet API Requests
+# This file contains example requests for all HyperFleet API endpoints.
+# You can use the REST Client extension in VS Code to run these requests.
+
+@host = localhost
+@port = 8000
+@metrics_port = 8080
+@health_port = 8083
+@baseUrl = http://{{host}}:{{port}}
+@authToken = <your-jwt-token-here>
+
+###
+# @name getMetadata
+GET {{baseUrl}}/api/hyperfleet
+Accept: application/json
+
+###
+# @name getOpenAPI
+GET {{baseUrl}}/api/hyperfleet/v1/openapi
+Accept: application/json
+
+###
+# @name getOpenAPIUI
+GET {{baseUrl}}/api/hyperfleet/v1/openapi.html
+
+###
+# @name listClusters
+GET {{baseUrl}}/api/hyperfleet/v1/clusters
+Authorization: Bearer {{authToken}}
+Accept: application/json
+
+###
+# @name listClustersWithPagination
+GET {{baseUrl}}/api/hyperfleet/v1/clusters?page=1&pageSize=10&orderBy=created_time&order=desc
+Authorization: Bearer {{authToken}}
+Accept: application/json
+
+###
+@cluster_name = my-cluster
+###
+# @name listClustersWithSearch
+GET {{baseUrl}}/api/hyperfleet/v1/clusters?search=name='{{cluster_name}}'
+Authorization: Bearer {{authToken}}
+Accept: application/json
+
+###
+@clusterId = {{listClustersWithSearch.response.body.$.items[0].id}}
+
+###
+# @name createCluster
+POST {{baseUrl}}/api/hyperfleet/v1/clusters
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "kind": "Cluster",
+  "name": "{{cluster_name}}",
+  "labels": {
+    "environment": "development",
+    "team": "core"
+  },
+  "spec": {
+    "region": "us-east-1",
+    "version": "4.15.0"
+  }
+}
+
+###
+# @name getCluster
+GET {{baseUrl}}/api/hyperfleet/v1/clusters/{{clusterId}}
+Authorization: Bearer {{authToken}}
+Accept: application/json
+
+###
+# @name updateCluster
+PATCH {{baseUrl}}/api/hyperfleet/v1/clusters/{{clusterId}}
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "labels": {
+    "environment": "production"
+  },
+  "spec": {
+    "version": "4.16.0"
+  }
+}
+
+###
+# @name deleteCluster
+DELETE {{baseUrl}}/api/hyperfleet/v1/clusters/{{clusterId}}
+Authorization: Bearer {{authToken}}
+
+###
+# @name listClusterStatuses
+GET {{baseUrl}}/api/hyperfleet/v1/clusters/{{clusterId}}/statuses
+Authorization: Bearer {{authToken}}
+Accept: application/json
+
+###
+# @name reportClusterStatus
+POST {{baseUrl}}/api/hyperfleet/v1/clusters/{{clusterId}}/statuses
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "adapter": "provisioner",
+  "observed_generation": 1,
+  "observed_time": "2023-12-18T10:00:00Z",
+  "conditions": [
+    {
+      "type": "Ready",
+      "status": "True",
+      "reason": "ClusterProvisioned",
+      "message": "Cluster successfully provisioned"
+    }
+  ],
+  "metadata": {
+    "job_name": "provision-job-123",
+    "duration": "10m"
+  }
+}
+
+###
+# @name listAllNodePools
+GET {{baseUrl}}/api/hyperfleet/v1/nodepools
+Authorization: Bearer {{authToken}}
+Accept: application/json
+
+###
+# @name listClusterNodePools
+GET {{baseUrl}}/api/hyperfleet/v1/clusters/{{clusterId}}/nodepools
+Authorization: Bearer {{authToken}}
+Accept: application/json
+###
+@nodePoolName = worker-pool-1
+###
+# @name createNodePool
+POST {{baseUrl}}/api/hyperfleet/v1/clusters/{{clusterId}}/nodepools
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "name": "{{nodePoolName}}",
+  "kind": "NodePool",
+  "labels": {
+    "pool-type": "worker"
+  },
+  "spec": {
+    "instanceType": "m5.xlarge",
+    "replicas": 3
+  }
+}
+
+###
+# @name getNodePool
+@nodePoolId = <nodepool-id>
+GET {{baseUrl}}/api/hyperfleet/v1/clusters/{{clusterId}}/nodepools/{{nodePoolId}}
+Authorization: Bearer {{authToken}}
+Accept: application/json
+
+
+###
+# @name getNodePoolByName
+GET {{baseUrl}}/api/hyperfleet/v1/clusters/{{clusterId}}/nodepools?search=name='{{nodePoolName}}'
+Authorization: Bearer {{authToken}}
+Accept: application/json
+
+###
+# @name listNodePoolStatuses
+GET {{baseUrl}}/api/hyperfleet/v1/clusters/{{clusterId}}/nodepools/{{nodePoolId}}/statuses
+Authorization: Bearer {{authToken}}
+Accept: application/json
+
+###
+# @name reportNodePoolStatus
+POST {{baseUrl}}/api/hyperfleet/v1/clusters/{{clusterId}}/nodepools/{{nodePoolId}}/statuses
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "adapter": "nodepool-adapter",
+  "observed_generation": 1,
+  "observed_time": "2023-12-18T10:05:00Z",
+  "conditions": [
+    {
+      "type": "Ready",
+      "status": "True",
+      "reason": "NodePoolReady",
+      "message": "All nodes joined the cluster"
+    }
+  ]
+}
+
+###
+# @name healthCheck
+GET http://{{host}}:{{health_port}}/healthcheck
+
+###
+# @name metrics
+GET http://{{host}}:{{metrics_port}}/metrics
+
