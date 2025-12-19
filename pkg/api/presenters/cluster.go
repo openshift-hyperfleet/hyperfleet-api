@@ -48,23 +48,29 @@ func ConvertCluster(req *openapi.ClusterCreateRequest, createdBy string) (*api.C
 }
 
 // PresentCluster converts api.Cluster (GORM model) to openapi.Cluster
-func PresentCluster(cluster *api.Cluster) openapi.Cluster {
+func PresentCluster(cluster *api.Cluster) (openapi.Cluster, error) {
 	// Unmarshal Spec
 	var spec map[string]interface{}
 	if len(cluster.Spec) > 0 {
-		_ = json.Unmarshal(cluster.Spec, &spec)
+		if err := json.Unmarshal(cluster.Spec, &spec); err != nil {
+			return openapi.Cluster{}, fmt.Errorf("failed to unmarshal cluster spec: %w", err)
+		}
 	}
 
 	// Unmarshal Labels
 	var labels map[string]string
 	if len(cluster.Labels) > 0 {
-		_ = json.Unmarshal(cluster.Labels, &labels)
+		if err := json.Unmarshal(cluster.Labels, &labels); err != nil {
+			return openapi.Cluster{}, fmt.Errorf("failed to unmarshal cluster labels: %w", err)
+		}
 	}
 
 	// Unmarshal StatusConditions
 	var statusConditions []api.ResourceCondition
 	if len(cluster.StatusConditions) > 0 {
-		_ = json.Unmarshal(cluster.StatusConditions, &statusConditions)
+		if err := json.Unmarshal(cluster.StatusConditions, &statusConditions); err != nil {
+			return openapi.Cluster{}, fmt.Errorf("failed to unmarshal cluster status conditions: %w", err)
+		}
 	}
 
 	// Generate Href if not set (fallback)
@@ -127,5 +133,5 @@ func PresentCluster(cluster *api.Cluster) openapi.Cluster {
 		LastUpdatedTime:    lastUpdatedTime,
 	}
 
-	return result
+	return result, nil
 }

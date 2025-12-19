@@ -47,7 +47,11 @@ func (h clusterHandler) Create(w http.ResponseWriter, r *http.Request) {
 			if svcErr != nil {
 				return nil, svcErr
 			}
-			return presenters.PresentCluster(clusterModel), nil
+			presented, err := presenters.PresentCluster(clusterModel)
+			if err != nil {
+				return nil, errors.GeneralError("Failed to present cluster: %v", err)
+			}
+			return presented, nil
 		},
 		handleError,
 	}
@@ -81,7 +85,11 @@ func (h clusterHandler) Patch(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				return nil, err
 			}
-			return presenters.PresentCluster(clusterModel), nil
+			presented, presErr := presenters.PresentCluster(clusterModel)
+			if presErr != nil {
+				return nil, errors.GeneralError("Failed to present cluster: %v", presErr)
+			}
+			return presented, nil
 		},
 		handleError,
 	}
@@ -109,8 +117,11 @@ func (h clusterHandler) List(w http.ResponseWriter, r *http.Request) {
 			}
 
 			for _, cluster := range clusters {
-				converted := presenters.PresentCluster(&cluster)
-				clusterList.Items = append(clusterList.Items, converted)
+				presented, err := presenters.PresentCluster(&cluster)
+				if err != nil {
+					return nil, errors.GeneralError("Failed to present cluster: %v", err)
+				}
+				clusterList.Items = append(clusterList.Items, presented)
 			}
 			if listArgs.Fields != nil {
 				filteredItems, err := presenters.SliceFilter(listArgs.Fields, clusterList.Items)
@@ -136,7 +147,11 @@ func (h clusterHandler) Get(w http.ResponseWriter, r *http.Request) {
 				return nil, err
 			}
 
-			return presenters.PresentCluster(cluster), nil
+			presented, presErr := presenters.PresentCluster(cluster)
+			if presErr != nil {
+				return nil, errors.GeneralError("Failed to present cluster: %v", presErr)
+			}
+			return presented, nil
 		},
 	}
 

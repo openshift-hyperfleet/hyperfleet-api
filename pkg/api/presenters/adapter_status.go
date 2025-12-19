@@ -73,11 +73,13 @@ func ConvertAdapterStatus(
 }
 
 // PresentAdapterStatus converts api.AdapterStatus (GORM model) to openapi.AdapterStatus
-func PresentAdapterStatus(adapterStatus *api.AdapterStatus) openapi.AdapterStatus {
+func PresentAdapterStatus(adapterStatus *api.AdapterStatus) (openapi.AdapterStatus, error) {
 	// Unmarshal Conditions
 	var conditions []api.AdapterCondition
 	if len(adapterStatus.Conditions) > 0 {
-		_ = json.Unmarshal(adapterStatus.Conditions, &conditions)
+		if err := json.Unmarshal(adapterStatus.Conditions, &conditions); err != nil {
+			return openapi.AdapterStatus{}, fmt.Errorf("failed to unmarshal adapter status conditions: %w", err)
+		}
 	}
 
 	// Convert domain AdapterConditions to openapi format
@@ -95,13 +97,17 @@ func PresentAdapterStatus(adapterStatus *api.AdapterStatus) openapi.AdapterStatu
 	// Unmarshal Data
 	var data map[string]map[string]interface{}
 	if len(adapterStatus.Data) > 0 {
-		_ = json.Unmarshal(adapterStatus.Data, &data)
+		if err := json.Unmarshal(adapterStatus.Data, &data); err != nil {
+			return openapi.AdapterStatus{}, fmt.Errorf("failed to unmarshal adapter status data: %w", err)
+		}
 	}
 
 	// Unmarshal Metadata
 	var metadata *openapi.AdapterStatusBaseMetadata
 	if len(adapterStatus.Metadata) > 0 {
-		_ = json.Unmarshal(adapterStatus.Metadata, &metadata)
+		if err := json.Unmarshal(adapterStatus.Metadata, &metadata); err != nil {
+			return openapi.AdapterStatus{}, fmt.Errorf("failed to unmarshal adapter status metadata: %w", err)
+		}
 	}
 
 	// Set default times if nil (shouldn't happen in normal operation)
@@ -123,5 +129,5 @@ func PresentAdapterStatus(adapterStatus *api.AdapterStatus) openapi.AdapterStatu
 		Metadata:           metadata,
 		CreatedTime:        createdTime,
 		LastReportTime:     lastReportTime,
-	}
+	}, nil
 }

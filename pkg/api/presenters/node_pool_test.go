@@ -200,7 +200,8 @@ func TestPresentNodePool_Complete(t *testing.T) {
 	nodePool.CreatedTime = now
 	nodePool.UpdatedTime = now
 
-	result := PresentNodePool(nodePool)
+	result, err := PresentNodePool(nodePool)
+	Expect(err).To(BeNil())
 
 	// Verify basic fields
 	Expect(*result.Id).To(Equal("nodepool-xyz"))
@@ -250,7 +251,8 @@ func TestPresentNodePool_HrefGeneration(t *testing.T) {
 	}
 	nodePool.ID = "nodepool-test-123"
 
-	result := PresentNodePool(nodePool)
+	result, err := PresentNodePool(nodePool)
+	Expect(err).To(BeNil())
 
 	Expect(*result.Href).To(Equal("/api/hyperfleet/v1/clusters/cluster-owner-456/nodepools/nodepool-test-123"))
 }
@@ -270,7 +272,8 @@ func TestPresentNodePool_OwnerHrefGeneration(t *testing.T) {
 	}
 	nodePool.ID = "nodepool-owner-test"
 
-	result := PresentNodePool(nodePool)
+	result, err := PresentNodePool(nodePool)
+	Expect(err).To(BeNil())
 
 	Expect(*result.OwnerReferences.Href).To(Equal("/api/hyperfleet/v1/clusters/cluster-owner-789"))
 }
@@ -290,7 +293,8 @@ func TestPresentNodePool_OwnerReferences(t *testing.T) {
 	}
 	nodePool.ID = "nodepool-ref-456"
 
-	result := PresentNodePool(nodePool)
+	result, err := PresentNodePool(nodePool)
+	Expect(err).To(BeNil())
 
 	Expect(result.OwnerReferences.Id).ToNot(BeNil())
 	Expect(*result.OwnerReferences.Id).To(Equal("cluster-ref-123"))
@@ -314,7 +318,8 @@ func TestPresentNodePool_EmptyStatusPhase(t *testing.T) {
 	}
 	nodePool.ID = "nodepool-empty-phase"
 
-	result := PresentNodePool(nodePool)
+	result, err := PresentNodePool(nodePool)
+	Expect(err).To(BeNil())
 
 	// Should use NOT_READY as default
 	Expect(result.Status.Phase).To(Equal(openapi.NOT_READY))
@@ -367,7 +372,8 @@ func TestPresentNodePool_StatusConditionsConversion(t *testing.T) {
 	nodePool.CreatedTime = now
 	nodePool.UpdatedTime = now
 
-	result := PresentNodePool(nodePool)
+	result, err := PresentNodePool(nodePool)
+	Expect(err).To(BeNil())
 
 	// Verify both conditions converted correctly
 	Expect(len(result.Status.Conditions)).To(Equal(2))
@@ -403,7 +409,8 @@ func TestConvertAndPresentNodePool_RoundTrip(t *testing.T) {
 	nodePool.UpdatedTime = now
 
 	// Present from domain back to OpenAPI
-	result := PresentNodePool(nodePool)
+	result, err := PresentNodePool(nodePool)
+	Expect(err).To(BeNil())
 
 	// Verify data integrity
 	Expect(*result.Id).To(Equal("nodepool-roundtrip-123"))
@@ -427,4 +434,64 @@ func TestConvertAndPresentNodePool_RoundTrip(t *testing.T) {
 	Expect(result.Status.Phase).To(Equal(openapi.NOT_READY))
 	Expect(result.Status.ObservedGeneration).To(Equal(int32(0)))
 	Expect(len(result.Status.Conditions)).To(Equal(0))
+}
+
+// TestPresentNodePool_MalformedSpec tests error handling for malformed Spec JSON
+func TestPresentNodePool_MalformedSpec(t *testing.T) {
+	RegisterTestingT(t)
+
+	nodePool := &api.NodePool{
+		Kind:             "NodePool",
+		Name:             "malformed-spec-nodepool",
+		Spec:             []byte("{invalid json}"), // Malformed JSON
+		Labels:           []byte("{}"),
+		OwnerID:          "cluster-123",
+		StatusConditions: []byte("[]"),
+	}
+	nodePool.ID = "nodepool-malformed-spec"
+
+	_, err := PresentNodePool(nodePool)
+
+	Expect(err).ToNot(BeNil())
+	Expect(err.Error()).To(ContainSubstring("failed to unmarshal nodepool spec"))
+}
+
+// TestPresentNodePool_MalformedLabels tests error handling for malformed Labels JSON
+func TestPresentNodePool_MalformedLabels(t *testing.T) {
+	RegisterTestingT(t)
+
+	nodePool := &api.NodePool{
+		Kind:             "NodePool",
+		Name:             "malformed-labels-nodepool",
+		Spec:             []byte("{}"),
+		Labels:           []byte("{not valid json"), // Malformed JSON
+		OwnerID:          "cluster-456",
+		StatusConditions: []byte("[]"),
+	}
+	nodePool.ID = "nodepool-malformed-labels"
+
+	_, err := PresentNodePool(nodePool)
+
+	Expect(err).ToNot(BeNil())
+	Expect(err.Error()).To(ContainSubstring("failed to unmarshal nodepool labels"))
+}
+
+// TestPresentNodePool_MalformedStatusConditions tests error handling for malformed StatusConditions JSON
+func TestPresentNodePool_MalformedStatusConditions(t *testing.T) {
+	RegisterTestingT(t)
+
+	nodePool := &api.NodePool{
+		Kind:             "NodePool",
+		Name:             "malformed-conditions-nodepool",
+		Spec:             []byte("{}"),
+		Labels:           []byte("{}"),
+		OwnerID:          "cluster-789",
+		StatusConditions: []byte("[{incomplete"), // Malformed JSON
+	}
+	nodePool.ID = "nodepool-malformed-conditions"
+
+	_, err := PresentNodePool(nodePool)
+
+	Expect(err).ToNot(BeNil())
+	Expect(err.Error()).To(ContainSubstring("failed to unmarshal nodepool status conditions"))
 }

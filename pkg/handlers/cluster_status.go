@@ -41,7 +41,11 @@ func (h clusterStatusHandler) List(w http.ResponseWriter, r *http.Request) {
 			// Convert to OpenAPI models
 			items := make([]openapi.AdapterStatus, 0, len(adapterStatuses))
 			for _, as := range adapterStatuses {
-				items = append(items, presenters.PresentAdapterStatus(as))
+				presented, presErr := presenters.PresentAdapterStatus(as)
+				if presErr != nil {
+					return nil, errors.GeneralError("Failed to present adapter status: %v", presErr)
+				}
+				items = append(items, presented)
 			}
 
 			// Return list response with pagination metadata
@@ -98,7 +102,10 @@ func (h clusterStatusHandler) Create(w http.ResponseWriter, r *http.Request) {
 				log.Extra("cluster_id", clusterID).Extra("error", aggregateErr).Warning("Failed to aggregate cluster status")
 			}
 
-			status := presenters.PresentAdapterStatus(adapterStatus)
+			status, presErr := presenters.PresentAdapterStatus(adapterStatus)
+			if presErr != nil {
+				return nil, errors.GeneralError("Failed to present adapter status: %v", presErr)
+			}
 			return &status, nil
 		},
 		handleError,

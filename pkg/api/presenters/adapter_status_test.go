@@ -266,7 +266,8 @@ func TestPresentAdapterStatus_Complete(t *testing.T) {
 		LastReportTime:     &now,
 	}
 
-	result := PresentAdapterStatus(adapterStatus)
+	result, err := PresentAdapterStatus(adapterStatus)
+	Expect(err).To(BeNil())
 
 	// Verify basic fields
 	Expect(result.Adapter).To(Equal("aws-adapter"))
@@ -305,7 +306,8 @@ func TestPresentAdapterStatus_NilTimestamps(t *testing.T) {
 		LastReportTime:     nil, // Nil timestamp
 	}
 
-	result := PresentAdapterStatus(adapterStatus)
+	result, err := PresentAdapterStatus(adapterStatus)
+	Expect(err).To(BeNil())
 
 	// Verify zero time.Time is returned (not nil)
 	Expect(result.CreatedTime.IsZero()).To(BeTrue())
@@ -328,7 +330,8 @@ func TestPresentAdapterStatus_EmptyConditions(t *testing.T) {
 		LastReportTime:     &now,
 	}
 
-	result := PresentAdapterStatus(adapterStatus)
+	result, err := PresentAdapterStatus(adapterStatus)
+	Expect(err).To(BeNil())
 
 	Expect(result.Conditions).ToNot(BeNil())
 	Expect(len(result.Conditions)).To(Equal(0))
@@ -350,7 +353,8 @@ func TestPresentAdapterStatus_EmptyData(t *testing.T) {
 		LastReportTime:     &now,
 	}
 
-	result := PresentAdapterStatus(adapterStatus)
+	result, err := PresentAdapterStatus(adapterStatus)
+	Expect(err).To(BeNil())
 
 	Expect(result.Data).ToNot(BeNil())
 	Expect(len(result.Data)).To(Equal(0))
@@ -391,7 +395,8 @@ func TestPresentAdapterStatus_ConditionStatusConversion(t *testing.T) {
 			LastReportTime:     &now,
 		}
 
-		result := PresentAdapterStatus(adapterStatus)
+		result, err := PresentAdapterStatus(adapterStatus)
+		Expect(err).To(BeNil())
 
 		Expect(len(result.Conditions)).To(Equal(1))
 		Expect(result.Conditions[0].Status).To(Equal(tc.expectedOpenAPI))
@@ -409,7 +414,8 @@ func TestConvertAndPresent_RoundTrip(t *testing.T) {
 	Expect(err).To(BeNil())
 
 	// Present from domain back to OpenAPI
-	result := PresentAdapterStatus(adapterStatus)
+	result, err := PresentAdapterStatus(adapterStatus)
+	Expect(err).To(BeNil())
 
 	// Verify data integrity
 	Expect(result.Adapter).To(Equal(originalReq.Adapter))
@@ -428,4 +434,74 @@ func TestConvertAndPresent_RoundTrip(t *testing.T) {
 	// Verify metadata preserved
 	Expect(result.Metadata).ToNot(BeNil())
 	Expect(*result.Metadata.JobName).To(Equal(*originalReq.Metadata.JobName))
+}
+
+// TestPresentAdapterStatus_MalformedConditions tests error handling for malformed Conditions JSON
+func TestPresentAdapterStatus_MalformedConditions(t *testing.T) {
+	RegisterTestingT(t)
+
+	now := time.Now()
+	adapterStatus := &api.AdapterStatus{
+		ResourceType:       "Cluster",
+		ResourceID:         "cluster-123",
+		Adapter:            "test-adapter",
+		ObservedGeneration: 5,
+		Conditions:         []byte("{invalid json}"), // Malformed JSON
+		Data:               []byte("{}"),
+		CreatedTime:        &now,
+		LastReportTime:     &now,
+	}
+	adapterStatus.ID = "adapter-status-malformed-conditions"
+
+	_, err := PresentAdapterStatus(adapterStatus)
+
+	Expect(err).ToNot(BeNil())
+	Expect(err.Error()).To(ContainSubstring("failed to unmarshal adapter status conditions"))
+}
+
+// TestPresentAdapterStatus_MalformedData tests error handling for malformed Data JSON
+func TestPresentAdapterStatus_MalformedData(t *testing.T) {
+	RegisterTestingT(t)
+
+	now := time.Now()
+	adapterStatus := &api.AdapterStatus{
+		ResourceType:       "Cluster",
+		ResourceID:         "cluster-456",
+		Adapter:            "test-adapter",
+		ObservedGeneration: 5,
+		Conditions:         []byte("[]"),
+		Data:               []byte("{not valid json"), // Malformed JSON
+		CreatedTime:        &now,
+		LastReportTime:     &now,
+	}
+	adapterStatus.ID = "adapter-status-malformed-data"
+
+	_, err := PresentAdapterStatus(adapterStatus)
+
+	Expect(err).ToNot(BeNil())
+	Expect(err.Error()).To(ContainSubstring("failed to unmarshal adapter status data"))
+}
+
+// TestPresentAdapterStatus_MalformedMetadata tests error handling for malformed Metadata JSON
+func TestPresentAdapterStatus_MalformedMetadata(t *testing.T) {
+	RegisterTestingT(t)
+
+	now := time.Now()
+	adapterStatus := &api.AdapterStatus{
+		ResourceType:       "Cluster",
+		ResourceID:         "cluster-789",
+		Adapter:            "test-adapter",
+		ObservedGeneration: 5,
+		Conditions:         []byte("[]"),
+		Data:               []byte("{}"),
+		Metadata:           []byte("[{incomplete"), // Malformed JSON
+		CreatedTime:        &now,
+		LastReportTime:     &now,
+	}
+	adapterStatus.ID = "adapter-status-malformed-metadata"
+
+	_, err := PresentAdapterStatus(adapterStatus)
+
+	Expect(err).ToNot(BeNil())
+	Expect(err.Error()).To(ContainSubstring("failed to unmarshal adapter status metadata"))
 }
