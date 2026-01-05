@@ -73,19 +73,32 @@ func NewHelper(t *testing.T) *Helper {
 			fmt.Println("Unable to read JWT keys - this may affect tests that make authenticated server requests")
 		}
 
-		env := environments.Environment()
-		err = env.AddFlags(pflag.CommandLine)
-		if err != nil {
-			glog.Fatalf("Unable to add environment flags: %s", err.Error())
-		}
+		// Create config
+		serveConfig := config.NewServeConfig()
+
+		// Allow custom log level
 		if logLevel := os.Getenv("LOGLEVEL"); logLevel != "" {
 			glog.Infof("Using custom loglevel: %s", logLevel)
-			// Intentionally ignore error from Set — acceptable for tests
-			_ = pflag.CommandLine.Set("-v", logLevel)
+			_ = pflag.CommandLine.Set("v", logLevel)
 		}
+
+		// Create viper and configure flags (tests need full serve config)
+		v := config.NewCommandConfig()
+		serveConfig.ConfigureFlags(v, pflag.CommandLine)
+
 		pflag.Parse()
 
-		err = env.Initialize()
+		// Load serve config (tests run full server environment)
+		loadedServeConfig, err := config.LoadServeConfig(v, pflag.CommandLine)
+		if err != nil {
+			glog.Fatalf("Failed to load configuration: %v", err)
+		}
+
+		// Convert to ApplicationConfig for environment initialization
+		loadedConfig := loadedServeConfig.ToApplicationConfig()
+
+		// Initialize environment with config
+		err = environments.Environment().Initialize(loadedConfig)
 		if err != nil {
 			glog.Fatalf("Unable to initialize testing environment: %s", err.Error())
 		}
@@ -97,7 +110,7 @@ func NewHelper(t *testing.T) *Helper {
 			JWTCA:         jwtCA,
 		}
 
-		// Start JWK certificate mock server for testing
+		// Start JWK certificate mock server and other test infrastructure
 		jwkMockTeardown := helper.StartJWKCertServerMock()
 		helper.teardowns = []func() error{
 			helper.CleanDB,
@@ -133,7 +146,7 @@ func (helper *Helper) Teardown() {
 
 func (helper *Helper) startAPIServer() {
 	// Configure JWK certificate URL for API server
-	helper.Env().Config.Server.JwkCertURL = jwkURL
+	helper.Env().Config.Server.Auth.JWT.CertURL = jwkURL
 	helper.APIServer = server.NewAPIServer()
 	listener, err := helper.APIServer.Listen()
 	if err != nil {
@@ -193,23 +206,29 @@ func (helper *Helper) RestartMetricsServer() {
 
 func (helper *Helper) Reset() {
 	glog.Infof("Reseting testing environment")
-	env := environments.Environment()
-	// Reset the configuration
-	env.Config = config.NewApplicationConfig()
 
-	// Re-read command-line configuration into a NEW flagset
-	// This new flag set ensures we don't hit conflicts defining the same flag twice
-	// Also on reset, we don't care to be re-defining 'v' and other glog flags
-	flagset := pflag.NewFlagSet(helper.NewID(), pflag.ContinueOnError)
-	if err := env.AddFlags(flagset); err != nil {
-		glog.Fatalf("Unable to add environment flags on Reset: %s", err.Error())
-	}
+	// Create new config
+	appConfig := config.NewApplicationConfig()
+
+	// Create viper and configure flags
+	v := config.NewCommandConfig()
+	appConfig.ConfigureFlags(v, pflag.CommandLine)
+
 	pflag.Parse()
 
-	err := env.Initialize()
+	// Load config
+	loadedConfig, err := config.LoadConfig(v, pflag.CommandLine)
+	if err != nil {
+		glog.Fatalf("Failed to load configuration: %v", err)
+	}
+
+	// Reinitialize environment
+	env := environments.Environment()
+	err = env.Initialize(loadedConfig)
 	if err != nil {
 		glog.Fatalf("Unable to reset testing environment: %s", err.Error())
 	}
+
 	helper.AppConfig = env.Config
 	helper.RestartServer()
 }
@@ -227,7 +246,7 @@ func (helper *Helper) NewUUID() string {
 
 func (helper *Helper) RestURL(path string) string {
 	protocol := "http"
-	if helper.AppConfig.Server.EnableHTTPS {
+	if helper.AppConfig.Server.Auth.Authz.Enabled {
 		protocol = "https"
 	}
 	return fmt.Sprintf("%s://%s/api/hyperfleet/v1%s", protocol, helper.AppConfig.Server.BindAddress, path)
@@ -245,7 +264,7 @@ func (helper *Helper) NewApiClient() *openapi.APIClient {
 	config := openapi.NewConfiguration()
 	// Override the server URL to use the local test server
 	protocol := "http"
-	if helper.AppConfig.Server.EnableHTTPS {
+	if helper.AppConfig.Server.Auth.Authz.Enabled {
 		protocol = "https"
 	}
 	config.Host = helper.AppConfig.Server.BindAddress
@@ -290,7 +309,7 @@ func (helper *Helper) NewAuthenticatedContext(account *amv1.Account) context.Con
 
 func (helper *Helper) StartJWKCertServerMock() (teardown func() error) {
 	jwkURL, teardown = mocks.NewJWKCertServerMock(helper.T, helper.JWTCA, jwkKID, jwkAlg)
-	helper.Env().Config.Server.JwkCertURL = jwkURL
+	helper.Env().Config.Server.Auth.JWT.CertURL = jwkURL
 	return teardown
 }
 
