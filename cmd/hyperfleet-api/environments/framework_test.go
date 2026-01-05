@@ -1,11 +1,14 @@
 package environments
 
 import (
+	"os"
 	"os/exec"
 	"reflect"
 	"testing"
 
 	"github.com/spf13/pflag"
+
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
 )
 
 func BenchmarkGetDynos(b *testing.B) {
@@ -23,16 +26,36 @@ func BenchmarkGetDynos(b *testing.B) {
 }
 
 func TestLoadServices(t *testing.T) {
-	env := Environment()
-	err := env.AddFlags(pflag.CommandLine)
+	// Set required environment variables for testing
+	os.Setenv("HYPERFLEET_APP_NAME", "hyperfleet-api-test")
+	os.Setenv("HYPERFLEET_OCM_MOCK", "true")
+	os.Setenv("HYPERFLEET_OCM_DEBUG", "false")
+	os.Setenv("HYPERFLEET_OCM_BASE_URL", "https://api.integration.openshift.com")
+	os.Setenv("HYPERFLEET_SERVER_HTTPS_ENABLED", "false")
+	os.Setenv("HYPERFLEET_METRICS_HTTPS_ENABLED", "false")
+	os.Setenv("HYPERFLEET_AUTH_AUTHZ_ENABLED", "true")
+
+	// Create config
+	appConfig := config.NewApplicationConfig()
+
+	// Create viper and configure flags
+	v := config.NewCommandConfig()
+	appConfig.ConfigureFlags(v, pflag.CommandLine)
+
+	pflag.Parse()
+
+	// Load config
+	loadedConfig, err := config.LoadConfig(v, pflag.CommandLine)
 	if err != nil {
-		t.Errorf("Unable to add flags for testing environment: %s", err.Error())
+		t.Errorf("Failed to load configuration: %v", err)
 		return
 	}
-	pflag.Parse()
-	err = env.Initialize()
+
+	// Initialize environment with loaded config
+	env := Environment()
+	err = env.Initialize(loadedConfig)
 	if err != nil {
-		t.Errorf("Unable to load testing environment: %s", err.Error())
+		t.Errorf("Unable to initialize testing environment: %s", err.Error())
 		return
 	}
 

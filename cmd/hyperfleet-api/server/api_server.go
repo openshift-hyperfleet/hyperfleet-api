@@ -35,7 +35,7 @@ func NewAPIServer() Server {
 	// referring to the router as type http.Handler allows us to add middleware via more handlers
 	var mainHandler http.Handler = mainRouter
 
-	if env().Config.Server.EnableJWT {
+	if env().Config.Server.Auth.JWT.Enabled {
 		// Create the logger for the authentication handler:
 		authnLogger, err := sdk.NewGlogLoggerBuilder().
 			InfoV(glog.Level(1)).
@@ -46,10 +46,11 @@ func NewAPIServer() Server {
 		// Create the handler that verifies that tokens are valid:
 		mainHandler, err = authentication.NewHandler().
 			Logger(authnLogger).
-			KeysFile(env().Config.Server.JwkCertFile).
-			KeysURL(env().Config.Server.JwkCertURL).
-			ACLFile(env().Config.Server.ACLFile).
+			KeysFile(env().Config.Server.Auth.JWT.CertFile).
+			KeysURL(env().Config.Server.Auth.JWT.CertURL).
+			ACLFile(env().Config.Server.Auth.Authz.ACLFile).
 			Public("^/api/hyperfleet/?$").
+			Public("^/api/hyperfleet/config/?$").
 			Public("^/api/hyperfleet/v1/?$").
 			Public("^/api/hyperfleet/v1/openapi/?$").
 			Public("^/api/hyperfleet/v1/openapi.html/?$").
@@ -96,7 +97,7 @@ func NewAPIServer() Server {
 	mainHandler = removeTrailingSlash(mainHandler)
 
 	s.httpServer = &http.Server{
-		Addr:    env().Config.Server.BindAddress,
+		Addr:    env().Config.Server.GetBindAddress(),
 		Handler: mainHandler,
 	}
 
@@ -107,20 +108,20 @@ func NewAPIServer() Server {
 // Useful for breaking up ListenAndServer (Start) when you require the server to be listening before continuing
 func (s apiServer) Serve(listener net.Listener) {
 	var err error
-	if env().Config.Server.EnableHTTPS {
+	if env().Config.Server.HTTPS.Enabled {
 		// Check https cert and key path path
-		if env().Config.Server.HTTPSCertFile == "" || env().Config.Server.HTTPSKeyFile == "" {
+		if env().Config.Server.HTTPS.CertFile == "" || env().Config.Server.HTTPS.KeyFile == "" {
 			check(
-				fmt.Errorf("unspecified required --https-cert-file, --https-key-file"),
+				fmt.Errorf("unspecified required --server-https-cert-file, --server-https-key-file"),
 				"Can't start https server",
 			)
 		}
 
 		// Serve with TLS
-		glog.Infof("Serving with TLS at %s", env().Config.Server.BindAddress)
-		err = s.httpServer.ServeTLS(listener, env().Config.Server.HTTPSCertFile, env().Config.Server.HTTPSKeyFile)
+		glog.Infof("Serving with TLS at %s", env().Config.Server.GetBindAddress())
+		err = s.httpServer.ServeTLS(listener, env().Config.Server.HTTPS.CertFile, env().Config.Server.HTTPS.KeyFile)
 	} else {
-		glog.Infof("Serving without TLS at %s", env().Config.Server.BindAddress)
+		glog.Infof("Serving without TLS at %s", env().Config.Server.GetBindAddress())
 		err = s.httpServer.Serve(listener)
 	}
 
@@ -132,7 +133,7 @@ func (s apiServer) Serve(listener net.Listener) {
 // Listen only start the listener, not the server.
 // Useful for breaking up ListenAndServer (Start) when you require the server to be listening before continuing
 func (s apiServer) Listen() (listener net.Listener, err error) {
-	return net.Listen("tcp", env().Config.Server.BindAddress)
+	return net.Listen("tcp", env().Config.Server.GetBindAddress())
 }
 
 // Start listening on the configured port and start the server. This is a convenience wrapper for Listen() and Serve(listener Listener)

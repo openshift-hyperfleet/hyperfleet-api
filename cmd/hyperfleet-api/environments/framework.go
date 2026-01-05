@@ -2,10 +2,8 @@ package environments
 
 import (
 	"os"
-	"strings"
 
 	"github.com/golang/glog"
-	"github.com/spf13/pflag"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/environments/registry"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/client/ocm"
@@ -17,8 +15,8 @@ func init() {
 	once.Do(func() {
 		environment = &Env{}
 
-		// Create the configuration
-		environment.Config = config.NewApplicationConfig()
+		// DO NOT create Config here
+		// Config will be provided by commands via Initialize()
 		environment.Name = GetEnvironmentStrFromEnv()
 
 		environments = map[string]EnvironmentImpl{
@@ -31,10 +29,8 @@ func init() {
 }
 
 // EnvironmentImpl defines a set of behaviors for an OCM environment.
-// Each environment provides a set of flags for basic set/override of the environment
-// and configuration functions for each component type.
+// Each environment provides configuration functions for each component type.
 type EnvironmentImpl interface {
-	Flags() map[string]string
 	OverrideConfig(c *config.ApplicationConfig) error
 	OverrideServices(s *Services) error
 	OverrideDatabase(s *Database) error
@@ -54,16 +50,9 @@ func Environment() *Env {
 	return environment
 }
 
-// AddFlags Adds environment flags, using the environment's config struct, to the flagset 'flags'
-func (e *Env) AddFlags(flags *pflag.FlagSet) error {
-	e.Config.AddFlags(flags)
-	return setConfigDefaults(flags, environments[e.Name].Flags())
-}
-
-// Initialize loads the environment's resources
-// This should be called after the e.Config has been set appropriately though AddFlags and pasing, done elsewhere
-// The environment does NOT handle flag parsing
-func (e *Env) Initialize() error {
+// Initialize loads the environment's resources with pre-loaded configuration
+// Configuration must be loaded by the caller using config.LoadConfig()
+func (e *Env) Initialize(appConfig *config.ApplicationConfig) error {
 	glog.Infof("Initializing %s environment", e.Name)
 
 	envImpl, found := environments[e.Name]
@@ -71,20 +60,20 @@ func (e *Env) Initialize() error {
 		glog.Fatalf("Unknown runtime environment: %s", e.Name)
 	}
 
+	// Store the provided config
+	e.Config = appConfig
+
+	// Allow environment to apply runtime overrides (e.g., DB_DEBUG for tests)
 	if err := envImpl.OverrideConfig(e.Config); err != nil {
 		glog.Fatalf("Failed to configure ApplicationConfig: %s", err)
 	}
 
-	messages := environment.Config.ReadFiles()
-	if len(messages) != 0 {
-		glog.Fatalf("unable to read configuration files:\n%s", strings.Join(messages, "\n"))
-	}
-
-	// each env will set db explicitly because the DB impl has a `once` init section
+	// Initialize database with config
 	if err := envImpl.OverrideDatabase(&e.Database); err != nil {
 		glog.Fatalf("Failed to configure Database: %s", err)
 	}
 
+	// Initialize clients
 	err := e.LoadClients()
 	if err != nil {
 		return err
@@ -93,16 +82,19 @@ func (e *Env) Initialize() error {
 		glog.Fatalf("Failed to configure Clients: %s", err)
 	}
 
+	// Initialize services
 	e.LoadServices()
 	if err := envImpl.OverrideServices(&e.Services); err != nil {
 		glog.Fatalf("Failed to configure Services: %s", err)
 	}
 
+	// Seed data
 	seedErr := e.Seed()
 	if seedErr != nil {
 		return seedErr
 	}
 
+	// Initialize handlers
 	if err := envImpl.OverrideHandlers(&e.Handlers); err != nil {
 		glog.Fatalf("Failed to configure Handlers: %s", err)
 	}
@@ -160,14 +152,4 @@ func (e *Env) Teardown() {
 			glog.Errorf("Error closing OCM client: %v", err)
 		}
 	}
-}
-
-func setConfigDefaults(flags *pflag.FlagSet, defaults map[string]string) error {
-	for name, value := range defaults {
-		if err := flags.Set(name, value); err != nil {
-			glog.Errorf("Error setting flag %s: %v", name, err)
-			return err
-		}
-	}
-	return nil
 }

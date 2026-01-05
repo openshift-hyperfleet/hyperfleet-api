@@ -45,7 +45,7 @@ func (s *apiServer) routes() *mux.Router {
 
 	var authMiddleware auth.JWTMiddleware
 	authMiddleware = &auth.MiddlewareMock{}
-	if env().Config.Server.EnableJWT {
+	if env().Config.Server.Auth.JWT.Enabled {
 		var err error
 		authMiddleware, err = auth.NewAuthMiddleware()
 		check(err, "Unable to create auth middleware")
@@ -74,6 +74,10 @@ func (s *apiServer) routes() *mux.Router {
 	//  /api/hyperfleet
 	apiRouter := mainRouter.PathPrefix("/api/hyperfleet").Subrouter()
 	apiRouter.HandleFunc("", metadataHandler.Get).Methods(http.MethodGet)
+
+	//  /api/hyperfleet/config
+	configHandler := handlers.NewConfigHandler(env().Config)
+	apiRouter.HandleFunc("/config", configHandler.Get).Methods(http.MethodGet)
 
 	//  /api/hyperfleet/v1
 	apiV1Router := apiRouter.PathPrefix("/v1").Subrouter()

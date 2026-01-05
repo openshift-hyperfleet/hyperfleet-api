@@ -34,7 +34,7 @@ func TestMetadataGet(t *testing.T) {
 
 	// Build the metadata URL (metadata endpoint is at /api/hyperfleet, not /api/hyperfleet/v1)
 	protocol := "http"
-	if h.AppConfig.Server.EnableHTTPS {
+	if h.AppConfig.Server.Auth.Authz.Enabled {
 		protocol = "https"
 	}
 	metadataURL := fmt.Sprintf("%s://%s/api/hyperfleet", protocol, h.AppConfig.Server.BindAddress)

@@ -4,26 +4,20 @@ import (
 	"fmt"
 
 	"github.com/spf13/pflag"
+	"github.com/spf13/viper"
 )
 
 type DatabaseConfig struct {
-	Dialect            string `json:"dialect"`
-	SSLMode            string `json:"sslmode"`
-	Debug              bool   `json:"debug"`
-	MaxOpenConnections int    `json:"max_connections"`
-
-	Host     string `json:"host"`
-	Port     int    `json:"port"`
-	Name     string `json:"name"`
-	Username string `json:"username"`
-	Password string `json:"password"`
-
-	HostFile     string `json:"host_file"`
-	PortFile     string `json:"port_file"`
-	NameFile     string `json:"name_file"`
-	UsernameFile string `json:"username_file"`
-	PasswordFile string `json:"password_file"`
-	RootCertFile string `json:"certificate_file"`
+	Dialect            string `mapstructure:"dialect" json:"dialect" validate:"required"`
+	Host               string `mapstructure:"host" json:"host" validate:""`
+	Port               int    `mapstructure:"port" json:"port" validate:"min=0,max=65535"`
+	Name               string `mapstructure:"name" json:"name" validate:""`
+	Username           string `mapstructure:"username" json:"username" validate:""`
+	Password           string `mapstructure:"password" json:"password" validate:""`
+	SSLMode            string `mapstructure:"sslmode" json:"sslmode" validate:"oneof=disable require verify-ca verify-full"`
+	RootCertFile       string `mapstructure:"rootcert_file" json:"rootcert_file" validate:""`
+	Debug              bool   `mapstructure:"debug" json:"debug"`
+	MaxOpenConnections int    `mapstructure:"max_open_connections" json:"max_open_connections" validate:"min=1"`
 }
 
 func NewDatabaseConfig() *DatabaseConfig {
@@ -32,57 +26,31 @@ func NewDatabaseConfig() *DatabaseConfig {
 		SSLMode:            "disable",
 		Debug:              false,
 		MaxOpenConnections: 50,
-
-		HostFile:     "secrets/db.host",
-		PortFile:     "secrets/db.port",
-		NameFile:     "secrets/db.name",
-		UsernameFile: "secrets/db.user",
-		PasswordFile: "secrets/db.password",
-		RootCertFile: "secrets/db.rootcert",
 	}
 }
 
-func (c *DatabaseConfig) AddFlags(fs *pflag.FlagSet) {
-	fs.StringVar(&c.HostFile, "db-host-file", c.HostFile, "Database host string file")
-	fs.StringVar(&c.PortFile, "db-port-file", c.PortFile, "Database port file")
-	fs.StringVar(&c.UsernameFile, "db-user-file", c.UsernameFile, "Database username file")
-	fs.StringVar(&c.PasswordFile, "db-password-file", c.PasswordFile, "Database password file")
-	fs.StringVar(&c.NameFile, "db-name-file", c.NameFile, "Database name file")
-	fs.StringVar(&c.RootCertFile, "db-rootcert", c.RootCertFile, "Database root certificate file")
-	fs.StringVar(&c.SSLMode, "db-sslmode", c.SSLMode, "Database ssl mode (disable | require | verify-ca | verify-full)")
-	fs.BoolVar(&c.Debug, "enable-db-debug", c.Debug, " framework's debug mode")
-	fs.IntVar(&c.MaxOpenConnections, "db-max-open-connections", c.MaxOpenConnections, "Maximum open DB connections for this instance")
+// defineAndBindFlags defines database flags and binds them to viper keys in a single pass
+func (c *DatabaseConfig) defineAndBindFlags(v *viper.Viper, fs *pflag.FlagSet) {
+	// Direct database connection parameters
+	defineAndBindStringFlag(v, fs, "database.host", "db-host", "", c.Host, "Database host")
+	defineAndBindIntFlag(v, fs, "database.port", "db-port", "", c.Port, "Database port")
+	defineAndBindStringFlag(v, fs, "database.username", "db-username", "u", c.Username, "Database username")
+	defineAndBindStringFlag(v, fs, "database.password", "db-password", "", c.Password, "Database password (prefer using env var)")
+	defineAndBindStringFlag(v, fs, "database.name", "db-name", "d", c.Name, "Database name")
+
+	// Connection options
+	defineAndBindStringFlag(v, fs, "database.rootcert_file", "db-rootcert", "", c.RootCertFile, "Database root certificate file")
+	defineAndBindStringFlag(v, fs, "database.sslmode", "db-sslmode", "", c.SSLMode, "Database SSL mode (disable | require | verify-ca | verify-full)")
+	defineAndBindBoolFlag(v, fs, "database.debug", "db-debug", "", c.Debug, "Enable database debug mode")
+	defineAndBindIntFlag(v, fs, "database.max_open_connections", "db-max-open-connections", "", c.MaxOpenConnections, "Maximum open DB connections")
 }
 
-func (c *DatabaseConfig) ReadFiles() error {
-	err := readFileValueString(c.HostFile, &c.Host)
-	if err != nil {
-		return err
-	}
-
-	err = readFileValueInt(c.PortFile, &c.Port)
-	if err != nil {
-		return err
-	}
-
-	err = readFileValueString(c.UsernameFile, &c.Username)
-	if err != nil {
-		return err
-	}
-
-	err = readFileValueString(c.PasswordFile, &c.Password)
-	if err != nil {
-		return err
-	}
-
-	err = readFileValueString(c.NameFile, &c.Name)
-	return err
-}
-
+// ConnectionString returns the database connection string
 func (c *DatabaseConfig) ConnectionString(withSSL bool) string {
 	return c.ConnectionStringWithName(c.Name, withSSL)
 }
 
+// ConnectionStringWithName returns the database connection string with a specific database name
 func (c *DatabaseConfig) ConnectionStringWithName(name string, withSSL bool) string {
 	var cmd string
 	if withSSL {
@@ -100,20 +68,21 @@ func (c *DatabaseConfig) ConnectionStringWithName(name string, withSSL bool) str
 	return cmd
 }
 
+// LogSafeConnectionString returns a connection string with sensitive data redacted
 func (c *DatabaseConfig) LogSafeConnectionString(withSSL bool) string {
 	return c.LogSafeConnectionStringWithName(c.Name, withSSL)
 }
 
+// LogSafeConnectionStringWithName returns a connection string with sensitive data redacted
 func (c *DatabaseConfig) LogSafeConnectionStringWithName(name string, withSSL bool) string {
 	if withSSL {
 		return fmt.Sprintf(
 			"host=%s port=%d user=%s password='<REDACTED>' dbname=%s sslmode=%s sslrootcert='<REDACTED>'",
 			c.Host, c.Port, c.Username, name, c.SSLMode,
 		)
-	} else {
-		return fmt.Sprintf(
-			"host=%s port=%d user=%s password='<REDACTED>' dbname=%s",
-			c.Host, c.Port, c.Username, name,
-		)
 	}
+	return fmt.Sprintf(
+		"host=%s port=%d user=%s password='<REDACTED>' dbname=%s",
+		c.Host, c.Port, c.Username, name,
+	)
 }

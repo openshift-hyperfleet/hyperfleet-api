@@ -1,0 +1,63 @@
+# HyperFleet API Configuration
+# This is a sample configuration file showing all available options
+
+# Application configuration
+app:
+  name: "hyperfleet-api"
+  version: "1.0.0"
+
+# Server configuration
+server:
+  hostname: ""
+  host: "localhost"
+  port: 8000
+  timeout:
+    read: 5s
+    write: 30s
+  https:
+    enabled: false
+    cert_file: ""
+    key_file: ""
+
+  # Authentication and Authorization
+  auth:
+    jwt:
+      enabled: false
+      cert_file: ""
+      cert_url: "https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/certs"
+    authz:
+      enabled: false
+      acl_file: ""
+
+# Database configuration
+database:
+  dialect: "postgres"
+  host: "localhost"
+  port: 5432
+  name: "hyperfleet"
+  username: "hyperfleet"
+  password: "foobar-bizz-buzz"
+  sslmode: "disable"
+  rootcert_file: ""
+  debug: false
+  max_open_connections: 50
+
+# Metrics configuration
+metrics:
+  host: "localhost"
+  port: 8080
+
+# Health check configuration
+health_check:
+  host: "localhost"
+  port: 8083
+
+# OCM (OpenShift Cluster Manager) configuration
+ocm:
+  base_url: ""
+  client_id: ""
+  client_secret: ""
+  self_token: ""
+  token_url: ""
+  debug: false
+  enable_mock: true

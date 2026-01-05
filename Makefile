@@ -31,7 +31,6 @@ db_host=hyperfleet-db.$(namespace)
 db_port=5432
 db_user:=hyperfleet
 db_password:=foobar-bizz-buzz
-db_password_file=${PWD}/secrets/db.password
 db_sslmode:=disable
 db_image?=docker.io/library/postgres:14.2
 
@@ -152,20 +151,6 @@ install: check-gopath generate-all
 		)
 .PHONY: install
 
-# Initialize secrets directory with default values
-secrets:
-	@mkdir -p secrets
-	@printf "localhost" > secrets/db.host
-	@printf "$(db_name)" > secrets/db.name
-	@printf "$(db_password)" > secrets/db.password
-	@printf "$(db_port)" > secrets/db.port
-	@printf "$(db_user)" > secrets/db.user
-	@printf "ocm-hyperfleet-testing" > secrets/ocm-service.clientId
-	@printf "your-client-secret-here" > secrets/ocm-service.clientSecret
-	@printf "your-token-here" > secrets/ocm-service.token
-	@echo "Secrets directory initialized with default values"
-.PHONY: secrets
-
 # Runs the unit tests.
 #
 # Args:
@@ -173,8 +158,16 @@ secrets:
 #
 # Examples:
 #   make test TESTFLAGS="-run TestSomething"
-test: install secrets $(GOTESTSUM)
-	OCM_ENV=unit_testing $(GOTESTSUM) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -v $(TESTFLAGS) \
+test: install $(GOTESTSUM)
+	OCM_ENV=unit_testing \
+	HYPERFLEET_APP_NAME=hyperfleet-api-test \
+	HYPERFLEET_OCM_MOCK=true \
+	HYPERFLEET_OCM_DEBUG=false \
+	HYPERFLEET_OCM_BASE_URL=https://api.integration.openshift.com \
+	HYPERFLEET_SERVER_HTTPS_ENABLED=false \
+	HYPERFLEET_METRICS_HTTPS_ENABLED=false \
+	HYPERFLEET_AUTH_AUTHZ_ENABLED=true \
+	$(GOTESTSUM) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -v $(TESTFLAGS) \
 		./pkg/... \
 		./cmd/...
 .PHONY: test
@@ -186,8 +179,16 @@ test: install secrets $(GOTESTSUM)
 #
 # Examples:
 #   make test-unit-json TESTFLAGS="-run TestSomething"
-ci-test-unit: install secrets $(GOTESTSUM)
-	OCM_ENV=unit_testing $(GOTESTSUM) --jsonfile-timing-events=$(unit_test_json_output) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -v $(TESTFLAGS) \
+ci-test-unit: install $(GOTESTSUM)
+	OCM_ENV=unit_testing \
+	HYPERFLEET_APP_NAME=hyperfleet-api-test \
+	HYPERFLEET_OCM_MOCK=true \
+	HYPERFLEET_OCM_DEBUG=false \
+	HYPERFLEET_OCM_BASE_URL=https://api.integration.openshift.com \
+	HYPERFLEET_SERVER_HTTPS_ENABLED=false \
+	HYPERFLEET_METRICS_HTTPS_ENABLED=false \
+	HYPERFLEET_AUTH_AUTHZ_ENABLED=true \
+	$(GOTESTSUM) --jsonfile-timing-events=$(unit_test_json_output) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -v $(TESTFLAGS) \
 		./pkg/... \
 		./cmd/...
 .PHONY: ci-test-unit
@@ -202,8 +203,17 @@ ci-test-unit: install secrets $(GOTESTSUM)
 #   make test-integration TESTFLAGS="-run TestAccounts"     acts as TestAccounts* and run TestAccountsGet, TestAccountsPost, etc.
 #   make test-integration TESTFLAGS="-run TestAccountsGet"  runs TestAccountsGet
 #   make test-integration TESTFLAGS="-short"                skips long-run tests
-ci-test-integration: install secrets $(GOTESTSUM)
-	TESTCONTAINERS_RYUK_DISABLED=true OCM_ENV=integration_testing $(GOTESTSUM) --jsonfile-timing-events=$(integration_test_json_output) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) \
+ci-test-integration: install $(GOTESTSUM)
+	TESTCONTAINERS_RYUK_DISABLED=true \
+	OCM_ENV=integration_testing \
+	HYPERFLEET_APP_NAME=hyperfleet-api-integration-test \
+	HYPERFLEET_OCM_MOCK=true \
+	HYPERFLEET_OCM_DEBUG=false \
+	HYPERFLEET_OCM_BASE_URL=https://api.integration.openshift.com \
+	HYPERFLEET_SERVER_HTTPS_ENABLED=false \
+	HYPERFLEET_METRICS_HTTPS_ENABLED=false \
+	HYPERFLEET_AUTH_AUTHZ_ENABLED=true \
+	$(GOTESTSUM) --jsonfile-timing-events=$(integration_test_json_output) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) \
 			./test/integration
 .PHONY: ci-test-integration
 
@@ -217,8 +227,20 @@ ci-test-integration: install secrets $(GOTESTSUM)
 #   make test-integration TESTFLAGS="-run TestAccounts"     acts as TestAccounts* and run TestAccountsGet, TestAccountsPost, etc.
 #   make test-integration TESTFLAGS="-run TestAccountsGet"  runs TestAccountsGet
 #   make test-integration TESTFLAGS="-short"                skips long-run tests
-test-integration: install secrets $(GOTESTSUM)
-	TESTCONTAINERS_RYUK_DISABLED=true OCM_ENV=integration_testing $(GOTESTSUM) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) \
+test-integration: install $(GOTESTSUM)
+	TESTCONTAINERS_RYUK_DISABLED=true \
+	OCM_ENV=integration_testing \
+	HYPERFLEET_APP_NAME=hyperfleet-api-integration-test \
+	HYPERFLEET_OCM_MOCK=true \
+	HYPERFLEET_OCM_DEBUG=false \
+	HYPERFLEET_OCM_BASE_URL=https://api.integration.openshift.com \
+	HYPERFLEET_SERVER_HTTPS_ENABLED=false \
+	HYPERFLEET_METRICS_HTTPS_ENABLED=false \
+	HYPERFLEET_SERVER_AUTH_AUTHZ_ENABLED=false \
+	HYPERFLEET_DATABASE_NAME=$(db_name) \
+	HYPERFLEET_DATABASE_USERNAME=$(db_user) \
+	HYPERFLEET_DATABASE_PASSWORD=$(db_password) \
+	$(GOTESTSUM) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) \
 			./test/integration
 .PHONY: test-integration
 
@@ -268,8 +290,7 @@ run/docs:
 clean:
 	rm -rf \
 		$(binary) \
-		data/generated/openapi/*.json \
-		secrets \
+		data/generated/openapi/*.json
 .PHONY: clean
 
 .PHONY: cmds
@@ -284,8 +305,7 @@ cmds:
 
 
 .PHONY: db/setup
-db/setup: secrets
-	@echo $(db_password) > $(db_password_file)
+db/setup:
 	$(container_tool) run --name psql-hyperfleet -e POSTGRES_DB=$(db_name) -e POSTGRES_USER=$(db_user) -e POSTGRES_PASSWORD=$(db_password) -p $(db_port):5432 -d $(db_image)
 
 .PHONY: db/login
