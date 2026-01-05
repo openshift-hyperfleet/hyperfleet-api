@@ -38,16 +38,3 @@ func (e *integrationTestingEnvImpl) OverrideHandlers(h *Handlers) error {
 func (e *integrationTestingEnvImpl) OverrideClients(c *Clients) error {
 	return nil
 }
-
-func (e *integrationTestingEnvImpl) Flags() map[string]string {
-	return map[string]string{
-		"v":                    "0",
-		"logtostderr":          "true",
-		"ocm-base-url":         "https://api.integration.openshift.com",
-		"enable-https":         "false",
-		"enable-metrics-https": "false",
-		"enable-authz":         "true",
-		"ocm-debug":            "false",
-		"enable-ocm-mock":      "true",
-	}
-}

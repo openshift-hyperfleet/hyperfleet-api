@@ -32,11 +32,3 @@ func (e *productionEnvImpl) OverrideHandlers(h *Handlers) error {
 func (e *productionEnvImpl) OverrideClients(c *Clients) error {
 	return nil
 }
-
-func (e *productionEnvImpl) Flags() map[string]string {
-	return map[string]string{
-		"v":               "1",
-		"ocm-debug":       "false",
-		"enable-ocm-mock": "false",
-	}
-}
