@@ -2,55 +2,38 @@ package config
 
 import (
 	"github.com/spf13/pflag"
+	"github.com/spf13/viper"
 )
 
 type OCMConfig struct {
-	BaseURL          string `json:"base_url"`
-	ClientID         string `json:"client-id"`
-	ClientIDFile     string `json:"client-id_file"`
-	ClientSecret     string `json:"client-secret"`
-	ClientSecretFile string `json:"client-secret_file"`
-	SelfToken        string `json:"self_token"`
-	SelfTokenFile    string `json:"self_token_file"`
-	TokenURL         string `json:"token_url"`
-	Debug            bool   `json:"debug"`
-	EnableMock       bool   `json:"enable_mock"`
+	BaseURL      string `mapstructure:"base_url" json:"base_url" validate:""`
+	ClientID     string `mapstructure:"client_id" json:"client_id" validate:""`
+	ClientSecret string `mapstructure:"client_secret" json:"client_secret" validate:""`
+	SelfToken    string `mapstructure:"self_token" json:"self_token" validate:""`
+	TokenURL     string `mapstructure:"token_url" json:"token_url" validate:""`
+	Debug        bool   `mapstructure:"debug" json:"debug"`
+	EnableMock   bool   `mapstructure:"enable_mock" json:"enable_mock"`
 }
 
 func NewOCMConfig() *OCMConfig {
 	return &OCMConfig{
-		BaseURL:          "https://api.integration.openshift.com",
-		TokenURL:         "https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token",
-		ClientIDFile:     "secrets/ocm-service.clientId",
-		ClientSecretFile: "secrets/ocm-service.clientSecret",
-		SelfTokenFile:    "",
-		Debug:            false,
-		EnableMock:       true,
+		BaseURL:    "https://api.integration.openshift.com",
+		TokenURL:   "https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token",
+		Debug:      false,
+		EnableMock: true,
 	}
 }
 
-func (c *OCMConfig) AddFlags(fs *pflag.FlagSet) {
-	fs.StringVar(&c.ClientIDFile, "ocm-client-id-file", c.ClientIDFile, "File containing OCM API privileged account client-id")
-	fs.StringVar(&c.ClientSecretFile, "ocm-client-secret-file", c.ClientSecretFile, "File containing OCM API privileged account client-secret")
-	fs.StringVar(&c.SelfTokenFile, "self-token-file", c.SelfTokenFile, "File containing OCM API privileged offline SSO token")
-	fs.StringVar(&c.BaseURL, "ocm-base-url", c.BaseURL, "The base URL of the OCM API, integration by default")
-	fs.StringVar(&c.TokenURL, "ocm-token-url", c.TokenURL, "The base URL that OCM uses to request tokens, stage by default")
-	fs.BoolVar(&c.Debug, "ocm-debug", c.Debug, "Debug flag for OCM API")
-	fs.BoolVar(&c.EnableMock, "enable-ocm-mock", c.EnableMock, "Enable mock ocm clients")
-}
+// defineAndBindFlags defines & binds flags to viper keys in a single pass
+func (c *OCMConfig) defineAndBindFlags(v *viper.Viper, fs *pflag.FlagSet) {
+	// OCM connection parameters
+	defineAndBindStringFlag(v, fs, "ocm.base_url", "ocm-base-url", "", c.BaseURL, "OCM API base URL")
+	defineAndBindStringFlag(v, fs, "ocm.token_url", "ocm-token-url", "", c.TokenURL, "OCM token URL")
+	defineAndBindStringFlag(v, fs, "ocm.client_id", "ocm-client-id", "", c.ClientID, "OCM client ID")
+	defineAndBindStringFlag(v, fs, "ocm.client_secret", "ocm-client-secret", "", c.ClientSecret, "OCM client secret (prefer using env var)")
+	defineAndBindStringFlag(v, fs, "ocm.self_token", "ocm-self-token", "", c.SelfToken, "OCM self token (prefer using env var)")
 
-func (c *OCMConfig) ReadFiles() error {
-	if c.EnableMock {
-		return nil
-	}
-	err := readFileValueString(c.ClientIDFile, &c.ClientID)
-	if err != nil {
-		return err
-	}
-	err = readFileValueString(c.ClientSecretFile, &c.ClientSecret)
-	if err != nil {
-		return err
-	}
-	err = readFileValueString(c.SelfTokenFile, &c.SelfToken)
-	return err
+	// Options
+	defineAndBindBoolFlag(v, fs, "ocm.debug", "ocm-debug", "", c.Debug, "Enable OCM debug mode")
+	defineAndBindBoolFlag(v, fs, "ocm.enable_mock", "ocm-mock", "", c.EnableMock, "Enable mock OCM client")
 }
