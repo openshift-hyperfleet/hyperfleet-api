@@ -1,7 +1,9 @@
 package servecmd
 
 import (
-	"github.com/golang/glog"
+	"log/slog"
+	"os"
+
 	"github.com/spf13/cobra"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/environments"
@@ -17,7 +19,8 @@ func NewServeCommand() *cobra.Command {
 	}
 	err := environments.Environment().AddFlags(cmd.PersistentFlags())
 	if err != nil {
-		glog.Fatalf("Unable to add environment flags to serve command: %s", err.Error())
+		slog.Error("Unable to add environment flags to serve command", "error", err)
+		os.Exit(1)
 	}
 
 	return cmd
@@ -26,7 +29,8 @@ func NewServeCommand() *cobra.Command {
 func runServe(cmd *cobra.Command, args []string) {
 	err := environments.Environment().Initialize()
 	if err != nil {
-		glog.Fatalf("Unable to initialize environment: %s", err.Error())
+		slog.Error("Unable to initialize environment", "error", err)
+		os.Exit(1)
 	}
 
 	// Run the servers

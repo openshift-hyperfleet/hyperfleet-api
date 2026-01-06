@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 
@@ -10,7 +11,6 @@ import (
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/handlers"
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
 func NewMetricsServer() Server {
@@ -45,7 +45,6 @@ func (s metricsServer) Serve(listener net.Listener) {
 }
 
 func (s metricsServer) Start() {
-	log := logger.NewOCMLogger(context.Background())
 	var err error
 	if env().Config.Metrics.EnableHTTPS {
 		if env().Config.Server.HTTPSCertFile == "" || env().Config.Server.HTTPSKeyFile == "" {
@@ -56,14 +55,14 @@ func (s metricsServer) Start() {
 		}
 
 		// Serve with TLS
-		log.Infof("Serving Metrics with TLS at %s", env().Config.Server.BindAddress)
+		slog.Info("Serving Metrics with TLS", "address", env().Config.Metrics.BindAddress)
 		err = s.httpServer.ListenAndServeTLS(env().Config.Server.HTTPSCertFile, env().Config.Server.HTTPSKeyFile)
 	} else {
-		log.Infof("Serving Metrics without TLS at %s", env().Config.Metrics.BindAddress)
+		slog.Info("Serving Metrics without TLS", "address", env().Config.Metrics.BindAddress)
 		err = s.httpServer.ListenAndServe()
 	}
 	check(err, "Metrics server terminated with errors")
-	log.Infof("Metrics server terminated")
+	slog.Info("Metrics server terminated")
 }
 
 func (s metricsServer) Stop() error {

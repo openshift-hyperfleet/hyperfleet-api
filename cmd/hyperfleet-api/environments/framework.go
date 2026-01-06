@@ -1,16 +1,18 @@
 package environments
 
 import (
+	"log/slog"
 	"os"
 	"strings"
 
-	"github.com/golang/glog"
 	"github.com/spf13/pflag"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/environments/registry"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/client/ocm"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
 func init() {
@@ -64,25 +66,37 @@ func (e *Env) AddFlags(flags *pflag.FlagSet) error {
 // This should be called after the e.Config has been set appropriately though AddFlags and pasing, done elsewhere
 // The environment does NOT handle flag parsing
 func (e *Env) Initialize() error {
-	glog.Infof("Initializing %s environment", e.Name)
+	// Initialize structured logging first, before any other operations
+	logger.Initialize(logger.Config{
+		Level:   e.Config.Logging.Level,
+		Format:  e.Config.Logging.Format,
+		Output:  e.Config.Logging.Output,
+		Version: api.Version,
+	})
+
+	slog.Info("Initializing environment", "environment", e.Name)
 
 	envImpl, found := environments[e.Name]
 	if !found {
-		glog.Fatalf("Unknown runtime environment: %s", e.Name)
+		slog.Error("Unknown runtime environment", "environment", e.Name)
+		os.Exit(1)
 	}
 
 	if err := envImpl.OverrideConfig(e.Config); err != nil {
-		glog.Fatalf("Failed to configure ApplicationConfig: %s", err)
+		slog.Error("Failed to configure ApplicationConfig", "error", err)
+		os.Exit(1)
 	}
 
 	messages := environment.Config.ReadFiles()
 	if len(messages) != 0 {
-		glog.Fatalf("unable to read configuration files:\n%s", strings.Join(messages, "\n"))
+		slog.Error("Unable to read configuration files", "errors", strings.Join(messages, "\n"))
+		os.Exit(1)
 	}
 
 	// each env will set db explicitly because the DB impl has a `once` init section
 	if err := envImpl.OverrideDatabase(&e.Database); err != nil {
-		glog.Fatalf("Failed to configure Database: %s", err)
+		slog.Error("Failed to configure Database", "error", err)
+		os.Exit(1)
 	}
 
 	err := e.LoadClients()
@@ -90,12 +104,14 @@ func (e *Env) Initialize() error {
 		return err
 	}
 	if err := envImpl.OverrideClients(&e.Clients); err != nil {
-		glog.Fatalf("Failed to configure Clients: %s", err)
+		slog.Error("Failed to configure Clients", "error", err)
+		os.Exit(1)
 	}
 
 	e.LoadServices()
 	if err := envImpl.OverrideServices(&e.Services); err != nil {
-		glog.Fatalf("Failed to configure Services: %s", err)
+		slog.Error("Failed to configure Services", "error", err)
+		os.Exit(1)
 	}
 
 	seedErr := e.Seed()
@@ -104,7 +120,8 @@ func (e *Env) Initialize() error {
 	}
 
 	if err := envImpl.OverrideHandlers(&e.Handlers); err != nil {
-		glog.Fatalf("Failed to configure Handlers: %s", err)
+		slog.Error("Failed to configure Handlers", "error", err)
+		os.Exit(1)
 	}
 
 	return nil
@@ -136,13 +153,13 @@ func (e *Env) LoadClients() error {
 
 	// Create OCM Authz client
 	if e.Config.OCM.EnableMock {
-		glog.Infof("Using Mock OCM Authz Client")
+		slog.Info("Using Mock OCM Authz Client")
 		e.Clients.OCM, err = ocm.NewClientMock(ocmConfig)
 	} else {
 		e.Clients.OCM, err = ocm.NewClient(ocmConfig)
 	}
 	if err != nil {
-		glog.Errorf("Unable to create OCM Authz client: %s", err.Error())
+		slog.Error("Unable to create OCM Authz client", "error", err)
 		return err
 	}
 
@@ -152,12 +169,12 @@ func (e *Env) LoadClients() error {
 func (e *Env) Teardown() {
 	if e.Database.SessionFactory != nil {
 		if err := e.Database.SessionFactory.Close(); err != nil {
-			glog.Errorf("Error closing database session factory: %s", err.Error())
+			slog.Error("Error closing database session factory", "error", err)
 		}
 	}
 	if e.Clients.OCM != nil {
 		if err := e.Clients.OCM.Close(); err != nil {
-			glog.Errorf("Error closing OCM client: %v", err)
+			slog.Error("Error closing OCM client", "error", err)
 		}
 	}
 }
@@ -165,7 +182,7 @@ func (e *Env) Teardown() {
 func setConfigDefaults(flags *pflag.FlagSet, defaults map[string]string) error {
 	for name, value := range defaults {
 		if err := flags.Set(name, value); err != nil {
-			glog.Errorf("Error setting flag %s: %v", name, err)
+			slog.Error("Error setting flag", "flag", name, "error", err)
 			return err
 		}
 	}

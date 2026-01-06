@@ -17,7 +17,7 @@ RUN ARCH=$(dpkg --print-architecture) && \
     rm go1.24.0.linux-${GO_ARCH}.tar.gz
 
 # Download openapi-generator-cli
-RUN wget https://repo1.maven.org/maven2/org/openapitools/openapi-generator-cli/7.16.0/openapi-generator-cli-7.16.0.jar \
+RUN wget https://repo1.maven.org/maven2/org/openapitools/openapi-generator-cli/7.18.0/openapi-generator-cli-7.18.0.jar \
     -O /usr/local/bin/openapi-generator-cli.jar
 
 RUN mkdir -p /local

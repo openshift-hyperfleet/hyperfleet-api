@@ -2,10 +2,9 @@ package errors
 
 import (
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strconv"
-
-	"github.com/golang/glog"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
 )
@@ -114,7 +113,7 @@ func New(code ServiceErrorCode, reason string, values ...interface{}) *ServiceEr
 	var err *ServiceError
 	exists, err := Find(code)
 	if !exists {
-		glog.Errorf("Undefined error code used: %d", code)
+		slog.Error("Undefined error code used", "code", code)
 		err = &ServiceError{
 			Code:     ErrorGeneral,
 			Reason:   "Unspecified error",

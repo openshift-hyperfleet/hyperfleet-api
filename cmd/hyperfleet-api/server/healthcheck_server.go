@@ -3,11 +3,11 @@ package server
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 
 	health "github.com/docker/go-healthcheck"
-	"github.com/golang/glog"
 	"github.com/gorilla/mux"
 )
 
@@ -50,14 +50,14 @@ func (s healthCheckServer) Start() {
 		}
 
 		// Serve with TLS
-		glog.Infof("Serving HealthCheck with TLS at %s", env().Config.HealthCheck.BindAddress)
+		slog.Info("Serving HealthCheck with TLS", "address", env().Config.HealthCheck.BindAddress)
 		err = s.httpServer.ListenAndServeTLS(env().Config.Server.HTTPSCertFile, env().Config.Server.HTTPSKeyFile)
 	} else {
-		glog.Infof("Serving HealthCheck without TLS at %s", env().Config.HealthCheck.BindAddress)
+		slog.Info("Serving HealthCheck without TLS", "address", env().Config.HealthCheck.BindAddress)
 		err = s.httpServer.ListenAndServe()
 	}
 	check(err, "HealthCheck server terminated with errors")
-	glog.Infof("HealthCheck server terminated")
+	slog.Info("HealthCheck server terminated")
 }
 
 func (s healthCheckServer) Stop() error {

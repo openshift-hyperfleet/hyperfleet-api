@@ -3,13 +3,14 @@ package server
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
+	"os"
 	"time"
 
 	_ "github.com/auth0/go-jwt-middleware"
 	_ "github.com/golang-jwt/jwt/v4"
-	"github.com/golang/glog"
 	gorillahandlers "github.com/gorilla/handlers"
 	sdk "github.com/openshift-online/ocm-sdk-go"
 	"github.com/openshift-online/ocm-sdk-go/authentication"
@@ -37,9 +38,9 @@ func NewAPIServer() Server {
 
 	if env().Config.Server.EnableJWT {
 		// Create the logger for the authentication handler:
-		authnLogger, err := sdk.NewGlogLoggerBuilder().
-			InfoV(glog.Level(1)).
-			DebugV(glog.Level(5)).
+		authnLogger, err := sdk.NewStdLoggerBuilder().
+			Streams(os.Stdout, os.Stderr).
+			Debug(false).
 			Build()
 		check(err, "Unable to create authentication logger")
 
@@ -117,16 +118,16 @@ func (s apiServer) Serve(listener net.Listener) {
 		}
 
 		// Serve with TLS
-		glog.Infof("Serving with TLS at %s", env().Config.Server.BindAddress)
+		slog.Info("Serving with TLS", "address", env().Config.Server.BindAddress)
 		err = s.httpServer.ServeTLS(listener, env().Config.Server.HTTPSCertFile, env().Config.Server.HTTPSKeyFile)
 	} else {
-		glog.Infof("Serving without TLS at %s", env().Config.Server.BindAddress)
+		slog.Info("Serving without TLS", "address", env().Config.Server.BindAddress)
 		err = s.httpServer.Serve(listener)
 	}
 
 	// Web server terminated.
 	check(err, "Web server terminated with errors")
-	glog.Info("Web server terminated")
+	slog.Info("Web server terminated")
 }
 
 // Listen only start the listener, not the server.
@@ -139,7 +140,8 @@ func (s apiServer) Listen() (listener net.Listener, err error) {
 func (s apiServer) Start() {
 	listener, err := s.Listen()
 	if err != nil {
-		glog.Fatalf("Unable to start API server: %s", err)
+		slog.Error("Unable to start API server", "error", err)
+		os.Exit(1)
 	}
 	s.Serve(listener)
 
@@ -147,7 +149,7 @@ func (s apiServer) Start() {
 	// we need to explicitly close Go's sql connection pool.
 	// this needs to be called *exactly* once during an app's lifetime.
 	if err := env().Database.SessionFactory.Close(); err != nil {
-		glog.Errorf("Error closing database connection: %v", err)
+		slog.Error("Error closing database connection", "error", err)
 	}
 }
 

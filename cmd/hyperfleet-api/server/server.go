@@ -1,12 +1,11 @@
 package server
 
 import (
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
 	"strings"
-
-	"github.com/golang/glog"
 )
 
 type Server interface {
@@ -26,7 +25,7 @@ func removeTrailingSlash(next http.Handler) http.Handler {
 // Exit on error
 func check(err error, msg string) {
 	if err != nil && err != http.ErrServerClosed {
-		glog.Errorf("%s: %s", msg, err)
+		slog.Error(msg, "error", err)
 		os.Exit(1)
 	}
 }

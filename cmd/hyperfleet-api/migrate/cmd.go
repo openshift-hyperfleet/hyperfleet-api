@@ -3,13 +3,14 @@ package migrate
 import (
 	"context"
 	"flag"
+	"log/slog"
+	"os"
 
-	"github.com/golang/glog"
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db/db_session"
 	"github.com/spf13/cobra"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db/db_session"
 )
 
 var dbConfig = config.NewDatabaseConfig()
@@ -31,11 +32,13 @@ func NewMigrateCommand() *cobra.Command {
 func runMigrate(_ *cobra.Command, _ []string) {
 	err := dbConfig.ReadFiles()
 	if err != nil {
-		glog.Fatal(err)
+		slog.Error("Failed to read database config", "error", err)
+		os.Exit(1)
 	}
 
 	connection := db_session.NewProdFactory(dbConfig)
 	if err := db.Migrate(connection.New(context.Background())); err != nil {
-		glog.Fatal(err)
+		slog.Error("Migration failed", "error", err)
+		os.Exit(1)
 	}
 }

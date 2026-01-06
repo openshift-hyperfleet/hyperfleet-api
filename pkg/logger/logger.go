@@ -3,12 +3,176 @@ package logger
 import (
 	"context"
 	"fmt"
+	"io"
+	"log/slog"
+	"os"
 	"strings"
-
-	"github.com/golang/glog"
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/util"
+	"sync"
 )
 
+// Global logger configuration
+var (
+	globalLogger *slog.Logger
+	globalMu     sync.RWMutex
+	initOnce     sync.Once
+
+	// Build info set at initialization
+	component = "api"
+	version   = "unknown"
+	hostname  = "unknown"
+)
+
+// Config holds the logger configuration
+type Config struct {
+	Level   string // debug, info, warn, error
+	Format  string // text, json
+	Output  string // stdout, stderr
+	Version string // application version
+}
+
+// Initialize sets up the global logger with the given configuration
+func Initialize(cfg Config) {
+	globalMu.Lock()
+	defer globalMu.Unlock()
+
+	// Set version
+	if cfg.Version != "" {
+		version = cfg.Version
+	}
+
+	// Get hostname
+	if h, err := os.Hostname(); err == nil {
+		hostname = h
+	}
+
+	// Determine output writer
+	var output io.Writer
+	switch strings.ToLower(cfg.Output) {
+	case "stderr":
+		output = os.Stderr
+	default:
+		output = os.Stdout
+	}
+
+	// Determine log level
+	var level slog.Level
+	switch strings.ToLower(cfg.Level) {
+	case "debug":
+		level = slog.LevelDebug
+	case "warn", "warning":
+		level = slog.LevelWarn
+	case "error":
+		level = slog.LevelError
+	default:
+		level = slog.LevelInfo
+	}
+
+	// Create handler options
+	opts := &slog.HandlerOptions{
+		Level: level,
+		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
+			// Rename time to timestamp for HyperFleet standard
+			if a.Key == slog.TimeKey {
+				a.Key = "timestamp"
+			}
+			// Rename msg to message for HyperFleet standard
+			if a.Key == slog.MessageKey {
+				a.Key = "message"
+			}
+			return a
+		},
+	}
+
+	// Create handler based on format
+	var handler slog.Handler
+	switch strings.ToLower(cfg.Format) {
+	case "json":
+		handler = slog.NewJSONHandler(output, opts)
+	default:
+		handler = slog.NewTextHandler(output, opts)
+	}
+
+	// Wrap handler to add default attributes
+	handler = &contextHandler{
+		Handler: handler,
+	}
+
+	// Create and set global logger with base attributes
+	globalLogger = slog.New(handler).With(
+		slog.String("component", component),
+		slog.String("version", version),
+		slog.String("hostname", hostname),
+	)
+
+	// Set as default logger
+	slog.SetDefault(globalLogger)
+}
+
+// contextHandler wraps a slog.Handler to add context-based attributes
+type contextHandler struct {
+	slog.Handler
+}
+
+func (h *contextHandler) Handle(ctx context.Context, r slog.Record) error {
+	// Add trace_id if present in context (OpenTelemetry)
+	if traceID := GetTraceID(ctx); traceID != "" {
+		r.AddAttrs(slog.String("trace_id", traceID))
+	}
+
+	// Add span_id if present in context (OpenTelemetry)
+	if spanID := GetSpanID(ctx); spanID != "" {
+		r.AddAttrs(slog.String("span_id", spanID))
+	}
+
+	// Add request_id if present in context
+	if requestID := GetRequestID(ctx); requestID != "" {
+		r.AddAttrs(slog.String("request_id", requestID))
+	}
+
+	// Add operation_id if present in context
+	if opID := GetOperationID(ctx); opID != "" {
+		r.AddAttrs(slog.String("operation_id", opID))
+	}
+
+	return h.Handler.Handle(ctx, r)
+}
+
+func (h *contextHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	return &contextHandler{Handler: h.Handler.WithAttrs(attrs)}
+}
+
+func (h *contextHandler) WithGroup(name string) slog.Handler {
+	return &contextHandler{Handler: h.Handler.WithGroup(name)}
+}
+
+// Default returns the global logger, initializing with defaults if necessary
+func Default() *slog.Logger {
+	globalMu.RLock()
+	l := globalLogger
+	globalMu.RUnlock()
+
+	if l == nil {
+		// Use sync.Once to ensure atomic initialization
+		initOnce.Do(func() {
+			Initialize(Config{
+				Level:  "info",
+				Format: "text",
+				Output: "stdout",
+			})
+		})
+		globalMu.RLock()
+		l = globalLogger
+		globalMu.RUnlock()
+	}
+	return l
+}
+
+// With returns a logger with the given attributes
+func With(args ...any) *slog.Logger {
+	return Default().With(args...)
+}
+
+// OCMLogger is the legacy interface for backward compatibility
 type OCMLogger interface {
 	V(level int32) OCMLogger
 	Infof(format string, args ...interface{})
@@ -19,109 +183,96 @@ type OCMLogger interface {
 	Fatal(message string)
 }
 
-var _ OCMLogger = &logger{}
+var _ OCMLogger = &legacyLogger{}
 
-type extra map[string]interface{}
-
-type logger struct {
-	context   context.Context
-	level     int32
-	accountID string
-	// TODO username is unused, should we be logging it? Could be pii
-	username string
-	extra    extra
+type legacyLogger struct {
+	ctx    context.Context
+	logger *slog.Logger
+	level  int32
+	attrs  []any
 }
 
 // NewOCMLogger creates a new logger instance with a default verbosity of 1
+// This maintains backward compatibility with existing code
 func NewOCMLogger(ctx context.Context) OCMLogger {
-	logger := &logger{
-		context:   ctx,
-		level:     1,
-		extra:     make(extra),
-		accountID: util.GetAccountIDFromContext(ctx),
-	}
-	return logger
-}
+	l := Default()
 
-func (l *logger) prepareLogPrefix(message string, extra extra) string {
-	prefix := " "
+	// Add context-based attributes that are not handled by contextHandler
+	// Note: operation_id is added by contextHandler.Handle to avoid duplication
+	attrs := []any{}
 
-	if txid, ok := l.context.Value("txid").(int64); ok {
-		prefix = fmt.Sprintf("[tx_id=%d]%s", txid, prefix)
+	if accountID := GetAccountID(ctx); accountID != "" {
+		attrs = append(attrs, slog.String("account_id", accountID))
 	}
 
-	if l.accountID != "" {
-		prefix = fmt.Sprintf("[accountID=%s]%s", l.accountID, prefix)
+	if txid := GetTransactionID(ctx); txid != 0 {
+		attrs = append(attrs, slog.Int64("tx_id", txid))
 	}
 
-	if opid, ok := l.context.Value(OpIDKey).(string); ok {
-		prefix = fmt.Sprintf("[opid=%s]%s", opid, prefix)
+	if len(attrs) > 0 {
+		l = l.With(attrs...)
 	}
 
-	var args []string
-	for k, v := range extra {
-		args = append(args, fmt.Sprintf("%s=%v", k, v))
-	}
-
-	return fmt.Sprintf("%s %s %s", prefix, message, strings.Join(args, " "))
-}
-
-func (l *logger) prepareLogPrefixf(format string, args ...interface{}) string {
-	orig := fmt.Sprintf(format, args...)
-	prefix := " "
-
-	if txid, ok := l.context.Value("txid").(int64); ok {
-		prefix = fmt.Sprintf("[tx_id=%d]%s", txid, prefix)
-	}
-
-	if l.accountID != "" {
-		prefix = fmt.Sprintf("[accountID=%s]%s", l.accountID, prefix)
-	}
-
-	if opid, ok := l.context.Value(OpIDKey).(string); ok {
-		prefix = fmt.Sprintf("[opid=%s]%s", opid, prefix)
-	}
-
-	return fmt.Sprintf("%s%s", prefix, orig)
-}
-
-func (l *logger) V(level int32) OCMLogger {
-	return &logger{
-		context:   l.context,
-		accountID: l.accountID,
-		username:  l.username,
-		level:     level,
+	return &legacyLogger{
+		ctx:    ctx,
+		logger: l,
+		level:  1,
+		attrs:  []any{},
 	}
 }
 
-// Infof doesn't trigger Sentry error
-func (l *logger) Infof(format string, args ...interface{}) {
-	prefixed := l.prepareLogPrefixf(format, args...)
-	glog.V(glog.Level(l.level)).Infof("%s", prefixed)
+func (l *legacyLogger) V(level int32) OCMLogger {
+	return &legacyLogger{
+		ctx:    l.ctx,
+		logger: l.logger,
+		level:  level,
+		attrs:  l.attrs,
+	}
 }
 
-func (l *logger) Extra(key string, value interface{}) OCMLogger {
-	l.extra[key] = value
-	return l
+func (l *legacyLogger) Infof(format string, args ...interface{}) {
+	// V() levels > 1 are treated as debug
+	if l.level > 1 {
+		l.logger.With(l.attrs...).DebugContext(l.ctx, sprintf(format, args...))
+	} else {
+		l.logger.With(l.attrs...).InfoContext(l.ctx, sprintf(format, args...))
+	}
 }
 
-func (l *logger) Info(message string) {
-	l.log(message, glog.V(glog.Level(l.level)).Infoln)
+func (l *legacyLogger) Extra(key string, value interface{}) OCMLogger {
+	newAttrs := make([]any, len(l.attrs), len(l.attrs)+2)
+	copy(newAttrs, l.attrs)
+	newAttrs = append(newAttrs, slog.Any(key, value))
+
+	return &legacyLogger{
+		ctx:    l.ctx,
+		logger: l.logger,
+		level:  l.level,
+		attrs:  newAttrs,
+	}
 }
 
-func (l *logger) Warning(message string) {
-	l.log(message, glog.Warningln)
+func (l *legacyLogger) Info(message string) {
+	l.logger.With(l.attrs...).InfoContext(l.ctx, message)
 }
 
-func (l *logger) Error(message string) {
-	l.log(message, glog.Errorln)
+func (l *legacyLogger) Warning(message string) {
+	l.logger.With(l.attrs...).WarnContext(l.ctx, message)
 }
 
-func (l *logger) Fatal(message string) {
-	l.log(message, glog.Fatalln)
+func (l *legacyLogger) Error(message string) {
+	l.logger.With(l.attrs...).ErrorContext(l.ctx, message)
 }
 
-func (l *logger) log(message string, glogFunc func(args ...interface{})) {
-	prefixed := l.prepareLogPrefix(message, l.extra)
-	glogFunc(prefixed)
+func (l *legacyLogger) Fatal(message string) {
+	l.logger.With(l.attrs...).ErrorContext(l.ctx, message)
+	os.Exit(1)
+}
+
+// sprintf is a helper for formatting strings
+func sprintf(format string, args ...interface{}) string {
+	if len(args) == 0 {
+		return format
+	}
+	return fmt.Sprintf(format, args...)
 }

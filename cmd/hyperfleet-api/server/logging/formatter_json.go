@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-
-	"github.com/golang/glog"
+	"os"
+	"strings"
 )
 
 func NewJSONLogFormatter() *jsonLogFormatter {
@@ -16,13 +16,19 @@ type jsonLogFormatter struct{}
 
 var _ LogFormatter = &jsonLogFormatter{}
 
+// isDebugEnabled checks if debug logging is enabled via LOG_LEVEL
+func isDebugEnabled() bool {
+	level := strings.ToLower(os.Getenv("LOG_LEVEL"))
+	return level == "debug"
+}
+
 func (f *jsonLogFormatter) FormatRequestLog(r *http.Request) (string, error) {
 	jsonlog := jsonRequestLog{
 		Method:     r.Method,
 		RequestURI: r.RequestURI,
 		RemoteAddr: r.RemoteAddr,
 	}
-	if glog.V(10) {
+	if isDebugEnabled() {
 		jsonlog.Header = r.Header
 		jsonlog.Body = r.Body
 	}
@@ -36,7 +42,7 @@ func (f *jsonLogFormatter) FormatRequestLog(r *http.Request) (string, error) {
 
 func (f *jsonLogFormatter) FormatResponseLog(info *ResponseInfo) (string, error) {
 	jsonlog := jsonResponseLog{Header: nil, Status: info.Status, Elapsed: info.Elapsed}
-	if glog.V(10) {
+	if isDebugEnabled() {
 		jsonlog.Body = string(info.Body[:])
 	}
 	log, err := json.Marshal(jsonlog)

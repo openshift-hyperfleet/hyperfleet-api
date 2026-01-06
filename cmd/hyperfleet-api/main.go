@@ -1,9 +1,9 @@
 package main
 
 import (
-	"flag"
+	"log/slog"
+	"os"
 
-	"github.com/golang/glog"
 	"github.com/spf13/cobra"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/migrate"
@@ -20,20 +20,6 @@ import (
 // nolint
 
 func main() {
-	// This is needed to make `glog` believe that the flags have already been parsed, otherwise
-	// every log messages is prefixed by an error message stating the the flags haven't been
-	// parsed.
-	if err := flag.CommandLine.Parse([]string{}); err != nil {
-		glog.Fatalf("Failed to parse flags: %v", err)
-	}
-
-	//pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
-
-	// Always log to stderr by default
-	if err := flag.Set("logtostderr", "true"); err != nil {
-		glog.Infof("Unable to set logtostderr to true")
-	}
-
 	rootCmd := &cobra.Command{
 		Use:  "hyperfleet",
 		Long: "hyperfleet serves as a template for new microservices",
@@ -47,6 +33,7 @@ func main() {
 	rootCmd.AddCommand(migrateCmd, serveCmd)
 
 	if err := rootCmd.Execute(); err != nil {
-		glog.Fatalf("error running command: %v", err)
+		slog.Error("Error running command", "error", err)
+		os.Exit(1)
 	}
 }

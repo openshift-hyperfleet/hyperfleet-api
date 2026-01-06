@@ -4,9 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"time"
 
-	"github.com/golang/glog"
 	"github.com/lib/pq"
 
 	"gorm.io/driver/postgres"
@@ -51,12 +51,12 @@ func (f *Test) Init(config *config.DatabaseConfig) {
 	// Only the first time
 	once.Do(func() {
 		if err := initDatabase(config, db.Migrate); err != nil {
-			glog.Errorf("error initializing test database: %s", err)
+			slog.Error("Error initializing test database", "error", err)
 			return
 		}
 
 		if err := resetDB(config); err != nil {
-			glog.Errorf("error resetting test database: %s", err)
+			slog.Error("Error resetting test database", "error", err)
 			return
 		}
 	})

@@ -2,9 +2,10 @@ package db
 
 import (
 	"context"
+	"log/slog"
+	"os"
 
 	"github.com/go-gormigrate/gormigrate/v2"
-	"github.com/golang/glog"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db/migrations"
 
 	"gorm.io/gorm"
@@ -30,7 +31,8 @@ func MigrateTo(sessionFactory SessionFactory, migrationID string) {
 	m := newGormigrate(g2)
 
 	if err := m.MigrateTo(migrationID); err != nil {
-		glog.Fatalf("Could not migrate: %v", err)
+		slog.Error("Could not migrate", "migrationID", migrationID, "error", err)
+		os.Exit(1)
 	}
 }
 

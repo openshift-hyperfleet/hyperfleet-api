@@ -3,10 +3,10 @@ package handlers
 import (
 	"embed"
 	"io/fs"
+	"log/slog"
 	"net/http"
 
 	"github.com/ghodss/yaml"
-	"github.com/golang/glog"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
@@ -38,7 +38,7 @@ func NewOpenAPIHandler() (*openAPIHandler, error) {
 			err,
 		)
 	}
-	glog.Info("Loaded fully resolved OpenAPI specification from embedded pkg/api/openapi/api/openapi.yaml")
+	slog.Info("Loaded fully resolved OpenAPI specification from embedded pkg/api/openapi/api/openapi.yaml")
 
 	// Load the OpenAPI UI HTML content
 	uiContent, err := fs.ReadFile(openapiui, "openapi-ui.html")
@@ -48,7 +48,7 @@ func NewOpenAPIHandler() (*openAPIHandler, error) {
 			err,
 		)
 	}
-	glog.Info("Loaded OpenAPI UI HTML from embedded file")
+	slog.Info("Loaded OpenAPI UI HTML from embedded file")
 
 	return &openAPIHandler{
 		openAPIDefinitions: data,

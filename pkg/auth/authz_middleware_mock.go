@@ -3,7 +3,7 @@ package auth
 import (
 	"net/http"
 
-	"github.com/golang/glog"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
 type authzMiddlewareMock struct{}
@@ -16,7 +16,7 @@ func NewAuthzMiddlewareMock() AuthorizationMiddleware {
 
 func (a authzMiddlewareMock) AuthorizeApi(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		glog.Infof("Mock authz allows <any>/<any> for %q/%q", r.Method, r.URL)
+		logger.NewOCMLogger(r.Context()).Extra("method", r.Method).Extra("url", r.URL.String()).Info("Mock authz allows <any>/<any>")
 		next.ServeHTTP(w, r)
 	})
 }
