@@ -196,7 +196,7 @@ func (helper *Helper) RestartMetricsServer() {
 }
 
 func (helper *Helper) Reset() {
-	slog.Info("Reseting testing environment")
+	slog.Info("Resetting testing environment")
 	env := environments.Environment()
 	// Reset the configuration
 	env.Config = config.NewApplicationConfig()

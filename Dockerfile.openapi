@@ -5,16 +5,16 @@ FROM eclipse-temurin:17-jdk
 RUN apt-get -o APT::Sandbox::User=root update
 RUN apt-get -o APT::Sandbox::User=root install -y make sudo git wget
 
-# Install Go 1.24 (auto-detect architecture)
+# Install Go 1.24.9 (auto-detect architecture)
 RUN ARCH=$(dpkg --print-architecture) && \
     if [ "$ARCH" = "arm64" ] || [ "$ARCH" = "aarch64" ]; then \
         GO_ARCH="arm64"; \
     else \
         GO_ARCH="amd64"; \
     fi && \
-    wget https://go.dev/dl/go1.24.0.linux-${GO_ARCH}.tar.gz && \
-    tar -C /usr/local -xzf go1.24.0.linux-${GO_ARCH}.tar.gz && \
-    rm go1.24.0.linux-${GO_ARCH}.tar.gz
+    wget https://go.dev/dl/go1.24.9.linux-${GO_ARCH}.tar.gz && \
+    tar -C /usr/local -xzf go1.24.9.linux-${GO_ARCH}.tar.gz && \
+    rm go1.24.9.linux-${GO_ARCH}.tar.gz
 
 # Download openapi-generator-cli
 RUN wget https://repo1.maven.org/maven2/org/openapitools/openapi-generator-cli/7.18.0/openapi-generator-cli-7.18.0.jar \
