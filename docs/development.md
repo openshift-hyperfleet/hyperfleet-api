@@ -30,13 +30,13 @@ make generate-all
 go mod download
 
 # 3. Build the binary
-make binary
+make build
 
 # 4. Setup PostgreSQL database
 make db/setup
 
 # 5. Run database migrations
-./hyperfleet-api migrate
+./bin/hyperfleet-api migrate
 
 # 6. Verify database schema
 make db/login
@@ -152,10 +152,10 @@ make generate-mocks
 make generate-all
 
 # Build binary
-make binary
+make build
 
 # Run database migrations
-./hyperfleet-api migrate
+./bin/hyperfleet-api migrate
 
 # Start server (no auth)
 make run-no-auth
@@ -177,7 +177,7 @@ make db/login      # Connect to database shell
 | `make generate` | Generate Go models from OpenAPI spec |
 | `make generate-mocks` | Generate mock implementations for testing |
 | `make generate-all` | Generate both OpenAPI models and mocks |
-| `make binary` | Build hyperfleet-api executable |
+| `make build` | Build hyperfleet-api executable to bin/ |
 | `make test` | Run unit tests |
 | `make test-integration` | Run integration tests |
 | `make run-no-auth` | Start server without authentication |
@@ -366,7 +366,7 @@ make db/setup
 make db/setup
 
 # Run migrations
-./hyperfleet-api migrate
+./bin/hyperfleet-api migrate
 
 # Run tests again
 make test-integration

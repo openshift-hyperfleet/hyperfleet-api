@@ -59,13 +59,13 @@ make generate-all
 go mod download
 
 # 3. Build binary
-make binary
+make build
 
 # 4. Setup database
 make db/setup
 
 # 5. Run migrations
-./hyperfleet-api migrate
+./bin/hyperfleet-api migrate
 
 # 6. Start service (no auth)
 make run-no-auth
@@ -129,7 +129,7 @@ curl -G http://localhost:8000/api/hyperfleet/v1/clusters \
 ### Common Commands
 
 ```bash
-make binary              # Build binary
+make build               # Build binary to bin/
 make run-no-auth         # Run without authentication
 make test                # Run unit tests
 make test-integration    # Run integration tests

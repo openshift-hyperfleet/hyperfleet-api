@@ -80,7 +80,7 @@ make secrets
 make db/setup
 
 # Build and run
-make binary
-./hyperfleet-api migrate
+make build
+./bin/hyperfleet-api migrate
 make run-no-auth
 ```

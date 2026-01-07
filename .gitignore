@@ -30,7 +30,7 @@
 /coverage
 
 # Ignore built binaries
-/hyperfleet-api
+/bin/
 
 # Ignore generated templates
 /templates/*-template.json

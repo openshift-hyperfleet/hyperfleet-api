@@ -45,7 +45,7 @@ The API's role is strictly limited to:
 
 ### Building and Running
 ```bash
-make binary      # Build the hyperfleet-api binary
+make build       # Build the hyperfleet-api binary to bin/
 make install     # Build and install binary to GOPATH/bin
 make run         # Run migrations and start server with authentication
 make run-no-auth # Run server without authentication (development mode)
@@ -70,7 +70,7 @@ make lint   # Run golangci-lint
 make db/setup     # Start PostgreSQL container locally
 make db/login     # Connect to local PostgreSQL database
 make db/teardown  # Stop and remove PostgreSQL container
-./hyperfleet-api migrate # Run database migrations
+./bin/hyperfleet-api migrate # Run database migrations
 ```
 
 ### Code Generation
@@ -181,7 +181,7 @@ labels (owner_type, owner_id, key, value)
 ```
 
 **Migration System**:
-GORM AutoMigrate is used at startup via `./hyperfleet-api migrate` command.
+GORM AutoMigrate is used at startup via `./bin/hyperfleet-api migrate` command.
 
 ### 3. Data Access Objects (DAO)
 
@@ -304,9 +304,9 @@ Serves the hyperfleet REST API with full authentication, database connectivity, 
 
 **Basic Usage:**
 ```bash
-./hyperfleet-api serve                              # Start server on localhost:8000
-./hyperfleet-api serve --api-server-bindaddress :8080  # Custom bind address
-./hyperfleet-api serve --enable-authz=false --enable-jwt=false  # No authentication
+./bin/hyperfleet-api serve                              # Start server on localhost:8000
+./bin/hyperfleet-api serve --api-server-bindaddress :8080  # Custom bind address
+./bin/hyperfleet-api serve --enable-authz=false --enable-jwt=false  # No authentication
 ```
 
 **Key Configuration Options:**
@@ -360,8 +360,8 @@ Executes database schema migrations to set up or update the database structure.
 
 **Basic Usage:**
 ```bash
-./hyperfleet-api migrate                           # Run all pending migrations
-./hyperfleet-api migrate --enable-db-debug        # Run with database debug logging
+./bin/hyperfleet-api migrate                           # Run all pending migrations
+./bin/hyperfleet-api migrate --enable-db-debug        # Run with database debug logging
 ```
 
 **Configuration Options:**
@@ -408,10 +408,10 @@ make secrets
 make db/setup
 
 # Build binary
-make binary
+make build
 
 # Run migrations
-./hyperfleet-api migrate
+./bin/hyperfleet-api migrate
 
 # Start server (no authentication)
 make run-no-auth
@@ -643,7 +643,7 @@ If integration tests fail with PostgreSQL-related errors (missing columns, trans
 # From project root directory
 make db/teardown  # Stop and remove PostgreSQL container
 make db/setup     # Start fresh PostgreSQL container
-./hyperfleet-api migrate # Apply migrations
+./bin/hyperfleet-api migrate # Apply migrations
 make test-integration  # Run tests again
 ```
 
@@ -704,7 +704,7 @@ The server is configured in cmd/hyperfleet/server/:
 
 **Symptom**: Server starts but endpoints return errors about missing tables
 
-**Solution**: Always run `./hyperfleet-api migrate` after pulling code or changing schemas
+**Solution**: Always run `./bin/hyperfleet-api migrate` after pulling code or changing schemas
 
 ### 2. Using Wrong OpenAPI File
 
