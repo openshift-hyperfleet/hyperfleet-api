@@ -1,13 +1,16 @@
 package main
 
 import (
+	"context"
 	"flag"
+	"log/slog"
+	"os"
 
-	"github.com/golang/glog"
 	"github.com/spf13/cobra"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/migrate"
 	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/servecmd"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 
 	// Import plugins to trigger their init() functions
 	// _ "github.com/openshift-hyperfleet/hyperfleet-api/plugins/events" // REMOVED: Events plugin no longer exists
@@ -20,18 +23,14 @@ import (
 // nolint
 
 func main() {
-	// This is needed to make `glog` believe that the flags have already been parsed, otherwise
-	// every log messages is prefixed by an error message stating the the flags haven't been
-	// parsed.
+	// Initialize logger first (before any logging occurs)
+	initDefaultLogger()
+	ctx := context.Background()
+
+	// Parse flags (needed for cobra compatibility)
 	if err := flag.CommandLine.Parse([]string{}); err != nil {
-		glog.Fatalf("Failed to parse flags: %v", err)
-	}
-
-	//pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
-
-	// Always log to stderr by default
-	if err := flag.Set("logtostderr", "true"); err != nil {
-		glog.Infof("Unable to set logtostderr to true")
+		logger.Error(ctx, "Failed to parse flags", "error", err)
+		os.Exit(1)
 	}
 
 	rootCmd := &cobra.Command{
@@ -47,6 +46,29 @@ func main() {
 	rootCmd.AddCommand(migrateCmd, serveCmd)
 
 	if err := rootCmd.Execute(); err != nil {
-		glog.Fatalf("error running command: %v", err)
+		logger.Error(ctx, "Error running command", "error", err)
+		os.Exit(1)
 	}
+}
+
+// initDefaultLogger initializes a default logger with INFO level
+// This ensures logging works before environment/config is loaded
+func initDefaultLogger() {
+	cfg := &logger.LogConfig{
+		Level:     slog.LevelInfo,
+		Format:    logger.FormatJSON,
+		Output:    os.Stdout,
+		Component: "hyperfleet-api",
+		Version:   "unknown",
+		Hostname:  getHostname(),
+	}
+	logger.InitGlobalLogger(cfg)
+}
+
+func getHostname() string {
+	hostname, err := os.Hostname()
+	if err != nil {
+		return "unknown"
+	}
+	return hostname
 }

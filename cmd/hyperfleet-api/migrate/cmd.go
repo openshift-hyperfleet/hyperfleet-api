@@ -3,13 +3,14 @@ package migrate
 import (
 	"context"
 	"flag"
+	"os"
 
-	"github.com/golang/glog"
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db/db_session"
 	"github.com/spf13/cobra"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db/db_session"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
 var dbConfig = config.NewDatabaseConfig()
@@ -29,13 +30,28 @@ func NewMigrateCommand() *cobra.Command {
 }
 
 func runMigrate(_ *cobra.Command, _ []string) {
+	ctx := context.Background()
 	err := dbConfig.ReadFiles()
 	if err != nil {
-		glog.Fatal(err)
+		logger.Error(ctx, "Fatal error", "error", err)
+		os.Exit(1)
 	}
 
 	connection := db_session.NewProdFactory(dbConfig)
-	if err := db.Migrate(connection.New(context.Background())); err != nil {
-		glog.Fatal(err)
+	defer func() {
+		if closeErr := connection.Close(); closeErr != nil {
+			logger.Error(ctx, "Failed to close database connection", "error", closeErr)
+		}
+	}()
+
+	if err := db.Migrate(connection.New(ctx)); err != nil {
+		logger.Error(ctx, "Migration failed", "error", err)
+		// Close connection before exit to avoid resource leak
+		if closeErr := connection.Close(); closeErr != nil {
+			logger.Error(ctx, "Failed to close database connection", "error", closeErr)
+		}
+		os.Exit(1)
 	}
+
+	logger.Info(ctx, "Migration completed successfully")
 }

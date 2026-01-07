@@ -6,23 +6,25 @@ import (
 	"github.com/segmentio/ksuid"
 )
 
-// Context key types for type safety
-type OperationIDKey string
-type TraceIDKey string
-type SpanIDKey string
-type ClusterIDKey string
-type ResourceTypeKey string
-type ResourceIDKey string
+// contextKey is an unexported type for keys defined in this package.
+// This prevents collisions with keys defined in other packages.
+type contextKey string
 
 // Context keys for storing correlation fields
 const (
-	OpIDKey          OperationIDKey   = "opID"           // Keep existing value for compatibility
-	OpIDHeader       OperationIDKey   = "X-Operation-ID" // HTTP header for operation ID
-	TraceIDCtxKey    TraceIDKey       = "trace_id"
-	SpanIDCtxKey     SpanIDKey        = "span_id"
-	ClusterIDCtxKey  ClusterIDKey     = "cluster_id"
-	ResourceTypeCtxKey ResourceTypeKey = "resource_type"
-	ResourceIDCtxKey ResourceIDKey    = "resource_id"
+	OpIDKey             contextKey = "operation_id"
+	AccountIDCtxKey     contextKey = "account_id"
+	TransactionIDCtxKey contextKey = "transaction_id"
+	TraceIDCtxKey       contextKey = "trace_id"
+	SpanIDCtxKey        contextKey = "span_id"
+	ClusterIDCtxKey     contextKey = "cluster_id"
+	ResourceTypeCtxKey  contextKey = "resource_type"
+	ResourceIDCtxKey    contextKey = "resource_id"
+)
+
+// HTTP header names
+const (
+	OpIDHeader = "X-Operation-ID"
 )
 
 // WithTraceID adds trace ID to context
@@ -97,4 +99,26 @@ func GetResourceType(ctx context.Context) (string, bool) {
 func GetResourceID(ctx context.Context) (string, bool) {
 	resourceID, ok := ctx.Value(ResourceIDCtxKey).(string)
 	return resourceID, ok
+}
+
+// WithAccountID adds account ID to context
+func WithAccountID(ctx context.Context, accountID string) context.Context {
+	return context.WithValue(ctx, AccountIDCtxKey, accountID)
+}
+
+// GetAccountID retrieves account ID from context
+func GetAccountID(ctx context.Context) (string, bool) {
+	accountID, ok := ctx.Value(AccountIDCtxKey).(string)
+	return accountID, ok
+}
+
+// WithTransactionID adds transaction ID to context
+func WithTransactionID(ctx context.Context, transactionID int64) context.Context {
+	return context.WithValue(ctx, TransactionIDCtxKey, transactionID)
+}
+
+// GetTransactionID retrieves transaction ID from context
+func GetTransactionID(ctx context.Context) (int64, bool) {
+	transactionID, ok := ctx.Value(TransactionIDCtxKey).(int64)
+	return transactionID, ok
 }

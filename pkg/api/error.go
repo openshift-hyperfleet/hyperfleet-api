@@ -1,13 +1,14 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
 
-	"github.com/golang/glog"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
 // SendNotFound sends a 404 response with some details about the non existing resource.
@@ -39,7 +40,7 @@ func SendNotFound(w http.ResponseWriter, r *http.Request) {
 	_, err = w.Write(data)
 	if err != nil {
 		err = fmt.Errorf("can't send response body for request '%s'", r.URL.Path)
-		glog.Error(err)
+		logger.Error(r.Context(), "Failed to send response", "error", err)
 		return
 	}
 }
@@ -60,7 +61,7 @@ func SendUnauthorized(w http.ResponseWriter, r *http.Request, message string) {
 	_, err = w.Write(data)
 	if err != nil {
 		err = fmt.Errorf("can't send response body for request '%s'", r.URL.Path)
-		glog.Error(err)
+		logger.Error(r.Context(), "Failed to send response", "error", err)
 		return
 	}
 }
@@ -75,7 +76,7 @@ func SendPanic(w http.ResponseWriter, r *http.Request) {
 			r.URL.Path,
 			err.Error(),
 		)
-		glog.Error(err)
+		logger.Error(r.Context(), "Failed to send panic response", "error", err)
 	}
 }
 
@@ -85,6 +86,7 @@ func SendPanic(w http.ResponseWriter, r *http.Request) {
 var panicBody []byte
 
 func init() {
+	ctx := context.Background()
 	var err error
 
 	// Create the panic error body:
@@ -105,7 +107,7 @@ func init() {
 			"can't create the panic error body: %s",
 			err.Error(),
 		)
-		glog.Error(err)
+		logger.Error(ctx, "Failed to create panic error body", "error", err)
 		os.Exit(1)
 	}
 }

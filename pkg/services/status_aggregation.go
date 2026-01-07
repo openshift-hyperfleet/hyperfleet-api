@@ -3,7 +3,6 @@ package services
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"strings"
 	"unicode"
 
@@ -97,7 +96,6 @@ func MapAdapterToConditionType(adapterName string) string {
 // Note: Post-MVP will add more phases (Pending, Provisioning, Failed, Degraded)
 // based on Health condition and Applied condition states.
 func ComputePhase(ctx context.Context, adapterStatuses api.AdapterStatusList, requiredAdapters []string, resourceGeneration int32) string {
-	log := logger.NewOCMLogger(ctx)
 	if len(adapterStatuses) == 0 {
 		return "NotReady"
 	}
@@ -141,15 +139,17 @@ func ComputePhase(ctx context.Context, adapterStatuses api.AdapterStatusList, re
 
 		if !exists {
 			// Required adapter not found
-			log.Warning(fmt.Sprintf("Required adapter '%s' not found in adapter statuses", adapterName))
+			logger.Warn(ctx, "Required adapter not found in adapter statuses", "adapter", adapterName)
 			continue
 		}
 
 		// Check generation matching only if resourceGeneration > 0
 		if resourceGeneration > 0 && adapterInfo.observedGeneration != resourceGeneration {
 			// Adapter is processing old generation (stale)
-			log.Warning(fmt.Sprintf("Required adapter '%s' has stale generation: observed=%d, expected=%d",
-				adapterName, adapterInfo.observedGeneration, resourceGeneration))
+			logger.Warn(ctx, "Required adapter has stale generation",
+				"adapter", adapterName,
+				"observed_generation", adapterInfo.observedGeneration,
+				"expected_generation", resourceGeneration)
 			continue
 		}
 

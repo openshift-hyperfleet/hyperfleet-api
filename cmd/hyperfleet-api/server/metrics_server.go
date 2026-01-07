@@ -45,7 +45,7 @@ func (s metricsServer) Serve(listener net.Listener) {
 }
 
 func (s metricsServer) Start() {
-	log := logger.NewOCMLogger(context.Background())
+	ctx := context.Background()
 	var err error
 	if env().Config.Metrics.EnableHTTPS {
 		if env().Config.Server.HTTPSCertFile == "" || env().Config.Server.HTTPSKeyFile == "" {
@@ -55,15 +55,16 @@ func (s metricsServer) Start() {
 			)
 		}
 
-		// Serve with TLS
-		log.Infof("Serving Metrics with TLS at %s", env().Config.Server.BindAddress)
+		logger.Info(ctx, "Serving Metrics with TLS",
+			"bind_address", env().Config.Metrics.BindAddress)
 		err = s.httpServer.ListenAndServeTLS(env().Config.Server.HTTPSCertFile, env().Config.Server.HTTPSKeyFile)
 	} else {
-		log.Infof("Serving Metrics without TLS at %s", env().Config.Metrics.BindAddress)
+		logger.Info(ctx, "Serving Metrics without TLS",
+			"bind_address", env().Config.Metrics.BindAddress)
 		err = s.httpServer.ListenAndServe()
 	}
 	check(err, "Metrics server terminated with errors")
-	log.Infof("Metrics server terminated")
+	logger.Info(ctx, "Metrics server terminated")
 }
 
 func (s metricsServer) Stop() error {

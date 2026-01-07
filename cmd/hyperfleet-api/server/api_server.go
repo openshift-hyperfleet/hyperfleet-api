@@ -5,16 +5,16 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
 	"time"
 
 	_ "github.com/auth0/go-jwt-middleware"
 	_ "github.com/golang-jwt/jwt/v4"
-	"github.com/golang/glog"
 	gorillahandlers "github.com/gorilla/handlers"
-	sdk "github.com/openshift-online/ocm-sdk-go"
 	"github.com/openshift-online/ocm-sdk-go/authentication"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/environments"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
 type apiServer struct {
@@ -36,14 +36,11 @@ func NewAPIServer() Server {
 	var mainHandler http.Handler = mainRouter
 
 	if env().Config.Server.EnableJWT {
-		// Create the logger for the authentication handler:
-		authnLogger, err := sdk.NewGlogLoggerBuilder().
-			InfoV(glog.Level(1)).
-			DebugV(glog.Level(5)).
-			Build()
-		check(err, "Unable to create authentication logger")
+		// Create the logger for the authentication handler using slog bridge
+		authnLogger := logger.NewOCMLoggerBridge()
 
 		// Create the handler that verifies that tokens are valid:
+		var err error
 		mainHandler, err = authentication.NewHandler().
 			Logger(authnLogger).
 			KeysFile(env().Config.Server.JwkCertFile).
@@ -106,6 +103,7 @@ func NewAPIServer() Server {
 // Serve start the blocking call to Serve.
 // Useful for breaking up ListenAndServer (Start) when you require the server to be listening before continuing
 func (s apiServer) Serve(listener net.Listener) {
+	ctx := context.Background()
 	var err error
 	if env().Config.Server.EnableHTTPS {
 		// Check https cert and key path path
@@ -117,16 +115,16 @@ func (s apiServer) Serve(listener net.Listener) {
 		}
 
 		// Serve with TLS
-		glog.Infof("Serving with TLS at %s", env().Config.Server.BindAddress)
+		logger.Info(ctx, "Serving with TLS", "bind_address", env().Config.Server.BindAddress)
 		err = s.httpServer.ServeTLS(listener, env().Config.Server.HTTPSCertFile, env().Config.Server.HTTPSKeyFile)
 	} else {
-		glog.Infof("Serving without TLS at %s", env().Config.Server.BindAddress)
+		logger.Info(ctx, "Serving without TLS", "bind_address", env().Config.Server.BindAddress)
 		err = s.httpServer.Serve(listener)
 	}
 
 	// Web server terminated.
 	check(err, "Web server terminated with errors")
-	glog.Info("Web server terminated")
+	logger.Info(ctx, "Web server terminated")
 }
 
 // Listen only start the listener, not the server.
@@ -137,9 +135,11 @@ func (s apiServer) Listen() (listener net.Listener, err error) {
 
 // Start listening on the configured port and start the server. This is a convenience wrapper for Listen() and Serve(listener Listener)
 func (s apiServer) Start() {
+	ctx := context.Background()
 	listener, err := s.Listen()
 	if err != nil {
-		glog.Fatalf("Unable to start API server: %s", err)
+		logger.Error(ctx, "Unable to start API server", "error", err)
+		os.Exit(1)
 	}
 	s.Serve(listener)
 
@@ -147,7 +147,7 @@ func (s apiServer) Start() {
 	// we need to explicitly close Go's sql connection pool.
 	// this needs to be called *exactly* once during an app's lifetime.
 	if err := env().Database.SessionFactory.Close(); err != nil {
-		glog.Errorf("Error closing database connection: %v", err)
+		logger.Error(ctx, "Error closing database connection", "error", err)
 	}
 }
 

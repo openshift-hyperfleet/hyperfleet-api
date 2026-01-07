@@ -45,9 +45,10 @@ func (h metadataHandler) Get(w http.ResponseWriter, r *http.Request) {
 	}
 	data, err := json.Marshal(body)
 	if err != nil {
-		log := logger.NewOCMLogger(r.Context())
-		log.Extra("endpoint", r.URL.Path).Extra("method", r.Method).Extra("error", err.Error()).
-			Error("Failed to marshal metadata response")
+		logger.Error(r.Context(), "Failed to marshal metadata response",
+			"endpoint", r.URL.Path,
+			"method", r.Method,
+			"error", err.Error())
 		api.SendPanic(w, r)
 		return
 	}
@@ -55,9 +56,10 @@ func (h metadataHandler) Get(w http.ResponseWriter, r *http.Request) {
 	// Send the response:
 	_, err = w.Write(data)
 	if err != nil {
-		log := logger.NewOCMLogger(r.Context())
-		log.Extra("endpoint", r.URL.Path).Extra("method", r.Method).Extra("error", err.Error()).
-			Error("Failed to send metadata response body")
+		logger.Error(r.Context(), "Failed to send metadata response body",
+			"endpoint", r.URL.Path,
+			"method", r.Method,
+			"error", err.Error())
 		return
 	}
 }

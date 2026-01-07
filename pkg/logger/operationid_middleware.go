@@ -11,7 +11,7 @@ func OperationIDMiddleware(handler http.Handler) http.Handler {
 
 		opID, ok := ctx.Value(OpIDKey).(string)
 		if ok && len(opID) > 0 {
-			w.Header().Set(string(OpIDHeader), opID)
+			w.Header().Set(OpIDHeader, opID)
 		}
 
 		handler.ServeHTTP(w, r.WithContext(ctx))

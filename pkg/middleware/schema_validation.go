@@ -14,18 +14,20 @@ import (
 
 // handleValidationError writes validation error response
 func handleValidationError(w http.ResponseWriter, r *http.Request, err *errors.ServiceError) {
-	log := logger.NewOCMLogger(r.Context())
 	operationID := logger.GetOperationID(r.Context())
 
 	// Log validation errors as info (user error, not server error)
-	log.Infof(err.Error())
+	logger.Info(r.Context(), err.Error())
 
 	// Write JSON error response
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(err.HttpCode)
 	if encodeErr := json.NewEncoder(w).Encode(err.AsOpenapiError(operationID)); encodeErr != nil {
-		log.Extra("endpoint", r.URL.Path).Extra("method", r.Method).Extra("status_code", err.HttpCode).
-			Extra("error", encodeErr.Error()).Error("Failed to encode validation error response")
+		logger.Error(r.Context(), "Failed to encode validation error response",
+			"endpoint", r.URL.Path,
+			"method", r.Method,
+			"status_code", err.HttpCode,
+			"error", encodeErr.Error())
 	}
 }
 
@@ -48,8 +50,8 @@ func SchemaValidationMiddleware(validator *validators.SchemaValidator) func(http
 				return
 			}
 			if closeErr := r.Body.Close(); closeErr != nil {
-				log := logger.NewOCMLogger(r.Context())
-				log.Extra("error", closeErr.Error()).Warning("Failed to close request body")
+				logger.Warn(r.Context(), "Failed to close request body",
+					"error", closeErr.Error())
 			}
 
 			// Restore the request body for the next handler

@@ -122,73 +122,76 @@ func TestParseLogOutput(t *testing.T) {
 	}
 }
 
-// TestJSONFormat_BasicLog tests basic JSON format output
-func TestJSONFormat_BasicLog(t *testing.T) {
-	var buf bytes.Buffer
-	cfg := &LogConfig{
-		Level:     slog.LevelInfo,
-		Format:    FormatJSON,
-		Output:    &buf,
-		Component: "api",
-		Version:   "test-version",
-		Hostname:  "test-host",
+// TestBasicLogFormat tests basic log format output for both JSON and text formats
+func TestBasicLogFormat(t *testing.T) {
+	tests := []struct {
+		name   string
+		format LogFormat
+	}{
+		{"JSON format", FormatJSON},
+		{"Text format", FormatText},
 	}
 
-	InitGlobalLogger(cfg)
-	ctx := context.Background()
-	Info(ctx, "test message", "key", "value")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resetForTesting()
+			var buf bytes.Buffer
+			cfg := &LogConfig{
+				Level:     slog.LevelInfo,
+				Format:    tt.format,
+				Output:    &buf,
+				Component: "api",
+				Version:   "test-version",
+				Hostname:  "test-host",
+			}
 
-	var logEntry map[string]interface{}
-	if err := json.Unmarshal(buf.Bytes(), &logEntry); err != nil {
-		t.Fatalf("failed to parse JSON log: %v", err)
-	}
+			InitGlobalLogger(cfg)
+			ctx := context.Background()
+			Info(ctx, "test message", "key", "value")
 
-	// Check required fields
-	if logEntry["message"] != "test message" {
-		t.Errorf("expected message 'test message', got %v", logEntry["message"])
-	}
-	if logEntry["level"] != "info" {
-		t.Errorf("expected level 'info', got %v", logEntry["level"])
-	}
-	if logEntry["component"] != "api" {
-		t.Errorf("expected component 'api', got %v", logEntry["component"])
-	}
-	if logEntry["version"] != "test-version" {
-		t.Errorf("expected version 'test-version', got %v", logEntry["version"])
-	}
-	if logEntry["hostname"] != "test-host" {
-		t.Errorf("expected hostname 'test-host', got %v", logEntry["hostname"])
-	}
-	if logEntry["key"] != "value" {
-		t.Errorf("expected key 'value', got %v", logEntry["key"])
-	}
-}
+			output := buf.String()
+			if output == "" {
+				t.Fatal("expected log output, got none")
+			}
 
-// TestTextFormat_BasicLog tests basic text format output
-func TestTextFormat_BasicLog(t *testing.T) {
-	var buf bytes.Buffer
-	cfg := &LogConfig{
-		Level:     slog.LevelInfo,
-		Format:    FormatText,
-		Output:    &buf,
-		Component: "api",
-		Version:   "test-version",
-		Hostname:  "test-host",
-	}
+			if tt.format == FormatJSON {
+				var logEntry map[string]interface{}
+				if err := json.Unmarshal(buf.Bytes(), &logEntry); err != nil {
+					t.Fatalf("failed to parse JSON log: %v", err)
+				}
 
-	InitGlobalLogger(cfg)
-	ctx := context.Background()
-	Info(ctx, "test message", "key", "value")
-
-	output := buf.String()
-	if !strings.Contains(output, "test message") {
-		t.Errorf("expected output to contain 'test message', got: %s", output)
-	}
-	if !strings.Contains(output, "level=info") {
-		t.Errorf("expected output to contain 'level=info', got: %s", output)
-	}
-	if !strings.Contains(output, "component=api") {
-		t.Errorf("expected output to contain 'component=api', got: %s", output)
+				// Check required fields
+				if logEntry["message"] != "test message" {
+					t.Errorf("expected message 'test message', got %v", logEntry["message"])
+				}
+				if logEntry["level"] != "info" {
+					t.Errorf("expected level 'info', got %v", logEntry["level"])
+				}
+				if logEntry["component"] != "api" {
+					t.Errorf("expected component 'api', got %v", logEntry["component"])
+				}
+				if logEntry["version"] != "test-version" {
+					t.Errorf("expected version 'test-version', got %v", logEntry["version"])
+				}
+				if logEntry["hostname"] != "test-host" {
+					t.Errorf("expected hostname 'test-host', got %v", logEntry["hostname"])
+				}
+				if logEntry["key"] != "value" {
+					t.Errorf("expected key 'value', got %v", logEntry["key"])
+				}
+			} else {
+				// Text format - check for key content
+				if !strings.Contains(output, "test message") {
+					t.Errorf("expected output to contain 'test message', got: %s", output)
+				}
+				if !strings.Contains(output, "level=info") {
+					t.Errorf("expected output to contain 'level=info', got: %s", output)
+				}
+				if !strings.Contains(output, "component=api") {
+					t.Errorf("expected output to contain 'component=api', got: %s", output)
+				}
+			}
+		})
 	}
 }
 
@@ -213,11 +216,11 @@ func TestContextFields(t *testing.T) {
 			fieldValue: "span-456",
 		},
 		{
-			name: "request_id",
+			name: "operation_id",
 			setupCtx: func(ctx context.Context) context.Context {
 				return context.WithValue(ctx, OpIDKey, "op-789")
 			},
-			fieldName:  "request_id",
+			fieldName:  "operation_id",
 			fieldValue: "op-789",
 		},
 		{
@@ -242,6 +245,7 @@ func TestContextFields(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			resetForTesting()
 			var buf bytes.Buffer
 			cfg := &LogConfig{
 				Level:     slog.LevelInfo,
@@ -270,6 +274,7 @@ func TestContextFields(t *testing.T) {
 
 // TestContextFields_Multiple tests multiple context fields together
 func TestContextFields_Multiple(t *testing.T) {
+	resetForTesting()
 	var buf bytes.Buffer
 	cfg := &LogConfig{
 		Level:     slog.LevelInfo,
@@ -310,14 +315,14 @@ func TestStackTrace(t *testing.T) {
 		level            slog.Level
 		logFunc          func(context.Context, string, ...any)
 		expectStackTrace bool
-		expectErrorField bool
 	}{
-		{"error level has stack trace", slog.LevelError, Error, true, true},
-		{"info level no stack trace", slog.LevelInfo, Info, false, false},
+		{"error level has stack trace", slog.LevelError, Error, true},
+		{"info level no stack trace", slog.LevelInfo, Info, false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			resetForTesting()
 			var buf bytes.Buffer
 			cfg := &LogConfig{
 				Level:     tt.level,
@@ -354,16 +359,6 @@ func TestStackTrace(t *testing.T) {
 					t.Error("expected no stack_trace field for non-error level")
 				}
 			}
-
-			if tt.expectErrorField {
-				if logEntry["error"] != "test message" {
-					t.Errorf("expected error field 'test message', got %v", logEntry["error"])
-				}
-			} else {
-				if logEntry["error"] != nil {
-					t.Error("expected no error field for non-error level")
-				}
-			}
 		})
 	}
 }
@@ -382,6 +377,7 @@ func TestLogLevelFiltering(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			resetForTesting()
 			var buf bytes.Buffer
 			cfg := &LogConfig{
 				Level:     tt.configLevel,
@@ -409,12 +405,11 @@ func TestLogLevelFiltering(t *testing.T) {
 // TestGetLogger_Uninitialized tests GetLogger with uninitialized global logger
 func TestGetLogger_Uninitialized(t *testing.T) {
 	// Save and restore global logger
-	saved := globalLogger
-	defer func() { globalLogger = saved }()
+	saved := globalLogger.Load()
+	defer func() { globalLogger.Store(saved) }()
 
-	globalLogger = nil
-	ctx := context.Background()
-	logger := GetLogger(ctx)
+	globalLogger.Store((*slog.Logger)(nil))
+	logger := GetLogger()
 
 	if logger == nil {
 		t.Error("expected GetLogger to return non-nil logger")
@@ -426,7 +421,7 @@ func TestGetLogger_Uninitialized(t *testing.T) {
 	}
 }
 
-// TestConvenienceFunctions tests convenience functions (Debug, Info, Warn, Error)
+// TestConvenienceFunctions tests all convenience functions (Debug, Info, Warn, Error)
 func TestConvenienceFunctions(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -435,11 +430,14 @@ func TestConvenienceFunctions(t *testing.T) {
 		expectedLvl string
 	}{
 		{"Debug", slog.LevelDebug, Debug, "debug"},
+		{"Info", slog.LevelInfo, Info, "info"},
 		{"Warn", slog.LevelWarn, Warn, "warn"},
+		{"Error", slog.LevelError, Error, "error"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			resetForTesting()
 			var buf bytes.Buffer
 			cfg := &LogConfig{
 				Level:     tt.level,
@@ -480,7 +478,6 @@ func TestFormattedFunctions(t *testing.T) {
 		expectedMsg      string
 		expectedLvl      string
 		expectStackTrace bool
-		expectErrorField bool
 	}{
 		{
 			name:             "Debugf",
@@ -491,7 +488,6 @@ func TestFormattedFunctions(t *testing.T) {
 			expectedMsg:      "debug message with string and 123",
 			expectedLvl:      "debug",
 			expectStackTrace: false,
-			expectErrorField: false,
 		},
 		{
 			name:             "Infof",
@@ -502,7 +498,6 @@ func TestFormattedFunctions(t *testing.T) {
 			expectedMsg:      "info message: cluster=test-cluster, count=42",
 			expectedLvl:      "info",
 			expectStackTrace: false,
-			expectErrorField: false,
 		},
 		{
 			name:             "Warnf",
@@ -513,7 +508,6 @@ func TestFormattedFunctions(t *testing.T) {
 			expectedMsg:      "warning: operation failed with code 500",
 			expectedLvl:      "warn",
 			expectStackTrace: false,
-			expectErrorField: false,
 		},
 		{
 			name:             "Errorf",
@@ -524,12 +518,12 @@ func TestFormattedFunctions(t *testing.T) {
 			expectedMsg:      "error: failed to process resource-123: connection timeout",
 			expectedLvl:      "error",
 			expectStackTrace: true,
-			expectErrorField: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			resetForTesting()
 			var buf bytes.Buffer
 			cfg := &LogConfig{
 				Level:     tt.level,
@@ -554,12 +548,6 @@ func TestFormattedFunctions(t *testing.T) {
 			}
 			if logEntry["message"] != tt.expectedMsg {
 				t.Errorf("expected message '%s', got %v", tt.expectedMsg, logEntry["message"])
-			}
-
-			if tt.expectErrorField {
-				if logEntry["error"] != tt.expectedMsg {
-					t.Errorf("expected error field '%s', got %v", tt.expectedMsg, logEntry["error"])
-				}
 			}
 
 			if tt.expectStackTrace {

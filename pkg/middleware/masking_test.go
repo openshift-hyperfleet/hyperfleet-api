@@ -115,6 +115,18 @@ func TestMaskBody(t *testing.T) {
 			expected: `{"users":[{"name":"alice","password":"***REDACTED***"},{"name":"bob","secret":"***REDACTED***"}]}`,
 		},
 		{
+			name:    "mask top-level array with sensitive fields",
+			enabled: true,
+			body:    `[{"name":"alice","password":"secret1"},{"name":"bob","token":"secret2"}]`,
+			expected: `[{"name":"alice","password":"***REDACTED***"},{"name":"bob","token":"***REDACTED***"}]`,
+		},
+		{
+			name:    "mask nested arrays with sensitive fields",
+			enabled: true,
+			body:    `[[{"password":"secret1"}],[{"api_key":"secret2"}]]`,
+			expected: `[[{"password":"***REDACTED***"}],[{"api_key":"***REDACTED***"}]]`,
+		},
+		{
 			name:    "mask multiple sensitive fields",
 			enabled: true,
 			body:    `{"password":"pass","secret":"sec","token":"tok","api_key":"key","normal":"value"}`,
@@ -127,7 +139,7 @@ func TestMaskBody(t *testing.T) {
 			expected: `{"AccessToken":"***REDACTED***","Password":"***REDACTED***","SECRET":"***REDACTED***"}`,
 		},
 		{
-			name:    "non-JSON body unchanged",
+			name:    "non-JSON body without sensitive data unchanged",
 			enabled: true,
 			body:    `not json content`,
 			expected: `not json content`,
@@ -144,6 +156,49 @@ func TestMaskBody(t *testing.T) {
 			body:    `{"password":"secret"}`,
 			expected: `{"password":"secret"}`,
 		},
+		// Fallback masking tests (non-JSON content with sensitive data)
+		{
+			name:    "fallback: redact email addresses",
+			enabled: true,
+			body:    `User email: alice@example.com, contact bob.smith@company.co.uk`,
+			expected: `User email: ***REDACTED_EMAIL***, contact ***REDACTED_EMAIL***`,
+		},
+		{
+			name:    "fallback: redact credit card numbers",
+			enabled: true,
+			body:    `Card: 4532-1234-5678-9010 and 5425233430109903`,
+			expected: `Card: ***REDACTED_CC*** and ***REDACTED_CC***`,
+		},
+		{
+			name:    "fallback: redact Bearer tokens",
+			enabled: true,
+			body:    `Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9`,
+			expected: `Authorization: Bearer ***REDACTED***`,
+		},
+		{
+			name:    "fallback: redact API keys",
+			enabled: true,
+			body:    `API_KEY=sk_test_123456789abcdef and api-key: prod_key_xyz`,
+			expected: `API_KEY=***REDACTED*** and api-key: ***REDACTED***`,
+		},
+		{
+			name:    "fallback: redact form-encoded passwords",
+			enabled: true,
+			body:    `username=alice&password=secret123&email=test@example.com`,
+			expected: `username=alice&password=***REDACTED***&email=***REDACTED_EMAIL***`,
+		},
+		{
+			name:    "fallback: redact multiple sensitive patterns",
+			enabled: true,
+			body:    `User: alice@example.com, Token: secret_abc123, CC: 4532123456789010`,
+			expected: `User: ***REDACTED_EMAIL***, Token: ***REDACTED***, CC: ***REDACTED_CC***`,
+		},
+		{
+			name:    "fallback: disabled masking returns original",
+			enabled: false,
+			body:    `password=secret123&api_key=test_key&user@example.com`,
+			expected: `password=secret123&api_key=test_key&user@example.com`,
+		},
 	}
 
 	for _, tt := range tests {
@@ -157,7 +212,7 @@ func TestMaskBody(t *testing.T) {
 			m := NewMaskingMiddleware(cfg)
 			result := m.MaskBody([]byte(tt.body))
 
-			// For JSON, compare as maps to handle key ordering
+			// For JSON objects, compare as maps to handle key ordering
 			if tt.body != "" && tt.body[0] == '{' {
 				var resultMap, expectedMap map[string]interface{}
 				if err := json.Unmarshal(result, &resultMap); err != nil {
@@ -169,6 +224,20 @@ func TestMaskBody(t *testing.T) {
 
 				// Deep comparison
 				if !deepEqual(resultMap, expectedMap) {
+					t.Errorf("MaskBody() = %s, want %s", result, tt.expected)
+				}
+			} else if tt.body != "" && tt.body[0] == '[' {
+				// For JSON arrays, compare as slices
+				var resultArray, expectedArray []interface{}
+				if err := json.Unmarshal(result, &resultArray); err != nil {
+					t.Fatalf("failed to unmarshal result array: %v", err)
+				}
+				if err := json.Unmarshal([]byte(tt.expected), &expectedArray); err != nil {
+					t.Fatalf("failed to unmarshal expected array: %v", err)
+				}
+
+				// Deep comparison
+				if !deepEqualSlice(resultArray, expectedArray) {
 					t.Errorf("MaskBody() = %s, want %s", result, tt.expected)
 				}
 			} else {
@@ -297,8 +366,17 @@ func deepEqualSlice(a, b []interface{}) bool {
 			if !deepEqual(aMap, bMap) {
 				return false
 			}
-		} else if a[i] != b[i] {
-			return false
+		} else {
+			aSlice, aIsSlice := a[i].([]interface{})
+			bSlice, bIsSlice := b[i].([]interface{})
+
+			if aIsSlice && bIsSlice {
+				if !deepEqualSlice(aSlice, bSlice) {
+					return false
+				}
+			} else if a[i] != b[i] {
+				return false
+			}
 		}
 	}
 

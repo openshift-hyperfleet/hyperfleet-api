@@ -12,26 +12,19 @@ import (
 // and stores it in the request context.
 func TransactionMiddleware(next http.Handler, connection SessionFactory) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Create a new Context with the transaction stored in it.
 		ctx, err := NewContext(r.Context(), connection)
-		log := logger.NewOCMLogger(ctx)
 		if err != nil {
-			log.Extra("error", err.Error()).Error("Could not create transaction")
+			logger.Error(r.Context(), "Could not create transaction", "error", err.Error())
 			// use default error to avoid exposing internals to users
 			err := errors.GeneralError("")
-			operationID := logger.GetOperationID(ctx)
+			operationID := logger.GetOperationID(r.Context())
 			writeJSONResponse(w, err.HttpCode, err.AsOpenapiError(operationID))
 			return
 		}
 
-		// Set the value of the request pointer to the value of a new copy of the request with the new context key,vale
-		// stored in it
 		*r = *r.WithContext(ctx)
-
-		// Returned from handlers and resolve transactions.
 		defer func() { Resolve(r.Context()) }()
 
-		// Continue handling requests.
 		next.ServeHTTP(w, r)
 	})
 }

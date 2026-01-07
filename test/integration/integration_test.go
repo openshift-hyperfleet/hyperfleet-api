@@ -1,20 +1,21 @@
 package integration
 
 import (
+	"context"
 	"flag"
 	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
 
-	"github.com/golang/glog"
-
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 	"github.com/openshift-hyperfleet/hyperfleet-api/test"
 )
 
 func TestMain(m *testing.M) {
 	flag.Parse()
-	glog.Infof("Starting integration test using go version %s", runtime.Version())
+	ctx := context.Background()
+	logger.Infof(ctx, "Starting integration test using go version %s", runtime.Version())
 
 	// Set OPENAPI_SCHEMA_PATH for integration tests if not already set
 	// This enables schema validation middleware during tests
@@ -23,7 +24,7 @@ func TestMain(m *testing.M) {
 		// Use runtime.Caller to find this file's path
 		_, filename, _, ok := runtime.Caller(0)
 		if !ok {
-			glog.Warningf("Failed to determine current file path via runtime.Caller, skipping OPENAPI_SCHEMA_PATH setup")
+			logger.Warn(ctx, "Failed to determine current file path via runtime.Caller, skipping OPENAPI_SCHEMA_PATH setup")
 		} else {
 			// filename is like: /path/to/repo/test/integration/integration_test.go
 			// Navigate up: integration_test.go -> integration -> test -> repo
@@ -36,10 +37,10 @@ func TestMain(m *testing.M) {
 
 			// Verify the schema file exists before setting the env var
 			if _, err := os.Stat(schemaPath); err != nil {
-				glog.Warningf("Schema file not found at %s: %v, skipping OPENAPI_SCHEMA_PATH setup", schemaPath, err)
+				logger.Warn(ctx, "Schema file not found, skipping OPENAPI_SCHEMA_PATH setup", "schema_path", schemaPath, "error", err)
 			} else {
 				_ = os.Setenv("OPENAPI_SCHEMA_PATH", schemaPath)
-				glog.Infof("Set OPENAPI_SCHEMA_PATH=%s for integration tests", schemaPath)
+				logger.Infof(ctx, "Set OPENAPI_SCHEMA_PATH=%s for integration tests", schemaPath)
 			}
 		}
 	}

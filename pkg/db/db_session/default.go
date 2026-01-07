@@ -8,13 +8,13 @@ import (
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
+	gormlogger "gorm.io/gorm/logger"
 
 	"github.com/lib/pq"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
-	ocmlogger "github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
 type Default struct {
@@ -98,18 +98,20 @@ func (f *Default) DirectDB() *sql.DB {
 }
 
 func waitForNotification(l *pq.Listener, callback func(id string)) {
-	logger := ocmlogger.NewOCMLogger(context.Background())
+	ctx := context.Background()
 	for {
 		select {
 		case n := <-l.Notify:
-			logger.Infof("Received data from channel [%s] : %s", n.Channel, n.Extra)
+			logger.Info(ctx, "Received data from channel",
+				"channel", n.Channel,
+				"data", n.Extra)
 			callback(n.Extra)
 			return
 		case <-time.After(10 * time.Second):
-			logger.V(10).Infof("Received no events on channel during interval. Pinging source")
+			logger.Debug(ctx, "Received no events on channel during interval. Pinging source")
 			go func() {
 				if err := l.Ping(); err != nil {
-					logger.V(10).Infof("Ping failed: %v", err)
+					logger.Debug(ctx, "Ping failed", "error", err)
 				}
 			}()
 			return
@@ -118,11 +120,9 @@ func waitForNotification(l *pq.Listener, callback func(id string)) {
 }
 
 func newListener(ctx context.Context, connstr, channel string, callback func(id string)) {
-	logger := ocmlogger.NewOCMLogger(ctx)
-
 	plog := func(ev pq.ListenerEventType, err error) {
 		if err != nil {
-			logger.Error(err.Error())
+			logger.Error(ctx, err.Error())
 		}
 	}
 	listener := pq.NewListener(connstr, 10*time.Second, time.Minute, plog)
@@ -131,7 +131,7 @@ func newListener(ctx context.Context, connstr, channel string, callback func(id 
 		panic(err)
 	}
 
-	logger.Infof("Starting channeling monitor for %s", channel)
+	logger.Info(ctx, "Starting channeling monitor", "channel", channel)
 	for {
 		waitForNotification(listener, callback)
 	}
@@ -144,7 +144,7 @@ func (f *Default) NewListener(ctx context.Context, channel string, callback func
 func (f *Default) New(ctx context.Context) *gorm.DB {
 	conn := f.g2.Session(&gorm.Session{
 		Context: ctx,
-		Logger:  f.g2.Logger.LogMode(logger.Silent),
+		Logger:  f.g2.Logger.LogMode(gormlogger.Silent),
 	})
 	if f.config.Debug {
 		conn = conn.Debug()

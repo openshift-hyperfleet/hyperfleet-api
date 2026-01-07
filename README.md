@@ -155,6 +155,7 @@ This project uses [pre-commit](https://pre-commit.io/) for code quality checks. 
 - **[Database](docs/database.md)** - Schema, migrations, and data model
 - **[Deployment](docs/deployment.md)** - Container images, Kubernetes deployment, and configuration
 - **[Authentication](docs/authentication.md)** - Development and production auth
+- **[Logging](docs/logging.md)** - Structured logging, OpenTelemetry integration, and data masking
 
 ### Additional Resources
 

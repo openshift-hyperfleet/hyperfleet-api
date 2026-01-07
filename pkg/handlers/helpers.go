@@ -19,22 +19,20 @@ func writeJSONResponse(w http.ResponseWriter, r *http.Request, code int, payload
 		response, err := json.Marshal(payload)
 		if err != nil {
 			// Headers already sent, can't change status code
-			log := logger.NewOCMLogger(r.Context())
-			log.Extra("endpoint", r.URL.Path).
-				Extra("method", r.Method).
-				Extra("status_code", code).
-				Extra("error", err.Error()).
-				Error("Failed to marshal JSON response payload")
+			logger.Error(r.Context(), "Failed to marshal JSON response payload",
+				"endpoint", r.URL.Path,
+				"method", r.Method,
+				"status_code", code,
+				"error", err.Error())
 			return
 		}
 		if _, err := w.Write(response); err != nil {
 			// Writing failed, nothing we can do at this point
-			log := logger.NewOCMLogger(r.Context())
-			log.Extra("endpoint", r.URL.Path).
-				Extra("method", r.Method).
-				Extra("status_code", code).
-				Extra("error", err.Error()).
-				Error("Failed to write JSON response body")
+			logger.Error(r.Context(), "Failed to write JSON response body",
+				"endpoint", r.URL.Path,
+				"method", r.Method,
+				"status_code", code,
+				"error", err.Error())
 			return
 		}
 	}

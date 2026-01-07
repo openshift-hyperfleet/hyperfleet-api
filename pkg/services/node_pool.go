@@ -99,21 +99,18 @@ func (s *sqlNodePoolService) All(ctx context.Context) (api.NodePoolList, *errors
 }
 
 func (s *sqlNodePoolService) OnUpsert(ctx context.Context, id string) error {
-	logger := logger.NewOCMLogger(ctx)
-
 	nodePool, err := s.nodePoolDao.Get(ctx, id)
 	if err != nil {
 		return err
 	}
 
-	logger.Infof("Do idempotent somethings with this nodePool: %s", nodePool.ID)
+	logger.Info(ctx, "Perform idempotent operations on node pool", "nodepool_id", nodePool.ID)
 
 	return nil
 }
 
 func (s *sqlNodePoolService) OnDelete(ctx context.Context, id string) error {
-	logger := logger.NewOCMLogger(ctx)
-	logger.Infof("This nodePool has been deleted: %s", id)
+	logger.Info(ctx, "Node pool has been deleted", "nodepool_id", id)
 	return nil
 }
 

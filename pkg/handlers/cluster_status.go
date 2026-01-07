@@ -98,8 +98,9 @@ func (h clusterStatusHandler) Create(w http.ResponseWriter, r *http.Request) {
 			// Trigger status aggregation
 			if _, aggregateErr := h.clusterService.UpdateClusterStatusFromAdapters(ctx, clusterID); aggregateErr != nil {
 				// Log error but don't fail the request - the status will be computed on next update
-				log := logger.NewOCMLogger(ctx)
-				log.Extra("cluster_id", clusterID).Extra("error", aggregateErr).Warning("Failed to aggregate cluster status")
+				logger.Warn(ctx, "Failed to aggregate cluster status",
+					"cluster_id", clusterID,
+					"error", aggregateErr)
 			}
 
 			status, presErr := presenters.PresentAdapterStatus(adapterStatus)
