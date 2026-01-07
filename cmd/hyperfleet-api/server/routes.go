@@ -68,6 +68,12 @@ func (s *apiServer) routes() *mux.Router {
 	// Operation ID middleware sets a relatively unique operation ID in the context of each request for debugging purposes
 	mainRouter.Use(logger.OperationIDMiddleware)
 
+	// OpenTelemetry middleware (conditionally enabled)
+	// Extracts trace_id/span_id from traceparent header and adds to logger context
+	if env().Config.Logging.OTel.Enabled {
+		mainRouter.Use(middleware.OTelMiddleware)
+	}
+
 	// Request logging middleware logs pertinent information about the request and response
 	mainRouter.Use(logging.RequestLoggingMiddleware)
 
