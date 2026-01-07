@@ -1,16 +1,8 @@
 package logger
 
 import (
-	"context"
 	"net/http"
-
-	"github.com/segmentio/ksuid"
 )
-
-type OperationIDKey string
-
-const OpIDKey OperationIDKey = "opID"
-const OpIDHeader OperationIDKey = "X-Operation-ID"
 
 // OperationIDMiddleware Middleware wraps the given HTTP handler so that the details of the request are sent to the log.
 func OperationIDMiddleware(handler http.Handler) http.Handler {
@@ -24,20 +16,4 @@ func OperationIDMiddleware(handler http.Handler) http.Handler {
 
 		handler.ServeHTTP(w, r.WithContext(ctx))
 	})
-}
-
-func WithOpID(ctx context.Context) context.Context {
-	if ctx.Value(OpIDKey) != nil {
-		return ctx
-	}
-	opID := ksuid.New().String()
-	return context.WithValue(ctx, OpIDKey, opID)
-}
-
-// GetOperationID get operationID of the context
-func GetOperationID(ctx context.Context) string {
-	if opID, ok := ctx.Value(OpIDKey).(string); ok {
-		return opID
-	}
-	return ""
 }
