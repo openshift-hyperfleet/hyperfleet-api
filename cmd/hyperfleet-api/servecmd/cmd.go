@@ -1,6 +1,10 @@
 package servecmd
 
 import (
+	"os"
+	"os/signal"
+	"syscall"
+
 	"github.com/golang/glog"
 	"github.com/spf13/cobra"
 
@@ -48,5 +52,12 @@ func runServe(cmd *cobra.Command, args []string) {
 	// REMOVED: ControllersServer - Sentinel handles orchestration
 	// Controllers are no longer run inside the API service
 
-	select {}
+	// Ensure we cleanup resources (including testcontainers) on shutdown signals.
+	signals := make(chan os.Signal, 2)
+	signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
+	<-signals
+
+	glog.Infof("Shutdown signal received, tearing down environment resources")
+	environments.Environment().Teardown()
+	os.Exit(0)
 }

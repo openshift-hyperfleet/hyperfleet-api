@@ -4,6 +4,15 @@ hyperfleet uses https://github.com/testcontainers/testcontainers-go/ for integra
 
 The containers used by the tests are initialized/destroyed in the  `integration_testing` environment.
 
+## Embedded PostgreSQL for local development
+
+The `embedded_development` environment also uses testcontainers to start an embedded PostgreSQL instance at runtime.
+You can run it via:
+
+```bash
+make dev
+```
+
 
 ## Compatibility with podman
 
