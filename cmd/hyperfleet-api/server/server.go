@@ -1,12 +1,13 @@
 package server
 
 import (
+	"context"
 	"net"
 	"net/http"
 	"os"
 	"strings"
 
-	"github.com/golang/glog"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
 type Server interface {
@@ -25,8 +26,9 @@ func removeTrailingSlash(next http.Handler) http.Handler {
 
 // Exit on error
 func check(err error, msg string) {
+	ctx := context.Background()
 	if err != nil && err != http.ErrServerClosed {
-		glog.Errorf("%s: %s", msg, err)
+		logger.WithError(ctx, err).Error(msg)
 		os.Exit(1)
 	}
 }

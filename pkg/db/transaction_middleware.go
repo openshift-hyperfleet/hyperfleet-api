@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db/db_context"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
@@ -12,26 +13,24 @@ import (
 // and stores it in the request context.
 func TransactionMiddleware(next http.Handler, connection SessionFactory) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Create a new Context with the transaction stored in it.
 		ctx, err := NewContext(r.Context(), connection)
-		log := logger.NewOCMLogger(ctx)
 		if err != nil {
-			log.Extra("error", err.Error()).Error("Could not create transaction")
+			logger.WithError(r.Context(), err).Error("Could not create transaction")
 			// use default error to avoid exposing internals to users
 			err := errors.GeneralError("")
-			operationID := logger.GetOperationID(ctx)
-			writeJSONResponse(w, err.HttpCode, err.AsOpenapiError(operationID))
+			requestID, _ := logger.GetRequestID(r.Context())
+			writeJSONResponse(w, err.HttpCode, err.AsOpenapiError(requestID))
 			return
 		}
 
-		// Set the value of the request pointer to the value of a new copy of the request with the new context key,vale
-		// stored in it
-		*r = *r.WithContext(ctx)
+		// Bridge: Get real DB transaction ID and set to logger context
+		if txID, ok := db_context.TxID(ctx); ok {
+			ctx = logger.WithTransactionID(ctx, txID)
+		}
 
-		// Returned from handlers and resolve transactions.
+		*r = *r.WithContext(ctx)
 		defer func() { Resolve(r.Context()) }()
 
-		// Continue handling requests.
 		next.ServeHTTP(w, r)
 	})
 }
