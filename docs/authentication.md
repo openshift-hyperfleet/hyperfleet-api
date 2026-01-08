@@ -27,7 +27,7 @@ curl http://localhost:8000/api/hyperfleet/v1/clusters | jq
 
 ```bash
 export AUTH_ENABLED=false
-./hyperfleet-api serve
+./bin/hyperfleet-api serve
 ```
 
 **Important**: Never disable authentication in production environments.

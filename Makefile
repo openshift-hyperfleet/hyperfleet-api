@@ -52,7 +52,7 @@ help:
 	@echo ""
 	@echo "make verify               verify source code"
 	@echo "make lint                 run golangci-lint"
-	@echo "make binary               compile binaries"
+	@echo "make build                compile binaries to bin/"
 	@echo "make install              compile binaries and install in GOPATH bin"
 	@echo "make secrets              initialize secrets directory with default values"
 	@echo "make run                  run the application"
@@ -134,10 +134,11 @@ lint: $(GOLANGCI_LINT)
 
 # Build binaries
 # NOTE it may be necessary to use CGO_ENABLED=0 for backwards compatibility with centos7 if not using centos7
-binary: check-gopath generate-all
+build: check-gopath generate-all
+	@mkdir -p bin
 	echo "Building version: ${build_version}"
-	CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=boringcrypto ${GO} build -ldflags="$(ldflags)" -o hyperfleet-api ./cmd/hyperfleet-api
-.PHONY: binary
+	CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=boringcrypto ${GO} build -ldflags="$(ldflags)" -o bin/hyperfleet-api ./cmd/hyperfleet-api
+.PHONY: build
 
 # Install
 install: check-gopath generate-all
@@ -249,14 +250,14 @@ generate-vendor:
 	$(container_tool) cp $(OPENAPI_IMAGE_ID):/local/data/generated/openapi/openapi.go ./data/generated/openapi/openapi.go
 .PHONY: generate-vendor
 
-run: binary
-	./hyperfleet-api migrate
-	./hyperfleet-api serve
+run: build
+	./bin/hyperfleet-api migrate
+	./bin/hyperfleet-api serve
 .PHONY: run
 
-run-no-auth: binary
-	./hyperfleet-api migrate
-	./hyperfleet-api serve --enable-authz=false --enable-jwt=false
+run-no-auth: build
+	./bin/hyperfleet-api migrate
+	./bin/hyperfleet-api serve --enable-authz=false --enable-jwt=false
 
 # Run Swagger nd host the api docs
 run/docs:
@@ -267,17 +268,18 @@ run/docs:
 # Delete temporary files
 clean:
 	rm -rf \
-		$(binary) \
+		bin \
 		data/generated/openapi/*.json \
 		secrets \
 .PHONY: clean
 
 .PHONY: cmds
 cmds:
+	@mkdir -p bin
 	for cmd in $$(ls cmd); do \
 		CGO_ENABLED=$(CGO_ENABLED) ${GO} build \
 			-ldflags="$(ldflags)" \
-			-o "$${cmd}" \
+			-o "bin/$${cmd}" \
 			"./cmd/$${cmd}" \
 			|| exit 1; \
 	done

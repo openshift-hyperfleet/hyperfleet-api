@@ -59,7 +59,7 @@ Resources use GORM's soft delete pattern with `deleted_at` timestamp. Soft-delet
 Uses GORM AutoMigrate:
 - Non-destructive (never drops columns or tables)
 - Additive (creates missing tables, columns, indexes)
-- Run via `./hyperfleet-api migrate`
+- Run via `./bin/hyperfleet-api migrate`
 
 ## Database Setup
 
@@ -68,7 +68,7 @@ Uses GORM AutoMigrate:
 make db/setup
 
 # Run migrations
-./hyperfleet-api migrate
+./bin/hyperfleet-api migrate
 
 # Connect to database
 make db/login
