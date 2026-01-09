@@ -98,8 +98,7 @@ func (h nodePoolStatusHandler) Create(w http.ResponseWriter, r *http.Request) {
 			// Trigger status aggregation
 			if _, aggregateErr := h.nodePoolService.UpdateNodePoolStatusFromAdapters(ctx, nodePoolID); aggregateErr != nil {
 				// Log error but don't fail the request - the status will be computed on next update
-				log := logger.NewOCMLogger(ctx)
-				log.Extra("nodepool_id", nodePoolID).Extra("error", aggregateErr).Warning("Failed to aggregate nodepool status")
+				logger.With(ctx, "nodepool_id", nodePoolID, "error", aggregateErr).Warn("Failed to aggregate nodepool status")
 			}
 
 			status, presErr := presenters.PresentAdapterStatus(adapterStatus)

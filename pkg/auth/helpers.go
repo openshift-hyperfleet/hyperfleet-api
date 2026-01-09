@@ -10,16 +10,15 @@ import (
 )
 
 func handleError(ctx context.Context, w http.ResponseWriter, code errors.ServiceErrorCode, reason string) {
-	log := logger.NewOCMLogger(ctx)
-	operationID := logger.GetOperationID(ctx)
+	requestID, _ := logger.GetRequestID(ctx)
 	err := errors.New(code, "%s", reason)
 	if err.HttpCode >= 400 && err.HttpCode <= 499 {
-		log.Infof(err.Error())
+		logger.Info(ctx, err.Error())
 	} else {
-		log.Error(err.Error())
+		logger.Error(ctx, err.Error())
 	}
 
-	writeJSONResponse(w, err.HttpCode, err.AsOpenapiError(operationID))
+	writeJSONResponse(w, err.HttpCode, err.AsOpenapiError(requestID))
 }
 
 func writeJSONResponse(w http.ResponseWriter, code int, payload interface{}) {

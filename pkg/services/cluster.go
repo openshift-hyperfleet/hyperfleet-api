@@ -99,21 +99,18 @@ func (s *sqlClusterService) All(ctx context.Context) (api.ClusterList, *errors.S
 }
 
 func (s *sqlClusterService) OnUpsert(ctx context.Context, id string) error {
-	logger := logger.NewOCMLogger(ctx)
-
 	cluster, err := s.clusterDao.Get(ctx, id)
 	if err != nil {
 		return err
 	}
 
-	logger.Infof("Do idempotent somethings with this cluster: %s", cluster.ID)
+	logger.With(ctx, "cluster_id", cluster.ID).Info("Perform idempotent operations on cluster")
 
 	return nil
 }
 
 func (s *sqlClusterService) OnDelete(ctx context.Context, id string) error {
-	logger := logger.NewOCMLogger(ctx)
-	logger.Infof("This cluster has been deleted: %s", id)
+	logger.With(ctx, "cluster_id", id).Info("Cluster has been deleted")
 	return nil
 }
 
