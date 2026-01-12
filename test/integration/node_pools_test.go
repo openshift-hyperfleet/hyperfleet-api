@@ -58,22 +58,26 @@ func TestNodePoolPost(t *testing.T) {
 	Expect(err).NotTo(HaveOccurred())
 
 	// POST responses per openapi spec: 201, 409, 500
+	kind := "NodePool"
 	nodePoolInput := openapi.NodePoolCreateRequest{
-		Kind: openapi.PtrString("NodePool"),
+		Kind: &kind,
 		Name: "test-name",
 		Spec: map[string]interface{}{"test": "spec"},
 	}
 
 	// 201 Created
-	nodePoolOutput, resp, err := client.DefaultAPI.CreateNodePool(ctx, cluster.ID).NodePoolCreateRequest(nodePoolInput).Execute()
+	resp, err := client.CreateNodePoolWithResponse(ctx, cluster.ID, openapi.CreateNodePoolJSONRequestBody(nodePoolInput), test.WithAuthToken(ctx))
 	Expect(err).NotTo(HaveOccurred(), "Error posting object:  %v", err)
-	Expect(resp.StatusCode).To(Equal(http.StatusCreated))
+	Expect(resp.StatusCode()).To(Equal(http.StatusCreated))
+
+	nodePoolOutput := resp.JSON201
+	Expect(nodePoolOutput).NotTo(BeNil())
 	Expect(*nodePoolOutput.Id).NotTo(BeEmpty(), "Expected ID assigned on creation")
 	Expect(*nodePoolOutput.Kind).To(Equal("NodePool"))
 	Expect(*nodePoolOutput.Href).To(Equal(fmt.Sprintf("/api/hyperfleet/v1/clusters/%s/nodepools/%s", cluster.ID, *nodePoolOutput.Id)))
 
 	// 400 bad request. posting junk json is one way to trigger 400.
-	jwtToken := ctx.Value(openapi.ContextAccessToken)
+	jwtToken := test.GetAccessTokenFromContext(ctx)
 	restyResp, err := resty.R().
 		SetHeader("Content-Type", "application/json").
 		SetHeader("Authorization", fmt.Sprintf("Bearer %s", jwtToken)).
@@ -99,15 +103,25 @@ func TestNodePoolPaging(t *testing.T) {
 	_, err := h.Factories.NewNodePoolsList("Bronto", 20)
 	Expect(err).NotTo(HaveOccurred())
 
-	list, _, err := client.DefaultAPI.GetNodePools(ctx).Execute()
+	resp, err := client.GetNodePoolsWithResponse(ctx, nil, test.WithAuthToken(ctx))
 	Expect(err).NotTo(HaveOccurred(), "Error getting nodePool list: %v", err)
+	list := resp.JSON200
+	Expect(list).NotTo(BeNil())
 	Expect(len(list.Items)).To(Equal(20))
 	Expect(list.Size).To(Equal(int32(20)))
 	Expect(list.Total).To(Equal(int32(20)))
 	Expect(list.Page).To(Equal(int32(1)))
 
-	list, _, err = client.DefaultAPI.GetNodePools(ctx).Page(2).PageSize(5).Execute()
+	page := openapi.QueryParamsPage(2)
+	pageSize := openapi.QueryParamsPageSize(5)
+	params := &openapi.GetNodePoolsParams{
+		Page:     &page,
+		PageSize: &pageSize,
+	}
+	resp, err = client.GetNodePoolsWithResponse(ctx, params, test.WithAuthToken(ctx))
 	Expect(err).NotTo(HaveOccurred(), "Error getting nodePool list: %v", err)
+	list = resp.JSON200
+	Expect(list).NotTo(BeNil())
 	Expect(len(list.Items)).To(Equal(5))
 	Expect(list.Size).To(Equal(int32(5)))
 	Expect(list.Total).To(Equal(int32(20)))
@@ -123,9 +137,15 @@ func TestNodePoolListSearch(t *testing.T) {
 	nodePools, err := h.Factories.NewNodePoolsList("bronto", 20)
 	Expect(err).NotTo(HaveOccurred(), "Error creating test nodepools: %v", err)
 
-	search := fmt.Sprintf("id in ('%s')", nodePools[0].ID)
-	list, _, err := client.DefaultAPI.GetNodePools(ctx).Search(search).Execute()
+	searchStr := fmt.Sprintf("id in ('%s')", nodePools[0].ID)
+	search := openapi.SearchParams(searchStr)
+	params := &openapi.GetNodePoolsParams{
+		Search: &search,
+	}
+	resp, err := client.GetNodePoolsWithResponse(ctx, params, test.WithAuthToken(ctx))
 	Expect(err).NotTo(HaveOccurred(), "Error getting nodePool list: %v", err)
+	list := resp.JSON200
+	Expect(list).NotTo(BeNil())
 	Expect(len(list.Items)).To(Equal(1))
 	Expect(list.Total).To(Equal(int32(1)))
 	Expect(*list.Items[0].Id).To(Equal(nodePools[0].ID))
@@ -148,10 +168,10 @@ func TestNodePoolsByClusterId(t *testing.T) {
 	Expect(err).NotTo(HaveOccurred())
 
 	// Get nodepools by cluster ID
-	list, resp, err := client.DefaultAPI.GetNodePoolsByClusterId(ctx, cluster.ID).Execute()
+	resp, err := client.GetNodePoolsByClusterIdWithResponse(ctx, cluster.ID, nil, test.WithAuthToken(ctx))
 	Expect(err).NotTo(HaveOccurred(), "Error getting nodepools by cluster ID: %v", err)
-	Expect(resp.StatusCode).To(Equal(http.StatusOK))
-	Expect(list).NotTo(BeNil())
+	Expect(resp.StatusCode()).To(Equal(http.StatusOK))
+	Expect(resp.JSON200).NotTo(BeNil())
 	// The list might be empty if nodepools aren't properly associated with the cluster
 	// but the endpoint should work
 }
@@ -167,44 +187,47 @@ func TestGetNodePoolByClusterIdAndNodePoolId(t *testing.T) {
 	Expect(err).NotTo(HaveOccurred())
 
 	// Create a nodepool for this cluster using the API
+	kind := "NodePool"
 	nodePoolInput := openapi.NodePoolCreateRequest{
-		Kind: openapi.PtrString("NodePool"),
+		Kind: &kind,
 		Name: "test-nodepool-get",
 		Spec: map[string]interface{}{"instance_type": "m5.large", "replicas": 2},
 	}
 
-	nodePoolOutput, resp, err := client.DefaultAPI.CreateNodePool(ctx, cluster.ID).NodePoolCreateRequest(nodePoolInput).Execute()
+	createResp, err := client.CreateNodePoolWithResponse(ctx, cluster.ID, openapi.CreateNodePoolJSONRequestBody(nodePoolInput), test.WithAuthToken(ctx))
 	Expect(err).NotTo(HaveOccurred(), "Error creating nodepool: %v", err)
-	Expect(resp.StatusCode).To(Equal(http.StatusCreated))
-	Expect(*nodePoolOutput.Id).NotTo(BeEmpty())
+	Expect(createResp.StatusCode()).To(Equal(http.StatusCreated))
+	Expect(*createResp.JSON201.Id).NotTo(BeEmpty())
 
-	nodePoolID := *nodePoolOutput.Id
+	nodePoolID := *createResp.JSON201.Id
 
 	// Test 1: Get the nodepool by cluster ID and nodepool ID (200 OK)
-	retrieved, resp, err := client.DefaultAPI.GetNodePoolById(ctx, cluster.ID, nodePoolID).Execute()
+	getResp, err := client.GetNodePoolByIdWithResponse(ctx, cluster.ID, nodePoolID, test.WithAuthToken(ctx))
 	Expect(err).NotTo(HaveOccurred(), "Error getting nodepool by cluster and nodepool ID: %v", err)
-	Expect(resp.StatusCode).To(Equal(http.StatusOK))
+	Expect(getResp.StatusCode()).To(Equal(http.StatusOK))
+	retrieved := getResp.JSON200
+	Expect(retrieved).NotTo(BeNil())
 	Expect(*retrieved.Id).To(Equal(nodePoolID), "Retrieved nodepool ID should match")
 	Expect(*retrieved.Kind).To(Equal("NodePool"))
 	Expect(retrieved.Name).To(Equal("test-nodepool-get"))
 
 	// Test 2: Try to get with non-existent nodepool ID (404)
-	_, resp, err = client.DefaultAPI.GetNodePoolById(ctx, cluster.ID, "non-existent-id").Execute()
-	Expect(err).To(HaveOccurred(), "Expected 404 for non-existent nodepool")
-	Expect(resp.StatusCode).To(Equal(http.StatusNotFound))
+	notFoundResp, err := client.GetNodePoolByIdWithResponse(ctx, cluster.ID, "non-existent-id", test.WithAuthToken(ctx))
+	Expect(err).NotTo(HaveOccurred())
+	Expect(notFoundResp.StatusCode()).To(Equal(http.StatusNotFound), "Expected 404 for non-existent nodepool")
 
 	// Test 3: Try to get with non-existent cluster ID (404)
-	_, resp, err = client.DefaultAPI.GetNodePoolById(ctx, "non-existent-cluster", nodePoolID).Execute()
-	Expect(err).To(HaveOccurred(), "Expected 404 for non-existent cluster")
-	Expect(resp.StatusCode).To(Equal(http.StatusNotFound))
+	notFoundResp, err = client.GetNodePoolByIdWithResponse(ctx, "non-existent-cluster", nodePoolID, test.WithAuthToken(ctx))
+	Expect(err).NotTo(HaveOccurred())
+	Expect(notFoundResp.StatusCode()).To(Equal(http.StatusNotFound), "Expected 404 for non-existent cluster")
 
 	// Test 4: Create another cluster and verify that nodepool is not accessible from wrong cluster
 	cluster2, err := h.Factories.NewClusters(h.NewID())
 	Expect(err).NotTo(HaveOccurred())
 
-	_, resp, err = client.DefaultAPI.GetNodePoolById(ctx, cluster2.ID, nodePoolID).Execute()
-	Expect(err).To(HaveOccurred(), "Expected 404 when accessing nodepool from wrong cluster")
-	Expect(resp.StatusCode).To(Equal(http.StatusNotFound))
+	wrongClusterResp, err := client.GetNodePoolByIdWithResponse(ctx, cluster2.ID, nodePoolID, test.WithAuthToken(ctx))
+	Expect(err).NotTo(HaveOccurred())
+	Expect(wrongClusterResp.StatusCode()).To(Equal(http.StatusNotFound), "Expected 404 when accessing nodepool from wrong cluster")
 }
 
 // TestNodePoolPost_EmptyKind tests that empty kind field returns 400
@@ -213,7 +236,7 @@ func TestNodePoolPost_EmptyKind(t *testing.T) {
 
 	account := h.NewRandAccount()
 	ctx := h.NewAuthenticatedContext(account)
-	jwtToken := ctx.Value(openapi.ContextAccessToken)
+	jwtToken := test.GetAccessTokenFromContext(ctx)
 
 	// Create a cluster first
 	cluster, err := h.Factories.NewClusters(h.NewID())
@@ -252,7 +275,7 @@ func TestNodePoolPost_WrongKind(t *testing.T) {
 
 	account := h.NewRandAccount()
 	ctx := h.NewAuthenticatedContext(account)
-	jwtToken := ctx.Value(openapi.ContextAccessToken)
+	jwtToken := test.GetAccessTokenFromContext(ctx)
 
 	// Create a cluster first
 	cluster, err := h.Factories.NewClusters(h.NewID())

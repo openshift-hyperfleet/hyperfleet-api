@@ -40,10 +40,10 @@ func ConvertAdapterStatus(
 		return nil, fmt.Errorf("failed to marshal adapter conditions: %w", err)
 	}
 
-	// Marshal Data
-	data := make(map[string]map[string]interface{})
+	// Marshal Data - req.Data is *map[string]interface{}
+	data := make(map[string]interface{})
 	if req.Data != nil {
-		data = req.Data
+		data = *req.Data
 	}
 	dataJSON, err := json.Marshal(data)
 	if err != nil {
@@ -87,7 +87,7 @@ func PresentAdapterStatus(adapterStatus *api.AdapterStatus) (openapi.AdapterStat
 	for i, cond := range conditions {
 		openapiConditions[i] = openapi.AdapterCondition{
 			Type:               cond.Type,
-			Status:             openapi.ConditionStatus(string(cond.Status)),
+			Status:             openapi.ConditionStatus(cond.Status),
 			Reason:             cond.Reason,
 			Message:            cond.Message,
 			LastTransitionTime: cond.LastTransitionTime,
@@ -95,15 +95,22 @@ func PresentAdapterStatus(adapterStatus *api.AdapterStatus) (openapi.AdapterStat
 	}
 
 	// Unmarshal Data
-	var data map[string]map[string]interface{}
+	var data map[string]interface{}
 	if len(adapterStatus.Data) > 0 {
 		if err := json.Unmarshal(adapterStatus.Data, &data); err != nil {
 			return openapi.AdapterStatus{}, fmt.Errorf("failed to unmarshal adapter status data: %w", err)
 		}
 	}
 
-	// Unmarshal Metadata
-	var metadata *openapi.AdapterStatusBaseMetadata
+	// Unmarshal Metadata - inline struct type
+	var metadata *struct {
+		Attempt       *int32     `json:"attempt,omitempty"`
+		CompletedTime *time.Time `json:"completed_time,omitempty"`
+		Duration      *string    `json:"duration,omitempty"`
+		JobName       *string    `json:"job_name,omitempty"`
+		JobNamespace  *string    `json:"job_namespace,omitempty"`
+		StartedTime   *time.Time `json:"started_time,omitempty"`
+	}
 	if len(adapterStatus.Metadata) > 0 {
 		if err := json.Unmarshal(adapterStatus.Metadata, &metadata); err != nil {
 			return openapi.AdapterStatus{}, fmt.Errorf("failed to unmarshal adapter status metadata: %w", err)
@@ -123,11 +130,11 @@ func PresentAdapterStatus(adapterStatus *api.AdapterStatus) (openapi.AdapterStat
 
 	return openapi.AdapterStatus{
 		Adapter:            adapterStatus.Adapter,
-		ObservedGeneration: adapterStatus.ObservedGeneration,
 		Conditions:         openapiConditions,
-		Data:               data,
-		Metadata:           metadata,
 		CreatedTime:        createdTime,
+		Data:               &data,
 		LastReportTime:     lastReportTime,
+		Metadata:           metadata,
+		ObservedGeneration: adapterStatus.ObservedGeneration,
 	}, nil
 }

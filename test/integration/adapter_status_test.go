@@ -4,12 +4,24 @@ import (
 	"fmt"
 	"net/http"
 	"testing"
+	"time"
 
 	. "github.com/onsi/gomega"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
 	"github.com/openshift-hyperfleet/hyperfleet-api/test"
 )
+
+// Helper to create AdapterStatusCreateRequest
+func newAdapterStatusRequest(adapter string, observedGen int32, conditions []openapi.ConditionRequest, data *map[string]interface{}) openapi.AdapterStatusCreateRequest {
+	return openapi.AdapterStatusCreateRequest{
+		Adapter:            adapter,
+		ObservedGeneration: observedGen,
+		Data:               data,
+		Conditions:         conditions,
+		ObservedTime:       time.Now(),
+	}
+}
 
 // TestClusterStatusPost tests creating adapter status for a cluster
 func TestClusterStatusPost(t *testing.T) {
@@ -23,27 +35,29 @@ func TestClusterStatusPost(t *testing.T) {
 	Expect(err).NotTo(HaveOccurred())
 
 	// Create an adapter status for the cluster
-	statusInput := openapi.AdapterStatusCreateRequest{
-		Adapter:            "test-adapter",
-		ObservedGeneration: cluster.Generation,
-		Conditions: []openapi.ConditionRequest{
+	data := map[string]interface{}{
+		"test_key": map[string]interface{}{"value": "test_value"},
+	}
+	statusInput := newAdapterStatusRequest(
+		"test-adapter",
+		cluster.Generation,
+		[]openapi.ConditionRequest{
 			{
 				Type:   "Ready",
-				Status: "True",
+				Status: openapi.True,
 				Reason: openapi.PtrString("AdapterReady"),
 			},
 		},
-		Data: map[string]map[string]interface{}{
-			"test_key": {"value": "test_value"},
-		},
-	}
+		&data,
+	)
 
-	statusOutput, resp, err := client.DefaultAPI.PostClusterStatuses(ctx, cluster.ID).AdapterStatusCreateRequest(statusInput).Execute()
+	resp, err := client.PostClusterStatusesWithResponse(ctx, cluster.ID, openapi.PostClusterStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx))
 	Expect(err).NotTo(HaveOccurred(), "Error posting cluster status: %v", err)
-	Expect(resp.StatusCode).To(Equal(http.StatusCreated))
-	Expect(statusOutput.Adapter).To(Equal("test-adapter"))
-	Expect(statusOutput.ObservedGeneration).To(Equal(cluster.Generation))
-	Expect(len(statusOutput.Conditions)).To(BeNumerically(">", 0))
+	Expect(resp.StatusCode()).To(Equal(http.StatusCreated))
+	Expect(resp.JSON201).NotTo(BeNil())
+	Expect(resp.JSON201.Adapter).To(Equal("test-adapter"))
+	Expect(resp.JSON201.ObservedGeneration).To(Equal(cluster.Generation))
+	Expect(len(resp.JSON201.Conditions)).To(BeNumerically(">", 0))
 }
 
 // TestClusterStatusGet tests retrieving adapter statuses for a cluster
@@ -59,26 +73,27 @@ func TestClusterStatusGet(t *testing.T) {
 
 	// Create a few adapter statuses
 	for i := 0; i < 3; i++ {
-		statusInput := openapi.AdapterStatusCreateRequest{
-			Adapter:            fmt.Sprintf("adapter-%d", i),
-			ObservedGeneration: cluster.Generation,
-			Conditions: []openapi.ConditionRequest{
+		statusInput := newAdapterStatusRequest(
+			fmt.Sprintf("adapter-%d", i),
+			cluster.Generation,
+			[]openapi.ConditionRequest{
 				{
 					Type:   "Ready",
-					Status: "True",
+					Status: openapi.True,
 				},
 			},
-		}
-		_, _, err := client.DefaultAPI.PostClusterStatuses(ctx, cluster.ID).AdapterStatusCreateRequest(statusInput).Execute()
+			nil,
+		)
+		_, err := client.PostClusterStatusesWithResponse(ctx, cluster.ID, openapi.PostClusterStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx))
 		Expect(err).NotTo(HaveOccurred())
 	}
 
 	// Get all statuses for the cluster
-	list, resp, err := client.DefaultAPI.GetClusterStatuses(ctx, cluster.ID).Execute()
+	resp, err := client.GetClusterStatusesWithResponse(ctx, cluster.ID, nil, test.WithAuthToken(ctx))
 	Expect(err).NotTo(HaveOccurred(), "Error getting cluster statuses: %v", err)
-	Expect(resp.StatusCode).To(Equal(http.StatusOK))
-	Expect(list).NotTo(BeNil())
-	Expect(len(list.Items)).To(BeNumerically(">=", 3))
+	Expect(resp.StatusCode()).To(Equal(http.StatusOK))
+	Expect(resp.JSON200).NotTo(BeNil())
+	Expect(len(resp.JSON200.Items)).To(BeNumerically(">=", 3))
 }
 
 // TestNodePoolStatusPost tests creating adapter status for a nodepool
@@ -96,27 +111,29 @@ func TestNodePoolStatusPost(t *testing.T) {
 	Expect(nodePool.ID).NotTo(BeEmpty(), "nodePool.ID should not be empty")
 
 	// Create an adapter status for the nodepool
-	statusInput := openapi.AdapterStatusCreateRequest{
-		Adapter:            "test-nodepool-adapter",
-		ObservedGeneration: 1,
-		Conditions: []openapi.ConditionRequest{
+	data := map[string]interface{}{
+		"nodepool_data": map[string]interface{}{"value": "test_value"},
+	}
+	statusInput := newAdapterStatusRequest(
+		"test-nodepool-adapter",
+		1,
+		[]openapi.ConditionRequest{
 			{
 				Type:   "Ready",
-				Status: "False",
+				Status: openapi.False,
 				Reason: openapi.PtrString("Initializing"),
 			},
 		},
-		Data: map[string]map[string]interface{}{
-			"nodepool_data": {"value": "test_value"},
-		},
-	}
+		&data,
+	)
 
 	// Use nodePool.OwnerID as the cluster_id parameter
-	statusOutput, resp, err := client.DefaultAPI.PostNodePoolStatuses(ctx, nodePool.OwnerID, nodePool.ID).AdapterStatusCreateRequest(statusInput).Execute()
+	resp, err := client.PostNodePoolStatusesWithResponse(ctx, nodePool.OwnerID, nodePool.ID, openapi.PostNodePoolStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx))
 	Expect(err).NotTo(HaveOccurred(), "Error posting nodepool status: %v", err)
-	Expect(resp.StatusCode).To(Equal(http.StatusCreated))
-	Expect(statusOutput.Adapter).To(Equal("test-nodepool-adapter"))
-	Expect(len(statusOutput.Conditions)).To(BeNumerically(">", 0))
+	Expect(resp.StatusCode()).To(Equal(http.StatusCreated))
+	Expect(resp.JSON201).NotTo(BeNil())
+	Expect(resp.JSON201.Adapter).To(Equal("test-nodepool-adapter"))
+	Expect(len(resp.JSON201.Conditions)).To(BeNumerically(">", 0))
 }
 
 // TestNodePoolStatusGet tests retrieving adapter statuses for a nodepool
@@ -132,27 +149,28 @@ func TestNodePoolStatusGet(t *testing.T) {
 
 	// Create a few adapter statuses
 	for i := 0; i < 2; i++ {
-		statusInput := openapi.AdapterStatusCreateRequest{
-			Adapter:            fmt.Sprintf("nodepool-adapter-%d", i),
-			ObservedGeneration: 1,
-			Conditions: []openapi.ConditionRequest{
+		statusInput := newAdapterStatusRequest(
+			fmt.Sprintf("nodepool-adapter-%d", i),
+			1,
+			[]openapi.ConditionRequest{
 				{
 					Type:   "Ready",
-					Status: "True",
+					Status: openapi.True,
 				},
 			},
-		}
+			nil,
+		)
 		// Use nodePool.OwnerID as the cluster_id parameter
-		_, _, err := client.DefaultAPI.PostNodePoolStatuses(ctx, nodePool.OwnerID, nodePool.ID).AdapterStatusCreateRequest(statusInput).Execute()
+		_, err := client.PostNodePoolStatusesWithResponse(ctx, nodePool.OwnerID, nodePool.ID, openapi.PostNodePoolStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx))
 		Expect(err).NotTo(HaveOccurred())
 	}
 
 	// Get all statuses for the nodepool
-	list, resp, err := client.DefaultAPI.GetNodePoolsStatuses(ctx, nodePool.OwnerID, nodePool.ID).Execute()
+	resp, err := client.GetNodePoolsStatusesWithResponse(ctx, nodePool.OwnerID, nodePool.ID, nil, test.WithAuthToken(ctx))
 	Expect(err).NotTo(HaveOccurred(), "Error getting nodepool statuses: %v", err)
-	Expect(resp.StatusCode).To(Equal(http.StatusOK))
-	Expect(list).NotTo(BeNil())
-	Expect(len(list.Items)).To(BeNumerically(">=", 2))
+	Expect(resp.StatusCode()).To(Equal(http.StatusOK))
+	Expect(resp.JSON200).NotTo(BeNil())
+	Expect(len(resp.JSON200.Items)).To(BeNumerically(">=", 2))
 }
 
 // TestAdapterStatusPaging tests paging for adapter statuses
@@ -168,25 +186,33 @@ func TestAdapterStatusPaging(t *testing.T) {
 
 	// Create multiple statuses
 	for i := 0; i < 10; i++ {
-		statusInput := openapi.AdapterStatusCreateRequest{
-			Adapter:            fmt.Sprintf("adapter-%d", i),
-			ObservedGeneration: cluster.Generation,
-			Conditions: []openapi.ConditionRequest{
+		statusInput := newAdapterStatusRequest(
+			fmt.Sprintf("adapter-%d", i),
+			cluster.Generation,
+			[]openapi.ConditionRequest{
 				{
 					Type:   "Ready",
-					Status: "True",
+					Status: openapi.True,
 				},
 			},
-		}
-		_, _, err := client.DefaultAPI.PostClusterStatuses(ctx, cluster.ID).AdapterStatusCreateRequest(statusInput).Execute()
+			nil,
+		)
+		_, err := client.PostClusterStatusesWithResponse(ctx, cluster.ID, openapi.PostClusterStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx))
 		Expect(err).NotTo(HaveOccurred())
 	}
 
 	// Test paging
-	list, _, err := client.DefaultAPI.GetClusterStatuses(ctx, cluster.ID).Page(1).PageSize(5).Execute()
+	page := openapi.QueryParamsPage(1)
+	pageSize := openapi.QueryParamsPageSize(5)
+	params := &openapi.GetClusterStatusesParams{
+		Page:     &page,
+		PageSize: &pageSize,
+	}
+	resp, err := client.GetClusterStatusesWithResponse(ctx, cluster.ID, params, test.WithAuthToken(ctx))
 	Expect(err).NotTo(HaveOccurred())
-	Expect(len(list.Items)).To(BeNumerically("<=", 5))
-	Expect(list.Page).To(Equal(int32(1)))
+	Expect(resp.JSON200).NotTo(BeNil())
+	Expect(len(resp.JSON200.Items)).To(BeNumerically("<=", 5))
+	Expect(resp.JSON200.Page).To(Equal(int32(1)))
 }
 
 // TestAdapterStatusIdempotency tests that posting the same adapter twice updates instead of creating duplicate
@@ -201,57 +227,62 @@ func TestAdapterStatusIdempotency(t *testing.T) {
 	Expect(err).NotTo(HaveOccurred())
 
 	// First POST: Create adapter status
-	statusInput1 := openapi.AdapterStatusCreateRequest{
-		Adapter:            "idempotency-test-adapter",
-		ObservedGeneration: cluster.Generation,
-		Conditions: []openapi.ConditionRequest{
+	data1 := map[string]interface{}{
+		"version": map[string]interface{}{"value": "1.0"},
+	}
+	statusInput1 := newAdapterStatusRequest(
+		"idempotency-test-adapter",
+		cluster.Generation,
+		[]openapi.ConditionRequest{
 			{
 				Type:   "Ready",
-				Status: "False",
+				Status: openapi.False,
 				Reason: openapi.PtrString("Initializing"),
 			},
 		},
-		Data: map[string]map[string]interface{}{
-			"version": {"value": "1.0"},
-		},
-	}
+		&data1,
+	)
 
-	status1, resp, err := client.DefaultAPI.PostClusterStatuses(ctx, cluster.ID).AdapterStatusCreateRequest(statusInput1).Execute()
+	resp1, err := client.PostClusterStatusesWithResponse(ctx, cluster.ID, openapi.PostClusterStatusesJSONRequestBody(statusInput1), test.WithAuthToken(ctx))
 	Expect(err).NotTo(HaveOccurred())
-	Expect(resp.StatusCode).To(Equal(http.StatusCreated))
-	Expect(status1.Adapter).To(Equal("idempotency-test-adapter"))
-	Expect(string(status1.Conditions[0].Status)).To(Equal(string(openapi.FALSE)))
+	Expect(resp1.StatusCode()).To(Equal(http.StatusCreated))
+	Expect(resp1.JSON201).NotTo(BeNil())
+	Expect(resp1.JSON201.Adapter).To(Equal("idempotency-test-adapter"))
+	Expect(resp1.JSON201.Conditions[0].Status).To(Equal(openapi.False))
 
 	// Second POST: Update the same adapter with different conditions
-	statusInput2 := openapi.AdapterStatusCreateRequest{
-		Adapter:            "idempotency-test-adapter",
-		ObservedGeneration: cluster.Generation,
-		Conditions: []openapi.ConditionRequest{
+	data2 := map[string]interface{}{
+		"version": map[string]interface{}{"value": "2.0"},
+	}
+	statusInput2 := newAdapterStatusRequest(
+		"idempotency-test-adapter",
+		cluster.Generation,
+		[]openapi.ConditionRequest{
 			{
 				Type:   "Ready",
-				Status: "True",
+				Status: openapi.True,
 				Reason: openapi.PtrString("AdapterReady"),
 			},
 		},
-		Data: map[string]map[string]interface{}{
-			"version": {"value": "2.0"},
-		},
-	}
+		&data2,
+	)
 
-	status2, resp, err := client.DefaultAPI.PostClusterStatuses(ctx, cluster.ID).AdapterStatusCreateRequest(statusInput2).Execute()
+	resp2, err := client.PostClusterStatusesWithResponse(ctx, cluster.ID, openapi.PostClusterStatusesJSONRequestBody(statusInput2), test.WithAuthToken(ctx))
 	Expect(err).NotTo(HaveOccurred())
-	Expect(resp.StatusCode).To(Equal(http.StatusCreated))
-	Expect(status2.Adapter).To(Equal("idempotency-test-adapter"))
-	Expect(status2.Conditions[0].Status).To(Equal(openapi.TRUE))
+	Expect(resp2.StatusCode()).To(Equal(http.StatusCreated))
+	Expect(resp2.JSON201).NotTo(BeNil())
+	Expect(resp2.JSON201.Adapter).To(Equal("idempotency-test-adapter"))
+	Expect(resp2.JSON201.Conditions[0].Status).To(Equal(openapi.True))
 
 	// GET all statuses - should have only ONE status for "idempotency-test-adapter"
-	list, _, err := client.DefaultAPI.GetClusterStatuses(ctx, cluster.ID).Execute()
+	listResp, err := client.GetClusterStatusesWithResponse(ctx, cluster.ID, nil, test.WithAuthToken(ctx))
 	Expect(err).NotTo(HaveOccurred())
+	Expect(listResp.JSON200).NotTo(BeNil())
 
 	// Count how many times this adapter appears
 	adapterCount := 0
 	var finalStatus openapi.AdapterStatus
-	for _, s := range list.Items {
+	for _, s := range listResp.JSON200.Items {
 		if s.Adapter == "idempotency-test-adapter" {
 			adapterCount++
 			finalStatus = s
@@ -260,7 +291,7 @@ func TestAdapterStatusIdempotency(t *testing.T) {
 
 	// Verify: should have exactly ONE entry for this adapter (updated, not duplicated)
 	Expect(adapterCount).To(Equal(1), "Adapter should be updated, not duplicated")
-	Expect(finalStatus.Conditions[0].Status).To(Equal(openapi.TRUE), "Conditions should be updated to latest")
+	Expect(finalStatus.Conditions[0].Status).To(Equal(openapi.True), "Conditions should be updated to latest")
 }
 
 // TestAdapterStatusPagingEdgeCases tests edge cases in pagination
@@ -276,17 +307,18 @@ func TestAdapterStatusPagingEdgeCases(t *testing.T) {
 
 	// Create exactly 10 statuses
 	for i := 0; i < 10; i++ {
-		statusInput := openapi.AdapterStatusCreateRequest{
-			Adapter:            fmt.Sprintf("edge-adapter-%d", i),
-			ObservedGeneration: cluster.Generation,
-			Conditions: []openapi.ConditionRequest{
+		statusInput := newAdapterStatusRequest(
+			fmt.Sprintf("edge-adapter-%d", i),
+			cluster.Generation,
+			[]openapi.ConditionRequest{
 				{
 					Type:   "Ready",
-					Status: "True",
+					Status: openapi.True,
 				},
 			},
-		}
-		_, _, err := client.DefaultAPI.PostClusterStatuses(ctx, cluster.ID).AdapterStatusCreateRequest(statusInput).Execute()
+			nil,
+		)
+		_, err := client.PostClusterStatusesWithResponse(ctx, cluster.ID, openapi.PostClusterStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx))
 		Expect(err).NotTo(HaveOccurred())
 	}
 
@@ -294,61 +326,76 @@ func TestAdapterStatusPagingEdgeCases(t *testing.T) {
 	emptyCluster, err := h.Factories.NewClusters(h.NewID())
 	Expect(err).NotTo(HaveOccurred())
 
-	emptyList, _, err := client.DefaultAPI.GetClusterStatuses(ctx, emptyCluster.ID).Execute()
+	emptyResp, err := client.GetClusterStatusesWithResponse(ctx, emptyCluster.ID, nil, test.WithAuthToken(ctx))
 	Expect(err).NotTo(HaveOccurred())
-	Expect(emptyList.Total).To(Equal(int32(0)))
-	Expect(len(emptyList.Items)).To(Equal(0))
+	Expect(emptyResp.JSON200).NotTo(BeNil())
+	Expect(emptyResp.JSON200.Total).To(Equal(int32(0)))
+	Expect(len(emptyResp.JSON200.Items)).To(Equal(0))
 
 	// Test 2: Page beyond total pages
-	beyondList, _, err := client.DefaultAPI.GetClusterStatuses(ctx, cluster.ID).Page(100).PageSize(5).Execute()
+	page100 := openapi.QueryParamsPage(100)
+	pageSize5 := openapi.QueryParamsPageSize(5)
+	beyondParams := &openapi.GetClusterStatusesParams{
+		Page:     &page100,
+		PageSize: &pageSize5,
+	}
+	beyondResp, err := client.GetClusterStatusesWithResponse(ctx, cluster.ID, beyondParams, test.WithAuthToken(ctx))
 	Expect(err).NotTo(HaveOccurred())
-	Expect(len(beyondList.Items)).To(Equal(0), "Should return empty when page exceeds total pages")
-	Expect(beyondList.Total).To(Equal(int32(10)), "Total should still reflect actual count")
+	Expect(beyondResp.JSON200).NotTo(BeNil())
+	Expect(len(beyondResp.JSON200.Items)).To(Equal(0), "Should return empty when page exceeds total pages")
+	Expect(beyondResp.JSON200.Total).To(Equal(int32(10)), "Total should still reflect actual count")
 
 	// Test 3: Single item dataset
 	singleCluster, err := h.Factories.NewClusters(h.NewID())
 	Expect(err).NotTo(HaveOccurred())
 
-	singleStatus := openapi.AdapterStatusCreateRequest{
-		Adapter:            "single-adapter",
-		ObservedGeneration: singleCluster.Generation,
-		Conditions: []openapi.ConditionRequest{
+	singleStatus := newAdapterStatusRequest(
+		"single-adapter",
+		singleCluster.Generation,
+		[]openapi.ConditionRequest{
 			{
 				Type:   "Ready",
-				Status: "True",
+				Status: openapi.True,
 			},
 		},
-	}
-	_, _, err = client.DefaultAPI.PostClusterStatuses(ctx, singleCluster.ID).AdapterStatusCreateRequest(singleStatus).Execute()
+		nil,
+	)
+	_, err = client.PostClusterStatusesWithResponse(ctx, singleCluster.ID, openapi.PostClusterStatusesJSONRequestBody(singleStatus), test.WithAuthToken(ctx))
 	Expect(err).NotTo(HaveOccurred())
 
-	singleList, _, err := client.DefaultAPI.GetClusterStatuses(ctx, singleCluster.ID).Execute()
+	singleResp, err := client.GetClusterStatusesWithResponse(ctx, singleCluster.ID, nil, test.WithAuthToken(ctx))
 	Expect(err).NotTo(HaveOccurred())
-	Expect(singleList.Total).To(Equal(int32(1)))
-	Expect(len(singleList.Items)).To(Equal(1))
-	Expect(singleList.Page).To(Equal(int32(1)))
+	Expect(singleResp.JSON200).NotTo(BeNil())
+	Expect(singleResp.JSON200.Total).To(Equal(int32(1)))
+	Expect(len(singleResp.JSON200.Items)).To(Equal(1))
+	Expect(singleResp.JSON200.Page).To(Equal(int32(1)))
 
 	// Test 4: Pagination consistency - verify no duplicates and no missing items
 	allItems := make(map[string]bool)
-	page := 1
-	pageSize := 3
+	pageNum := openapi.QueryParamsPage(1)
+	pageSz := openapi.QueryParamsPageSize(3)
 
 	for {
-		list, _, err := client.DefaultAPI.GetClusterStatuses(ctx, cluster.ID).Page(int32(page)).PageSize(int32(pageSize)).Execute()
+		params := &openapi.GetClusterStatusesParams{
+			Page:     &pageNum,
+			PageSize: &pageSz,
+		}
+		listResp, err := client.GetClusterStatusesWithResponse(ctx, cluster.ID, params, test.WithAuthToken(ctx))
 		Expect(err).NotTo(HaveOccurred())
+		Expect(listResp.JSON200).NotTo(BeNil())
 
-		if len(list.Items) == 0 {
+		if len(listResp.JSON200.Items) == 0 {
 			break
 		}
 
-		for _, item := range list.Items {
+		for _, item := range listResp.JSON200.Items {
 			adapter := item.Adapter
 			Expect(allItems[adapter]).To(BeFalse(), "Duplicate adapter found in pagination: %s", adapter)
 			allItems[adapter] = true
 		}
 
-		page++
-		if page > 10 {
+		pageNum++
+		if pageNum > 10 {
 			break // Safety limit
 		}
 	}

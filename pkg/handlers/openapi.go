@@ -6,9 +6,7 @@ import (
 	"io/fs"
 	"net/http"
 
-	"github.com/ghodss/yaml"
-
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
@@ -23,20 +21,20 @@ type openAPIHandler struct {
 
 func NewOpenAPIHandler() (*openAPIHandler, error) {
 	ctx := context.Background()
-	// Load the fully resolved OpenAPI spec from embedded filesystem
-	resolvedData, err := api.GetOpenAPISpec()
+	// Load the OpenAPI spec from the generated code's embedded swagger
+	swagger, err := openapi.GetSwagger()
 	if err != nil {
 		return nil, errors.GeneralError(
-			"can't load OpenAPI specification from embedded file: %v",
+			"can't load OpenAPI specification from generated code: %v",
 			err,
 		)
 	}
 
-	// Convert YAML to JSON
-	data, err := yaml.YAMLToJSON(resolvedData)
+	// Marshal the swagger spec to JSON
+	data, err := swagger.MarshalJSON()
 	if err != nil {
 		return nil, errors.GeneralError(
-			"can't convert OpenAPI specification from YAML to JSON: %v",
+			"can't marshal OpenAPI specification to JSON: %v",
 			err,
 		)
 	}

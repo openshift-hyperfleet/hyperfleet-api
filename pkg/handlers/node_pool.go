@@ -38,7 +38,7 @@ func (h nodePoolHandler) Create(w http.ResponseWriter, r *http.Request) {
 			ctx := r.Context()
 			// For standalone nodepools, owner_id would need to come from somewhere
 			// This is likely not a supported use case, but using empty string for now
-			nodePoolModel, convErr := presenters.ConvertNodePool(&req, "", "system")
+			nodePoolModel, convErr := presenters.ConvertNodePool(&req, "", "system@hyperfleet.local")
 			if convErr != nil {
 				return nil, errors.GeneralError("Failed to convert nodepool: %v", convErr)
 			}

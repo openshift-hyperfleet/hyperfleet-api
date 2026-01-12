@@ -91,26 +91,6 @@ func PresentNodePool(nodePool *api.NodePool) (openapi.NodePool, error) {
 		ownerHref = "/api/hyperfleet/v1/clusters/" + nodePool.OwnerID
 	}
 
-	kind := nodePool.Kind
-	result := openapi.NodePool{
-		Id:         &nodePool.ID,
-		Kind:       &kind,
-		Href:       &href,
-		Name:       nodePool.Name,
-		Spec:       spec,
-		Labels:     &labels,
-		Generation: nodePool.Generation,
-		OwnerReferences: openapi.ObjectReference{
-			Id:   &nodePool.OwnerID,
-			Kind: &nodePool.OwnerKind,
-			Href: &ownerHref,
-		},
-		CreatedTime: nodePool.CreatedTime,
-		UpdatedTime: nodePool.UpdatedTime,
-		CreatedBy:   nodePool.CreatedBy,
-		UpdatedBy:   nodePool.UpdatedBy,
-	}
-
 	// Build NodePoolStatus - set required fields with defaults if nil
 	lastTransitionTime := time.Time{}
 	if nodePool.StatusLastTransitionTime != nil {
@@ -132,23 +112,42 @@ func PresentNodePool(nodePool *api.NodePool) (openapi.NodePool, error) {
 	openapiConditions := make([]openapi.ResourceCondition, len(statusConditions))
 	for i, cond := range statusConditions {
 		openapiConditions[i] = openapi.ResourceCondition{
-			ObservedGeneration: cond.ObservedGeneration,
 			CreatedTime:        cond.CreatedTime,
-			LastUpdatedTime:    cond.LastUpdatedTime,
-			Type:               cond.Type,
-			Status:             openapi.ConditionStatus(string(cond.Status)),
-			Reason:             cond.Reason,
-			Message:            cond.Message,
 			LastTransitionTime: cond.LastTransitionTime,
+			LastUpdatedTime:    cond.LastUpdatedTime,
+			Message:            cond.Message,
+			ObservedGeneration: cond.ObservedGeneration,
+			Reason:             cond.Reason,
+			Status:             openapi.ConditionStatus(cond.Status),
+			Type:               cond.Type,
 		}
 	}
 
-	result.Status = openapi.NodePoolStatus{
-		Phase:              openapi.ResourcePhase(string(phase)),
-		ObservedGeneration: nodePool.StatusObservedGeneration,
-		Conditions:         openapiConditions,
-		LastTransitionTime: lastTransitionTime,
-		LastUpdatedTime:    lastUpdatedTime,
+	kind := nodePool.Kind
+	result := openapi.NodePool{
+		CreatedBy:   toEmail(nodePool.CreatedBy),
+		CreatedTime: nodePool.CreatedTime,
+		Generation:  nodePool.Generation,
+		Href:        &href,
+		Id:          &nodePool.ID,
+		Kind:        &kind,
+		Labels:      &labels,
+		Name:        nodePool.Name,
+		OwnerReferences: openapi.ObjectReference{
+			Id:   &nodePool.OwnerID,
+			Kind: &nodePool.OwnerKind,
+			Href: &ownerHref,
+		},
+		Spec: spec,
+		Status: openapi.NodePoolStatus{
+			Conditions:         openapiConditions,
+			LastTransitionTime: lastTransitionTime,
+			LastUpdatedTime:    lastUpdatedTime,
+			ObservedGeneration: nodePool.StatusObservedGeneration,
+			Phase:              openapi.ResourcePhase(phase),
+		},
+		UpdatedBy:   toEmail(nodePool.UpdatedBy),
+		UpdatedTime: nodePool.UpdatedTime,
 	}
 
 	return result, nil

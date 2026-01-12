@@ -98,7 +98,7 @@ func TestValidateKind_Valid(t *testing.T) {
 	RegisterTestingT(t)
 
 	req := openapi.ClusterCreateRequest{
-		Kind: "Cluster",
+		Kind: openapi.PtrString("Cluster"),
 	}
 	validator := validateKind(&req, "Kind", "kind", "Cluster")
 	err := validator()
@@ -117,7 +117,7 @@ func TestValidateKind_Invalid(t *testing.T) {
 
 	for _, kind := range invalidKinds {
 		req := openapi.ClusterCreateRequest{
-			Kind: kind,
+			Kind: &kind,
 		}
 		validator := validateKind(&req, "Kind", "kind", "Cluster")
 		err := validator()
@@ -129,7 +129,7 @@ func TestValidateKind_Empty(t *testing.T) {
 	RegisterTestingT(t)
 
 	req := openapi.ClusterCreateRequest{
-		Kind: "",
+		Kind: openapi.PtrString(""),
 	}
 	validator := validateKind(&req, "Kind", "kind", "Cluster")
 	err := validator()
@@ -141,7 +141,7 @@ func TestValidateKind_WrongKind(t *testing.T) {
 	RegisterTestingT(t)
 
 	req := openapi.ClusterCreateRequest{
-		Kind: "WrongKind",
+		Kind: openapi.PtrString("WrongKind"),
 	}
 	validator := validateKind(&req, "Kind", "kind", "Cluster")
 	err := validator()

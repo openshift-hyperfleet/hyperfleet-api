@@ -39,7 +39,7 @@ func (h clusterHandler) Create(w http.ResponseWriter, r *http.Request) {
 		func() (interface{}, *errors.ServiceError) {
 			ctx := r.Context()
 			// Use the presenters.ConvertCluster helper to convert the request
-			clusterModel, err := presenters.ConvertCluster(&req, "system")
+			clusterModel, err := presenters.ConvertCluster(&req, "system@hyperfleet.local")
 			if err != nil {
 				return nil, errors.GeneralError("Failed to convert cluster: %v", err)
 			}

@@ -149,7 +149,7 @@ func (h clusterNodePoolsHandler) Create(w http.ResponseWriter, r *http.Request) 
 			}
 
 			// Use the presenters.ConvertNodePool helper to convert the request
-			nodePoolModel, convErr := presenters.ConvertNodePool(&req, cluster.ID, "system")
+			nodePoolModel, convErr := presenters.ConvertNodePool(&req, cluster.ID, "system@hyperfleet.local")
 			if convErr != nil {
 				return nil, errors.GeneralError("Failed to convert nodepool: %v", convErr)
 			}

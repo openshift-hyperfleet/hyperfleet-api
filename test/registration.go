@@ -10,7 +10,7 @@ import (
 
 // RegisterIntegration Register a test
 // This should be run before every integration test
-func RegisterIntegration(t *testing.T) (*Helper, *openapi.APIClient) {
+func RegisterIntegration(t *testing.T) (*Helper, *openapi.ClientWithResponses) {
 	// Register the test with gomega
 	gm.RegisterTestingT(t)
 	// Create a new helper

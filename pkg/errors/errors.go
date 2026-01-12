@@ -163,14 +163,20 @@ func (e *ServiceError) AsOpenapiError(operationID string) openapi.Error {
 
 	// Add validation details if present
 	if len(e.Details) > 0 {
-		details := make([]openapi.ErrorDetailsInner, len(e.Details))
+		details := make([]struct {
+			Error *string `json:"error,omitempty"`
+			Field *string `json:"field,omitempty"`
+		}, len(e.Details))
 		for i, detail := range e.Details {
-			details[i] = openapi.ErrorDetailsInner{
+			details[i] = struct {
+				Error *string `json:"error,omitempty"`
+				Field *string `json:"field,omitempty"`
+			}{
 				Field: openapi.PtrString(detail.Field),
 				Error: openapi.PtrString(detail.Error),
 			}
 		}
-		openapiErr.Details = details
+		openapiErr.Details = &details
 	}
 
 	return openapiErr

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"strings"
 	"sync"
@@ -261,16 +262,17 @@ func (helper *Helper) HealthCheckURL(path string) string {
 	return fmt.Sprintf("http://%s%s", helper.AppConfig.HealthCheck.BindAddress, path)
 }
 
-func (helper *Helper) NewApiClient() *openapi.APIClient {
-	config := openapi.NewConfiguration()
-	// Override the server URL to use the local test server
+func (helper *Helper) NewApiClient() *openapi.ClientWithResponses {
+	// Build the server URL
 	protocol := "http"
 	if helper.AppConfig.Server.EnableHTTPS {
 		protocol = "https"
 	}
-	config.Host = helper.AppConfig.Server.BindAddress
-	config.Scheme = protocol
-	client := openapi.NewAPIClient(config)
+	serverURL := fmt.Sprintf("%s://%s", protocol, helper.AppConfig.Server.BindAddress)
+	client, err := openapi.NewClientWithResponses(serverURL)
+	if err != nil {
+		helper.T.Fatalf("Failed to create API client: %v", err)
+	}
 	return client
 }
 
@@ -303,9 +305,34 @@ func (helper *Helper) NewAccount(username, name, email string) *amv1.Account {
 	return acct
 }
 
+// contextKeyAccessToken is a context key for storing the access token
+type contextKeyAccessToken struct{}
+
+// ContextAccessToken is the context key for access tokens (used by tests)
+var ContextAccessToken = contextKeyAccessToken{}
+
 func (helper *Helper) NewAuthenticatedContext(account *amv1.Account) context.Context {
 	tokenString := helper.CreateJWTString(account)
-	return context.WithValue(context.Background(), openapi.ContextAccessToken, tokenString)
+	return context.WithValue(context.Background(), ContextAccessToken, tokenString)
+}
+
+// GetAccessTokenFromContext extracts the access token from the context
+func GetAccessTokenFromContext(ctx context.Context) string {
+	if token, ok := ctx.Value(ContextAccessToken).(string); ok {
+		return token
+	}
+	return ""
+}
+
+// WithAuthToken returns a RequestEditorFn that adds the Authorization header from context
+func WithAuthToken(ctx context.Context) openapi.RequestEditorFn {
+	return func(_ context.Context, req *http.Request) error {
+		token := GetAccessTokenFromContext(ctx)
+		if token != "" {
+			req.Header.Set("Authorization", "Bearer "+token)
+		}
+		return nil
+	}
 }
 
 func (helper *Helper) StartJWKCertServerMock() (teardown func() error) {
@@ -554,11 +581,10 @@ func (helper *Helper) CreateJWTToken(account *amv1.Account) *jwt.Token {
 	return token
 }
 
-// OpenapiError Convert an error response from the openapi client to an openapi error struct
-func (helper *Helper) OpenapiError(err error) openapi.Error {
-	generic := err.(openapi.GenericOpenAPIError)
+// OpenapiError Convert an error response body to an openapi error struct
+func (helper *Helper) OpenapiError(body []byte) openapi.Error {
 	var exErr openapi.Error
-	jsonErr := json.Unmarshal(generic.Body(), &exErr)
+	jsonErr := json.Unmarshal(body, &exErr)
 	if jsonErr != nil {
 		helper.T.Errorf("Unable to convert error response to openapi error: %s", jsonErr)
 	}

@@ -56,9 +56,14 @@ func TestClusterNodePoolsHandler_Get(t *testing.T) {
 						CreatedTime: now,
 						UpdatedTime: now,
 					},
-					Kind:    "NodePool",
-					Name:    "test-nodepool",
-					OwnerID: clusterID,
+					Kind:             "NodePool",
+					Name:             "test-nodepool",
+					OwnerID:          clusterID,
+					Spec:             []byte("{}"),
+					Labels:           []byte("{}"),
+					StatusConditions: []byte("[]"),
+					CreatedBy:        "user@example.com",
+					UpdatedBy:        "user@example.com",
 				}, nil)
 
 				return mockClusterSvc, mockNodePoolSvc, mockGenericSvc

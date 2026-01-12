@@ -6,6 +6,7 @@ import (
 	"time"
 
 	. "github.com/onsi/gomega"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
 )
@@ -15,13 +16,13 @@ func createTestClusterRequest() *openapi.ClusterCreateRequest {
 	labels := map[string]string{"env": "test"}
 
 	return &openapi.ClusterCreateRequest{
-		Kind: "Cluster",
-		Name: "test-cluster",
+		Labels: &labels,
+		Kind:   openapi.PtrString("Cluster"),
+		Name:   "test-cluster",
 		Spec: map[string]interface{}{
 			"region":   "us-central1",
 			"provider": "gcp",
 		},
-		Labels: &labels,
 	}
 }
 
@@ -38,8 +39,8 @@ func TestConvertCluster_Complete(t *testing.T) {
 	// Verify basic fields
 	Expect(result.Kind).To(Equal("Cluster"))
 	Expect(result.Name).To(Equal("test-cluster"))
-	Expect(result.CreatedBy).To(Equal("user123"))
-	Expect(result.UpdatedBy).To(Equal("user123"))
+	Expect(result.CreatedBy).To(Equal(createdBy))
+	Expect(result.UpdatedBy).To(Equal(createdBy))
 
 	// Verify defaults
 	Expect(result.Generation).To(Equal(int32(1)))
@@ -76,10 +77,10 @@ func TestConvertCluster_WithLabels(t *testing.T) {
 	}
 
 	req := &openapi.ClusterCreateRequest{
-		Kind:   "Cluster",
+		Labels: &labels,
+		Kind:   openapi.PtrString("Cluster"),
 		Name:   "labeled-cluster",
 		Spec:   map[string]interface{}{"test": "spec"},
-		Labels: &labels,
 	}
 
 	result, err := ConvertCluster(req, "user456")
@@ -97,10 +98,10 @@ func TestConvertCluster_WithoutLabels(t *testing.T) {
 	RegisterTestingT(t)
 
 	req := &openapi.ClusterCreateRequest{
-		Kind:   "Cluster",
+		Labels: nil, // Nil labels
+		Kind:   openapi.PtrString("Cluster"),
 		Name:   "unlabeled-cluster",
 		Spec:   map[string]interface{}{"test": "spec"},
-		Labels: nil, // Nil labels
 	}
 
 	result, err := ConvertCluster(req, "user789")
@@ -129,7 +130,7 @@ func TestConvertCluster_SpecMarshaling(t *testing.T) {
 	}
 
 	req := &openapi.ClusterCreateRequest{
-		Kind: "Cluster",
+		Kind: openapi.PtrString("Cluster"),
 		Name: "complex-cluster",
 		Spec: complexSpec,
 	}
@@ -196,8 +197,8 @@ func TestPresentCluster_Complete(t *testing.T) {
 		StatusConditions:         conditionsJSON,
 		StatusLastTransitionTime: &now,
 		StatusLastUpdatedTime:    &now,
-		CreatedBy:                "user123",
-		UpdatedBy:                "user456",
+		CreatedBy:                "user123@example.com",
+		UpdatedBy:                "user456@example.com",
 	}
 	cluster.ID = "cluster-abc123"
 	cluster.CreatedTime = now
@@ -208,12 +209,12 @@ func TestPresentCluster_Complete(t *testing.T) {
 
 	// Verify basic fields
 	Expect(*result.Id).To(Equal("cluster-abc123"))
-	Expect(result.Kind).To(Equal("Cluster"))
+	Expect(*result.Kind).To(Equal("Cluster"))
 	Expect(*result.Href).To(Equal("/api/hyperfleet/v1/clusters/cluster-abc123"))
 	Expect(result.Name).To(Equal("presented-cluster"))
 	Expect(result.Generation).To(Equal(int32(10)))
-	Expect(result.CreatedBy).To(Equal("user123"))
-	Expect(result.UpdatedBy).To(Equal("user456"))
+	Expect(result.CreatedBy).To(Equal(openapi_types.Email("user123@example.com")))
+	Expect(result.UpdatedBy).To(Equal(openapi_types.Email("user456@example.com")))
 
 	// Verify Spec unmarshaled correctly
 	Expect(result.Spec["region"]).To(Equal("us-west1"))
@@ -222,11 +223,11 @@ func TestPresentCluster_Complete(t *testing.T) {
 	Expect((*result.Labels)["env"]).To(Equal("staging"))
 
 	// Verify Status
-	Expect(result.Status.Phase).To(Equal(openapi.READY))
+	Expect(result.Status.Phase).To(Equal(openapi.Ready))
 	Expect(result.Status.ObservedGeneration).To(Equal(int32(5)))
 	Expect(len(result.Status.Conditions)).To(Equal(1))
 	Expect(result.Status.Conditions[0].Type).To(Equal("Available"))
-	Expect(result.Status.Conditions[0].Status).To(Equal(openapi.TRUE))
+	Expect(result.Status.Conditions[0].Status).To(Equal(openapi.True))
 	Expect(*result.Status.Conditions[0].Reason).To(Equal("Ready"))
 
 	// Verify timestamps
@@ -274,7 +275,7 @@ func TestPresentCluster_EmptyStatusPhase(t *testing.T) {
 	Expect(err).To(BeNil())
 
 	// Should use NOT_READY as default
-	Expect(result.Status.Phase).To(Equal(openapi.NOT_READY))
+	Expect(result.Status.Phase).To(Equal(openapi.NotReady))
 }
 
 // TestPresentCluster_NilStatusTimestamps tests handling of nil timestamps
@@ -357,13 +358,13 @@ func TestPresentCluster_StatusConditionsConversion(t *testing.T) {
 
 	// First condition
 	Expect(result.Status.Conditions[0].Type).To(Equal("Available"))
-	Expect(result.Status.Conditions[0].Status).To(Equal(openapi.TRUE))
+	Expect(result.Status.Conditions[0].Status).To(Equal(openapi.True))
 	Expect(*result.Status.Conditions[0].Reason).To(Equal("Ready"))
 	Expect(*result.Status.Conditions[0].Message).To(Equal("All systems operational"))
 
 	// Second condition
 	Expect(result.Status.Conditions[1].Type).To(Equal("Progressing"))
-	Expect(result.Status.Conditions[1].Status).To(Equal(openapi.FALSE))
+	Expect(result.Status.Conditions[1].Status).To(Equal(openapi.False))
 	Expect(*result.Status.Conditions[1].Reason).To(Equal("Degraded"))
 	Expect(*result.Status.Conditions[1].Message).To(Equal("Some components unavailable"))
 }
@@ -373,9 +374,10 @@ func TestConvertAndPresentCluster_RoundTrip(t *testing.T) {
 	RegisterTestingT(t)
 
 	originalReq := createTestClusterRequest()
+	createdBy := "user999@example.com"
 
 	// Convert from OpenAPI request to domain
-	cluster, err := ConvertCluster(originalReq, "user999")
+	cluster, err := ConvertCluster(originalReq, createdBy)
 	Expect(err).To(BeNil())
 
 	// Simulate database fields (ID, timestamps)
@@ -392,8 +394,8 @@ func TestConvertAndPresentCluster_RoundTrip(t *testing.T) {
 	Expect(*result.Id).To(Equal("cluster-roundtrip-123"))
 	Expect(result.Kind).To(Equal(originalReq.Kind))
 	Expect(result.Name).To(Equal(originalReq.Name))
-	Expect(result.CreatedBy).To(Equal("user999"))
-	Expect(result.UpdatedBy).To(Equal("user999"))
+	Expect(result.CreatedBy).To(Equal(openapi_types.Email(createdBy)))
+	Expect(result.UpdatedBy).To(Equal(openapi_types.Email(createdBy)))
 
 	// Verify Spec preserved
 	Expect(result.Spec["region"]).To(Equal(originalReq.Spec["region"]))
@@ -403,7 +405,7 @@ func TestConvertAndPresentCluster_RoundTrip(t *testing.T) {
 	Expect((*result.Labels)["env"]).To(Equal((*originalReq.Labels)["env"]))
 
 	// Verify Status defaults
-	Expect(result.Status.Phase).To(Equal(openapi.NOT_READY))
+	Expect(result.Status.Phase).To(Equal(openapi.NotReady))
 	Expect(result.Status.ObservedGeneration).To(Equal(int32(0)))
 	Expect(len(result.Status.Conditions)).To(Equal(0))
 }

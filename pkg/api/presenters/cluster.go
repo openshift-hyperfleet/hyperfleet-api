@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	openapi_types "github.com/oapi-codegen/runtime/types"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
 )
@@ -33,8 +34,14 @@ func ConvertCluster(req *openapi.ClusterCreateRequest, createdBy string) (*api.C
 		return nil, fmt.Errorf("failed to marshal cluster status conditions: %w", err)
 	}
 
+	// Get Kind value, use default if not provided
+	kind := "Cluster"
+	if req.Kind != nil {
+		kind = *req.Kind
+	}
+
 	return &api.Cluster{
-		Kind:                     req.Kind,
+		Kind:                     kind,
 		Name:                     req.Name,
 		Spec:                     specJSON,
 		Labels:                   labelsJSON,
@@ -45,6 +52,11 @@ func ConvertCluster(req *openapi.ClusterCreateRequest, createdBy string) (*api.C
 		CreatedBy:                createdBy,
 		UpdatedBy:                createdBy,
 	}, nil
+}
+
+// Helper to convert string to openapi_types.Email
+func toEmail(s string) openapi_types.Email {
+	return openapi_types.Email(s)
 }
 
 // PresentCluster converts api.Cluster (GORM model) to openapi.Cluster
@@ -79,20 +91,6 @@ func PresentCluster(cluster *api.Cluster) (openapi.Cluster, error) {
 		href = "/api/hyperfleet/v1/clusters/" + cluster.ID
 	}
 
-	result := openapi.Cluster{
-		Id:          &cluster.ID,
-		Kind:        cluster.Kind,
-		Href:        &href,
-		Name:        cluster.Name,
-		Spec:        spec,
-		Labels:      &labels,
-		Generation:  cluster.Generation,
-		CreatedTime: cluster.CreatedTime,
-		UpdatedTime: cluster.UpdatedTime,
-		CreatedBy:   cluster.CreatedBy,
-		UpdatedBy:   cluster.UpdatedBy,
-	}
-
 	// Build ClusterStatus - set required fields with defaults if nil
 	lastTransitionTime := time.Time{}
 	if cluster.StatusLastTransitionTime != nil {
@@ -114,23 +112,36 @@ func PresentCluster(cluster *api.Cluster) (openapi.Cluster, error) {
 	openapiConditions := make([]openapi.ResourceCondition, len(statusConditions))
 	for i, cond := range statusConditions {
 		openapiConditions[i] = openapi.ResourceCondition{
-			ObservedGeneration: cond.ObservedGeneration,
 			CreatedTime:        cond.CreatedTime,
-			LastUpdatedTime:    cond.LastUpdatedTime,
-			Type:               cond.Type,
-			Status:             openapi.ConditionStatus(string(cond.Status)),
-			Reason:             cond.Reason,
-			Message:            cond.Message,
 			LastTransitionTime: cond.LastTransitionTime,
+			LastUpdatedTime:    cond.LastUpdatedTime,
+			Message:            cond.Message,
+			ObservedGeneration: cond.ObservedGeneration,
+			Reason:             cond.Reason,
+			Status:             openapi.ConditionStatus(cond.Status),
+			Type:               cond.Type,
 		}
 	}
 
-	result.Status = openapi.ClusterStatus{
-		Phase:              openapi.ResourcePhase(string(phase)),
-		ObservedGeneration: cluster.StatusObservedGeneration,
-		Conditions:         openapiConditions,
-		LastTransitionTime: lastTransitionTime,
-		LastUpdatedTime:    lastUpdatedTime,
+	result := openapi.Cluster{
+		CreatedBy:   toEmail(cluster.CreatedBy),
+		CreatedTime: cluster.CreatedTime,
+		Generation:  cluster.Generation,
+		Href:        &href,
+		Id:          &cluster.ID,
+		Kind:        openapi.PtrString(cluster.Kind),
+		Labels:      &labels,
+		Name:        cluster.Name,
+		Spec:        spec,
+		Status: openapi.ClusterStatus{
+			Conditions:         openapiConditions,
+			LastTransitionTime: lastTransitionTime,
+			LastUpdatedTime:    lastUpdatedTime,
+			ObservedGeneration: cluster.StatusObservedGeneration,
+			Phase:              openapi.ResourcePhase(phase),
+		},
+		UpdatedBy:   toEmail(cluster.UpdatedBy),
+		UpdatedTime: cluster.UpdatedTime,
 	}
 
 	return result, nil
