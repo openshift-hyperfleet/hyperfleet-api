@@ -223,12 +223,23 @@ test-integration: install secrets $(GOTESTSUM)
 			./test/integration
 .PHONY: test-integration
 
-# Regenerate openapi client and models
-generate:
+# Regenerate openapi types using oapi-codegen
+generate: $(OAPI_CODEGEN)
 	rm -rf pkg/api/openapi
-	$(container_tool) build -t hyperfleet-openapi -f Dockerfile.openapi .
-	$(eval OPENAPI_IMAGE_ID=`$(container_tool) create -t hyperfleet-openapi -f Dockerfile.openapi .`)
-	$(container_tool) cp $(OPENAPI_IMAGE_ID):/local/pkg/api/openapi ./pkg/api/openapi
+	mkdir -p pkg/api/openapi
+	$(OAPI_CODEGEN) --config openapi/oapi-codegen.yaml openapi/openapi.yaml
+	@printf '%s\n' \
+		'package openapi' \
+		'' \
+		'// Ptr returns a pointer to the given value.' \
+		'func Ptr[T any](v T) *T { return &v }' \
+		'' \
+		'// PtrString returns a pointer to the given string.' \
+		'func PtrString(v string) *string { return &v }' \
+		'' \
+		'// PtrInt32 returns a pointer to the given int32.' \
+		'func PtrInt32(v int32) *int32 { return &v }' \
+		> pkg/api/openapi/helpers.go
 .PHONY: generate
 
 # Generate mock implementations for service interfaces
@@ -240,14 +251,8 @@ generate-mocks: $(MOCKGEN)
 generate-all: generate generate-mocks
 .PHONY: generate-all
 
-# Regenerate openapi client and models using vendor (avoids downloading dependencies)
-generate-vendor:
-	rm -rf pkg/api/openapi
-	mkdir -p data/generated/openapi
-	$(container_tool) build -t hyperfleet-openapi-vendor -f Dockerfile.openapi.vendor .
-	$(eval OPENAPI_IMAGE_ID=`$(container_tool) create -t hyperfleet-openapi-vendor -f Dockerfile.openapi.vendor .`)
-	$(container_tool) cp $(OPENAPI_IMAGE_ID):/local/pkg/api/openapi ./pkg/api/openapi
-	$(container_tool) cp $(OPENAPI_IMAGE_ID):/local/data/generated/openapi/openapi.go ./data/generated/openapi/openapi.go
+# generate-vendor is now equivalent to generate (oapi-codegen handles dependencies)
+generate-vendor: generate
 .PHONY: generate-vendor
 
 run: build
