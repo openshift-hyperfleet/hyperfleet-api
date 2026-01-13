@@ -1,3 +1,5 @@
+ARG BASE_IMAGE=gcr.io/distroless/static-debian12:nonroot
+
 # OpenAPI generation stage
 FROM golang:1.25 AS builder
 
@@ -17,7 +19,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux make build
 
 # Runtime stage
-FROM gcr.io/distroless/static-debian12:nonroot
+FROM ${BASE_IMAGE}
 
 WORKDIR /app
 

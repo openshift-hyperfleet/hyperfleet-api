@@ -4,7 +4,8 @@
 include .bingo/Variables.mk
 
 # CGO_ENABLED=0 is not FIPS compliant. large commercial vendors and FedRAMP require FIPS compliant crypto
-CGO_ENABLED := 1
+# Use ?= to allow Dockerfile to override (CGO_ENABLED=0 for Alpine-based dev images)
+CGO_ENABLED ?= 1
 
 # Enable users to override the golang used to accomodate custom installations
 GO ?= go
@@ -274,7 +275,7 @@ run/docs:
 clean:
 	rm -rf \
 		bin \
-		pkg/api/openapi/openapi.gen.go \
+		pkg/api/openapi \
 		data/generated/openapi/*.json \
 		secrets \
 .PHONY: clean
@@ -311,7 +312,8 @@ image:
 	@echo "Building container image $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)..."
 	# --platform flag requires Docker >= 20.10 or Podman >= 3.4
 	# For older engines: use 'docker buildx build' or omit --platform
-	$(container_tool) build --platform linux/amd64 \
+	$(container_tool) build  \
+		--platform linux/amd64 \
 		--build-arg GIT_SHA=$(GIT_SHA) \
 		--build-arg GIT_DIRTY=$(GIT_DIRTY) \
 		-t $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG) .
@@ -338,7 +340,9 @@ endif
 	@echo "Building dev image quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG)..."
 	# --platform flag requires Docker >= 20.10 or Podman >= 3.4
 	# For older engines: use 'docker buildx build' or omit --platform
-	$(container_tool) build --platform linux/amd64 \
+	$(container_tool) build \
+		--platform linux/amd64 \
+		--build-arg BASE_IMAGE=alpine:3.21 \
 		--build-arg GIT_SHA=$(GIT_SHA) \
 		--build-arg GIT_DIRTY=$(GIT_DIRTY) \
 		-t quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG) .
