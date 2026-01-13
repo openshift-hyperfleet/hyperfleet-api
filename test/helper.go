@@ -18,6 +18,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/segmentio/ksuid"
 	"github.com/spf13/pflag"
+	"gorm.io/gorm"
 
 	amv1 "github.com/openshift-online/ocm-sdk-go/accountsmgmt/v1"
 
@@ -341,20 +342,136 @@ func (helper *Helper) ClearAllTables() {
 func (helper *Helper) CleanDB() error {
 	g2 := helper.DBFactory.New(context.Background())
 
-	// TODO: this list should not be static or otherwise not hard-coded here.
-	for _, table := range []string{
-		// REMOVED: "events" - Events table no longer used - no event-driven components
-		"migrations",
-	} {
+	tables, err := helper.getAllTables(g2)
+	if err != nil {
+		helper.T.Errorf("error discovering tables: %v", err)
+		return err
+	}
+
+	orderedTables, err := helper.orderTablesByDependencies(g2, tables)
+	if err != nil {
+		helper.T.Errorf("error ordering tables by dependencies: %v", err)
+		return err
+	}
+
+	for _, table := range orderedTables {
 		if g2.Migrator().HasTable(table) {
 			if err := g2.Migrator().DropTable(table); err != nil {
 				helper.T.Errorf("error dropping table %s: %v", table, err)
 				return err
 			}
 		}
-		// No error if table doesn't exist - it may not have been created yet
 	}
 	return nil
+}
+
+// System tables should not be dropped
+var systemTables = []string{"migrations"}
+
+func isSystemTable(tableName string) bool {
+	for _, sysTable := range systemTables {
+		if tableName == sysTable {
+			return true
+		}
+	}
+	return false
+}
+
+func (helper *Helper) getAllTables(g2 *gorm.DB) ([]string, error) {
+	var tables []string
+	query := `
+		SELECT tablename
+		FROM pg_tables
+		WHERE schemaname = 'public'
+		AND tablename NOT IN (?)
+		ORDER BY tablename
+	`
+	err := g2.Raw(query, systemTables).Scan(&tables).Error
+	if err != nil {
+		return nil, err
+	}
+	return tables, nil
+}
+
+// Child tables (with foreign keys) come before parent tables to ensure safe deletion
+func (helper *Helper) orderTablesByDependencies(g2 *gorm.DB, tables []string) ([]string, error) {
+	dependencies := make(map[string][]string)
+
+	for _, table := range tables {
+		deps, err := helper.getTableDependencies(g2, table)
+		if err != nil {
+			return nil, err
+		}
+
+		filteredDeps := []string{}
+		for _, dep := range deps {
+			if !isSystemTable(dep) {
+				filteredDeps = append(filteredDeps, dep)
+			}
+		}
+		dependencies[table] = filteredDeps
+	}
+
+	ordered := []string{}
+	visited := make(map[string]bool)
+	visiting := make(map[string]bool)
+
+	var visit func(string) error
+	visit = func(table string) error {
+		if visited[table] {
+			return nil
+		}
+		if visiting[table] {
+			err := fmt.Errorf("circular foreign key dependency detected involving table '%s'", table)
+			helper.T.Errorf("%v", err)
+			return err
+		}
+
+		visiting[table] = true
+		for _, dep := range dependencies[table] {
+			if err := visit(dep); err != nil {
+				return err
+			}
+		}
+		visiting[table] = false
+		visited[table] = true
+		ordered = append(ordered, table)
+		return nil
+	}
+
+	for _, table := range tables {
+		if err := visit(table); err != nil {
+			return nil, err
+		}
+	}
+
+	for i, j := 0, len(ordered)-1; i < j; i, j = i+1, j-1 {
+		ordered[i], ordered[j] = ordered[j], ordered[i]
+	}
+
+	return ordered, nil
+}
+
+func (helper *Helper) getTableDependencies(g2 *gorm.DB, tableName string) ([]string, error) {
+	var dependencies []string
+	query := `
+		SELECT DISTINCT ccu.table_name
+		FROM information_schema.table_constraints AS tc
+		JOIN information_schema.key_column_usage AS kcu
+			ON tc.constraint_name = kcu.constraint_name
+			AND tc.table_schema = kcu.table_schema
+		JOIN information_schema.constraint_column_usage AS ccu
+			ON ccu.constraint_name = tc.constraint_name
+			AND ccu.table_schema = tc.table_schema
+		WHERE tc.constraint_type = 'FOREIGN KEY'
+			AND tc.table_schema = 'public'
+			AND tc.table_name = ?
+	`
+	err := g2.Raw(query, tableName).Scan(&dependencies).Error
+	if err != nil {
+		return nil, err
+	}
+	return dependencies, nil
 }
 
 func (helper *Helper) ResetDB() error {
