@@ -91,6 +91,16 @@ pre-commit run --all-files
 make run-no-auth
 ```
 
+### Local Development (Embedded PostgreSQL via testcontainers)
+
+If you want a fully autonomous local API (no external database required), run:
+
+```bash
+make dev
+```
+
+This will start an embedded PostgreSQL (testcontainers), run migrations, and start the API with **JWT + authz disabled**.
+
 The service starts on `localhost:8000`:
 - REST API: `http://localhost:8000/api/hyperfleet/v1/`
 - OpenAPI spec: `http://localhost:8000/api/hyperfleet/v1/openapi`
@@ -180,6 +190,7 @@ make db/login      # Connect to database shell
 | `make build` | Build hyperfleet-api executable to bin/ |
 | `make test` | Run unit tests |
 | `make test-integration` | Run integration tests |
+| `make dev` | Start server with embedded PostgreSQL (testcontainers), no jwt/authz |
 | `make run-no-auth` | Start server without authentication |
 | `make run` | Start server with OCM authentication |
 | `make db/setup` | Create PostgreSQL container |

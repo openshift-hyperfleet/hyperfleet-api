@@ -10,10 +10,11 @@ import (
 )
 
 const (
-	UnitTestingEnv        string = "unit_testing"
-	IntegrationTestingEnv string = "integration_testing"
-	DevelopmentEnv        string = "development"
-	ProductionEnv         string = "production"
+	UnitTestingEnv         string = "unit_testing"
+	IntegrationTestingEnv  string = "integration_testing"
+	DevelopmentEnv         string = "development"
+	EmbeddedDevelopmentEnv string = "embedded_development"
+	ProductionEnv          string = "production"
 
 	EnvironmentStringKey string = "OCM_ENV"
 	EnvironmentDefault          = DevelopmentEnv
