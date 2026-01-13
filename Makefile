@@ -23,7 +23,7 @@ IMAGE_TAG ?= latest
 # Dev image configuration - set QUAY_USER to push to personal registry
 # Usage: QUAY_USER=myuser make image-dev
 QUAY_USER ?=
-DEV_TAG ?= dev-$(git_sha)
+DEV_TAG ?= dev-$(GIT_SHA)
 
 # Database connection details
 db_name:=hyperfleet
@@ -77,9 +77,9 @@ GO_VERSION:=go1.24.
 version:=$(shell date +%s)
 
 # Version information for ldflags
-git_sha:=$(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
-git_dirty:=$(shell git diff --quiet 2>/dev/null || echo "-modified")
-build_version:=$(git_sha)$(git_dirty)
+GIT_SHA ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+GIT_DIRTY ?= $(shell git diff --quiet 2>/dev/null || echo "-modified")
+build_version:=$(GIT_SHA)$(GIT_DIRTY)
 build_time:=$(shell date -u '+%Y-%m-%d %H:%M:%S UTC')
 ldflags=-X github.com/openshift-hyperfleet/hyperfleet-api/pkg/api.Version=$(build_version) -X 'github.com/openshift-hyperfleet/hyperfleet-api/pkg/api.BuildTime=$(build_time)'
 
@@ -274,6 +274,7 @@ run/docs:
 clean:
 	rm -rf \
 		bin \
+		pkg/api/openapi/openapi.gen.go \
 		data/generated/openapi/*.json \
 		secrets \
 .PHONY: clean
@@ -310,7 +311,10 @@ image:
 	@echo "Building container image $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)..."
 	# --platform flag requires Docker >= 20.10 or Podman >= 3.4
 	# For older engines: use 'docker buildx build' or omit --platform
-	$(container_tool) build --platform linux/amd64 -t $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG) .
+	$(container_tool) build --platform linux/amd64 \
+		--build-arg GIT_SHA=$(GIT_SHA) \
+		--build-arg GIT_DIRTY=$(GIT_DIRTY) \
+		-t $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG) .
 	@echo "✅ Image built: $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)"
 
 # Build and push container image to registry
@@ -334,7 +338,10 @@ endif
 	@echo "Building dev image quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG)..."
 	# --platform flag requires Docker >= 20.10 or Podman >= 3.4
 	# For older engines: use 'docker buildx build' or omit --platform
-	$(container_tool) build --platform linux/amd64 -t quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG) .
+	$(container_tool) build --platform linux/amd64 \
+		--build-arg GIT_SHA=$(GIT_SHA) \
+		--build-arg GIT_DIRTY=$(GIT_DIRTY) \
+		-t quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG) .
 	@echo "Pushing dev image..."
 	$(container_tool) push quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG)
 	@echo ""
