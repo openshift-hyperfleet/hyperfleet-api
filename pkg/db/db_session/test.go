@@ -6,15 +6,14 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/golang/glog"
 	"github.com/lib/pq"
-
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
+	gormlogger "gorm.io/gorm/logger"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
 type Test struct {
@@ -50,14 +49,15 @@ func NewTestFactory(config *config.DatabaseConfig) *Test {
 func (f *Test) Init(config *config.DatabaseConfig) {
 	// Only the first time
 	once.Do(func() {
+		ctx := context.Background()
 		if err := initDatabase(config, db.Migrate); err != nil {
-			glog.Errorf("error initializing test database: %s", err)
-			return
+			logger.WithError(ctx, err).Error("Error initializing test database")
+			panic(fmt.Errorf("error initializing test database: %w", err))
 		}
 
 		if err := resetDB(config); err != nil {
-			glog.Errorf("error resetting test database: %s", err)
-			return
+			logger.WithError(ctx, err).Error("Error resetting test database")
+			panic(fmt.Errorf("error resetting test database: %w", err))
 		}
 	})
 
@@ -131,7 +131,7 @@ func connect(name string, config *config.DatabaseConfig) (*sql.DB, *gorm.DB, fun
 		PrepareStmt:            false,
 		FullSaveAssociations:   false,
 		SkipDefaultTransaction: true,
-		Logger:                 logger.Default.LogMode(logger.Silent),
+		Logger:                 gormlogger.Default.LogMode(gormlogger.Silent),
 	}
 	g2, err = gorm.Open(postgres.New(postgres.Config{
 		Conn: dbx,
@@ -195,7 +195,7 @@ func (f *Test) New(ctx context.Context) *gorm.DB {
 
 	conn := f.g2.Session(&gorm.Session{
 		Context: ctx,
-		Logger:  f.g2.Logger.LogMode(logger.Silent),
+		Logger:  f.g2.Logger.LogMode(gormlogger.Silent),
 	})
 	if f.config.Debug {
 		conn = conn.Debug()

@@ -65,11 +65,20 @@ func (s *apiServer) routes() *mux.Router {
 	mainRouter := mux.NewRouter()
 	mainRouter.NotFoundHandler = http.HandlerFunc(api.SendNotFound)
 
-	// Operation ID middleware sets a relatively unique operation ID in the context of each request for debugging purposes
-	mainRouter.Use(logger.OperationIDMiddleware)
+	// Request ID middleware sets a unique request ID in the context of each request for tracing
+	mainRouter.Use(logger.RequestIDMiddleware)
+
+	// OpenTelemetry middleware (conditionally enabled)
+	// Extracts trace_id/span_id from traceparent header and adds to logger context
+	if env().Config.Logging.OTel.Enabled {
+		mainRouter.Use(middleware.OTelMiddleware)
+	}
+
+	// Initialize masking middleware once (reused across all requests)
+	masker := middleware.NewMaskingMiddleware(env().Config.Logging)
 
 	// Request logging middleware logs pertinent information about the request and response
-	mainRouter.Use(logging.RequestLoggingMiddleware)
+	mainRouter.Use(logging.RequestLoggingMiddleware(masker))
 
 	//  /api/hyperfleet
 	apiRouter := mainRouter.PathPrefix("/api/hyperfleet").Subrouter()
@@ -107,19 +116,18 @@ func registerApiMiddleware(router *mux.Router) {
 	// Initialize schema validator (non-blocking - will warn if schema not found)
 	// Use background context for initialization logging
 	ctx := context.Background()
-	log := logger.NewOCMLogger(ctx)
 
 	schemaValidator, err := validators.NewSchemaValidator(schemaPath)
 	if err != nil {
 		// Log warning but don't fail - schema validation is optional
-		log.Extra("schema_path", schemaPath).Extra("error", err.Error()).Warning("Failed to load schema validator")
-		log.Warning("Schema validation is disabled. Spec fields will not be validated.")
-		log.Info("To enable schema validation:")
-		log.Info("  - Local: Run from repo root, or set OPENAPI_SCHEMA_PATH=openapi/openapi.yaml")
-		log.Info("  - Production: Helm sets OPENAPI_SCHEMA_PATH=/etc/hyperfleet/schemas/openapi.yaml")
+		logger.With(ctx, logger.FieldSchemaPath, schemaPath).WithError(err).Warn("Failed to load schema validator")
+		logger.Warn(ctx, "Schema validation is disabled. Spec fields will not be validated.")
+		logger.Info(ctx, "To enable schema validation:")
+		logger.Info(ctx, "  - Local: Run from repo root, or set OPENAPI_SCHEMA_PATH=openapi/openapi.yaml")
+		logger.Info(ctx, "  - Production: Helm sets OPENAPI_SCHEMA_PATH=/etc/hyperfleet/schemas/openapi.yaml")
 	} else {
 		// Apply schema validation middleware
-		log.Extra("schema_path", schemaPath).Info("Schema validation enabled")
+		logger.With(ctx, logger.FieldSchemaPath, schemaPath).Info("Schema validation enabled")
 		router.Use(middleware.SchemaValidationMiddleware(schemaValidator))
 	}
 

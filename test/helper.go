@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"strings"
 	"sync"
@@ -14,7 +15,6 @@ import (
 
 	"github.com/bxcodec/faker/v3"
 	"github.com/golang-jwt/jwt/v4"
-	"github.com/golang/glog"
 	"github.com/google/uuid"
 	"github.com/segmentio/ksuid"
 	"github.com/spf13/pflag"
@@ -27,6 +27,7 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 	"github.com/openshift-hyperfleet/hyperfleet-api/test/factories"
 	"github.com/openshift-hyperfleet/hyperfleet-api/test/mocks"
 )
@@ -69,6 +70,10 @@ type Helper struct {
 
 func NewHelper(t *testing.T) *Helper {
 	once.Do(func() {
+		// Initialize logger first
+		initTestLogger()
+		ctx := context.Background()
+
 		jwtKey, jwtCA, err := parseJWTKeys()
 		if err != nil {
 			fmt.Println("Unable to read JWT keys - this may affect tests that make authenticated server requests")
@@ -77,10 +82,11 @@ func NewHelper(t *testing.T) *Helper {
 		env := environments.Environment()
 		err = env.AddFlags(pflag.CommandLine)
 		if err != nil {
-			glog.Fatalf("Unable to add environment flags: %s", err.Error())
+			logger.WithError(ctx, err).Error("Unable to add environment flags")
+			os.Exit(1)
 		}
 		if logLevel := os.Getenv("LOGLEVEL"); logLevel != "" {
-			glog.Infof("Using custom loglevel: %s", logLevel)
+			logger.With(ctx, logger.FieldLogLevel, logLevel).Info("Using custom loglevel")
 			// Intentionally ignore error from Set — acceptable for tests
 			_ = pflag.CommandLine.Set("-v", logLevel)
 		}
@@ -88,7 +94,8 @@ func NewHelper(t *testing.T) *Helper {
 
 		err = env.Initialize()
 		if err != nil {
-			glog.Fatalf("Unable to initialize testing environment: %s", err.Error())
+			logger.WithError(ctx, err).Error("Unable to initialize testing environment")
+			os.Exit(1)
 		}
 
 		helper = &Helper{
@@ -133,17 +140,19 @@ func (helper *Helper) Teardown() {
 }
 
 func (helper *Helper) startAPIServer() {
+	ctx := context.Background()
 	// Configure JWK certificate URL for API server
 	helper.Env().Config.Server.JwkCertURL = jwkURL
 	helper.APIServer = server.NewAPIServer()
 	listener, err := helper.APIServer.Listen()
 	if err != nil {
-		glog.Fatalf("Unable to start Test API server: %s", err)
+		logger.WithError(ctx, err).Error("Unable to start Test API server")
+		os.Exit(1)
 	}
 	go func() {
-		glog.V(10).Info("Test API server started")
+		logger.Debug(ctx, "Test API server started")
 		helper.APIServer.Serve(listener)
-		glog.V(10).Info("Test API server stopped")
+		logger.Debug(ctx, "Test API server stopped")
 	}()
 }
 
@@ -155,45 +164,53 @@ func (helper *Helper) stopAPIServer() error {
 }
 
 func (helper *Helper) startMetricsServer() {
+	ctx := context.Background()
 	helper.MetricsServer = server.NewMetricsServer()
 	go func() {
-		glog.V(10).Info("Test Metrics server started")
+		logger.Debug(ctx, "Test Metrics server started")
 		helper.MetricsServer.Start()
-		glog.V(10).Info("Test Metrics server stopped")
+		logger.Debug(ctx, "Test Metrics server stopped")
 	}()
 }
 
-func (helper *Helper) stopMetricsServer() {
+func (helper *Helper) stopMetricsServer() error {
 	if err := helper.MetricsServer.Stop(); err != nil {
-		glog.Fatalf("Unable to stop metrics server: %s", err.Error())
+		return fmt.Errorf("unable to stop metrics server: %s", err.Error())
 	}
+	return nil
 }
 
 func (helper *Helper) startHealthCheckServer() {
+	ctx := context.Background()
 	helper.HealthCheckServer = server.NewHealthCheckServer()
 	go func() {
-		glog.V(10).Info("Test health check server started")
+		logger.Debug(ctx, "Test health check server started")
 		helper.HealthCheckServer.Start()
-		glog.V(10).Info("Test health check server stopped")
+		logger.Debug(ctx, "Test health check server stopped")
 	}()
 }
 
 func (helper *Helper) RestartServer() {
+	ctx := context.Background()
 	if err := helper.stopAPIServer(); err != nil {
-		glog.Warningf("unable to stop api server on restart: %v", err)
+		logger.WithError(ctx, err).Warn("unable to stop api server on restart")
 	}
 	helper.startAPIServer()
-	glog.V(10).Info("Test API server restarted")
+	logger.Debug(ctx, "Test API server restarted")
 }
 
 func (helper *Helper) RestartMetricsServer() {
-	helper.stopMetricsServer()
+	ctx := context.Background()
+	if err := helper.stopMetricsServer(); err != nil {
+		logger.WithError(ctx, err).Warn("unable to stop metrics server on restart")
+	}
 	helper.startMetricsServer()
-	glog.V(10).Info("Test metrics server restarted")
+	logger.Debug(ctx, "Test metrics server restarted")
 }
 
 func (helper *Helper) Reset() {
-	glog.Infof("Reseting testing environment")
+	ctx := context.Background()
+	logger.Info(ctx, "Resetting testing environment")
 	env := environments.Environment()
 	// Reset the configuration
 	env.Config = config.NewApplicationConfig()
@@ -203,13 +220,15 @@ func (helper *Helper) Reset() {
 	// Also on reset, we don't care to be re-defining 'v' and other glog flags
 	flagset := pflag.NewFlagSet(helper.NewID(), pflag.ContinueOnError)
 	if err := env.AddFlags(flagset); err != nil {
-		glog.Fatalf("Unable to add environment flags on Reset: %s", err.Error())
+		logger.WithError(ctx, err).Error("Unable to add environment flags on Reset")
+		os.Exit(1)
 	}
 	pflag.Parse()
 
 	err := env.Initialize()
 	if err != nil {
-		glog.Fatalf("Unable to reset testing environment: %s", err.Error())
+		logger.WithError(ctx, err).Error("Unable to reset testing environment")
+		os.Exit(1)
 	}
 	helper.AppConfig = env.Config
 	helper.RestartServer()
@@ -638,4 +657,17 @@ clN6MVZZOWhMYmExMWl2TDFONFdvV2JtekFMNkJXYWJzCkMyRC9NZW5TVDIvWDZoVEt5R1hwZzNF
 ZzJoM2lMdlV0d2NObnkwaFJLc3RjNzNKbDl4UjNxWGZYS0pIMFRoVGwKcTBncQotLS0tLUVORCBD
 RVJUSUZJQ0FURS0tLS0tCg==`
 	return base64.StdEncoding.DecodeString(s)
+}
+
+// initTestLogger initializes a default logger for tests
+func initTestLogger() {
+	cfg := &logger.LogConfig{
+		Level:     slog.LevelInfo,
+		Format:    logger.FormatText, // Use text format for test readability
+		Output:    os.Stdout,
+		Component: "hyperfleet-api-test",
+		Version:   "test",
+		Hostname:  "test-host",
+	}
+	logger.InitGlobalLogger(cfg)
 }

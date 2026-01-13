@@ -55,7 +55,6 @@ type listContext struct {
 	args             *ListArguments
 	username         string
 	pagingMeta       *api.PagingMeta
-	ulog             *logger.OCMLogger
 	resourceList     interface{}
 	disallowedFields *map[string]string
 	resourceType     string
@@ -65,7 +64,6 @@ type listContext struct {
 }
 
 func (s *sqlGenericService) newListContext(ctx context.Context, username string, args *ListArguments, resourceList interface{}) (*listContext, interface{}, *errors.ServiceError) {
-	log := logger.NewOCMLogger(ctx)
 	resourceModel := reflect.TypeOf(resourceList).Elem().Elem()
 	resourceTypeStr := resourceModel.Name()
 	if resourceTypeStr == "" {
@@ -81,7 +79,6 @@ func (s *sqlGenericService) newListContext(ctx context.Context, username string,
 		args:             args,
 		username:         username,
 		pagingMeta:       &api.PagingMeta{Page: args.Page},
-		ulog:             &log,
 		resourceList:     resourceList,
 		disallowedFields: &disallowedFields,
 		resourceType:     resourceTypeStr,
@@ -236,7 +233,6 @@ func (s *sqlGenericService) addJoins(listCtx *listContext, d *dao.GenericDao) {
 
 func (s *sqlGenericService) loadList(listCtx *listContext, d *dao.GenericDao) *errors.ServiceError {
 	args := listCtx.args
-	ulog := *listCtx.ulog
 
 	(*d).Count(listCtx.resourceList, &listCtx.pagingMeta.Total)
 
@@ -247,13 +243,13 @@ func (s *sqlGenericService) loadList(listCtx *listContext, d *dao.GenericDao) *e
 
 	switch {
 	case args.Size > MaxListSize:
-		ulog.Warning("A query with a size greater than the maximum was requested.")
+		logger.Warn(listCtx.ctx, "A query with a size greater than the maximum was requested.")
 	case args.Size < 0:
-		ulog.Warning("A query with an unbound size was requested.")
+		logger.Warn(listCtx.ctx, "A query with an unbound size was requested.")
 	case args.Size == 0:
 		// This early return is not only performant, but also necessary.
 		// gorm does not support Limit(0) any longer.
-		ulog.Infof("A query with 0 size requested, returning early without collecting any resources from database")
+		logger.Info(listCtx.ctx, "A query with 0 size requested, returning early without collecting any resources from database")
 		return nil
 	}
 

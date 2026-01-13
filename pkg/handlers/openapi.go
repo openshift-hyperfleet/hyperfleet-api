@@ -1,12 +1,13 @@
 package handlers
 
 import (
+	"context"
 	"embed"
 	"io/fs"
 	"net/http"
 
 	"github.com/ghodss/yaml"
-	"github.com/golang/glog"
+
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
@@ -21,6 +22,7 @@ type openAPIHandler struct {
 }
 
 func NewOpenAPIHandler() (*openAPIHandler, error) {
+	ctx := context.Background()
 	// Load the fully resolved OpenAPI spec from embedded filesystem
 	resolvedData, err := api.GetOpenAPISpec()
 	if err != nil {
@@ -38,7 +40,7 @@ func NewOpenAPIHandler() (*openAPIHandler, error) {
 			err,
 		)
 	}
-	glog.Info("Loaded fully resolved OpenAPI specification from embedded pkg/api/openapi/api/openapi.yaml")
+	logger.Info(ctx, "Loaded fully resolved OpenAPI specification from embedded pkg/api/openapi/api/openapi.yaml")
 
 	// Load the OpenAPI UI HTML content
 	uiContent, err := fs.ReadFile(openapiui, "openapi-ui.html")
@@ -48,7 +50,7 @@ func NewOpenAPIHandler() (*openAPIHandler, error) {
 			err,
 		)
 	}
-	glog.Info("Loaded OpenAPI UI HTML from embedded file")
+	logger.Info(ctx, "Loaded OpenAPI UI HTML from embedded file")
 
 	return &openAPIHandler{
 		openAPIDefinitions: data,
@@ -61,9 +63,11 @@ func (h *openAPIHandler) GetOpenAPI(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	if _, err := w.Write(h.openAPIDefinitions); err != nil {
 		// Response already committed, can't report error
-		log := logger.NewOCMLogger(r.Context())
-		log.Extra("endpoint", r.URL.Path).Extra("method", r.Method).Extra("status_code", http.StatusOK).
-			Extra("error", err.Error()).Error("Failed to write OpenAPI specification response")
+		logger.With(r.Context(),
+			logger.HTTPPath(r.URL.Path),
+			logger.HTTPMethod(r.Method),
+			logger.HTTPStatusCode(http.StatusOK),
+		).WithError(err).Error("Failed to write OpenAPI specification response")
 		return
 	}
 }
@@ -73,9 +77,11 @@ func (h *openAPIHandler) GetOpenAPIUI(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	if _, err := w.Write(h.uiContent); err != nil {
 		// Response already committed, can't report error
-		log := logger.NewOCMLogger(r.Context())
-		log.Extra("endpoint", r.URL.Path).Extra("method", r.Method).Extra("status_code", http.StatusOK).
-			Extra("error", err.Error()).Error("Failed to write OpenAPI UI response")
+		logger.With(r.Context(),
+			logger.HTTPPath(r.URL.Path),
+			logger.HTTPMethod(r.Method),
+			logger.HTTPStatusCode(http.StatusOK),
+		).WithError(err).Error("Failed to write OpenAPI UI response")
 		return
 	}
 }

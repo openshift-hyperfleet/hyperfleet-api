@@ -2,12 +2,13 @@ package db
 
 import (
 	"context"
+	"os"
 
 	"github.com/go-gormigrate/gormigrate/v2"
-	"github.com/golang/glog"
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db/migrations"
-
 	"gorm.io/gorm"
+
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db/migrations"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
 // gormigrate is a wrapper for gorm's migration functions that adds schema versioning and rollback capabilities.
@@ -26,11 +27,13 @@ func Migrate(g2 *gorm.DB) error {
 // schema based on the most recent migration
 // This should be for testing purposes mainly
 func MigrateTo(sessionFactory SessionFactory, migrationID string) {
-	g2 := sessionFactory.New(context.Background())
+	ctx := context.Background()
+	g2 := sessionFactory.New(ctx)
 	m := newGormigrate(g2)
 
 	if err := m.MigrateTo(migrationID); err != nil {
-		glog.Fatalf("Could not migrate: %v", err)
+		logger.With(ctx, logger.FieldMigrationID, migrationID).WithError(err).Error("Could not migrate")
+		os.Exit(1)
 	}
 }
 

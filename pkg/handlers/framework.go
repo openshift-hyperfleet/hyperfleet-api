@@ -29,15 +29,20 @@ type errorHandlerFunc func(r *http.Request, w http.ResponseWriter, err *errors.S
 type httpAction func() (interface{}, *errors.ServiceError)
 
 func handleError(r *http.Request, w http.ResponseWriter, err *errors.ServiceError) {
-	log := logger.NewOCMLogger(r.Context())
-	operationID := logger.GetOperationID(r.Context())
+	requestID, _ := logger.GetRequestID(r.Context())
 	// If this is a 400 error, its the user's issue, log as info rather than error
 	if err.HttpCode >= 400 && err.HttpCode <= 499 {
-		log.Infof(err.Error())
+		logger.With(r.Context(),
+			"code", err.Code,
+			"http_code", err.HttpCode,
+			"reason", err.Reason).Info("Client error response")
 	} else {
-		log.Error(err.Error())
+		logger.With(r.Context(),
+			"code", err.Code,
+			"http_code", err.HttpCode,
+			"reason", err.Reason).Error("Server error response")
 	}
-	writeJSONResponse(w, r, err.HttpCode, err.AsOpenapiError(operationID))
+	writeJSONResponse(w, r, err.HttpCode, err.AsOpenapiError(requestID))
 }
 
 func handle(w http.ResponseWriter, r *http.Request, cfg *handlerConfig, httpStatus int) {

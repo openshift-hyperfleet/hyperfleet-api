@@ -1,16 +1,18 @@
 package environments
 
 import (
+	"context"
+	"fmt"
 	"os"
 	"strings"
 
-	"github.com/golang/glog"
 	"github.com/spf13/pflag"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/environments/registry"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/client/ocm"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
 func init() {
@@ -64,25 +66,31 @@ func (e *Env) AddFlags(flags *pflag.FlagSet) error {
 // This should be called after the e.Config has been set appropriately though AddFlags and pasing, done elsewhere
 // The environment does NOT handle flag parsing
 func (e *Env) Initialize() error {
-	glog.Infof("Initializing %s environment", e.Name)
+	ctx := context.Background()
+	logger.With(ctx, logger.FieldEnvironment, e.Name).Info("Initializing environment")
 
 	envImpl, found := environments[e.Name]
 	if !found {
-		glog.Fatalf("Unknown runtime environment: %s", e.Name)
+		logger.With(ctx, logger.FieldEnvironment, e.Name).Error("Unknown runtime environment")
+		os.Exit(1)
 	}
 
 	if err := envImpl.OverrideConfig(e.Config); err != nil {
-		glog.Fatalf("Failed to configure ApplicationConfig: %s", err)
+		logger.WithError(ctx, err).Error("Failed to configure ApplicationConfig")
+		os.Exit(1)
 	}
 
 	messages := environment.Config.ReadFiles()
 	if len(messages) != 0 {
-		glog.Fatalf("unable to read configuration files:\n%s", strings.Join(messages, "\n"))
+		err := fmt.Errorf("%s", strings.Join(messages, "\n"))
+		logger.WithError(ctx, err).Error("Unable to read configuration files")
+		os.Exit(1)
 	}
 
 	// each env will set db explicitly because the DB impl has a `once` init section
 	if err := envImpl.OverrideDatabase(&e.Database); err != nil {
-		glog.Fatalf("Failed to configure Database: %s", err)
+		logger.WithError(ctx, err).Error("Failed to configure Database")
+		os.Exit(1)
 	}
 
 	err := e.LoadClients()
@@ -90,12 +98,14 @@ func (e *Env) Initialize() error {
 		return err
 	}
 	if err := envImpl.OverrideClients(&e.Clients); err != nil {
-		glog.Fatalf("Failed to configure Clients: %s", err)
+		logger.WithError(ctx, err).Error("Failed to configure Clients")
+		os.Exit(1)
 	}
 
 	e.LoadServices()
 	if err := envImpl.OverrideServices(&e.Services); err != nil {
-		glog.Fatalf("Failed to configure Services: %s", err)
+		logger.WithError(ctx, err).Error("Failed to configure Services")
+		os.Exit(1)
 	}
 
 	seedErr := e.Seed()
@@ -104,7 +114,8 @@ func (e *Env) Initialize() error {
 	}
 
 	if err := envImpl.OverrideHandlers(&e.Handlers); err != nil {
-		glog.Fatalf("Failed to configure Handlers: %s", err)
+		logger.WithError(ctx, err).Error("Failed to configure Handlers")
+		os.Exit(1)
 	}
 
 	return nil
@@ -123,6 +134,7 @@ func (e *Env) LoadServices() {
 }
 
 func (e *Env) LoadClients() error {
+	ctx := context.Background()
 	var err error
 
 	ocmConfig := ocm.Config{
@@ -136,13 +148,13 @@ func (e *Env) LoadClients() error {
 
 	// Create OCM Authz client
 	if e.Config.OCM.EnableMock {
-		glog.Infof("Using Mock OCM Authz Client")
+		logger.Info(ctx, "Using Mock OCM Authz Client")
 		e.Clients.OCM, err = ocm.NewClientMock(ocmConfig)
 	} else {
 		e.Clients.OCM, err = ocm.NewClient(ocmConfig)
 	}
 	if err != nil {
-		glog.Errorf("Unable to create OCM Authz client: %s", err.Error())
+		logger.WithError(ctx, err).Error("Unable to create OCM Authz client")
 		return err
 	}
 
@@ -150,22 +162,24 @@ func (e *Env) LoadClients() error {
 }
 
 func (e *Env) Teardown() {
+	ctx := context.Background()
 	if e.Database.SessionFactory != nil {
 		if err := e.Database.SessionFactory.Close(); err != nil {
-			glog.Errorf("Error closing database session factory: %s", err.Error())
+			logger.WithError(ctx, err).Error("Error closing database session factory")
 		}
 	}
 	if e.Clients.OCM != nil {
 		if err := e.Clients.OCM.Close(); err != nil {
-			glog.Errorf("Error closing OCM client: %v", err)
+			logger.WithError(ctx, err).Error("Error closing OCM client")
 		}
 	}
 }
 
 func setConfigDefaults(flags *pflag.FlagSet, defaults map[string]string) error {
+	ctx := context.Background()
 	for name, value := range defaults {
 		if err := flags.Set(name, value); err != nil {
-			glog.Errorf("Error setting flag %s: %v", name, err)
+			logger.With(ctx, logger.FieldFlag, name).WithError(err).Error("Error setting flag")
 			return err
 		}
 	}

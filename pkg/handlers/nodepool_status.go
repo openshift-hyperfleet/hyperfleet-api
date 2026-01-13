@@ -29,7 +29,7 @@ func (h nodePoolStatusHandler) List(w http.ResponseWriter, r *http.Request) {
 	cfg := &handlerConfig{
 		Action: func() (interface{}, *errors.ServiceError) {
 			ctx := r.Context()
-			nodePoolID := mux.Vars(r)["nodepool_id"]
+			nodePoolID := mux.Vars(r)[logger.FieldNodePoolID]
 			listArgs := services.NewListArguments(r.URL.Query())
 
 			// Fetch adapter statuses with pagination
@@ -75,7 +75,7 @@ func (h nodePoolStatusHandler) Create(w http.ResponseWriter, r *http.Request) {
 		},
 		func() (interface{}, *errors.ServiceError) {
 			ctx := r.Context()
-			nodePoolID := mux.Vars(r)["nodepool_id"]
+			nodePoolID := mux.Vars(r)[logger.FieldNodePoolID]
 
 			// Verify nodepool exists
 			_, err := h.nodePoolService.Get(ctx, nodePoolID)
@@ -98,8 +98,7 @@ func (h nodePoolStatusHandler) Create(w http.ResponseWriter, r *http.Request) {
 			// Trigger status aggregation
 			if _, aggregateErr := h.nodePoolService.UpdateNodePoolStatusFromAdapters(ctx, nodePoolID); aggregateErr != nil {
 				// Log error but don't fail the request - the status will be computed on next update
-				log := logger.NewOCMLogger(ctx)
-				log.Extra("nodepool_id", nodePoolID).Extra("error", aggregateErr).Warning("Failed to aggregate nodepool status")
+				logger.With(ctx, logger.FieldNodePoolID, nodePoolID).WithError(aggregateErr).Warn("Failed to aggregate nodepool status")
 			}
 
 			status, presErr := presenters.PresentAdapterStatus(adapterStatus)
