@@ -9,6 +9,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/util"
 	"github.com/openshift-hyperfleet/hyperfleet-api/test"
 )
 
@@ -45,7 +46,7 @@ func TestClusterStatusPost(t *testing.T) {
 			{
 				Type:   "Ready",
 				Status: openapi.True,
-				Reason: openapi.PtrString("AdapterReady"),
+				Reason: util.PtrString("AdapterReady"),
 			},
 		},
 		&data,
@@ -121,7 +122,7 @@ func TestNodePoolStatusPost(t *testing.T) {
 			{
 				Type:   "Ready",
 				Status: openapi.False,
-				Reason: openapi.PtrString("Initializing"),
+				Reason: util.PtrString("Initializing"),
 			},
 		},
 		&data,
@@ -237,7 +238,7 @@ func TestAdapterStatusIdempotency(t *testing.T) {
 			{
 				Type:   "Ready",
 				Status: openapi.False,
-				Reason: openapi.PtrString("Initializing"),
+				Reason: util.PtrString("Initializing"),
 			},
 		},
 		&data1,
@@ -261,7 +262,7 @@ func TestAdapterStatusIdempotency(t *testing.T) {
 			{
 				Type:   "Ready",
 				Status: openapi.True,
-				Reason: openapi.PtrString("AdapterReady"),
+				Reason: util.PtrString("AdapterReady"),
 			},
 		},
 		&data2,

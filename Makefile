@@ -229,18 +229,6 @@ generate: $(OAPI_CODEGEN)
 	rm -rf pkg/api/openapi
 	mkdir -p pkg/api/openapi
 	$(OAPI_CODEGEN) --config openapi/oapi-codegen.yaml openapi/openapi.yaml
-	@printf '%s\n' \
-		'package openapi' \
-		'' \
-		'// Ptr returns a pointer to the given value.' \
-		'func Ptr[T any](v T) *T { return &v }' \
-		'' \
-		'// PtrString returns a pointer to the given string.' \
-		'func PtrString(v string) *string { return &v }' \
-		'' \
-		'// PtrInt32 returns a pointer to the given int32.' \
-		'func PtrInt32(v int32) *int32 { return &v }' \
-		> pkg/api/openapi/helpers.go
 .PHONY: generate
 
 # Generate mock implementations for service interfaces

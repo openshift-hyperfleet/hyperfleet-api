@@ -54,3 +54,6 @@ func GetAccountIDFromContext(ctx context.Context) string {
 	}
 	return fmt.Sprintf("%v", accountID)
 }
+
+// PtrString returns a pointer to the given string.
+func PtrString(v string) *string { return &v }

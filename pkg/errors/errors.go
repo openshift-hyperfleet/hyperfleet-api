@@ -8,6 +8,7 @@ import (
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/util"
 )
 
 const (
@@ -153,12 +154,12 @@ func (e *ServiceError) IsForbidden() bool {
 
 func (e *ServiceError) AsOpenapiError(operationID string) openapi.Error {
 	openapiErr := openapi.Error{
-		Kind:        openapi.PtrString("Error"),
-		Id:          openapi.PtrString(strconv.Itoa(int(e.Code))),
+		Kind:        util.PtrString("Error"),
+		Id:          util.PtrString(strconv.Itoa(int(e.Code))),
 		Href:        Href(e.Code),
 		Code:        CodeStr(e.Code),
-		Reason:      openapi.PtrString(e.Reason),
-		OperationId: openapi.PtrString(operationID),
+		Reason:      util.PtrString(e.Reason),
+		OperationId: util.PtrString(operationID),
 	}
 
 	// Add validation details if present
@@ -172,8 +173,8 @@ func (e *ServiceError) AsOpenapiError(operationID string) openapi.Error {
 				Error *string `json:"error,omitempty"`
 				Field *string `json:"field,omitempty"`
 			}{
-				Field: openapi.PtrString(detail.Field),
-				Error: openapi.PtrString(detail.Error),
+				Field: util.PtrString(detail.Field),
+				Error: util.PtrString(detail.Error),
 			}
 		}
 		openapiErr.Details = &details
@@ -183,11 +184,11 @@ func (e *ServiceError) AsOpenapiError(operationID string) openapi.Error {
 }
 
 func CodeStr(code ServiceErrorCode) *string {
-	return openapi.PtrString(fmt.Sprintf("%s-%d", ErrorCodePrefix, code))
+	return util.PtrString(fmt.Sprintf("%s-%d", ErrorCodePrefix, code))
 }
 
 func Href(code ServiceErrorCode) *string {
-	return openapi.PtrString(fmt.Sprintf("%s%d", ErrorHref, code))
+	return util.PtrString(fmt.Sprintf("%s%d", ErrorHref, code))
 }
 
 func NotFound(reason string, values ...interface{}) *ServiceError {

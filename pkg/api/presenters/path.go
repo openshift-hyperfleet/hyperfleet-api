@@ -3,8 +3,8 @@ package presenters
 import (
 	"fmt"
 
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/util"
 )
 
 type PathMappingFunc func(interface{}) string
@@ -31,7 +31,7 @@ const (
 )
 
 func ObjectPath(id string, obj interface{}) *string {
-	return openapi.PtrString(fmt.Sprintf("%s/%s/%s", BasePath, path(obj), id))
+	return util.PtrString(fmt.Sprintf("%s/%s/%s", BasePath, path(obj), id))
 }
 
 func path(i interface{}) string {

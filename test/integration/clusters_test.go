@@ -15,6 +15,7 @@ import (
 	"gopkg.in/resty.v1"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/util"
 	"github.com/openshift-hyperfleet/hyperfleet-api/test"
 )
 
@@ -58,7 +59,7 @@ func TestClusterPost(t *testing.T) {
 
 	// POST responses per openapi spec: 201, 409, 500
 	clusterInput := openapi.ClusterCreateRequest{
-		Kind: openapi.PtrString("Cluster"),
+		Kind: util.PtrString("Cluster"),
 		Name: "test-name",
 		Spec: map[string]interface{}{"test": "spec"},
 	}
@@ -212,7 +213,7 @@ func TestClusterDuplicateNames(t *testing.T) {
 
 	// Create first cluster with a specific name
 	clusterInput := openapi.ClusterCreateRequest{
-		Kind: openapi.PtrString("Cluster"),
+		Kind: util.PtrString("Cluster"),
 		Name: "duplicate-name-test",
 		Spec: map[string]interface{}{"test": "spec1"},
 	}
@@ -248,7 +249,7 @@ func TestClusterBoundaryValues(t *testing.T) {
 	}
 
 	longNameInput := openapi.ClusterCreateRequest{
-		Kind: openapi.PtrString("Cluster"),
+		Kind: util.PtrString("Cluster"),
 		Name: longName,
 		Spec: map[string]interface{}{"test": "spec"},
 	}
@@ -261,7 +262,7 @@ func TestClusterBoundaryValues(t *testing.T) {
 	// Test exceeding max length (64 characters should fail)
 	tooLongName := longName + "a"
 	tooLongInput := openapi.ClusterCreateRequest{
-		Kind: openapi.PtrString("Cluster"),
+		Kind: util.PtrString("Cluster"),
 		Name: tooLongName,
 		Spec: map[string]interface{}{"test": "spec"},
 	}
@@ -271,7 +272,7 @@ func TestClusterBoundaryValues(t *testing.T) {
 
 	// Test 2: Empty name
 	emptyNameInput := openapi.ClusterCreateRequest{
-		Kind: openapi.PtrString("Cluster"),
+		Kind: util.PtrString("Cluster"),
 		Name: "",
 		Spec: map[string]interface{}{"test": "spec"},
 	}
@@ -287,7 +288,7 @@ func TestClusterBoundaryValues(t *testing.T) {
 	}
 
 	largeSpecInput := openapi.ClusterCreateRequest{
-		Kind: openapi.PtrString("Cluster"),
+		Kind: util.PtrString("Cluster"),
 		Name: "large-spec-test",
 		Spec: largeSpec,
 	}
@@ -303,7 +304,7 @@ func TestClusterBoundaryValues(t *testing.T) {
 
 	// Test 4: Unicode in name (should be rejected - pattern only allows [a-z0-9-])
 	unicodeNameInput := openapi.ClusterCreateRequest{
-		Kind: openapi.PtrString("Cluster"),
+		Kind: util.PtrString("Cluster"),
 		Name: "テスト-δοκιμή-🚀",
 		Spec: map[string]interface{}{"test": "spec"},
 	}
@@ -330,7 +331,7 @@ func TestClusterSchemaValidation(t *testing.T) {
 	}
 
 	validInput := openapi.ClusterCreateRequest{
-		Kind: openapi.PtrString("Cluster"),
+		Kind: util.PtrString("Cluster"),
 		Name: "schema-valid-test",
 		Spec: validSpec,
 	}
@@ -371,7 +372,7 @@ func TestClusterSchemaValidation(t *testing.T) {
 
 	// Test 3: Empty spec (should be valid as spec is optional in base schema)
 	emptySpecInput := openapi.ClusterCreateRequest{
-		Kind: openapi.PtrString("Cluster"),
+		Kind: util.PtrString("Cluster"),
 		Name: "schema-empty-spec",
 		Spec: map[string]interface{}{},
 	}
@@ -413,7 +414,7 @@ func TestClusterSchemaValidationWithProviderSchema(t *testing.T) {
 	}
 
 	invalidInput := openapi.ClusterCreateRequest{
-		Kind: openapi.PtrString("Cluster"),
+		Kind: util.PtrString("Cluster"),
 		Name: "provider-schema-invalid",
 		Spec: invalidSpec,
 	}
@@ -517,7 +518,7 @@ func TestClusterList_DefaultSorting(t *testing.T) {
 	var createdClusters []openapi.Cluster
 	for i := 1; i <= 3; i++ {
 		clusterInput := openapi.ClusterCreateRequest{
-			Kind: openapi.PtrString("Cluster"),
+			Kind: util.PtrString("Cluster"),
 			Name: fmt.Sprintf("sort-test-%d-%s", i, strings.ToLower(h.NewID())),
 			Spec: map[string]interface{}{"test": fmt.Sprintf("value-%d", i)},
 		}
@@ -576,7 +577,7 @@ func TestClusterList_OrderByName(t *testing.T) {
 
 	for _, name := range names {
 		clusterInput := openapi.ClusterCreateRequest{
-			Kind: openapi.PtrString("Cluster"),
+			Kind: util.PtrString("Cluster"),
 			Name: name,
 			Spec: map[string]interface{}{"test": "value"},
 		}
@@ -632,7 +633,7 @@ func TestClusterList_OrderByNameDesc(t *testing.T) {
 
 	for _, name := range names {
 		clusterInput := openapi.ClusterCreateRequest{
-			Kind: openapi.PtrString("Cluster"),
+			Kind: util.PtrString("Cluster"),
 			Name: name,
 			Spec: map[string]interface{}{"test": "value"},
 		}

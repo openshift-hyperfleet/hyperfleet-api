@@ -8,6 +8,7 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/util"
 )
 
 // ConvertCluster converts openapi.ClusterCreateRequest to api.Cluster (GORM model)
@@ -129,7 +130,7 @@ func PresentCluster(cluster *api.Cluster) (openapi.Cluster, error) {
 		Generation:  cluster.Generation,
 		Href:        &href,
 		Id:          &cluster.ID,
-		Kind:        openapi.PtrString(cluster.Kind),
+		Kind:        util.PtrString(cluster.Kind),
 		Labels:      &labels,
 		Name:        cluster.Name,
 		Spec:        spec,
