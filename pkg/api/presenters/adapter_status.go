@@ -103,7 +103,15 @@ func PresentAdapterStatus(adapterStatus *api.AdapterStatus) (openapi.AdapterStat
 	}
 
 	// Unmarshal Metadata - inline struct type
-	var metadata *struct {
+	var metadata *api.AdapterStatusMetadata
+
+	if len(adapterStatus.Metadata) > 0 {
+		if err := json.Unmarshal(adapterStatus.Metadata, &metadata); err != nil {
+			return openapi.AdapterStatus{}, fmt.Errorf("failed to unmarshal adapter status metadata: %w", err)
+		}
+	}
+
+	var openapiMetadata *struct {
 		Attempt       *int32     `json:"attempt,omitempty"`
 		CompletedTime *time.Time `json:"completed_time,omitempty"`
 		Duration      *string    `json:"duration,omitempty"`
@@ -111,9 +119,22 @@ func PresentAdapterStatus(adapterStatus *api.AdapterStatus) (openapi.AdapterStat
 		JobNamespace  *string    `json:"job_namespace,omitempty"`
 		StartedTime   *time.Time `json:"started_time,omitempty"`
 	}
-	if len(adapterStatus.Metadata) > 0 {
-		if err := json.Unmarshal(adapterStatus.Metadata, &metadata); err != nil {
-			return openapi.AdapterStatus{}, fmt.Errorf("failed to unmarshal adapter status metadata: %w", err)
+
+	if metadata != nil {
+		openapiMetadata = &struct {
+			Attempt       *int32     `json:"attempt,omitempty"`
+			CompletedTime *time.Time `json:"completed_time,omitempty"`
+			Duration      *string    `json:"duration,omitempty"`
+			JobName       *string    `json:"job_name,omitempty"`
+			JobNamespace  *string    `json:"job_namespace,omitempty"`
+			StartedTime   *time.Time `json:"started_time,omitempty"`
+		}{
+			Attempt:       metadata.Attempt,
+			CompletedTime: metadata.CompletedTime,
+			Duration:      metadata.Duration,
+			JobName:       metadata.JobName,
+			JobNamespace:  metadata.JobNamespace,
+			StartedTime:   metadata.StartedTime,
 		}
 	}
 
@@ -134,7 +155,7 @@ func PresentAdapterStatus(adapterStatus *api.AdapterStatus) (openapi.AdapterStat
 		CreatedTime:        createdTime,
 		Data:               &data,
 		LastReportTime:     lastReportTime,
-		Metadata:           metadata,
+		Metadata:           openapiMetadata,
 		ObservedGeneration: adapterStatus.ObservedGeneration,
 	}, nil
 }

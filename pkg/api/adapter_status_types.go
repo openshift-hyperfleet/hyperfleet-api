@@ -29,8 +29,19 @@ type AdapterStatus struct {
 	Metadata   datatypes.JSON `json:"metadata,omitempty" gorm:"type:jsonb"`
 }
 
-type AdapterStatusList []*AdapterStatus
-type AdapterStatusIndex map[string]*AdapterStatus
+type AdapterStatusMetadata struct {
+	Attempt       *int32     `json:"attempt,omitempty"`
+	CompletedTime *time.Time `json:"completed_time,omitempty"`
+	Duration      *string    `json:"duration,omitempty"`
+	JobName       *string    `json:"job_name,omitempty"`
+	JobNamespace  *string    `json:"job_namespace,omitempty"`
+	StartedTime   *time.Time `json:"started_time,omitempty"`
+}
+
+type (
+	AdapterStatusList  []*AdapterStatus
+	AdapterStatusIndex map[string]*AdapterStatus
+)
 
 func (l AdapterStatusList) Index() AdapterStatusIndex {
 	index := AdapterStatusIndex{}
