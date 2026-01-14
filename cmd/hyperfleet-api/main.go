@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"io"
 	"log/slog"
 	"os"
 
@@ -46,11 +47,36 @@ func main() {
 
 // initDefaultLogger initializes a default logger with INFO level
 // This ensures logging works before environment/config is loaded
+// Reads LOG_LEVEL and LOG_FORMAT from environment variables if set
 func initDefaultLogger() {
+	// Read log level from environment with default fallback
+	level := slog.LevelInfo
+	if levelStr := os.Getenv("LOG_LEVEL"); levelStr != "" {
+		if parsed, err := logger.ParseLogLevel(levelStr); err == nil {
+			level = parsed
+		}
+	}
+
+	// Read log format from environment with default fallback
+	format := logger.FormatJSON
+	if formatStr := os.Getenv("LOG_FORMAT"); formatStr != "" {
+		if parsed, err := logger.ParseLogFormat(formatStr); err == nil {
+			format = parsed
+		}
+	}
+
+	// Read log output from environment with default fallback
+	var output io.Writer = os.Stdout
+	if outputStr := os.Getenv("LOG_OUTPUT"); outputStr != "" {
+		if parsed, err := logger.ParseLogOutput(outputStr); err == nil {
+			output = parsed
+		}
+	}
+
 	cfg := &logger.LogConfig{
-		Level:     slog.LevelInfo,
-		Format:    logger.FormatJSON,
-		Output:    os.Stdout,
+		Level:     level,
+		Format:    format,
+		Output:    output,
 		Component: "hyperfleet-api",
 		Version:   "unknown",
 		Hostname:  getHostname(),

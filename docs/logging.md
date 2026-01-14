@@ -67,6 +67,10 @@ export MASKING_HEADERS="Authorization,Cookie,X-API-Key"
 
 # JSON body fields to mask (comma-separated)
 export MASKING_FIELDS="password,token,secret,api_key"
+
+# Database debug mode (true/false)
+# When true, logs all SQL queries regardless of LOG_LEVEL
+export DB_DEBUG=false
 ```
 
 ### Configuration Struct
@@ -251,6 +255,97 @@ export LOG_LEVEL=info
 
 No code changes required - the logger automatically adapts output format based on configuration.
 
+## Database Logging
+
+HyperFleet API automatically integrates database (GORM) logging with the application's `LOG_LEVEL` configuration while providing a `DB_DEBUG` override for database-specific debugging.
+
+### LOG_LEVEL Integration
+
+Database logs follow the application log level by default:
+
+| LOG_LEVEL | GORM Behavior | What Gets Logged |
+|-----------|---------------|------------------|
+| `debug` | Info level | All SQL queries with parameters, duration, and row counts |
+| `info` | Warn level | Only slow queries (>200ms) and errors |
+| `warn` | Warn level | Only slow queries (>200ms) and errors |
+| `error` | Silent | Nothing (database logging disabled) |
+
+### DB_DEBUG Override
+
+The `DB_DEBUG` environment variable provides database-specific debugging without changing the global `LOG_LEVEL`:
+
+```bash
+# Production environment with database debugging
+export LOG_LEVEL=info          # Application logs remain at INFO
+export LOG_FORMAT=json          # Production format
+export DB_DEBUG=true            # Force all SQL queries to be logged
+./bin/hyperfleet-api serve
+```
+
+**Priority:**
+1. If `DB_DEBUG=true`, all SQL queries are logged (GORM Info level)
+2. Otherwise, follow `LOG_LEVEL` mapping (see table above)
+
+### Database Log Examples
+
+**Fast query (LOG_LEVEL=debug or DB_DEBUG=true):**
+
+JSON format:
+```json
+{
+  "timestamp": "2026-01-14T11:31:29.788683+08:00",
+  "level": "info",
+  "message": "GORM query",
+  "duration_ms": 9.052167,
+  "rows": 1,
+  "sql": "INSERT INTO \"clusters\" (\"id\",\"created_time\",...) VALUES (...)",
+  "component": "api",
+  "version": "0120ac6-modified",
+  "hostname": "yasun-mac",
+  "request_id": "38EOuujxBDUduP0hYLxVGMm69Dq",
+  "transaction_id": 1157
+}
+```
+
+Text format:
+```text
+2026-01-14T11:34:23+08:00 INFO [api] [0120ac6-modified] [yasun-mac] GORM query request_id=38EPGnassU9SLNZ82XiXZLiWS4i duration_ms=10.135875 rows=1 sql="INSERT INTO \"clusters\" (\"id\",\"created_time\",...) VALUES (...)"
+```
+
+**Slow query (>200ms, visible at all log levels except error):**
+
+```json
+{
+  "timestamp": "2026-01-14T12:00:00Z",
+  "level": "warn",
+  "message": "GORM query",
+  "duration_ms": 250.5,
+  "rows": 1000,
+  "sql": "SELECT * FROM clusters WHERE ...",
+  "request_id": "...",
+  "transaction_id": 1234
+}
+```
+
+**Database error (visible at all log levels):**
+
+```json
+{
+  "timestamp": "2026-01-14T12:00:00Z",
+  "level": "error",
+  "message": "GORM query error",
+  "error": "pq: duplicate key value violates unique constraint \"idx_clusters_name\"",
+  "duration_ms": 10.5,
+  "rows": 0,
+  "sql": "INSERT INTO \"clusters\" ...",
+  "request_id": "..."
+}
+```
+
+### Backward Compatibility
+
+The existing `--enable-db-debug` CLI flag and `DB_DEBUG` environment variable continue to work exactly as before. The new functionality only adds automatic integration with `LOG_LEVEL` when `DB_DEBUG` is not explicitly set.
+
 ## Log Output Examples
 
 ### Error Logs with Stack Traces
@@ -354,6 +449,8 @@ env().Config.Logging.Masking.Fields = append(
 
 ## Best Practices
 
+### Application Logging
+
 1. **Always use context**: `logger.Info(ctx, "msg")` not `slog.Info("msg")`
 2. **Use WithError for errors**: `logger.WithError(ctx, err).Error(...)` not `"error", err`
 3. **Use field constants**: `logger.FieldEnvironment` not `"environment"`
@@ -361,6 +458,15 @@ env().Config.Logging.Masking.Fields = append(
 5. **Chain for readability**: `logger.With(ctx, ...).WithError(err).Error(...)`
 6. **Never log sensitive data**: Always sanitize passwords, tokens, connection strings
 7. **Choose appropriate levels**: DEBUG (dev), INFO (normal), WARN (client error), ERROR (server error)
+
+### Database Logging
+
+1. **Use LOG_LEVEL for database logs**: Don't set `DB_DEBUG` unless specifically debugging database issues
+2. **Production default**: `LOG_LEVEL=info` hides fast queries, shows slow queries (>200ms)
+3. **Temporary debugging**: Use `DB_DEBUG=true` for production database troubleshooting, then disable it
+4. **Development**: Use `LOG_LEVEL=debug` to see all SQL queries during development
+5. **High-traffic systems**: Consider `LOG_LEVEL=warn` to minimize database log volume
+6. **Monitor slow queries**: Review WARN-level GORM logs for queries exceeding 200ms threshold
 
 ## Troubleshooting
 
@@ -391,6 +497,31 @@ mainRouter.Use(logging.RequestLoggingMiddleware)
 1. Check masking is enabled: `export MASKING_ENABLED=true`
 2. Verify field names match configuration (case-insensitive)
 3. Check JSON structure: Masking only works on top-level fields
+
+### SQL Queries Not Appearing
+
+1. Check log level: `export LOG_LEVEL=debug` (to see all SQL queries)
+2. Check DB_DEBUG: `export DB_DEBUG=true` (to force SQL logging at any log level)
+3. Verify queries are executing: Check if API operations complete successfully
+4. Check log format: Use `LOG_FORMAT=text` for easier debugging
+
+### Too Many SQL Queries in Logs
+
+1. Production mode: `export LOG_LEVEL=info` (hides fast queries < 200ms)
+2. Disable DB_DEBUG: `export DB_DEBUG=false` or unset it
+3. Minimal mode: `export LOG_LEVEL=warn` (only slow queries and errors)
+4. Silent mode: `export LOG_LEVEL=error` (no SQL queries logged)
+
+### Only Want to See Slow Queries
+
+Use production default configuration:
+```bash
+export LOG_LEVEL=info
+export LOG_FORMAT=json
+export DB_DEBUG=false  # or leave unset
+```
+
+This will only log SQL queries that take longer than 200ms.
 
 ## Testing
 

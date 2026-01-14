@@ -22,6 +22,7 @@ type HyperFleetTextHandler struct {
 	version   string
 	hostname  string
 	level     slog.Level
+	attrs     []slog.Attr
 	mu        sync.Mutex
 }
 
@@ -57,6 +58,10 @@ func (h *HyperFleetTextHandler) Handle(ctx context.Context, r slog.Record) error
 		}
 	}
 
+	for _, attr := range h.attrs {
+		fmt.Fprintf(&buf, " %s=%s", attr.Key, formatValue(attr.Value.Any()))
+	}
+
 	var stackTrace []string
 	r.Attrs(func(a slog.Attr) bool {
 		if a.Key == "stack_trace" {
@@ -84,11 +89,19 @@ func (h *HyperFleetTextHandler) Handle(ctx context.Context, r slog.Record) error
 	return err
 }
 
-// WithAttrs returns a new handler with additional attributes
 func (h *HyperFleetTextHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
-	// For simplicity, return self (attributes are handled in Handle method)
-	// In a production system, you might want to store attrs and include them in every log
-	return h
+	newAttrs := make([]slog.Attr, len(h.attrs)+len(attrs))
+	copy(newAttrs, h.attrs)
+	copy(newAttrs[len(h.attrs):], attrs)
+
+	return &HyperFleetTextHandler{
+		w:         h.w,
+		component: h.component,
+		version:   h.version,
+		hostname:  h.hostname,
+		level:     h.level,
+		attrs:     newAttrs,
+	}
 }
 
 // WithGroup returns a new handler with a group name

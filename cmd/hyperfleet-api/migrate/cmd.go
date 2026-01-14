@@ -29,7 +29,10 @@ func NewMigrateCommand() *cobra.Command {
 	return cmd
 }
 
-func runMigrate(_ *cobra.Command, _ []string) {
+func runMigrate(cmd *cobra.Command, _ []string) {
+	// Bind environment variables
+	dbConfig.BindEnv(cmd.PersistentFlags())
+
 	if err := runMigrateWithError(); err != nil {
 		os.Exit(1)
 	}

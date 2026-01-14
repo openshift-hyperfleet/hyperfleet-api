@@ -13,6 +13,7 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/environments"
 	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/server"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db/db_session"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/telemetry"
 )
@@ -37,13 +38,16 @@ func NewServeCommand() *cobra.Command {
 func runServe(cmd *cobra.Command, args []string) {
 	ctx := context.Background()
 
+	// Bind database environment variables BEFORE Initialize (database is initialized inside)
+	environments.Environment().Config.Database.BindEnv(cmd.PersistentFlags())
+
 	err := environments.Environment().Initialize()
 	if err != nil {
 		logger.WithError(ctx, err).Error("Unable to initialize environment")
 		os.Exit(1)
 	}
 
-	// Bind environment variables for advanced configuration (OTel, Masking)
+	// Bind logging environment variables AFTER Initialize (logger is reconfigured later in initLogger)
 	environments.Environment().Config.Logging.BindEnv(cmd.PersistentFlags())
 
 	initLogger()
@@ -140,4 +144,15 @@ func initLogger() {
 	// Use ReconfigureGlobalLogger instead of InitGlobalLogger because
 	// InitGlobalLogger was already called in main() with default config
 	logger.ReconfigureGlobalLogger(logConfig)
+
+	// Reconfigure database logger to follow LOG_LEVEL
+	dbSessionFactory := environments.Environment().Database.SessionFactory
+	if dbSessionFactory != nil {
+		gormLevel := environments.Environment().Config.Database.GetGormLogLevel(
+			environments.Environment().Config.Logging.Level,
+		)
+		if reconfigurable, ok := dbSessionFactory.(db_session.LoggerReconfigurable); ok {
+			reconfigurable.ReconfigureLogger(gormLevel)
+		}
+	}
 }

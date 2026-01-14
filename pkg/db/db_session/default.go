@@ -17,6 +17,8 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
+const slowQueryThreshold = 200 * time.Millisecond
+
 type Default struct {
 	config *config.DatabaseConfig
 
@@ -64,10 +66,17 @@ func (f *Default) Init(config *config.DatabaseConfig) {
 		}
 		dbx.SetMaxOpenConns(config.MaxOpenConnections)
 
-		// Connect GORM to use the same connection
+		var gormLog gormlogger.Interface
+		if config.Debug {
+			gormLog = logger.NewGormLogger(gormlogger.Info, slowQueryThreshold)
+		} else {
+			gormLog = logger.NewGormLogger(gormlogger.Warn, slowQueryThreshold)
+		}
+
 		conf := &gorm.Config{
 			PrepareStmt:          false,
 			FullSaveAssociations: false,
+			Logger:               gormLog,
 		}
 		g2, err = gorm.Open(postgres.New(postgres.Config{
 			Conn: dbx,
@@ -140,14 +149,9 @@ func (f *Default) NewListener(ctx context.Context, channel string, callback func
 }
 
 func (f *Default) New(ctx context.Context) *gorm.DB {
-	conn := f.g2.Session(&gorm.Session{
+	return f.g2.Session(&gorm.Session{
 		Context: ctx,
-		Logger:  f.g2.Logger.LogMode(gormlogger.Silent),
 	})
-	if f.config.Debug {
-		conn = conn.Debug()
-	}
-	return conn
 }
 
 func (f *Default) CheckConnection() error {
@@ -163,4 +167,13 @@ func (f *Default) Close() error {
 
 func (f *Default) ResetDB() {
 	panic("ResetDB is not implemented for non-integration-test env")
+}
+
+// ReconfigureLogger changes the GORM logger level at runtime
+func (f *Default) ReconfigureLogger(level gormlogger.LogLevel) {
+	if f.g2 == nil {
+		return
+	}
+	newLogger := logger.NewGormLogger(level, slowQueryThreshold)
+	f.g2.Logger = newLogger
 }

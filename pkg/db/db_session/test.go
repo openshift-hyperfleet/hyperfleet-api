@@ -126,12 +126,18 @@ func connect(name string, config *config.DatabaseConfig) (*sql.DB, *gorm.DB, fun
 		}
 	}
 
-	// Connect GORM to use the same connection
+	var gormLog gormlogger.Interface
+	if config.Debug {
+		gormLog = logger.NewGormLogger(gormlogger.Info, slowQueryThreshold)
+	} else {
+		gormLog = logger.NewGormLogger(gormlogger.Silent, slowQueryThreshold)
+	}
+
 	conf := &gorm.Config{
 		PrepareStmt:            false,
 		FullSaveAssociations:   false,
 		SkipDefaultTransaction: true,
-		Logger:                 gormlogger.Default.LogMode(gormlogger.Silent),
+		Logger:                 gormLog,
 	}
 	g2, err = gorm.Open(postgres.New(postgres.Config{
 		Conn: dbx,
@@ -188,19 +194,13 @@ func (f *Test) DirectDB() *sql.DB {
 
 func (f *Test) New(ctx context.Context) *gorm.DB {
 	if f.wasDisconnected {
-		// Connection was killed in order to reset DB
 		f.db, f.g2 = connectFactory(f.config)
 		f.wasDisconnected = false
 	}
 
-	conn := f.g2.Session(&gorm.Session{
+	return f.g2.Session(&gorm.Session{
 		Context: ctx,
-		Logger:  f.g2.Logger.LogMode(gormlogger.Silent),
 	})
-	if f.config.Debug {
-		conn = conn.Debug()
-	}
-	return conn
 }
 
 // CheckConnection checks to ensure a connection is present
@@ -222,4 +222,13 @@ func (f *Test) ResetDB() {
 
 func (f *Test) NewListener(ctx context.Context, channel string, callback func(id string)) {
 	newListener(ctx, f.config.ConnectionString(true), channel, callback)
+}
+
+// ReconfigureLogger changes the GORM logger level at runtime
+func (f *Test) ReconfigureLogger(level gormlogger.LogLevel) {
+	if f.g2 == nil {
+		return
+	}
+	newLogger := logger.NewGormLogger(level, slowQueryThreshold)
+	f.g2.Logger = newLogger
 }
