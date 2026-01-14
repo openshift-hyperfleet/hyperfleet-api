@@ -14,7 +14,7 @@ type MetricsConfig struct {
 
 func NewMetricsConfig() *MetricsConfig {
 	return &MetricsConfig{
-		BindAddress:                   "localhost:8080",
+		BindAddress:                   "localhost:9090",
 		EnableHTTPS:                   false,
 		LabelMetricsInclusionDuration: 7 * 24 * time.Hour,
 	}

@@ -17,8 +17,8 @@ fullnameOverride: ""
 # Use ":PORT" format to bind to all interfaces (required for Kubernetes)
 server:
   bindAddress: ":8000"
-  healthBindAddress: ":8083"
-  metricsBindAddress: ":8080"
+  healthBindAddress: ":8080"
+  metricsBindAddress: ":9090"
 
 serviceAccount:
   # Specifies whether a service account should be created

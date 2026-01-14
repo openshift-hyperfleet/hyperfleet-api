@@ -60,7 +60,7 @@ type Helper struct {
 	AppConfig         *config.ApplicationConfig
 	APIServer         server.Server
 	MetricsServer     server.Server
-	HealthCheckServer server.Server
+	HealthServer server.Server
 	TimeFunc          TimeFunc
 	JWTPrivateKey     *rsa.PrivateKey
 	JWTCA             *rsa.PublicKey
@@ -116,7 +116,7 @@ func NewHelper(t *testing.T) *Helper {
 		}
 		helper.startAPIServer()
 		helper.startMetricsServer()
-		helper.startHealthCheckServer()
+		helper.startHealthServer()
 	})
 	helper.T = t
 	return helper
@@ -181,12 +181,12 @@ func (helper *Helper) stopMetricsServer() error {
 	return nil
 }
 
-func (helper *Helper) startHealthCheckServer() {
+func (helper *Helper) startHealthServer() {
 	ctx := context.Background()
-	helper.HealthCheckServer = server.NewHealthCheckServer()
+	helper.HealthServer = server.NewHealthServer()
 	go func() {
 		logger.Debug(ctx, "Test health check server started")
-		helper.HealthCheckServer.Start()
+		helper.HealthServer.Start()
 		logger.Debug(ctx, "Test health check server stopped")
 	}()
 }
@@ -258,8 +258,8 @@ func (helper *Helper) MetricsURL(path string) string {
 	return fmt.Sprintf("http://%s%s", helper.AppConfig.Metrics.BindAddress, path)
 }
 
-func (helper *Helper) HealthCheckURL(path string) string {
-	return fmt.Sprintf("http://%s%s", helper.AppConfig.HealthCheck.BindAddress, path)
+func (helper *Helper) HealthURL(path string) string {
+	return fmt.Sprintf("http://%s%s", helper.AppConfig.Health.BindAddress, path)
 }
 
 func (helper *Helper) NewApiClient() *openapi.ClientWithResponses {

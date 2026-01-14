@@ -53,17 +53,17 @@ spec:
         args:
         - serve
         - --api-server-bindaddress={{ .Values.server.bindAddress | default ":8000" }}
-        - --health-check-server-bindaddress={{ .Values.server.healthBindAddress | default ":8083" }}
-        - --metrics-server-bindaddress={{ .Values.server.metricsBindAddress | default ":8080" }}
+        - --health-server-bindaddress={{ .Values.server.healthBindAddress | default ":8080" }}
+        - --metrics-server-bindaddress={{ .Values.server.metricsBindAddress | default ":9090" }}
         ports:
         - name: http
           containerPort: 8000
           protocol: TCP
         - name: health
-          containerPort: 8083
+          containerPort: 8080
           protocol: TCP
         - name: metrics
-          containerPort: 8080
+          containerPort: 9090
           protocol: TCP
         env:
         {{- if .Values.auth.jwksUrl }}
@@ -82,15 +82,15 @@ spec:
         {{- end }}
         livenessProbe:
           httpGet:
-            path: /healthcheck
+            path: /healthz
             port: health
-          initialDelaySeconds: 30
-          periodSeconds: 10
+          initialDelaySeconds: 15
+          periodSeconds: 20
           timeoutSeconds: 5
           failureThreshold: 3
         readinessProbe:
           httpGet:
-            path: /healthcheck
+            path: /readyz
             port: health
           initialDelaySeconds: 5
           periodSeconds: 5

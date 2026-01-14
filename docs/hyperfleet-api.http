@@ -4,8 +4,8 @@
 
 @host = localhost
 @port = 8000
-@metrics_port = 8080
-@health_port = 8083
+@health_port = 8080
+@metrics_port = 9090
 @baseUrl = http://{{host}}:{{port}}
 @authToken = <your-jwt-token-here>
 
@@ -193,8 +193,12 @@ Content-Type: application/json
 }
 
 ###
-# @name healthCheck
-GET http://{{host}}:{{health_port}}/healthcheck
+# @name livenessProbe
+GET http://{{host}}:{{health_port}}/healthz
+
+###
+# @name readinessProbe
+GET http://{{host}}:{{health_port}}/readyz
 
 ###
 # @name metrics

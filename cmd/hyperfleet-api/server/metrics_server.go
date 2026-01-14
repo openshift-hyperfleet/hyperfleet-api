@@ -17,7 +17,7 @@ func NewMetricsServer() Server {
 	mainRouter := mux.NewRouter()
 	mainRouter.NotFoundHandler = http.HandlerFunc(api.SendNotFound)
 
-	// metrics endpoint
+	// metrics endpoint only (health endpoints moved to health_server.go on port 8080)
 	prometheusMetricsHandler := handlers.NewPrometheusMetricsHandler()
 	mainRouter.Handle("/metrics", prometheusMetricsHandler.Handler())
 

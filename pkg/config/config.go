@@ -13,22 +13,22 @@ import (
 )
 
 type ApplicationConfig struct {
-	Server      *ServerConfig      `json:"server"`
-	Metrics     *MetricsConfig     `json:"metrics"`
-	HealthCheck *HealthCheckConfig `json:"health_check"`
-	Database    *DatabaseConfig    `json:"database"`
-	OCM         *OCMConfig         `json:"ocm"`
-	Logging     *LoggingConfig     `json:"logging"`
+	Server   *ServerConfig   `json:"server"`
+	Metrics  *MetricsConfig  `json:"metrics"`
+	Health   *HealthConfig   `json:"health"`
+	Database *DatabaseConfig `json:"database"`
+	OCM      *OCMConfig      `json:"ocm"`
+	Logging  *LoggingConfig  `json:"logging"`
 }
 
 func NewApplicationConfig() *ApplicationConfig {
 	return &ApplicationConfig{
-		Server:      NewServerConfig(),
-		Metrics:     NewMetricsConfig(),
-		HealthCheck: NewHealthCheckConfig(),
-		Database:    NewDatabaseConfig(),
-		OCM:         NewOCMConfig(),
-		Logging:     NewLoggingConfig(),
+		Server:   NewServerConfig(),
+		Metrics:  NewMetricsConfig(),
+		Health:   NewHealthConfig(),
+		Database: NewDatabaseConfig(),
+		OCM:      NewOCMConfig(),
+		Logging:  NewLoggingConfig(),
 	}
 }
 
@@ -36,7 +36,7 @@ func (c *ApplicationConfig) AddFlags(flagset *pflag.FlagSet) {
 	flagset.AddGoFlagSet(flag.CommandLine)
 	c.Server.AddFlags(flagset)
 	c.Metrics.AddFlags(flagset)
-	c.HealthCheck.AddFlags(flagset)
+	c.Health.AddFlags(flagset)
 	c.Database.AddFlags(flagset)
 	c.OCM.AddFlags(flagset)
 	c.Logging.AddFlags(flagset)
@@ -51,7 +51,7 @@ func (c *ApplicationConfig) ReadFiles() []string {
 		{c.Database.ReadFiles, "Database"},
 		{c.OCM.ReadFiles, "OCM"},
 		{c.Metrics.ReadFiles, "Metrics"},
-		{c.HealthCheck.ReadFiles, "HealthCheck"},
+		{c.Health.ReadFiles, "Health"},
 		{c.Logging.ReadFiles, "Logging"},
 	}
 	var messages []string

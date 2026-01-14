@@ -14,6 +14,7 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/server"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db/db_session"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/health"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/telemetry"
 )
@@ -79,8 +80,17 @@ func runServe(cmd *cobra.Command, args []string) {
 	metricsServer := server.NewMetricsServer()
 	go metricsServer.Start()
 
-	healthcheckServer := server.NewHealthCheckServer()
-	go healthcheckServer.Start()
+	healthServer := server.NewHealthServer()
+	go healthServer.Start()
+
+	// Wait for health server to be listening before marking as ready
+	if notifier, ok := healthServer.(server.ListenNotifier); ok {
+		<-notifier.NotifyListening()
+	}
+
+	// Mark application as ready to receive traffic
+	health.GetReadinessState().SetReady()
+	logger.Info(ctx, "Application ready to receive traffic")
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
@@ -88,8 +98,12 @@ func runServe(cmd *cobra.Command, args []string) {
 
 	logger.Info(ctx, "Shutdown signal received, starting graceful shutdown...")
 
-	if err := healthcheckServer.Stop(); err != nil {
-		logger.WithError(ctx, err).Error("Failed to stop healthcheck server")
+	// Mark application as not ready (returns 503 on /readyz)
+	health.GetReadinessState().SetShuttingDown()
+	logger.Info(ctx, "Marked as not ready, draining in-flight requests...")
+
+	if err := healthServer.Stop(); err != nil {
+		logger.WithError(ctx, err).Error("Failed to stop health server")
 	}
 	if err := apiServer.Stop(); err != nil {
 		logger.WithError(ctx, err).Error("Failed to stop API server")
@@ -99,10 +113,15 @@ func runServe(cmd *cobra.Command, args []string) {
 	}
 
 	if tp != nil {
-		if err := telemetry.Shutdown(context.Background(), tp); err != nil {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), environments.Environment().Config.Health.ShutdownTimeout)
+		defer cancel()
+		if err := telemetry.Shutdown(shutdownCtx, tp); err != nil {
 			logger.WithError(ctx, err).Error("Failed to shutdown OpenTelemetry")
 		}
 	}
+
+	// Close database connections
+	environments.Environment().Teardown()
 
 	logger.Info(ctx, "Graceful shutdown completed")
 }
