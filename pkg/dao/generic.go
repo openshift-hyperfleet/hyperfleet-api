@@ -66,7 +66,7 @@ func (d *sqlGenericDao) GetInstanceDao(ctx context.Context, model interface{}) G
 }
 
 func (d *sqlGenericDao) Fetch(offset int, limit int, resourceList interface{}) error {
-	return d.g2.Debug().Offset(offset).Limit(limit).Find(resourceList).Error
+	return d.g2.Offset(offset).Limit(limit).Find(resourceList).Error
 }
 
 func (d *sqlGenericDao) Preload(preload string) {

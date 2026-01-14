@@ -98,16 +98,18 @@ func (f *Testcontainer) Init(config *config.DatabaseConfig) {
 	// Configure connection pool
 	f.sqlDB.SetMaxOpenConns(config.MaxOpenConnections)
 
-	// Connect GORM to use the same connection
+	var gormLog gormlogger.Interface
+	if config.Debug {
+		gormLog = logger.NewGormLogger(gormlogger.Info, slowQueryThreshold)
+	} else {
+		gormLog = logger.NewGormLogger(gormlogger.Silent, slowQueryThreshold)
+	}
+
 	conf := &gorm.Config{
 		PrepareStmt:            false,
 		FullSaveAssociations:   false,
 		SkipDefaultTransaction: true,
-		Logger:                 gormlogger.Default.LogMode(gormlogger.Silent),
-	}
-
-	if config.Debug {
-		conf.Logger = gormlogger.Default.LogMode(gormlogger.Info)
+		Logger:                 gormLog,
 	}
 
 	f.g2, err = gorm.Open(gormpostgres.New(gormpostgres.Config{
@@ -134,14 +136,9 @@ func (f *Testcontainer) DirectDB() *sql.DB {
 }
 
 func (f *Testcontainer) New(ctx context.Context) *gorm.DB {
-	conn := f.g2.Session(&gorm.Session{
+	return f.g2.Session(&gorm.Session{
 		Context: ctx,
-		Logger:  f.g2.Logger.LogMode(gormlogger.Silent),
 	})
-	if f.config.Debug {
-		conn = conn.Debug()
-	}
-	return conn
 }
 
 func (f *Testcontainer) CheckConnection() error {
@@ -202,4 +199,13 @@ func (f *Testcontainer) NewListener(ctx context.Context, channel string, callbac
 	}
 
 	newListener(ctx, connStr, channel, callback)
+}
+
+// ReconfigureLogger changes the GORM logger level at runtime
+func (f *Testcontainer) ReconfigureLogger(level gormlogger.LogLevel) {
+	if f.g2 == nil {
+		return
+	}
+	newLogger := logger.NewGormLogger(level, slowQueryThreshold)
+	f.g2.Logger = newLogger
 }

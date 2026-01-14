@@ -2,8 +2,12 @@ package config
 
 import (
 	"fmt"
+	"os"
+	"strconv"
+	"strings"
 
 	"github.com/spf13/pflag"
+	"gorm.io/gorm/logger"
 )
 
 type DatabaseConfig struct {
@@ -52,6 +56,19 @@ func (c *DatabaseConfig) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&c.SSLMode, "db-sslmode", c.SSLMode, "Database ssl mode (disable | require | verify-ca | verify-full)")
 	fs.BoolVar(&c.Debug, "enable-db-debug", c.Debug, " framework's debug mode")
 	fs.IntVar(&c.MaxOpenConnections, "db-max-open-connections", c.MaxOpenConnections, "Maximum open DB connections for this instance")
+}
+
+// BindEnv reads configuration from environment variables
+// Priority: flags > env vars > defaults
+func (c *DatabaseConfig) BindEnv(fs *pflag.FlagSet) {
+	if val := os.Getenv("DB_DEBUG"); val != "" {
+		if fs == nil || !fs.Changed("enable-db-debug") {
+			debug, err := strconv.ParseBool(val)
+			if err == nil {
+				c.Debug = debug
+			}
+		}
+	}
 }
 
 func (c *DatabaseConfig) ReadFiles() error {
@@ -115,5 +132,22 @@ func (c *DatabaseConfig) LogSafeConnectionStringWithName(name string, withSSL bo
 			"host=%s port=%d user=%s password='<REDACTED>' dbname=%s",
 			c.Host, c.Port, c.Username, name,
 		)
+	}
+}
+
+// GetGormLogLevel returns the appropriate GORM log level based on DB_DEBUG and LOG_LEVEL.
+// DB_DEBUG=true always returns Info level, otherwise follows LOG_LEVEL mapping.
+func (c *DatabaseConfig) GetGormLogLevel(logLevel string) logger.LogLevel {
+	if c.Debug {
+		return logger.Info
+	}
+
+	switch strings.ToLower(strings.TrimSpace(logLevel)) {
+	case "debug":
+		return logger.Info
+	case "error":
+		return logger.Silent
+	default:
+		return logger.Warn
 	}
 }
