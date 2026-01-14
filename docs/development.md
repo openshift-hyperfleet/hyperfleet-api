@@ -95,8 +95,9 @@ The service starts on `localhost:8000`:
 - REST API: `http://localhost:8000/api/hyperfleet/v1/`
 - OpenAPI spec: `http://localhost:8000/api/hyperfleet/v1/openapi`
 - Swagger UI: `http://localhost:8000/api/hyperfleet/v1/openapi.html`
-- Health check: `http://localhost:8083/healthcheck`
-- Metrics: `http://localhost:8080/metrics`
+- Liveness probe: `http://localhost:8080/healthz`
+- Readiness probe: `http://localhost:8080/readyz`
+- Metrics: `http://localhost:9090/metrics`
 
 ### Testing the API
 

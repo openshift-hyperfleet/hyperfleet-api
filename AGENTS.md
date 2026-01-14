@@ -344,9 +344,9 @@ Serves the hyperfleet REST API with full authentication, database connectivity, 
   - `--ocm-debug` - Enable OCM API debug logging
 
 - **Monitoring & Health Checks:**
-  - `--health-check-server-bindaddress` - Health check server address (default: "localhost:8083")
-  - `--enable-health-check-https` - Enable HTTPS for health check server
-  - `--metrics-server-bindaddress` - Metrics server address (default: "localhost:8080")
+  - `--health-server-bindaddress` - Health endpoints server address (default: "localhost:8080")
+  - `--enable-health-https` - Enable HTTPS for health server
+  - `--metrics-server-bindaddress` - Metrics endpoint server address (default: "localhost:9090")
   - `--enable-metrics-https` - Enable HTTPS for metrics server
 
 - **Performance Tuning:**
@@ -686,8 +686,8 @@ The server is configured in cmd/hyperfleet/server/:
 
 **Ports**:
 - `8000` - Main API server
-- `8080` - Metrics endpoint
-- `8083` - Health check endpoint
+- `8080` - Health endpoints (`/healthz`, `/readyz`)
+- `9090` - Metrics endpoint (`/metrics`)
 
 **Middleware Chain**:
 1. Request logging
@@ -774,7 +774,7 @@ The API is designed to be stateless and horizontally scalable:
 
 **Health Check**: `GET /healthcheck` returns 200 OK when database is accessible
 
-**Metrics**: Prometheus metrics available at `/metrics`
+**Metrics**: Prometheus metrics available at `/metrics` (port 9090)
 
 ## References
 

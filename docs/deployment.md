@@ -78,8 +78,8 @@ export OPENAPI_SCHEMA_PATH=/path/to/custom-schema.yaml
 
 **Server:**
 - `PORT` - API server port (default: `8000`)
-- `METRICS_PORT` - Metrics endpoint port (default: `8080`)
-- `HEALTH_PORT` - Health check port (default: `8083`)
+- `HEALTH_PORT` - Health endpoints port (default: `8080`)
+- `METRICS_PORT` - Metrics endpoint port (default: `9090`)
 
 **Logging:**
 - `LOG_LEVEL` - Logging level: `debug`, `info`, `warn`, `error` (default: `info`)
@@ -272,7 +272,10 @@ kubectl get configmaps --namespace hyperfleet-system
 
 ## Health Checks
 
-The deployment includes liveness and readiness probes at `GET /healthcheck` (port 8083).
+The deployment includes:
+- Liveness probe: `GET /healthz` (port 8080) - Returns 200 if the process is alive
+- Readiness probe: `GET /readyz` (port 8080) - Returns 200 when ready to receive traffic, 503 during startup/shutdown
+- Metrics: `GET /metrics` (port 9090) - Prometheus metrics endpoint
 
 ## Scaling
 
@@ -291,7 +294,7 @@ Enable autoscaling via Helm values (`autoscaling.enabled=true`).
 
 ## Monitoring
 
-Prometheus metrics available at `http://<service>:8080/metrics`.
+Prometheus metrics available at `http://<service>:9090/metrics`.
 
 For Prometheus Operator, enable ServiceMonitor via Helm values (`serviceMonitor.enabled=true`).
 

@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(podman run:*)"
+      "Bash(podman run:*)",
+      "Bash(git stash:*)",
+      "Bash(make lint:*)",
+      "Bash(ls:*)",
+      "Bash(git add:*)"
     ]
   }
 }

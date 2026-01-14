@@ -17,6 +17,12 @@ type Server interface {
 	Serve(net.Listener)
 }
 
+// ListenNotifier is an optional interface that servers can implement
+// to signal when they are ready to accept connections
+type ListenNotifier interface {
+	NotifyListening() <-chan struct{}
+}
+
 func removeTrailingSlash(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r.URL.Path = strings.TrimSuffix(r.URL.Path, "/")
