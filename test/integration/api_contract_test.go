@@ -16,12 +16,12 @@ func TestAPIContract_ResourcePhaseConstants(t *testing.T) {
 
 	// Verify domain constants match OpenAPI generated constants
 	// If OpenAPI spec changes, this test will fail and alert us to update domain constants
-	Expect(string(api.PhaseNotReady)).To(Equal(string(openapi.NOT_READY)),
-		"api.PhaseNotReady must match openapi.NOT_READY")
-	Expect(string(api.PhaseReady)).To(Equal(string(openapi.READY)),
-		"api.PhaseReady must match openapi.READY")
-	Expect(string(api.PhaseFailed)).To(Equal(string(openapi.FAILED)),
-		"api.PhaseFailed must match openapi.FAILED")
+	Expect(string(api.PhaseNotReady)).To(Equal(string(openapi.NotReady)),
+		"api.PhaseNotReady must match openapi.NotReady")
+	Expect(string(api.PhaseReady)).To(Equal(string(openapi.Ready)),
+		"api.PhaseReady must match openapi.Ready")
+	Expect(string(api.PhaseFailed)).To(Equal(string(openapi.Failed)),
+		"api.PhaseFailed must match openapi.Failed")
 }
 
 // TestAPIContract_ConditionStatusConstants verifies that domain and OpenAPI constants are in sync
@@ -31,10 +31,10 @@ func TestAPIContract_ConditionStatusConstants(t *testing.T) {
 
 	// Verify domain constants match OpenAPI generated constants
 	// If OpenAPI spec changes, this test will fail and alert us to update domain constants
-	Expect(string(api.ConditionTrue)).To(Equal(string(openapi.TRUE)),
-		"api.ConditionTrue must match openapi.TRUE")
-	Expect(string(api.ConditionFalse)).To(Equal(string(openapi.FALSE)),
-		"api.ConditionFalse must match openapi.FALSE")
-	Expect(string(api.ConditionUnknown)).To(Equal(string(openapi.UNKNOWN)),
-		"api.ConditionUnknown must match openapi.UNKNOWN")
+	Expect(string(api.ConditionTrue)).To(Equal(string(openapi.True)),
+		"api.ConditionTrue must match openapi.True")
+	Expect(string(api.ConditionFalse)).To(Equal(string(openapi.False)),
+		"api.ConditionFalse must match openapi.False")
+	Expect(string(api.ConditionUnknown)).To(Equal(string(openapi.Unknown)),
+		"api.ConditionUnknown must match openapi.Unknown")
 }

@@ -2,6 +2,7 @@ package presenters
 
 import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/util"
 )
 
 func PresentReference(id, obj interface{}) openapi.ObjectReference {
@@ -12,7 +13,7 @@ func PresentReference(id, obj interface{}) openapi.ObjectReference {
 	}
 
 	return openapi.ObjectReference{
-		Id:   openapi.PtrString(refId),
+		Id:   util.PtrString(refId),
 		Kind: ObjectKind(obj),
 		Href: ObjectPath(refId, obj),
 	}

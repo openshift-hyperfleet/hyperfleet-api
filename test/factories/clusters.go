@@ -21,6 +21,8 @@ func (f *Factories) NewCluster(id string) (*api.Cluster, error) {
 		Name:       "test-cluster-" + id, // Use unique name based on ID
 		Spec:       []byte(`{"test": "spec"}`),
 		Generation: 42,
+		CreatedBy:  "test@example.com",
+		UpdatedBy:  "test@example.com",
 	}
 
 	sub, err := clusterService.Create(context.Background(), cluster)

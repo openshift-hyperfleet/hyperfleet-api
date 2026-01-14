@@ -32,10 +32,12 @@ func (f *Factories) NewNodePool(id string) (*api.NodePool, error) {
 	}
 
 	nodePool := &api.NodePool{
-		Meta:    api.Meta{ID: id},
-		Name:    "test-nodepool-" + id, // Use unique name based on ID
-		Spec:    []byte(`{"test": "spec"}`),
-		OwnerID: cluster.ID, // Use real cluster ID
+		Meta:      api.Meta{ID: id},
+		Name:      "test-nodepool-" + id, // Use unique name based on ID
+		Spec:      []byte(`{"test": "spec"}`),
+		OwnerID:   cluster.ID, // Use real cluster ID
+		CreatedBy: "test@example.com",
+		UpdatedBy: "test@example.com",
 	}
 
 	sub, serviceErr := nodePoolService.Create(context.Background(), nodePool)

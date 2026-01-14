@@ -6,6 +6,7 @@ import (
 	"time"
 
 	. "github.com/onsi/gomega"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
 )
@@ -193,8 +194,8 @@ func TestPresentNodePool_Complete(t *testing.T) {
 		StatusConditions:         conditionsJSON,
 		StatusLastTransitionTime: &now,
 		StatusLastUpdatedTime:    &now,
-		CreatedBy:                "user123",
-		UpdatedBy:                "user456",
+		CreatedBy:                "user123@example.com",
+		UpdatedBy:                "user456@example.com",
 	}
 	nodePool.ID = "nodepool-xyz"
 	nodePool.CreatedTime = now
@@ -208,8 +209,8 @@ func TestPresentNodePool_Complete(t *testing.T) {
 	Expect(*result.Kind).To(Equal("NodePool"))
 	Expect(*result.Href).To(Equal("/api/hyperfleet/v1/clusters/cluster-abc/nodepools/nodepool-xyz"))
 	Expect(result.Name).To(Equal("presented-nodepool"))
-	Expect(result.CreatedBy).To(Equal("user123"))
-	Expect(result.UpdatedBy).To(Equal("user456"))
+	Expect(result.CreatedBy).To(Equal(openapi_types.Email("user123@example.com")))
+	Expect(result.UpdatedBy).To(Equal(openapi_types.Email("user456@example.com")))
 
 	// Verify Spec unmarshaled correctly
 	Expect(result.Spec["replicas"]).To(BeNumerically("==", 5))
@@ -223,11 +224,11 @@ func TestPresentNodePool_Complete(t *testing.T) {
 	Expect(*result.OwnerReferences.Href).To(Equal("/api/hyperfleet/v1/clusters/cluster-abc"))
 
 	// Verify Status
-	Expect(result.Status.Phase).To(Equal(openapi.READY))
+	Expect(result.Status.Phase).To(Equal(openapi.Ready))
 	Expect(result.Status.ObservedGeneration).To(Equal(int32(5)))
 	Expect(len(result.Status.Conditions)).To(Equal(1))
 	Expect(result.Status.Conditions[0].Type).To(Equal("Available"))
-	Expect(result.Status.Conditions[0].Status).To(Equal(openapi.TRUE))
+	Expect(result.Status.Conditions[0].Status).To(Equal(openapi.True))
 
 	// Verify timestamps
 	Expect(result.CreatedTime.Unix()).To(Equal(now.Unix()))
@@ -322,7 +323,7 @@ func TestPresentNodePool_EmptyStatusPhase(t *testing.T) {
 	Expect(err).To(BeNil())
 
 	// Should use NOT_READY as default
-	Expect(result.Status.Phase).To(Equal(openapi.NOT_READY))
+	Expect(result.Status.Phase).To(Equal(openapi.NotReady))
 }
 
 // TestPresentNodePool_StatusConditionsConversion tests condition conversion
@@ -380,13 +381,13 @@ func TestPresentNodePool_StatusConditionsConversion(t *testing.T) {
 
 	// First condition
 	Expect(result.Status.Conditions[0].Type).To(Equal("Progressing"))
-	Expect(result.Status.Conditions[0].Status).To(Equal(openapi.TRUE))
+	Expect(result.Status.Conditions[0].Status).To(Equal(openapi.True))
 	Expect(*result.Status.Conditions[0].Reason).To(Equal("Scaling"))
 	Expect(*result.Status.Conditions[0].Message).To(Equal("Scaling in progress"))
 
 	// Second condition
 	Expect(result.Status.Conditions[1].Type).To(Equal("Healthy"))
-	Expect(result.Status.Conditions[1].Status).To(Equal(openapi.TRUE))
+	Expect(result.Status.Conditions[1].Status).To(Equal(openapi.True))
 	Expect(*result.Status.Conditions[1].Reason).To(Equal("Healthy"))
 	Expect(*result.Status.Conditions[1].Message).To(Equal("All nodes healthy"))
 }
@@ -397,9 +398,10 @@ func TestConvertAndPresentNodePool_RoundTrip(t *testing.T) {
 
 	originalReq := createTestNodePoolRequest()
 	ownerID := "cluster-roundtrip-789"
+	createdBy := "user-roundtrip@example.com"
 
 	// Convert from OpenAPI request to domain
-	nodePool, err := ConvertNodePool(originalReq, ownerID, "user-roundtrip")
+	nodePool, err := ConvertNodePool(originalReq, ownerID, createdBy)
 	Expect(err).To(BeNil())
 
 	// Simulate database fields (ID, timestamps)
@@ -416,8 +418,8 @@ func TestConvertAndPresentNodePool_RoundTrip(t *testing.T) {
 	Expect(*result.Id).To(Equal("nodepool-roundtrip-123"))
 	Expect(*result.Kind).To(Equal(*originalReq.Kind))
 	Expect(result.Name).To(Equal(originalReq.Name))
-	Expect(result.CreatedBy).To(Equal("user-roundtrip"))
-	Expect(result.UpdatedBy).To(Equal("user-roundtrip"))
+	Expect(result.CreatedBy).To(Equal(openapi_types.Email(createdBy)))
+	Expect(result.UpdatedBy).To(Equal(openapi_types.Email(createdBy)))
 
 	// Verify Spec preserved
 	Expect(result.Spec["replicas"]).To(BeNumerically("==", originalReq.Spec["replicas"]))
@@ -431,7 +433,7 @@ func TestConvertAndPresentNodePool_RoundTrip(t *testing.T) {
 	Expect(*result.OwnerReferences.Kind).To(Equal("Cluster"))
 
 	// Verify Status defaults
-	Expect(result.Status.Phase).To(Equal(openapi.NOT_READY))
+	Expect(result.Status.Phase).To(Equal(openapi.NotReady))
 	Expect(result.Status.ObservedGeneration).To(Equal(int32(0)))
 	Expect(len(result.Status.Conditions)).To(Equal(0))
 }

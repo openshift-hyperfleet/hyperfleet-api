@@ -19,19 +19,26 @@ func createTestAdapterStatusRequest() *openapi.AdapterStatusCreateRequest {
 	return &openapi.AdapterStatusCreateRequest{
 		Adapter:            "test-adapter",
 		ObservedGeneration: 5,
+		Data: &map[string]interface{}{
+			"section1": map[string]interface{}{"key": "value"},
+		},
+		Metadata: &struct {
+			Attempt       *int32     `json:"attempt,omitempty"`
+			CompletedTime *time.Time `json:"completed_time,omitempty"`
+			Duration      *string    `json:"duration,omitempty"`
+			JobName       *string    `json:"job_name,omitempty"`
+			JobNamespace  *string    `json:"job_namespace,omitempty"`
+			StartedTime   *time.Time `json:"started_time,omitempty"`
+		}{
+			JobName: strPtr("test-job"),
+		},
 		Conditions: []openapi.ConditionRequest{
 			{
 				Type:    "Ready",
-				Status:  openapi.TRUE,
+				Status:  openapi.True,
 				Reason:  &reason,
 				Message: &message,
 			},
-		},
-		Data: map[string]map[string]interface{}{
-			"section1": {"key": "value"},
-		},
-		Metadata: &openapi.AdapterStatusBaseMetadata{
-			JobName: strPtr("test-job"),
 		},
 		ObservedTime: observedTime,
 	}
@@ -76,7 +83,9 @@ func TestConvertAdapterStatus_Complete(t *testing.T) {
 
 	// Verify Metadata marshaled correctly
 	Expect(result.Metadata).ToNot(BeNil())
-	var metadata openapi.AdapterStatusBaseMetadata
+	var metadata struct {
+		JobName *string `json:"job_name,omitempty"`
+	}
 	err = json.Unmarshal(result.Metadata, &metadata)
 	Expect(err).To(BeNil())
 	Expect(*metadata.JobName).To(Equal("test-job"))
@@ -158,8 +167,8 @@ func TestConvertAdapterStatus_NilData(t *testing.T) {
 	req := &openapi.AdapterStatusCreateRequest{
 		Adapter:            "test-adapter",
 		ObservedGeneration: 1,
-		Conditions:         []openapi.ConditionRequest{},
 		Data:               nil, // Nil data
+		Conditions:         []openapi.ConditionRequest{},
 	}
 
 	result, err := ConvertAdapterStatus("Cluster", "cluster-000", req)
@@ -178,8 +187,8 @@ func TestConvertAdapterStatus_NilMetadata(t *testing.T) {
 	req := &openapi.AdapterStatusCreateRequest{
 		Adapter:            "test-adapter",
 		ObservedGeneration: 1,
-		Conditions:         []openapi.ConditionRequest{},
 		Metadata:           nil, // Nil metadata
+		Conditions:         []openapi.ConditionRequest{},
 	}
 
 	result, err := ConvertAdapterStatus("Cluster", "cluster-111", req)
@@ -197,9 +206,9 @@ func TestConvertAdapterStatus_ConditionStatusConversion(t *testing.T) {
 		openapiStatus  openapi.ConditionStatus
 		expectedDomain api.ConditionStatus
 	}{
-		{openapi.TRUE, api.ConditionTrue},
-		{openapi.FALSE, api.ConditionFalse},
-		{openapi.UNKNOWN, api.ConditionUnknown},
+		{openapi.True, api.ConditionTrue},
+		{openapi.False, api.ConditionFalse},
+		{openapi.Unknown, api.ConditionUnknown},
 	}
 
 	for _, tc := range testCases {
@@ -249,7 +258,14 @@ func TestPresentAdapterStatus_Complete(t *testing.T) {
 	}
 	dataJSON, _ := json.Marshal(data)
 
-	metadata := &openapi.AdapterStatusBaseMetadata{
+	metadata := &struct {
+		Attempt       *int32     `json:"attempt,omitempty"`
+		CompletedTime *time.Time `json:"completed_time,omitempty"`
+		Duration      *string    `json:"duration,omitempty"`
+		JobName       *string    `json:"job_name,omitempty"`
+		JobNamespace  *string    `json:"job_namespace,omitempty"`
+		StartedTime   *time.Time `json:"started_time,omitempty"`
+	}{
 		JobName: strPtr("adapter-job"),
 	}
 	metadataJSON, _ := json.Marshal(metadata)
@@ -276,11 +292,14 @@ func TestPresentAdapterStatus_Complete(t *testing.T) {
 	// Verify conditions converted correctly
 	Expect(len(result.Conditions)).To(Equal(1))
 	Expect(result.Conditions[0].Type).To(Equal("Ready"))
-	Expect(result.Conditions[0].Status).To(Equal(openapi.TRUE))
+	Expect(result.Conditions[0].Status).To(Equal(openapi.True))
 	Expect(*result.Conditions[0].Reason).To(Equal("Success"))
 
 	// Verify data unmarshaled correctly
-	Expect(result.Data["metrics"]["cpu"]).To(Equal("50%"))
+	Expect(result.Data).ToNot(BeNil())
+	Expect((*result.Data)["metrics"]).To(BeAssignableToTypeOf(map[string]interface{}{}))
+	metrics := (*result.Data)["metrics"].(map[string]interface{})
+	Expect(metrics["cpu"]).To(Equal("50%"))
 
 	// Verify metadata unmarshaled correctly
 	Expect(result.Metadata).ToNot(BeNil())
@@ -357,7 +376,7 @@ func TestPresentAdapterStatus_EmptyData(t *testing.T) {
 	Expect(err).To(BeNil())
 
 	Expect(result.Data).ToNot(BeNil())
-	Expect(len(result.Data)).To(Equal(0))
+	Expect(len(*result.Data)).To(Equal(0))
 }
 
 // TestPresentAdapterStatus_ConditionStatusConversion tests status conversion from domain to openapi
@@ -368,9 +387,9 @@ func TestPresentAdapterStatus_ConditionStatusConversion(t *testing.T) {
 		domainStatus    api.ConditionStatus
 		expectedOpenAPI openapi.ConditionStatus
 	}{
-		{api.ConditionTrue, openapi.TRUE},
-		{api.ConditionFalse, openapi.FALSE},
-		{api.ConditionUnknown, openapi.UNKNOWN},
+		{api.ConditionTrue, openapi.True},
+		{api.ConditionFalse, openapi.False},
+		{api.ConditionUnknown, openapi.Unknown},
 	}
 
 	now := time.Now()
@@ -429,7 +448,11 @@ func TestConvertAndPresent_RoundTrip(t *testing.T) {
 	Expect(*result.Conditions[0].Message).To(Equal(*originalReq.Conditions[0].Message))
 
 	// Verify data preserved
-	Expect(result.Data["section1"]["key"]).To(Equal(originalReq.Data["section1"]["key"]))
+	Expect(result.Data).ToNot(BeNil())
+	Expect(originalReq.Data).ToNot(BeNil())
+	resultSection := (*result.Data)["section1"].(map[string]interface{})
+	originalSection := (*originalReq.Data)["section1"].(map[string]interface{})
+	Expect(resultSection["key"]).To(Equal(originalSection["key"]))
 
 	// Verify metadata preserved
 	Expect(result.Metadata).ToNot(BeNil())

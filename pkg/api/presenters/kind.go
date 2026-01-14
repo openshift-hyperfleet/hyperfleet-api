@@ -3,8 +3,8 @@ package presenters
 import (
 	"fmt"
 
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/util"
 )
 
 type KindMappingFunc func(interface{}) string
@@ -40,5 +40,5 @@ func ObjectKind(i interface{}) *string {
 		}
 	}
 
-	return openapi.PtrString(result)
+	return util.PtrString(result)
 }

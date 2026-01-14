@@ -4,7 +4,8 @@
 include .bingo/Variables.mk
 
 # CGO_ENABLED=0 is not FIPS compliant. large commercial vendors and FedRAMP require FIPS compliant crypto
-CGO_ENABLED := 1
+# Use ?= to allow Dockerfile to override (CGO_ENABLED=0 for Alpine-based dev images)
+CGO_ENABLED ?= 1
 
 # Enable users to override the golang used to accomodate custom installations
 GO ?= go
@@ -23,7 +24,7 @@ IMAGE_TAG ?= latest
 # Dev image configuration - set QUAY_USER to push to personal registry
 # Usage: QUAY_USER=myuser make image-dev
 QUAY_USER ?=
-DEV_TAG ?= dev-$(git_sha)
+DEV_TAG ?= dev-$(GIT_SHA)
 
 # Database connection details
 db_name:=hyperfleet
@@ -77,9 +78,9 @@ GO_VERSION:=go1.24.
 version:=$(shell date +%s)
 
 # Version information for ldflags
-git_sha:=$(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
-git_dirty:=$(shell git diff --quiet 2>/dev/null || echo "-modified")
-build_version:=$(git_sha)$(git_dirty)
+GIT_SHA ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+GIT_DIRTY ?= $(shell git diff --quiet 2>/dev/null || echo "-modified")
+build_version:=$(GIT_SHA)$(GIT_DIRTY)
 build_time:=$(shell date -u '+%Y-%m-%d %H:%M:%S UTC')
 ldflags=-X github.com/openshift-hyperfleet/hyperfleet-api/pkg/api.Version=$(build_version) -X 'github.com/openshift-hyperfleet/hyperfleet-api/pkg/api.BuildTime=$(build_time)'
 
@@ -223,12 +224,11 @@ test-integration: install secrets $(GOTESTSUM)
 			./test/integration
 .PHONY: test-integration
 
-# Regenerate openapi client and models
-generate:
+# Regenerate openapi types using oapi-codegen
+generate: $(OAPI_CODEGEN)
 	rm -rf pkg/api/openapi
-	$(container_tool) build -t hyperfleet-openapi -f Dockerfile.openapi .
-	$(eval OPENAPI_IMAGE_ID=`$(container_tool) create -t hyperfleet-openapi -f Dockerfile.openapi .`)
-	$(container_tool) cp $(OPENAPI_IMAGE_ID):/local/pkg/api/openapi ./pkg/api/openapi
+	mkdir -p pkg/api/openapi
+	$(OAPI_CODEGEN) --config openapi/oapi-codegen.yaml openapi/openapi.yaml
 .PHONY: generate
 
 # Generate mock implementations for service interfaces
@@ -240,14 +240,8 @@ generate-mocks: $(MOCKGEN)
 generate-all: generate generate-mocks
 .PHONY: generate-all
 
-# Regenerate openapi client and models using vendor (avoids downloading dependencies)
-generate-vendor:
-	rm -rf pkg/api/openapi
-	mkdir -p data/generated/openapi
-	$(container_tool) build -t hyperfleet-openapi-vendor -f Dockerfile.openapi.vendor .
-	$(eval OPENAPI_IMAGE_ID=`$(container_tool) create -t hyperfleet-openapi-vendor -f Dockerfile.openapi.vendor .`)
-	$(container_tool) cp $(OPENAPI_IMAGE_ID):/local/pkg/api/openapi ./pkg/api/openapi
-	$(container_tool) cp $(OPENAPI_IMAGE_ID):/local/data/generated/openapi/openapi.go ./data/generated/openapi/openapi.go
+# generate-vendor is now equivalent to generate (oapi-codegen handles dependencies)
+generate-vendor: generate
 .PHONY: generate-vendor
 
 run: build
@@ -269,6 +263,7 @@ run/docs:
 clean:
 	rm -rf \
 		bin \
+		pkg/api/openapi \
 		data/generated/openapi/*.json \
 		secrets \
 .PHONY: clean
@@ -305,7 +300,11 @@ image:
 	@echo "Building container image $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)..."
 	# --platform flag requires Docker >= 20.10 or Podman >= 3.4
 	# For older engines: use 'docker buildx build' or omit --platform
-	$(container_tool) build --platform linux/amd64 -t $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG) .
+	$(container_tool) build  \
+		--platform linux/amd64 \
+		--build-arg GIT_SHA=$(GIT_SHA) \
+		--build-arg GIT_DIRTY=$(GIT_DIRTY) \
+		-t $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG) .
 	@echo "✅ Image built: $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)"
 
 # Build and push container image to registry
@@ -329,7 +328,12 @@ endif
 	@echo "Building dev image quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG)..."
 	# --platform flag requires Docker >= 20.10 or Podman >= 3.4
 	# For older engines: use 'docker buildx build' or omit --platform
-	$(container_tool) build --platform linux/amd64 -t quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG) .
+	$(container_tool) build \
+		--platform linux/amd64 \
+		--build-arg BASE_IMAGE=alpine:3.21 \
+		--build-arg GIT_SHA=$(GIT_SHA) \
+		--build-arg GIT_DIRTY=$(GIT_DIRTY) \
+		-t quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG) .
 	@echo "Pushing dev image..."
 	$(container_tool) push quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG)
 	@echo ""

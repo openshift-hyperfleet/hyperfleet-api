@@ -31,11 +31,17 @@ func TestSearchStatusPhaseMapping(t *testing.T) {
 	Expect(err).NotTo(HaveOccurred())
 
 	// Query NotReady clusters using user-friendly syntax
-	search := "status.phase='NotReady'"
-	list, resp, err := client.DefaultAPI.GetClusters(ctx).Search(search).Execute()
+	searchStr := "status.phase='NotReady'"
+	search := openapi.SearchParams(searchStr)
+	params := &openapi.GetClustersParams{
+		Search: &search,
+	}
+	resp, err := client.GetClustersWithResponse(ctx, params, test.WithAuthToken(ctx))
 
 	Expect(err).NotTo(HaveOccurred())
-	Expect(resp.StatusCode).To(Equal(http.StatusOK))
+	Expect(resp.StatusCode()).To(Equal(http.StatusOK))
+	list := resp.JSON200
+	Expect(list).NotTo(BeNil())
 	Expect(list.Total).To(BeNumerically(">=", 1))
 
 	// Verify all returned clusters are NotReady
@@ -45,7 +51,7 @@ func TestSearchStatusPhaseMapping(t *testing.T) {
 			foundNotReady = true
 			// Status field structure depends on openapi.yaml
 			// Assuming status.phase exists
-			Expect(item.Status.Phase).To(Equal(openapi.NOT_READY))
+			Expect(item.Status.Phase).To(Equal(openapi.NotReady))
 		}
 		// Should not contain readyCluster
 		Expect(*item.Id).NotTo(Equal(readyCluster.ID))
@@ -77,11 +83,17 @@ func TestSearchStatusLastUpdatedTimeMapping(t *testing.T) {
 
 	// Query clusters updated before 1 hour ago
 	threshold := now.Add(-1 * time.Hour)
-	search := fmt.Sprintf("status.last_updated_time < '%s'", threshold.Format(time.RFC3339))
-	list, resp, err := client.DefaultAPI.GetClusters(ctx).Search(search).Execute()
+	searchStr := fmt.Sprintf("status.last_updated_time < '%s'", threshold.Format(time.RFC3339))
+	search := openapi.SearchParams(searchStr)
+	params := &openapi.GetClustersParams{
+		Search: &search,
+	}
+	resp, err := client.GetClustersWithResponse(ctx, params, test.WithAuthToken(ctx))
 
 	Expect(err).NotTo(HaveOccurred())
-	Expect(resp.StatusCode).To(Equal(http.StatusOK))
+	Expect(resp.StatusCode()).To(Equal(http.StatusOK))
+	list := resp.JSON200
+	Expect(list).NotTo(BeNil())
 
 	// Should return at least oldCluster
 	Expect(list.Total).To(BeNumerically(">=", 1))
@@ -121,11 +133,17 @@ func TestSearchLabelsMapping(t *testing.T) {
 	Expect(err).NotTo(HaveOccurred())
 
 	// Query production environment clusters using user-friendly syntax
-	search := "labels.environment='production'"
-	list, resp, err := client.DefaultAPI.GetClusters(ctx).Search(search).Execute()
+	searchStr := "labels.environment='production'"
+	search := openapi.SearchParams(searchStr)
+	params := &openapi.GetClustersParams{
+		Search: &search,
+	}
+	resp, err := client.GetClustersWithResponse(ctx, params, test.WithAuthToken(ctx))
 
 	Expect(err).NotTo(HaveOccurred())
-	Expect(resp.StatusCode).To(Equal(http.StatusOK))
+	Expect(resp.StatusCode()).To(Equal(http.StatusOK))
+	list := resp.JSON200
+	Expect(list).NotTo(BeNil())
 	Expect(list.Total).To(BeNumerically(">=", 1))
 
 	// Verify returned clusters have correct label
@@ -154,12 +172,16 @@ func TestSearchSpecFieldRejected(t *testing.T) {
 	ctx := h.NewAuthenticatedContext(account)
 
 	// Attempt to query spec field (should be rejected)
-	search := "spec = '{}'"
-	_, resp, err := client.DefaultAPI.GetClusters(ctx).Search(search).Execute()
+	searchStr := "spec = '{}'"
+	search := openapi.SearchParams(searchStr)
+	params := &openapi.GetClustersParams{
+		Search: &search,
+	}
+	resp, err := client.GetClustersWithResponse(ctx, params, test.WithAuthToken(ctx))
 
 	// Should return error
-	Expect(err).To(HaveOccurred())
-	Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
+	Expect(err).NotTo(HaveOccurred())
+	Expect(resp.StatusCode()).To(Equal(http.StatusBadRequest))
 }
 
 // TestSearchCombinedQuery verifies that combined queries (AND/OR)
@@ -205,11 +227,17 @@ func TestSearchCombinedQuery(t *testing.T) {
 	Expect(err).NotTo(HaveOccurred())
 
 	// Query using combined AND condition
-	search := "status.phase='NotReady' and labels.region='us-east'"
-	list, resp, err := client.DefaultAPI.GetClusters(ctx).Search(search).Execute()
+	searchStr := "status.phase='NotReady' and labels.region='us-east'"
+	search := openapi.SearchParams(searchStr)
+	params := &openapi.GetClustersParams{
+		Search: &search,
+	}
+	resp, err := client.GetClustersWithResponse(ctx, params, test.WithAuthToken(ctx))
 
 	Expect(err).NotTo(HaveOccurred())
-	Expect(resp.StatusCode).To(Equal(http.StatusOK))
+	Expect(resp.StatusCode()).To(Equal(http.StatusOK))
+	list := resp.JSON200
+	Expect(list).NotTo(BeNil())
 	Expect(list.Total).To(BeNumerically(">=", 1))
 
 	// Should only return matchCluster
@@ -217,7 +245,7 @@ func TestSearchCombinedQuery(t *testing.T) {
 	for _, item := range list.Items {
 		if *item.Id == matchCluster.ID {
 			foundMatch = true
-			Expect(item.Status.Phase).To(Equal(openapi.NOT_READY))
+			Expect(item.Status.Phase).To(Equal(openapi.NotReady))
 		}
 		// Should not contain wrongRegionCluster or wrongStatusCluster
 		Expect(*item.Id).NotTo(Equal(wrongRegionCluster.ID))
@@ -244,11 +272,17 @@ func TestSearchNodePoolFieldMapping(t *testing.T) {
 	Expect(err).NotTo(HaveOccurred())
 
 	// Query NotReady NodePools using user-friendly syntax
-	search := "status.phase='NotReady'"
-	list, resp, err := client.DefaultAPI.GetNodePools(ctx).Search(search).Execute()
+	searchStr := "status.phase='NotReady'"
+	search := openapi.SearchParams(searchStr)
+	params := &openapi.GetNodePoolsParams{
+		Search: &search,
+	}
+	resp, err := client.GetNodePoolsWithResponse(ctx, params, test.WithAuthToken(ctx))
 
 	Expect(err).NotTo(HaveOccurred())
-	Expect(resp.StatusCode).To(Equal(http.StatusOK))
+	Expect(resp.StatusCode()).To(Equal(http.StatusOK))
+	list := resp.JSON200
+	Expect(list).NotTo(BeNil())
 	Expect(list.Total).To(BeNumerically(">=", 1))
 
 	// Verify NotReady NodePool is in results
@@ -256,7 +290,7 @@ func TestSearchNodePoolFieldMapping(t *testing.T) {
 	for _, item := range list.Items {
 		if *item.Id == notReadyNP.ID {
 			foundNotReady = true
-			Expect(item.Status.Phase).To(Equal(openapi.NOT_READY))
+			Expect(item.Status.Phase).To(Equal(openapi.NotReady))
 		}
 		// Should not contain readyNP
 		Expect(*item.Id).NotTo(Equal(readyNP.ID))
@@ -269,11 +303,17 @@ func TestSearchNodePoolFieldMapping(t *testing.T) {
 	})
 	Expect(err).NotTo(HaveOccurred())
 
-	searchLabels := "labels.environment='test'"
-	labelsList, labelsResp, labelsErr := client.DefaultAPI.GetNodePools(ctx).Search(searchLabels).Execute()
+	searchLabelsStr := "labels.environment='test'"
+	searchLabels := openapi.SearchParams(searchLabelsStr)
+	labelsParams := &openapi.GetNodePoolsParams{
+		Search: &searchLabels,
+	}
+	labelsResp, labelsErr := client.GetNodePoolsWithResponse(ctx, labelsParams, test.WithAuthToken(ctx))
 
 	Expect(labelsErr).NotTo(HaveOccurred())
-	Expect(labelsResp.StatusCode).To(Equal(http.StatusOK))
+	Expect(labelsResp.StatusCode()).To(Equal(http.StatusOK))
+	labelsList := labelsResp.JSON200
+	Expect(labelsList).NotTo(BeNil())
 
 	foundLabeled := false
 	for _, item := range labelsList.Items {

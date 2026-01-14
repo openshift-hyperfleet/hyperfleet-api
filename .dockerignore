@@ -1,0 +1,9 @@
+.git
+.gitignore
+.github
+bin/
+docs/
+charts/
+.env
+.env.*
+
