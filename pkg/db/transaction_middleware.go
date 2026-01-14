@@ -17,9 +17,9 @@ func TransactionMiddleware(next http.Handler, connection SessionFactory) http.Ha
 		if err != nil {
 			logger.WithError(r.Context(), err).Error("Could not create transaction")
 			// use default error to avoid exposing internals to users
-			err := errors.GeneralError("")
-			requestID, _ := logger.GetRequestID(r.Context())
-			writeJSONResponse(w, err.HttpCode, err.AsOpenapiError(requestID))
+			serviceErr := errors.GeneralError("")
+			traceID, _ := logger.GetRequestID(r.Context())
+			writeProblemDetailsResponse(w, serviceErr.HttpCode, serviceErr.AsProblemDetails(r.URL.Path, traceID))
 			return
 		}
 
@@ -35,8 +35,8 @@ func TransactionMiddleware(next http.Handler, connection SessionFactory) http.Ha
 	})
 }
 
-func writeJSONResponse(w http.ResponseWriter, code int, payload interface{}) {
-	w.Header().Set("Content-Type", "application/json")
+func writeProblemDetailsResponse(w http.ResponseWriter, code int, payload interface{}) {
+	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(code)
 
 	if payload != nil {

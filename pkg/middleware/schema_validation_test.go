@@ -109,7 +109,7 @@ func TestSchemaValidationMiddleware_PostRequestInvalidSpec(t *testing.T) {
 	err := json.Unmarshal(rr.Body.Bytes(), &errorResponse)
 	Expect(err).To(BeNil())
 	Expect(errorResponse.Code).ToNot(BeNil())
-	Expect(errorResponse.Reason).ToNot(BeNil())
+	Expect(errorResponse.Detail).ToNot(BeNil())
 }
 
 func TestSchemaValidationMiddleware_PatchRequestValidation(t *testing.T) {
@@ -348,7 +348,7 @@ func TestSchemaValidationMiddleware_InvalidSpecType(t *testing.T) {
 	var errorResponse openapi.Error
 	err := json.Unmarshal(rr.Body.Bytes(), &errorResponse)
 	Expect(err).To(BeNil())
-	Expect(*errorResponse.Reason).To(ContainSubstring("spec field must be an object"))
+	Expect(*errorResponse.Detail).To(ContainSubstring("spec field must be an object"))
 }
 
 func TestSchemaValidationMiddleware_MalformedJSON(t *testing.T) {

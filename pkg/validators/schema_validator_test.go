@@ -184,7 +184,7 @@ func TestValidateClusterSpec_InvalidEnum(t *testing.T) {
 	Expect(serviceErr.Details).ToNot(BeEmpty())
 
 	// Verify we get validation details (field path extraction is tested separately)
-	Expect(serviceErr.Details[0].Error).ToNot(BeEmpty())
+	Expect(serviceErr.Details[0].Message).ToNot(BeEmpty())
 }
 
 func TestValidateClusterSpec_InvalidNestedField(t *testing.T) {

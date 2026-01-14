@@ -38,4 +38,32 @@ func writeJSONResponse(w http.ResponseWriter, r *http.Request, code int, payload
 	}
 }
 
+// writeProblemDetailsResponse writes an RFC 9457 Problem Details response
+func writeProblemDetailsResponse(w http.ResponseWriter, r *http.Request, code int, payload interface{}) {
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.Header().Set("Vary", "Authorization")
+
+	w.WriteHeader(code)
+
+	if payload != nil {
+		response, err := json.Marshal(payload)
+		if err != nil {
+			logger.With(r.Context(),
+				logger.HTTPPath(r.URL.Path),
+				logger.HTTPMethod(r.Method),
+				logger.HTTPStatusCode(code),
+			).WithError(err).Error("Failed to marshal Problem Details response payload")
+			return
+		}
+		if _, err := w.Write(response); err != nil {
+			logger.With(r.Context(),
+				logger.HTTPPath(r.URL.Path),
+				logger.HTTPMethod(r.Method),
+				logger.HTTPStatusCode(code),
+			).WithError(err).Error("Failed to write Problem Details response body")
+			return
+		}
+	}
+}
+
 // Prepare a 'list' of non-db-backed resources
