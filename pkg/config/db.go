@@ -61,7 +61,7 @@ func (c *DatabaseConfig) AddFlags(fs *pflag.FlagSet) {
 // BindEnv reads configuration from environment variables
 // Priority: flags > env vars > defaults
 func (c *DatabaseConfig) BindEnv(fs *pflag.FlagSet) {
-	if val := os.Getenv("DB_DEBUG"); val != "" {
+	if val := os.Getenv("HYPERFLEET_DB_DEBUG"); val != "" {
 		if fs == nil || !fs.Changed("enable-db-debug") {
 			debug, err := strconv.ParseBool(val)
 			if err == nil {

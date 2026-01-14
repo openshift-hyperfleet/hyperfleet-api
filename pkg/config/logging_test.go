@@ -17,7 +17,7 @@ func TestNewLoggingConfig_Defaults(t *testing.T) {
 		expected interface{}
 	}{
 		{"Level", cfg.Level, "info"},
-		{"Format", cfg.Format, "json"},
+		{"Format", cfg.Format, "text"},
 		{"Output", cfg.Output, "stdout"},
 		{"OTel.Enabled", cfg.OTel.Enabled, false},
 		{"OTel.SamplingRate", cfg.OTel.SamplingRate, 1.0},
@@ -116,16 +116,16 @@ func TestLoggingConfig_BindEnv(t *testing.T) {
 		{
 			name: "basic logging env vars",
 			envVars: map[string]string{
-				"LOG_LEVEL":  "debug",
-				"LOG_FORMAT": "text",
-				"LOG_OUTPUT": "stderr",
+				"HYPERFLEET_LOG_LEVEL":  "debug",
+				"HYPERFLEET_LOG_FORMAT": "json",
+				"HYPERFLEET_LOG_OUTPUT": "stderr",
 			},
 			validate: func(t *testing.T, cfg *LoggingConfig) {
 				if cfg.Level != "debug" {
 					t.Errorf("expected Level 'debug', got '%s'", cfg.Level)
 				}
-				if cfg.Format != "text" {
-					t.Errorf("expected Format 'text', got '%s'", cfg.Format)
+				if cfg.Format != "json" {
+					t.Errorf("expected Format 'json', got '%s'", cfg.Format)
 				}
 				if cfg.Output != "stderr" {
 					t.Errorf("expected Output 'stderr', got '%s'", cfg.Output)
@@ -150,9 +150,9 @@ func TestLoggingConfig_BindEnv(t *testing.T) {
 		{
 			name: "masking env vars",
 			envVars: map[string]string{
-				"MASKING_ENABLED": "false",
-				"MASKING_HEADERS": "Custom-Header,Another-Header",
-				"MASKING_FIELDS":  "custom_field,another_field",
+				"HYPERFLEET_MASKING_ENABLED": "false",
+				"HYPERFLEET_MASKING_HEADERS": "Custom-Header,Another-Header",
+				"HYPERFLEET_MASKING_FIELDS":  "custom_field,another_field",
 			},
 			validate: func(t *testing.T, cfg *LoggingConfig) {
 				if cfg.Masking.Enabled != false {
@@ -311,18 +311,18 @@ func TestLoggingConfig_GetSensitiveFieldsList(t *testing.T) {
 // TestLoggingConfig_FlagsOverrideEnv tests that CLI flags override environment variables
 func TestLoggingConfig_FlagsOverrideEnv(t *testing.T) {
 	// Save and restore env var
-	oldLevel := os.Getenv("LOG_LEVEL")
+	oldLevel := os.Getenv("HYPERFLEET_LOG_LEVEL")
 	defer func() {
 		if oldLevel == "" {
-			_ = os.Unsetenv("LOG_LEVEL")
+			_ = os.Unsetenv("HYPERFLEET_LOG_LEVEL")
 		} else {
-			_ = os.Setenv("LOG_LEVEL", oldLevel)
+			_ = os.Setenv("HYPERFLEET_LOG_LEVEL", oldLevel)
 		}
 	}()
 
 	// Set env var to "error"
-	if err := os.Setenv("LOG_LEVEL", "error"); err != nil {
-		t.Fatalf("failed to set LOG_LEVEL: %v", err)
+	if err := os.Setenv("HYPERFLEET_LOG_LEVEL", "error"); err != nil {
+		t.Fatalf("failed to set HYPERFLEET_LOG_LEVEL: %v", err)
 	}
 
 	cfg := NewLoggingConfig()
@@ -350,18 +350,18 @@ func TestLoggingConfig_FlagsOverrideEnv(t *testing.T) {
 // TestLoggingConfig_EnvOverridesDefaults tests that env vars override defaults when no flag is set
 func TestLoggingConfig_EnvOverridesDefaults(t *testing.T) {
 	// Save and restore env var
-	oldLevel := os.Getenv("LOG_LEVEL")
+	oldLevel := os.Getenv("HYPERFLEET_LOG_LEVEL")
 	defer func() {
 		if oldLevel == "" {
-			_ = os.Unsetenv("LOG_LEVEL")
+			_ = os.Unsetenv("HYPERFLEET_LOG_LEVEL")
 		} else {
-			_ = os.Setenv("LOG_LEVEL", oldLevel)
+			_ = os.Setenv("HYPERFLEET_LOG_LEVEL", oldLevel)
 		}
 	}()
 
 	// Set env var
-	if err := os.Setenv("LOG_LEVEL", "error"); err != nil {
-		t.Fatalf("failed to set LOG_LEVEL: %v", err)
+	if err := os.Setenv("HYPERFLEET_LOG_LEVEL", "error"); err != nil {
+		t.Fatalf("failed to set HYPERFLEET_LOG_LEVEL: %v", err)
 	}
 
 	cfg := NewLoggingConfig()
@@ -389,9 +389,9 @@ func TestLoggingConfig_EnvOverridesDefaults(t *testing.T) {
 func TestLoggingConfig_PriorityMixed(t *testing.T) {
 	// Save and restore env vars
 	envVars := map[string]string{
-		"LOG_LEVEL":  os.Getenv("LOG_LEVEL"),
-		"LOG_FORMAT": os.Getenv("LOG_FORMAT"),
-		"LOG_OUTPUT": os.Getenv("LOG_OUTPUT"),
+		"HYPERFLEET_LOG_LEVEL":  os.Getenv("HYPERFLEET_LOG_LEVEL"),
+		"HYPERFLEET_LOG_FORMAT": os.Getenv("HYPERFLEET_LOG_FORMAT"),
+		"HYPERFLEET_LOG_OUTPUT": os.Getenv("HYPERFLEET_LOG_OUTPUT"),
 	}
 	defer func() {
 		for key, val := range envVars {
@@ -404,9 +404,9 @@ func TestLoggingConfig_PriorityMixed(t *testing.T) {
 	}()
 
 	// Set env vars for all three fields
-	_ = os.Setenv("LOG_LEVEL", "error")
-	_ = os.Setenv("LOG_FORMAT", "text")
-	_ = os.Setenv("LOG_OUTPUT", "stderr")
+	_ = os.Setenv("HYPERFLEET_LOG_LEVEL", "error")
+	_ = os.Setenv("HYPERFLEET_LOG_FORMAT", "json")
+	_ = os.Setenv("HYPERFLEET_LOG_OUTPUT", "stderr")
 
 	cfg := NewLoggingConfig()
 	fs := pflag.NewFlagSet("test", pflag.ContinueOnError)
@@ -424,8 +424,8 @@ func TestLoggingConfig_PriorityMixed(t *testing.T) {
 		t.Errorf("expected Level 'debug' (flag > env), got '%s'", cfg.Level)
 	}
 	// log-format: env wins over default
-	if cfg.Format != "text" {
-		t.Errorf("expected Format 'text' (env > default), got '%s'", cfg.Format)
+	if cfg.Format != "json" {
+		t.Errorf("expected Format 'json' (env > default), got '%s'", cfg.Format)
 	}
 	// log-output: env wins over default
 	if cfg.Output != "stderr" {
