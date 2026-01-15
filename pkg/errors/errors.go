@@ -337,7 +337,11 @@ func FailedToParseSearch(reason string, values ...interface{}) *ServiceError {
 }
 
 func DatabaseAdvisoryLock(err error) *ServiceError {
-	return New(CodeInternalDatabase, "%s", err.Error())
+	// Log the full error server-side for debugging
+	ctx := context.Background()
+	logger.WithError(ctx, err).Error("Database advisory lock error")
+	// Return a generic message to avoid leaking sensitive database info
+	return New(CodeInternalDatabase, "internal database error")
 }
 
 func InvalidToken(reason string, values ...interface{}) *ServiceError {
