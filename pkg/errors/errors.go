@@ -249,10 +249,16 @@ func (e *ServiceError) AsProblemDetails(instance string, traceID string) openapi
 		Title:     e.Title,
 		Status:    e.HttpCode,
 		Detail:    &e.Reason,
-		Instance:  &instance,
 		Code:      &e.RFC9457Code,
 		Timestamp: &now,
-		TraceId:   &traceID,
+	}
+
+	// Only set Instance and TraceId if non-empty to omit from JSON when nil
+	if instance != "" {
+		problemDetails.Instance = &instance
+	}
+	if traceID != "" {
+		problemDetails.TraceId = &traceID
 	}
 
 	// Add validation errors if present
