@@ -8,18 +8,19 @@ import (
 
 func TestErrorFormatting(t *testing.T) {
 	RegisterTestingT(t)
-	err := New(ErrorGeneral, "test %s, %d", "errors", 1)
+	err := New(CodeInternalGeneral, "test %s, %d", "errors", 1)
 	Expect(err.Reason).To(Equal("test errors, 1"))
 }
 
 func TestErrorFind(t *testing.T) {
 	RegisterTestingT(t)
-	exists, err := Find(ErrorNotFound)
+	exists, err := Find(CodeNotFoundGeneric)
 	Expect(exists).To(Equal(true))
-	Expect(err.Code).To(Equal(ErrorNotFound))
+	Expect(err.Type).To(Equal(ErrorTypeNotFound))
+	Expect(err.RFC9457Code).To(Equal(CodeNotFoundGeneric))
 
-	// Hopefully we never reach 91,823,719 error codes or this test will fail
-	exists, err = Find(ServiceErrorCode(91823719))
+	// Test with invalid code
+	exists, err = Find("INVALID-CODE-999")
 	Expect(exists).To(Equal(false))
 	Expect(err).To(BeNil())
 }

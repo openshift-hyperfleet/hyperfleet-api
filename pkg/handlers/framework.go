@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/response"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
@@ -45,7 +46,7 @@ func handleError(r *http.Request, w http.ResponseWriter, err *errors.ServiceErro
 			"reason", err.Reason).Error("Server error response")
 	}
 
-	writeProblemDetailsResponse(w, r, err.HttpCode, err.AsProblemDetails(instance, traceID))
+	response.WriteProblemDetailsResponse(w, r, err.HttpCode, err.AsProblemDetails(instance, traceID))
 }
 
 func handle(w http.ResponseWriter, r *http.Request, cfg *handlerConfig, httpStatus int) {

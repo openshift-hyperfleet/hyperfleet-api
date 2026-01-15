@@ -42,8 +42,8 @@ func (f *Factories) NewNodePool(id string) (*api.NodePool, error) {
 
 	sub, serviceErr := nodePoolService.Create(context.Background(), nodePool)
 	// Check for real errors (not typed nil)
-	if serviceErr != nil && serviceErr.Code != 0 {
-		return nil, fmt.Errorf("failed to create nodepool: %s (code: %d)", serviceErr.Reason, serviceErr.Code)
+	if serviceErr != nil && serviceErr.RFC9457Code != "" {
+		return nil, fmt.Errorf("failed to create nodepool: %s (code: %s)", serviceErr.Reason, serviceErr.RFC9457Code)
 	}
 
 	if sub == nil {

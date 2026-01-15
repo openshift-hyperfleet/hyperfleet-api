@@ -81,10 +81,36 @@ func SendUnauthorized(w http.ResponseWriter, r *http.Request, message string) {
 }
 
 // SendPanic sends a panic error response in RFC 9457 Problem Details format.
+// It attempts to include trace_id and timestamp dynamically, falling back to
+// a pre-computed body if marshaling fails.
 func SendPanic(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(http.StatusInternalServerError)
-	_, err := w.Write(panicBody)
+
+	// Try to generate a complete response with trace_id and timestamp
+	traceID, _ := logger.GetRequestID(r.Context())
+	now := time.Now().UTC()
+	detail := "An unexpected error happened, please check the log of the service for details"
+	instance := r.URL.Path
+
+	panicError := openapi.Error{
+		Type:      errors.ErrorTypeInternal,
+		Title:     "Internal Server Error",
+		Status:    http.StatusInternalServerError,
+		Detail:    &detail,
+		Instance:  &instance,
+		Code:      ptrString(errors.CodeInternalGeneral),
+		Timestamp: &now,
+		TraceId:   &traceID,
+	}
+
+	data, err := json.Marshal(panicError)
+	if err != nil {
+		// Fallback to pre-computed body without trace_id/timestamp
+		data = panicBody
+	}
+
+	_, err = w.Write(data)
 	if err != nil {
 		err = fmt.Errorf(
 			"can't send panic response for request '%s': %s",

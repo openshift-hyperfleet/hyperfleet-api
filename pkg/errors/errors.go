@@ -71,26 +71,6 @@ const (
 	CodeNotImplemented  = "HYPERFLEET-INT-003"
 )
 
-// ServiceErrorCode is kept for backwards compatibility
-type ServiceErrorCode int
-
-// Legacy error codes mapped to new format
-const (
-	ErrorInvalidToken         ServiceErrorCode = 1
-	ErrorForbidden            ServiceErrorCode = 4
-	ErrorConflict             ServiceErrorCode = 6
-	ErrorNotFound             ServiceErrorCode = 7
-	ErrorValidation           ServiceErrorCode = 8
-	ErrorGeneral              ServiceErrorCode = 9
-	ErrorNotImplemented       ServiceErrorCode = 10
-	ErrorUnauthorized         ServiceErrorCode = 11
-	ErrorUnauthenticated      ServiceErrorCode = 15
-	ErrorMalformedRequest     ServiceErrorCode = 17
-	ErrorBadRequest           ServiceErrorCode = 21
-	ErrorFailedToParseSearch  ServiceErrorCode = 23
-	ErrorDatabaseAdvisoryLock ServiceErrorCode = 26
-)
-
 type ServiceErrors []ServiceError
 
 // ValidationDetail represents a single field validation error (RFC 9457 format)
@@ -103,9 +83,7 @@ type ValidationDetail struct {
 
 // ServiceError represents an API error with RFC 9457 Problem Details support
 type ServiceError struct {
-	// Code is the legacy numeric error code
-	Code ServiceErrorCode
-	// RFC9457Code is the new HYPERFLEET-CAT-NUM format code
+	// RFC9457Code is the HYPERFLEET-CAT-NUM format code
 	RFC9457Code string
 	// Type is the RFC 9457 type URI
 	Type string
@@ -121,38 +99,37 @@ type ServiceError struct {
 
 // errorDefinition holds the default values for each error type
 type errorDefinition struct {
-	Code        ServiceErrorCode
-	RFC9457Code string
-	Type        string
-	Title       string
-	Reason      string
-	HttpCode    int
+	Type     string
+	Title    string
+	Reason   string
+	HttpCode int
 }
 
-var errorDefinitions = map[ServiceErrorCode]errorDefinition{
-	ErrorInvalidToken:         {ErrorInvalidToken, CodeAuthExpiredToken, ErrorTypeAuth, "Invalid Token", "Invalid token provided", http.StatusForbidden},
-	ErrorForbidden:            {ErrorForbidden, CodeAuthzForbidden, ErrorTypeAuthz, "Forbidden", "Forbidden to perform this action", http.StatusForbidden},
-	ErrorConflict:             {ErrorConflict, CodeConflictExists, ErrorTypeConflict, "Resource Conflict", "An entity with the specified unique values already exists", http.StatusConflict},
-	ErrorNotFound:             {ErrorNotFound, CodeNotFoundGeneric, ErrorTypeNotFound, "Resource Not Found", "Resource not found", http.StatusNotFound},
-	ErrorValidation:           {ErrorValidation, CodeValidationMultiple, ErrorTypeValidation, "Validation Failed", "General validation failure", http.StatusBadRequest},
-	ErrorGeneral:              {ErrorGeneral, CodeInternalGeneral, ErrorTypeInternal, "Internal Server Error", "Unspecified error", http.StatusInternalServerError},
-	ErrorNotImplemented:       {ErrorNotImplemented, CodeNotImplemented, ErrorTypeNotImpl, "Not Implemented", "Functionality not implemented", http.StatusNotImplemented},
-	ErrorUnauthorized:         {ErrorUnauthorized, CodeAuthzInsufficient, ErrorTypeAuthz, "Unauthorized", "Account is unauthorized to perform this action", http.StatusForbidden},
-	ErrorUnauthenticated:      {ErrorUnauthenticated, CodeAuthNoCredentials, ErrorTypeAuth, "Authentication Required", "Account authentication could not be verified", http.StatusUnauthorized},
-	ErrorMalformedRequest:     {ErrorMalformedRequest, CodeMalformedBody, ErrorTypeMalformed, "Malformed Request", "Unable to read request body", http.StatusBadRequest},
-	ErrorBadRequest:           {ErrorBadRequest, CodeBadRequest, ErrorTypeBadRequest, "Bad Request", "Bad request", http.StatusBadRequest},
-	ErrorFailedToParseSearch:  {ErrorFailedToParseSearch, CodeSearchParseFail, ErrorTypeValidation, "Invalid Search Query", "Failed to parse search query", http.StatusBadRequest},
-	ErrorDatabaseAdvisoryLock: {ErrorDatabaseAdvisoryLock, CodeInternalDatabase, ErrorTypeInternal, "Database Error", "Database advisory lock error", http.StatusInternalServerError},
+var errorDefinitions = map[string]errorDefinition{
+	CodeAuthExpiredToken:      {ErrorTypeAuth, "Invalid Token", "Invalid token provided", http.StatusUnauthorized},
+	CodeAuthzForbidden:        {ErrorTypeAuthz, "Forbidden", "Forbidden to perform this action", http.StatusForbidden},
+	CodeConflictExists:        {ErrorTypeConflict, "Resource Conflict", "An entity with the specified unique values already exists", http.StatusConflict},
+	CodeNotFoundGeneric:       {ErrorTypeNotFound, "Resource Not Found", "Resource not found", http.StatusNotFound},
+	CodeValidationMultiple:    {ErrorTypeValidation, "Validation Failed", "General validation failure", http.StatusBadRequest},
+	CodeInternalGeneral:       {ErrorTypeInternal, "Internal Server Error", "Unspecified error", http.StatusInternalServerError},
+	CodeNotImplemented:        {ErrorTypeNotImpl, "Not Implemented", "Functionality not implemented", http.StatusNotImplemented},
+	CodeAuthzInsufficient:     {ErrorTypeAuthz, "Unauthorized", "Account is unauthorized to perform this action", http.StatusForbidden},
+	CodeAuthNoCredentials:     {ErrorTypeAuth, "Authentication Required", "Account authentication could not be verified", http.StatusUnauthorized},
+	CodeMalformedBody:         {ErrorTypeMalformed, "Malformed Request", "Unable to read request body", http.StatusBadRequest},
+	CodeBadRequest:            {ErrorTypeBadRequest, "Bad Request", "Bad request", http.StatusBadRequest},
+	CodeSearchParseFail:       {ErrorTypeValidation, "Invalid Search Query", "Failed to parse search query", http.StatusBadRequest},
+	CodeInternalDatabase:      {ErrorTypeInternal, "Database Error", "Database advisory lock error", http.StatusInternalServerError},
+	CodeAuthInvalidCredentials: {ErrorTypeAuth, "Invalid Credentials", "The provided credentials are invalid", http.StatusUnauthorized},
 }
 
-func Find(code ServiceErrorCode) (bool, *ServiceError) {
+// Find looks up an error definition by its RFC 9457 code
+func Find(code string) (bool, *ServiceError) {
 	def, exists := errorDefinitions[code]
 	if !exists {
 		return false, nil
 	}
 	return true, &ServiceError{
-		Code:        def.Code,
-		RFC9457Code: def.RFC9457Code,
+		RFC9457Code: code,
 		Type:        def.Type,
 		Title:       def.Title,
 		Reason:      def.Reason,
@@ -160,12 +137,12 @@ func Find(code ServiceErrorCode) (bool, *ServiceError) {
 	}
 }
 
+// Errors returns all defined errors
 func Errors() ServiceErrors {
 	errors := make(ServiceErrors, 0, len(errorDefinitions))
-	for _, def := range errorDefinitions {
+	for code, def := range errorDefinitions {
 		errors = append(errors, ServiceError{
-			Code:        def.Code,
-			RFC9457Code: def.RFC9457Code,
+			RFC9457Code: code,
 			Type:        def.Type,
 			Title:       def.Title,
 			Reason:      def.Reason,
@@ -176,13 +153,12 @@ func Errors() ServiceErrors {
 }
 
 // New creates a new ServiceError with optional custom reason
-func New(code ServiceErrorCode, reason string, values ...interface{}) *ServiceError {
+func New(code string, reason string, values ...interface{}) *ServiceError {
 	exists, err := Find(code)
 	if !exists {
 		ctx := context.Background()
 		logger.With(ctx, logger.FieldErrorCode, code).Error("Undefined error code used")
 		err = &ServiceError{
-			Code:        ErrorGeneral,
 			RFC9457Code: CodeInternalGeneral,
 			Type:        ErrorTypeInternal,
 			Title:       "Internal Server Error",
@@ -207,15 +183,15 @@ func (e *ServiceError) AsError() error {
 }
 
 func (e *ServiceError) Is404() bool {
-	return e.Code == ErrorNotFound
+	return e.Type == ErrorTypeNotFound
 }
 
 func (e *ServiceError) IsConflict() bool {
-	return e.Code == ErrorConflict
+	return e.Type == ErrorTypeConflict
 }
 
 func (e *ServiceError) IsForbidden() bool {
-	return e.Code == ErrorForbidden
+	return e.Type == ErrorTypeAuthz
 }
 
 // validConstraints maps string values to their corresponding ValidationErrorConstraint enum values
@@ -278,62 +254,61 @@ func (e *ServiceError) AsProblemDetails(instance string, traceID string) openapi
 // Constructor functions
 
 func NotFound(reason string, values ...interface{}) *ServiceError {
-	return New(ErrorNotFound, reason, values...)
+	return New(CodeNotFoundGeneric, reason, values...)
 }
 
 func GeneralError(reason string, values ...interface{}) *ServiceError {
-	return New(ErrorGeneral, reason, values...)
+	return New(CodeInternalGeneral, reason, values...)
 }
 
 func Unauthorized(reason string, values ...interface{}) *ServiceError {
-	return New(ErrorUnauthorized, reason, values...)
+	return New(CodeAuthzInsufficient, reason, values...)
 }
 
 func Unauthenticated(reason string, values ...interface{}) *ServiceError {
-	return New(ErrorUnauthenticated, reason, values...)
+	return New(CodeAuthNoCredentials, reason, values...)
 }
 
 func Forbidden(reason string, values ...interface{}) *ServiceError {
-	return New(ErrorForbidden, reason, values...)
+	return New(CodeAuthzForbidden, reason, values...)
 }
 
-func NotImplementedError(reason string, values ...interface{}) *ServiceError {
-	return New(ErrorNotImplemented, reason, values...)
-}
-
-// NotImplemented is an alias for NotImplementedError for backwards compatibility
 func NotImplemented(reason string, values ...interface{}) *ServiceError {
-	return New(ErrorNotImplemented, reason, values...)
+	return New(CodeNotImplemented, reason, values...)
 }
 
 func Conflict(reason string, values ...interface{}) *ServiceError {
-	return New(ErrorConflict, reason, values...)
+	return New(CodeConflictExists, reason, values...)
 }
 
 func Validation(reason string, values ...interface{}) *ServiceError {
-	return New(ErrorValidation, reason, values...)
+	return New(CodeValidationMultiple, reason, values...)
 }
 
 // ValidationWithDetails creates a validation error with field-level details
 func ValidationWithDetails(reason string, details []ValidationDetail) *ServiceError {
-	err := New(ErrorValidation, "%s", reason)
+	err := New(CodeValidationMultiple, "%s", reason)
 	err.Details = details
 	return err
 }
 
 func MalformedRequest(reason string, values ...interface{}) *ServiceError {
-	return New(ErrorMalformedRequest, reason, values...)
+	return New(CodeMalformedBody, reason, values...)
 }
 
 func BadRequest(reason string, values ...interface{}) *ServiceError {
-	return New(ErrorBadRequest, reason, values...)
+	return New(CodeBadRequest, reason, values...)
 }
 
 func FailedToParseSearch(reason string, values ...interface{}) *ServiceError {
 	message := fmt.Sprintf("Failed to parse search query: %s", reason)
-	return New(ErrorFailedToParseSearch, message, values...)
+	return New(CodeSearchParseFail, message, values...)
 }
 
 func DatabaseAdvisoryLock(err error) *ServiceError {
-	return New(ErrorDatabaseAdvisoryLock, "%s", err.Error())
+	return New(CodeInternalDatabase, "%s", err.Error())
+}
+
+func InvalidToken(reason string, values ...interface{}) *ServiceError {
+	return New(CodeAuthExpiredToken, reason, values...)
 }

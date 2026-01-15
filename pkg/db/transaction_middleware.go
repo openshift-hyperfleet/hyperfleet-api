@@ -1,9 +1,9 @@
 package db
 
 import (
-	"encoding/json"
 	"net/http"
 
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/response"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db/db_context"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
@@ -19,7 +19,7 @@ func TransactionMiddleware(next http.Handler, connection SessionFactory) http.Ha
 			// use default error to avoid exposing internals to users
 			serviceErr := errors.GeneralError("")
 			traceID, _ := logger.GetRequestID(r.Context())
-			writeProblemDetailsResponse(w, serviceErr.HttpCode, serviceErr.AsProblemDetails(r.URL.Path, traceID))
+			response.WriteProblemDetailsResponse(w, r, serviceErr.HttpCode, serviceErr.AsProblemDetails(r.URL.Path, traceID))
 			return
 		}
 
@@ -33,21 +33,4 @@ func TransactionMiddleware(next http.Handler, connection SessionFactory) http.Ha
 
 		next.ServeHTTP(w, r)
 	})
-}
-
-func writeProblemDetailsResponse(w http.ResponseWriter, code int, payload interface{}) {
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(code)
-
-	if payload != nil {
-		response, err := json.Marshal(payload)
-		if err != nil {
-			// Log error but don't expose to client since headers already sent
-			return
-		}
-		if _, err := w.Write(response); err != nil {
-			// Response writing failed, nothing we can do at this point
-			return
-		}
-	}
 }
