@@ -106,20 +106,45 @@ type errorDefinition struct {
 }
 
 var errorDefinitions = map[string]errorDefinition{
-	CodeAuthExpiredToken:      {ErrorTypeAuth, "Invalid Token", "Invalid token provided", http.StatusUnauthorized},
-	CodeAuthzForbidden:        {ErrorTypeAuthz, "Forbidden", "Forbidden to perform this action", http.StatusForbidden},
-	CodeConflictExists:        {ErrorTypeConflict, "Resource Conflict", "An entity with the specified unique values already exists", http.StatusConflict},
-	CodeNotFoundGeneric:       {ErrorTypeNotFound, "Resource Not Found", "Resource not found", http.StatusNotFound},
-	CodeValidationMultiple:    {ErrorTypeValidation, "Validation Failed", "General validation failure", http.StatusBadRequest},
-	CodeInternalGeneral:       {ErrorTypeInternal, "Internal Server Error", "Unspecified error", http.StatusInternalServerError},
-	CodeNotImplemented:        {ErrorTypeNotImpl, "Not Implemented", "Functionality not implemented", http.StatusNotImplemented},
-	CodeAuthzInsufficient:     {ErrorTypeAuthz, "Unauthorized", "Account is unauthorized to perform this action", http.StatusForbidden},
-	CodeAuthNoCredentials:     {ErrorTypeAuth, "Authentication Required", "Account authentication could not be verified", http.StatusUnauthorized},
-	CodeMalformedBody:         {ErrorTypeMalformed, "Malformed Request", "Unable to read request body", http.StatusBadRequest},
-	CodeBadRequest:            {ErrorTypeBadRequest, "Bad Request", "Bad request", http.StatusBadRequest},
-	CodeSearchParseFail:       {ErrorTypeValidation, "Invalid Search Query", "Failed to parse search query", http.StatusBadRequest},
-	CodeInternalDatabase:      {ErrorTypeInternal, "Database Error", "Database advisory lock error", http.StatusInternalServerError},
+	// Authentication errors (AUT) - 401
+	CodeAuthNoCredentials:      {ErrorTypeAuth, "Authentication Required", "Account authentication could not be verified", http.StatusUnauthorized},
 	CodeAuthInvalidCredentials: {ErrorTypeAuth, "Invalid Credentials", "The provided credentials are invalid", http.StatusUnauthorized},
+	CodeAuthExpiredToken:       {ErrorTypeAuth, "Invalid Token", "Invalid token provided", http.StatusUnauthorized},
+
+	// Authorization errors (AUZ) - 403
+	CodeAuthzInsufficient: {ErrorTypeAuthz, "Unauthorized", "Account is unauthorized to perform this action", http.StatusForbidden},
+	CodeAuthzForbidden:    {ErrorTypeAuthz, "Forbidden", "Forbidden to perform this action", http.StatusForbidden},
+
+	// Validation errors (VAL) - 400
+	CodeValidationMultiple: {ErrorTypeValidation, "Validation Failed", "Multiple validation errors occurred", http.StatusBadRequest},
+	CodeValidationRequired: {ErrorTypeValidation, "Required Field Missing", "A required field is missing", http.StatusBadRequest},
+	CodeValidationInvalid:  {ErrorTypeValidation, "Invalid Value", "The provided value is invalid", http.StatusBadRequest},
+	CodeValidationFormat:   {ErrorTypeValidation, "Invalid Format", "The provided value has an invalid format", http.StatusBadRequest},
+	CodeValidationRange:    {ErrorTypeValidation, "Value Out of Range", "The provided value is out of the allowed range", http.StatusBadRequest},
+	CodeBadRequest:         {ErrorTypeBadRequest, "Bad Request", "Bad request", http.StatusBadRequest},
+	CodeMalformedBody:      {ErrorTypeMalformed, "Malformed Request", "Unable to read request body", http.StatusBadRequest},
+	CodeSearchParseFail:    {ErrorTypeValidation, "Invalid Search Query", "Failed to parse search query", http.StatusBadRequest},
+
+	// Not Found errors (NTF) - 404
+	CodeNotFoundGeneric:  {ErrorTypeNotFound, "Resource Not Found", "Resource not found", http.StatusNotFound},
+	CodeNotFoundCluster:  {ErrorTypeNotFound, "Cluster Not Found", "The specified cluster was not found", http.StatusNotFound},
+	CodeNotFoundNodePool: {ErrorTypeNotFound, "NodePool Not Found", "The specified node pool was not found", http.StatusNotFound},
+
+	// Conflict errors (CNF) - 409
+	CodeConflictExists:  {ErrorTypeConflict, "Resource Conflict", "An entity with the specified unique values already exists", http.StatusConflict},
+	CodeConflictVersion: {ErrorTypeConflict, "Version Conflict", "The resource version does not match", http.StatusConflict},
+
+	// Rate Limit errors (LMT) - 429
+	CodeRateLimitExceeded: {ErrorTypeRateLimit, "Rate Limit Exceeded", "Too many requests, please try again later", http.StatusTooManyRequests},
+
+	// Internal errors (INT) - 500/501
+	CodeInternalGeneral:  {ErrorTypeInternal, "Internal Server Error", "Unspecified error", http.StatusInternalServerError},
+	CodeInternalDatabase: {ErrorTypeInternal, "Database Error", "A database error occurred", http.StatusInternalServerError},
+	CodeNotImplemented:   {ErrorTypeNotImpl, "Not Implemented", "Functionality not implemented", http.StatusNotImplemented},
+
+	// Service errors (SVC) - 503/504
+	CodeServiceUnavailable: {ErrorTypeService, "Service Unavailable", "The service is temporarily unavailable", http.StatusServiceUnavailable},
+	CodeServiceTimeout:     {ErrorTypeService, "Service Timeout", "The service request timed out", http.StatusGatewayTimeout},
 }
 
 // Find looks up an error definition by its RFC 9457 code
