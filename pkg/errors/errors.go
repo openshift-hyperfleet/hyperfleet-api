@@ -193,7 +193,11 @@ func New(code string, reason string, values ...interface{}) *ServiceError {
 	}
 
 	if reason != "" {
-		err.Reason = fmt.Sprintf(reason, values...)
+		if len(values) > 0 {
+			err.Reason = fmt.Sprintf(reason, values...)
+		} else {
+			err.Reason = reason
+		}
 	}
 
 	return err
