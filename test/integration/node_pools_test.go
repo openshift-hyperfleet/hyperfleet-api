@@ -263,10 +263,10 @@ func TestNodePoolPost_EmptyKind(t *testing.T) {
 	err = json.Unmarshal(restyResp.Body(), &errorResponse)
 	Expect(err).ToNot(HaveOccurred())
 
-	// Verify error message contains "kind is required"
-	reason, ok := errorResponse["reason"].(string)
+	// Verify error message contains "kind is required" (RFC 9457 uses "detail" field)
+	detail, ok := errorResponse["detail"].(string)
 	Expect(ok).To(BeTrue())
-	Expect(reason).To(ContainSubstring("kind is required"))
+	Expect(detail).To(ContainSubstring("kind is required"))
 }
 
 // TestNodePoolPost_WrongKind tests that wrong kind field returns 400
@@ -302,8 +302,8 @@ func TestNodePoolPost_WrongKind(t *testing.T) {
 	err = json.Unmarshal(restyResp.Body(), &errorResponse)
 	Expect(err).ToNot(HaveOccurred())
 
-	// Verify error message contains "kind must be 'NodePool'"
-	reason, ok := errorResponse["reason"].(string)
+	// Verify error message contains "kind must be 'NodePool'" (RFC 9457 uses "detail" field)
+	detail, ok := errorResponse["detail"].(string)
 	Expect(ok).To(BeTrue())
-	Expect(reason).To(ContainSubstring("kind must be 'NodePool'"))
+	Expect(detail).To(ContainSubstring("kind must be 'NodePool'"))
 }

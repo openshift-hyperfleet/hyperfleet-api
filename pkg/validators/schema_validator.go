@@ -137,15 +137,15 @@ func convertValidationError(err error, prefix string) []errors.ValidationDetail 
 		//   - "property 'unknownField' is unsupported"
 		//   - "number must be at least 10"
 		details = append(details, errors.ValidationDetail{
-			Field: field,
-			Error: e.Reason,
+			Field:   field,
+			Message: e.Reason,
 		})
 	default:
 		// Fallback for unknown error types
 		// Error message already contains the full description
 		details = append(details, errors.ValidationDetail{
-			Field: prefix,
-			Error: err.Error(),
+			Field:   prefix,
+			Message: err.Error(),
 		})
 	}
 

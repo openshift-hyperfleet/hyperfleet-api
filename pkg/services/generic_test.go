@@ -29,11 +29,11 @@ func TestSQLTranslation(t *testing.T) {
 	tests := []map[string]interface{}{
 		{
 			"search": "garbage",
-			"error":  "hyperfleet-21: Failed to parse search query: garbage",
+			"error":  errors.CodeBadRequest + ": Failed to parse search query: garbage",
 		},
 		{
 			"search": "spec = '{}'",
-			"error":  "hyperfleet-21: spec is not a valid field name",
+			"error":  errors.CodeBadRequest + ": spec is not a valid field name",
 		},
 	}
 	for _, test := range tests {
@@ -45,7 +45,7 @@ func TestSQLTranslation(t *testing.T) {
 		d := g.GetInstanceDao(context.Background(), model)
 		_, serviceErr = genericService.buildSearch(listCtx, &d)
 		Expect(serviceErr).To(HaveOccurred())
-		Expect(serviceErr.Code).To(Equal(errors.ErrorBadRequest))
+		Expect(serviceErr.Type).To(Equal(errors.ErrorTypeBadRequest))
 		Expect(serviceErr.Error()).To(Equal(errorMsg))
 	}
 

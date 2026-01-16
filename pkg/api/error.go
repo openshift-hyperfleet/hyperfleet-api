@@ -6,70 +6,111 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"time"
 
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
-// SendNotFound sends a 404 response with some details about the non existing resource.
+// SendNotFound sends a 404 response in RFC 9457 Problem Details format.
 func SendNotFound(w http.ResponseWriter, r *http.Request) {
-	// Set the content type:
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Type", "application/problem+json")
 
-	// Prepare the body:
-	id := "404"
-	reason := fmt.Sprintf(
-		"The requested resource '%s' doesn't exist",
-		r.URL.Path,
-	)
-	body := Error{
-		Type:   ErrorType,
-		ID:     id,
-		HREF:   "/api/hyperfleet/v1/errors/" + id,
-		Code:   "hyperfleet-" + id,
-		Reason: reason,
+	traceID, _ := logger.GetRequestID(r.Context())
+	now := time.Now().UTC()
+	detail := fmt.Sprintf("The requested resource '%s' doesn't exist", r.URL.Path)
+
+	body := openapi.Error{
+		Type:      errors.ErrorTypeNotFound,
+		Title:     "Resource Not Found",
+		Status:    http.StatusNotFound,
+		Detail:    &detail,
+		Instance:  &r.URL.Path,
+		Code:      ptrString(errors.CodeNotFoundGeneric),
+		Timestamp: &now,
+		TraceId:   &traceID,
 	}
+
 	data, err := json.Marshal(body)
 	if err != nil {
+		logger.WithError(r.Context(), err).Error("Failed to marshal not found response")
 		SendPanic(w, r)
 		return
 	}
 
-	// Send the response:
 	w.WriteHeader(http.StatusNotFound)
 	_, err = w.Write(data)
 	if err != nil {
 		err = fmt.Errorf("can't send response body for request '%s'", r.URL.Path)
 		logger.WithError(r.Context(), err).Error("Failed to send response")
-		return
 	}
 }
 
+// SendUnauthorized sends a 401 response in RFC 9457 Problem Details format.
 func SendUnauthorized(w http.ResponseWriter, r *http.Request, message string) {
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Type", "application/problem+json")
 
-	// Prepare the body:
-	apiError := errors.Unauthorized("%s", message)
-	data, err := json.Marshal(apiError)
+	traceID, _ := logger.GetRequestID(r.Context())
+	now := time.Now().UTC()
+
+	body := openapi.Error{
+		Type:      errors.ErrorTypeAuth,
+		Title:     "Authentication Required",
+		Status:    http.StatusUnauthorized,
+		Detail:    &message,
+		Instance:  &r.URL.Path,
+		Code:      ptrString(errors.CodeAuthNoCredentials),
+		Timestamp: &now,
+		TraceId:   &traceID,
+	}
+
+	data, err := json.Marshal(body)
 	if err != nil {
+		logger.WithError(r.Context(), err).Error("Failed to marshal unauthorized response")
 		SendPanic(w, r)
 		return
 	}
 
-	// Send the response:
 	w.WriteHeader(http.StatusUnauthorized)
 	_, err = w.Write(data)
 	if err != nil {
 		err = fmt.Errorf("can't send response body for request '%s'", r.URL.Path)
 		logger.WithError(r.Context(), err).Error("Failed to send response")
-		return
 	}
 }
 
-// SendPanic sends a panic error response to the client, but it doesn't end the process.
+// SendPanic sends a panic error response in RFC 9457 Problem Details format.
+// It attempts to include trace_id and timestamp dynamically, falling back to
+// a pre-computed body if marshaling fails.
 func SendPanic(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	_, err := w.Write(panicBody)
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(http.StatusInternalServerError)
+
+	// Try to generate a complete response with trace_id and timestamp
+	traceID, _ := logger.GetRequestID(r.Context())
+	now := time.Now().UTC()
+	detail := "An unexpected error happened, please check the log of the service for details"
+	instance := r.URL.Path
+
+	panicError := openapi.Error{
+		Type:      errors.ErrorTypeInternal,
+		Title:     "Internal Server Error",
+		Status:    http.StatusInternalServerError,
+		Detail:    &detail,
+		Instance:  &instance,
+		Code:      ptrString(errors.CodeInternalGeneral),
+		Timestamp: &now,
+		TraceId:   &traceID,
+	}
+
+	data, err := json.Marshal(panicError)
+	if err != nil {
+		// Fallback to pre-computed body without trace_id/timestamp
+		data = panicBody
+	}
+
+	_, err = w.Write(data)
 	if err != nil {
 		err = fmt.Errorf(
 			"can't send panic response for request '%s': %s",
@@ -81,33 +122,33 @@ func SendPanic(w http.ResponseWriter, r *http.Request) {
 }
 
 // panicBody is the error body that will be sent when something unexpected happens while trying to
-// send another error response. For example, if sending an error response fails because the error
-// description can't be converted to JSON.
+// send another error response.
 var panicBody []byte
 
 func init() {
 	ctx := context.Background()
 	var err error
 
-	// Create the panic error body:
-	panicID := "1000"
-	panicError := Error{
-		Type: ErrorType,
-		ID:   panicID,
-		HREF: "/api/hyperfleet/v1/" + panicID,
-		Code: "hyperfleet-" + panicID,
-		Reason: "An unexpected error happened, please check the log of the service " +
-			"for details",
+	detail := "An unexpected error happened, please check the log of the service for details"
+	instance := "/api/hyperfleet/v1"
+
+	panicError := openapi.Error{
+		Type:     errors.ErrorTypeInternal,
+		Title:    "Internal Server Error",
+		Status:   http.StatusInternalServerError,
+		Detail:   &detail,
+		Instance: &instance,
+		Code:     ptrString(errors.CodeInternalGeneral),
 	}
 
-	// Convert it to JSON:
 	panicBody, err = json.Marshal(panicError)
 	if err != nil {
-		err = fmt.Errorf(
-			"can't create the panic error body: %s",
-			err.Error(),
-		)
+		err = fmt.Errorf("can't create the panic error body: %s", err.Error())
 		logger.WithError(ctx, err).Error("Failed to create panic error body")
 		os.Exit(1)
 	}
+}
+
+func ptrString(s string) *string {
+	return &s
 }

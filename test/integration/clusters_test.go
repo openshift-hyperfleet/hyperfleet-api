@@ -365,7 +365,7 @@ func TestClusterSchemaValidation(t *testing.T) {
 		var errorResponse openapi.Error
 		_ = json.Unmarshal(resp2.Body(), &errorResponse)
 		Expect(errorResponse.Code).ToNot(BeNil())
-		Expect(errorResponse.Reason).ToNot(BeNil())
+		Expect(errorResponse.Detail).ToNot(BeNil())
 	} else {
 		t.Logf("Base schema may accept any spec type, status: %d", resp2.StatusCode())
 	}
@@ -435,14 +435,14 @@ func TestClusterSchemaValidationWithProviderSchema(t *testing.T) {
 	}
 
 	Expect(errorResponse.Code).ToNot(BeNil())
-	Expect(*errorResponse.Code).To(Equal("hyperfleet-8")) // Validation error code
-	Expect(errorResponse.Details).ToNot(BeEmpty(), "Should include field-level error details")
+	Expect(*errorResponse.Code).To(Equal("HYPERFLEET-VAL-000")) // Validation error code (RFC 9457 format)
+	Expect(errorResponse.Errors).ToNot(BeEmpty(), "Should include field-level error details")
 
-	// Verify details contain field path
+	// Verify errors contain field path
 	foundRegionError := false
-	if errorResponse.Details != nil {
-		for _, detail := range *errorResponse.Details {
-			if detail.Field != nil && strings.Contains(*detail.Field, "region") {
+	if errorResponse.Errors != nil {
+		for _, detail := range *errorResponse.Errors {
+			if strings.Contains(detail.Field, "region") {
 				foundRegionError = true
 				break
 			}
@@ -488,23 +488,23 @@ func TestClusterSchemaValidationErrorDetails(t *testing.T) {
 		t.Fatalf("failed to unmarshal error response: %v, response body: %s", err, string(resp.Body()))
 	}
 
-	// Verify error structure
-	Expect(errorResponse.Kind).ToNot(BeNil())
-	Expect(*errorResponse.Kind).To(Equal("Error"))
+	// Verify error structure (RFC 9457 Problem Details format)
+	Expect(errorResponse.Type).ToNot(BeEmpty())
+	Expect(errorResponse.Title).ToNot(BeEmpty())
 
 	Expect(errorResponse.Code).ToNot(BeNil())
-	// Both hyperfleet-8 (validation error) and hyperfleet-17 (invalid request format) are acceptable
+	// Both HYPERFLEET-VAL-000 (validation error) and HYPERFLEET-VAL-006 (malformed request) are acceptable
 	// as they both indicate the spec field is invalid
-	validCodes := []string{"hyperfleet-8", "hyperfleet-17"}
+	validCodes := []string{"HYPERFLEET-VAL-000", "HYPERFLEET-VAL-006"}
 	Expect(validCodes).To(ContainElement(*errorResponse.Code), "Expected validation or format error code")
 
-	Expect(errorResponse.Reason).ToNot(BeNil())
-	Expect(*errorResponse.Reason).To(ContainSubstring("spec"))
+	Expect(errorResponse.Detail).ToNot(BeNil())
+	Expect(*errorResponse.Detail).To(ContainSubstring("spec"))
 
-	Expect(errorResponse.Href).ToNot(BeNil())
-	Expect(errorResponse.OperationId).ToNot(BeNil())
+	Expect(errorResponse.Instance).ToNot(BeNil())
+	Expect(errorResponse.TraceId).ToNot(BeNil())
 
-	t.Logf("Error response: code=%s, reason=%s", *errorResponse.Code, *errorResponse.Reason)
+	t.Logf("Error response: code=%s, detail=%s", *errorResponse.Code, *errorResponse.Detail)
 }
 
 // TestClusterList_DefaultSorting tests that clusters are sorted by created_time desc by default
@@ -699,10 +699,10 @@ func TestClusterPost_EmptyKind(t *testing.T) {
 	err = json.Unmarshal(restyResp.Body(), &errorResponse)
 	Expect(err).ToNot(HaveOccurred())
 
-	// Verify error message contains "kind is required"
-	reason, ok := errorResponse["reason"].(string)
+	// Verify error message contains "kind is required" (RFC 9457 uses "detail" field)
+	detail, ok := errorResponse["detail"].(string)
 	Expect(ok).To(BeTrue())
-	Expect(reason).To(ContainSubstring("kind is required"))
+	Expect(detail).To(ContainSubstring("kind is required"))
 }
 
 // TestClusterPost_WrongKind tests that wrong kind field returns 400
@@ -734,8 +734,8 @@ func TestClusterPost_WrongKind(t *testing.T) {
 	err = json.Unmarshal(restyResp.Body(), &errorResponse)
 	Expect(err).ToNot(HaveOccurred())
 
-	// Verify error message contains "kind must be 'Cluster'"
-	reason, ok := errorResponse["reason"].(string)
+	// Verify error message contains "kind must be 'Cluster'" (RFC 9457 uses "detail" field)
+	detail, ok := errorResponse["detail"].(string)
 	Expect(ok).To(BeTrue())
-	Expect(reason).To(ContainSubstring("kind must be 'Cluster'"))
+	Expect(detail).To(ContainSubstring("kind must be 'Cluster'"))
 }

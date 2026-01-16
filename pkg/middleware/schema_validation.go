@@ -12,22 +12,22 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/validators"
 )
 
-// handleValidationError writes validation error response
+// handleValidationError writes validation error response in RFC 9457 Problem Details format
 func handleValidationError(w http.ResponseWriter, r *http.Request, err *errors.ServiceError) {
-	requestID, ok := logger.GetRequestID(r.Context())
+	traceID, ok := logger.GetRequestID(r.Context())
 	if !ok {
-		requestID = "unknown"
+		traceID = "unknown"
 	}
 
 	// Log validation errors as warn (client error, not server error)
 	logger.With(r.Context(),
-		"operation_id", requestID,
+		"trace_id", traceID,
 	).WithError(err).Warn("Validation error")
 
-	// Write JSON error response
-	w.Header().Set("Content-Type", "application/json")
+	// Write RFC 9457 Problem Details error response
+	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(err.HttpCode)
-	if encodeErr := json.NewEncoder(w).Encode(err.AsOpenapiError(requestID)); encodeErr != nil {
+	if encodeErr := json.NewEncoder(w).Encode(err.AsProblemDetails(r.URL.Path, traceID)); encodeErr != nil {
 		logger.With(r.Context(),
 			logger.HTTPPath(r.URL.Path),
 			logger.HTTPMethod(r.Method),

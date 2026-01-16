@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/response"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
@@ -29,20 +30,23 @@ type errorHandlerFunc func(r *http.Request, w http.ResponseWriter, err *errors.S
 type httpAction func() (interface{}, *errors.ServiceError)
 
 func handleError(r *http.Request, w http.ResponseWriter, err *errors.ServiceError) {
-	requestID, _ := logger.GetRequestID(r.Context())
-	// If this is a 400 error, its the user's issue, log as info rather than error
+	traceID, _ := logger.GetRequestID(r.Context())
+	instance := r.URL.Path
+
+	// Log with RFC 9457 code format
 	if err.HttpCode >= 400 && err.HttpCode <= 499 {
 		logger.With(r.Context(),
-			"code", err.Code,
+			"code", err.RFC9457Code,
 			"http_code", err.HttpCode,
 			"reason", err.Reason).Info("Client error response")
 	} else {
 		logger.With(r.Context(),
-			"code", err.Code,
+			"code", err.RFC9457Code,
 			"http_code", err.HttpCode,
 			"reason", err.Reason).Error("Server error response")
 	}
-	writeJSONResponse(w, r, err.HttpCode, err.AsOpenapiError(requestID))
+
+	response.WriteProblemDetailsResponse(w, r, err.HttpCode, err.AsProblemDetails(instance, traceID))
 }
 
 func handle(w http.ResponseWriter, r *http.Request, cfg *handlerConfig, httpStatus int) {

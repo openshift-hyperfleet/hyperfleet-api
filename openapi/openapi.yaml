@@ -1,7 +1,7 @@
 openapi: 3.0.0
 info:
   title: HyperFleet API
-  version: 1.0.2
+  version: 1.0.3
   contact:
     name: HyperFleet Team
   license:
@@ -37,7 +37,7 @@ paths:
         default:
           description: An unexpected error response.
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/Error'
       security:
@@ -64,7 +64,7 @@ paths:
         default:
           description: An unexpected error response.
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/Error'
       requestBody:
@@ -98,7 +98,7 @@ paths:
         default:
           description: An unexpected error response.
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/Error'
       security:
@@ -132,7 +132,7 @@ paths:
         default:
           description: An unexpected error response.
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/Error'
       security:
@@ -160,7 +160,7 @@ paths:
         default:
           description: An unexpected error response.
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/Error'
       requestBody:
@@ -201,7 +201,7 @@ paths:
         default:
           description: An unexpected error response.
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/Error'
       security:
@@ -280,7 +280,7 @@ paths:
         default:
           description: An unexpected error response.
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/Error'
   /api/hyperfleet/v1/clusters/{cluster_id}/statuses:
@@ -373,7 +373,7 @@ paths:
         default:
           description: An unexpected error response.
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/Error'
       security:
@@ -916,33 +916,83 @@ components:
       description: Status value for conditions
     Error:
       type: object
+      description: RFC 9457 Problem Details error format with HyperFleet extensions
+      required:
+        - type
+        - title
+        - status
       properties:
-        id:
+        type:
           type: string
-        kind:
+          format: uri
+          description: URI reference identifying the problem type
+          example: https://api.hyperfleet.io/errors/validation-error
+        title:
           type: string
-          description: Resource kind
-        href:
+          description: Short human-readable summary of the problem
+          example: Validation Failed
+        status:
+          type: integer
+          description: HTTP status code
+          example: 400
+        detail:
           type: string
-          description: Resource URI
+          description: Human-readable explanation specific to this occurrence
+          example: The cluster name field is required
+        instance:
+          type: string
+          format: uri
+          description: URI reference for this specific occurrence
+          example: /api/hyperfleet/v1/clusters
         code:
           type: string
-        reason:
+          description: Machine-readable error code in HYPERFLEET-CAT-NUM format
+          example: HYPERFLEET-VAL-001
+        timestamp:
           type: string
-        operation_id:
+          format: date-time
+          description: RFC3339 timestamp of when the error occurred
+          example: '2024-01-15T10:30:00Z'
+        trace_id:
           type: string
-        details:
+          description: Distributed trace ID for correlation
+          example: abc123def456
+        errors:
           type: array
+          description: Field-level validation errors (for validation failures)
           items:
-            type: object
-            properties:
-              field:
-                type: string
-                description: Field path that failed validation
-              error:
-                type: string
-                description: Validation error message for this field
-          description: Field-level validation errors (optional)
+            $ref: '#/components/schemas/ValidationError'
+    ValidationError:
+      type: object
+      description: Field-level validation error detail
+      required:
+        - field
+        - message
+      properties:
+        field:
+          type: string
+          description: JSON path to the field that failed validation
+          example: spec.name
+        value:
+          description: The invalid value that was provided (if safe to include)
+        constraint:
+          type: string
+          description: The validation constraint that was violated
+          enum:
+            - required
+            - min
+            - max
+            - min_length
+            - max_length
+            - pattern
+            - enum
+            - format
+            - unique
+          example: required
+        message:
+          type: string
+          description: Human-readable error message for this field
+          example: Cluster name is required
     NodePool:
       type: object
       required:
