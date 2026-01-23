@@ -10,32 +10,7 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
-// requiredClusterAdapters defines the list of adapters that must be ready for a cluster to be "Ready"
-// All of these adapters must have:
-// 1. available === "True"
-// 2. observed_generation === cluster.generation
-//
-// Based on HyperFleet MVP scope (GCP cluster adapters):
-// - validation: Check GCP prerequisites
-// - dns: Create Cloud DNS records
-// - pullsecret: Store credentials in Secret Manager
-// - hypershift: Create HostedCluster CR
-// Note: placement is NOT required (handled separately)
-var requiredClusterAdapters = []string{
-	"validation",
-	"dns",
-	"pullsecret",
-	"hypershift",
-}
-
-// requiredNodePoolAdapters defines the list of adapters that must be ready for a nodepool to be "Ready"
-// Based on HyperFleet MVP scope (GCP nodepool adapters):
-// - validation: Check nodepool prerequisites
-// - hypershift: Create NodePool CR
-var requiredNodePoolAdapters = []string{
-	"validation",
-	"hypershift",
-}
+// Required adapter lists configured via pkg/config/adapter.go (see AdapterRequirementsConfig)
 
 // adapterConditionSuffixMap allows overriding the default suffix for specific adapters
 // Currently empty - all adapters use "Successful" by default

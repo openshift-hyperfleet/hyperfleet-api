@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/dao"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
@@ -31,10 +32,11 @@ type NodePoolService interface {
 	OnDelete(ctx context.Context, id string) error
 }
 
-func NewNodePoolService(nodePoolDao dao.NodePoolDao, adapterStatusDao dao.AdapterStatusDao) NodePoolService {
+func NewNodePoolService(nodePoolDao dao.NodePoolDao, adapterStatusDao dao.AdapterStatusDao, adapterConfig *config.AdapterRequirementsConfig) NodePoolService {
 	return &sqlNodePoolService{
 		nodePoolDao:      nodePoolDao,
 		adapterStatusDao: adapterStatusDao,
+		adapterConfig:    adapterConfig,
 	}
 }
 
@@ -43,6 +45,7 @@ var _ NodePoolService = &sqlNodePoolService{}
 type sqlNodePoolService struct {
 	nodePoolDao      dao.NodePoolDao
 	adapterStatusDao dao.AdapterStatusDao
+	adapterConfig    *config.AdapterRequirementsConfig
 }
 
 func (s *sqlNodePoolService) Get(ctx context.Context, id string) (*api.NodePool, *errors.ServiceError) {
@@ -182,8 +185,8 @@ func (s *sqlNodePoolService) UpdateNodePoolStatusFromAdapters(ctx context.Contex
 		}
 	}
 
-	// Compute overall phase using required adapters
-	newPhase := ComputePhase(ctx, adapterStatuses, requiredNodePoolAdapters, nodePool.Generation)
+	// Compute overall phase using required adapters from config
+	newPhase := ComputePhase(ctx, adapterStatuses, s.adapterConfig.RequiredNodePoolAdapters, nodePool.Generation)
 
 	// Calculate min(adapters[].last_report_time) for nodepool.status.last_updated_time
 	// This uses the OLDEST adapter timestamp to ensure Sentinel can detect stale adapters

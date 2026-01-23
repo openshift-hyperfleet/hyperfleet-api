@@ -85,6 +85,16 @@ export OPENAPI_SCHEMA_PATH=/path/to/custom-schema.yaml
 - `LOG_LEVEL` - Logging level: `debug`, `info`, `warn`, `error` (default: `info`)
 - `LOG_FORMAT` - Log format: `json`, `text` (default: `json`)
 
+**Adapter Requirements:**
+- `HYPERFLEET_CLUSTER_ADAPTERS` - Required adapters for cluster "Ready" state, JSON array (default: `["validation","dns","pullsecret","hypershift"]`)
+- `HYPERFLEET_NODEPOOL_ADAPTERS` - Required adapters for nodepool "Ready" state, JSON array (default: `["validation","hypershift"]`)
+
+Example:
+```bash
+export HYPERFLEET_CLUSTER_ADAPTERS='["validation","dns"]'
+export HYPERFLEET_NODEPOOL_ADAPTERS='["validation"]'
+```
+
 ## Kubernetes Deployment
 
 ### Using Helm Chart
@@ -201,6 +211,13 @@ database:
   external:
     enabled: true
     secretName: hyperfleet-db-external
+
+# Optional: customize adapter requirements
+env:
+  - name: HYPERFLEET_CLUSTER_ADAPTERS
+    value: '["validation","dns"]'
+  - name: HYPERFLEET_NODEPOOL_ADAPTERS
+    value: '["validation"]'
 
 replicaCount: 3
 
