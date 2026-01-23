@@ -119,6 +119,12 @@ env: []
   # - name: GLOG_V
   #   value: "10"
 
+  # Adapter requirements (JSON array format)
+  # - name: HYPERFLEET_CLUSTER_ADAPTERS
+  #   value: '["validation","dns","pullsecret","hypershift"]'
+  # - name: HYPERFLEET_NODEPOOL_ADAPTERS
+  #   value: '["validation","hypershift"]'
+
 # Volume mounts for additional configs
 extraVolumeMounts: []
 

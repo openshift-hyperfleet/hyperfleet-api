@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/dao"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
@@ -31,10 +32,11 @@ type ClusterService interface {
 	OnDelete(ctx context.Context, id string) error
 }
 
-func NewClusterService(clusterDao dao.ClusterDao, adapterStatusDao dao.AdapterStatusDao) ClusterService {
+func NewClusterService(clusterDao dao.ClusterDao, adapterStatusDao dao.AdapterStatusDao, adapterConfig *config.AdapterRequirementsConfig) ClusterService {
 	return &sqlClusterService{
 		clusterDao:       clusterDao,
 		adapterStatusDao: adapterStatusDao,
+		adapterConfig:    adapterConfig,
 	}
 }
 
@@ -43,6 +45,7 @@ var _ ClusterService = &sqlClusterService{}
 type sqlClusterService struct {
 	clusterDao       dao.ClusterDao
 	adapterStatusDao dao.AdapterStatusDao
+	adapterConfig    *config.AdapterRequirementsConfig
 }
 
 func (s *sqlClusterService) Get(ctx context.Context, id string) (*api.Cluster, *errors.ServiceError) {
@@ -184,8 +187,8 @@ func (s *sqlClusterService) UpdateClusterStatusFromAdapters(ctx context.Context,
 		}
 	}
 
-	// Compute overall phase using required adapters
-	newPhase := ComputePhase(ctx, adapterStatuses, requiredClusterAdapters, cluster.Generation)
+	// Compute overall phase using required adapters from config
+	newPhase := ComputePhase(ctx, adapterStatuses, s.adapterConfig.RequiredClusterAdapters, cluster.Generation)
 
 	// Calculate min(adapters[].last_report_time) for cluster.status.last_updated_time
 	// This uses the OLDEST adapter timestamp to ensure Sentinel can detect stale adapters
