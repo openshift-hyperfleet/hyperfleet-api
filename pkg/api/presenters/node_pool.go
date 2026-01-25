@@ -3,7 +3,6 @@ package presenters
 import (
 	"encoding/json"
 	"fmt"
-	"time"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
@@ -27,29 +26,20 @@ func ConvertNodePool(req *openapi.NodePoolCreateRequest, ownerID, createdBy stri
 		return nil, fmt.Errorf("failed to marshal nodepool labels: %w", err)
 	}
 
-	// Marshal empty StatusConditions
-	statusConditionsJSON, err := json.Marshal([]api.ResourceCondition{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal nodepool status conditions: %w", err)
-	}
-
 	kind := "NodePool"
 	if req.Kind != nil {
 		kind = *req.Kind
 	}
 
 	return &api.NodePool{
-		Kind:                     kind,
-		Name:                     req.Name,
-		Spec:                     specJSON,
-		Labels:                   labelsJSON,
-		OwnerID:                  ownerID,
-		OwnerKind:                "Cluster",
-		StatusPhase:              "NotReady",
-		StatusObservedGeneration: 0,
-		StatusConditions:         statusConditionsJSON,
-		CreatedBy:                createdBy,
-		UpdatedBy:                createdBy,
+		Kind:      kind,
+		Name:      req.Name,
+		Spec:      specJSON,
+		Labels:    labelsJSON,
+		OwnerID:   ownerID,
+		OwnerKind: "Cluster",
+		CreatedBy: createdBy,
+		UpdatedBy: createdBy,
 	}, nil
 }
 
@@ -91,23 +81,6 @@ func PresentNodePool(nodePool *api.NodePool) (openapi.NodePool, error) {
 		ownerHref = "/api/hyperfleet/v1/clusters/" + nodePool.OwnerID
 	}
 
-	// Build NodePoolStatus - set required fields with defaults if nil
-	lastTransitionTime := time.Time{}
-	if nodePool.StatusLastTransitionTime != nil {
-		lastTransitionTime = *nodePool.StatusLastTransitionTime
-	}
-
-	lastUpdatedTime := time.Time{}
-	if nodePool.StatusLastUpdatedTime != nil {
-		lastUpdatedTime = *nodePool.StatusLastUpdatedTime
-	}
-
-	// Set phase, use NOT_READY as default if not set
-	phase := api.PhaseNotReady
-	if nodePool.StatusPhase != "" {
-		phase = api.ResourcePhase(nodePool.StatusPhase)
-	}
-
 	// Convert domain ResourceConditions to openapi format
 	openapiConditions := make([]openapi.ResourceCondition, len(statusConditions))
 	for i, cond := range statusConditions {
@@ -118,7 +91,7 @@ func PresentNodePool(nodePool *api.NodePool) (openapi.NodePool, error) {
 			Message:            cond.Message,
 			ObservedGeneration: cond.ObservedGeneration,
 			Reason:             cond.Reason,
-			Status:             openapi.ConditionStatus(cond.Status),
+			Status:             openapi.ResourceConditionStatus(cond.Status),
 			Type:               cond.Type,
 		}
 	}
@@ -140,11 +113,7 @@ func PresentNodePool(nodePool *api.NodePool) (openapi.NodePool, error) {
 		},
 		Spec: spec,
 		Status: openapi.NodePoolStatus{
-			Conditions:         openapiConditions,
-			LastTransitionTime: lastTransitionTime,
-			LastUpdatedTime:    lastUpdatedTime,
-			ObservedGeneration: nodePool.StatusObservedGeneration,
-			Phase:              openapi.ResourcePhase(phase),
+			Conditions: openapiConditions,
 		},
 		UpdatedBy:   toEmail(nodePool.UpdatedBy),
 		UpdatedTime: nodePool.UpdatedTime,

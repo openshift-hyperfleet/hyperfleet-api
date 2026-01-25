@@ -45,8 +45,6 @@ func TestConvertCluster_Complete(t *testing.T) {
 
 	// Verify defaults
 	Expect(result.Generation).To(Equal(int32(1)))
-	Expect(result.StatusPhase).To(Equal("NotReady"))
-	Expect(result.StatusObservedGeneration).To(Equal(int32(0)))
 
 	// Verify Spec marshaled correctly
 	var spec map[string]interface{}
@@ -61,11 +59,8 @@ func TestConvertCluster_Complete(t *testing.T) {
 	Expect(err).To(BeNil())
 	Expect(labels["env"]).To(Equal("test"))
 
-	// Verify StatusConditions initialized as empty array
-	var conditions []api.ResourceCondition
-	err = json.Unmarshal(result.StatusConditions, &conditions)
-	Expect(err).To(BeNil())
-	Expect(len(conditions)).To(Equal(0))
+	// StatusConditions initialization is handled by the service layer on create, not presenters.
+	Expect(len(result.StatusConditions)).To(Equal(0))
 }
 
 // TestConvertCluster_WithLabels tests conversion with labels
@@ -187,19 +182,15 @@ func TestPresentCluster_Complete(t *testing.T) {
 	labelsJSON, _ := json.Marshal(labels)
 
 	cluster := &api.Cluster{
-		Kind:                     "Cluster",
-		Href:                     "/api/hyperfleet/v1/clusters/cluster-abc123",
-		Name:                     "presented-cluster",
-		Spec:                     specJSON,
-		Labels:                   labelsJSON,
-		Generation:               10,
-		StatusPhase:              "Ready",
-		StatusObservedGeneration: 5,
-		StatusConditions:         conditionsJSON,
-		StatusLastTransitionTime: &now,
-		StatusLastUpdatedTime:    &now,
-		CreatedBy:                "user123@example.com",
-		UpdatedBy:                "user456@example.com",
+		Kind:             "Cluster",
+		Href:             "/api/hyperfleet/v1/clusters/cluster-abc123",
+		Name:             "presented-cluster",
+		Spec:             specJSON,
+		Labels:           labelsJSON,
+		Generation:       10,
+		StatusConditions: conditionsJSON,
+		CreatedBy:        "user123@example.com",
+		UpdatedBy:        "user456@example.com",
 	}
 	cluster.ID = "cluster-abc123"
 	cluster.CreatedTime = now
@@ -224,18 +215,14 @@ func TestPresentCluster_Complete(t *testing.T) {
 	Expect((*result.Labels)["env"]).To(Equal("staging"))
 
 	// Verify Status
-	Expect(result.Status.Phase).To(Equal(openapi.Ready))
-	Expect(result.Status.ObservedGeneration).To(Equal(int32(5)))
 	Expect(len(result.Status.Conditions)).To(Equal(1))
 	Expect(result.Status.Conditions[0].Type).To(Equal("Available"))
-	Expect(result.Status.Conditions[0].Status).To(Equal(openapi.True))
+	Expect(result.Status.Conditions[0].Status).To(Equal(openapi.ResourceConditionStatusTrue))
 	Expect(*result.Status.Conditions[0].Reason).To(Equal("Ready"))
 
 	// Verify timestamps
 	Expect(result.CreatedTime.Unix()).To(Equal(now.Unix()))
 	Expect(result.UpdatedTime.Unix()).To(Equal(now.Unix()))
-	Expect(result.Status.LastTransitionTime.Unix()).To(Equal(now.Unix()))
-	Expect(result.Status.LastUpdatedTime.Unix()).To(Equal(now.Unix()))
 }
 
 // TestPresentCluster_HrefGeneration tests that Href is generated if not set
@@ -256,53 +243,6 @@ func TestPresentCluster_HrefGeneration(t *testing.T) {
 	Expect(err).To(BeNil())
 
 	Expect(*result.Href).To(Equal("/api/hyperfleet/v1/clusters/cluster-xyz789"))
-}
-
-// TestPresentCluster_EmptyStatusPhase tests handling of empty StatusPhase
-func TestPresentCluster_EmptyStatusPhase(t *testing.T) {
-	RegisterTestingT(t)
-
-	cluster := &api.Cluster{
-		Kind:             "Cluster",
-		Name:             "empty-phase-test",
-		Spec:             []byte("{}"),
-		Labels:           []byte("{}"),
-		StatusPhase:      "", // Empty status phase
-		StatusConditions: []byte("[]"),
-	}
-	cluster.ID = "cluster-empty-phase"
-
-	result, err := PresentCluster(cluster)
-	Expect(err).To(BeNil())
-
-	// Should use NOT_READY as default
-	Expect(result.Status.Phase).To(Equal(openapi.NotReady))
-}
-
-// TestPresentCluster_NilStatusTimestamps tests handling of nil timestamps
-func TestPresentCluster_NilStatusTimestamps(t *testing.T) {
-	RegisterTestingT(t)
-
-	now := time.Now()
-	cluster := &api.Cluster{
-		Kind:                     "Cluster",
-		Name:                     "nil-timestamps-test",
-		Spec:                     []byte("{}"),
-		Labels:                   []byte("{}"),
-		StatusConditions:         []byte("[]"),
-		StatusLastTransitionTime: nil, // Nil timestamp
-		StatusLastUpdatedTime:    nil, // Nil timestamp
-	}
-	cluster.ID = "cluster-nil-timestamps"
-	cluster.CreatedTime = now
-	cluster.UpdatedTime = now
-
-	result, err := PresentCluster(cluster)
-	Expect(err).To(BeNil())
-
-	// Verify zero time.Time is returned (not nil)
-	Expect(result.Status.LastTransitionTime.IsZero()).To(BeTrue())
-	Expect(result.Status.LastUpdatedTime.IsZero()).To(BeTrue())
 }
 
 // TestPresentCluster_StatusConditionsConversion tests condition conversion
@@ -359,13 +299,13 @@ func TestPresentCluster_StatusConditionsConversion(t *testing.T) {
 
 	// First condition
 	Expect(result.Status.Conditions[0].Type).To(Equal("Available"))
-	Expect(result.Status.Conditions[0].Status).To(Equal(openapi.True))
+	Expect(result.Status.Conditions[0].Status).To(Equal(openapi.ResourceConditionStatusTrue))
 	Expect(*result.Status.Conditions[0].Reason).To(Equal("Ready"))
 	Expect(*result.Status.Conditions[0].Message).To(Equal("All systems operational"))
 
 	// Second condition
 	Expect(result.Status.Conditions[1].Type).To(Equal("Progressing"))
-	Expect(result.Status.Conditions[1].Status).To(Equal(openapi.False))
+	Expect(result.Status.Conditions[1].Status).To(Equal(openapi.ResourceConditionStatusFalse))
 	Expect(*result.Status.Conditions[1].Reason).To(Equal("Degraded"))
 	Expect(*result.Status.Conditions[1].Message).To(Equal("Some components unavailable"))
 }
@@ -405,9 +345,7 @@ func TestConvertAndPresentCluster_RoundTrip(t *testing.T) {
 	// Verify Labels preserved
 	Expect((*result.Labels)["env"]).To(Equal((*originalReq.Labels)["env"]))
 
-	// Verify Status defaults
-	Expect(result.Status.Phase).To(Equal(openapi.NotReady))
-	Expect(result.Status.ObservedGeneration).To(Equal(int32(0)))
+	// Status initialization is handled by the service layer on create, not presenters.
 	Expect(len(result.Status.Conditions)).To(Equal(0))
 }
 

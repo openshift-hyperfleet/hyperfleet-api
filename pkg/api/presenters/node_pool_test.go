@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	. "github.com/onsi/gomega"
 	openapi_types "github.com/oapi-codegen/runtime/types"
+	. "github.com/onsi/gomega"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
 )
@@ -46,10 +46,6 @@ func TestConvertNodePool_Complete(t *testing.T) {
 	Expect(result.CreatedBy).To(Equal("user456"))
 	Expect(result.UpdatedBy).To(Equal("user456"))
 
-	// Verify defaults
-	Expect(result.StatusPhase).To(Equal("NotReady"))
-	Expect(result.StatusObservedGeneration).To(Equal(int32(0)))
-
 	// Verify Spec marshaled correctly
 	var spec map[string]interface{}
 	err = json.Unmarshal(result.Spec, &spec)
@@ -63,11 +59,8 @@ func TestConvertNodePool_Complete(t *testing.T) {
 	Expect(err).To(BeNil())
 	Expect(labels["env"]).To(Equal("test"))
 
-	// Verify StatusConditions initialized as empty array
-	var conditions []api.ResourceCondition
-	err = json.Unmarshal(result.StatusConditions, &conditions)
-	Expect(err).To(BeNil())
-	Expect(len(conditions)).To(Equal(0))
+	// StatusConditions initialization is handled by the service layer on create, not presenters.
+	Expect(len(result.StatusConditions)).To(Equal(0))
 }
 
 // TestConvertNodePool_WithKind tests conversion with Kind specified
@@ -181,21 +174,17 @@ func TestPresentNodePool_Complete(t *testing.T) {
 	labelsJSON, _ := json.Marshal(labels)
 
 	nodePool := &api.NodePool{
-		Kind:                     "NodePool",
-		Href:                     "/api/hyperfleet/v1/clusters/cluster-abc/nodepools/nodepool-xyz",
-		Name:                     "presented-nodepool",
-		Spec:                     specJSON,
-		Labels:                   labelsJSON,
-		OwnerID:                  "cluster-abc",
-		OwnerKind:                "Cluster",
-		OwnerHref:                "/api/hyperfleet/v1/clusters/cluster-abc",
-		StatusPhase:              "Ready",
-		StatusObservedGeneration: 5,
-		StatusConditions:         conditionsJSON,
-		StatusLastTransitionTime: &now,
-		StatusLastUpdatedTime:    &now,
-		CreatedBy:                "user123@example.com",
-		UpdatedBy:                "user456@example.com",
+		Kind:             "NodePool",
+		Href:             "/api/hyperfleet/v1/clusters/cluster-abc/nodepools/nodepool-xyz",
+		Name:             "presented-nodepool",
+		Spec:             specJSON,
+		Labels:           labelsJSON,
+		OwnerID:          "cluster-abc",
+		OwnerKind:        "Cluster",
+		OwnerHref:        "/api/hyperfleet/v1/clusters/cluster-abc",
+		StatusConditions: conditionsJSON,
+		CreatedBy:        "user123@example.com",
+		UpdatedBy:        "user456@example.com",
 	}
 	nodePool.ID = "nodepool-xyz"
 	nodePool.CreatedTime = now
@@ -224,17 +213,13 @@ func TestPresentNodePool_Complete(t *testing.T) {
 	Expect(*result.OwnerReferences.Href).To(Equal("/api/hyperfleet/v1/clusters/cluster-abc"))
 
 	// Verify Status
-	Expect(result.Status.Phase).To(Equal(openapi.Ready))
-	Expect(result.Status.ObservedGeneration).To(Equal(int32(5)))
 	Expect(len(result.Status.Conditions)).To(Equal(1))
 	Expect(result.Status.Conditions[0].Type).To(Equal("Available"))
-	Expect(result.Status.Conditions[0].Status).To(Equal(openapi.True))
+	Expect(result.Status.Conditions[0].Status).To(Equal(openapi.ResourceConditionStatusTrue))
 
 	// Verify timestamps
 	Expect(result.CreatedTime.Unix()).To(Equal(now.Unix()))
 	Expect(result.UpdatedTime.Unix()).To(Equal(now.Unix()))
-	Expect(result.Status.LastTransitionTime.Unix()).To(Equal(now.Unix()))
-	Expect(result.Status.LastUpdatedTime.Unix()).To(Equal(now.Unix()))
 }
 
 // TestPresentNodePool_HrefGeneration tests that Href is generated if not set
@@ -304,28 +289,6 @@ func TestPresentNodePool_OwnerReferences(t *testing.T) {
 	Expect(result.OwnerReferences.Href).ToNot(BeNil())
 }
 
-// TestPresentNodePool_EmptyStatusPhase tests handling of empty StatusPhase
-func TestPresentNodePool_EmptyStatusPhase(t *testing.T) {
-	RegisterTestingT(t)
-
-	nodePool := &api.NodePool{
-		Kind:             "NodePool",
-		Name:             "empty-phase-test",
-		Spec:             []byte("{}"),
-		Labels:           []byte("{}"),
-		OwnerID:          "cluster-phase-test",
-		StatusPhase:      "", // Empty status phase
-		StatusConditions: []byte("[]"),
-	}
-	nodePool.ID = "nodepool-empty-phase"
-
-	result, err := PresentNodePool(nodePool)
-	Expect(err).To(BeNil())
-
-	// Should use NOT_READY as default
-	Expect(result.Status.Phase).To(Equal(openapi.NotReady))
-}
-
 // TestPresentNodePool_StatusConditionsConversion tests condition conversion
 func TestPresentNodePool_StatusConditionsConversion(t *testing.T) {
 	RegisterTestingT(t)
@@ -381,13 +344,13 @@ func TestPresentNodePool_StatusConditionsConversion(t *testing.T) {
 
 	// First condition
 	Expect(result.Status.Conditions[0].Type).To(Equal("Progressing"))
-	Expect(result.Status.Conditions[0].Status).To(Equal(openapi.True))
+	Expect(result.Status.Conditions[0].Status).To(Equal(openapi.ResourceConditionStatusTrue))
 	Expect(*result.Status.Conditions[0].Reason).To(Equal("Scaling"))
 	Expect(*result.Status.Conditions[0].Message).To(Equal("Scaling in progress"))
 
 	// Second condition
 	Expect(result.Status.Conditions[1].Type).To(Equal("Healthy"))
-	Expect(result.Status.Conditions[1].Status).To(Equal(openapi.True))
+	Expect(result.Status.Conditions[1].Status).To(Equal(openapi.ResourceConditionStatusTrue))
 	Expect(*result.Status.Conditions[1].Reason).To(Equal("Healthy"))
 	Expect(*result.Status.Conditions[1].Message).To(Equal("All nodes healthy"))
 }
@@ -432,9 +395,7 @@ func TestConvertAndPresentNodePool_RoundTrip(t *testing.T) {
 	Expect(*result.OwnerReferences.Id).To(Equal(ownerID))
 	Expect(*result.OwnerReferences.Kind).To(Equal("Cluster"))
 
-	// Verify Status defaults
-	Expect(result.Status.Phase).To(Equal(openapi.NotReady))
-	Expect(result.Status.ObservedGeneration).To(Equal(int32(0)))
+	// Status initialization is handled by the service layer on create, not presenters.
 	Expect(len(result.Status.Conditions)).To(Equal(0))
 }
 

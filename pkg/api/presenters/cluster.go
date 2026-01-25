@@ -3,7 +3,6 @@ package presenters
 import (
 	"encoding/json"
 	"fmt"
-	"time"
 
 	openapi_types "github.com/oapi-codegen/runtime/types"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
@@ -29,12 +28,6 @@ func ConvertCluster(req *openapi.ClusterCreateRequest, createdBy string) (*api.C
 		return nil, fmt.Errorf("failed to marshal cluster labels: %w", err)
 	}
 
-	// Marshal empty StatusConditions
-	statusConditionsJSON, err := json.Marshal([]api.ResourceCondition{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal cluster status conditions: %w", err)
-	}
-
 	// Get Kind value, use default if not provided
 	kind := "Cluster"
 	if req.Kind != nil {
@@ -42,16 +35,13 @@ func ConvertCluster(req *openapi.ClusterCreateRequest, createdBy string) (*api.C
 	}
 
 	return &api.Cluster{
-		Kind:                     kind,
-		Name:                     req.Name,
-		Spec:                     specJSON,
-		Labels:                   labelsJSON,
-		Generation:               1,
-		StatusPhase:              "NotReady",
-		StatusObservedGeneration: 0,
-		StatusConditions:         statusConditionsJSON,
-		CreatedBy:                createdBy,
-		UpdatedBy:                createdBy,
+		Kind:             kind,
+		Name:             req.Name,
+		Spec:             specJSON,
+		Labels:           labelsJSON,
+		Generation:       1,
+		CreatedBy:        createdBy,
+		UpdatedBy:        createdBy,
 	}, nil
 }
 
@@ -92,23 +82,6 @@ func PresentCluster(cluster *api.Cluster) (openapi.Cluster, error) {
 		href = "/api/hyperfleet/v1/clusters/" + cluster.ID
 	}
 
-	// Build ClusterStatus - set required fields with defaults if nil
-	lastTransitionTime := time.Time{}
-	if cluster.StatusLastTransitionTime != nil {
-		lastTransitionTime = *cluster.StatusLastTransitionTime
-	}
-
-	lastUpdatedTime := time.Time{}
-	if cluster.StatusLastUpdatedTime != nil {
-		lastUpdatedTime = *cluster.StatusLastUpdatedTime
-	}
-
-	// Set phase, use NOT_READY as default if not set
-	phase := api.PhaseNotReady
-	if cluster.StatusPhase != "" {
-		phase = api.ResourcePhase(cluster.StatusPhase)
-	}
-
 	// Convert domain ResourceConditions to openapi format
 	openapiConditions := make([]openapi.ResourceCondition, len(statusConditions))
 	for i, cond := range statusConditions {
@@ -119,7 +92,7 @@ func PresentCluster(cluster *api.Cluster) (openapi.Cluster, error) {
 			Message:            cond.Message,
 			ObservedGeneration: cond.ObservedGeneration,
 			Reason:             cond.Reason,
-			Status:             openapi.ConditionStatus(cond.Status),
+			Status:             openapi.ResourceConditionStatus(cond.Status),
 			Type:               cond.Type,
 		}
 	}
@@ -135,11 +108,7 @@ func PresentCluster(cluster *api.Cluster) (openapi.Cluster, error) {
 		Name:        cluster.Name,
 		Spec:        spec,
 		Status: openapi.ClusterStatus{
-			Conditions:         openapiConditions,
-			LastTransitionTime: lastTransitionTime,
-			LastUpdatedTime:    lastUpdatedTime,
-			ObservedGeneration: cluster.StatusObservedGeneration,
-			Phase:              openapi.ResourcePhase(phase),
+			Conditions: openapiConditions,
 		},
 		UpdatedBy:   toEmail(cluster.UpdatedBy),
 		UpdatedTime: cluster.UpdatedTime,
