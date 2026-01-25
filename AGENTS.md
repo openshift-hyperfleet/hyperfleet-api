@@ -254,13 +254,19 @@ The API calculates aggregate status from adapter-specific conditions:
 ```
 
 **Aggregation Logic**:
-- Phase is `Ready` if all adapters report `Ready=True`
-- Phase is `Failed` if any adapter reports `Ready=False`
-- Phase is `NotReady` otherwise (progressing, unknown, or missing conditions)
-- `observed_generation` tracks which spec version the adapter has seen
+The API synthesizes two top-level conditions from adapter reports:
+
+- **Available** condition:
+  - `True` if all required adapters report `Available=True` at any generation
+  - `observed_generation` is the minimum across all adapters
+  - Indicates the resource is running at some known good configuration
+
+- **Ready** condition:
+  - `True` if all required adapters report `Available=True` AND their `observed_generation` matches the current resource generation
+  - Indicates the resource is fully reconciled to the current spec
 
 **Why This Pattern**:
-Kubernetes-style conditions allow multiple independent adapters to report status without coordination. The API simply aggregates these into a summary phase for client convenience.
+Kubernetes-style conditions allow multiple independent adapters to report status without coordination. The API synthesizes `Available` and `Ready` conditions for clients to easily determine resource state.
 
 ## API Resources
 

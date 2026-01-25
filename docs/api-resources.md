@@ -19,6 +19,7 @@ POST   /api/hyperfleet/v1/clusters/{cluster_id}/statuses
 **POST** `/api/hyperfleet/v1/clusters`
 
 **Request Body:**
+
 ```json
 {
   "kind": "Cluster",
@@ -31,6 +32,7 @@ POST   /api/hyperfleet/v1/clusters/{cluster_id}/statuses
 ```
 
 **Response (201 Created):**
+
 ```json
 {
   "kind": "Cluster",
@@ -47,22 +49,40 @@ POST   /api/hyperfleet/v1/clusters/{cluster_id}/statuses
   "created_by": "user@example.com",
   "updated_by": "user@example.com",
   "status": {
-    "phase": "NotReady",
-    "observed_generation": 0,
-    "last_transition_time": "2025-01-01T00:00:00Z",
-    "last_updated_time": "2025-01-01T00:00:00Z",
-    "conditions": []
+    "conditions": [
+      {
+        "type": "Available",
+        "status": "False",
+        "reason": "AwaitingAdapters",
+        "message": "Waiting for adapters to report status",
+        "observed_generation": 0,
+        "created_time": "2025-01-01T00:00:00Z",
+        "last_updated_time": "2025-01-01T00:00:00Z",
+        "last_transition_time": "2025-01-01T00:00:00Z"
+      },
+      {
+        "type": "Ready",
+        "status": "False",
+        "reason": "AwaitingAdapters",
+        "message": "Waiting for adapters to report status",
+        "observed_generation": 0,
+        "created_time": "2025-01-01T00:00:00Z",
+        "last_updated_time": "2025-01-01T00:00:00Z",
+        "last_transition_time": "2025-01-01T00:00:00Z"
+      }
+    ]
   }
 }
 ```
 
-**Note**: Status is initially `NotReady` with empty conditions until adapters report status.
+**Note**: Status initially has `Available=False` and `Ready=False` conditions until adapters report status.
 
 ### Get Cluster
 
 **GET** `/api/hyperfleet/v1/clusters/{cluster_id}`
 
 **Response (200 OK):**
+
 ```json
 {
   "kind": "Cluster",
@@ -79,26 +99,22 @@ POST   /api/hyperfleet/v1/clusters/{cluster_id}/statuses
   "created_by": "user@example.com",
   "updated_by": "user@example.com",
   "status": {
-    "phase": "Ready",
-    "observed_generation": 1,
-    "last_transition_time": "2025-01-01T00:00:00Z",
-    "last_updated_time": "2025-01-01T00:00:00Z",
     "conditions": [
       {
-        "type": "ValidationSuccessful",
+        "type": "Available",
         "status": "True",
-        "reason": "AllValidationsPassed",
-        "message": "All validations passed",
+        "reason": "ResourceAvailable",
+        "message": "Cluster is accessible",
         "observed_generation": 1,
         "created_time": "2025-01-01T00:00:00Z",
         "last_updated_time": "2025-01-01T00:00:00Z",
         "last_transition_time": "2025-01-01T00:00:00Z"
       },
       {
-        "type": "DNSSuccessful",
+        "type": "Ready",
         "status": "True",
-        "reason": "DNSProvisioned",
-        "message": "DNS successfully configured",
+        "reason": "ResourceReady",
+        "message": "All adapters report ready at current generation",
         "observed_generation": 1,
         "created_time": "2025-01-01T00:00:00Z",
         "last_updated_time": "2025-01-01T00:00:00Z",
@@ -114,6 +130,7 @@ POST   /api/hyperfleet/v1/clusters/{cluster_id}/statuses
 **GET** `/api/hyperfleet/v1/clusters?page=1&pageSize=10`
 
 **Response (200 OK):**
+
 ```json
 {
   "kind": "ClusterList",
@@ -138,6 +155,7 @@ POST   /api/hyperfleet/v1/clusters/{cluster_id}/statuses
 Adapters use this endpoint to report their status.
 
 **Request Body:**
+
 ```json
 {
   "adapter": "validator",
@@ -171,6 +189,7 @@ Adapters use this endpoint to report their status.
 ```
 
 **Response (201 Created):**
+
 ```json
 {
   "adapter": "validator",
@@ -209,11 +228,26 @@ Adapters use this endpoint to report their status.
 
 **Note**: The API automatically sets `created_time`, `last_report_time`, and `last_transition_time` fields.
 
-### Status Phases
+### Status Conditions
 
-- `NotReady` - Cluster is being provisioned or has failing conditions
-- `Ready` - All adapter conditions report success
-- `Failed` - Cluster provisioning or operation failed
+The status uses Kubernetes-style conditions instead of a single phase field:
+
+- **Ready** - Whether all adapters report successfully at the current generation
+  - `True`: All required adapters report `Available=True` at current spec generation
+  - `False`: One or more adapters report Available=False at current generation
+    - After every spec change, `Ready` becomes `False` since adapters take some time to report at current spec generation
+    - Default value when creating the cluster, when no adapters have reported yet any value
+
+- **Available** - Aggregated adapter result for a common `observed_generation`
+  - `True`: All required adapters report Available=True for the same observed_generation
+  - `False`: At least one adapter reports Available=False when all adapters report the same observed_generation
+    - Default value when creating the cluster, when no adapters have reported yet any value
+
+`Available` keeps its value unchanged in case adapters report from a different `observed_generation` or there is already a mix of `observed_generation` statuses
+
+- e.g. `Available=True` for `observed_generation==1`
+  - One adapter reports `Available=False` for `observed_generation=1` `Available` transitions to `False`
+  - One adapter reports `Available=False` for `observed_generation=2` `Available` keeps its `True` status
 
 ## NodePool Management
 
@@ -233,6 +267,7 @@ POST   /api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepool_id}/statuses
 **POST** `/api/hyperfleet/v1/clusters/{cluster_id}/nodepools`
 
 **Request Body:**
+
 ```json
 {
   "kind": "NodePool",
@@ -245,6 +280,7 @@ POST   /api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepool_id}/statuses
 ```
 
 **Response (201 Created):**
+
 ```json
 {
   "kind": "NodePool",
@@ -265,11 +301,28 @@ POST   /api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepool_id}/statuses
   "created_by": "user@example.com",
   "updated_by": "user@example.com",
   "status": {
-    "phase": "NotReady",
-    "observed_generation": 0,
-    "last_transition_time": "2025-01-01T00:00:00Z",
-    "last_updated_time": "2025-01-01T00:00:00Z",
-    "conditions": []
+    "conditions": [
+      {
+        "type": "Available",
+        "status": "False",
+        "reason": "AwaitingAdapters",
+        "message": "Waiting for adapters to report status",
+        "observed_generation": 0,
+        "created_time": "2025-01-01T00:00:00Z",
+        "last_updated_time": "2025-01-01T00:00:00Z",
+        "last_transition_time": "2025-01-01T00:00:00Z"
+      },
+      {
+        "type": "Ready",
+        "status": "False",
+        "reason": "AwaitingAdapters",
+        "message": "Waiting for adapters to report status",
+        "observed_generation": 0,
+        "created_time": "2025-01-01T00:00:00Z",
+        "last_updated_time": "2025-01-01T00:00:00Z",
+        "last_transition_time": "2025-01-01T00:00:00Z"
+      }
+    ]
   }
 }
 ```
@@ -279,6 +332,7 @@ POST   /api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepool_id}/statuses
 **GET** `/api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepool_id}`
 
 **Response (200 OK):**
+
 ```json
 {
   "kind": "NodePool",
@@ -299,11 +353,22 @@ POST   /api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepool_id}/statuses
   "created_by": "user@example.com",
   "updated_by": "user@example.com",
   "status": {
-    "phase": "Ready",
-    "observed_generation": 1,
-    "last_transition_time": "2025-01-01T00:00:00Z",
-    "last_updated_time": "2025-01-01T00:00:00Z",
-    "conditions": [...]
+    "conditions": [
+      {
+        "type": "Available",
+        "status": "True",
+        "reason": "ResourceAvailable",
+        "message": "NodePool is accessible",
+        "observed_generation": 1
+      },
+      {
+        "type": "Ready",
+        "status": "True",
+        "reason": "ResourceReady",
+        "message": "All adapters report ready at current generation",
+        "observed_generation": 1
+      }
+    ]
   }
 }
 ```
@@ -325,10 +390,12 @@ GET /api/hyperfleet/v1/clusters?page=1&pageSize=10
 ```
 
 **Parameters:**
+
 - `page` - Page number (default: 1)
 - `pageSize` - Items per page (default: 100)
 
 **Response:**
+
 ```json
 {
   "kind": "ClusterList",
@@ -348,21 +415,29 @@ Search using TSL (Tree Search Language) query syntax:
 curl -G http://localhost:8000/api/hyperfleet/v1/clusters \
   --data-urlencode "search=name='my-cluster'"
 
-# AND query
+# AND query with condition-based status
 curl -G http://localhost:8000/api/hyperfleet/v1/clusters \
-  --data-urlencode "search=status.phase='Ready' and labels.environment='production'"
+  --data-urlencode "search=status.conditions.Ready='True' and labels.environment='production'"
 
 # OR query
 curl -G http://localhost:8000/api/hyperfleet/v1/clusters \
   --data-urlencode "search=labels.environment='dev' or labels.environment='staging'"
+
+# Query for available resources
+curl -G http://localhost:8000/api/hyperfleet/v1/clusters \
+  --data-urlencode "search=status.conditions.Available='True'"
 ```
 
 **Supported fields:**
+
 - `name` - Resource name
-- `status.phase` - Status phase (NotReady, Ready, Failed)
+- `status.conditions.<Type>` - Condition status (True, False). Examples:
+  - `status.conditions.Ready='True'` - Resources that are ready
+  - `status.conditions.Available='True'` - Resources that are available
 - `labels.<key>` - Label values
 
 **Supported operators:**
+
 - `=` - Equality
 - `in` - In list
 - `and` - Logical AND
@@ -386,21 +461,24 @@ curl -G http://localhost:8000/api/hyperfleet/v1/clusters \
 
 ### Status Fields
 
-- `phase` - Current resource phase (NotReady, Ready, Failed)
-- `observed_generation` - Last spec generation processed (min across all adapters)
-- `last_transition_time` - When phase last changed
-- `last_updated_time` - Min of all adapter last_report_time (detects stale adapters)
-- `conditions` - Array of resource conditions from adapters
+The status object contains synthesized conditions computed from adapter reports:
+
+- `conditions` - Array of resource conditions, including:
+  - **Available** - Whether resource is running at any known good configuration
+  - **Ready** - Whether all adapters have processed current spec generation
+  - Additional conditions from adapters (with `observed_generation`, timestamps)
 
 ### Condition Fields
 
 **In AdapterStatus POST request (ConditionRequest):**
+
 - `type` - Condition type (Available, Applied, Health)
-- `status` - Condition status (True, False, Unknown)
+- `status` - Condition status (True, False)
 - `reason` - Machine-readable reason code
 - `message` - Human-readable message
 
 **In Cluster/NodePool status (ResourceCondition):**
+
 - All above fields plus:
 - `observed_generation` - Generation this condition reflects
 - `created_time` - When condition was first created (API-managed)
