@@ -59,23 +59,52 @@ func reloadCluster(dbSession *gorm.DB, cluster *api.Cluster) error {
 	return dbSession.First(cluster, "id = ?", cluster.ID).Error
 }
 
-// NewClusterWithStatus creates a cluster with specific status phase and last_updated_time
+// NewClusterWithStatus creates a cluster with specific status conditions
 // dbFactory parameter is needed to update database fields
-func NewClusterWithStatus(f *Factories, dbFactory db.SessionFactory, id string, phase string, lastUpdatedTime *time.Time) (*api.Cluster, error) {
+// The isAvailable and isReady parameters control which synthetic conditions are set
+func NewClusterWithStatus(f *Factories, dbFactory db.SessionFactory, id string, isAvailable, isReady bool) (*api.Cluster, error) {
 	cluster, err := f.NewCluster(id)
 	if err != nil {
 		return nil, err
 	}
 
-	// Update database record with status fields
+	now := time.Now()
+	availableStatus := api.ConditionFalse
+	if isAvailable {
+		availableStatus = api.ConditionTrue
+	}
+	readyStatus := api.ConditionFalse
+	if isReady {
+		readyStatus = api.ConditionTrue
+	}
+
+	conditions := []api.ResourceCondition{
+		{
+			Type:               "Available",
+			Status:             availableStatus,
+			ObservedGeneration: cluster.Generation,
+			LastTransitionTime: now,
+			CreatedTime:        now,
+			LastUpdatedTime:    now,
+		},
+		{
+			Type:               "Ready",
+			Status:             readyStatus,
+			ObservedGeneration: cluster.Generation,
+			LastTransitionTime: now,
+			CreatedTime:        now,
+			LastUpdatedTime:    now,
+		},
+	}
+
+	conditionsJSON, err := json.Marshal(conditions)
+	if err != nil {
+		return nil, err
+	}
+
+	// Update database record with status conditions
 	dbSession := dbFactory.New(context.Background())
-	updates := map[string]interface{}{
-		"status_phase": phase,
-	}
-	if lastUpdatedTime != nil {
-		updates["status_last_updated_time"] = lastUpdatedTime
-	}
-	err = dbSession.Model(cluster).Updates(updates).Error
+	err = dbSession.Model(cluster).Update("status_conditions", conditionsJSON).Error
 	if err != nil {
 		return nil, err
 	}
@@ -113,9 +142,9 @@ func NewClusterWithLabels(f *Factories, dbFactory db.SessionFactory, id string, 
 	return cluster, nil
 }
 
-// NewClusterWithStatusAndLabels creates a cluster with both status and labels
-func NewClusterWithStatusAndLabels(f *Factories, dbFactory db.SessionFactory, id string, phase string, lastUpdatedTime *time.Time, labels map[string]string) (*api.Cluster, error) {
-	cluster, err := NewClusterWithStatus(f, dbFactory, id, phase, lastUpdatedTime)
+// NewClusterWithStatusAndLabels creates a cluster with both status conditions and labels
+func NewClusterWithStatusAndLabels(f *Factories, dbFactory db.SessionFactory, id string, isAvailable, isReady bool, labels map[string]string) (*api.Cluster, error) {
+	cluster, err := NewClusterWithStatus(f, dbFactory, id, isAvailable, isReady)
 	if err != nil {
 		return nil, err
 	}
