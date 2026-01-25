@@ -56,17 +56,7 @@ func TestSQLTranslation(t *testing.T) {
 			"sql":    "username IN (?)",
 			"values": ConsistOf("ooo.openshift"),
 		},
-		// Test status.xxx field mapping
-		{
-			"search": "status.phase = 'NotReady'",
-			"sql":    "status_phase = ?",
-			"values": ConsistOf("NotReady"),
-		},
-		{
-			"search": "status.last_updated_time < '2025-01-01T00:00:00Z'",
-			"sql":    "status_last_updated_time < ?",
-			"values": ConsistOf("2025-01-01T00:00:00Z"),
-		},
+		// Test status.conditions field mapping (use status.conditions.<Type>='<Status>' syntax for condition queries)
 		// Test labels.xxx field mapping
 		{
 			"search": "labels.environment = 'production'",

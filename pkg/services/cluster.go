@@ -3,7 +3,8 @@ package services
 import (
 	"context"
 	"encoding/json"
-	"math"
+	stderrors "errors"
+	"strings"
 	"time"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
@@ -11,6 +12,7 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/dao"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
+	"gorm.io/gorm"
 )
 
 //go:generate mockgen-v0.6.0 -source=cluster.go -package=services -destination=cluster_mock.go
@@ -26,6 +28,11 @@ type ClusterService interface {
 
 	// Status aggregation
 	UpdateClusterStatusFromAdapters(ctx context.Context, clusterID string) (*api.Cluster, *errors.ServiceError)
+
+	// ProcessAdapterStatus handles the business logic for adapter status:
+	// - If Available condition is "Unknown": returns (nil, nil) indicating no-op
+	// - Otherwise: upserts the status and triggers aggregation
+	ProcessAdapterStatus(ctx context.Context, clusterID string, adapterStatus *api.AdapterStatus) (*api.AdapterStatus, *errors.ServiceError)
 
 	// idempotent functions for the control plane, but can also be called synchronously by any actor
 	OnUpsert(ctx context.Context, id string) error
@@ -57,13 +64,22 @@ func (s *sqlClusterService) Get(ctx context.Context, id string) (*api.Cluster, *
 }
 
 func (s *sqlClusterService) Create(ctx context.Context, cluster *api.Cluster) (*api.Cluster, *errors.ServiceError) {
+	if cluster.Generation == 0 {
+		cluster.Generation = 1
+	}
+
 	cluster, err := s.clusterDao.Create(ctx, cluster)
 	if err != nil {
 		return nil, handleCreateError("Cluster", err)
 	}
 
+	updatedCluster, svcErr := s.UpdateClusterStatusFromAdapters(ctx, cluster.ID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+
 	// REMOVED: Event creation - no event-driven components
-	return cluster, nil
+	return updatedCluster, nil
 }
 
 func (s *sqlClusterService) Replace(ctx context.Context, cluster *api.Cluster) (*api.Cluster, *errors.ServiceError) {
@@ -133,9 +149,10 @@ func (s *sqlClusterService) UpdateClusterStatusFromAdapters(ctx context.Context,
 		return nil, errors.GeneralError("Failed to get adapter statuses: %s", err)
 	}
 
-	// Build the list of ResourceCondition
-	adapters := []api.ResourceCondition{}
-	minObservedGeneration := int32(math.MaxInt32)
+	now := time.Now()
+
+	// Build the list of adapter ResourceConditions
+	adapterConditions := []api.ResourceCondition{}
 
 	for _, adapterStatus := range adapterStatuses {
 		// Unmarshal Conditions from JSONB
@@ -161,7 +178,7 @@ func (s *sqlClusterService) UpdateClusterStatusFromAdapters(ctx context.Context,
 		// Convert to ResourceCondition
 		condResource := api.ResourceCondition{
 			Type:               MapAdapterToConditionType(adapterStatus.Adapter),
-			Status:             availableCondition.Status,
+			Status:             api.ResourceConditionStatus(availableCondition.Status),
 			Reason:             availableCondition.Reason,
 			Message:            availableCondition.Message,
 			ObservedGeneration: adapterStatus.ObservedGeneration,
@@ -178,61 +195,29 @@ func (s *sqlClusterService) UpdateClusterStatusFromAdapters(ctx context.Context,
 			condResource.LastUpdatedTime = *adapterStatus.LastReportTime
 		}
 
-		adapters = append(adapters, condResource)
-
-		// Track min observed generation
-		// Use the LOWEST generation to ensure cluster status only advances when ALL adapters catch up
-		if adapterStatus.ObservedGeneration < minObservedGeneration {
-			minObservedGeneration = adapterStatus.ObservedGeneration
-		}
+		adapterConditions = append(adapterConditions, condResource)
 	}
 
-	// Compute overall phase using required adapters from config
-	newPhase := ComputePhase(ctx, adapterStatuses, s.adapterConfig.RequiredClusterAdapters, cluster.Generation)
+	// Compute synthetic Available and Ready conditions
+	availableCondition, readyCondition := BuildSyntheticConditions(
+		cluster.StatusConditions,
+		adapterStatuses,
+		s.adapterConfig.RequiredClusterAdapters,
+		cluster.Generation,
+		now,
+	)
 
-	// Calculate min(adapters[].last_report_time) for cluster.status.last_updated_time
-	// This uses the OLDEST adapter timestamp to ensure Sentinel can detect stale adapters
-	var minLastUpdatedTime *time.Time
-	for _, adapterStatus := range adapterStatuses {
-		if adapterStatus.LastReportTime != nil {
-			if minLastUpdatedTime == nil || adapterStatus.LastReportTime.Before(*minLastUpdatedTime) {
-				minLastUpdatedTime = adapterStatus.LastReportTime
-			}
-		}
-	}
-
-	// Save old phase to detect transitions
-	oldPhase := cluster.StatusPhase
-
-	// Update cluster status fields
-	now := time.Now()
-	cluster.StatusPhase = newPhase
-	// Set observed_generation to min across all adapters (0 if no adapters)
-	if len(adapterStatuses) == 0 {
-		cluster.StatusObservedGeneration = 0
-	} else {
-		cluster.StatusObservedGeneration = minObservedGeneration
-	}
+	// Combine synthetic conditions with adapter conditions
+	// Put Available and Ready first
+	allConditions := []api.ResourceCondition{availableCondition, readyCondition}
+	allConditions = append(allConditions, adapterConditions...)
 
 	// Marshal conditions to JSON
-	conditionsJSON, err := json.Marshal(adapters)
+	conditionsJSON, err := json.Marshal(allConditions)
 	if err != nil {
 		return nil, errors.GeneralError("Failed to marshal conditions: %s", err)
 	}
 	cluster.StatusConditions = conditionsJSON
-
-	// Use min(adapters[].last_report_time) instead of now()
-	// This ensures Sentinel triggers reconciliation when ANY adapter is stale
-	if minLastUpdatedTime != nil {
-		cluster.StatusLastUpdatedTime = minLastUpdatedTime
-	} else {
-		cluster.StatusLastUpdatedTime = &now
-	}
-
-	// Update last transition time only if phase changed
-	if cluster.StatusLastTransitionTime == nil || oldPhase != newPhase {
-		cluster.StatusLastTransitionTime = &now
-	}
 
 	// Save the updated cluster
 	cluster, err = s.clusterDao.Replace(ctx, cluster)
@@ -241,4 +226,61 @@ func (s *sqlClusterService) UpdateClusterStatusFromAdapters(ctx context.Context,
 	}
 
 	return cluster, nil
+}
+
+// ProcessAdapterStatus handles the business logic for adapter status:
+// - If Available condition is "Unknown": returns (nil, nil) indicating no-op
+// - Otherwise: upserts the status and triggers aggregation
+func (s *sqlClusterService) ProcessAdapterStatus(ctx context.Context, clusterID string, adapterStatus *api.AdapterStatus) (*api.AdapterStatus, *errors.ServiceError) {
+	existingStatus, findErr := s.adapterStatusDao.FindByResourceAndAdapter(ctx, "Cluster", clusterID, adapterStatus.Adapter)
+	if findErr != nil && !stderrors.Is(findErr, gorm.ErrRecordNotFound) {
+		if !strings.Contains(findErr.Error(), errors.CodeNotFoundGeneric) {
+			return nil, errors.GeneralError("Failed to get adapter status: %s", findErr)
+		}
+	}
+	if existingStatus != nil && adapterStatus.ObservedGeneration < existingStatus.ObservedGeneration {
+		// Discard stale status updates (older observed_generation).
+		return nil, nil
+	}
+
+	// Parse conditions from the adapter status
+	var conditions []api.AdapterCondition
+	if len(adapterStatus.Conditions) > 0 {
+		if err := json.Unmarshal(adapterStatus.Conditions, &conditions); err != nil {
+			return nil, errors.GeneralError("Failed to unmarshal adapter status conditions: %s", err)
+		}
+	}
+
+	// Find the "Available" condition
+	hasAvailableCondition := false
+	for _, cond := range conditions {
+		if cond.Type != "Available" {
+			continue
+		}
+
+		hasAvailableCondition = true
+		if cond.Status == api.AdapterConditionUnknown {
+			// Available condition is "Unknown", return nil to indicate no-op
+			return nil, nil
+		}
+	}
+
+	// Upsert the adapter status
+	upsertedStatus, err := s.adapterStatusDao.Upsert(ctx, adapterStatus)
+	if err != nil {
+		return nil, handleCreateError("AdapterStatus", err)
+	}
+
+	// Only trigger aggregation when the adapter reported an Available condition.
+	// If the adapter status doesn't include Available (e.g. it only reports Ready/Progressing),
+	// saving it should not overwrite the cluster's synthetic Available/Ready conditions.
+	if hasAvailableCondition {
+		if _, aggregateErr := s.UpdateClusterStatusFromAdapters(ctx, clusterID); aggregateErr != nil {
+			// Log error but don't fail the request - the status will be computed on next update
+			ctx = logger.WithClusterID(ctx, clusterID)
+			logger.WithError(ctx, aggregateErr).Warn("Failed to aggregate cluster status")
+		}
+	}
+
+	return upsertedStatus, nil
 }
