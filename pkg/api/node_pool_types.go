@@ -30,12 +30,8 @@ type NodePool struct {
 	// Foreign key relationship
 	Cluster *Cluster `gorm:"foreignKey:OwnerID;references:ID"`
 
-	// Status fields (expanded)
-	StatusPhase              string         `json:"status_phase" gorm:"default:'NotReady'"`
-	StatusObservedGeneration int32          `json:"status_observed_generation" gorm:"default:0"`
-	StatusLastTransitionTime *time.Time     `json:"status_last_transition_time,omitempty"`
-	StatusLastUpdatedTime    *time.Time     `json:"status_last_updated_time,omitempty"`
-	StatusConditions         datatypes.JSON `json:"status_conditions" gorm:"type:jsonb"`
+	// Status (conditions-only model with synthetic Available/Ready conditions)
+	StatusConditions datatypes.JSON `json:"status_conditions" gorm:"type:jsonb"`
 
 	// Audit fields
 	CreatedBy string `json:"created_by" gorm:"size:255;not null"`
@@ -63,9 +59,6 @@ func (np *NodePool) BeforeCreate(tx *gorm.DB) error {
 	}
 	if np.OwnerKind == "" {
 		np.OwnerKind = "Cluster"
-	}
-	if np.StatusPhase == "" {
-		np.StatusPhase = string(PhaseNotReady)
 	}
 	// Set Href if not already set
 	if np.Href == "" {

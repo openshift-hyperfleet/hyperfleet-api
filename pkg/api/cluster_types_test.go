@@ -126,35 +126,6 @@ func TestCluster_BeforeCreate_GenerationPreserved(t *testing.T) {
 	Expect(cluster.Generation).To(Equal(int32(5)))
 }
 
-// TestCluster_BeforeCreate_StatusPhaseDefault tests StatusPhase default value
-func TestCluster_BeforeCreate_StatusPhaseDefault(t *testing.T) {
-	RegisterTestingT(t)
-
-	// Test default StatusPhase
-	cluster := &Cluster{
-		Name: "test-cluster",
-	}
-
-	err := cluster.BeforeCreate(nil)
-	Expect(err).To(BeNil())
-	Expect(cluster.StatusPhase).To(Equal("NotReady"))
-}
-
-// TestCluster_BeforeCreate_StatusPhasePreserved tests StatusPhase is not overwritten
-func TestCluster_BeforeCreate_StatusPhasePreserved(t *testing.T) {
-	RegisterTestingT(t)
-
-	// Test StatusPhase preservation
-	cluster := &Cluster{
-		Name:        "test-cluster",
-		StatusPhase: "Ready",
-	}
-
-	err := cluster.BeforeCreate(nil)
-	Expect(err).To(BeNil())
-	Expect(cluster.StatusPhase).To(Equal("Ready"))
-}
-
 // TestCluster_BeforeCreate_HrefGeneration tests Href auto-generation
 func TestCluster_BeforeCreate_HrefGeneration(t *testing.T) {
 	RegisterTestingT(t)
@@ -200,6 +171,5 @@ func TestCluster_BeforeCreate_Complete(t *testing.T) {
 	Expect(cluster.ID).ToNot(BeEmpty())
 	Expect(cluster.Kind).To(Equal("Cluster")) // Kind is preserved, not auto-set
 	Expect(cluster.Generation).To(Equal(int32(1)))
-	Expect(cluster.StatusPhase).To(Equal("NotReady"))
 	Expect(cluster.Href).To(Equal("/api/hyperfleet/v1/clusters/" + cluster.ID))
 }

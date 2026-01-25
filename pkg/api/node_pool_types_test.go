@@ -131,37 +131,6 @@ func TestNodePool_BeforeCreate_OwnerKindPreserved(t *testing.T) {
 	Expect(nodepool.OwnerKind).To(Equal("CustomOwner"))
 }
 
-// TestNodePool_BeforeCreate_StatusPhaseDefault tests StatusPhase default value
-func TestNodePool_BeforeCreate_StatusPhaseDefault(t *testing.T) {
-	RegisterTestingT(t)
-
-	// Test default StatusPhase
-	nodepool := &NodePool{
-		Name:    "test-nodepool",
-		OwnerID: "cluster-123",
-	}
-
-	err := nodepool.BeforeCreate(nil)
-	Expect(err).To(BeNil())
-	Expect(nodepool.StatusPhase).To(Equal("NotReady"))
-}
-
-// TestNodePool_BeforeCreate_StatusPhasePreserved tests StatusPhase is not overwritten
-func TestNodePool_BeforeCreate_StatusPhasePreserved(t *testing.T) {
-	RegisterTestingT(t)
-
-	// Test StatusPhase preservation
-	nodepool := &NodePool{
-		Name:        "test-nodepool",
-		OwnerID:     "cluster-123",
-		StatusPhase: "Ready",
-	}
-
-	err := nodepool.BeforeCreate(nil)
-	Expect(err).To(BeNil())
-	Expect(nodepool.StatusPhase).To(Equal("Ready"))
-}
-
 // TestNodePool_BeforeCreate_HrefGeneration tests Href auto-generation
 func TestNodePool_BeforeCreate_HrefGeneration(t *testing.T) {
 	RegisterTestingT(t)
@@ -241,7 +210,6 @@ func TestNodePool_BeforeCreate_Complete(t *testing.T) {
 	Expect(nodepool.ID).ToNot(BeEmpty())
 	Expect(nodepool.Kind).To(Equal("NodePool")) // Kind is preserved, not auto-set
 	Expect(nodepool.OwnerKind).To(Equal("Cluster"))
-	Expect(nodepool.StatusPhase).To(Equal("NotReady"))
 	Expect(nodepool.Href).To(Equal("/api/hyperfleet/v1/clusters/cluster-complete/nodepools/" + nodepool.ID))
 	Expect(nodepool.OwnerHref).To(Equal("/api/hyperfleet/v1/clusters/cluster-complete"))
 }
