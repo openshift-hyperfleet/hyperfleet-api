@@ -45,7 +45,7 @@ func TestClusterStatusPost(t *testing.T) {
 		[]openapi.ConditionRequest{
 			{
 				Type:   "Ready",
-				Status: openapi.True,
+				Status: openapi.AdapterConditionStatusTrue,
 				Reason: util.PtrString("AdapterReady"),
 			},
 		},
@@ -80,7 +80,7 @@ func TestClusterStatusGet(t *testing.T) {
 			[]openapi.ConditionRequest{
 				{
 					Type:   "Ready",
-					Status: openapi.True,
+					Status: openapi.AdapterConditionStatusTrue,
 				},
 			},
 			nil,
@@ -121,7 +121,7 @@ func TestNodePoolStatusPost(t *testing.T) {
 		[]openapi.ConditionRequest{
 			{
 				Type:   "Ready",
-				Status: openapi.False,
+				Status: openapi.AdapterConditionStatusFalse,
 				Reason: util.PtrString("Initializing"),
 			},
 		},
@@ -156,7 +156,7 @@ func TestNodePoolStatusGet(t *testing.T) {
 			[]openapi.ConditionRequest{
 				{
 					Type:   "Ready",
-					Status: openapi.True,
+					Status: openapi.AdapterConditionStatusTrue,
 				},
 			},
 			nil,
@@ -193,7 +193,7 @@ func TestAdapterStatusPaging(t *testing.T) {
 			[]openapi.ConditionRequest{
 				{
 					Type:   "Ready",
-					Status: openapi.True,
+					Status: openapi.AdapterConditionStatusTrue,
 				},
 			},
 			nil,
@@ -237,7 +237,7 @@ func TestAdapterStatusIdempotency(t *testing.T) {
 		[]openapi.ConditionRequest{
 			{
 				Type:   "Ready",
-				Status: openapi.False,
+				Status: openapi.AdapterConditionStatusFalse,
 				Reason: util.PtrString("Initializing"),
 			},
 		},
@@ -249,7 +249,7 @@ func TestAdapterStatusIdempotency(t *testing.T) {
 	Expect(resp1.StatusCode()).To(Equal(http.StatusCreated))
 	Expect(resp1.JSON201).NotTo(BeNil())
 	Expect(resp1.JSON201.Adapter).To(Equal("idempotency-test-adapter"))
-	Expect(resp1.JSON201.Conditions[0].Status).To(Equal(openapi.False))
+	Expect(resp1.JSON201.Conditions[0].Status).To(Equal(openapi.AdapterConditionStatusFalse))
 
 	// Second POST: Update the same adapter with different conditions
 	data2 := map[string]interface{}{
@@ -261,7 +261,7 @@ func TestAdapterStatusIdempotency(t *testing.T) {
 		[]openapi.ConditionRequest{
 			{
 				Type:   "Ready",
-				Status: openapi.True,
+				Status: openapi.AdapterConditionStatusTrue,
 				Reason: util.PtrString("AdapterReady"),
 			},
 		},
@@ -273,7 +273,7 @@ func TestAdapterStatusIdempotency(t *testing.T) {
 	Expect(resp2.StatusCode()).To(Equal(http.StatusCreated))
 	Expect(resp2.JSON201).NotTo(BeNil())
 	Expect(resp2.JSON201.Adapter).To(Equal("idempotency-test-adapter"))
-	Expect(resp2.JSON201.Conditions[0].Status).To(Equal(openapi.True))
+	Expect(resp2.JSON201.Conditions[0].Status).To(Equal(openapi.AdapterConditionStatusTrue))
 
 	// GET all statuses - should have only ONE status for "idempotency-test-adapter"
 	listResp, err := client.GetClusterStatusesWithResponse(ctx, cluster.ID, nil, test.WithAuthToken(ctx))
@@ -292,7 +292,125 @@ func TestAdapterStatusIdempotency(t *testing.T) {
 
 	// Verify: should have exactly ONE entry for this adapter (updated, not duplicated)
 	Expect(adapterCount).To(Equal(1), "Adapter should be updated, not duplicated")
-	Expect(finalStatus.Conditions[0].Status).To(Equal(openapi.True), "Conditions should be updated to latest")
+	Expect(finalStatus.Conditions[0].Status).To(Equal(openapi.AdapterConditionStatusTrue), "Conditions should be updated to latest")
+}
+
+// TestClusterStatusPost_UnknownReturns204 tests that posting Unknown Available status returns 204 No Content
+func TestClusterStatusPost_UnknownReturns204(t *testing.T) {
+	h, client := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+
+	// Create a cluster first
+	cluster, err := h.Factories.NewClusters(h.NewID())
+	Expect(err).NotTo(HaveOccurred())
+
+	// Create an adapter status with Available=Unknown
+	statusInput := newAdapterStatusRequest(
+		"test-adapter-unknown",
+		cluster.Generation,
+		[]openapi.ConditionRequest{
+			{
+				Type:   "Available",
+				Status: openapi.AdapterConditionStatusUnknown,
+				Reason: util.PtrString("StartupPending"),
+			},
+		},
+		nil,
+	)
+
+	resp, err := client.PostClusterStatusesWithResponse(ctx, cluster.ID, openapi.PostClusterStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx))
+	Expect(err).NotTo(HaveOccurred(), "Error posting cluster status: %v", err)
+	Expect(resp.StatusCode()).To(Equal(http.StatusNoContent), "Expected 204 No Content for Unknown status")
+
+	// Verify the status was NOT stored
+	listResp, err := client.GetClusterStatusesWithResponse(ctx, cluster.ID, nil, test.WithAuthToken(ctx))
+	Expect(err).NotTo(HaveOccurred())
+	Expect(listResp.JSON200).NotTo(BeNil())
+
+	// Check that no adapter status with "test-adapter-unknown" exists
+	for _, s := range listResp.JSON200.Items {
+		Expect(s.Adapter).NotTo(Equal("test-adapter-unknown"), "Unknown status should not be stored")
+	}
+}
+
+// TestNodePoolStatusPost_UnknownReturns204 tests that posting Unknown Available status returns 204 No Content
+func TestNodePoolStatusPost_UnknownReturns204(t *testing.T) {
+	h, client := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+
+	// Create a nodepool (which also creates its parent cluster)
+	nodePool, err := h.Factories.NewNodePools(h.NewID())
+	Expect(err).NotTo(HaveOccurred())
+
+	// Create an adapter status with Available=Unknown
+	statusInput := newAdapterStatusRequest(
+		"test-nodepool-adapter-unknown",
+		1,
+		[]openapi.ConditionRequest{
+			{
+				Type:   "Available",
+				Status: openapi.AdapterConditionStatusUnknown,
+				Reason: util.PtrString("StartupPending"),
+			},
+		},
+		nil,
+	)
+
+	resp, err := client.PostNodePoolStatusesWithResponse(ctx, nodePool.OwnerID, nodePool.ID, openapi.PostNodePoolStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx))
+	Expect(err).NotTo(HaveOccurred(), "Error posting nodepool status: %v", err)
+	Expect(resp.StatusCode()).To(Equal(http.StatusNoContent), "Expected 204 No Content for Unknown status")
+
+	// Verify the status was NOT stored
+	listResp, err := client.GetNodePoolsStatusesWithResponse(ctx, nodePool.OwnerID, nodePool.ID, nil, test.WithAuthToken(ctx))
+	Expect(err).NotTo(HaveOccurred())
+	Expect(listResp.JSON200).NotTo(BeNil())
+
+	// Check that no adapter status with "test-nodepool-adapter-unknown" exists
+	for _, s := range listResp.JSON200.Items {
+		Expect(s.Adapter).NotTo(Equal("test-nodepool-adapter-unknown"), "Unknown status should not be stored")
+	}
+}
+
+// TestClusterStatusPost_MultipleConditionsWithUnknownAvailable tests that Unknown Available is detected among multiple conditions
+func TestClusterStatusPost_MultipleConditionsWithUnknownAvailable(t *testing.T) {
+	h, client := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+
+	// Create a cluster first
+	cluster, err := h.Factories.NewClusters(h.NewID())
+	Expect(err).NotTo(HaveOccurred())
+
+	// Create an adapter status with multiple conditions including Available=Unknown
+	statusInput := newAdapterStatusRequest(
+		"test-adapter-multi-unknown",
+		cluster.Generation,
+		[]openapi.ConditionRequest{
+			{
+				Type:   "Ready",
+				Status: openapi.AdapterConditionStatusTrue,
+			},
+			{
+				Type:   "Available",
+				Status: openapi.AdapterConditionStatusUnknown,
+				Reason: util.PtrString("StartupPending"),
+			},
+			{
+				Type:   "Progressing",
+				Status: openapi.AdapterConditionStatusTrue,
+			},
+		},
+		nil,
+	)
+
+	resp, err := client.PostClusterStatusesWithResponse(ctx, cluster.ID, openapi.PostClusterStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx))
+	Expect(err).NotTo(HaveOccurred(), "Error posting cluster status: %v", err)
+	Expect(resp.StatusCode()).To(Equal(http.StatusNoContent), "Expected 204 No Content when Available=Unknown among multiple conditions")
 }
 
 // TestAdapterStatusPagingEdgeCases tests edge cases in pagination
@@ -314,7 +432,7 @@ func TestAdapterStatusPagingEdgeCases(t *testing.T) {
 			[]openapi.ConditionRequest{
 				{
 					Type:   "Ready",
-					Status: openapi.True,
+					Status: openapi.AdapterConditionStatusTrue,
 				},
 			},
 			nil,
@@ -356,7 +474,7 @@ func TestAdapterStatusPagingEdgeCases(t *testing.T) {
 		[]openapi.ConditionRequest{
 			{
 				Type:   "Ready",
-				Status: openapi.True,
+				Status: openapi.AdapterConditionStatusTrue,
 			},
 		},
 		nil,
