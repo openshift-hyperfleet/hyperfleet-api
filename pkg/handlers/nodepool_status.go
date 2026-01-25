@@ -89,16 +89,15 @@ func (h nodePoolStatusHandler) Create(w http.ResponseWriter, r *http.Request) {
 				return nil, errors.GeneralError("Failed to convert adapter status: %v", convErr)
 			}
 
-			// Upsert (create or update based on resource_type + resource_id + adapter)
-			adapterStatus, err := h.adapterStatusService.Upsert(ctx, newStatus)
+			// Process adapter status (handles Unknown status and upsert + aggregation)
+			adapterStatus, err := h.nodePoolService.ProcessAdapterStatus(ctx, nodePoolID, newStatus)
 			if err != nil {
 				return nil, err
 			}
 
-			// Trigger status aggregation
-			if _, aggregateErr := h.nodePoolService.UpdateNodePoolStatusFromAdapters(ctx, nodePoolID); aggregateErr != nil {
-				// Log error but don't fail the request - the status will be computed on next update
-				logger.With(ctx, logger.FieldNodePoolID, nodePoolID).WithError(aggregateErr).Warn("Failed to aggregate nodepool status")
+			// If result is nil, return nil to signal 204 No Content
+			if adapterStatus == nil {
+				return nil, nil
 			}
 
 			status, presErr := presenters.PresentAdapterStatus(adapterStatus)
@@ -110,5 +109,5 @@ func (h nodePoolStatusHandler) Create(w http.ResponseWriter, r *http.Request) {
 		handleError,
 	}
 
-	handle(w, r, cfg, http.StatusCreated)
+	handleCreateWithNoContent(w, r, cfg)
 }
