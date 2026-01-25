@@ -35,11 +35,7 @@ func addClusters() *gormigrate.Migration {
 					-- Version control
 					generation INTEGER NOT NULL DEFAULT 1,
 
-					-- Status fields (flattened for efficient querying)
-					status_phase VARCHAR(50) NOT NULL DEFAULT 'NotReady',
-					status_last_transition_time TIMESTAMPTZ NULL,
-					status_observed_generation INTEGER NOT NULL DEFAULT 0,
-					status_last_updated_time TIMESTAMPTZ NULL,
+					-- Status (conditions-only model)
 					status_conditions JSONB NULL,
 
 					-- Audit fields
@@ -62,27 +58,10 @@ func addClusters() *gormigrate.Migration {
 				return err
 			}
 
-			// Create index on status_phase for filtering
-			if err := tx.Exec("CREATE INDEX IF NOT EXISTS idx_clusters_status_phase ON clusters(status_phase);").Error; err != nil {
-				return err
-			}
-
-			// Create index on status_last_updated_time for search optimization
-			// Sentinel queries frequently filter by this field to find stale resources
-			if err := tx.Exec("CREATE INDEX IF NOT EXISTS idx_clusters_status_last_updated_time ON clusters(status_last_updated_time);").Error; err != nil {
-				return err
-			}
-
 			return nil
 		},
 		Rollback: func(tx *gorm.DB) error {
 			// Drop indexes first
-			if err := tx.Exec("DROP INDEX IF EXISTS idx_clusters_status_last_updated_time;").Error; err != nil {
-				return err
-			}
-			if err := tx.Exec("DROP INDEX IF EXISTS idx_clusters_status_phase;").Error; err != nil {
-				return err
-			}
 			if err := tx.Exec("DROP INDEX IF EXISTS idx_clusters_name;").Error; err != nil {
 				return err
 			}
