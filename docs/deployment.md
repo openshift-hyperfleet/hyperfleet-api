@@ -86,13 +86,41 @@ export OPENAPI_SCHEMA_PATH=/path/to/custom-schema.yaml
 - `LOG_FORMAT` - Log format: `json`, `text` (default: `json`)
 
 **Adapter Requirements:**
-- `HYPERFLEET_CLUSTER_ADAPTERS` - Required adapters for cluster "Ready" state, JSON array (default: `["validation","dns","pullsecret","hypershift"]`)
-- `HYPERFLEET_NODEPOOL_ADAPTERS` - Required adapters for nodepool "Ready" state, JSON array (default: `["validation","hypershift"]`)
 
-Example:
+Configure which adapters must be ready for resources to be marked as "Ready".
+
+**Default values** (if not configured):
+- Cluster: `["validation","dns","pullsecret","hypershift"]`
+- NodePool: `["validation","hypershift"]`
+
+**Option 1: Using structured values (Helm only, recommended)**
+```yaml
+# values.yaml
+adapters:
+  cluster:
+    - validation
+    - dns
+    - pullsecret
+    - hypershift
+  nodepool:
+    - validation
+    - hypershift
+```
+
+**Option 2: Using environment variables in Helm**
+```yaml
+# values.yaml
+env:
+  - name: HYPERFLEET_CLUSTER_ADAPTERS
+    value: '["validation","dns","pullsecret","hypershift"]'
+  - name: HYPERFLEET_NODEPOOL_ADAPTERS
+    value: '["validation","hypershift"]'
+```
+
+**Option 3: Direct environment variable (non-Helm)**
 ```bash
-export HYPERFLEET_CLUSTER_ADAPTERS='["validation","dns"]'
-export HYPERFLEET_NODEPOOL_ADAPTERS='["validation"]'
+export HYPERFLEET_CLUSTER_ADAPTERS='["validation","dns","pullsecret","hypershift"]'
+export HYPERFLEET_NODEPOOL_ADAPTERS='["validation","hypershift"]'
 ```
 
 ## Kubernetes Deployment
@@ -212,12 +240,13 @@ database:
     enabled: true
     secretName: hyperfleet-db-external
 
-# Optional: customize adapter requirements
-env:
-  - name: HYPERFLEET_CLUSTER_ADAPTERS
-    value: '["validation","dns"]'
-  - name: HYPERFLEET_NODEPOOL_ADAPTERS
-    value: '["validation"]'
+# Optional: customize adapter requirements (YAML table format)
+adapters:
+  cluster:
+    - validation
+    - dns
+  nodepool:
+    - validation
 
 replicaCount: 3
 
