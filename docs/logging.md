@@ -44,13 +44,13 @@ Handler (business logic)
 
 ```bash
 # Logging level (debug, info, warn, error)
-export LOG_LEVEL=info
+export HYPERFLEET_LOG_LEVEL=info
 
-# Logging format (json, text)
-export LOG_FORMAT=json
+# Logging format (text, json)
+export HYPERFLEET_LOG_FORMAT=text
 
 # Log output destination (stdout, stderr)
-export LOG_OUTPUT=stdout
+export HYPERFLEET_LOG_OUTPUT=stdout
 
 # Enable OpenTelemetry (true/false)
 export OTEL_ENABLED=true
@@ -60,28 +60,28 @@ export OTEL_ENABLED=true
 export OTEL_SAMPLING_RATE=0.1
 
 # Data masking (true/false)
-export MASKING_ENABLED=true
+export HYPERFLEET_MASKING_ENABLED=true
 
 # Headers to mask (comma-separated)
-export MASKING_HEADERS="Authorization,Cookie,X-API-Key"
+export HYPERFLEET_MASKING_HEADERS="Authorization,Cookie,X-API-Key"
 
 # JSON body fields to mask (comma-separated)
-export MASKING_FIELDS="password,token,secret,api_key"
+export HYPERFLEET_MASKING_FIELDS="password,token,secret,api_key"
 
 # Database debug mode (true/false)
-# When true, logs all SQL queries regardless of LOG_LEVEL
-export DB_DEBUG=false
+# When true, logs all SQL queries regardless of HYPERFLEET_LOG_LEVEL
+export HYPERFLEET_DB_DEBUG=false
 ```
 
 ### Configuration Struct
 
 ```go
 type LoggingConfig struct {
-    Level   string         // LOG_LEVEL
-    Format  string         // LOG_FORMAT
-    Output  string         // LOG_OUTPUT
+    Level   string         // HYPERFLEET_LOG_LEVEL
+    Format  string         // HYPERFLEET_LOG_FORMAT
+    Output  string         // HYPERFLEET_LOG_OUTPUT
     OTel    OTelConfig     // OTEL_*
-    Masking MaskingConfig  // MASKING_*
+    Masking MaskingConfig  // HYPERFLEET_MASKING_*
 }
 
 type OTelConfig struct {
@@ -90,9 +90,9 @@ type OTelConfig struct {
 }
 
 type MaskingConfig struct {
-    Enabled bool     // MASKING_ENABLED
-    Headers []string // MASKING_HEADERS (comma-separated)
-    Fields  []string // MASKING_FIELDS (comma-separated)
+    Enabled bool     // HYPERFLEET_MASKING_ENABLED
+    Headers []string // HYPERFLEET_MASKING_HEADERS (comma-separated)
+    Fields  []string // HYPERFLEET_MASKING_FIELDS (comma-separated)
 }
 ```
 
@@ -195,7 +195,7 @@ See `pkg/logger/http.go` for all available helpers (HTTPMethod, HTTPPath, HTTPSt
 
 HyperFleet API supports two log output formats: **JSON** (for production/log aggregation) and **Text** (for development/debugging).
 
-### JSON Format (`LOG_FORMAT=json`)
+### JSON Format (`HYPERFLEET_LOG_FORMAT=json`)
 
 **Characteristics:**
 - Machine-parseable structured format
@@ -208,7 +208,7 @@ HyperFleet API supports two log output formats: **JSON** (for production/log agg
 {"timestamp":"2026-01-09T12:30:45Z","level":"info","message":"Server started","component":"hyperfleet-api","version":"v1.2.3","hostname":"pod-abc","request_id":"2C9zKDz8xQMqF3yH","port":8000}
 ```
 
-### Text Format (`LOG_FORMAT=text`)
+### Text Format (`HYPERFLEET_LOG_FORMAT=text`)
 
 **Characteristics:**
 - Human-readable format following HyperFleet Logging Specification
@@ -241,54 +241,54 @@ logger.With(ctx, "cluster_id", "cluster-abc123", "region", "us-east-1").Info("Pr
 
 ### Switching Between Formats
 
-Toggle between formats using the `LOG_FORMAT` environment variable:
+Toggle between formats using the `HYPERFLEET_LOG_FORMAT` environment variable:
 
 ```bash
 # Development: human-readable text
-export LOG_FORMAT=text
-export LOG_LEVEL=debug
+export HYPERFLEET_LOG_FORMAT=text
+export HYPERFLEET_LOG_LEVEL=debug
 
 # Production: structured JSON
-export LOG_FORMAT=json
-export LOG_LEVEL=info
+export HYPERFLEET_LOG_FORMAT=json
+export HYPERFLEET_LOG_LEVEL=info
 ```
 
 No code changes required - the logger automatically adapts output format based on configuration.
 
 ## Database Logging
 
-HyperFleet API automatically integrates database (GORM) logging with the application's `LOG_LEVEL` configuration while providing a `DB_DEBUG` override for database-specific debugging.
+HyperFleet API automatically integrates database (GORM) logging with the application's `HYPERFLEET_LOG_LEVEL` configuration while providing a `HYPERFLEET_DB_DEBUG` override for database-specific debugging.
 
-### LOG_LEVEL Integration
+### HYPERFLEET_LOG_LEVEL Integration
 
 Database logs follow the application log level by default:
 
-| LOG_LEVEL | GORM Behavior | What Gets Logged |
+| HYPERFLEET_LOG_LEVEL | GORM Behavior | What Gets Logged |
 |-----------|---------------|------------------|
 | `debug` | Info level | All SQL queries with parameters, duration, and row counts |
 | `info` | Warn level | Only slow queries (>200ms) and errors |
 | `warn` | Warn level | Only slow queries (>200ms) and errors |
 | `error` | Silent | Nothing (database logging disabled) |
 
-### DB_DEBUG Override
+### HYPERFLEET_DB_DEBUG Override
 
-The `DB_DEBUG` environment variable provides database-specific debugging without changing the global `LOG_LEVEL`:
+The `HYPERFLEET_DB_DEBUG` environment variable provides database-specific debugging without changing the global `HYPERFLEET_LOG_LEVEL`:
 
 ```bash
 # Production environment with database debugging
-export LOG_LEVEL=info          # Application logs remain at INFO
-export LOG_FORMAT=json          # Production format
-export DB_DEBUG=true            # Force all SQL queries to be logged
+export HYPERFLEET_LOG_LEVEL=info          # Application logs remain at INFO
+export HYPERFLEET_LOG_FORMAT=json          # Production format
+export HYPERFLEET_DB_DEBUG=true            # Force all SQL queries to be logged
 ./bin/hyperfleet-api serve
 ```
 
 **Priority:**
-1. If `DB_DEBUG=true`, all SQL queries are logged (GORM Info level)
-2. Otherwise, follow `LOG_LEVEL` mapping (see table above)
+1. If `HYPERFLEET_DB_DEBUG=true`, all SQL queries are logged (GORM Info level)
+2. Otherwise, follow `HYPERFLEET_LOG_LEVEL` mapping (see table above)
 
 ### Database Log Examples
 
-**Fast query (LOG_LEVEL=debug or DB_DEBUG=true):**
+**Fast query (HYPERFLEET_LOG_LEVEL=debug or HYPERFLEET_DB_DEBUG=true):**
 
 JSON format:
 ```json
@@ -344,7 +344,7 @@ Text format:
 
 ### Backward Compatibility
 
-The existing `--enable-db-debug` CLI flag and `DB_DEBUG` environment variable continue to work exactly as before. The new functionality only adds automatic integration with `LOG_LEVEL` when `DB_DEBUG` is not explicitly set.
+The existing `--enable-db-debug` CLI flag and `HYPERFLEET_DB_DEBUG` environment variable continue to work exactly as before. The new functionality only adds automatic integration with `HYPERFLEET_LOG_LEVEL` when `HYPERFLEET_DB_DEBUG` is not explicitly set.
 
 ## Log Output Examples
 
@@ -461,19 +461,19 @@ env().Config.Logging.Masking.Fields = append(
 
 ### Database Logging
 
-1. **Use LOG_LEVEL for database logs**: Don't set `DB_DEBUG` unless specifically debugging database issues
-2. **Production default**: `LOG_LEVEL=info` hides fast queries, shows slow queries (>200ms)
-3. **Temporary debugging**: Use `DB_DEBUG=true` for production database troubleshooting, then disable it
-4. **Development**: Use `LOG_LEVEL=debug` to see all SQL queries during development
-5. **High-traffic systems**: Consider `LOG_LEVEL=warn` to minimize database log volume
+1. **Use HYPERFLEET_LOG_LEVEL for database logs**: Don't set `HYPERFLEET_DB_DEBUG` unless specifically debugging database issues
+2. **Production default**: `HYPERFLEET_LOG_LEVEL=info` hides fast queries, shows slow queries (>200ms)
+3. **Temporary debugging**: Use `HYPERFLEET_DB_DEBUG=true` for production database troubleshooting, then disable it
+4. **Development**: Use `HYPERFLEET_LOG_LEVEL=debug` to see all SQL queries during development
+5. **High-traffic systems**: Consider `HYPERFLEET_LOG_LEVEL=warn` to minimize database log volume
 6. **Monitor slow queries**: Review WARN-level GORM logs for queries exceeding 200ms threshold
 
 ## Troubleshooting
 
 ### Logs Not Appearing
 
-1. Check log level: `export LOG_LEVEL=debug`
-2. Verify text mode: `export LOG_FORMAT=text` (for human-readable output)
+1. Check log level: `export HYPERFLEET_LOG_LEVEL=debug`
+2. Verify text mode: `export HYPERFLEET_LOG_FORMAT=text` (for human-readable output)
 3. Check context propagation: Ensure middleware chain is correct
 
 ### Missing request_id
@@ -494,31 +494,31 @@ mainRouter.Use(logging.RequestLoggingMiddleware)
 
 ### Data Not Masked
 
-1. Check masking is enabled: `export MASKING_ENABLED=true`
+1. Check masking is enabled: `export HYPERFLEET_MASKING_ENABLED=true`
 2. Verify field names match configuration (case-insensitive)
 3. Check JSON structure: Masking only works on top-level fields
 
 ### SQL Queries Not Appearing
 
-1. Check log level: `export LOG_LEVEL=debug` (to see all SQL queries)
-2. Check DB_DEBUG: `export DB_DEBUG=true` (to force SQL logging at any log level)
+1. Check log level: `export HYPERFLEET_LOG_LEVEL=debug` (to see all SQL queries)
+2. Check HYPERFLEET_DB_DEBUG: `export HYPERFLEET_DB_DEBUG=true` (to force SQL logging at any log level)
 3. Verify queries are executing: Check if API operations complete successfully
-4. Check log format: Use `LOG_FORMAT=text` for easier debugging
+4. Check log format: Use `HYPERFLEET_LOG_FORMAT=text` for easier debugging
 
 ### Too Many SQL Queries in Logs
 
-1. Production mode: `export LOG_LEVEL=info` (hides fast queries < 200ms)
-2. Disable DB_DEBUG: `export DB_DEBUG=false` or unset it
-3. Minimal mode: `export LOG_LEVEL=warn` (only slow queries and errors)
-4. Silent mode: `export LOG_LEVEL=error` (no SQL queries logged)
+1. Production mode: `export HYPERFLEET_LOG_LEVEL=info` (hides fast queries < 200ms)
+2. Disable HYPERFLEET_DB_DEBUG: `export HYPERFLEET_DB_DEBUG=false` or unset it
+3. Minimal mode: `export HYPERFLEET_LOG_LEVEL=warn` (only slow queries and errors)
+4. Silent mode: `export HYPERFLEET_LOG_LEVEL=error` (no SQL queries logged)
 
 ### Only Want to See Slow Queries
 
 Use production default configuration:
 ```bash
-export LOG_LEVEL=info
-export LOG_FORMAT=json
-export DB_DEBUG=false  # or leave unset
+export HYPERFLEET_LOG_LEVEL=info
+export HYPERFLEET_LOG_FORMAT=json
+export HYPERFLEET_DB_DEBUG=false  # or leave unset
 ```
 
 This will only log SQL queries that take longer than 200ms.
@@ -544,7 +544,7 @@ func TestLogging(t *testing.T) {
 
 ```bash
 # Run tests with debug logging
-LOG_LEVEL=debug OCM_ENV=integration_testing go test ./test/integration/...
+HYPERFLEET_LOG_LEVEL=debug OCM_ENV=integration_testing go test ./test/integration/...
 
 # Run tests without OTel
 OTEL_ENABLED=false OCM_ENV=integration_testing go test ./...
