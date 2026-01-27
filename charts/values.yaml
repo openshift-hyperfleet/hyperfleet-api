@@ -114,16 +114,22 @@ auth:
   # Override with: --set auth.jwksUrl="https://your-idp/.../.well-known/jwks.json"
   jwksUrl: "https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/certs"
 
+# Adapter configuration
+# Configure which adapters must be ready for resources to be marked as "Ready"
+# If not specified, defaults are used (see pkg/config/adapter.go)
+adapters:
+  # Required adapters for cluster "Ready" state
+  # Default: ["validation", "dns", "pullsecret", "hypershift"]
+  cluster: []
+  # Required adapters for nodepool "Ready" state
+  # Default: ["validation", "hypershift"]
+  nodepool: []
+
 # Additional environment variables
+# You can override adapters by setting HYPERFLEET_*_ADAPTERS here
 env: []
   # - name: GLOG_V
   #   value: "10"
-
-  # Adapter requirements (JSON array format)
-  # - name: HYPERFLEET_CLUSTER_ADAPTERS
-  #   value: '["validation","dns","pullsecret","hypershift"]'
-  # - name: HYPERFLEET_NODEPOOL_ADAPTERS
-  #   value: '["validation","hypershift"]'
 
 # Volume mounts for additional configs
 extraVolumeMounts: []
