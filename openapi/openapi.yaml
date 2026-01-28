@@ -521,23 +521,23 @@ components:
         AdapterStatus represents the complete status report from an adapter
         Contains multiple conditions, job metadata, and adapter-specific data
       example:
-        adapter: validator
+        adapter: adapter1
         observed_generation: 1
         conditions:
           - type: Available
             status: 'True'
-            reason: All validations passed
-            message: All 30 validation tests passed
+            reason: This adapter1 is available
+            message: This adapter1 is available
             last_transition_time: '2021-01-01T10:00:00Z'
           - type: Applied
             status: 'True'
             reason: Validation job applied
-            message: Validation job applied successfully
+            message: Adapter1 validation job applied successfully
             last_transition_time: '2021-01-01T10:00:00Z'
           - type: Health
             status: 'True'
-            reason: All adapter operations completed successfully
-            message: All adapter runtime operations completed successfully
+            reason: All adapter1 operations completed successfully
+            message: All adapter1 runtime operations completed successfully
             last_transition_time: '2021-01-01T10:00:00Z'
         metadata:
           job_name: validator-job-abc123
@@ -609,16 +609,16 @@ components:
         conditions:
           - type: Available
             status: 'True'
-            reason: All validations passed
-            message: All 30 validation tests passed
+            reason: This adapter1 is available
+            message: This adapter1 is available
           - type: Applied
             status: 'True'
             reason: Validation job applied
-            message: Validation job applied successfully
+            message: Adapter1 validation job applied successfully
           - type: Health
             status: 'True'
-            reason: All adapter operations completed successfully
-            message: All adapter runtime operations completed successfully
+            reason: All adapter1 operations completed successfully
+            message: All adapter1 runtime operations completed successfully
         metadata:
           job_name: validator-job-abc123
           job_namespace: hyperfleet-system
@@ -662,26 +662,26 @@ components:
         size: 2
         total: 2
         items:
-          - adapter: validator
+          - adapter: adapter1
             observed_generation: 1
             conditions:
               - type: Available
                 status: 'True'
-                reason: All validations passed
-                message: All 30 validation tests passed
+                reason: This adapter1 is available
+                message: This adapter1 is available
                 last_transition_time: '2021-01-01T10:00:00Z'
             metadata:
               job_name: validator-job-abc123
               duration: 2m
             created_time: '2021-01-01T10:00:00Z'
             last_report_time: '2021-01-01T10:02:00Z'
-          - adapter: dns
+          - adapter: adapter2
             observed_generation: 1
             conditions:
               - type: Available
                 status: 'True'
-                reason: DNS configured
-                message: DNS records created
+                reason: This adapter2 is available
+                message: This adapter2 is available
                 last_transition_time: '2021-01-01T10:01:00Z'
             created_time: '2021-01-01T10:01:00Z'
             last_report_time: '2021-01-01T10:01:30Z'
@@ -768,32 +768,32 @@ components:
           conditions:
             - type: Ready
               status: 'True'
-              reason: ResourceReady
-              message: All conditions successful for current spec generation
+              reason: All adapters reported Ready True for the current generation
+              message: All adapters reported Ready True for the current generation
               observed_generation: 1
               created_time: '2021-01-01T10:00:00Z'
               last_updated_time: '2021-01-01T10:00:00Z'
               last_transition_time: '2021-01-01T10:00:00Z'
             - type: Available
               status: 'True'
-              reason: ResourceAvailable
-              message: All conditions successful for observed_generation
+              reason: All adapters reported Available True for the same generation
+              message: All adapters reported Available True for the same generation
               observed_generation: 1
               created_time: '2021-01-01T10:00:00Z'
               last_updated_time: '2021-01-01T10:00:00Z'
               last_transition_time: '2021-01-01T10:00:00Z'
-            - type: ValidationSuccessful
+            - type: Adapter1Successful
               status: 'True'
-              reason: All validations passed
-              message: All 30 validation tests passed
+              reason: This adapter1 is available
+              message: This adapter1 is available
               observed_generation: 1
               created_time: '2021-01-01T10:00:00Z'
               last_updated_time: '2021-01-01T10:00:00Z'
               last_transition_time: '2021-01-01T10:00:00Z'
-            - type: DNSSuccessful
+            - type: Adapter2Successful
               status: 'True'
-              reason: DNS configured
-              message: DNS records created for custom.domain.com
+              reason: This adapter2 is available
+              message: This adapter2 is available
               observed_generation: 1
               created_time: '2021-01-01T10:01:00Z'
               last_updated_time: '2021-01-01T10:01:00Z'
@@ -879,8 +879,8 @@ components:
             List of status conditions for the cluster.
 
             **Mandatory conditions**: 
-            - `type: "Available"`: indicates if the cluster is accessible and functional.
-            - `type: "Ready"`: indicates if the cluster has reached its desired state.
+            - `type: "Ready"`: Whether all adapters report successfully at the current generation.
+            - `type: "Available"`: Aggregated adapter result for a common observed_generation.   
 
             These conditions are present immediately upon resource creation.
       description: |-
@@ -1033,32 +1033,32 @@ components:
           conditions:
             - type: Ready
               status: 'True'
-              reason: ResourceReady
-              message: All conditions successful for observed_generation
+              reason: All adapters reported Ready True for the current generation
+              message: All adapters reported Ready True for the current generation
               observed_generation: 1
               created_time: '2021-01-01T10:00:00Z'
               last_updated_time: '2021-01-01T10:00:00Z'
               last_transition_time: '2021-01-01T10:00:00Z'
             - type: Available
               status: 'True'
-              reason: ResourceAvailable
-              message: All conditions successful for current spec generation
+              reason: All adapters reported Available True for the same generation
+              message: All adapters reported Available True for the same generation
               observed_generation: 1
               created_time: '2021-01-01T10:00:00Z'
               last_updated_time: '2021-01-01T10:00:00Z'
               last_transition_time: '2021-01-01T10:00:00Z'
-            - type: ValidationSuccessful
+            - type: Adapter1Successful
               status: 'True'
-              reason: All validations passed
-              message: NodePool validation passed
+              reason: This adapter1 is available
+              message: This adapter1 is available
               observed_generation: 1
               created_time: '2021-01-01T10:00:00Z'
               last_updated_time: '2021-01-01T10:00:00Z'
               last_transition_time: '2021-01-01T10:00:00Z'
-            - type: NodePoolSuccessful
+            - type: Adapter2Successful
               status: 'True'
-              reason: NodePool provisioned successfully
-              message: NodePool has been scaled to desired count
+              reason: This adapter2 is available
+              message: This adapter2 is available
               observed_generation: 1
               created_time: '2021-01-01T10:01:00Z'
               last_updated_time: '2021-01-01T10:01:00Z'
@@ -1197,8 +1197,8 @@ components:
             List of status conditions for the nodepool.
 
             **Mandatory conditions**: 
-            - `type: "Available"`: indicates if the nodepool is accessible and functional.
-            - `type: "Ready"`: indicates if the nodepool has reached its desired state.
+            - `type: "Ready"`: Whether all adapters report successfully at the current generation.
+            - `type: "Available"`: Aggregated adapter result for a common observed_generation.   
 
             These conditions are present immediately upon resource creation.
       description: |-
