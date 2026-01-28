@@ -324,11 +324,11 @@ func TestNodePoolAvailableReadyTransitions(t *testing.T) {
 	nonAvailableConds := []api.AdapterCondition{{Type: "Health", Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()}}
 	nonAvailableJSON, _ := json.Marshal(nonAvailableConds)
 	nonAvailableStatus := &api.AdapterStatus{
-		ResourceType: "NodePool",
-		ResourceID:   nodePoolID,
-		Adapter:      "hypershift",
+		ResourceType:       "NodePool",
+		ResourceID:         nodePoolID,
+		Adapter:            "hypershift",
 		ObservedGeneration: 2,
-		Conditions:   nonAvailableJSON,
+		Conditions:         nonAvailableJSON,
 	}
 	result, svcErr := service.ProcessAdapterStatus(ctx, nodePoolID, nonAvailableStatus)
 	Expect(svcErr).To(BeNil())
@@ -419,7 +419,7 @@ func TestNodePoolStaleAdapterStatusUpdatePolicy(t *testing.T) {
 	Expect(available.Status).To(Equal(api.ConditionTrue))
 	Expect(available.ObservedGeneration).To(Equal(int32(2)))
 
-	// Stale False is more restrictive and should override.
+	// Stale False is more restrictive and should override but we do not override newer generation responses
 	upsert("validation", api.AdapterConditionFalse, 1)
 	available = getAvailable()
 	Expect(available.Status).To(Equal(api.ConditionTrue))
