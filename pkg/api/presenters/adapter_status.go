@@ -27,7 +27,7 @@ func ConvertAdapterStatus(
 	for i, condReq := range req.Conditions {
 		adapterConditions[i] = api.AdapterCondition{
 			Type:               condReq.Type,
-			Status:             api.ConditionStatus(string(condReq.Status)),
+			Status:             api.AdapterConditionStatus(condReq.Status),
 			Reason:             condReq.Reason,
 			Message:            condReq.Message,
 			LastTransitionTime: now,
@@ -87,7 +87,7 @@ func PresentAdapterStatus(adapterStatus *api.AdapterStatus) (openapi.AdapterStat
 	for i, cond := range conditions {
 		openapiConditions[i] = openapi.AdapterCondition{
 			Type:               cond.Type,
-			Status:             openapi.ConditionStatus(cond.Status),
+			Status:             openapi.AdapterConditionStatus(cond.Status),
 			Reason:             cond.Reason,
 			Message:            cond.Message,
 			LastTransitionTime: cond.LastTransitionTime,

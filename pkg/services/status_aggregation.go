@@ -1,13 +1,13 @@
 package services
 
 import (
-	"context"
 	"encoding/json"
+	"math"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
 // Required adapter lists configured via pkg/config/adapter.go (see AdapterRequirementsConfig)
@@ -58,21 +58,13 @@ func MapAdapterToConditionType(adapterName string) string {
 	return result.String()
 }
 
-// ComputePhase calculates the overall phase for a resource based on adapter statuses
-//
-// MVP Phase Logic (per architecture/hyperfleet/docs/status-guide.md):
-// - "Ready": All required adapters have Available=True for current generation
-// - "NotReady": Otherwise (any adapter has Available=False or hasn't reported yet)
-//
-// An adapter is considered "available" when:
-// 1. Available condition status == "True"
-// 2. observed_generation == resource.generation (only checked if resourceGeneration > 0)
-//
-// Note: Post-MVP will add more phases (Pending, Provisioning, Failed, Degraded)
-// based on Health condition and Applied condition states.
-func ComputePhase(ctx context.Context, adapterStatuses api.AdapterStatusList, requiredAdapters []string, resourceGeneration int32) string {
-	if len(adapterStatuses) == 0 {
-		return "NotReady"
+// ComputeAvailableCondition checks if all required adapters have Available=True at ANY generation.
+// Returns: (isAvailable bool, minObservedGeneration int32)
+// "Available" means the system is running at some known good configuration (last known good config).
+// The minObservedGeneration is the lowest generation across all required adapters.
+func ComputeAvailableCondition(adapterStatuses api.AdapterStatusList, requiredAdapters []string) (bool, int32) {
+	if len(adapterStatuses) == 0 || len(requiredAdapters) == 0 {
+		return false, 1
 	}
 
 	// Build a map of adapter name -> (available status, observed generation)
@@ -105,40 +97,181 @@ func ComputePhase(ctx context.Context, adapterStatuses api.AdapterStatusList, re
 		}
 	}
 
-	// Count available adapters
+	// Count available adapters and track min observed generation
 	numAvailable := 0
+	minObservedGeneration := int32(math.MaxInt32)
 
-	// Iterate over required adapters
 	for _, adapterName := range requiredAdapters {
 		adapterInfo, exists := adapterMap[adapterName]
 
 		if !exists {
-			// Required adapter not found
-			logger.With(ctx, logger.FieldAdapter, adapterName).Warn("Required adapter not found in adapter statuses")
+			// Required adapter not found - not available
 			continue
 		}
 
-		// Check generation matching only if resourceGeneration > 0
+		// For Available condition, we don't check generation matching
+		// We just need Available=True at ANY generation
+		if adapterInfo.available == "True" {
+			numAvailable++
+			if adapterInfo.observedGeneration < minObservedGeneration {
+				minObservedGeneration = adapterInfo.observedGeneration
+			}
+		}
+	}
+
+	// Available when all required adapters have Available=True (at any generation)
+	numRequired := len(requiredAdapters)
+	if numAvailable == numRequired {
+		return true, minObservedGeneration
+	}
+
+	// Return 0 for minObservedGeneration when not available
+	return false, 0
+}
+
+// ComputeReadyCondition checks if all required adapters have Available=True at the CURRENT generation.
+// "Ready" means the system is running at the latest spec generation.
+func ComputeReadyCondition(adapterStatuses api.AdapterStatusList, requiredAdapters []string, resourceGeneration int32) bool {
+	if len(adapterStatuses) == 0 || len(requiredAdapters) == 0 {
+		return false
+	}
+
+	// Build a map of adapter name -> (available status, observed generation)
+	adapterMap := make(map[string]struct {
+		available          string
+		observedGeneration int32
+	})
+
+	for _, adapterStatus := range adapterStatuses {
+		// Unmarshal conditions to find "Available"
+		var conditions []struct {
+			Type   string `json:"type"`
+			Status string `json:"status"`
+		}
+		if len(adapterStatus.Conditions) > 0 {
+			if err := json.Unmarshal(adapterStatus.Conditions, &conditions); err == nil {
+				for _, cond := range conditions {
+					if cond.Type == "Available" {
+						adapterMap[adapterStatus.Adapter] = struct {
+							available          string
+							observedGeneration int32
+						}{
+							available:          cond.Status,
+							observedGeneration: adapterStatus.ObservedGeneration,
+						}
+						break
+					}
+				}
+			}
+		}
+	}
+
+	// Count ready adapters (Available=True at current generation)
+	numReady := 0
+
+	for _, adapterName := range requiredAdapters {
+		adapterInfo, exists := adapterMap[adapterName]
+
+		if !exists {
+			// Required adapter not found - not ready
+			continue
+		}
+
+		// For Ready condition, we require generation matching
 		if resourceGeneration > 0 && adapterInfo.observedGeneration != resourceGeneration {
-			// Adapter is processing old generation (stale)
-			logger.With(ctx,
-				logger.FieldAdapter, adapterName,
-				"observed_generation", adapterInfo.observedGeneration,
-				"expected_generation", resourceGeneration).Warn("Required adapter has stale generation")
+			// Adapter is processing old generation (stale) - not ready
 			continue
 		}
 
 		// Check available status
 		if adapterInfo.available == "True" {
-			numAvailable++
+			numReady++
 		}
 	}
 
-	// MVP: Only Ready or NotReady
-	// Ready when all required adapters have Available=True for current generation
+	// Ready when all required adapters have Available=True at current generation
 	numRequired := len(requiredAdapters)
-	if numAvailable == numRequired && numRequired > 0 {
-		return "Ready"
+	return numReady == numRequired
+}
+
+func BuildSyntheticConditions(existingConditionsJSON []byte, adapterStatuses api.AdapterStatusList, requiredAdapters []string, resourceGeneration int32, now time.Time) (api.ResourceCondition, api.ResourceCondition) {
+	var existingAvailable *api.ResourceCondition
+	var existingReady *api.ResourceCondition
+
+	if len(existingConditionsJSON) > 0 {
+		var existingConditions []api.ResourceCondition
+		if err := json.Unmarshal(existingConditionsJSON, &existingConditions); err == nil {
+			for i := range existingConditions {
+				switch existingConditions[i].Type {
+				case "Available":
+					existingAvailable = &existingConditions[i]
+				case "Ready":
+					existingReady = &existingConditions[i]
+				}
+			}
+		}
 	}
-	return "NotReady"
+
+	isAvailable, minObservedGeneration := ComputeAvailableCondition(adapterStatuses, requiredAdapters)
+	availableStatus := api.ConditionFalse
+	if isAvailable {
+		availableStatus = api.ConditionTrue
+	}
+	availableCondition := api.ResourceCondition{
+		Type:               "Available",
+		Status:             availableStatus,
+		ObservedGeneration: minObservedGeneration,
+		LastTransitionTime: now,
+		CreatedTime:        now,
+		LastUpdatedTime:    now,
+	}
+	preserveSyntheticCondition(&availableCondition, existingAvailable, now)
+
+	isReady := ComputeReadyCondition(adapterStatuses, requiredAdapters, resourceGeneration)
+	readyStatus := api.ConditionFalse
+	if isReady {
+		readyStatus = api.ConditionTrue
+	}
+	readyCondition := api.ResourceCondition{
+		Type:               "Ready",
+		Status:             readyStatus,
+		ObservedGeneration: resourceGeneration,
+		LastTransitionTime: now,
+		CreatedTime:        now,
+		LastUpdatedTime:    now,
+	}
+	preserveSyntheticCondition(&readyCondition, existingReady, now)
+
+	return availableCondition, readyCondition
+}
+
+func preserveSyntheticCondition(target *api.ResourceCondition, existing *api.ResourceCondition, now time.Time) {
+	if existing == nil {
+		return
+	}
+
+	if existing.Status == target.Status && existing.ObservedGeneration == target.ObservedGeneration {
+		if !existing.CreatedTime.IsZero() {
+			target.CreatedTime = existing.CreatedTime
+		}
+		if !existing.LastTransitionTime.IsZero() {
+			target.LastTransitionTime = existing.LastTransitionTime
+		}
+		if !existing.LastUpdatedTime.IsZero() {
+			target.LastUpdatedTime = existing.LastUpdatedTime
+		}
+		if target.Reason == nil && existing.Reason != nil {
+			target.Reason = existing.Reason
+		}
+		if target.Message == nil && existing.Message != nil {
+			target.Message = existing.Message
+		}
+		return
+	}
+
+	if !existing.CreatedTime.IsZero() {
+		target.CreatedTime = existing.CreatedTime
+	}
+	target.LastTransitionTime = now
+	target.LastUpdatedTime = now
 }

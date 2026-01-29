@@ -79,23 +79,52 @@ func reloadNodePool(dbSession *gorm.DB, nodePool *api.NodePool) error {
 	return dbSession.First(nodePool, "id = ?", nodePool.ID).Error
 }
 
-// NewNodePoolWithStatus creates a node pool with specific status phase and last_updated_time
+// NewNodePoolWithStatus creates a node pool with specific status conditions
 // dbFactory parameter is needed to update database fields
-func NewNodePoolWithStatus(f *Factories, dbFactory db.SessionFactory, id string, phase string, lastUpdatedTime *time.Time) (*api.NodePool, error) {
+// The isAvailable and isReady parameters control which synthetic conditions are set
+func NewNodePoolWithStatus(f *Factories, dbFactory db.SessionFactory, id string, isAvailable, isReady bool) (*api.NodePool, error) {
 	nodePool, err := f.NewNodePool(id)
 	if err != nil {
 		return nil, err
 	}
 
-	// Update database record with status fields
+	now := time.Now()
+	availableStatus := api.ConditionFalse
+	if isAvailable {
+		availableStatus = api.ConditionTrue
+	}
+	readyStatus := api.ConditionFalse
+	if isReady {
+		readyStatus = api.ConditionTrue
+	}
+
+	conditions := []api.ResourceCondition{
+		{
+			Type:               "Available",
+			Status:             availableStatus,
+			ObservedGeneration: nodePool.Generation,
+			LastTransitionTime: now,
+			CreatedTime:        now,
+			LastUpdatedTime:    now,
+		},
+		{
+			Type:               "Ready",
+			Status:             readyStatus,
+			ObservedGeneration: nodePool.Generation,
+			LastTransitionTime: now,
+			CreatedTime:        now,
+			LastUpdatedTime:    now,
+		},
+	}
+
+	conditionsJSON, err := json.Marshal(conditions)
+	if err != nil {
+		return nil, err
+	}
+
+	// Update database record with status conditions
 	dbSession := dbFactory.New(context.Background())
-	updates := map[string]interface{}{
-		"status_phase": phase,
-	}
-	if lastUpdatedTime != nil {
-		updates["status_last_updated_time"] = lastUpdatedTime
-	}
-	err = dbSession.Model(nodePool).Updates(updates).Error
+	err = dbSession.Model(nodePool).Update("status_conditions", conditionsJSON).Error
 	if err != nil {
 		return nil, err
 	}
@@ -133,9 +162,9 @@ func NewNodePoolWithLabels(f *Factories, dbFactory db.SessionFactory, id string,
 	return nodePool, nil
 }
 
-// NewNodePoolWithStatusAndLabels creates a node pool with both status and labels
-func NewNodePoolWithStatusAndLabels(f *Factories, dbFactory db.SessionFactory, id string, phase string, lastUpdatedTime *time.Time, labels map[string]string) (*api.NodePool, error) {
-	nodePool, err := NewNodePoolWithStatus(f, dbFactory, id, phase, lastUpdatedTime)
+// NewNodePoolWithStatusAndLabels creates a node pool with both status conditions and labels
+func NewNodePoolWithStatusAndLabels(f *Factories, dbFactory db.SessionFactory, id string, isAvailable, isReady bool, labels map[string]string) (*api.NodePool, error) {
+	nodePool, err := NewNodePoolWithStatus(f, dbFactory, id, isAvailable, isReady)
 	if err != nil {
 		return nil, err
 	}

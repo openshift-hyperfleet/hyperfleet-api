@@ -8,7 +8,6 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/presenters"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/services"
 )
 
@@ -89,17 +88,15 @@ func (h clusterStatusHandler) Create(w http.ResponseWriter, r *http.Request) {
 				return nil, errors.GeneralError("Failed to convert adapter status: %v", convErr)
 			}
 
-			// Upsert (create or update based on resource_type + resource_id + adapter)
-			adapterStatus, err := h.adapterStatusService.Upsert(ctx, newStatus)
+			// Process adapter status (handles Unknown status and upsert + aggregation)
+			adapterStatus, err := h.clusterService.ProcessAdapterStatus(ctx, clusterID, newStatus)
 			if err != nil {
 				return nil, err
 			}
 
-			// Trigger status aggregation
-			if _, aggregateErr := h.clusterService.UpdateClusterStatusFromAdapters(ctx, clusterID); aggregateErr != nil {
-				// Log error but don't fail the request - the status will be computed on next update
-				ctx = logger.WithClusterID(ctx, clusterID)
-				logger.WithError(ctx, aggregateErr).Warn("Failed to aggregate cluster status")
+			// If result is nil, return nil to signal 204 No Content
+			if adapterStatus == nil {
+				return nil, nil
 			}
 
 			status, presErr := presenters.PresentAdapterStatus(adapterStatus)
@@ -111,5 +108,5 @@ func (h clusterStatusHandler) Create(w http.ResponseWriter, r *http.Request) {
 		handleError,
 	}
 
-	handle(w, r, cfg, http.StatusCreated)
+	handleCreateWithNoContent(w, r, cfg)
 }

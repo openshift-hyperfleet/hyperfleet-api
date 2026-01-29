@@ -35,7 +35,7 @@ func createTestAdapterStatusRequest() *openapi.AdapterStatusCreateRequest {
 		Conditions: []openapi.ConditionRequest{
 			{
 				Type:    "Ready",
-				Status:  openapi.True,
+				Status:  openapi.AdapterConditionStatusTrue,
 				Reason:  &reason,
 				Message: &message,
 			},
@@ -71,7 +71,7 @@ func TestConvertAdapterStatus_Complete(t *testing.T) {
 	Expect(err).To(BeNil())
 	Expect(len(conditions)).To(Equal(1))
 	Expect(conditions[0].Type).To(Equal("Ready"))
-	Expect(conditions[0].Status).To(Equal(api.ConditionTrue))
+	Expect(conditions[0].Status).To(Equal(api.AdapterConditionTrue))
 	Expect(*conditions[0].Reason).To(Equal("TestReason"))
 	Expect(*conditions[0].Message).To(Equal("Test message"))
 
@@ -203,12 +203,12 @@ func TestConvertAdapterStatus_ConditionStatusConversion(t *testing.T) {
 	RegisterTestingT(t)
 
 	testCases := []struct {
-		openapiStatus  openapi.ConditionStatus
-		expectedDomain api.ConditionStatus
+		openapiStatus  openapi.AdapterConditionStatus
+		expectedDomain api.AdapterConditionStatus
 	}{
-		{openapi.True, api.ConditionTrue},
-		{openapi.False, api.ConditionFalse},
-		{openapi.Unknown, api.ConditionUnknown},
+		{openapi.AdapterConditionStatusTrue, api.AdapterConditionTrue},
+		{openapi.AdapterConditionStatusFalse, api.AdapterConditionFalse},
+		{openapi.AdapterConditionStatusUnknown, api.AdapterConditionUnknown},
 	}
 
 	for _, tc := range testCases {
@@ -245,7 +245,7 @@ func TestPresentAdapterStatus_Complete(t *testing.T) {
 	conditions := []api.AdapterCondition{
 		{
 			Type:               "Ready",
-			Status:             api.ConditionTrue,
+			Status:             api.AdapterConditionTrue,
 			Reason:             &reason,
 			Message:            &message,
 			LastTransitionTime: now,
@@ -292,7 +292,7 @@ func TestPresentAdapterStatus_Complete(t *testing.T) {
 	// Verify conditions converted correctly
 	Expect(len(result.Conditions)).To(Equal(1))
 	Expect(result.Conditions[0].Type).To(Equal("Ready"))
-	Expect(result.Conditions[0].Status).To(Equal(openapi.True))
+	Expect(result.Conditions[0].Status).To(Equal(openapi.AdapterConditionStatusTrue))
 	Expect(*result.Conditions[0].Reason).To(Equal("Success"))
 
 	// Verify data unmarshaled correctly
@@ -384,12 +384,12 @@ func TestPresentAdapterStatus_ConditionStatusConversion(t *testing.T) {
 	RegisterTestingT(t)
 
 	testCases := []struct {
-		domainStatus    api.ConditionStatus
-		expectedOpenAPI openapi.ConditionStatus
+		domainStatus    api.AdapterConditionStatus
+		expectedOpenAPI openapi.AdapterConditionStatus
 	}{
-		{api.ConditionTrue, openapi.True},
-		{api.ConditionFalse, openapi.False},
-		{api.ConditionUnknown, openapi.Unknown},
+		{api.AdapterConditionTrue, openapi.AdapterConditionStatusTrue},
+		{api.AdapterConditionFalse, openapi.AdapterConditionStatusFalse},
+		{api.AdapterConditionUnknown, openapi.AdapterConditionStatusUnknown},
 	}
 
 	now := time.Now()

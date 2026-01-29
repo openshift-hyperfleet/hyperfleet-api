@@ -8,32 +8,6 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-// TestResourcePhase_Constants verifies that ResourcePhase constants match OpenAPI equivalents
-func TestResourcePhase_Constants(t *testing.T) {
-	RegisterTestingT(t)
-
-	// Verify constant values match expected strings
-	Expect(string(PhaseNotReady)).To(Equal("NotReady"))
-	Expect(string(PhaseReady)).To(Equal("Ready"))
-	Expect(string(PhaseFailed)).To(Equal("Failed"))
-
-	// These values should match openapi.NOT_READY, openapi.READY, openapi.FAILED
-	// which are "NotReady", "Ready", "Failed" respectively
-}
-
-// TestResourcePhase_StringConversion tests type casting to/from string
-func TestResourcePhase_StringConversion(t *testing.T) {
-	RegisterTestingT(t)
-
-	// Test converting string to ResourcePhase
-	phase := ResourcePhase("NotReady")
-	Expect(phase).To(Equal(PhaseNotReady))
-
-	// Test converting ResourcePhase to string
-	str := string(PhaseReady)
-	Expect(str).To(Equal("Ready"))
-}
-
 // TestConditionStatus_Constants verifies that ConditionStatus constants match OpenAPI equivalents
 func TestConditionStatus_Constants(t *testing.T) {
 	RegisterTestingT(t)
@@ -41,10 +15,35 @@ func TestConditionStatus_Constants(t *testing.T) {
 	// Verify constant values match expected strings
 	Expect(string(ConditionTrue)).To(Equal("True"))
 	Expect(string(ConditionFalse)).To(Equal("False"))
-	Expect(string(ConditionUnknown)).To(Equal("Unknown"))
 
-	// These values should match openapi.TRUE, openapi.FALSE, openapi.UNKNOWN
-	// which are "True", "False", "Unknown" respectively
+	// These values should match openapi.ResourceConditionStatus
+	// which has "True" and "False" values
+}
+
+// TestAdapterConditionStatus_Constants verifies that AdapterConditionStatus constants match OpenAPI equivalents
+func TestAdapterConditionStatus_Constants(t *testing.T) {
+	RegisterTestingT(t)
+
+	// Verify constant values match expected strings
+	Expect(string(AdapterConditionTrue)).To(Equal("True"))
+	Expect(string(AdapterConditionFalse)).To(Equal("False"))
+	Expect(string(AdapterConditionUnknown)).To(Equal("Unknown"))
+
+	// These values should match openapi.AdapterConditionStatus
+	// which has "True", "False", and "Unknown" values
+}
+
+// TestAdapterConditionStatus_StringConversion tests type casting to/from string
+func TestAdapterConditionStatus_StringConversion(t *testing.T) {
+	RegisterTestingT(t)
+
+	// Test converting string to AdapterConditionStatus
+	status := AdapterConditionStatus("Unknown")
+	Expect(status).To(Equal(AdapterConditionUnknown))
+
+	// Test converting AdapterConditionStatus to string
+	str := string(AdapterConditionFalse)
+	Expect(str).To(Equal("False"))
 }
 
 // TestConditionStatus_StringConversion tests type casting to/from string
@@ -52,7 +51,7 @@ func TestConditionStatus_StringConversion(t *testing.T) {
 	RegisterTestingT(t)
 
 	// Test converting string to ConditionStatus
-	status := ConditionStatus("True")
+	status := ResourceConditionStatus("True")
 	Expect(status).To(Equal(ConditionTrue))
 
 	// Test converting ConditionStatus to string
@@ -154,7 +153,7 @@ func TestResourceCondition_JSONDeserialization(t *testing.T) {
 		"created_time": "2023-01-01T00:00:00Z",
 		"last_updated_time": "2023-01-01T01:00:00Z",
 		"type": "NotReady",
-		"status": "Unknown",
+		"status": "False",
 		"last_transition_time": "2023-01-01T02:00:00Z"
 	}`
 
@@ -164,7 +163,7 @@ func TestResourceCondition_JSONDeserialization(t *testing.T) {
 
 	Expect(minimalCondition.ObservedGeneration).To(Equal(int32(2)))
 	Expect(minimalCondition.Type).To(Equal("NotReady"))
-	Expect(minimalCondition.Status).To(Equal(ConditionUnknown))
+	Expect(minimalCondition.Status).To(Equal(ConditionFalse))
 	Expect(minimalCondition.Reason).To(BeNil())
 	Expect(minimalCondition.Message).To(BeNil())
 }
@@ -221,7 +220,7 @@ func TestAdapterCondition_JSONSerialization(t *testing.T) {
 	// Test with all fields
 	fullCondition := AdapterCondition{
 		Type:               "Connected",
-		Status:             ConditionTrue,
+		Status:             AdapterConditionTrue,
 		Reason:             &reason,
 		Message:            &message,
 		LastTransitionTime: now,
@@ -242,7 +241,7 @@ func TestAdapterCondition_JSONSerialization(t *testing.T) {
 	// Test without optional fields
 	minimalCondition := AdapterCondition{
 		Type:               "Disconnected",
-		Status:             ConditionFalse,
+		Status:             AdapterConditionFalse,
 		Reason:             nil,
 		Message:            nil,
 		LastTransitionTime: now,
@@ -259,6 +258,22 @@ func TestAdapterCondition_JSONSerialization(t *testing.T) {
 	_, hasMessage := minimalMap["message"]
 	Expect(hasReason).To(BeFalse())
 	Expect(hasMessage).To(BeFalse())
+
+	// Test with Unknown status
+	unknownCondition := AdapterCondition{
+		Type:               "Unknown",
+		Status:             AdapterConditionUnknown,
+		LastTransitionTime: now,
+	}
+
+	jsonBytes, err = json.Marshal(unknownCondition)
+	Expect(err).To(BeNil())
+
+	var unknownMap map[string]interface{}
+	err = json.Unmarshal(jsonBytes, &unknownMap)
+	Expect(err).To(BeNil())
+
+	Expect(unknownMap["status"]).To(Equal("Unknown"))
 }
 
 // TestAdapterCondition_JSONDeserialization tests unmarshaling JSON to AdapterCondition
@@ -279,7 +294,7 @@ func TestAdapterCondition_JSONDeserialization(t *testing.T) {
 	Expect(err).To(BeNil())
 
 	Expect(condition.Type).To(Equal("Synced"))
-	Expect(condition.Status).To(Equal(ConditionTrue))
+	Expect(condition.Status).To(Equal(AdapterConditionTrue))
 	Expect(condition.Reason).ToNot(BeNil())
 	Expect(*condition.Reason).To(Equal("SyncSuccessful"))
 	Expect(condition.Message).ToNot(BeNil())
@@ -297,9 +312,24 @@ func TestAdapterCondition_JSONDeserialization(t *testing.T) {
 	Expect(err).To(BeNil())
 
 	Expect(minimalCondition.Type).To(Equal("Error"))
-	Expect(minimalCondition.Status).To(Equal(ConditionFalse))
+	Expect(minimalCondition.Status).To(Equal(AdapterConditionFalse))
 	Expect(minimalCondition.Reason).To(BeNil())
 	Expect(minimalCondition.Message).To(BeNil())
+
+	// Test JSON with Unknown status
+	unknownJSON := `{
+		"type": "Available",
+		"status": "Unknown",
+		"reason": "StartupPending",
+		"last_transition_time": "2023-01-01T12:00:00Z"
+	}`
+
+	var unknownCondition AdapterCondition
+	err = json.Unmarshal([]byte(unknownJSON), &unknownCondition)
+	Expect(err).To(BeNil())
+
+	Expect(unknownCondition.Type).To(Equal("Available"))
+	Expect(unknownCondition.Status).To(Equal(AdapterConditionUnknown))
 }
 
 // TestAdapterCondition_RoundTrip tests Marshal → Unmarshal to ensure no data loss
@@ -312,7 +342,7 @@ func TestAdapterCondition_RoundTrip(t *testing.T) {
 
 	original := AdapterCondition{
 		Type:               "Provisioned",
-		Status:             ConditionTrue,
+		Status:             AdapterConditionTrue,
 		Reason:             &reason,
 		Message:            &message,
 		LastTransitionTime: now,

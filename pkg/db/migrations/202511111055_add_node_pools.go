@@ -38,11 +38,7 @@ func addNodePools() *gormigrate.Migration {
 					-- Version control
 					generation INTEGER NOT NULL DEFAULT 1,
 
-					-- Status fields (flattened for efficient querying)
-					status_phase VARCHAR(50) NOT NULL DEFAULT 'NotReady',
-					status_last_transition_time TIMESTAMPTZ NULL,
-					status_observed_generation INTEGER NOT NULL DEFAULT 0,
-					status_last_updated_time TIMESTAMPTZ NULL,
+					-- Status (conditions-only model)
 					status_conditions JSONB NULL,
 
 					-- Audit fields
@@ -62,17 +58,6 @@ func addNodePools() *gormigrate.Migration {
 
 			// Create index on owner_id for foreign key lookups
 			if err := tx.Exec("CREATE INDEX IF NOT EXISTS idx_node_pools_owner_id ON node_pools(owner_id);").Error; err != nil {
-				return err
-			}
-
-			// Create index on status_phase for filtering
-			if err := tx.Exec("CREATE INDEX IF NOT EXISTS idx_node_pools_status_phase ON node_pools(status_phase);").Error; err != nil {
-				return err
-			}
-
-			// Create index on status_last_updated_time for search optimization
-			// Sentinel queries frequently filter by this field to find stale resources
-			if err := tx.Exec("CREATE INDEX IF NOT EXISTS idx_node_pools_status_last_updated_time ON node_pools(status_last_updated_time);").Error; err != nil {
 				return err
 			}
 
@@ -96,12 +81,6 @@ func addNodePools() *gormigrate.Migration {
 			}
 
 			// Drop indexes
-			if err := tx.Exec("DROP INDEX IF EXISTS idx_node_pools_status_last_updated_time;").Error; err != nil {
-				return err
-			}
-			if err := tx.Exec("DROP INDEX IF EXISTS idx_node_pools_status_phase;").Error; err != nil {
-				return err
-			}
 			if err := tx.Exec("DROP INDEX IF EXISTS idx_node_pools_owner_id;").Error; err != nil {
 				return err
 			}

@@ -165,9 +165,18 @@ func (s *sqlGenericService) buildSearchValues(listCtx *listContext, d *dao.Gener
 	if err != nil {
 		return "", nil, errors.BadRequest("Failed to parse search query: %s", listCtx.args.Search)
 	}
+
+	// Extract condition queries (status.conditions.xxx) before field name mapping
+	// These require special JSONB containment handling that TSL doesn't support
+	tableName := (*d).GetTableName()
+	tslTree, conditionExprs, serviceErr := db.ExtractConditionQueries(tslTree, tableName)
+	if serviceErr != nil {
+		return "", nil, serviceErr
+	}
+
 	// apply field name mapping first (status.xxx -> status_xxx, labels.xxx -> labels->>'xxx')
 	// this must happen before treeWalkForRelatedTables to prevent treating "status" and "labels" as related resources
-	tslTree, serviceErr := db.FieldNameWalk(tslTree, *listCtx.disallowedFields)
+	tslTree, serviceErr = db.FieldNameWalk(tslTree, *listCtx.disallowedFields)
 	if serviceErr != nil {
 		return "", nil, serviceErr
 	}
@@ -194,6 +203,24 @@ func (s *sqlGenericService) buildSearchValues(listCtx *listContext, d *dao.Gener
 	if err != nil {
 		return "", nil, errors.GeneralError("%s", err.Error())
 	}
+
+	// Combine the base SQL with condition expressions
+	if len(conditionExprs) > 0 {
+		for _, condExpr := range conditionExprs {
+			condSQL, condValues, err := condExpr.ToSql()
+			if err != nil {
+				return "", nil, errors.GeneralError("%s", err.Error())
+			}
+			// Append condition to the main SQL with AND
+			if sql == "" {
+				sql = condSQL
+			} else {
+				sql = fmt.Sprintf("(%s) AND (%s)", sql, condSQL)
+			}
+			values = append(values, condValues...)
+		}
+	}
+
 	return sql, values, nil
 }
 
