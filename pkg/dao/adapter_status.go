@@ -22,8 +22,12 @@ type AdapterStatusDao interface {
 	Upsert(ctx context.Context, adapterStatus *api.AdapterStatus) (*api.AdapterStatus, error)
 	Delete(ctx context.Context, id string) error
 	FindByResource(ctx context.Context, resourceType, resourceID string) (api.AdapterStatusList, error)
-	FindByResourcePaginated(ctx context.Context, resourceType, resourceID string, offset, limit int) (api.AdapterStatusList, int64, error)
-	FindByResourceAndAdapter(ctx context.Context, resourceType, resourceID, adapter string) (*api.AdapterStatus, error)
+	FindByResourcePaginated(
+		ctx context.Context, resourceType, resourceID string, offset, limit int,
+	) (api.AdapterStatusList, int64, error)
+	FindByResourceAndAdapter(
+		ctx context.Context, resourceType, resourceID, adapter string,
+	) (*api.AdapterStatus, error)
 	All(ctx context.Context) (api.AdapterStatusList, error)
 }
 
@@ -46,7 +50,9 @@ func (d *sqlAdapterStatusDao) Get(ctx context.Context, id string) (*api.AdapterS
 	return &adapterStatus, nil
 }
 
-func (d *sqlAdapterStatusDao) Create(ctx context.Context, adapterStatus *api.AdapterStatus) (*api.AdapterStatus, error) {
+func (d *sqlAdapterStatusDao) Create(
+	ctx context.Context, adapterStatus *api.AdapterStatus,
+) (*api.AdapterStatus, error) {
 	g2 := (*d.sessionFactory).New(ctx)
 	if err := g2.Omit(clause.Associations).Create(adapterStatus).Error; err != nil {
 		db.MarkForRollback(ctx, err)
@@ -55,7 +61,9 @@ func (d *sqlAdapterStatusDao) Create(ctx context.Context, adapterStatus *api.Ada
 	return adapterStatus, nil
 }
 
-func (d *sqlAdapterStatusDao) Replace(ctx context.Context, adapterStatus *api.AdapterStatus) (*api.AdapterStatus, error) {
+func (d *sqlAdapterStatusDao) Replace(
+	ctx context.Context, adapterStatus *api.AdapterStatus,
+) (*api.AdapterStatus, error) {
 	g2 := (*d.sessionFactory).New(ctx)
 	if err := g2.Omit(clause.Associations).Save(adapterStatus).Error; err != nil {
 		db.MarkForRollback(ctx, err)
@@ -66,11 +74,15 @@ func (d *sqlAdapterStatusDao) Replace(ctx context.Context, adapterStatus *api.Ad
 
 // Upsert creates or updates an adapter status based on resource_type, resource_id, and adapter
 // This implements the upsert semantic required by the new API spec
-func (d *sqlAdapterStatusDao) Upsert(ctx context.Context, adapterStatus *api.AdapterStatus) (*api.AdapterStatus, error) {
+func (d *sqlAdapterStatusDao) Upsert(
+	ctx context.Context, adapterStatus *api.AdapterStatus,
+) (*api.AdapterStatus, error) {
 	g2 := (*d.sessionFactory).New(ctx)
 
 	// Try to find existing adapter status
-	existing, err := d.FindByResourceAndAdapter(ctx, adapterStatus.ResourceType, adapterStatus.ResourceID, adapterStatus.Adapter)
+	existing, err := d.FindByResourceAndAdapter(
+		ctx, adapterStatus.ResourceType, adapterStatus.ResourceID, adapterStatus.Adapter,
+	)
 
 	if err != nil {
 		// If not found, create new
@@ -107,23 +119,29 @@ func (d *sqlAdapterStatusDao) Upsert(ctx context.Context, adapterStatus *api.Ada
 
 func (d *sqlAdapterStatusDao) Delete(ctx context.Context, id string) error {
 	g2 := (*d.sessionFactory).New(ctx)
-	if err := g2.Omit(clause.Associations).Delete(&api.AdapterStatus{Meta: api.Meta{ID: id}}).Error; err != nil {
+	adapterStatus := &api.AdapterStatus{Meta: api.Meta{ID: id}}
+	if err := g2.Omit(clause.Associations).Delete(adapterStatus).Error; err != nil {
 		db.MarkForRollback(ctx, err)
 		return err
 	}
 	return nil
 }
 
-func (d *sqlAdapterStatusDao) FindByResource(ctx context.Context, resourceType, resourceID string) (api.AdapterStatusList, error) {
+func (d *sqlAdapterStatusDao) FindByResource(
+	ctx context.Context, resourceType, resourceID string,
+) (api.AdapterStatusList, error) {
 	g2 := (*d.sessionFactory).New(ctx)
 	statuses := api.AdapterStatusList{}
-	if err := g2.Where("resource_type = ? AND resource_id = ?", resourceType, resourceID).Find(&statuses).Error; err != nil {
+	query := g2.Where("resource_type = ? AND resource_id = ?", resourceType, resourceID)
+	if err := query.Find(&statuses).Error; err != nil {
 		return nil, err
 	}
 	return statuses, nil
 }
 
-func (d *sqlAdapterStatusDao) FindByResourcePaginated(ctx context.Context, resourceType, resourceID string, offset, limit int) (api.AdapterStatusList, int64, error) {
+func (d *sqlAdapterStatusDao) FindByResourcePaginated(
+	ctx context.Context, resourceType, resourceID string, offset, limit int,
+) (api.AdapterStatusList, int64, error) {
 	g2 := (*d.sessionFactory).New(ctx)
 	statuses := api.AdapterStatusList{}
 	var total int64
@@ -144,10 +162,13 @@ func (d *sqlAdapterStatusDao) FindByResourcePaginated(ctx context.Context, resou
 	return statuses, total, nil
 }
 
-func (d *sqlAdapterStatusDao) FindByResourceAndAdapter(ctx context.Context, resourceType, resourceID, adapter string) (*api.AdapterStatus, error) {
+func (d *sqlAdapterStatusDao) FindByResourceAndAdapter(
+	ctx context.Context, resourceType, resourceID, adapter string,
+) (*api.AdapterStatus, error) {
 	g2 := (*d.sessionFactory).New(ctx)
 	var adapterStatus api.AdapterStatus
-	if err := g2.Where("resource_type = ? AND resource_id = ? AND adapter = ?", resourceType, resourceID, adapter).Take(&adapterStatus).Error; err != nil {
+	query := g2.Where("resource_type = ? AND resource_id = ? AND adapter = ?", resourceType, resourceID, adapter)
+	if err := query.Take(&adapterStatus).Error; err != nil {
 		return nil, err
 	}
 	return &adapterStatus, nil

@@ -17,7 +17,10 @@ type nodePoolStatusHandler struct {
 	nodePoolService      services.NodePoolService
 }
 
-func NewNodePoolStatusHandler(adapterStatusService services.AdapterStatusService, nodePoolService services.NodePoolService) *nodePoolStatusHandler {
+func NewNodePoolStatusHandler(
+	adapterStatusService services.AdapterStatusService,
+	nodePoolService services.NodePoolService,
+) *nodePoolStatusHandler {
 	return &nodePoolStatusHandler{
 		adapterStatusService: adapterStatusService,
 		nodePoolService:      nodePoolService,

@@ -1,7 +1,6 @@
 package config
 
 import (
-	"log"
 	"os"
 	"testing"
 
@@ -12,10 +11,10 @@ func TestConfigReadStringFile(t *testing.T) {
 	RegisterTestingT(t)
 
 	stringFile, err := createConfigFile("string", "example\n")
-	defer os.Remove(stringFile.Name()) //nolint:errcheck
 	if err != nil {
-		log.Fatal(err)
+		t.Fatalf("failed to create config file: %v", err)
 	}
+	defer os.Remove(stringFile.Name()) //nolint:errcheck
 
 	var stringConfig string
 	err = readFileValueString(stringFile.Name(), &stringConfig)
@@ -27,10 +26,10 @@ func TestConfigReadIntFile(t *testing.T) {
 	RegisterTestingT(t)
 
 	intFile, err := createConfigFile("int", "123")
-	defer os.Remove(intFile.Name()) //nolint:errcheck
 	if err != nil {
-		log.Fatal(err)
+		t.Fatalf("failed to create config file: %v", err)
 	}
+	defer os.Remove(intFile.Name()) //nolint:errcheck
 
 	var intConfig int
 	err = readFileValueInt(intFile.Name(), &intConfig)
@@ -42,10 +41,10 @@ func TestConfigReadBoolFile(t *testing.T) {
 	RegisterTestingT(t)
 
 	boolFile, err := createConfigFile("bool", "true")
-	defer os.Remove(boolFile.Name()) //nolint:errcheck
 	if err != nil {
-		log.Fatal(err)
+		t.Fatalf("failed to create config file: %v", err)
 	}
+	defer os.Remove(boolFile.Name()) //nolint:errcheck
 
 	var boolConfig = false
 	err = readFileValueBool(boolFile.Name(), &boolConfig)
@@ -57,10 +56,10 @@ func TestConfigReadQuotedFile(t *testing.T) {
 	RegisterTestingT(t)
 
 	stringFile, err := createConfigFile("string", "example")
-	defer os.Remove(stringFile.Name()) //nolint:errcheck
 	if err != nil {
-		log.Fatal(err)
+		t.Fatalf("failed to create config file: %v", err)
 	}
+	defer os.Remove(stringFile.Name()) //nolint:errcheck
 
 	quotedFileName := "\"" + stringFile.Name() + "\""
 	val, err := ReadFile(quotedFileName)

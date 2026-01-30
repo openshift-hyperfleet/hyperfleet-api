@@ -24,7 +24,9 @@ import (
 //go:generate mockgen-v0.6.0 -source=generic.go -package=services -destination=generic_mock.go
 
 type GenericService interface {
-	List(ctx context.Context, username string, args *ListArguments, resourceList interface{}) (*api.PagingMeta, *errors.ServiceError)
+	List(
+		ctx context.Context, username string, args *ListArguments, resourceList interface{},
+	) (*api.PagingMeta, *errors.ServiceError)
 }
 
 func NewGenericService(genericDao dao.GenericDao) GenericService {
@@ -63,7 +65,9 @@ type listContext struct {
 	set              map[string]bool
 }
 
-func (s *sqlGenericService) newListContext(ctx context.Context, username string, args *ListArguments, resourceList interface{}) (*listContext, interface{}, *errors.ServiceError) {
+func (s *sqlGenericService) newListContext(
+	ctx context.Context, username string, args *ListArguments, resourceList interface{},
+) (*listContext, interface{}, *errors.ServiceError) {
 	resourceModel := reflect.TypeOf(resourceList).Elem().Elem()
 	resourceTypeStr := resourceModel.Name()
 	if resourceTypeStr == "" {
@@ -86,7 +90,9 @@ func (s *sqlGenericService) newListContext(ctx context.Context, username string,
 }
 
 // List resourceList must be a pointer to a slice of database resource objects
-func (s *sqlGenericService) List(ctx context.Context, username string, args *ListArguments, resourceList interface{}) (*api.PagingMeta, *errors.ServiceError) {
+func (s *sqlGenericService) List(
+	ctx context.Context, username string, args *ListArguments, resourceList interface{},
+) (*api.PagingMeta, *errors.ServiceError) {
 	listCtx, model, err := s.newListContext(ctx, username, args, resourceList)
 	if err != nil {
 		return nil, err
@@ -154,7 +160,9 @@ func (s *sqlGenericService) buildOrderBy(listCtx *listContext, d *dao.GenericDao
 	return false, nil
 }
 
-func (s *sqlGenericService) buildSearchValues(listCtx *listContext, d *dao.GenericDao) (string, []any, *errors.ServiceError) {
+func (s *sqlGenericService) buildSearchValues(
+	listCtx *listContext, d *dao.GenericDao,
+) (string, []any, *errors.ServiceError) {
 	if listCtx.args.Search == "" {
 		s.addJoins(listCtx, d)
 		return "", nil, nil
@@ -276,7 +284,8 @@ func (s *sqlGenericService) loadList(listCtx *listContext, d *dao.GenericDao) *e
 	case args.Size == 0:
 		// This early return is not only performant, but also necessary.
 		// gorm does not support Limit(0) any longer.
-		logger.Info(listCtx.ctx, "A query with 0 size requested, returning early without collecting any resources from database")
+		logger.Info(listCtx.ctx,
+			"A query with 0 size requested, returning early without collecting any resources from database")
 		return nil
 	}
 
@@ -312,7 +321,9 @@ func zeroSlice(i interface{}, cap int64) *errors.ServiceError {
 // walk the TSL tree looking for fields like, e.g., creator.username, and then:
 // (1) look up the related table by its 1st part - creator
 // (2) replace it by table name - creator.username -> accounts.username
-func (s *sqlGenericService) treeWalkForRelatedTables(listCtx *listContext, tslTree tsl.Node, genericDao *dao.GenericDao) (tsl.Node, *errors.ServiceError) {
+func (s *sqlGenericService) treeWalkForRelatedTables(
+	listCtx *listContext, tslTree tsl.Node, genericDao *dao.GenericDao,
+) (tsl.Node, *errors.ServiceError) {
 	resourceTable := (*genericDao).GetTableName()
 	if listCtx.joins == nil {
 		listCtx.joins = map[string]dao.TableRelation{}
@@ -326,10 +337,13 @@ func (s *sqlGenericService) treeWalkForRelatedTables(listCtx *listContext, tslTr
 				if relation, ok := (*genericDao).GetTableRelation(fieldName); ok {
 					listCtx.joins[fieldName] = relation
 				} else {
-					return field, fmt.Errorf("%s is not a related resource of %s", fieldName, listCtx.resourceType)
+					return field, fmt.Errorf(
+						"%s is not a related resource of %s",
+						fieldName, listCtx.resourceType,
+					)
 				}
 			}
-			//replace by table name
+			// replace by table name
 			fieldParts[0] = listCtx.joins[fieldName].ForeignTableName
 			return strings.Join(fieldParts, "."), nil
 		}
@@ -345,7 +359,11 @@ func (s *sqlGenericService) treeWalkForRelatedTables(listCtx *listContext, tslTr
 }
 
 // prepend table name to these "free" identifiers since they could cause "ambiguous" errors
-func (s *sqlGenericService) treeWalkForAddingTableName(listCtx *listContext, tslTree tsl.Node, dao *dao.GenericDao) (tsl.Node, *errors.ServiceError) {
+func (s *sqlGenericService) treeWalkForAddingTableName(
+	_ *listContext,
+	tslTree tsl.Node,
+	dao *dao.GenericDao,
+) (tsl.Node, *errors.ServiceError) {
 	resourceTable := (*dao).GetTableName()
 
 	walkFn := func(field string) (string, error) {
@@ -367,7 +385,10 @@ func (s *sqlGenericService) treeWalkForAddingTableName(listCtx *listContext, tsl
 	return tslTree, nil
 }
 
-func (s *sqlGenericService) treeWalkForSqlizer(listCtx *listContext, tslTree tsl.Node) (squirrel.Sqlizer, *errors.ServiceError) {
+func (s *sqlGenericService) treeWalkForSqlizer(
+	_ *listContext,
+	tslTree tsl.Node,
+) (squirrel.Sqlizer, *errors.ServiceError) {
 	// Note: FieldNameWalk is now called earlier in buildSearchValues to ensure field mapping
 	// happens before related table detection. No need to call it again here.
 

@@ -24,7 +24,9 @@ func validateLabelKey(key string) *errors.ServiceError {
 	}
 
 	if !labelKeyPattern.MatchString(key) {
-		return errors.BadRequest("label key '%s' is invalid: must contain only lowercase letters, digits, and underscores", key)
+		return errors.BadRequest(
+			"label key '%s' is invalid: must contain only lowercase letters, digits, and underscores", key,
+		)
 	}
 
 	return nil
@@ -203,7 +205,9 @@ func conditionsNodeConverter(n tsl.Node) (interface{}, *errors.ServiceError) {
 
 	// Validate condition type to prevent SQL injection
 	if !conditionTypePattern.MatchString(conditionType) {
-		return nil, errors.BadRequest("condition type '%s' is invalid: must be PascalCase (e.g., Ready, Available)", conditionType)
+		return nil, errors.BadRequest(
+			"condition type '%s' is invalid: must be PascalCase (e.g., Ready, Available)", conditionType,
+		)
 	}
 
 	// Get the right side value (the expected status)
@@ -219,7 +223,9 @@ func conditionsNodeConverter(n tsl.Node) (interface{}, *errors.ServiceError) {
 
 	// Validate condition status
 	if !validConditionStatuses[rightStr] {
-		return nil, errors.BadRequest("condition status '%s' is invalid: must be True, False, or Unknown", rightStr)
+		return nil, errors.BadRequest(
+			"condition status '%s' is invalid: must be True, False, or Unknown", rightStr,
+		)
 	}
 
 	// Only support equality operator for condition queries
@@ -228,7 +234,8 @@ func conditionsNodeConverter(n tsl.Node) (interface{}, *errors.ServiceError) {
 	}
 
 	// Build query using jsonb_path_query_first to leverage BTREE expression index
-	// The index is: CREATE INDEX ... USING BTREE ((jsonb_path_query_first(status_conditions, '$[*] ? (@.type == "Ready")')))
+	// The index is: CREATE INDEX ... USING BTREE
+	// ((jsonb_path_query_first(status_conditions, '$[*] ? (@.type == "Ready")')))
 	jsonPath := fmt.Sprintf(`$[*] ? (@.type == "%s")`, conditionType)
 
 	return sq.Expr("jsonb_path_query_first(status_conditions, ?::jsonpath) ->> 'status' = ?", jsonPath, rightStr), nil
@@ -244,12 +251,12 @@ type ConditionExpression struct {
 // This is necessary because the TSL library doesn't support JSONB containment operators.
 func ExtractConditionQueries(n tsl.Node, tableName string) (tsl.Node, []sq.Sqlizer, *errors.ServiceError) {
 	var conditions []sq.Sqlizer
-	modifiedTree, err := extractConditionsWalk(n, tableName, &conditions)
+	modifiedTree, err := extractConditionsWalk(n, &conditions)
 	return modifiedTree, conditions, err
 }
 
 // extractConditionsWalk recursively walks the tree and extracts condition queries
-func extractConditionsWalk(n tsl.Node, tableName string, conditions *[]sq.Sqlizer) (tsl.Node, *errors.ServiceError) {
+func extractConditionsWalk(n tsl.Node, conditions *[]sq.Sqlizer) (tsl.Node, *errors.ServiceError) {
 	// Check if this node is a condition query
 	if hasCondition(n) {
 		expr, err := conditionsNodeConverter(n)
@@ -274,7 +281,7 @@ func extractConditionsWalk(n tsl.Node, tableName string, conditions *[]sq.Sqlize
 	if n.Left != nil {
 		switch v := n.Left.(type) {
 		case tsl.Node:
-			newLeftNode, err := extractConditionsWalk(v, tableName, conditions)
+			newLeftNode, err := extractConditionsWalk(v, conditions)
 			if err != nil {
 				return n, err
 			}
@@ -287,7 +294,7 @@ func extractConditionsWalk(n tsl.Node, tableName string, conditions *[]sq.Sqlize
 	if n.Right != nil {
 		switch v := n.Right.(type) {
 		case tsl.Node:
-			newRightNode, err := extractConditionsWalk(v, tableName, conditions)
+			newRightNode, err := extractConditionsWalk(v, conditions)
 			if err != nil {
 				return n, err
 			}
@@ -295,7 +302,7 @@ func extractConditionsWalk(n tsl.Node, tableName string, conditions *[]sq.Sqlize
 		case []tsl.Node:
 			var newRightNodes []tsl.Node
 			for _, rightNode := range v {
-				newRightNode, err := extractConditionsWalk(rightNode, tableName, conditions)
+				newRightNode, err := extractConditionsWalk(rightNode, conditions)
 				if err != nil {
 					return n, err
 				}

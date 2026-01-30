@@ -46,8 +46,8 @@ func (a authzMiddleware) AuthorizeApi(next http.Handler) http.Handler {
 		if username == "" {
 			_ = fmt.Errorf("authenticated username not present in request context")
 			// TODO
-			//body := api.E500.Format(r, "Authentication details not present in context")
-			//api.SendError(w, r, &body)
+			// body := api.E500.Format(r, "Authentication details not present in context")
+			// api.SendError(w, r, &body)
 			return
 		}
 
@@ -56,8 +56,8 @@ func (a authzMiddleware) AuthorizeApi(next http.Handler) http.Handler {
 		if err != nil {
 			_ = fmt.Errorf("unable to make authorization request: %s", err)
 			// TODO
-			//body := api.E500.Format(r, "Unable to make authorization request")
-			//api.SendError(w, r, &body)
+			// body := api.E500.Format(r, "Unable to make authorization request")
+			// api.SendError(w, r, &body)
 			return
 		}
 
@@ -66,7 +66,7 @@ func (a authzMiddleware) AuthorizeApi(next http.Handler) http.Handler {
 		}
 
 		// TODO
-		//body := api.E403.Format(r, "")
-		//api.SendError(w, r, &body)
+		// body := api.E403.Format(r, "")
+		// api.SendError(w, r, &body)
 	})
 }

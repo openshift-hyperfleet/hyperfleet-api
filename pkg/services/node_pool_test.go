@@ -14,6 +14,10 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 )
 
+const (
+	testNodePoolID = "test-nodepool-id"
+)
+
 // Mock implementations for testing NodePool ProcessAdapterStatus
 
 type mockNodePoolDao struct {
@@ -79,12 +83,12 @@ func TestNodePoolProcessAdapterStatus_UnknownCondition(t *testing.T) {
 	service := NewNodePoolService(nodePoolDao, adapterStatusDao, config)
 
 	ctx := context.Background()
-	nodePoolID := "test-nodepool-id"
+	nodePoolID := testNodePoolID
 
 	// Create adapter status with Available=Unknown
 	conditions := []api.AdapterCondition{
 		{
-			Type:               "Available",
+			Type:               conditionTypeAvailable,
 			Status:             api.AdapterConditionUnknown,
 			LastTransitionTime: time.Now(),
 		},
@@ -119,7 +123,7 @@ func TestNodePoolProcessAdapterStatus_TrueCondition(t *testing.T) {
 	service := NewNodePoolService(nodePoolDao, adapterStatusDao, config)
 
 	ctx := context.Background()
-	nodePoolID := "test-nodepool-id"
+	nodePoolID := testNodePoolID
 
 	// Create the nodepool first
 	nodePool := &api.NodePool{
@@ -132,7 +136,7 @@ func TestNodePoolProcessAdapterStatus_TrueCondition(t *testing.T) {
 	// Create adapter status with Available=True
 	conditions := []api.AdapterCondition{
 		{
-			Type:               "Available",
+			Type:               conditionTypeAvailable,
 			Status:             api.AdapterConditionTrue,
 			LastTransitionTime: time.Now(),
 		},
@@ -170,17 +174,17 @@ func TestNodePoolProcessAdapterStatus_MultipleConditions_AvailableUnknown(t *tes
 	service := NewNodePoolService(nodePoolDao, adapterStatusDao, config)
 
 	ctx := context.Background()
-	nodePoolID := "test-nodepool-id"
+	nodePoolID := testNodePoolID
 
 	// Create adapter status with multiple conditions including Available=Unknown
 	conditions := []api.AdapterCondition{
 		{
-			Type:               "Ready",
+			Type:               conditionTypeReady,
 			Status:             api.AdapterConditionTrue,
 			LastTransitionTime: time.Now(),
 		},
 		{
-			Type:               "Available",
+			Type:               conditionTypeAvailable,
 			Status:             api.AdapterConditionUnknown,
 			LastTransitionTime: time.Now(),
 		},
@@ -216,7 +220,7 @@ func TestNodePoolAvailableReadyTransitions(t *testing.T) {
 	service := NewNodePoolService(nodePoolDao, adapterStatusDao, adapterConfig)
 
 	ctx := context.Background()
-	nodePoolID := "test-nodepool-id"
+	nodePoolID := testNodePoolID
 
 	nodePool := &api.NodePool{Generation: 1}
 	nodePool.ID = nodePoolID
@@ -234,9 +238,9 @@ func TestNodePoolAvailableReadyTransitions(t *testing.T) {
 		var available, ready *api.ResourceCondition
 		for i := range conds {
 			switch conds[i].Type {
-			case "Available":
+			case conditionTypeAvailable:
 				available = &conds[i]
-			case "Ready":
+			case conditionTypeReady:
 				ready = &conds[i]
 			}
 		}
@@ -247,7 +251,7 @@ func TestNodePoolAvailableReadyTransitions(t *testing.T) {
 
 	upsert := func(adapter string, available api.AdapterConditionStatus, observedGen int32) {
 		conditions := []api.AdapterCondition{
-			{Type: "Available", Status: available, LastTransitionTime: time.Now()},
+			{Type: conditionTypeAvailable, Status: available, LastTransitionTime: time.Now()},
 		}
 		conditionsJSON, _ := json.Marshal(conditions)
 		now := time.Now()
@@ -320,8 +324,11 @@ func TestNodePoolAvailableReadyTransitions(t *testing.T) {
 	Expect(ready.Status).To(Equal(api.ConditionFalse))
 
 	// Adapter status with no Available condition should not overwrite synthetic conditions.
-	prevStatus := append(api.NodePool{}.StatusConditions, nodePoolDao.nodePools[nodePoolID].StatusConditions...)
-	nonAvailableConds := []api.AdapterCondition{{Type: "Health", Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()}}
+	prevStatus := api.NodePool{}.StatusConditions
+	prevStatus = append(prevStatus, nodePoolDao.nodePools[nodePoolID].StatusConditions...)
+	nonAvailableConds := []api.AdapterCondition{
+		{Type: "Health", Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+	}
 	nonAvailableJSON, _ := json.Marshal(nonAvailableConds)
 	nonAvailableStatus := &api.AdapterStatus{
 		ResourceType:       "NodePool",
@@ -336,8 +343,11 @@ func TestNodePoolAvailableReadyTransitions(t *testing.T) {
 	Expect(nodePoolDao.nodePools[nodePoolID].StatusConditions).To(Equal(prevStatus))
 
 	// Available=Unknown is a no-op (does not store, does not overwrite nodepool conditions).
-	prevStatus = append(api.NodePool{}.StatusConditions, nodePoolDao.nodePools[nodePoolID].StatusConditions...)
-	unknownConds := []api.AdapterCondition{{Type: "Available", Status: api.AdapterConditionUnknown, LastTransitionTime: time.Now()}}
+	prevStatus = api.NodePool{}.StatusConditions
+	prevStatus = append(prevStatus, nodePoolDao.nodePools[nodePoolID].StatusConditions...)
+	unknownConds := []api.AdapterCondition{
+		{Type: conditionTypeAvailable, Status: api.AdapterConditionUnknown, LastTransitionTime: time.Now()},
+	}
 	unknownJSON, _ := json.Marshal(unknownConds)
 	unknownStatus := &api.AdapterStatus{
 		ResourceType: "NodePool",
@@ -363,7 +373,7 @@ func TestNodePoolStaleAdapterStatusUpdatePolicy(t *testing.T) {
 	service := NewNodePoolService(nodePoolDao, adapterStatusDao, adapterConfig)
 
 	ctx := context.Background()
-	nodePoolID := "test-nodepool-id"
+	nodePoolID := testNodePoolID
 
 	nodePool := &api.NodePool{Generation: 2}
 	nodePool.ID = nodePoolID
@@ -377,7 +387,7 @@ func TestNodePoolStaleAdapterStatusUpdatePolicy(t *testing.T) {
 		var conds []api.ResourceCondition
 		Expect(json.Unmarshal(stored.StatusConditions, &conds)).To(Succeed())
 		for i := range conds {
-			if conds[i].Type == "Available" {
+			if conds[i].Type == conditionTypeAvailable {
 				return conds[i]
 			}
 		}
@@ -387,7 +397,7 @@ func TestNodePoolStaleAdapterStatusUpdatePolicy(t *testing.T) {
 
 	upsert := func(adapter string, available api.AdapterConditionStatus, observedGen int32) {
 		conditions := []api.AdapterCondition{
-			{Type: "Available", Status: available, LastTransitionTime: time.Now()},
+			{Type: conditionTypeAvailable, Status: available, LastTransitionTime: time.Now()},
 		}
 		conditionsJSON, _ := json.Marshal(conditions)
 		now := time.Now()
@@ -438,12 +448,12 @@ func TestNodePoolSyntheticTimestampsStableWithoutAdapterStatus(t *testing.T) {
 	service := NewNodePoolService(nodePoolDao, adapterStatusDao, adapterConfig)
 
 	ctx := context.Background()
-	nodePoolID := "test-nodepool-id"
+	nodePoolID := testNodePoolID
 
 	fixedNow := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
 	initialConditions := []api.ResourceCondition{
 		{
-			Type:               "Available",
+			Type:               conditionTypeAvailable,
 			Status:             api.ConditionFalse,
 			ObservedGeneration: 1,
 			LastTransitionTime: fixedNow,
@@ -451,7 +461,7 @@ func TestNodePoolSyntheticTimestampsStableWithoutAdapterStatus(t *testing.T) {
 			LastUpdatedTime:    fixedNow,
 		},
 		{
-			Type:               "Ready",
+			Type:               conditionTypeReady,
 			Status:             api.ConditionFalse,
 			ObservedGeneration: 1,
 			LastTransitionTime: fixedNow,
@@ -476,9 +486,9 @@ func TestNodePoolSyntheticTimestampsStableWithoutAdapterStatus(t *testing.T) {
 	var createdAvailable, createdReady *api.ResourceCondition
 	for i := range createdConds {
 		switch createdConds[i].Type {
-		case "Available":
+		case conditionTypeAvailable:
 			createdAvailable = &createdConds[i]
-		case "Ready":
+		case conditionTypeReady:
 			createdReady = &createdConds[i]
 		}
 	}
@@ -501,9 +511,9 @@ func TestNodePoolSyntheticTimestampsStableWithoutAdapterStatus(t *testing.T) {
 	var updatedAvailable, updatedReady *api.ResourceCondition
 	for i := range updatedConds {
 		switch updatedConds[i].Type {
-		case "Available":
+		case conditionTypeAvailable:
 			updatedAvailable = &updatedConds[i]
-		case "Ready":
+		case conditionTypeReady:
 			updatedReady = &updatedConds[i]
 		}
 	}

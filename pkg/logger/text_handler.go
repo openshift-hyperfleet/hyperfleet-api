@@ -27,7 +27,9 @@ type HyperFleetTextHandler struct {
 }
 
 // NewHyperFleetTextHandler creates a new text handler conforming to HyperFleet Logging Specification
-func NewHyperFleetTextHandler(w io.Writer, component, version, hostname string, level slog.Level) *HyperFleetTextHandler {
+func NewHyperFleetTextHandler(
+	w io.Writer, component, version, hostname string, level slog.Level,
+) *HyperFleetTextHandler {
 	return &HyperFleetTextHandler{
 		w:         w,
 		component: component,

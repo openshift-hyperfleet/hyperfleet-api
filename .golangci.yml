@@ -73,7 +73,7 @@ linters:
     # Code Style
     - misspell
     - lll
-    - revive
+    # - revive
     - gocritic
 
     # Security

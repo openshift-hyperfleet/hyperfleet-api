@@ -54,7 +54,9 @@ func addClusters() *gormigrate.Migration {
 			}
 
 			// Create unique index on name (only for non-deleted records)
-			if err := tx.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_clusters_name ON clusters(name) WHERE deleted_at IS NULL;").Error; err != nil {
+			createIndexSQL := "CREATE UNIQUE INDEX IF NOT EXISTS idx_clusters_name " +
+				"ON clusters(name) WHERE deleted_at IS NULL;"
+			if err := tx.Exec(createIndexSQL).Error; err != nil {
 				return err
 			}
 

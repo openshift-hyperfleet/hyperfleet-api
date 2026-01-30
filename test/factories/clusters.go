@@ -62,7 +62,9 @@ func reloadCluster(dbSession *gorm.DB, cluster *api.Cluster) error {
 // NewClusterWithStatus creates a cluster with specific status conditions
 // dbFactory parameter is needed to update database fields
 // The isAvailable and isReady parameters control which synthetic conditions are set
-func NewClusterWithStatus(f *Factories, dbFactory db.SessionFactory, id string, isAvailable, isReady bool) (*api.Cluster, error) {
+func NewClusterWithStatus(
+	f *Factories, dbFactory db.SessionFactory, id string, isAvailable, isReady bool,
+) (*api.Cluster, error) {
 	cluster, err := f.NewCluster(id)
 	if err != nil {
 		return nil, err
@@ -117,7 +119,9 @@ func NewClusterWithStatus(f *Factories, dbFactory db.SessionFactory, id string, 
 }
 
 // NewClusterWithLabels creates a cluster with specific labels
-func NewClusterWithLabels(f *Factories, dbFactory db.SessionFactory, id string, labels map[string]string) (*api.Cluster, error) {
+func NewClusterWithLabels(
+	f *Factories, dbFactory db.SessionFactory, id string, labels map[string]string,
+) (*api.Cluster, error) {
 	cluster, err := f.NewCluster(id)
 	if err != nil {
 		return nil, err
@@ -143,7 +147,9 @@ func NewClusterWithLabels(f *Factories, dbFactory db.SessionFactory, id string, 
 }
 
 // NewClusterWithStatusAndLabels creates a cluster with both status conditions and labels
-func NewClusterWithStatusAndLabels(f *Factories, dbFactory db.SessionFactory, id string, isAvailable, isReady bool, labels map[string]string) (*api.Cluster, error) {
+func NewClusterWithStatusAndLabels(
+	f *Factories, dbFactory db.SessionFactory, id string, isAvailable, isReady bool, labels map[string]string,
+) (*api.Cluster, error) {
 	cluster, err := NewClusterWithStatus(f, dbFactory, id, isAvailable, isReady)
 	if err != nil {
 		return nil, err

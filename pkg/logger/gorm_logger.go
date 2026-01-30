@@ -46,7 +46,12 @@ func (l *GormLogger) Error(ctx context.Context, msg string, data ...interface{})
 	}
 }
 
-func (l *GormLogger) Trace(ctx context.Context, begin time.Time, fc func() (sql string, rowsAffected int64), err error) {
+func (l *GormLogger) Trace(
+	ctx context.Context,
+	begin time.Time,
+	fc func() (sql string, rowsAffected int64),
+	err error,
+) {
 	if l.logLevel <= gormlogger.Silent {
 		return
 	}

@@ -30,8 +30,9 @@ func NewHealthServer() Server {
 		listening:       make(chan struct{}),
 	}
 	s.httpServer = &http.Server{
-		Addr:    env().Config.Health.BindAddress,
-		Handler: mainHandler,
+		Addr:              env().Config.Health.BindAddress,
+		Handler:           mainHandler,
+		ReadHeaderTimeout: 10 * time.Second,
 	}
 	return s
 }

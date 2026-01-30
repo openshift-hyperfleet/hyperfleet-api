@@ -16,9 +16,15 @@ type AdapterStatusService interface {
 	Replace(ctx context.Context, adapterStatus *api.AdapterStatus) (*api.AdapterStatus, *errors.ServiceError)
 	Upsert(ctx context.Context, adapterStatus *api.AdapterStatus) (*api.AdapterStatus, *errors.ServiceError)
 	Delete(ctx context.Context, id string) *errors.ServiceError
-	FindByResource(ctx context.Context, resourceType, resourceID string) (api.AdapterStatusList, *errors.ServiceError)
-	FindByResourcePaginated(ctx context.Context, resourceType, resourceID string, listArgs *ListArguments) (api.AdapterStatusList, int64, *errors.ServiceError)
-	FindByResourceAndAdapter(ctx context.Context, resourceType, resourceID, adapter string) (*api.AdapterStatus, *errors.ServiceError)
+	FindByResource(
+		ctx context.Context, resourceType, resourceID string,
+	) (api.AdapterStatusList, *errors.ServiceError)
+	FindByResourcePaginated(
+		ctx context.Context, resourceType, resourceID string, listArgs *ListArguments,
+	) (api.AdapterStatusList, int64, *errors.ServiceError)
+	FindByResourceAndAdapter(
+		ctx context.Context, resourceType, resourceID, adapter string,
+	) (*api.AdapterStatus, *errors.ServiceError)
 	All(ctx context.Context) (api.AdapterStatusList, *errors.ServiceError)
 }
 
@@ -42,7 +48,9 @@ func (s *sqlAdapterStatusService) Get(ctx context.Context, id string) (*api.Adap
 	return adapterStatus, nil
 }
 
-func (s *sqlAdapterStatusService) Create(ctx context.Context, adapterStatus *api.AdapterStatus) (*api.AdapterStatus, *errors.ServiceError) {
+func (s *sqlAdapterStatusService) Create(
+	ctx context.Context, adapterStatus *api.AdapterStatus,
+) (*api.AdapterStatus, *errors.ServiceError) {
 	adapterStatus, err := s.adapterStatusDao.Create(ctx, adapterStatus)
 	if err != nil {
 		return nil, handleCreateError("AdapterStatus", err)
@@ -50,7 +58,9 @@ func (s *sqlAdapterStatusService) Create(ctx context.Context, adapterStatus *api
 	return adapterStatus, nil
 }
 
-func (s *sqlAdapterStatusService) Replace(ctx context.Context, adapterStatus *api.AdapterStatus) (*api.AdapterStatus, *errors.ServiceError) {
+func (s *sqlAdapterStatusService) Replace(
+	ctx context.Context, adapterStatus *api.AdapterStatus,
+) (*api.AdapterStatus, *errors.ServiceError) {
 	adapterStatus, err := s.adapterStatusDao.Replace(ctx, adapterStatus)
 	if err != nil {
 		return nil, handleUpdateError("AdapterStatus", err)
@@ -58,7 +68,9 @@ func (s *sqlAdapterStatusService) Replace(ctx context.Context, adapterStatus *ap
 	return adapterStatus, nil
 }
 
-func (s *sqlAdapterStatusService) Upsert(ctx context.Context, adapterStatus *api.AdapterStatus) (*api.AdapterStatus, *errors.ServiceError) {
+func (s *sqlAdapterStatusService) Upsert(
+	ctx context.Context, adapterStatus *api.AdapterStatus,
+) (*api.AdapterStatus, *errors.ServiceError) {
 	adapterStatus, err := s.adapterStatusDao.Upsert(ctx, adapterStatus)
 	if err != nil {
 		return nil, handleCreateError("AdapterStatus", err)
@@ -73,7 +85,9 @@ func (s *sqlAdapterStatusService) Delete(ctx context.Context, id string) *errors
 	return nil
 }
 
-func (s *sqlAdapterStatusService) FindByResource(ctx context.Context, resourceType, resourceID string) (api.AdapterStatusList, *errors.ServiceError) {
+func (s *sqlAdapterStatusService) FindByResource(
+	ctx context.Context, resourceType, resourceID string,
+) (api.AdapterStatusList, *errors.ServiceError) {
 	statuses, err := s.adapterStatusDao.FindByResource(ctx, resourceType, resourceID)
 	if err != nil {
 		return nil, errors.GeneralError("Unable to get adapter statuses: %s", err)
@@ -81,7 +95,9 @@ func (s *sqlAdapterStatusService) FindByResource(ctx context.Context, resourceTy
 	return statuses, nil
 }
 
-func (s *sqlAdapterStatusService) FindByResourcePaginated(ctx context.Context, resourceType, resourceID string, listArgs *ListArguments) (api.AdapterStatusList, int64, *errors.ServiceError) {
+func (s *sqlAdapterStatusService) FindByResourcePaginated(
+	ctx context.Context, resourceType, resourceID string, listArgs *ListArguments,
+) (api.AdapterStatusList, int64, *errors.ServiceError) {
 	offset := (listArgs.Page - 1) * int(listArgs.Size)
 	limit := int(listArgs.Size)
 
@@ -93,7 +109,9 @@ func (s *sqlAdapterStatusService) FindByResourcePaginated(ctx context.Context, r
 	return statuses, total, nil
 }
 
-func (s *sqlAdapterStatusService) FindByResourceAndAdapter(ctx context.Context, resourceType, resourceID, adapter string) (*api.AdapterStatus, *errors.ServiceError) {
+func (s *sqlAdapterStatusService) FindByResourceAndAdapter(
+	ctx context.Context, resourceType, resourceID, adapter string,
+) (*api.AdapterStatus, *errors.ServiceError) {
 	status, err := s.adapterStatusDao.FindByResourceAndAdapter(ctx, resourceType, resourceID, adapter)
 	if err != nil {
 		return nil, handleGetError("AdapterStatus", "adapter", adapter, err)

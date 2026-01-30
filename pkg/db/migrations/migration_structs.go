@@ -9,8 +9,9 @@ import (
 	"github.com/go-gormigrate/gormigrate/v2"
 )
 
-// gormigrate is a wrapper for gorm's migration functions that adds schema versioning and rollback capabilities.
-// For help writing migration steps, see the gorm documentation on migrations: http://doc.gorm.io/database.html#migration
+// gormigrate is a wrapper for gorm's migration functions that adds schema versioning
+// and rollback capabilities. For help writing migration steps, see the gorm documentation
+// on migrations: http://doc.gorm.io/database.html#migration
 
 // MigrationList rules:
 //
@@ -49,8 +50,9 @@ type fkMigration struct {
 }
 
 func CreateFK(g2 *gorm.DB, fks ...fkMigration) error {
-	var query = `ALTER TABLE %s ADD CONSTRAINT %s FOREIGN KEY (%s) REFERENCES %s ON DELETE RESTRICT ON UPDATE RESTRICT;`
-	var drop = `ALTER TABLE %s DROP CONSTRAINT IF EXISTS %s;`
+	query := `ALTER TABLE %s ADD CONSTRAINT %s FOREIGN KEY (%s) REFERENCES %s ` +
+		`ON DELETE RESTRICT ON UPDATE RESTRICT;`
+	drop := `ALTER TABLE %s DROP CONSTRAINT IF EXISTS %s;`
 
 	for _, fk := range fks {
 		name := fmt.Sprintf("fk_%s_%s", fk.Model, fk.Dest)

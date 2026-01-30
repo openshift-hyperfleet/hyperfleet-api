@@ -55,7 +55,10 @@ func (c *DatabaseConfig) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&c.RootCertFile, "db-rootcert", c.RootCertFile, "Database root certificate file")
 	fs.StringVar(&c.SSLMode, "db-sslmode", c.SSLMode, "Database ssl mode (disable | require | verify-ca | verify-full)")
 	fs.BoolVar(&c.Debug, "enable-db-debug", c.Debug, " framework's debug mode")
-	fs.IntVar(&c.MaxOpenConnections, "db-max-open-connections", c.MaxOpenConnections, "Maximum open DB connections for this instance")
+	fs.IntVar(
+		&c.MaxOpenConnections, "db-max-open-connections", c.MaxOpenConnections,
+		"Maximum open DB connections for this instance",
+	)
 }
 
 // BindEnv reads configuration from environment variables

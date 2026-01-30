@@ -70,12 +70,12 @@ func GetAuthPayloadFromContext(ctx context.Context) (*Payload, error) {
 	// TODO figure out how to unmarshal jwt.mapclaims into the struct to avoid all the
 	// type assertions
 	//
-	//var accountAuth api.AuthPayload
-	//err := json.Unmarshal([]byte(claims), &accountAuth)
-	//if err != nil {
-	//	err := fmt.Errorf("Unable to parse JWT token claims")
-	//	return nil, err
-	//}
+	// var accountAuth api.AuthPayload
+	// err := json.Unmarshal([]byte(claims), &accountAuth)
+	// if err != nil {
+	// 	err := fmt.Errorf("Unable to parse JWT token claims")
+	// 	return nil, err
+	// }
 
 	payload := &Payload{}
 	// default to the values we expect from RHSSO

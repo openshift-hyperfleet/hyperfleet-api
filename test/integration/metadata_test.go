@@ -29,13 +29,18 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/test"
 )
 
+const (
+	protocolHTTP  = "http"
+	protocolHTTPS = "https"
+)
+
 func TestMetadataGet(t *testing.T) {
 	h, _ := test.RegisterIntegration(t)
 
 	// Build the metadata URL (metadata endpoint is at /api/hyperfleet, not /api/hyperfleet/v1)
-	protocol := "http"
+	protocol := protocolHTTP
 	if h.AppConfig.Server.EnableHTTPS {
-		protocol = "https"
+		protocol = protocolHTTPS
 	}
 	metadataURL := fmt.Sprintf("%s://%s/api/hyperfleet", protocol, h.AppConfig.Server.BindAddress)
 

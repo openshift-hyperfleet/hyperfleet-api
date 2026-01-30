@@ -15,7 +15,9 @@ import (
 // InitTraceProvider initializes OpenTelemetry trace provider
 // Uses stdout exporter (traces output to logs, no external Collector needed)
 // Future upgrade: Switch to OTLP HTTP exporter by changing only the exporter creation
-func InitTraceProvider(ctx context.Context, serviceName, serviceVersion string, samplingRate float64) (*trace.TracerProvider, error) {
+func InitTraceProvider(
+	ctx context.Context, serviceName, serviceVersion string, samplingRate float64,
+) (*trace.TracerProvider, error) {
 	// Create stdout exporter
 	exporter, err := stdouttrace.New(
 		stdouttrace.WithPrettyPrint(), // Formatted output
@@ -42,11 +44,12 @@ func InitTraceProvider(ctx context.Context, serviceName, serviceVersion string, 
 
 	// Determine sampler based on sampling rate
 	var sampler trace.Sampler
-	if samplingRate >= 1.0 {
+	switch {
+	case samplingRate >= 1.0:
 		sampler = trace.AlwaysSample() // Sample all
-	} else if samplingRate <= 0.0 {
+	case samplingRate <= 0.0:
 		sampler = trace.NeverSample() // Sample none
-	} else {
+	default:
 		sampler = trace.TraceIDRatioBased(samplingRate)
 	}
 

@@ -32,14 +32,20 @@ type ClusterService interface {
 	// ProcessAdapterStatus handles the business logic for adapter status:
 	// - If Available condition is "Unknown": returns (nil, nil) indicating no-op
 	// - Otherwise: upserts the status and triggers aggregation
-	ProcessAdapterStatus(ctx context.Context, clusterID string, adapterStatus *api.AdapterStatus) (*api.AdapterStatus, *errors.ServiceError)
+	ProcessAdapterStatus(
+		ctx context.Context, clusterID string, adapterStatus *api.AdapterStatus,
+	) (*api.AdapterStatus, *errors.ServiceError)
 
 	// idempotent functions for the control plane, but can also be called synchronously by any actor
 	OnUpsert(ctx context.Context, id string) error
 	OnDelete(ctx context.Context, id string) error
 }
 
-func NewClusterService(clusterDao dao.ClusterDao, adapterStatusDao dao.AdapterStatusDao, adapterConfig *config.AdapterRequirementsConfig) ClusterService {
+func NewClusterService(
+	clusterDao dao.ClusterDao,
+	adapterStatusDao dao.AdapterStatusDao,
+	adapterConfig *config.AdapterRequirementsConfig,
+) ClusterService {
 	return &sqlClusterService{
 		clusterDao:       clusterDao,
 		adapterStatusDao: adapterStatusDao,
@@ -136,7 +142,9 @@ func (s *sqlClusterService) OnDelete(ctx context.Context, id string) error {
 }
 
 // UpdateClusterStatusFromAdapters aggregates adapter statuses into cluster status
-func (s *sqlClusterService) UpdateClusterStatusFromAdapters(ctx context.Context, clusterID string) (*api.Cluster, *errors.ServiceError) {
+func (s *sqlClusterService) UpdateClusterStatusFromAdapters(
+	ctx context.Context, clusterID string,
+) (*api.Cluster, *errors.ServiceError) {
 	// Get the cluster
 	cluster, err := s.clusterDao.Get(ctx, clusterID)
 	if err != nil {
@@ -231,8 +239,12 @@ func (s *sqlClusterService) UpdateClusterStatusFromAdapters(ctx context.Context,
 // ProcessAdapterStatus handles the business logic for adapter status:
 // - If Available condition is "Unknown": returns (nil, nil) indicating no-op
 // - Otherwise: upserts the status and triggers aggregation
-func (s *sqlClusterService) ProcessAdapterStatus(ctx context.Context, clusterID string, adapterStatus *api.AdapterStatus) (*api.AdapterStatus, *errors.ServiceError) {
-	existingStatus, findErr := s.adapterStatusDao.FindByResourceAndAdapter(ctx, "Cluster", clusterID, adapterStatus.Adapter)
+func (s *sqlClusterService) ProcessAdapterStatus(
+	ctx context.Context, clusterID string, adapterStatus *api.AdapterStatus,
+) (*api.AdapterStatus, *errors.ServiceError) {
+	existingStatus, findErr := s.adapterStatusDao.FindByResourceAndAdapter(
+		ctx, "Cluster", clusterID, adapterStatus.Adapter,
+	)
 	if findErr != nil && !stderrors.Is(findErr, gorm.ErrRecordNotFound) {
 		if !strings.Contains(findErr.Error(), errors.CodeNotFoundGeneric) {
 			return nil, errors.GeneralError("Failed to get adapter status: %s", findErr)
@@ -275,7 +287,9 @@ func (s *sqlClusterService) ProcessAdapterStatus(ctx context.Context, clusterID 
 	// If the adapter status doesn't include Available (e.g. it only reports Ready/Progressing),
 	// saving it should not overwrite the cluster's synthetic Available/Ready conditions.
 	if hasAvailableCondition {
-		if _, aggregateErr := s.UpdateClusterStatusFromAdapters(ctx, clusterID); aggregateErr != nil {
+		if _, aggregateErr := s.UpdateClusterStatusFromAdapters(
+			ctx, clusterID,
+		); aggregateErr != nil {
 			// Log error but don't fail the request - the status will be computed on next update
 			ctx = logger.WithClusterID(ctx, clusterID)
 			logger.WithError(ctx, aggregateErr).Warn("Failed to aggregate cluster status")

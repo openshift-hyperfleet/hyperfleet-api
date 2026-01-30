@@ -11,8 +11,9 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
-// gormigrate is a wrapper for gorm's migration functions that adds schema versioning and rollback capabilities.
-// For help writing migration steps, see the gorm documentation on migrations: http://doc.gorm.io/database.html#migration
+// gormigrate is a wrapper for gorm's migration functions that adds schema versioning
+// and rollback capabilities. For help writing migration steps, see the gorm documentation
+// on migrations: http://doc.gorm.io/database.html#migration
 
 func Migrate(g2 *gorm.DB) error {
 	m := newGormigrate(g2)

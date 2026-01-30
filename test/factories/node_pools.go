@@ -82,7 +82,9 @@ func reloadNodePool(dbSession *gorm.DB, nodePool *api.NodePool) error {
 // NewNodePoolWithStatus creates a node pool with specific status conditions
 // dbFactory parameter is needed to update database fields
 // The isAvailable and isReady parameters control which synthetic conditions are set
-func NewNodePoolWithStatus(f *Factories, dbFactory db.SessionFactory, id string, isAvailable, isReady bool) (*api.NodePool, error) {
+func NewNodePoolWithStatus(
+	f *Factories, dbFactory db.SessionFactory, id string, isAvailable, isReady bool,
+) (*api.NodePool, error) {
 	nodePool, err := f.NewNodePool(id)
 	if err != nil {
 		return nil, err
@@ -137,7 +139,9 @@ func NewNodePoolWithStatus(f *Factories, dbFactory db.SessionFactory, id string,
 }
 
 // NewNodePoolWithLabels creates a node pool with specific labels
-func NewNodePoolWithLabels(f *Factories, dbFactory db.SessionFactory, id string, labels map[string]string) (*api.NodePool, error) {
+func NewNodePoolWithLabels(
+	f *Factories, dbFactory db.SessionFactory, id string, labels map[string]string,
+) (*api.NodePool, error) {
 	nodePool, err := f.NewNodePool(id)
 	if err != nil {
 		return nil, err
@@ -163,7 +167,9 @@ func NewNodePoolWithLabels(f *Factories, dbFactory db.SessionFactory, id string,
 }
 
 // NewNodePoolWithStatusAndLabels creates a node pool with both status conditions and labels
-func NewNodePoolWithStatusAndLabels(f *Factories, dbFactory db.SessionFactory, id string, isAvailable, isReady bool, labels map[string]string) (*api.NodePool, error) {
+func NewNodePoolWithStatusAndLabels(
+	f *Factories, dbFactory db.SessionFactory, id string, isAvailable, isReady bool, labels map[string]string,
+) (*api.NodePool, error) {
 	nodePool, err := NewNodePoolWithStatus(f, dbFactory, id, isAvailable, isReady)
 	if err != nil {
 		return nil, err

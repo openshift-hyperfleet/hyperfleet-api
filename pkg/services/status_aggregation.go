@@ -10,6 +10,11 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 )
 
+const (
+	conditionTypeAvailable = "Available"
+	conditionTypeReady     = "Ready"
+)
+
 // Required adapter lists configured via pkg/config/adapter.go (see AdapterRequirementsConfig)
 
 // adapterConditionSuffixMap allows overriding the default suffix for specific adapters
@@ -82,7 +87,7 @@ func ComputeAvailableCondition(adapterStatuses api.AdapterStatusList, requiredAd
 		if len(adapterStatus.Conditions) > 0 {
 			if err := json.Unmarshal(adapterStatus.Conditions, &conditions); err == nil {
 				for _, cond := range conditions {
-					if cond.Type == "Available" {
+					if cond.Type == conditionTypeAvailable {
 						adapterMap[adapterStatus.Adapter] = struct {
 							available          string
 							observedGeneration int32
@@ -131,7 +136,9 @@ func ComputeAvailableCondition(adapterStatuses api.AdapterStatusList, requiredAd
 
 // ComputeReadyCondition checks if all required adapters have Available=True at the CURRENT generation.
 // "Ready" means the system is running at the latest spec generation.
-func ComputeReadyCondition(adapterStatuses api.AdapterStatusList, requiredAdapters []string, resourceGeneration int32) bool {
+func ComputeReadyCondition(
+	adapterStatuses api.AdapterStatusList, requiredAdapters []string, resourceGeneration int32,
+) bool {
 	if len(adapterStatuses) == 0 || len(requiredAdapters) == 0 {
 		return false
 	}
@@ -151,7 +158,7 @@ func ComputeReadyCondition(adapterStatuses api.AdapterStatusList, requiredAdapte
 		if len(adapterStatus.Conditions) > 0 {
 			if err := json.Unmarshal(adapterStatus.Conditions, &conditions); err == nil {
 				for _, cond := range conditions {
-					if cond.Type == "Available" {
+					if cond.Type == conditionTypeAvailable {
 						adapterMap[adapterStatus.Adapter] = struct {
 							available          string
 							observedGeneration int32
@@ -194,7 +201,13 @@ func ComputeReadyCondition(adapterStatuses api.AdapterStatusList, requiredAdapte
 	return numReady == numRequired
 }
 
-func BuildSyntheticConditions(existingConditionsJSON []byte, adapterStatuses api.AdapterStatusList, requiredAdapters []string, resourceGeneration int32, now time.Time) (api.ResourceCondition, api.ResourceCondition) {
+func BuildSyntheticConditions(
+	existingConditionsJSON []byte,
+	adapterStatuses api.AdapterStatusList,
+	requiredAdapters []string,
+	resourceGeneration int32,
+	now time.Time,
+) (api.ResourceCondition, api.ResourceCondition) {
 	var existingAvailable *api.ResourceCondition
 	var existingReady *api.ResourceCondition
 
@@ -203,9 +216,9 @@ func BuildSyntheticConditions(existingConditionsJSON []byte, adapterStatuses api
 		if err := json.Unmarshal(existingConditionsJSON, &existingConditions); err == nil {
 			for i := range existingConditions {
 				switch existingConditions[i].Type {
-				case "Available":
+				case conditionTypeAvailable:
 					existingAvailable = &existingConditions[i]
-				case "Ready":
+				case conditionTypeReady:
 					existingReady = &existingConditions[i]
 				}
 			}
@@ -218,7 +231,7 @@ func BuildSyntheticConditions(existingConditionsJSON []byte, adapterStatuses api
 		availableStatus = api.ConditionTrue
 	}
 	availableCondition := api.ResourceCondition{
-		Type:               "Available",
+		Type:               conditionTypeAvailable,
 		Status:             availableStatus,
 		ObservedGeneration: minObservedGeneration,
 		LastTransitionTime: now,
@@ -233,7 +246,7 @@ func BuildSyntheticConditions(existingConditionsJSON []byte, adapterStatuses api
 		readyStatus = api.ConditionTrue
 	}
 	readyCondition := api.ResourceCondition{
-		Type:               "Ready",
+		Type:               conditionTypeReady,
 		Status:             readyStatus,
 		ObservedGeneration: resourceGeneration,
 		LastTransitionTime: now,

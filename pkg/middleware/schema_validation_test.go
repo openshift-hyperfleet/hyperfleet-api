@@ -379,7 +379,7 @@ func TestSchemaValidationMiddleware_MalformedJSON(t *testing.T) {
 func setupTestValidator(t *testing.T) *validators.SchemaValidator {
 	tmpDir := t.TempDir()
 	schemaPath := filepath.Join(tmpDir, "test-schema.yaml")
-	err := os.WriteFile(schemaPath, []byte(testSchema), 0644)
+	err := os.WriteFile(schemaPath, []byte(testSchema), 0600)
 	if err != nil {
 		t.Fatalf("Failed to create test schema: %v", err)
 	}

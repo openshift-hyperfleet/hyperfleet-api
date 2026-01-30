@@ -14,6 +14,10 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 )
 
+const (
+	testClusterID = "test-cluster-id"
+)
+
 // Mock implementations for testing ProcessAdapterStatus
 
 type mockClusterDao struct {
@@ -107,7 +111,10 @@ func (d *mockAdapterStatusDao) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-func (d *mockAdapterStatusDao) FindByResource(ctx context.Context, resourceType, resourceID string) (api.AdapterStatusList, error) {
+func (d *mockAdapterStatusDao) FindByResource(
+	ctx context.Context,
+	resourceType, resourceID string,
+) (api.AdapterStatusList, error) {
 	var result api.AdapterStatusList
 	for _, s := range d.statuses {
 		if s.ResourceType == resourceType && s.ResourceID == resourceID {
@@ -117,12 +124,19 @@ func (d *mockAdapterStatusDao) FindByResource(ctx context.Context, resourceType,
 	return result, nil
 }
 
-func (d *mockAdapterStatusDao) FindByResourcePaginated(ctx context.Context, resourceType, resourceID string, offset, limit int) (api.AdapterStatusList, int64, error) {
+func (d *mockAdapterStatusDao) FindByResourcePaginated(
+	ctx context.Context,
+	resourceType, resourceID string,
+	offset, limit int,
+) (api.AdapterStatusList, int64, error) {
 	statuses, _ := d.FindByResource(ctx, resourceType, resourceID)
 	return statuses, int64(len(statuses)), nil
 }
 
-func (d *mockAdapterStatusDao) FindByResourceAndAdapter(ctx context.Context, resourceType, resourceID, adapter string) (*api.AdapterStatus, error) {
+func (d *mockAdapterStatusDao) FindByResourceAndAdapter(
+	ctx context.Context,
+	resourceType, resourceID, adapter string,
+) (*api.AdapterStatus, error) {
 	for _, s := range d.statuses {
 		if s.ResourceType == resourceType && s.ResourceID == resourceID && s.Adapter == adapter {
 			return s, nil
@@ -152,12 +166,12 @@ func TestProcessAdapterStatus_UnknownCondition(t *testing.T) {
 	service := NewClusterService(clusterDao, adapterStatusDao, config)
 
 	ctx := context.Background()
-	clusterID := "test-cluster-id"
+	clusterID := testClusterID
 
 	// Create adapter status with Available=Unknown
 	conditions := []api.AdapterCondition{
 		{
-			Type:               "Available",
+			Type:               conditionTypeAvailable,
 			Status:             api.AdapterConditionUnknown,
 			LastTransitionTime: time.Now(),
 		},
@@ -192,7 +206,7 @@ func TestProcessAdapterStatus_TrueCondition(t *testing.T) {
 	service := NewClusterService(clusterDao, adapterStatusDao, config)
 
 	ctx := context.Background()
-	clusterID := "test-cluster-id"
+	clusterID := testClusterID
 
 	// Create the cluster first
 	cluster := &api.Cluster{
@@ -205,7 +219,7 @@ func TestProcessAdapterStatus_TrueCondition(t *testing.T) {
 	// Create adapter status with Available=True
 	conditions := []api.AdapterCondition{
 		{
-			Type:               "Available",
+			Type:               conditionTypeAvailable,
 			Status:             api.AdapterConditionTrue,
 			LastTransitionTime: time.Now(),
 		},
@@ -243,7 +257,7 @@ func TestProcessAdapterStatus_FalseCondition(t *testing.T) {
 	service := NewClusterService(clusterDao, adapterStatusDao, config)
 
 	ctx := context.Background()
-	clusterID := "test-cluster-id"
+	clusterID := testClusterID
 
 	// Create the cluster first
 	cluster := &api.Cluster{
@@ -256,7 +270,7 @@ func TestProcessAdapterStatus_FalseCondition(t *testing.T) {
 	// Create adapter status with Available=False
 	conditions := []api.AdapterCondition{
 		{
-			Type:               "Available",
+			Type:               conditionTypeAvailable,
 			Status:             api.AdapterConditionFalse,
 			LastTransitionTime: time.Now(),
 		},
@@ -293,13 +307,13 @@ func TestProcessAdapterStatus_NoAvailableCondition(t *testing.T) {
 	service := NewClusterService(clusterDao, adapterStatusDao, config)
 
 	ctx := context.Background()
-	clusterID := "test-cluster-id"
+	clusterID := testClusterID
 
 	// Create the cluster first
 	fixedNow := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	initialConditions := []api.ResourceCondition{
 		{
-			Type:               "Available",
+			Type:               conditionTypeAvailable,
 			Status:             api.ConditionFalse,
 			ObservedGeneration: 1,
 			LastTransitionTime: fixedNow,
@@ -324,7 +338,8 @@ func TestProcessAdapterStatus_NoAvailableCondition(t *testing.T) {
 	cluster.ID = clusterID
 	_, svcErr := service.Create(ctx, cluster)
 	Expect(svcErr).To(BeNil())
-	initialClusterStatusConditions := append(api.Cluster{}.StatusConditions, cluster.StatusConditions...)
+	initialClusterStatusConditions := api.Cluster{}.StatusConditions
+	initialClusterStatusConditions = append(initialClusterStatusConditions, cluster.StatusConditions...)
 
 	// Create adapter status with Health condition (no Available)
 	conditions := []api.AdapterCondition{
@@ -356,7 +371,8 @@ func TestProcessAdapterStatus_NoAvailableCondition(t *testing.T) {
 
 	// Verify that saving a non-Available condition did not overwrite cluster Available/Ready
 	storedCluster, _ := clusterDao.Get(ctx, clusterID)
-	Expect(storedCluster.StatusConditions).To(Equal(initialClusterStatusConditions), "Cluster status conditions should not be overwritten when adapter status lacks Available")
+	Expect(storedCluster.StatusConditions).To(Equal(initialClusterStatusConditions),
+		"Cluster status conditions should not be overwritten when adapter status lacks Available")
 }
 
 // TestProcessAdapterStatus_MultipleConditions_AvailableUnknown tests multiple conditions with Available=Unknown
@@ -370,7 +386,7 @@ func TestProcessAdapterStatus_MultipleConditions_AvailableUnknown(t *testing.T) 
 	service := NewClusterService(clusterDao, adapterStatusDao, config)
 
 	ctx := context.Background()
-	clusterID := "test-cluster-id"
+	clusterID := testClusterID
 
 	// Create adapter status with multiple conditions including Available=Unknown
 	conditions := []api.AdapterCondition{
@@ -380,7 +396,7 @@ func TestProcessAdapterStatus_MultipleConditions_AvailableUnknown(t *testing.T) 
 			LastTransitionTime: time.Now(),
 		},
 		{
-			Type:               "Available",
+			Type:               conditionTypeAvailable,
 			Status:             api.AdapterConditionUnknown,
 			LastTransitionTime: time.Now(),
 		},
@@ -422,7 +438,7 @@ func TestClusterAvailableReadyTransitions(t *testing.T) {
 	service := NewClusterService(clusterDao, adapterStatusDao, adapterConfig)
 
 	ctx := context.Background()
-	clusterID := "test-cluster-id"
+	clusterID := testClusterID
 
 	cluster := &api.Cluster{Generation: 1}
 	cluster.ID = clusterID
@@ -440,9 +456,9 @@ func TestClusterAvailableReadyTransitions(t *testing.T) {
 		var available, ready *api.ResourceCondition
 		for i := range conds {
 			switch conds[i].Type {
-			case "Available":
+			case conditionTypeAvailable:
 				available = &conds[i]
-			case "Ready":
+			case conditionTypeReady:
 				ready = &conds[i]
 			}
 		}
@@ -453,7 +469,7 @@ func TestClusterAvailableReadyTransitions(t *testing.T) {
 
 	upsert := func(adapter string, available api.AdapterConditionStatus, observedGen int32) {
 		conditions := []api.AdapterCondition{
-			{Type: "Available", Status: available, LastTransitionTime: time.Now()},
+			{Type: conditionTypeAvailable, Status: available, LastTransitionTime: time.Now()},
 		}
 		conditionsJSON, _ := json.Marshal(conditions)
 		now := time.Now()
@@ -516,8 +532,10 @@ func TestClusterAvailableReadyTransitions(t *testing.T) {
 	// This is an edge case where an adapter reports a gen=1 status after a gen=2 status.
 	// Since we don't allow downgrading observed generations, we should not overwrite the cluster conditions.
 	// And Available should remain True, but in reality it should be False.
-	// This should be an unexpected edge case, since once a resource changes generation, all adapters should report a gen=2 status.
-	// So, while we are keeping Available True for gen=1, there should be soon an update to gen=2, which will overwrite the Available condition.
+	// This should be an unexpected edge case, since once a resource changes generation,
+	// all adapters should report a gen=2 status.
+	// So, while we are keeping Available True for gen=1,
+	// there should be soon an update to gen=2, which will overwrite the Available condition.
 	upsert("validation", api.AdapterConditionFalse, 1)
 	avail, ready = getSynth()
 	Expect(avail.Status).To(Equal(api.ConditionTrue)) // <-- this is the edge case
@@ -539,8 +557,11 @@ func TestClusterAvailableReadyTransitions(t *testing.T) {
 	Expect(ready.Status).To(Equal(api.ConditionFalse))
 
 	// Available=Unknown is a no-op (does not store, does not overwrite cluster conditions).
-	prevStatus := append(api.Cluster{}.StatusConditions, clusterDao.clusters[clusterID].StatusConditions...)
-	unknownConds := []api.AdapterCondition{{Type: "Available", Status: api.AdapterConditionUnknown, LastTransitionTime: time.Now()}}
+	prevStatus := api.Cluster{}.StatusConditions
+	prevStatus = append(prevStatus, clusterDao.clusters[clusterID].StatusConditions...)
+	unknownConds := []api.AdapterCondition{
+		{Type: conditionTypeAvailable, Status: api.AdapterConditionUnknown, LastTransitionTime: time.Now()},
+	}
 	unknownJSON, _ := json.Marshal(unknownConds)
 	unknownStatus := &api.AdapterStatus{
 		ResourceType: "Cluster",
@@ -566,7 +587,7 @@ func TestClusterStaleAdapterStatusUpdatePolicy(t *testing.T) {
 	service := NewClusterService(clusterDao, adapterStatusDao, adapterConfig)
 
 	ctx := context.Background()
-	clusterID := "test-cluster-id"
+	clusterID := testClusterID
 
 	cluster := &api.Cluster{Generation: 2}
 	cluster.ID = clusterID
@@ -580,7 +601,7 @@ func TestClusterStaleAdapterStatusUpdatePolicy(t *testing.T) {
 		var conds []api.ResourceCondition
 		Expect(json.Unmarshal(stored.StatusConditions, &conds)).To(Succeed())
 		for i := range conds {
-			if conds[i].Type == "Available" {
+			if conds[i].Type == conditionTypeAvailable {
 				return conds[i]
 			}
 		}
@@ -590,7 +611,7 @@ func TestClusterStaleAdapterStatusUpdatePolicy(t *testing.T) {
 
 	upsert := func(adapter string, available api.AdapterConditionStatus, observedGen int32) {
 		conditions := []api.AdapterCondition{
-			{Type: "Available", Status: available, LastTransitionTime: time.Now()},
+			{Type: conditionTypeAvailable, Status: available, LastTransitionTime: time.Now()},
 		}
 		conditionsJSON, _ := json.Marshal(conditions)
 		now := time.Now()
@@ -641,12 +662,12 @@ func TestClusterSyntheticTimestampsStableWithoutAdapterStatus(t *testing.T) {
 	service := NewClusterService(clusterDao, adapterStatusDao, adapterConfig)
 
 	ctx := context.Background()
-	clusterID := "test-cluster-id"
+	clusterID := testClusterID
 
 	fixedNow := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
 	initialConditions := []api.ResourceCondition{
 		{
-			Type:               "Available",
+			Type:               conditionTypeAvailable,
 			Status:             api.ConditionFalse,
 			ObservedGeneration: 1,
 			LastTransitionTime: fixedNow,
@@ -679,9 +700,9 @@ func TestClusterSyntheticTimestampsStableWithoutAdapterStatus(t *testing.T) {
 	var createdAvailable, createdReady *api.ResourceCondition
 	for i := range createdConds {
 		switch createdConds[i].Type {
-		case "Available":
+		case conditionTypeAvailable:
 			createdAvailable = &createdConds[i]
-		case "Ready":
+		case conditionTypeReady:
 			createdReady = &createdConds[i]
 		}
 	}
@@ -704,9 +725,9 @@ func TestClusterSyntheticTimestampsStableWithoutAdapterStatus(t *testing.T) {
 	var updatedAvailable, updatedReady *api.ResourceCondition
 	for i := range updatedConds {
 		switch updatedConds[i].Type {
-		case "Available":
+		case conditionTypeAvailable:
 			updatedAvailable = &updatedConds[i]
-		case "Ready":
+		case conditionTypeReady:
 			updatedReady = &updatedConds[i]
 		}
 	}

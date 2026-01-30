@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"time"
 
 	"github.com/gorilla/mux"
 
@@ -25,8 +26,9 @@ func NewMetricsServer() Server {
 
 	s := &metricsServer{}
 	s.httpServer = &http.Server{
-		Addr:    env().Config.Metrics.BindAddress,
-		Handler: mainHandler,
+		Addr:              env().Config.Metrics.BindAddress,
+		Handler:           mainHandler,
+		ReadHeaderTimeout: 10 * time.Second,
 	}
 	return s
 }

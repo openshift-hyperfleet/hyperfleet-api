@@ -58,11 +58,12 @@ func (c *Client) newConnection() error {
 		URL(c.config.BaseURL).
 		MetricsSubsystem("api_outbound")
 
-	if c.config.ClientID != "" && c.config.ClientSecret != "" {
+	switch {
+	case c.config.ClientID != "" && c.config.ClientSecret != "":
 		builder = builder.Client(c.config.ClientID, c.config.ClientSecret)
-	} else if c.config.SelfToken != "" {
+	case c.config.SelfToken != "":
 		builder = builder.Tokens(c.config.SelfToken)
-	} else {
+	default:
 		return fmt.Errorf("can't build OCM client connection: no Client/Secret or Token has been provided")
 	}
 

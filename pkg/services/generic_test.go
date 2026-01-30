@@ -40,7 +40,9 @@ func TestSQLTranslation(t *testing.T) {
 		var list []api.Cluster
 		search := test["search"].(string)
 		errorMsg := test["error"].(string)
-		listCtx, model, serviceErr := genericService.newListContext(context.Background(), "", &ListArguments{Search: search}, &list)
+		listCtx, model, serviceErr := genericService.newListContext(
+			context.Background(), "", &ListArguments{Search: search}, &list,
+		)
 		Expect(serviceErr).ToNot(HaveOccurred())
 		d := g.GetInstanceDao(context.Background(), model)
 		_, serviceErr = genericService.buildSearch(listCtx, &d)
@@ -75,7 +77,9 @@ func TestSQLTranslation(t *testing.T) {
 		search := test["search"].(string)
 		sqlReal := test["sql"].(string)
 		valuesReal := test["values"].(types.GomegaMatcher)
-		listCtx, _, serviceErr := genericService.newListContext(context.Background(), "", &ListArguments{Search: search}, &list)
+		listCtx, _, serviceErr := genericService.newListContext(
+			context.Background(), "", &ListArguments{Search: search}, &list,
+		)
 		Expect(serviceErr).ToNot(HaveOccurred())
 		tslTree, err := tsl.ParseTSL(search)
 		Expect(err).ToNot(HaveOccurred())

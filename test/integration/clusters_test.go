@@ -65,7 +65,9 @@ func TestClusterPost(t *testing.T) {
 	}
 
 	// 201 Created
-	resp, err := client.PostClusterWithResponse(ctx, openapi.PostClusterJSONRequestBody(clusterInput), test.WithAuthToken(ctx))
+	resp, err := client.PostClusterWithResponse(
+		ctx, openapi.PostClusterJSONRequestBody(clusterInput), test.WithAuthToken(ctx),
+	)
 	Expect(err).NotTo(HaveOccurred(), "Error posting object:  %v", err)
 	Expect(resp.StatusCode()).To(Equal(http.StatusCreated))
 
@@ -218,19 +220,26 @@ func TestClusterDuplicateNames(t *testing.T) {
 		Spec: map[string]interface{}{"test": "spec1"},
 	}
 
-	resp, err := client.PostClusterWithResponse(ctx, openapi.PostClusterJSONRequestBody(clusterInput), test.WithAuthToken(ctx))
+	resp, err := client.PostClusterWithResponse(
+		ctx, openapi.PostClusterJSONRequestBody(clusterInput), test.WithAuthToken(ctx),
+	)
 	Expect(err).NotTo(HaveOccurred())
 	Expect(resp.StatusCode()).To(Equal(http.StatusCreated))
 	id1 := *resp.JSON201.Id
 
 	// Create second cluster with the SAME name
 	// Names are unique, so this should return 409 Conflict
-	resp, err = client.PostClusterWithResponse(ctx, openapi.PostClusterJSONRequestBody(clusterInput), test.WithAuthToken(ctx))
+	resp, err = client.PostClusterWithResponse(
+		ctx, openapi.PostClusterJSONRequestBody(clusterInput), test.WithAuthToken(ctx),
+	)
 	Expect(err).NotTo(HaveOccurred())
-	Expect(resp.StatusCode()).To(Equal(http.StatusConflict), "Expected 409 Conflict for duplicate name")
+	Expect(resp.StatusCode()).
+		To(Equal(http.StatusConflict), "Expected 409 Conflict for duplicate name")
 
 	// Verify first cluster still exists
-	getResp, err := client.GetClusterByIdWithResponse(ctx, id1, nil, test.WithAuthToken(ctx))
+	getResp, err := client.GetClusterByIdWithResponse(
+		ctx, id1, nil, test.WithAuthToken(ctx),
+	)
 	Expect(err).NotTo(HaveOccurred())
 	Expect(getResp.JSON200.Name).To(Equal("duplicate-name-test"))
 }
@@ -254,7 +263,9 @@ func TestClusterBoundaryValues(t *testing.T) {
 		Spec: map[string]interface{}{"test": "spec"},
 	}
 
-	resp, err := client.PostClusterWithResponse(ctx, openapi.PostClusterJSONRequestBody(longNameInput), test.WithAuthToken(ctx))
+	resp, err := client.PostClusterWithResponse(
+		ctx, openapi.PostClusterJSONRequestBody(longNameInput), test.WithAuthToken(ctx),
+	)
 	Expect(err).NotTo(HaveOccurred(), "Should accept name up to 63 characters")
 	Expect(resp.StatusCode()).To(Equal(http.StatusCreated))
 	Expect(resp.JSON201.Name).To(Equal(longName))
@@ -266,9 +277,12 @@ func TestClusterBoundaryValues(t *testing.T) {
 		Name: tooLongName,
 		Spec: map[string]interface{}{"test": "spec"},
 	}
-	resp, err = client.PostClusterWithResponse(ctx, openapi.PostClusterJSONRequestBody(tooLongInput), test.WithAuthToken(ctx))
+	resp, err = client.PostClusterWithResponse(
+		ctx, openapi.PostClusterJSONRequestBody(tooLongInput), test.WithAuthToken(ctx),
+	)
 	Expect(err).NotTo(HaveOccurred())
-	Expect(resp.StatusCode()).To(Equal(http.StatusBadRequest), "Should reject name exceeding 63 characters")
+	Expect(resp.StatusCode()).
+		To(Equal(http.StatusBadRequest), "Should reject name exceeding 63 characters")
 
 	// Test 2: Empty name
 	emptyNameInput := openapi.ClusterCreateRequest{
@@ -277,9 +291,12 @@ func TestClusterBoundaryValues(t *testing.T) {
 		Spec: map[string]interface{}{"test": "spec"},
 	}
 
-	resp, err = client.PostClusterWithResponse(ctx, openapi.PostClusterJSONRequestBody(emptyNameInput), test.WithAuthToken(ctx))
+	resp, err = client.PostClusterWithResponse(
+		ctx, openapi.PostClusterJSONRequestBody(emptyNameInput), test.WithAuthToken(ctx),
+	)
 	Expect(err).NotTo(HaveOccurred())
-	Expect(resp.StatusCode()).To(Equal(http.StatusBadRequest), "Should reject empty name")
+	Expect(resp.StatusCode()).
+		To(Equal(http.StatusBadRequest), "Should reject empty name")
 
 	// Test 3: Large spec JSON (test with ~10KB JSON)
 	largeSpec := make(map[string]interface{})
@@ -293,12 +310,16 @@ func TestClusterBoundaryValues(t *testing.T) {
 		Spec: largeSpec,
 	}
 
-	resp, err = client.PostClusterWithResponse(ctx, openapi.PostClusterJSONRequestBody(largeSpecInput), test.WithAuthToken(ctx))
+	resp, err = client.PostClusterWithResponse(
+		ctx, openapi.PostClusterJSONRequestBody(largeSpecInput), test.WithAuthToken(ctx),
+	)
 	Expect(err).NotTo(HaveOccurred(), "Should accept large spec JSON")
 	Expect(resp.StatusCode()).To(Equal(http.StatusCreated))
 
 	// Verify the spec was stored correctly
-	getResp, err := client.GetClusterByIdWithResponse(ctx, *resp.JSON201.Id, nil, test.WithAuthToken(ctx))
+	getResp, err := client.GetClusterByIdWithResponse(
+		ctx, *resp.JSON201.Id, nil, test.WithAuthToken(ctx),
+	)
 	Expect(err).NotTo(HaveOccurred())
 	Expect(len(getResp.JSON200.Spec)).To(Equal(100))
 
@@ -309,9 +330,12 @@ func TestClusterBoundaryValues(t *testing.T) {
 		Spec: map[string]interface{}{"test": "spec"},
 	}
 
-	resp, err = client.PostClusterWithResponse(ctx, openapi.PostClusterJSONRequestBody(unicodeNameInput), test.WithAuthToken(ctx))
+	resp, err = client.PostClusterWithResponse(
+		ctx, openapi.PostClusterJSONRequestBody(unicodeNameInput), test.WithAuthToken(ctx),
+	)
 	Expect(err).NotTo(HaveOccurred())
-	Expect(resp.StatusCode()).To(Equal(http.StatusBadRequest), "Should reject unicode in name (pattern is ^[a-z0-9-]+$)")
+	Expect(resp.StatusCode()).To(Equal(http.StatusBadRequest),
+		"Should reject unicode in name (pattern is ^[a-z0-9-]+$)")
 }
 
 // TestClusterSchemaValidation tests schema validation for cluster specs
@@ -336,7 +360,9 @@ func TestClusterSchemaValidation(t *testing.T) {
 		Spec: validSpec,
 	}
 
-	resp, err := client.PostClusterWithResponse(ctx, openapi.PostClusterJSONRequestBody(validInput), test.WithAuthToken(ctx))
+	resp, err := client.PostClusterWithResponse(
+		ctx, openapi.PostClusterJSONRequestBody(validInput), test.WithAuthToken(ctx),
+	)
 	Expect(err).NotTo(HaveOccurred(), "Valid spec should be accepted")
 	Expect(resp.StatusCode()).To(Equal(http.StatusCreated))
 	Expect(*resp.JSON201.Id).NotTo(BeEmpty())
@@ -377,7 +403,9 @@ func TestClusterSchemaValidation(t *testing.T) {
 		Spec: map[string]interface{}{},
 	}
 
-	resp3, err := client.PostClusterWithResponse(ctx, openapi.PostClusterJSONRequestBody(emptySpecInput), test.WithAuthToken(ctx))
+	resp3, err := client.PostClusterWithResponse(
+		ctx, openapi.PostClusterJSONRequestBody(emptySpecInput), test.WithAuthToken(ctx),
+	)
 	Expect(err).NotTo(HaveOccurred(), "Empty spec should be accepted by base schema")
 	Expect(resp3.StatusCode()).To(Equal(http.StatusCreated))
 	Expect(*resp3.JSON201.Id).NotTo(BeEmpty())
@@ -419,9 +447,12 @@ func TestClusterSchemaValidationWithProviderSchema(t *testing.T) {
 		Spec: invalidSpec,
 	}
 
-	resp, err := client.PostClusterWithResponse(ctx, openapi.PostClusterJSONRequestBody(invalidInput), test.WithAuthToken(ctx))
+	resp, err := client.PostClusterWithResponse(
+		ctx, openapi.PostClusterJSONRequestBody(invalidInput), test.WithAuthToken(ctx),
+	)
 	Expect(err).NotTo(HaveOccurred())
-	Expect(resp.StatusCode()).To(Equal(http.StatusBadRequest), "Should reject spec with missing required field")
+	Expect(resp.StatusCode()).To(Equal(http.StatusBadRequest),
+		"Should reject spec with missing required field")
 
 	// Parse error response to verify field-level details
 	bodyBytes, err := io.ReadAll(resp.HTTPResponse.Body)
@@ -523,7 +554,9 @@ func TestClusterList_DefaultSorting(t *testing.T) {
 			Spec: map[string]interface{}{"test": fmt.Sprintf("value-%d", i)},
 		}
 
-		resp, err := client.PostClusterWithResponse(ctx, openapi.PostClusterJSONRequestBody(clusterInput), test.WithAuthToken(ctx))
+		resp, err := client.PostClusterWithResponse(
+		ctx, openapi.PostClusterJSONRequestBody(clusterInput), test.WithAuthToken(ctx),
+	)
 		Expect(err).NotTo(HaveOccurred(), "Failed to create cluster %d", i)
 		createdClusters = append(createdClusters, *resp.JSON201)
 
@@ -532,7 +565,9 @@ func TestClusterList_DefaultSorting(t *testing.T) {
 	}
 
 	// List clusters without orderBy parameter - should default to created_time desc
-	listResp, err := client.GetClustersWithResponse(ctx, nil, test.WithAuthToken(ctx))
+	listResp, err := client.GetClustersWithResponse(
+		ctx, nil, test.WithAuthToken(ctx),
+	)
 	Expect(err).NotTo(HaveOccurred(), "Failed to list clusters")
 	list := listResp.JSON200
 	Expect(list).NotTo(BeNil())
@@ -582,7 +617,9 @@ func TestClusterList_OrderByName(t *testing.T) {
 			Spec: map[string]interface{}{"test": "value"},
 		}
 
-		_, err := client.PostClusterWithResponse(ctx, openapi.PostClusterJSONRequestBody(clusterInput), test.WithAuthToken(ctx))
+		_, err := client.PostClusterWithResponse(
+			ctx, openapi.PostClusterJSONRequestBody(clusterInput), test.WithAuthToken(ctx),
+		)
 		Expect(err).NotTo(HaveOccurred(), "Failed to create cluster %s", name)
 	}
 
@@ -638,7 +675,9 @@ func TestClusterList_OrderByNameDesc(t *testing.T) {
 			Spec: map[string]interface{}{"test": "value"},
 		}
 
-		_, err := client.PostClusterWithResponse(ctx, openapi.PostClusterJSONRequestBody(clusterInput), test.WithAuthToken(ctx))
+		_, err := client.PostClusterWithResponse(
+			ctx, openapi.PostClusterJSONRequestBody(clusterInput), test.WithAuthToken(ctx),
+		)
 		Expect(err).NotTo(HaveOccurred(), "Failed to create cluster %s", name)
 	}
 

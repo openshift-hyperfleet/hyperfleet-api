@@ -28,7 +28,9 @@ func TestClusterNodePoolsHandler_Get(t *testing.T) {
 		name               string
 		clusterID          string
 		nodePoolID         string
-		setupMocks         func(ctrl *gomock.Controller) (*services.MockClusterService, *services.MockNodePoolService, *services.MockGenericService)
+		setupMocks func(ctrl *gomock.Controller) (
+			*services.MockClusterService, *services.MockNodePoolService, *services.MockGenericService,
+		)
 		expectedStatusCode int
 		expectedError      bool
 	}{
@@ -36,7 +38,9 @@ func TestClusterNodePoolsHandler_Get(t *testing.T) {
 			name:       "Success - Get nodepool by cluster and nodepool ID",
 			clusterID:  clusterID,
 			nodePoolID: nodePoolID,
-			setupMocks: func(ctrl *gomock.Controller) (*services.MockClusterService, *services.MockNodePoolService, *services.MockGenericService) {
+			setupMocks: func(ctrl *gomock.Controller) (
+				*services.MockClusterService, *services.MockNodePoolService, *services.MockGenericService,
+			) {
 				mockClusterSvc := services.NewMockClusterService(ctrl)
 				mockNodePoolSvc := services.NewMockNodePoolService(ctrl)
 				mockGenericSvc := services.NewMockGenericService(ctrl)
@@ -75,7 +79,9 @@ func TestClusterNodePoolsHandler_Get(t *testing.T) {
 			name:       "Error - Cluster not found",
 			clusterID:  "non-existent",
 			nodePoolID: nodePoolID,
-			setupMocks: func(ctrl *gomock.Controller) (*services.MockClusterService, *services.MockNodePoolService, *services.MockGenericService) {
+			setupMocks: func(ctrl *gomock.Controller) (
+				*services.MockClusterService, *services.MockNodePoolService, *services.MockGenericService,
+			) {
 				mockClusterSvc := services.NewMockClusterService(ctrl)
 				mockNodePoolSvc := services.NewMockNodePoolService(ctrl)
 				mockGenericSvc := services.NewMockGenericService(ctrl)
@@ -91,7 +97,9 @@ func TestClusterNodePoolsHandler_Get(t *testing.T) {
 			name:       "Error - NodePool not found",
 			clusterID:  clusterID,
 			nodePoolID: "non-existent",
-			setupMocks: func(ctrl *gomock.Controller) (*services.MockClusterService, *services.MockNodePoolService, *services.MockGenericService) {
+			setupMocks: func(ctrl *gomock.Controller) (
+				*services.MockClusterService, *services.MockNodePoolService, *services.MockGenericService,
+			) {
 				mockClusterSvc := services.NewMockClusterService(ctrl)
 				mockNodePoolSvc := services.NewMockNodePoolService(ctrl)
 				mockGenericSvc := services.NewMockGenericService(ctrl)
@@ -116,7 +124,9 @@ func TestClusterNodePoolsHandler_Get(t *testing.T) {
 			name:       "Error - NodePool belongs to different cluster",
 			clusterID:  clusterID,
 			nodePoolID: nodePoolID,
-			setupMocks: func(ctrl *gomock.Controller) (*services.MockClusterService, *services.MockNodePoolService, *services.MockGenericService) {
+			setupMocks: func(ctrl *gomock.Controller) (
+				*services.MockClusterService, *services.MockNodePoolService, *services.MockGenericService,
+			) {
 				mockClusterSvc := services.NewMockClusterService(ctrl)
 				mockNodePoolSvc := services.NewMockNodePoolService(ctrl)
 				mockGenericSvc := services.NewMockGenericService(ctrl)
@@ -163,7 +173,8 @@ func TestClusterNodePoolsHandler_Get(t *testing.T) {
 			handler := NewClusterNodePoolsHandler(mockClusterSvc, mockNodePoolSvc, mockGenericSvc)
 
 			// Create request
-			req := httptest.NewRequest(http.MethodGet, "/api/hyperfleet/v1/clusters/"+tt.clusterID+"/nodepools/"+tt.nodePoolID, nil)
+			reqURL := "/api/hyperfleet/v1/clusters/" + tt.clusterID + "/nodepools/" + tt.nodePoolID
+			req := httptest.NewRequest(http.MethodGet, reqURL, nil)
 			req = mux.SetURLVars(req, map[string]string{
 				"id":          tt.clusterID,
 				"nodepool_id": tt.nodePoolID,
