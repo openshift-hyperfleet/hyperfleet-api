@@ -113,7 +113,9 @@ func runServe(cmd *cobra.Command, args []string) {
 	}
 
 	if tp != nil {
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), environments.Environment().Config.Health.ShutdownTimeout)
+		shutdownCtx, cancel := context.WithTimeout(
+			context.Background(), environments.Environment().Config.Health.ShutdownTimeout,
+		)
 		defer cancel()
 		if err := telemetry.Shutdown(shutdownCtx, tp); err != nil {
 			logger.WithError(ctx, err).Error("Failed to shutdown OpenTelemetry")

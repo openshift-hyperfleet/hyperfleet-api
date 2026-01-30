@@ -7,6 +7,10 @@ import (
 	"github.com/spf13/pflag"
 )
 
+const (
+	testLogLevelDebug = "debug"
+)
+
 // TestNewLoggingConfig_Defaults tests default configuration values
 func TestNewLoggingConfig_Defaults(t *testing.T) {
 	cfg := NewLoggingConfig()
@@ -66,9 +70,9 @@ func TestLoggingConfig_AddFlags(t *testing.T) {
 	}{
 		{
 			name: "custom values",
-			args: []string{"--log-level=debug", "--log-format=text", "--log-output=stderr"},
+			args: []string{"--log-level=" + testLogLevelDebug, "--log-format=text", "--log-output=stderr"},
 			expected: map[string]string{
-				"level":  "debug",
+				"level":  testLogLevelDebug,
 				"format": "text",
 				"output": "stderr",
 			},
@@ -116,13 +120,13 @@ func TestLoggingConfig_BindEnv(t *testing.T) {
 		{
 			name: "basic logging env vars",
 			envVars: map[string]string{
-				"LOG_LEVEL":  "debug",
+				"LOG_LEVEL":  testLogLevelDebug,
 				"LOG_FORMAT": "text",
 				"LOG_OUTPUT": "stderr",
 			},
 			validate: func(t *testing.T, cfg *LoggingConfig) {
-				if cfg.Level != "debug" {
-					t.Errorf("expected Level 'debug', got '%s'", cfg.Level)
+				if cfg.Level != testLogLevelDebug {
+					t.Errorf("expected Level %q, got '%s'", testLogLevelDebug, cfg.Level)
 				}
 				if cfg.Format != "text" {
 					t.Errorf("expected Format 'text', got '%s'", cfg.Format)
@@ -330,20 +334,20 @@ func TestLoggingConfig_FlagsOverrideEnv(t *testing.T) {
 	cfg.AddFlags(fs)
 
 	// Parse flags with different value
-	args := []string{"--log-level=debug"}
+	args := []string{"--log-level=" + testLogLevelDebug}
 	if err := fs.Parse(args); err != nil {
 		t.Fatalf("failed to parse flags: %v", err)
 	}
 
 	// Before BindEnv, should have flag value
-	if cfg.Level != "debug" {
-		t.Errorf("expected Level 'debug' from flag, got '%s'", cfg.Level)
+	if cfg.Level != testLogLevelDebug {
+		t.Errorf("expected Level %q from flag, got '%s'", testLogLevelDebug, cfg.Level)
 	}
 
 	// After BindEnv, flag should take priority over env var
 	cfg.BindEnv(fs)
-	if cfg.Level != "debug" {
-		t.Errorf("expected Level 'debug' (flag > env), got '%s'", cfg.Level)
+	if cfg.Level != testLogLevelDebug {
+		t.Errorf("expected Level %q (flag > env), got '%s'", testLogLevelDebug, cfg.Level)
 	}
 }
 
@@ -413,15 +417,15 @@ func TestLoggingConfig_PriorityMixed(t *testing.T) {
 	cfg.AddFlags(fs)
 
 	// Only set flag for log-level
-	if err := fs.Parse([]string{"--log-level=debug"}); err != nil {
+	if err := fs.Parse([]string{"--log-level=" + testLogLevelDebug}); err != nil {
 		t.Fatalf("failed to parse flags: %v", err)
 	}
 
 	cfg.BindEnv(fs)
 
 	// log-level: flag wins over env
-	if cfg.Level != "debug" {
-		t.Errorf("expected Level 'debug' (flag > env), got '%s'", cfg.Level)
+	if cfg.Level != testLogLevelDebug {
+		t.Errorf("expected Level %q (flag > env), got '%s'", testLogLevelDebug, cfg.Level)
 	}
 	// log-format: env wins over default
 	if cfg.Format != "text" {
@@ -459,7 +463,7 @@ func TestLoggingConfig_OTelMaskingAlwaysApply(t *testing.T) {
 	cfg.AddFlags(fs)
 
 	// Parse with some other flag
-	if err := fs.Parse([]string{"--log-level=debug"}); err != nil {
+	if err := fs.Parse([]string{"--log-level=" + testLogLevelDebug}); err != nil {
 		t.Fatalf("failed to parse flags: %v", err)
 	}
 

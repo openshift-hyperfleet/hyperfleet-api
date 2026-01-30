@@ -95,7 +95,9 @@ func TestHyperFleetTextHandler_SpecialCharacters(t *testing.T) {
 	}
 
 	// Value with internal quotes should be escaped and quoted
-	if !strings.Contains(output, `with_quotes="contains \"quotes\""`) && !strings.Contains(output, `with_quotes="contains \\\"quotes\\\""`) {
+	hasQuotes := strings.Contains(output, `with_quotes="contains \"quotes\""`) ||
+		strings.Contains(output, `with_quotes="contains \\\"quotes\\\""`)
+	if !hasQuotes {
 		t.Errorf("expected escaped quotes, got: %s", output)
 	}
 }
@@ -109,10 +111,26 @@ func TestHyperFleetTextHandler_LogLevels(t *testing.T) {
 		expectedLevel string
 		shouldLog     bool
 	}{
-		{"DEBUG enabled", slog.LevelDebug, func(l *slog.Logger, ctx context.Context, msg string) { l.DebugContext(ctx, msg) }, "DEBUG", true},
-		{"INFO enabled", slog.LevelInfo, func(l *slog.Logger, ctx context.Context, msg string) { l.InfoContext(ctx, msg) }, "INFO", true},
-		{"WARN enabled", slog.LevelWarn, func(l *slog.Logger, ctx context.Context, msg string) { l.WarnContext(ctx, msg) }, "WARN", true},
-		{"ERROR enabled", slog.LevelError, func(l *slog.Logger, ctx context.Context, msg string) { l.ErrorContext(ctx, msg) }, "ERROR", true},
+		{
+			"DEBUG enabled", slog.LevelDebug,
+			func(l *slog.Logger, ctx context.Context, msg string) { l.DebugContext(ctx, msg) },
+			"DEBUG", true,
+		},
+		{
+			"INFO enabled", slog.LevelInfo,
+			func(l *slog.Logger, ctx context.Context, msg string) { l.InfoContext(ctx, msg) },
+			"INFO", true,
+		},
+		{
+			"WARN enabled", slog.LevelWarn,
+			func(l *slog.Logger, ctx context.Context, msg string) { l.WarnContext(ctx, msg) },
+			"WARN", true,
+		},
+		{
+			"ERROR enabled", slog.LevelError,
+			func(l *slog.Logger, ctx context.Context, msg string) { l.ErrorContext(ctx, msg) },
+			"ERROR", true,
+		},
 	}
 
 	for _, tt := range tests {

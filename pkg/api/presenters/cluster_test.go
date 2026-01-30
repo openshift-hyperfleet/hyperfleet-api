@@ -12,6 +12,10 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/util"
 )
 
+const (
+	testConditionReady = "Ready"
+)
+
 // Helper function to create test ClusterCreateRequest
 func createTestClusterRequest() *openapi.ClusterCreateRequest {
 	labels := map[string]string{"env": "test"}
@@ -157,7 +161,7 @@ func TestPresentCluster_Complete(t *testing.T) {
 	RegisterTestingT(t)
 
 	now := time.Now()
-	reason := "Ready"
+	reason := testConditionReady
 	message := "Cluster is ready"
 
 	// Create domain ResourceCondition
@@ -218,7 +222,7 @@ func TestPresentCluster_Complete(t *testing.T) {
 	Expect(len(result.Status.Conditions)).To(Equal(1))
 	Expect(result.Status.Conditions[0].Type).To(Equal("Available"))
 	Expect(result.Status.Conditions[0].Status).To(Equal(openapi.ResourceConditionStatusTrue))
-	Expect(*result.Status.Conditions[0].Reason).To(Equal("Ready"))
+	Expect(*result.Status.Conditions[0].Reason).To(Equal(testConditionReady))
 
 	// Verify timestamps
 	Expect(result.CreatedTime.Unix()).To(Equal(now.Unix()))
@@ -300,7 +304,7 @@ func TestPresentCluster_StatusConditionsConversion(t *testing.T) {
 	// First condition
 	Expect(result.Status.Conditions[0].Type).To(Equal("Available"))
 	Expect(result.Status.Conditions[0].Status).To(Equal(openapi.ResourceConditionStatusTrue))
-	Expect(*result.Status.Conditions[0].Reason).To(Equal("Ready"))
+	Expect(*result.Status.Conditions[0].Reason).To(Equal(testConditionReady))
 	Expect(*result.Status.Conditions[0].Message).To(Equal("All systems operational"))
 
 	// Second condition

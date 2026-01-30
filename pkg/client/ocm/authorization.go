@@ -8,15 +8,21 @@ import (
 )
 
 type Authorization interface {
-	SelfAccessReview(ctx context.Context, action, resourceType, organizationID, subscriptionID, clusterID string) (allowed bool, err error)
-	AccessReview(ctx context.Context, username, action, resourceType, organizationID, subscriptionID, clusterID string) (allowed bool, err error)
+	SelfAccessReview(
+		ctx context.Context, action, resourceType, organizationID, subscriptionID, clusterID string,
+	) (allowed bool, err error)
+	AccessReview(
+		ctx context.Context, username, action, resourceType, organizationID, subscriptionID, clusterID string,
+	) (allowed bool, err error)
 }
 
 type authorization service
 
 var _ Authorization = &authorization{}
 
-func (a authorization) SelfAccessReview(ctx context.Context, action, resourceType, organizationID, subscriptionID, clusterID string) (allowed bool, err error) {
+func (a authorization) SelfAccessReview(
+	ctx context.Context, action, resourceType, organizationID, subscriptionID, clusterID string,
+) (allowed bool, err error) {
 	con := a.client.connection
 	selfAccessReview := con.Authorizations().V1().SelfAccessReview()
 
@@ -45,7 +51,9 @@ func (a authorization) SelfAccessReview(ctx context.Context, action, resourceTyp
 	return response.Allowed(), nil
 }
 
-func (a authorization) AccessReview(ctx context.Context, username, action, resourceType, organizationID, subscriptionID, clusterID string) (allowed bool, err error) {
+func (a authorization) AccessReview(
+	ctx context.Context, username, action, resourceType, organizationID, subscriptionID, clusterID string,
+) (allowed bool, err error) {
 	con := a.client.connection
 	accessReview := con.Authorizations().V1().AccessReview()
 

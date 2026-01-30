@@ -14,7 +14,12 @@ const (
 	certEndpoint = "/auth/realms/rhd/protocol/openid-connect/certs"
 )
 
-func NewJWKCertServerMock(t *testing.T, pubKey crypto.PublicKey, jwkKID string, jwkAlg string) (url string, teardown func() error) {
+func NewJWKCertServerMock(
+	t *testing.T,
+	pubKey crypto.PublicKey,
+	jwkKID string,
+	jwkAlg string,
+) (url string, teardown func() error) {
 	certHandler := http.NewServeMux()
 	certHandler.HandleFunc(certEndpoint,
 		func(w http.ResponseWriter, r *http.Request) {

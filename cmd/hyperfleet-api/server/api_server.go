@@ -93,8 +93,9 @@ func NewAPIServer() Server {
 	mainHandler = removeTrailingSlash(mainHandler)
 
 	s.httpServer = &http.Server{
-		Addr:    env().Config.Server.BindAddress,
-		Handler: mainHandler,
+		Addr:              env().Config.Server.BindAddress,
+		Handler:           mainHandler,
+		ReadHeaderTimeout: 10 * time.Second,
 	}
 
 	return s
@@ -136,7 +137,8 @@ func (s apiServer) Listen() (listener net.Listener, err error) {
 	return net.Listen("tcp", env().Config.Server.BindAddress)
 }
 
-// Start listening on the configured port and start the server. This is a convenience wrapper for Listen() and Serve(listener Listener)
+// Start listening on the configured port and start the server.
+// This is a convenience wrapper for Listen() and Serve(listener Listener)
 func (s apiServer) Start() {
 	ctx := context.Background()
 	listener, err := s.Listen()

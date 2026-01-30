@@ -52,7 +52,9 @@ func addNodePools() *gormigrate.Migration {
 			}
 
 			// Create index on deleted_at for soft deletes
-			if err := tx.Exec("CREATE INDEX IF NOT EXISTS idx_node_pools_deleted_at ON node_pools(deleted_at);").Error; err != nil {
+			createIdxSQL := "CREATE INDEX IF NOT EXISTS idx_node_pools_deleted_at " +
+				"ON node_pools(deleted_at);"
+			if err := tx.Exec(createIdxSQL).Error; err != nil {
 				return err
 			}
 

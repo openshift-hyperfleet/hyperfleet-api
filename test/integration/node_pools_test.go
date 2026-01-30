@@ -66,7 +66,9 @@ func TestNodePoolPost(t *testing.T) {
 	}
 
 	// 201 Created
-	resp, err := client.CreateNodePoolWithResponse(ctx, cluster.ID, openapi.CreateNodePoolJSONRequestBody(nodePoolInput), test.WithAuthToken(ctx))
+	resp, err := client.CreateNodePoolWithResponse(
+		ctx, cluster.ID, openapi.CreateNodePoolJSONRequestBody(nodePoolInput), test.WithAuthToken(ctx),
+	)
 	Expect(err).NotTo(HaveOccurred(), "Error posting object:  %v", err)
 	Expect(resp.StatusCode()).To(Equal(http.StatusCreated))
 
@@ -74,7 +76,8 @@ func TestNodePoolPost(t *testing.T) {
 	Expect(nodePoolOutput).NotTo(BeNil())
 	Expect(*nodePoolOutput.Id).NotTo(BeEmpty(), "Expected ID assigned on creation")
 	Expect(*nodePoolOutput.Kind).To(Equal("NodePool"))
-	Expect(*nodePoolOutput.Href).To(Equal(fmt.Sprintf("/api/hyperfleet/v1/clusters/%s/nodepools/%s", cluster.ID, *nodePoolOutput.Id)))
+	Expect(*nodePoolOutput.Href).
+		To(Equal(fmt.Sprintf("/api/hyperfleet/v1/clusters/%s/nodepools/%s", cluster.ID, *nodePoolOutput.Id)))
 
 	// 400 bad request. posting junk json is one way to trigger 400.
 	jwtToken := test.GetAccessTokenFromContext(ctx)
@@ -194,7 +197,9 @@ func TestGetNodePoolByClusterIdAndNodePoolId(t *testing.T) {
 		Spec: map[string]interface{}{"instance_type": "m5.large", "replicas": 2},
 	}
 
-	createResp, err := client.CreateNodePoolWithResponse(ctx, cluster.ID, openapi.CreateNodePoolJSONRequestBody(nodePoolInput), test.WithAuthToken(ctx))
+	createResp, err := client.CreateNodePoolWithResponse(
+		ctx, cluster.ID, openapi.CreateNodePoolJSONRequestBody(nodePoolInput), test.WithAuthToken(ctx),
+	)
 	Expect(err).NotTo(HaveOccurred(), "Error creating nodepool: %v", err)
 	Expect(createResp.StatusCode()).To(Equal(http.StatusCreated))
 	Expect(*createResp.JSON201.Id).NotTo(BeEmpty())
@@ -214,20 +219,27 @@ func TestGetNodePoolByClusterIdAndNodePoolId(t *testing.T) {
 	// Test 2: Try to get with non-existent nodepool ID (404)
 	notFoundResp, err := client.GetNodePoolByIdWithResponse(ctx, cluster.ID, "non-existent-id", test.WithAuthToken(ctx))
 	Expect(err).NotTo(HaveOccurred())
-	Expect(notFoundResp.StatusCode()).To(Equal(http.StatusNotFound), "Expected 404 for non-existent nodepool")
+	Expect(notFoundResp.StatusCode()).
+		To(Equal(http.StatusNotFound), "Expected 404 for non-existent nodepool")
 
 	// Test 3: Try to get with non-existent cluster ID (404)
-	notFoundResp, err = client.GetNodePoolByIdWithResponse(ctx, "non-existent-cluster", nodePoolID, test.WithAuthToken(ctx))
+	notFoundResp, err = client.GetNodePoolByIdWithResponse(
+		ctx, "non-existent-cluster", nodePoolID, test.WithAuthToken(ctx),
+	)
 	Expect(err).NotTo(HaveOccurred())
-	Expect(notFoundResp.StatusCode()).To(Equal(http.StatusNotFound), "Expected 404 for non-existent cluster")
+	Expect(notFoundResp.StatusCode()).
+		To(Equal(http.StatusNotFound), "Expected 404 for non-existent cluster")
 
 	// Test 4: Create another cluster and verify that nodepool is not accessible from wrong cluster
 	cluster2, err := h.Factories.NewClusters(h.NewID())
 	Expect(err).NotTo(HaveOccurred())
 
-	wrongClusterResp, err := client.GetNodePoolByIdWithResponse(ctx, cluster2.ID, nodePoolID, test.WithAuthToken(ctx))
+	wrongClusterResp, err := client.GetNodePoolByIdWithResponse(
+		ctx, cluster2.ID, nodePoolID, test.WithAuthToken(ctx),
+	)
 	Expect(err).NotTo(HaveOccurred())
-	Expect(wrongClusterResp.StatusCode()).To(Equal(http.StatusNotFound), "Expected 404 when accessing nodepool from wrong cluster")
+	Expect(wrongClusterResp.StatusCode()).To(Equal(http.StatusNotFound),
+		"Expected 404 when accessing nodepool from wrong cluster")
 }
 
 // TestNodePoolPost_EmptyKind tests that empty kind field returns 400

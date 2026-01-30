@@ -16,7 +16,10 @@ type clusterStatusHandler struct {
 	clusterService       services.ClusterService
 }
 
-func NewClusterStatusHandler(adapterStatusService services.AdapterStatusService, clusterService services.ClusterService) *clusterStatusHandler {
+func NewClusterStatusHandler(
+	adapterStatusService services.AdapterStatusService,
+	clusterService services.ClusterService,
+) *clusterStatusHandler {
 	return &clusterStatusHandler{
 		adapterStatusService: adapterStatusService,
 		clusterService:       clusterService,

@@ -11,7 +11,7 @@ import (
 const defaultRollbackPolicy = false
 
 // newTransaction constructs a new Transaction object.
-func newTransaction(ctx context.Context, connection SessionFactory) (*transaction.Transaction, error) {
+func newTransaction(_ context.Context, connection SessionFactory) (*transaction.Transaction, error) {
 	if connection == nil {
 		// This happens in non-integration tests
 		return nil, nil

@@ -96,7 +96,10 @@ func TestMaskHeaders(t *testing.T) {
 				if resultValues, ok := result[key]; !ok {
 					t.Errorf("expected header %s not found in result", key)
 				} else if len(resultValues) != len(expectedValues) {
-					t.Errorf("header %s length = %d, want %d (values: %v vs %v)", key, len(resultValues), len(expectedValues), resultValues, expectedValues)
+					t.Errorf(
+						"header %s length = %d, want %d (values: %v vs %v)",
+						key, len(resultValues), len(expectedValues), resultValues, expectedValues,
+					)
 				} else {
 					// Compare all values in the slice
 					for i := range expectedValues {
@@ -158,7 +161,8 @@ func TestMaskBody(t *testing.T) {
 			name:    "mask multiple sensitive fields",
 			enabled: true,
 			body:    `{"password":"pass","secret":"sec","token":"tok","api_key":"key","normal":"value"}`,
-			expected: `{"api_key":"***REDACTED***","normal":"value","password":"***REDACTED***","secret":"***REDACTED***","token":"***REDACTED***"}`,
+			expected: `{"api_key":"***REDACTED***","normal":"value",` +
+				`"password":"***REDACTED***","secret":"***REDACTED***","token":"***REDACTED***"}`,
 		},
 		{
 			name:    "case insensitive field matching",
@@ -241,7 +245,8 @@ func TestMaskBody(t *testing.T) {
 			result := m.MaskBody([]byte(tt.body))
 
 			// For JSON objects, compare as maps to handle key ordering
-			if tt.body != "" && tt.body[0] == '{' {
+			switch {
+			case tt.body != "" && tt.body[0] == '{':
 				var resultMap, expectedMap map[string]interface{}
 				if err := json.Unmarshal(result, &resultMap); err != nil {
 					t.Fatalf("failed to unmarshal result: %v", err)
@@ -254,7 +259,7 @@ func TestMaskBody(t *testing.T) {
 				if !deepEqual(resultMap, expectedMap) {
 					t.Errorf("MaskBody() = %s, want %s", result, tt.expected)
 				}
-			} else if tt.body != "" && tt.body[0] == '[' {
+			case tt.body != "" && tt.body[0] == '[':
 				// For JSON arrays, compare as slices
 				var resultArray, expectedArray []interface{}
 				if err := json.Unmarshal(result, &resultArray); err != nil {
@@ -268,7 +273,7 @@ func TestMaskBody(t *testing.T) {
 				if !deepEqualSlice(resultArray, expectedArray) {
 					t.Errorf("MaskBody() = %s, want %s", result, tt.expected)
 				}
-			} else {
+			default:
 				// For non-JSON, compare as strings
 				if string(result) != tt.expected {
 					t.Errorf("MaskBody() = %s, want %s", result, tt.expected)

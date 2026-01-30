@@ -32,14 +32,20 @@ type NodePoolService interface {
 	// ProcessAdapterStatus handles the business logic for adapter status:
 	// - If Available condition is "Unknown": returns (nil, nil) indicating no-op
 	// - Otherwise: upserts the status and triggers aggregation
-	ProcessAdapterStatus(ctx context.Context, nodePoolID string, adapterStatus *api.AdapterStatus) (*api.AdapterStatus, *errors.ServiceError)
+	ProcessAdapterStatus(
+		ctx context.Context, nodePoolID string, adapterStatus *api.AdapterStatus,
+	) (*api.AdapterStatus, *errors.ServiceError)
 
 	// idempotent functions for the control plane, but can also be called synchronously by any actor
 	OnUpsert(ctx context.Context, id string) error
 	OnDelete(ctx context.Context, id string) error
 }
 
-func NewNodePoolService(nodePoolDao dao.NodePoolDao, adapterStatusDao dao.AdapterStatusDao, adapterConfig *config.AdapterRequirementsConfig) NodePoolService {
+func NewNodePoolService(
+	nodePoolDao dao.NodePoolDao,
+	adapterStatusDao dao.AdapterStatusDao,
+	adapterConfig *config.AdapterRequirementsConfig,
+) NodePoolService {
 	return &sqlNodePoolService{
 		nodePoolDao:      nodePoolDao,
 		adapterStatusDao: adapterStatusDao,
@@ -82,7 +88,9 @@ func (s *sqlNodePoolService) Create(ctx context.Context, nodePool *api.NodePool)
 	return updatedNodePool, nil
 }
 
-func (s *sqlNodePoolService) Replace(ctx context.Context, nodePool *api.NodePool) (*api.NodePool, *errors.ServiceError) {
+func (s *sqlNodePoolService) Replace(
+	ctx context.Context, nodePool *api.NodePool,
+) (*api.NodePool, *errors.ServiceError) {
 	nodePool, err := s.nodePoolDao.Replace(ctx, nodePool)
 	if err != nil {
 		return nil, handleUpdateError("NodePool", err)
@@ -123,7 +131,8 @@ func (s *sqlNodePoolService) OnUpsert(ctx context.Context, id string) error {
 		return err
 	}
 
-	logger.With(ctx, logger.FieldNodePoolID, nodePool.ID).Info("Perform idempotent operations on node pool")
+	logger.With(ctx, logger.FieldNodePoolID, nodePool.ID).
+		Info("Perform idempotent operations on node pool")
 
 	return nil
 }
@@ -134,7 +143,9 @@ func (s *sqlNodePoolService) OnDelete(ctx context.Context, id string) error {
 }
 
 // UpdateNodePoolStatusFromAdapters aggregates adapter statuses into nodepool status
-func (s *sqlNodePoolService) UpdateNodePoolStatusFromAdapters(ctx context.Context, nodePoolID string) (*api.NodePool, *errors.ServiceError) {
+func (s *sqlNodePoolService) UpdateNodePoolStatusFromAdapters(
+	ctx context.Context, nodePoolID string,
+) (*api.NodePool, *errors.ServiceError) {
 	// Get the nodepool
 	nodePool, err := s.nodePoolDao.Get(ctx, nodePoolID)
 	if err != nil {
@@ -162,7 +173,7 @@ func (s *sqlNodePoolService) UpdateNodePoolStatusFromAdapters(ctx context.Contex
 		// Find the "Available" condition
 		var availableCondition *api.AdapterCondition
 		for i := range conditions {
-			if conditions[i].Type == "Available" {
+			if conditions[i].Type == conditionTypeAvailable {
 				availableCondition = &conditions[i]
 				break
 			}
@@ -229,8 +240,12 @@ func (s *sqlNodePoolService) UpdateNodePoolStatusFromAdapters(ctx context.Contex
 // ProcessAdapterStatus handles the business logic for adapter status:
 // - If Available condition is "Unknown": returns (nil, nil) indicating no-op
 // - Otherwise: upserts the status and triggers aggregation
-func (s *sqlNodePoolService) ProcessAdapterStatus(ctx context.Context, nodePoolID string, adapterStatus *api.AdapterStatus) (*api.AdapterStatus, *errors.ServiceError) {
-	existingStatus, findErr := s.adapterStatusDao.FindByResourceAndAdapter(ctx, "NodePool", nodePoolID, adapterStatus.Adapter)
+func (s *sqlNodePoolService) ProcessAdapterStatus(
+	ctx context.Context, nodePoolID string, adapterStatus *api.AdapterStatus,
+) (*api.AdapterStatus, *errors.ServiceError) {
+	existingStatus, findErr := s.adapterStatusDao.FindByResourceAndAdapter(
+		ctx, "NodePool", nodePoolID, adapterStatus.Adapter,
+	)
 	if findErr != nil && !stderrors.Is(findErr, gorm.ErrRecordNotFound) {
 		if !strings.Contains(findErr.Error(), errors.CodeNotFoundGeneric) {
 			return nil, errors.GeneralError("Failed to get adapter status: %s", findErr)
@@ -252,7 +267,7 @@ func (s *sqlNodePoolService) ProcessAdapterStatus(ctx context.Context, nodePoolI
 	// Find the "Available" condition
 	hasAvailableCondition := false
 	for _, cond := range conditions {
-		if cond.Type != "Available" {
+		if cond.Type != conditionTypeAvailable {
 			continue
 		}
 
@@ -273,9 +288,12 @@ func (s *sqlNodePoolService) ProcessAdapterStatus(ctx context.Context, nodePoolI
 	// If the adapter status doesn't include Available, saving it should not overwrite
 	// the nodepool's synthetic Available/Ready conditions.
 	if hasAvailableCondition {
-		if _, aggregateErr := s.UpdateNodePoolStatusFromAdapters(ctx, nodePoolID); aggregateErr != nil {
+		if _, aggregateErr := s.UpdateNodePoolStatusFromAdapters(
+			ctx, nodePoolID,
+		); aggregateErr != nil {
 			// Log error but don't fail the request - the status will be computed on next update
-			logger.With(ctx, logger.FieldNodePoolID, nodePoolID).WithError(aggregateErr).Warn("Failed to aggregate nodepool status")
+			logger.With(ctx, logger.FieldNodePoolID, nodePoolID).
+				WithError(aggregateErr).Warn("Failed to aggregate nodepool status")
 		}
 	}
 

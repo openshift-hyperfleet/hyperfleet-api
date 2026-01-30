@@ -30,7 +30,9 @@ var (
 	emailPattern      = regexp.MustCompile(`[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}`)
 	creditCardPattern = regexp.MustCompile(`\b\d{4}[\s\-]?\d{4}[\s\-]?\d{4}[\s\-]?\d{4}\b`)
 	// Matches common API key/token formats: Bearer tokens, API keys, etc.
-	apiKeyPattern = regexp.MustCompile(`(?i)(bearer\s+|api[_\-]?key[\s:=]+|token[\s:=]+|secret[\s:=]+|password[\s:=]+)[a-zA-Z0-9\-_\.+/=]+`)
+	apiKeyPattern = regexp.MustCompile(
+		`(?i)(bearer\s+|api[_\-]?key[\s:=]+|token[\s:=]+|secret[\s:=]+|password[\s:=]+)[a-zA-Z0-9\-_\.+/=]+`,
+	)
 	// Matches form-encoded sensitive key-values
 	formEncodedPattern = regexp.MustCompile(`(?i)(password|token|secret|api[_\-]?key)=[^&\s]+`)
 )
@@ -115,7 +117,8 @@ func (m *MaskingMiddleware) MaskBody(body []byte) []byte {
 	var data interface{}
 	if err := json.Unmarshal(body, &data); err != nil {
 		// JSON parsing failed - use text-based fallback masking to prevent leakage
-		logger.WithError(context.Background(), err).Warn("JSON parsing failed in MaskBody, applying text-based fallback masking")
+		logger.WithError(context.Background(), err).
+			Warn("JSON parsing failed in MaskBody, applying text-based fallback masking")
 		return m.maskTextFallback(body)
 	}
 
@@ -124,7 +127,8 @@ func (m *MaskingMiddleware) MaskBody(body []byte) []byte {
 	masked, err := json.Marshal(data)
 	if err != nil {
 		// JSON marshaling failed - use text-based fallback masking to prevent leakage
-		logger.WithError(context.Background(), err).Warn("JSON marshaling failed in MaskBody, applying text-based fallback masking")
+		logger.WithError(context.Background(), err).
+			Warn("JSON marshaling failed in MaskBody, applying text-based fallback masking")
 		return m.maskTextFallback(body)
 	}
 	return masked

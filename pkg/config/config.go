@@ -117,7 +117,7 @@ func ReadFile(file string) (string, error) {
 	}
 
 	// Read the file
-	buf, err := os.ReadFile(absFilePath)
+	buf, err := os.ReadFile(absFilePath) //nolint:gosec // File path is controlled by config file settings
 	if err != nil {
 		return "", err
 	}

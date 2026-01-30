@@ -47,13 +47,19 @@ func NewOCMAuthzValidatorMockClient() (*OCMAuthzValidatorMock, *ocm.Client) {
 	return authz, client
 }
 
-func (m *OCMAuthzValidatorMock) SelfAccessReview(ctx context.Context, action, resourceType, organizationID, subscriptionID, clusterID string) (allowed bool, err error) {
+func (m *OCMAuthzValidatorMock) SelfAccessReview(
+	ctx context.Context,
+	action, resourceType, organizationID, subscriptionID, clusterID string,
+) (allowed bool, err error) {
 	m.Action = action
 	m.ResourceType = resourceType
 	return true, nil
 }
 
-func (m *OCMAuthzValidatorMock) AccessReview(ctx context.Context, username, action, resourceType, organizationID, subscriptionID, clusterID string) (allowed bool, err error) {
+func (m *OCMAuthzValidatorMock) AccessReview(
+	ctx context.Context,
+	username, action, resourceType, organizationID, subscriptionID, clusterID string,
+) (allowed bool, err error) {
 	m.Action = action
 	m.ResourceType = resourceType
 	return true, nil

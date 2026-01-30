@@ -59,7 +59,7 @@ func TestNewSchemaValidator(t *testing.T) {
 	// Create temporary schema file
 	tmpDir := t.TempDir()
 	schemaPath := filepath.Join(tmpDir, "test-schema.yaml")
-	err := os.WriteFile(schemaPath, []byte(testSchema), 0644)
+	err := os.WriteFile(schemaPath, []byte(testSchema), 0600)
 	Expect(err).To(BeNil())
 
 	// Test successful schema loading
@@ -103,7 +103,7 @@ components:
 
 	tmpDir := t.TempDir()
 	schemaPath := filepath.Join(tmpDir, "invalid-schema.yaml")
-	err := os.WriteFile(schemaPath, []byte(invalidSchema), 0644)
+	err := os.WriteFile(schemaPath, []byte(invalidSchema), 0600)
 	Expect(err).To(BeNil())
 
 	// Should fail because ClusterSpec is missing
@@ -329,7 +329,7 @@ func TestValidateNodePoolSpec_EmptyMachineType(t *testing.T) {
 func setupTestValidator(t *testing.T) *SchemaValidator {
 	tmpDir := t.TempDir()
 	schemaPath := filepath.Join(tmpDir, "test-schema.yaml")
-	err := os.WriteFile(schemaPath, []byte(testSchema), 0644)
+	err := os.WriteFile(schemaPath, []byte(testSchema), 0600)
 	if err != nil {
 		t.Fatalf("Failed to create test schema: %v", err)
 	}

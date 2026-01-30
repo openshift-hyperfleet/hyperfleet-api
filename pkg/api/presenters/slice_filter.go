@@ -103,7 +103,8 @@ func validate(model interface{}, in map[string]bool, prefix string) *errors.Serv
 		}
 		field := reflectValue.Field(i).Interface()
 		name := strings.Split(tag, ",")[0]
-		if kind == reflect.Struct {
+		switch kind { //nolint:exhaustive // Only Struct and Slice need special handling, rest handled by default
+		case reflect.Struct:
 			if t.Type == reflect.TypeOf(&time.Time{}) {
 				delete(in, name)
 			} else {
@@ -116,12 +117,12 @@ func validate(model interface{}, in map[string]bool, prefix string) *errors.Serv
 					}
 				}
 			}
-		} else if t.Type.Kind() == reflect.Slice {
+		case reflect.Slice:
 			// TODO: We don't support Slices' validation :(
 			in = removeStar(in, name)
 			continue
-			//_ = validate(slice, in, name)
-		} else {
+			// _ = validate(slice, in, name)
+		default:
 			prefixedName := name
 			if prefix != "" {
 				prefixedName = fmt.Sprintf("%s.%s", prefix, name)
@@ -188,7 +189,8 @@ func structToMap(item interface{}, in map[string]bool, prefix string) map[string
 		}
 		field := reflectValue.Field(i).Interface()
 		name := strings.Split(tag, ",")[0]
-		if kind == reflect.Struct {
+		switch kind { //nolint:exhaustive // Only Struct and Slice need special handling, rest handled by default
+		case reflect.Struct:
 			if t.Type == reflect.TypeOf(&time.Time{}) {
 				if _, ok := in[name]; ok {
 					if timePtr, ok := field.(*time.Time); ok && timePtr != nil {
@@ -205,7 +207,7 @@ func structToMap(item interface{}, in map[string]bool, prefix string) map[string
 					res[name] = subStruct
 				}
 			}
-		} else if kind == reflect.Slice {
+		case reflect.Slice:
 			s := reflect.ValueOf(field)
 			if s.Len() > 0 {
 				result := make([]interface{}, 0, s.Len())
@@ -220,7 +222,7 @@ func structToMap(item interface{}, in map[string]bool, prefix string) map[string
 					res[name] = result
 				}
 			}
-		} else {
+		default:
 			prefixedName := name
 			if prefix != "" {
 				prefixedName = fmt.Sprintf("%s.%s", prefix, name)

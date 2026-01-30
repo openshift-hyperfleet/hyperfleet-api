@@ -37,7 +37,8 @@ func TestMain(m *testing.M) {
 
 			// Verify the schema file exists before setting the env var
 			if _, err := os.Stat(schemaPath); err != nil {
-				logger.With(ctx, logger.FieldSchemaPath, schemaPath).WithError(err).Warn("Schema file not found, skipping OPENAPI_SCHEMA_PATH setup")
+				logger.With(ctx, logger.FieldSchemaPath, schemaPath).WithError(err).
+				Warn("Schema file not found, skipping OPENAPI_SCHEMA_PATH setup")
 			} else {
 				_ = os.Setenv("OPENAPI_SCHEMA_PATH", schemaPath)
 				logger.With(ctx, logger.FieldSchemaPath, schemaPath).Info("Set OPENAPI_SCHEMA_PATH for integration tests")

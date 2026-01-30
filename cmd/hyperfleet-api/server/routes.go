@@ -23,7 +23,12 @@ type ServicesInterface interface {
 	GetService(name string) interface{}
 }
 
-type RouteRegistrationFunc func(apiV1Router *mux.Router, services ServicesInterface, authMiddleware auth.JWTMiddleware, authzMiddleware auth.AuthorizationMiddleware)
+type RouteRegistrationFunc func(
+	apiV1Router *mux.Router,
+	services ServicesInterface,
+	authMiddleware auth.JWTMiddleware,
+	authzMiddleware auth.AuthorizationMiddleware,
+)
 
 var routeRegistry = make(map[string]RouteRegistrationFunc)
 
@@ -31,7 +36,12 @@ func RegisterRoutes(name string, registrationFunc RouteRegistrationFunc) {
 	routeRegistry[name] = registrationFunc
 }
 
-func LoadDiscoveredRoutes(apiV1Router *mux.Router, services ServicesInterface, authMiddleware auth.JWTMiddleware, authzMiddleware auth.AuthorizationMiddleware) {
+func LoadDiscoveredRoutes(
+	apiV1Router *mux.Router,
+	services ServicesInterface,
+	authMiddleware auth.JWTMiddleware,
+	authzMiddleware auth.AuthorizationMiddleware,
+) {
 	for name, registrationFunc := range routeRegistry {
 		registrationFunc(apiV1Router, services, authMiddleware, authzMiddleware)
 		_ = name // prevent unused variable warning

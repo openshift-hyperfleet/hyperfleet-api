@@ -47,18 +47,24 @@ func addAdapterStatus() *gormigrate.Migration {
 			}
 
 			// Create index on deleted_at for soft deletes
-			if err := tx.Exec("CREATE INDEX IF NOT EXISTS idx_adapter_statuses_deleted_at ON adapter_statuses(deleted_at);").Error; err != nil {
+			createIdxDeletedSQL := "CREATE INDEX IF NOT EXISTS idx_adapter_statuses_deleted_at " +
+				"ON adapter_statuses(deleted_at);"
+			if err := tx.Exec(createIdxDeletedSQL).Error; err != nil {
 				return err
 			}
 
 			// Create composite index on resource_type and resource_id for lookups
-			if err := tx.Exec("CREATE INDEX IF NOT EXISTS idx_adapter_statuses_resource ON adapter_statuses(resource_type, resource_id);").Error; err != nil {
+			createIdxResourceSQL := "CREATE INDEX IF NOT EXISTS idx_adapter_statuses_resource " +
+				"ON adapter_statuses(resource_type, resource_id);"
+			if err := tx.Exec(createIdxResourceSQL).Error; err != nil {
 				return err
 			}
 
 			// Create unique index on resource_type, resource_id, and adapter
 			// This ensures one adapter status per resource per adapter
-			if err := tx.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_adapter_statuses_unique ON adapter_statuses(resource_type, resource_id, adapter) WHERE deleted_at IS NULL;").Error; err != nil {
+			createIdxUniqueSQL := "CREATE UNIQUE INDEX IF NOT EXISTS idx_adapter_statuses_unique " +
+				"ON adapter_statuses(resource_type, resource_id, adapter) WHERE deleted_at IS NULL;"
+			if err := tx.Exec(createIdxUniqueSQL).Error; err != nil {
 				return err
 			}
 

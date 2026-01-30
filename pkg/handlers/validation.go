@@ -44,6 +44,8 @@ func validateEmpty(i interface{}, fieldName string, field string) validate {
 }
 
 // validateName validates that a name field matches the pattern ^[a-z0-9-]+$ and length constraints
+//
+//nolint:unparam // fieldName is kept as parameter for flexibility even though currently only "Name" is used
 func validateName(i interface{}, fieldName string, field string, minLen, maxLen int) validate {
 	return func() *errors.ServiceError {
 		value := reflect.ValueOf(i).Elem().FieldByName(fieldName)
@@ -73,7 +75,10 @@ func validateName(i interface{}, fieldName string, field string, minLen, maxLen 
 
 		// Check pattern: lowercase alphanumeric and hyphens only
 		if !namePattern.MatchString(name) {
-			return errors.Validation("%s must start and end with lowercase letter or number, and contain only lowercase letters, numbers, and hyphens", field)
+			return errors.Validation(
+				"%s must start and end with lowercase letter or number, and contain only "+
+					"lowercase letters, numbers, and hyphens", field,
+			)
 		}
 
 		return nil
@@ -81,6 +86,8 @@ func validateName(i interface{}, fieldName string, field string, minLen, maxLen 
 }
 
 // validateKind validates that the kind field matches the expected value
+//
+//nolint:unparam // fieldName is kept as parameter for flexibility even though currently only "Kind" is used
 func validateKind(i interface{}, fieldName string, field string, expectedKind string) validate {
 	return func() *errors.ServiceError {
 		value := reflect.ValueOf(i).Elem().FieldByName(fieldName)

@@ -47,7 +47,10 @@ func (s *ServerConfig) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&s.HTTPSKeyFile, "https-key-file", s.HTTPSKeyFile, "The path to the tls.key file.")
 	fs.BoolVar(&s.EnableHTTPS, "enable-https", s.EnableHTTPS, "Enable HTTPS rather than HTTP")
 	fs.BoolVar(&s.EnableJWT, "enable-jwt", s.EnableJWT, "Enable JWT authentication validation")
-	fs.BoolVar(&s.EnableAuthz, "enable-authz", s.EnableAuthz, "Enable Authorization on endpoints, should only be disabled for debug")
+	fs.BoolVar(
+		&s.EnableAuthz, "enable-authz", s.EnableAuthz,
+		"Enable Authorization on endpoints, should only be disabled for debug",
+	)
 	fs.StringVar(&s.JwkCertFile, "jwk-cert-file", s.JwkCertFile, "JWK Certificate file")
 	fs.StringVar(&s.JwkCertURL, "jwk-cert-url", s.JwkCertURL, "JWK Certificate URL")
 	fs.StringVar(&s.ACLFile, "acl-file", s.ACLFile, "Access control list file")

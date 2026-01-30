@@ -18,7 +18,11 @@ type clusterNodePoolsHandler struct {
 	generic         services.GenericService
 }
 
-func NewClusterNodePoolsHandler(clusterService services.ClusterService, nodePoolService services.NodePoolService, generic services.GenericService) *clusterNodePoolsHandler {
+func NewClusterNodePoolsHandler(
+	clusterService services.ClusterService,
+	nodePoolService services.NodePoolService,
+	generic services.GenericService,
+) *clusterNodePoolsHandler {
 	return &clusterNodePoolsHandler{
 		clusterService:  clusterService,
 		nodePoolService: nodePoolService,

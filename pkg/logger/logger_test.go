@@ -10,6 +10,10 @@ import (
 	"testing"
 )
 
+const (
+	testMessage = "test message"
+)
+
 // TestParseLogLevel tests log level parsing with various inputs
 func TestParseLogLevel(t *testing.T) {
 	tests := []struct {
@@ -147,7 +151,7 @@ func TestBasicLogFormat(t *testing.T) {
 
 			InitGlobalLogger(cfg)
 			ctx := context.Background()
-			With(ctx, "key", "value").Info("test message")
+			With(ctx, "key", "value").Info(testMessage)
 
 			output := buf.String()
 			if output == "" {
@@ -166,8 +170,8 @@ func TestBasicLogFormat(t *testing.T) {
 				}
 
 				// Check required fields
-				if logEntry["message"] != "test message" {
-					t.Errorf("expected message 'test message', got %v", logEntry["message"])
+				if logEntry["message"] != testMessage {
+					t.Errorf("expected message %q, got %v", testMessage, logEntry["message"])
 				}
 				if logEntry["level"] != "info" {
 					t.Errorf("expected level 'info', got %v", logEntry["level"])
@@ -186,8 +190,8 @@ func TestBasicLogFormat(t *testing.T) {
 				}
 			} else {
 				// Text format - check for stable invariants only
-				if !strings.Contains(output, "test message") {
-					t.Errorf("expected output to contain 'test message', got: %s", output)
+				if !strings.Contains(output, testMessage) {
+					t.Errorf("expected output to contain %q, got: %s", testMessage, output)
 				}
 				// Check for log level (case-insensitive)
 				outputLower := strings.ToLower(output)
@@ -373,10 +377,8 @@ func TestStackTrace(t *testing.T) {
 				if len(stackTrace) == 0 {
 					t.Error("expected stack_trace to have at least one frame")
 				}
-			} else {
-				if logEntry["stack_trace"] != nil {
-					t.Error("expected no stack_trace field for non-error level")
-				}
+			} else if logEntry["stack_trace"] != nil {
+				t.Error("expected no stack_trace field for non-error level")
 			}
 		})
 	}
@@ -552,10 +554,8 @@ func TestWithError(t *testing.T) {
 				if logEntry["error"] != tt.expectedValue {
 					t.Errorf("expected error '%s', got %v", tt.expectedValue, logEntry["error"])
 				}
-			} else {
-				if logEntry["error"] != nil {
-					t.Errorf("expected no error field for nil error, got %v", logEntry["error"])
-				}
+			} else if logEntry["error"] != nil {
+				t.Errorf("expected no error field for nil error, got %v", logEntry["error"])
 			}
 		})
 	}

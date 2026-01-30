@@ -78,19 +78,23 @@ func (v *SchemaValidator) Validate(resourceType string, spec map[string]interfac
 }
 
 // ValidateClusterSpec validates a cluster spec against the ClusterSpec schema
+//
 // Deprecated: Use Validate("cluster", spec) instead
 func (v *SchemaValidator) ValidateClusterSpec(spec map[string]interface{}) error {
 	return v.Validate("cluster", spec)
 }
 
 // ValidateNodePoolSpec validates a nodepool spec against the NodePoolSpec schema
+//
 // Deprecated: Use Validate("nodepool", spec) instead
 func (v *SchemaValidator) ValidateNodePoolSpec(spec map[string]interface{}) error {
 	return v.Validate("nodepool", spec)
 }
 
 // validateSpec performs the actual validation and converts errors to our error format
-func (v *SchemaValidator) validateSpec(spec map[string]interface{}, schemaRef *openapi3.SchemaRef, specTypeName string) error {
+func (v *SchemaValidator) validateSpec(
+	spec map[string]interface{}, schemaRef *openapi3.SchemaRef, specTypeName string,
+) error {
 	// Cast spec to interface{} for VisitJSON
 	var specData interface{} = spec
 
