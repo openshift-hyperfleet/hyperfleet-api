@@ -35,7 +35,7 @@ type MaskingConfig struct {
 func NewLoggingConfig() *LoggingConfig {
 	return &LoggingConfig{
 		Level:  "info",
-		Format: "json",
+		Format: "text",
 		Output: "stdout",
 		OTel: OTelConfig{
 			Enabled:      false,
@@ -66,17 +66,17 @@ func (l *LoggingConfig) ReadFiles() error {
 // If fs is nil, all env vars are applied (backward compatibility)
 func (l *LoggingConfig) BindEnv(fs *pflag.FlagSet) {
 	// Fields with flags: only apply env if flag not set
-	if val := os.Getenv("LOG_LEVEL"); val != "" {
+	if val := os.Getenv("HYPERFLEET_LOG_LEVEL"); val != "" {
 		if fs == nil || !fs.Changed("log-level") {
 			l.Level = val
 		}
 	}
-	if val := os.Getenv("LOG_FORMAT"); val != "" {
+	if val := os.Getenv("HYPERFLEET_LOG_FORMAT"); val != "" {
 		if fs == nil || !fs.Changed("log-format") {
 			l.Format = val
 		}
 	}
-	if val := os.Getenv("LOG_OUTPUT"); val != "" {
+	if val := os.Getenv("HYPERFLEET_LOG_OUTPUT"); val != "" {
 		if fs == nil || !fs.Changed("log-output") {
 			l.Output = val
 		}
@@ -96,16 +96,16 @@ func (l *LoggingConfig) BindEnv(fs *pflag.FlagSet) {
 		}
 	}
 
-	if val := os.Getenv("MASKING_ENABLED"); val != "" {
+	if val := os.Getenv("HYPERFLEET_MASKING_ENABLED"); val != "" {
 		enabled, err := strconv.ParseBool(val)
 		if err == nil {
 			l.Masking.Enabled = enabled
 		}
 	}
-	if val := os.Getenv("MASKING_HEADERS"); val != "" {
+	if val := os.Getenv("HYPERFLEET_MASKING_HEADERS"); val != "" {
 		l.Masking.SensitiveHeaders = val
 	}
-	if val := os.Getenv("MASKING_FIELDS"); val != "" {
+	if val := os.Getenv("HYPERFLEET_MASKING_FIELDS"); val != "" {
 		l.Masking.SensitiveFields = val
 	}
 }
