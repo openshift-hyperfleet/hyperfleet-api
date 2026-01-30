@@ -1,5 +1,108 @@
-version: 2
+# HyperFleet Standard golangci-lint Configuration
+# Reference: https://golangci-lint.run/usage/configuration
+#
+# This is the baseline configuration for all HyperFleet Go repositories.
+# Copy this file to your repository root as .golangci.yml
+#
+# golangci-lint should be installed and versioned via bingo in each repository.
+# See linting.md for full documentation of this standard.
+
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+  modules-download-mode: readonly
+
+linters-settings:
+  errcheck:
+    check-type-assertions: true
+    check-blank: true
+
+  govet:
+    enable-all: true
+
+  goconst:
+    min-len: 3
+    min-occurrences: 3
+
+  misspell:
+    locale: US
+
+  lll:
+    line-length: 120
+
+  gofmt:
+    simplify: true
+
+  revive:
+    rules:
+      - name: exported
+        severity: warning
+        disabled: true
+      - name: unexported-return
+        severity: warning
+        disabled: false
+      - name: var-naming
+        severity: warning
+        disabled: false
+
+  unused:
+    check-exported: false
+
+  unparam:
+    check-exported: false
+
+  exhaustive:
+    check-generated: false
+    default-signifies-exhaustive: true
+
+linters:
+  enable:
+    # Code Quality
+    - errcheck
+    - govet
+    - staticcheck
+    - ineffassign
+    - unused
+    - unconvert
+    - unparam
+    - goconst
+    - exhaustive
+
+    # Code Style
+    - misspell
+    - lll
+    - revive
+    - gocritic
+
+    # Security
+    - gosec
+
 issues:
+  # Add repository-specific generated code directories here
   exclude-dirs:
     - pkg/api/openapi  # Generated code
     - data/generated/openapi # Generated file
+
+  exclude-rules:
+    # Relaxed rules for test files
+    - path: _test\.go
+      linters:
+        - gosec
+        - errcheck
+        - unparam
+
+    # Exclude generated code (backup pattern if exclude-dirs doesn't catch all)
+    - path: pkg/api/openapi/
+      linters:
+        - all
+
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  new: false
+
+output:
+  format: colored-line-number
+  print-issued-lines: true
+  print-linter-name: true
