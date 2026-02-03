@@ -215,6 +215,11 @@ helm uninstall hyperfleet-api --namespace hyperfleet-system
 | `database.postgresql.enabled` | Enable built-in PostgreSQL | `true` |
 | `database.external.enabled` | Use external database | `false` |
 | `database.external.secretName` | Secret containing database credentials | `hyperfleet-db-external` |
+| `serviceMonitor.enabled` | Enable Prometheus Operator ServiceMonitor | `false` |
+| `serviceMonitor.interval` | Metrics scrape interval | `30s` |
+| `serviceMonitor.scrapeTimeout` | Metrics scrape timeout | `10s` |
+| `serviceMonitor.labels` | Additional labels for Prometheus selector | `{}` |
+| `serviceMonitor.namespace` | Namespace for ServiceMonitor (if different) | `""` |
 | `replicaCount` | Number of API replicas | `1` |
 | `resources.limits.cpu` | CPU limit | `500m` |
 | `resources.limits.memory` | Memory limit | `512Mi` |
@@ -342,7 +347,33 @@ Enable autoscaling via Helm values (`autoscaling.enabled=true`).
 
 Prometheus metrics available at `http://<service>:9090/metrics`.
 
-For Prometheus Operator, enable ServiceMonitor via Helm values (`serviceMonitor.enabled=true`).
+### Prometheus Operator Integration
+
+For clusters with Prometheus Operator, enable the ServiceMonitor to automatically discover and scrape metrics:
+
+```bash
+helm install hyperfleet-api ./charts/ \
+  --namespace hyperfleet-system \
+  --set serviceMonitor.enabled=true
+```
+
+If your Prometheus requires specific labels for service discovery, add them:
+
+```bash
+helm install hyperfleet-api ./charts/ \
+  --namespace hyperfleet-system \
+  --set serviceMonitor.enabled=true \
+  --set serviceMonitor.labels.release=prometheus
+```
+
+To create the ServiceMonitor in a different namespace (e.g., `monitoring`):
+
+```bash
+helm install hyperfleet-api ./charts/ \
+  --namespace hyperfleet-system \
+  --set serviceMonitor.enabled=true \
+  --set serviceMonitor.namespace=monitoring
+```
 
 ## Production Best Practices
 

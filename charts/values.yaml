@@ -125,6 +125,22 @@ adapters:
   # Default: ["validation", "hypershift"]
   nodepool: []
 
+# ServiceMonitor for Prometheus Operator
+# Enables automatic metrics discovery in clusters with Prometheus Operator
+serviceMonitor:
+  # Enable ServiceMonitor creation
+  enabled: false
+  # Scrape interval
+  interval: 30s
+  # Scrape timeout (must be less than interval)
+  scrapeTimeout: 10s
+  # Additional labels for ServiceMonitor to match Prometheus selector
+  # Example: release: prometheus
+  labels: {}
+  # Override the namespace where ServiceMonitor is created
+  # If empty, uses the release namespace
+  namespace: ""
+
 # Additional environment variables
 # You can override adapters by setting HYPERFLEET_*_ADAPTERS here
 env: []
