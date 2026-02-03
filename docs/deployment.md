@@ -218,6 +218,9 @@ helm uninstall hyperfleet-api --namespace hyperfleet-system
 | `replicaCount` | Number of API replicas | `1` |
 | `resources.limits.cpu` | CPU limit | `500m` |
 | `resources.limits.memory` | Memory limit | `512Mi` |
+| `podDisruptionBudget.enabled` | Enable PodDisruptionBudget | `false` |
+| `podDisruptionBudget.minAvailable` | Minimum available pods during disruption | `1` |
+| `podDisruptionBudget.maxUnavailable` | Maximum unavailable pods during disruption | - |
 
 ### Custom Values File
 
@@ -351,6 +354,7 @@ For Prometheus Operator, enable ServiceMonitor via Helm values (`serviceMonitor.
 - Set resource limits and use multiple replicas
 - Use specific image tags instead of `latest`
 - Enable monitoring and regular database backups
+- Enable PodDisruptionBudget with `podDisruptionBudget.enabled=true` for high availability during node maintenance
 
 ## Complete Deployment Example
 

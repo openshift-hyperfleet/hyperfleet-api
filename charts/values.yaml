@@ -70,6 +70,16 @@ autoscaling:
   targetCPUUtilizationPercentage: 80
   targetMemoryUtilizationPercentage: 80
 
+# Pod Disruption Budget configuration
+# Ensures availability during node maintenance and cluster upgrades
+podDisruptionBudget:
+  enabled: false
+  # Minimum number of pods that must be available during disruption
+  # Use either minAvailable OR maxUnavailable, not both
+  minAvailable: 1
+  # Maximum number of pods that can be unavailable during disruption
+  # maxUnavailable: 1
+
 # Database configuration
 database:
   # For PRODUCTION: Use external database (GCP Cloud SQL, etc.)
