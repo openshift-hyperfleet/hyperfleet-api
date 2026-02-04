@@ -22,6 +22,7 @@ These metrics track all inbound HTTP requests to the API server.
 **Description:** Total number of HTTP requests served by the API.
 
 **Labels:**
+
 | Label | Description | Example Values |
 |-------|-------------|----------------|
 | `method` | HTTP method | `GET`, `POST`, `PUT`, `PATCH`, `DELETE` |
@@ -31,7 +32,7 @@ These metrics track all inbound HTTP requests to the API server.
 **Path normalization:** Object identifiers in paths are replaced with `-` to reduce cardinality. For example, `/api/hyperfleet/v1/clusters/abc123` becomes `/api/hyperfleet/v1/clusters/-`.
 
 **Example output:**
-```
+```text
 api_inbound_request_count{code="200",method="GET",path="/api/hyperfleet/v1/clusters"} 1523
 api_inbound_request_count{code="200",method="GET",path="/api/hyperfleet/v1/clusters/-"} 8742
 api_inbound_request_count{code="201",method="POST",path="/api/hyperfleet/v1/clusters"} 156
@@ -54,7 +55,7 @@ api_inbound_request_count{code="404",method="GET",path="/api/hyperfleet/v1/clust
 - `api_inbound_request_duration_bucket` - Number of requests completed within each bucket
 
 **Example output:**
-```
+```text
 api_inbound_request_duration_bucket{code="200",method="GET",path="/api/hyperfleet/v1/clusters",le="0.1"} 1450
 api_inbound_request_duration_bucket{code="200",method="GET",path="/api/hyperfleet/v1/clusters",le="1"} 1520
 api_inbound_request_duration_bucket{code="200",method="GET",path="/api/hyperfleet/v1/clusters",le="10"} 1523

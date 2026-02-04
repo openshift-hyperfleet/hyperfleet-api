@@ -10,6 +10,36 @@ HyperFleet API is a REST service that manages HyperFleet cluster and nodepool re
 - **Health Server**: Port 8080 - Liveness (`/healthz`) and readiness (`/readyz`) probes
 - **Metrics Server**: Port 9090 - Prometheus metrics (`/metrics`)
 
+### Architecture Diagram
+
+```text
+                                 ┌─────────────────────────────────────┐
+                                 │         hyperfleet-api Pod          │
+                                 │                                     │
+    ┌─────────────┐              │  ┌─────────────────────────────┐   │
+    │   Clients   │──────────────┼─▶│     API Server (:8000)      │   │
+    │  (OCM CLI)  │    REST API  │  │  /api/hyperfleet/v1/*       │   │
+    └─────────────┘              │  └──────────────┬──────────────┘   │
+                                 │                 │                   │
+    ┌─────────────┐              │  ┌──────────────▼──────────────┐   │
+    │ Kubernetes  │──────────────┼─▶│   Health Server (:8080)     │   │
+    │   Probes    │   HTTP GET   │  │  /healthz  /readyz          │   │
+    └─────────────┘              │  └──────────────┬──────────────┘   │
+                                 │                 │                   │
+    ┌─────────────┐              │  ┌──────────────▼──────────────┐   │
+    │ Prometheus  │──────────────┼─▶│  Metrics Server (:9090)     │   │
+    │             │   Scrape     │  │  /metrics                   │   │
+    └─────────────┘              │  └─────────────────────────────┘   │
+                                 │                 │                   │
+                                 └─────────────────┼───────────────────┘
+                                                   │
+                                                   ▼
+                                 ┌─────────────────────────────────────┐
+                                 │            PostgreSQL               │
+                                 │      (clusters, nodepools)          │
+                                 └─────────────────────────────────────┘
+```
+
 ## Health Check Interpretation
 
 ### Liveness Probe (`/healthz`)
@@ -346,12 +376,9 @@ kubectl rollout undo deployment/hyperfleet-api -n hyperfleet-system --to-revisio
 
 ### Escalation Contacts
 
-| Role | Responsibility | Contact |
-|------|----------------|---------|
-| On-call Engineer | First responder | PagerDuty/Slack on-call channel |
-| Platform Team | Infrastructure issues | #hyperfleet-platform Slack |
-| Database Team | Database issues | #database-support Slack |
-| Security Team | Security incidents | security@example.com |
+For all HyperFleet issues, escalate via the team Slack channel:
+
+- **Channel**: [#hcm-hyperfleet-team](https://redhat.enterprise.slack.com/archives/C0916E39DQV)
 
 ### When to Escalate
 
