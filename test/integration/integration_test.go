@@ -17,6 +17,15 @@ func TestMain(m *testing.M) {
 	ctx := context.Background()
 	logger.With(ctx, "go_version", runtime.Version()).Info("Starting integration test")
 
+	// Set adapter configuration for integration tests if not already set
+	// These are required by the NodePool plugin
+	if os.Getenv("HYPERFLEET_CLUSTER_ADAPTERS") == "" {
+		_ = os.Setenv("HYPERFLEET_CLUSTER_ADAPTERS", `["validation","dns","pullsecret","hypershift"]`)
+	}
+	if os.Getenv("HYPERFLEET_NODEPOOL_ADAPTERS") == "" {
+		_ = os.Setenv("HYPERFLEET_NODEPOOL_ADAPTERS", `["validation","hypershift"]`)
+	}
+
 	// Set OPENAPI_SCHEMA_PATH for integration tests if not already set
 	// This enables schema validation middleware during tests
 	if os.Getenv("OPENAPI_SCHEMA_PATH") == "" {

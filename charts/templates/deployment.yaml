@@ -74,10 +74,16 @@ spec:
           value: {{ .Values.auth.enableJwt | quote }}
         - name: ENABLE_AUTHZ
           value: {{ .Values.auth.enableAuthz | quote }}
+        {{- if not (and .Values.adapters (hasKey .Values.adapters "cluster")) }}
+        {{- fail "adapters.cluster is required - specify which adapters must be ready for clusters (e.g., [\"validation\",\"dns\",\"pullsecret\",\"hypershift\"])" }}
+        {{- end }}
+        {{- if not (and .Values.adapters (hasKey .Values.adapters "nodepool")) }}
+        {{- fail "adapters.nodepool is required - specify which adapters must be ready for nodepools (e.g., [\"validation\",\"hypershift\"])" }}
+        {{- end }}
         - name: HYPERFLEET_CLUSTER_ADAPTERS
-          value: {{ required "adapters.cluster is required - specify which adapters must be ready for clusters (e.g., [\"validation\",\"dns\",\"pullsecret\",\"hypershift\"])" .Values.adapters.cluster | toJson | quote }}
+          value: {{ .Values.adapters.cluster | default list | toJson | quote }}
         - name: HYPERFLEET_NODEPOOL_ADAPTERS
-          value: {{ required "adapters.nodepool is required - specify which adapters must be ready for nodepools (e.g., [\"validation\",\"hypershift\"])" .Values.adapters.nodepool | toJson | quote }}
+          value: {{ .Values.adapters.nodepool | default list | toJson | quote }}
         {{- if .Values.env }}
         {{- range .Values.env }}
         - name: {{ .name }}

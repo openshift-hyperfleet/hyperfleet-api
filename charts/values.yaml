@@ -127,13 +127,14 @@ auth:
 # Adapter configuration (REQUIRED)
 # Configure which adapters must be ready for resources to be marked as "Ready"
 # Both cluster and nodepool adapters MUST be specified - the application will not start without them
+# Empty arrays [] are valid if you want no adapters required for the Ready state
 adapters:
   # Required adapters for cluster "Ready" state (REQUIRED)
   # Example: ["validation", "dns", "pullsecret", "hypershift"]
-  cluster: null
+  # cluster: []
   # Required adapters for nodepool "Ready" state (REQUIRED)
   # Example: ["validation", "hypershift"]
-  nodepool: null
+  # nodepool: []
 
 # ServiceMonitor for Prometheus Operator
 # Enables automatic metrics discovery in clusters with Prometheus Operator
