@@ -1,6 +1,7 @@
 package nodePools
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/gorilla/mux"
@@ -22,7 +23,11 @@ type ServiceLocator func() services.NodePoolService
 
 func NewServiceLocator(env *environments.Env) ServiceLocator {
 	// Initialize adapter requirements config from environment variables
-	adapterConfig := config.NewAdapterRequirementsConfig()
+	adapterConfig, err := config.NewAdapterRequirementsConfig()
+	if err != nil {
+		// Fatal error - application cannot start without adapter configuration
+		panic(fmt.Sprintf("failed to load adapter configuration: %v", err))
+	}
 
 	return func() services.NodePoolService {
 		return services.NewNodePoolService(

@@ -85,13 +85,13 @@ export OPENAPI_SCHEMA_PATH=/path/to/custom-schema.yaml
 - `LOG_LEVEL` - Logging level: `debug`, `info`, `warn`, `error` (default: `info`)
 - `LOG_FORMAT` - Log format: `json`, `text` (default: `json`)
 
-**Adapter Requirements:**
+**Adapter Requirements (REQUIRED):**
 
 Configure which adapters must be ready for resources to be marked as "Ready".
+These environment variables are **required** - the application will not start without them.
 
-**Default values** (if not configured):
-- Cluster: `["validation","dns","pullsecret","hypershift"]`
-- NodePool: `["validation","hypershift"]`
+- `HYPERFLEET_CLUSTER_ADAPTERS` - JSON array of required cluster adapters (e.g., `["validation","dns","pullsecret","hypershift"]`)
+- `HYPERFLEET_NODEPOOL_ADAPTERS` - JSON array of required nodepool adapters (e.g., `["validation","hypershift"]`)
 
 **Option 1: Using structured values (Helm only, recommended)**
 ```yaml
@@ -107,21 +107,13 @@ adapters:
     - hypershift
 ```
 
-**Option 2: Using environment variables in Helm**
-```yaml
-# values.yaml
-env:
-  - name: HYPERFLEET_CLUSTER_ADAPTERS
-    value: '["validation","dns","pullsecret","hypershift"]'
-  - name: HYPERFLEET_NODEPOOL_ADAPTERS
-    value: '["validation","hypershift"]'
-```
-
-**Option 3: Direct environment variable (non-Helm)**
+**Option 2: Direct environment variable (non-Helm)**
 ```bash
 export HYPERFLEET_CLUSTER_ADAPTERS='["validation","dns","pullsecret","hypershift"]'
 export HYPERFLEET_NODEPOOL_ADAPTERS='["validation","hypershift"]'
 ```
+
+**Note:** Empty arrays (`[]`) are valid if you want no adapters to be required for the Ready state.
 
 ## Kubernetes Deployment
 
@@ -136,7 +128,9 @@ Deploy with built-in PostgreSQL for development and testing:
 ```bash
 helm install hyperfleet-api ./charts/ \
   --namespace hyperfleet-system \
-  --create-namespace
+  --create-namespace \
+  --set adapters.cluster='{validation,dns,pullsecret,hypershift}' \
+  --set adapters.nodepool='{validation,hypershift}'
 ```
 
 This creates:
@@ -168,7 +162,9 @@ helm install hyperfleet-api ./charts/ \
   --namespace hyperfleet-system \
   --set database.postgresql.enabled=false \
   --set database.external.enabled=true \
-  --set database.external.secretName=hyperfleet-db-external
+  --set database.external.secretName=hyperfleet-db-external \
+  --set adapters.cluster='{validation,dns,pullsecret,hypershift}' \
+  --set adapters.nodepool='{validation,hypershift}'
 ```
 
 #### Custom Image Deployment
@@ -180,7 +176,9 @@ helm install hyperfleet-api ./charts/ \
   --namespace hyperfleet-system \
   --set image.registry=quay.io \
   --set image.repository=myuser/hyperfleet-api \
-  --set image.tag=v1.0.0
+  --set image.tag=v1.0.0 \
+  --set adapters.cluster='{validation,dns,pullsecret,hypershift}' \
+  --set adapters.nodepool='{validation,hypershift}'
 ```
 
 #### Upgrade Deployment
@@ -211,6 +209,8 @@ helm uninstall hyperfleet-api --namespace hyperfleet-system
 | `image.repository` | Image repository | `openshift-hyperfleet/hyperfleet-api` |
 | `image.tag` | Image tag | `latest` |
 | `image.pullPolicy` | Image pull policy | `IfNotPresent` |
+| `adapters.cluster` | Required cluster adapters (REQUIRED) | - |
+| `adapters.nodepool` | Required nodepool adapters (REQUIRED) | - |
 | `auth.enableJwt` | Enable JWT authentication | `true` |
 | `database.postgresql.enabled` | Enable built-in PostgreSQL | `true` |
 | `database.external.enabled` | Use external database | `false` |
@@ -248,13 +248,16 @@ database:
     enabled: true
     secretName: hyperfleet-db-external
 
-# Optional: customize adapter requirements (YAML table format)
+# Required: specify adapter requirements
 adapters:
   cluster:
     - validation
     - dns
+    - pullsecret
+    - hypershift
   nodepool:
     - validation
+    - hypershift
 
 replicaCount: 3
 
@@ -421,7 +424,9 @@ helm install hyperfleet-api ./charts/ \
   --set image.tag=dev-abc123 \
   --set auth.enableJwt=false \
   --set database.postgresql.enabled=false \
-  --set database.external.enabled=true
+  --set database.external.enabled=true \
+  --set adapters.cluster='{validation,dns,pullsecret,hypershift}' \
+  --set adapters.nodepool='{validation,hypershift}'
 
 # 6. Verify deployment
 kubectl get pods

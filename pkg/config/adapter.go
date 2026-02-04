@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"os"
 )
@@ -12,55 +13,49 @@ type AdapterRequirementsConfig struct {
 	RequiredNodePoolAdapters []string
 }
 
-// NewAdapterRequirementsConfig creates config from environment variables or defaults
-func NewAdapterRequirementsConfig() *AdapterRequirementsConfig {
-	config := &AdapterRequirementsConfig{
-		RequiredClusterAdapters:  getDefaultClusterAdapters(),
-		RequiredNodePoolAdapters: getDefaultNodePoolAdapters(),
+// NewAdapterRequirementsConfig creates config from environment variables.
+// Returns an error if required environment variables are not set.
+// Required env vars: HYPERFLEET_CLUSTER_ADAPTERS, HYPERFLEET_NODEPOOL_ADAPTERS
+// Format: JSON array, e.g., '["validation","dns","pullsecret","hypershift"]'
+func NewAdapterRequirementsConfig() (*AdapterRequirementsConfig, error) {
+	config := &AdapterRequirementsConfig{}
+
+	if err := config.LoadFromEnv(); err != nil {
+		return nil, err
 	}
 
-	config.LoadFromEnv()
-	return config
+	return config, nil
 }
 
 // LoadFromEnv loads adapter lists from HYPERFLEET_CLUSTER_ADAPTERS and
 // HYPERFLEET_NODEPOOL_ADAPTERS (JSON array format: '["adapter1","adapter2"]')
-func (c *AdapterRequirementsConfig) LoadFromEnv() {
-	if clusterAdaptersStr := os.Getenv("HYPERFLEET_CLUSTER_ADAPTERS"); clusterAdaptersStr != "" {
-		var adapters []string
-		if err := json.Unmarshal([]byte(clusterAdaptersStr), &adapters); err == nil {
-			c.RequiredClusterAdapters = adapters
-			log.Printf("Loaded HYPERFLEET_CLUSTER_ADAPTERS from env: %v", adapters)
-		} else {
-			log.Printf("WARNING: Failed to parse HYPERFLEET_CLUSTER_ADAPTERS, using defaults: %v", err)
-		}
+// Returns an error if the environment variables are not set or have invalid JSON.
+func (c *AdapterRequirementsConfig) LoadFromEnv() error {
+	clusterAdaptersStr := os.Getenv("HYPERFLEET_CLUSTER_ADAPTERS")
+	if clusterAdaptersStr == "" {
+		return fmt.Errorf("HYPERFLEET_CLUSTER_ADAPTERS environment variable is required but not set")
 	}
 
-	if nodepoolAdaptersStr := os.Getenv("HYPERFLEET_NODEPOOL_ADAPTERS"); nodepoolAdaptersStr != "" {
-		var adapters []string
-		if err := json.Unmarshal([]byte(nodepoolAdaptersStr), &adapters); err == nil {
-			c.RequiredNodePoolAdapters = adapters
-			log.Printf("Loaded HYPERFLEET_NODEPOOL_ADAPTERS from env: %v", adapters)
-		} else {
-			log.Printf("WARNING: Failed to parse HYPERFLEET_NODEPOOL_ADAPTERS, using defaults: %v", err)
-		}
+	var clusterAdapters []string
+	if err := json.Unmarshal([]byte(clusterAdaptersStr), &clusterAdapters); err != nil {
+		return fmt.Errorf("failed to parse HYPERFLEET_CLUSTER_ADAPTERS: %w "+
+			"(expected JSON array, e.g., '[\"validation\",\"dns\"]')", err)
 	}
-}
+	c.RequiredClusterAdapters = clusterAdapters
+	log.Printf("Loaded HYPERFLEET_CLUSTER_ADAPTERS from env: %v", clusterAdapters)
 
-// Default cluster adapters: validation, dns, pullsecret, hypershift
-func getDefaultClusterAdapters() []string {
-	return []string{
-		"validation",
-		"dns",
-		"pullsecret",
-		"hypershift",
+	nodepoolAdaptersStr := os.Getenv("HYPERFLEET_NODEPOOL_ADAPTERS")
+	if nodepoolAdaptersStr == "" {
+		return fmt.Errorf("HYPERFLEET_NODEPOOL_ADAPTERS environment variable is required but not set")
 	}
-}
 
-// Default nodepool adapters: validation, hypershift
-func getDefaultNodePoolAdapters() []string {
-	return []string{
-		"validation",
-		"hypershift",
+	var nodepoolAdapters []string
+	if err := json.Unmarshal([]byte(nodepoolAdaptersStr), &nodepoolAdapters); err != nil {
+		return fmt.Errorf("failed to parse HYPERFLEET_NODEPOOL_ADAPTERS: %w "+
+			"(expected JSON array, e.g., '[\"validation\",\"hypershift\"]')", err)
 	}
+	c.RequiredNodePoolAdapters = nodepoolAdapters
+	log.Printf("Loaded HYPERFLEET_NODEPOOL_ADAPTERS from env: %v", nodepoolAdapters)
+
+	return nil
 }

@@ -18,6 +18,14 @@ const (
 	testClusterID = "test-cluster-id"
 )
 
+// testAdapterConfig creates a test adapter config with default values
+func testAdapterConfig() *config.AdapterRequirementsConfig {
+	return &config.AdapterRequirementsConfig{
+		RequiredClusterAdapters:  []string{"validation", "dns", "pullsecret", "hypershift"},
+		RequiredNodePoolAdapters: []string{"validation", "hypershift"},
+	}
+}
+
 // Mock implementations for testing ProcessAdapterStatus
 
 type mockClusterDao struct {
@@ -162,7 +170,7 @@ func TestProcessAdapterStatus_UnknownCondition(t *testing.T) {
 	clusterDao := newMockClusterDao()
 	adapterStatusDao := newMockAdapterStatusDao()
 
-	config := config.NewAdapterRequirementsConfig()
+	config := testAdapterConfig()
 	service := NewClusterService(clusterDao, adapterStatusDao, config)
 
 	ctx := context.Background()
@@ -202,7 +210,7 @@ func TestProcessAdapterStatus_TrueCondition(t *testing.T) {
 	clusterDao := newMockClusterDao()
 	adapterStatusDao := newMockAdapterStatusDao()
 
-	config := config.NewAdapterRequirementsConfig()
+	config := testAdapterConfig()
 	service := NewClusterService(clusterDao, adapterStatusDao, config)
 
 	ctx := context.Background()
@@ -253,7 +261,7 @@ func TestProcessAdapterStatus_FalseCondition(t *testing.T) {
 	clusterDao := newMockClusterDao()
 	adapterStatusDao := newMockAdapterStatusDao()
 
-	config := config.NewAdapterRequirementsConfig()
+	config := testAdapterConfig()
 	service := NewClusterService(clusterDao, adapterStatusDao, config)
 
 	ctx := context.Background()
@@ -303,7 +311,7 @@ func TestProcessAdapterStatus_NoAvailableCondition(t *testing.T) {
 	clusterDao := newMockClusterDao()
 	adapterStatusDao := newMockAdapterStatusDao()
 
-	config := config.NewAdapterRequirementsConfig()
+	config := testAdapterConfig()
 	service := NewClusterService(clusterDao, adapterStatusDao, config)
 
 	ctx := context.Background()
@@ -382,7 +390,7 @@ func TestProcessAdapterStatus_MultipleConditions_AvailableUnknown(t *testing.T) 
 	clusterDao := newMockClusterDao()
 	adapterStatusDao := newMockAdapterStatusDao()
 
-	config := config.NewAdapterRequirementsConfig()
+	config := testAdapterConfig()
 	service := NewClusterService(clusterDao, adapterStatusDao, config)
 
 	ctx := context.Background()
@@ -431,7 +439,7 @@ func TestClusterAvailableReadyTransitions(t *testing.T) {
 	clusterDao := newMockClusterDao()
 	adapterStatusDao := newMockAdapterStatusDao()
 
-	adapterConfig := config.NewAdapterRequirementsConfig()
+	adapterConfig := testAdapterConfig()
 	// Keep this small so we can cover transitions succinctly.
 	adapterConfig.RequiredClusterAdapters = []string{"validation", "dns"}
 
@@ -581,7 +589,7 @@ func TestClusterStaleAdapterStatusUpdatePolicy(t *testing.T) {
 	clusterDao := newMockClusterDao()
 	adapterStatusDao := newMockAdapterStatusDao()
 
-	adapterConfig := config.NewAdapterRequirementsConfig()
+	adapterConfig := testAdapterConfig()
 	adapterConfig.RequiredClusterAdapters = []string{"validation", "dns"}
 
 	service := NewClusterService(clusterDao, adapterStatusDao, adapterConfig)
@@ -656,7 +664,7 @@ func TestClusterSyntheticTimestampsStableWithoutAdapterStatus(t *testing.T) {
 	clusterDao := newMockClusterDao()
 	adapterStatusDao := newMockAdapterStatusDao()
 
-	adapterConfig := config.NewAdapterRequirementsConfig()
+	adapterConfig := testAdapterConfig()
 	adapterConfig.RequiredClusterAdapters = []string{"validation"}
 
 	service := NewClusterService(clusterDao, adapterStatusDao, adapterConfig)
