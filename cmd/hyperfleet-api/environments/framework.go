@@ -87,6 +87,12 @@ func (e *Env) Initialize() error {
 		os.Exit(1)
 	}
 
+	// Load adapter configuration from environment variables
+	if err := e.Config.LoadAdapters(); err != nil {
+		logger.WithError(ctx, err).Error("Failed to load adapter configuration")
+		os.Exit(1)
+	}
+
 	// each env will set db explicitly because the DB impl has a `once` init section
 	if err := envImpl.OverrideDatabase(&e.Database); err != nil {
 		logger.WithError(ctx, err).Error("Failed to configure Database")

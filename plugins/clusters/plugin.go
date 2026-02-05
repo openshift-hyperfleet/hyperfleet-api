@@ -1,7 +1,6 @@
 package clusters
 
 import (
-	"fmt"
 	"net/http"
 
 	"github.com/gorilla/mux"
@@ -11,7 +10,6 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/presenters"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/auth"
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/dao"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/handlers"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/services"
@@ -24,18 +22,11 @@ import (
 type ServiceLocator func() services.ClusterService
 
 func NewServiceLocator(env *environments.Env) ServiceLocator {
-	// Initialize adapter requirements config from environment variables
-	adapterConfig, err := config.NewAdapterRequirementsConfig()
-	if err != nil {
-		// Fatal error - application cannot start without adapter configuration
-		panic(fmt.Sprintf("failed to load adapter configuration: %v", err))
-	}
-
 	return func() services.ClusterService {
 		return services.NewClusterService(
 			dao.NewClusterDao(&env.Database.SessionFactory),
 			dao.NewAdapterStatusDao(&env.Database.SessionFactory),
-			adapterConfig,
+			env.Config.Adapters,
 		)
 	}
 }
