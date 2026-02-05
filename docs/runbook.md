@@ -18,7 +18,7 @@ HyperFleet API is a REST service that manages HyperFleet cluster and nodepool re
                                  │                                     │
     ┌─────────────┐              │  ┌─────────────────────────────┐   │
     │   Clients   │──────────────┼─▶│     API Server (:8000)      │   │
-    │  (OCM CLI)  │    REST API  │  │  /api/hyperfleet/v1/*       │   │
+    │             │    REST API  │  │  /api/hyperfleet/v1/*       │   │
     └─────────────┘              │  └──────────────┬──────────────┘   │
                                  │                 │                   │
     ┌─────────────┐              │  ┌──────────────▼──────────────┐   │
@@ -49,9 +49,10 @@ The liveness probe indicates whether the application process is alive and respon
 | Response | Status | Meaning |
 |----------|--------|---------|
 | `200 OK` | `{"status": "ok"}` | Process is alive and responsive |
-| `503 Service Unavailable` | Error details | Process has a fatal error, Kubernetes will restart the pod |
 
-**When liveness fails:**
+**Note:** The liveness probe always returns 200 OK if the HTTP server is responding. If the process crashes or hangs, Kubernetes will not receive a response and will restart the pod.
+
+**When liveness probe times out or connection fails:**
 - The pod will be restarted by Kubernetes
 - Check logs for fatal errors or panics
 - This should be rare; frequent restarts indicate a serious issue
@@ -147,7 +148,7 @@ kubectl run pg-debug --rm -it --image=postgres:15-alpine --restart=Never -n hype
 If you see `connection refused` or `too many connections` errors:
 
 1. Check current connection count on database
-2. Verify `DB_MAX_OPEN_CONNS` and `DB_MAX_IDLE_CONNS` settings
+2. Verify `--db-max-open-connections` setting (default: 50)
 3. Consider scaling down replicas to reduce connection load
 4. Check for connection leaks in recent deployments
 

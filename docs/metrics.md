@@ -6,7 +6,7 @@ This document describes all Prometheus metrics exposed by HyperFleet API, includ
 
 Metrics are exposed at:
 - **Endpoint**: `/metrics`
-- **Port**: 9090
+- **Port**: 9090 (default, configurable via `--metrics-server-bindaddress`)
 - **Format**: OpenMetrics/Prometheus text format
 
 ## Application Metrics
@@ -145,6 +145,9 @@ The following metrics are automatically exposed by the Prometheus Go client libr
 ```promql
 # Total request rate (requests per second)
 sum(rate(api_inbound_request_count[5m]))
+
+# Request rate by pod/instance
+sum(rate(api_inbound_request_count[5m])) by (instance)
 
 # Request rate by endpoint
 sum(rate(api_inbound_request_count[5m])) by (path)
