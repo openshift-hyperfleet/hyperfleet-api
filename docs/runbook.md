@@ -285,8 +285,8 @@ curl http://localhost:8080/readyz
 kubectl run pg-debug --rm -it --image=postgres:15-alpine --restart=Never -n hyperfleet-system -- \
   pg_isready -h <db-host> -p <db-port>
 
-# Check database secret
-kubectl get secret hyperfleet-db -n hyperfleet-system -o yaml
+# Check database secret exists and has expected keys (does not print values)
+kubectl get secret hyperfleet-db -n hyperfleet-system -o go-template='{{range $k,$v := .data}}{{println $k}}{{end}}'
 ```
 
 **Resolution:**
