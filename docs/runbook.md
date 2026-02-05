@@ -74,6 +74,7 @@ The readiness probe indicates whether the application is ready to receive traffi
 
 **When readiness fails:**
 - Pod is removed from service endpoints (no traffic routed)
+- Rolling updates will not promote new pods until they become ready
 - Check database connectivity first
 - Verify all required environment variables are set
 - Check startup logs for initialization errors
