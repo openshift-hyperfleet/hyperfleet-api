@@ -53,3 +53,6 @@ secrets
 
 # Ignore generated mock files
 *_mock.go
+
+# Ignore Claude Code local configuration
+.claude/
