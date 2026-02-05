@@ -239,9 +239,9 @@ topk(10,
   sum(rate(api_inbound_request_count[5m])) by (path)
 )
 
-# Requests taking longer than 1 second
-sum(rate(api_inbound_request_duration_bucket{le="1"}[5m])) /
-sum(rate(api_inbound_request_duration_count[5m]))
+# Percentage of requests taking longer than 1 second
+1 - (sum(rate(api_inbound_request_duration_bucket{le="1"}[5m])) /
+sum(rate(api_inbound_request_duration_count[5m])))
 ```
 
 ## Prometheus Operator Integration
