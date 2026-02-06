@@ -14,7 +14,7 @@ type NodePool struct {
 
 	// Core fields
 	Kind   string         `json:"kind" gorm:"default:'NodePool'"`
-	Name   string         `json:"name" gorm:"size:255;not null"`
+	Name   string         `json:"name" gorm:"size:15;not null"`
 	Spec   datatypes.JSON `json:"spec" gorm:"type:jsonb;not null"`
 	Labels datatypes.JSON `json:"labels,omitempty" gorm:"type:jsonb"`
 	Href   string         `json:"href,omitempty" gorm:"size:500"`

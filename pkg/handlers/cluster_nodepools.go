@@ -139,7 +139,7 @@ func (h clusterNodePoolsHandler) Create(w http.ResponseWriter, r *http.Request) 
 		&req,
 		[]validate{
 			validateEmpty(&req, "Id", "id"),
-			validateName(&req, "Name", "name", 1, 255),
+			validateName(&req, "Name", "name", 3, 15),
 			validateKind(&req, "Kind", "kind", "NodePool"),
 		},
 		func() (interface{}, *errors.ServiceError) {

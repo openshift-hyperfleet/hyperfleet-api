@@ -193,7 +193,7 @@ func TestGetNodePoolByClusterIdAndNodePoolId(t *testing.T) {
 	kind := "NodePool"
 	nodePoolInput := openapi.NodePoolCreateRequest{
 		Kind: &kind,
-		Name: "test-nodepool-get",
+		Name: "test-np-get",
 		Spec: map[string]interface{}{"instance_type": "m5.large", "replicas": 2},
 	}
 
@@ -214,7 +214,7 @@ func TestGetNodePoolByClusterIdAndNodePoolId(t *testing.T) {
 	Expect(retrieved).NotTo(BeNil())
 	Expect(*retrieved.Id).To(Equal(nodePoolID), "Retrieved nodepool ID should match")
 	Expect(*retrieved.Kind).To(Equal("NodePool"))
-	Expect(retrieved.Name).To(Equal("test-nodepool-get"))
+	Expect(retrieved.Name).To(Equal("test-np-get"))
 
 	// Test 2: Try to get with non-existent nodepool ID (404)
 	notFoundResp, err := client.GetNodePoolByIdWithResponse(ctx, cluster.ID, "non-existent-id", test.WithAuthToken(ctx))

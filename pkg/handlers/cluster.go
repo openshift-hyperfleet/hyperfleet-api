@@ -33,7 +33,7 @@ func (h clusterHandler) Create(w http.ResponseWriter, r *http.Request) {
 		&req,
 		[]validate{
 			validateEmpty(&req, "Id", "id"),
-			validateName(&req, "Name", "name", 3, 63),
+			validateName(&req, "Name", "name", 3, 53),
 			validateKind(&req, "Kind", "kind", "Cluster"),
 		},
 		func() (interface{}, *errors.ServiceError) {

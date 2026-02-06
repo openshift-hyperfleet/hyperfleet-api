@@ -251,9 +251,9 @@ func TestClusterBoundaryValues(t *testing.T) {
 	account := h.NewRandAccount()
 	ctx := h.NewAuthenticatedContext(account)
 
-	// Test 1: Maximum name length (database limit is 63 characters)
+	// Test 1: Maximum name length (limit is 53 characters, aligned with CS)
 	longName := ""
-	for i := 0; i < 63; i++ {
+	for i := 0; i < 53; i++ {
 		longName += "a"
 	}
 
@@ -266,11 +266,11 @@ func TestClusterBoundaryValues(t *testing.T) {
 	resp, err := client.PostClusterWithResponse(
 		ctx, openapi.PostClusterJSONRequestBody(longNameInput), test.WithAuthToken(ctx),
 	)
-	Expect(err).NotTo(HaveOccurred(), "Should accept name up to 63 characters")
+	Expect(err).NotTo(HaveOccurred(), "Should accept name up to 53 characters")
 	Expect(resp.StatusCode()).To(Equal(http.StatusCreated))
 	Expect(resp.JSON201.Name).To(Equal(longName))
 
-	// Test exceeding max length (64 characters should fail)
+	// Test exceeding max length (54 characters should fail)
 	tooLongName := longName + "a"
 	tooLongInput := openapi.ClusterCreateRequest{
 		Kind: util.PtrString("Cluster"),
@@ -282,7 +282,7 @@ func TestClusterBoundaryValues(t *testing.T) {
 	)
 	Expect(err).NotTo(HaveOccurred())
 	Expect(resp.StatusCode()).
-		To(Equal(http.StatusBadRequest), "Should reject name exceeding 63 characters")
+		To(Equal(http.StatusBadRequest), "Should reject name exceeding 53 characters")
 
 	// Test 2: Empty name
 	emptyNameInput := openapi.ClusterCreateRequest{
