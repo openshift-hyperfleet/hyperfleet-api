@@ -1,0 +1,35 @@
+{{- if .Values.rbac.create -}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "hyperfleet-api.fullname" . }}-admin
+  labels:
+    {{- include "hyperfleet-api.labels" . | nindent 4 }}
+rules:
+  # Full CRUD access to HyperFleet resources
+  - apiGroups:
+      - hyperfleet.io
+    resources:
+      - clusters
+      - nodepools
+      - idps
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  # Status subresource update permissions
+  - apiGroups:
+      - hyperfleet.io
+    resources:
+      - clusters/status
+      - nodepools/status
+      - idps/status
+    verbs:
+      - get
+      - patch
+      - update
+{{- end }}

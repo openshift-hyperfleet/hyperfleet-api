@@ -1,0 +1,33 @@
+{{- if .Values.rbac.create -}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "hyperfleet-api.fullname" . }}-crd-viewer
+  labels:
+    {{- include "hyperfleet-api.labels" . | nindent 4 }}
+rules:
+  # Read access to CRD definitions
+  - apiGroups:
+      - apiextensions.k8s.io
+    resources:
+      - customresourcedefinitions
+    verbs:
+      - get
+      - list
+      - watch
+    resourceNames:
+      - clusters.hyperfleet.io
+      - nodepools.hyperfleet.io
+      - idps.hyperfleet.io
+  # Read access to HyperFleet resources
+  - apiGroups:
+      - hyperfleet.io
+    resources:
+      - clusters
+      - nodepools
+      - idps
+    verbs:
+      - get
+      - list
+      - watch
+{{- end }}

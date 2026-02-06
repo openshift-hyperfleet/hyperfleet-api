@@ -35,14 +35,20 @@ RUN --mount=type=cache,target=/opt/app-root/src/go/pkg/mod,uid=1001 \
     GIT_SHA=${GIT_SHA} GIT_DIRTY=${GIT_DIRTY} BUILD_DATE=${BUILD_DATE} VERSION=${VERSION} \
     make build
 
-# Runtime stage
-FROM ${BASE_IMAGE}
+# Runtime stage - use target architecture for the base image
+ARG BASE_IMAGE
+ARG TARGETARCH
+FROM --platform=linux/${TARGETARCH} ${BASE_IMAGE}
 
 WORKDIR /app
 
 COPY --from=builder /build/bin/hyperfleet-api /app/hyperfleet-api
 COPY --from=builder /build/openapi/openapi.yaml /app/openapi/openapi.yaml
 
+# Copy CRD definitions for generic resource API
+COPY --from=builder /build/config/crds /app/config/crds
+
+# Set default schema path (can be overridden by Helm for provider-specific schemas)
 ENV OPENAPI_SCHEMA_PATH=/app/openapi/openapi.yaml
 
 USER 65532:65532
