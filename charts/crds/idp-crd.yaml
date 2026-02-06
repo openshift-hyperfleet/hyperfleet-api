@@ -1,0 +1,112 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: idps.hyperfleet.io
+  labels:
+    app.kubernetes.io/name: hyperfleet-api
+    app.kubernetes.io/part-of: hyperfleet
+spec:
+  group: hyperfleet.io
+  names:
+    kind: IDP
+    listKind: IDPList
+    plural: idps
+    singular: idp
+    shortNames:
+      - hfidp
+  scope: Namespaced
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          description: IDP is the Schema for HyperFleet identity providers
+          properties:
+            apiVersion:
+              type: string
+            kind:
+              type: string
+            metadata:
+              type: object
+            spec:
+              type: object
+              description: IDPSpec defines the desired state of an IDP
+              properties:
+                clusterRef:
+                  type: string
+                  description: Reference to the parent Cluster resource
+                type:
+                  type: string
+                  description: Type of identity provider (e.g., OIDC, LDAP, SAML)
+                  enum:
+                    - OIDC
+                    - LDAP
+                    - SAML
+                    - GitHub
+                    - GitLab
+                    - Google
+                    - Microsoft
+              x-kubernetes-preserve-unknown-fields: true
+            status:
+              type: object
+              description: IDPStatus defines the observed state of an IDP
+              properties:
+                conditions:
+                  type: array
+                  description: Conditions represent the latest available observations of the IDP's state
+                  items:
+                    type: object
+                    required:
+                      - type
+                      - status
+                      - lastTransitionTime
+                    properties:
+                      type:
+                        type: string
+                        description: Type of condition (e.g., Ready)
+                      status:
+                        type: string
+                        description: Status of the condition
+                        enum:
+                          - "True"
+                          - "False"
+                      reason:
+                        type: string
+                        description: Machine-readable reason for the condition's last transition
+                      message:
+                        type: string
+                        description: Human-readable message indicating details about the transition
+                      observedGeneration:
+                        type: integer
+                        format: int32
+                        description: The generation observed by the controller
+                      lastTransitionTime:
+                        type: string
+                        format: date-time
+                        description: Last time the condition transitioned from one status to another
+                      lastUpdatedTime:
+                        type: string
+                        format: date-time
+                        description: Last time the condition was updated
+              x-kubernetes-preserve-unknown-fields: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Cluster
+          type: string
+          jsonPath: .spec.clusterRef
+          description: The parent cluster
+        - name: Type
+          type: string
+          jsonPath: .spec.type
+          description: The IDP type
+        - name: Ready
+          type: string
+          jsonPath: .status.conditions[?(@.type=="Ready")].status
+          description: Whether the IDP is ready
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+          description: Time since creation

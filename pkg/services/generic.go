@@ -47,6 +47,9 @@ var (
 		"NodePool": {
 			"spec": "spec", // Provider-specific field, not searchable
 		},
+		"Resource": {
+			"spec": "spec", // Generic resource spec is not searchable
+		},
 	}
 	allFieldsAllowed = map[string]string{}
 )

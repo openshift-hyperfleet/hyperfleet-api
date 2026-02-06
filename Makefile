@@ -325,11 +325,10 @@ ifndef QUAY_USER
 	@echo "This will build and push to: quay.io/$$QUAY_USER/$(IMAGE_NAME):$(DEV_TAG)"
 	@exit 1
 endif
-	@echo "Building dev image quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG)..."
-	# --platform flag requires Docker >= 20.10 or Podman >= 3.4
-	# For older engines: use 'docker buildx build' or omit --platform
+	@echo "Building dev image quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG) for ARM64..."
+	# Cross-compile for ARM64: builder uses amd64 golang, Go cross-compiles, final stage uses arm64 base
 	$(container_tool) build \
-		--platform linux/amd64 \
+		--build-arg TARGETARCH=arm64 \
 		--build-arg BASE_IMAGE=alpine:3.21 \
 		--build-arg GIT_SHA=$(GIT_SHA) \
 		--build-arg GIT_DIRTY=$(GIT_DIRTY) \

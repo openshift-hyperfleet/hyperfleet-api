@@ -1,0 +1,22 @@
+# NodePool Resource Definition
+# This defines an owned resource under Cluster for the generic resource API.
+# Adding this file enables the following routes:
+#   GET    /api/hyperfleet/v1/clusters/{cluster_id}/nodepools
+#   POST   /api/hyperfleet/v1/clusters/{cluster_id}/nodepools
+#   GET    /api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{id}
+#   PATCH  /api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{id}
+#   DELETE /api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{id}
+
+apiVersion: hyperfleet.io/v1
+kind: NodePool
+plural: nodepools
+singular: nodepool
+scope: Owned
+owner:
+  kind: Cluster
+  pathParam: cluster_id
+statusConfig:
+  requiredAdapters:
+    - validation
+    - hypershift
+enabled: true

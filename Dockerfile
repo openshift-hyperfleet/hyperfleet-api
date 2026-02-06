@@ -1,10 +1,12 @@
 ARG BASE_IMAGE=gcr.io/distroless/static-debian12:nonroot
+ARG TARGETARCH=amd64
 
-# OpenAPI generation stage
-FROM golang:1.25 AS builder
+# Build stage - explicitly use amd64 for cross-compilation from x86 hosts
+FROM --platform=linux/amd64 golang:1.25 AS builder
 
 ARG GIT_SHA=unknown
 ARG GIT_DIRTY=""
+ARG TARGETARCH
 
 WORKDIR /build
 
@@ -15,11 +17,13 @@ RUN go mod download
 # Copy source code
 COPY . .
 
-# Build binary
-RUN CGO_ENABLED=0 GOOS=linux make build
+# Build binary for target architecture
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} make build
 
-# Runtime stage
-FROM ${BASE_IMAGE}
+# Runtime stage - use target architecture for the base image
+ARG BASE_IMAGE
+ARG TARGETARCH
+FROM --platform=linux/${TARGETARCH} ${BASE_IMAGE}
 
 WORKDIR /app
 
@@ -28,6 +32,9 @@ COPY --from=builder /build/bin/hyperfleet-api /app/hyperfleet-api
 
 # Copy OpenAPI schema for validation (uses the source spec, not the generated one)
 COPY --from=builder /build/openapi/openapi.yaml /app/openapi/openapi.yaml
+
+# Copy CRD definitions for generic resource API
+COPY --from=builder /build/config/crds /app/config/crds
 
 # Set default schema path (can be overridden by Helm for provider-specific schemas)
 ENV OPENAPI_SCHEMA_PATH=/app/openapi/openapi.yaml
