@@ -18,6 +18,14 @@ const (
 	testNodePoolID = "test-nodepool-id"
 )
 
+// testNodePoolAdapterConfig creates a test adapter config with default values
+func testNodePoolAdapterConfig() *config.AdapterRequirementsConfig {
+	return &config.AdapterRequirementsConfig{
+		RequiredClusterAdapters:  []string{"validation", "dns", "pullsecret", "hypershift"},
+		RequiredNodePoolAdapters: []string{"validation", "hypershift"},
+	}
+}
+
 // Mock implementations for testing NodePool ProcessAdapterStatus
 
 type mockNodePoolDao struct {
@@ -79,7 +87,7 @@ func TestNodePoolProcessAdapterStatus_UnknownCondition(t *testing.T) {
 	nodePoolDao := newMockNodePoolDao()
 	adapterStatusDao := newMockAdapterStatusDao()
 
-	config := config.NewAdapterRequirementsConfig()
+	config := testNodePoolAdapterConfig()
 	service := NewNodePoolService(nodePoolDao, adapterStatusDao, config)
 
 	ctx := context.Background()
@@ -119,7 +127,7 @@ func TestNodePoolProcessAdapterStatus_TrueCondition(t *testing.T) {
 	nodePoolDao := newMockNodePoolDao()
 	adapterStatusDao := newMockAdapterStatusDao()
 
-	config := config.NewAdapterRequirementsConfig()
+	config := testNodePoolAdapterConfig()
 	service := NewNodePoolService(nodePoolDao, adapterStatusDao, config)
 
 	ctx := context.Background()
@@ -170,7 +178,7 @@ func TestNodePoolProcessAdapterStatus_MultipleConditions_AvailableUnknown(t *tes
 	nodePoolDao := newMockNodePoolDao()
 	adapterStatusDao := newMockAdapterStatusDao()
 
-	config := config.NewAdapterRequirementsConfig()
+	config := testNodePoolAdapterConfig()
 	service := NewNodePoolService(nodePoolDao, adapterStatusDao, config)
 
 	ctx := context.Background()
@@ -214,7 +222,7 @@ func TestNodePoolAvailableReadyTransitions(t *testing.T) {
 	nodePoolDao := newMockNodePoolDao()
 	adapterStatusDao := newMockAdapterStatusDao()
 
-	adapterConfig := config.NewAdapterRequirementsConfig()
+	adapterConfig := testNodePoolAdapterConfig()
 	adapterConfig.RequiredNodePoolAdapters = []string{"validation", "hypershift"}
 
 	service := NewNodePoolService(nodePoolDao, adapterStatusDao, adapterConfig)
@@ -367,7 +375,7 @@ func TestNodePoolStaleAdapterStatusUpdatePolicy(t *testing.T) {
 	nodePoolDao := newMockNodePoolDao()
 	adapterStatusDao := newMockAdapterStatusDao()
 
-	adapterConfig := config.NewAdapterRequirementsConfig()
+	adapterConfig := testNodePoolAdapterConfig()
 	adapterConfig.RequiredNodePoolAdapters = []string{"validation", "hypershift"}
 
 	service := NewNodePoolService(nodePoolDao, adapterStatusDao, adapterConfig)
@@ -442,7 +450,7 @@ func TestNodePoolSyntheticTimestampsStableWithoutAdapterStatus(t *testing.T) {
 	nodePoolDao := newMockNodePoolDao()
 	adapterStatusDao := newMockAdapterStatusDao()
 
-	adapterConfig := config.NewAdapterRequirementsConfig()
+	adapterConfig := testNodePoolAdapterConfig()
 	adapterConfig.RequiredNodePoolAdapters = []string{"validation"}
 
 	service := NewNodePoolService(nodePoolDao, adapterStatusDao, adapterConfig)

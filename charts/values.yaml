@@ -124,16 +124,17 @@ auth:
   # Override with: --set auth.jwksUrl="https://your-idp/.../.well-known/jwks.json"
   jwksUrl: "https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/certs"
 
-# Adapter configuration
+# Adapter configuration (REQUIRED)
 # Configure which adapters must be ready for resources to be marked as "Ready"
-# If not specified, defaults are used (see pkg/config/adapter.go)
+# Both cluster and nodepool adapters MUST be specified - the application will not start without them
+# Empty arrays [] are valid if you want no adapters required for the Ready state
 adapters:
-  # Required adapters for cluster "Ready" state
-  # Default: ["validation", "dns", "pullsecret", "hypershift"]
-  cluster: []
-  # Required adapters for nodepool "Ready" state
-  # Default: ["validation", "hypershift"]
-  nodepool: []
+  # Required adapters for cluster "Ready" state (REQUIRED)
+  # Example: ["validation", "dns", "pullsecret", "hypershift"]
+  # cluster: []
+  # Required adapters for nodepool "Ready" state (REQUIRED)
+  # Example: ["validation", "hypershift"]
+  # nodepool: []
 
 # ServiceMonitor for Prometheus Operator
 # Enables automatic metrics discovery in clusters with Prometheus Operator

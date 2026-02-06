@@ -6,70 +6,61 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-func TestNewAdapterRequirementsConfig_Defaults(t *testing.T) {
+func TestNewAdapterRequirementsConfig_MissingClusterAdapters(t *testing.T) {
 	RegisterTestingT(t)
 
 	// Ensure env vars are not set
 	t.Setenv("HYPERFLEET_CLUSTER_ADAPTERS", "")
+	t.Setenv("HYPERFLEET_NODEPOOL_ADAPTERS", `["validation"]`)
+
+	_, err := NewAdapterRequirementsConfig()
+
+	Expect(err).To(HaveOccurred())
+	Expect(err.Error()).To(ContainSubstring("HYPERFLEET_CLUSTER_ADAPTERS"))
+	Expect(err.Error()).To(ContainSubstring("required"))
+}
+
+func TestNewAdapterRequirementsConfig_MissingNodePoolAdapters(t *testing.T) {
+	RegisterTestingT(t)
+
+	t.Setenv("HYPERFLEET_CLUSTER_ADAPTERS", `["validation"]`)
 	t.Setenv("HYPERFLEET_NODEPOOL_ADAPTERS", "")
 
-	config := NewAdapterRequirementsConfig()
+	_, err := NewAdapterRequirementsConfig()
 
-	// Verify default cluster adapters
-	Expect(config.RequiredClusterAdapters).To(Equal([]string{
-		"validation",
-		"dns",
-		"pullsecret",
-		"hypershift",
-	}))
+	Expect(err).To(HaveOccurred())
+	Expect(err.Error()).To(ContainSubstring("HYPERFLEET_NODEPOOL_ADAPTERS"))
+	Expect(err.Error()).To(ContainSubstring("required"))
+}
 
-	// Verify default nodepool adapters
-	Expect(config.RequiredNodePoolAdapters).To(Equal([]string{
-		"validation",
-		"hypershift",
-	}))
+func TestNewAdapterRequirementsConfig_MissingBothAdapters(t *testing.T) {
+	RegisterTestingT(t)
+
+	t.Setenv("HYPERFLEET_CLUSTER_ADAPTERS", "")
+	t.Setenv("HYPERFLEET_NODEPOOL_ADAPTERS", "")
+
+	_, err := NewAdapterRequirementsConfig()
+
+	Expect(err).To(HaveOccurred())
+	Expect(err.Error()).To(ContainSubstring("HYPERFLEET_CLUSTER_ADAPTERS"))
 }
 
 func TestLoadFromEnv_ClusterAdapters(t *testing.T) {
 	RegisterTestingT(t)
 
 	t.Setenv("HYPERFLEET_CLUSTER_ADAPTERS", `["validation","dns"]`)
-	t.Setenv("HYPERFLEET_NODEPOOL_ADAPTERS", "")
+	t.Setenv("HYPERFLEET_NODEPOOL_ADAPTERS", `["validation","hypershift"]`)
 
-	config := NewAdapterRequirementsConfig()
+	config, err := NewAdapterRequirementsConfig()
 
-	// Verify cluster adapters from env
+	Expect(err).NotTo(HaveOccurred())
 	Expect(config.RequiredClusterAdapters).To(Equal([]string{
 		"validation",
 		"dns",
 	}))
-
-	// Verify nodepool adapters use defaults
 	Expect(config.RequiredNodePoolAdapters).To(Equal([]string{
 		"validation",
 		"hypershift",
-	}))
-}
-
-func TestLoadFromEnv_NodePoolAdapters(t *testing.T) {
-	RegisterTestingT(t)
-
-	t.Setenv("HYPERFLEET_NODEPOOL_ADAPTERS", `["validation"]`)
-	t.Setenv("HYPERFLEET_CLUSTER_ADAPTERS", "")
-
-	config := NewAdapterRequirementsConfig()
-
-	// Verify cluster adapters use defaults
-	Expect(config.RequiredClusterAdapters).To(Equal([]string{
-		"validation",
-		"dns",
-		"pullsecret",
-		"hypershift",
-	}))
-
-	// Verify nodepool adapters from env
-	Expect(config.RequiredNodePoolAdapters).To(Equal([]string{
-		"validation",
 	}))
 }
 
@@ -79,9 +70,9 @@ func TestLoadFromEnv_BothAdapters(t *testing.T) {
 	t.Setenv("HYPERFLEET_CLUSTER_ADAPTERS", `["validation","dns"]`)
 	t.Setenv("HYPERFLEET_NODEPOOL_ADAPTERS", `["validation"]`)
 
-	config := NewAdapterRequirementsConfig()
+	config, err := NewAdapterRequirementsConfig()
 
-	// Verify both are loaded from env
+	Expect(err).NotTo(HaveOccurred())
 	Expect(config.RequiredClusterAdapters).To(Equal([]string{
 		"validation",
 		"dns",
@@ -95,53 +86,53 @@ func TestLoadFromEnv_EmptyArray(t *testing.T) {
 	RegisterTestingT(t)
 
 	t.Setenv("HYPERFLEET_CLUSTER_ADAPTERS", `[]`)
+	t.Setenv("HYPERFLEET_NODEPOOL_ADAPTERS", `[]`)
 
-	config := NewAdapterRequirementsConfig()
+	config, err := NewAdapterRequirementsConfig()
 
-	// Verify empty array is loaded
+	Expect(err).NotTo(HaveOccurred())
 	Expect(config.RequiredClusterAdapters).To(Equal([]string{}))
+	Expect(config.RequiredNodePoolAdapters).To(Equal([]string{}))
 }
 
 func TestLoadFromEnv_InvalidJSON_ClusterAdapters(t *testing.T) {
 	RegisterTestingT(t)
 
 	t.Setenv("HYPERFLEET_CLUSTER_ADAPTERS", `not-valid-json`)
+	t.Setenv("HYPERFLEET_NODEPOOL_ADAPTERS", `["validation"]`)
 
-	config := NewAdapterRequirementsConfig()
+	_, err := NewAdapterRequirementsConfig()
 
-	// Verify defaults are used when JSON is invalid
-	Expect(config.RequiredClusterAdapters).To(Equal([]string{
-		"validation",
-		"dns",
-		"pullsecret",
-		"hypershift",
-	}))
+	Expect(err).To(HaveOccurred())
+	Expect(err.Error()).To(ContainSubstring("failed to parse HYPERFLEET_CLUSTER_ADAPTERS"))
 }
 
 func TestLoadFromEnv_InvalidJSON_NodePoolAdapters(t *testing.T) {
 	RegisterTestingT(t)
 
+	t.Setenv("HYPERFLEET_CLUSTER_ADAPTERS", `["validation"]`)
 	t.Setenv("HYPERFLEET_NODEPOOL_ADAPTERS", `{invalid}`)
 
-	config := NewAdapterRequirementsConfig()
+	_, err := NewAdapterRequirementsConfig()
 
-	// Verify defaults are used when JSON is invalid
-	Expect(config.RequiredNodePoolAdapters).To(Equal([]string{
-		"validation",
-		"hypershift",
-	}))
+	Expect(err).To(HaveOccurred())
+	Expect(err.Error()).To(ContainSubstring("failed to parse HYPERFLEET_NODEPOOL_ADAPTERS"))
 }
 
 func TestLoadFromEnv_SingleAdapter(t *testing.T) {
 	RegisterTestingT(t)
 
 	t.Setenv("HYPERFLEET_CLUSTER_ADAPTERS", `["validation"]`)
+	t.Setenv("HYPERFLEET_NODEPOOL_ADAPTERS", `["hypershift"]`)
 
-	config := NewAdapterRequirementsConfig()
+	config, err := NewAdapterRequirementsConfig()
 
-	// Verify single adapter is loaded
+	Expect(err).NotTo(HaveOccurred())
 	Expect(config.RequiredClusterAdapters).To(Equal([]string{
 		"validation",
+	}))
+	Expect(config.RequiredNodePoolAdapters).To(Equal([]string{
+		"hypershift",
 	}))
 }
 
@@ -149,13 +140,17 @@ func TestLoadFromEnv_CustomAdapterNames(t *testing.T) {
 	RegisterTestingT(t)
 
 	t.Setenv("HYPERFLEET_CLUSTER_ADAPTERS", `["custom-adapter-1","custom-adapter-2","test"]`)
+	t.Setenv("HYPERFLEET_NODEPOOL_ADAPTERS", `["custom-np-adapter"]`)
 
-	config := NewAdapterRequirementsConfig()
+	config, err := NewAdapterRequirementsConfig()
 
-	// Verify custom adapters are loaded
+	Expect(err).NotTo(HaveOccurred())
 	Expect(config.RequiredClusterAdapters).To(Equal([]string{
 		"custom-adapter-1",
 		"custom-adapter-2",
 		"test",
+	}))
+	Expect(config.RequiredNodePoolAdapters).To(Equal([]string{
+		"custom-np-adapter",
 	}))
 }

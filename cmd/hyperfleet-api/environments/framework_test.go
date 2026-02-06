@@ -1,6 +1,7 @@
 package environments
 
 import (
+	"os"
 	"os/exec"
 	"reflect"
 	"testing"
@@ -23,6 +24,14 @@ func BenchmarkGetDynos(b *testing.B) {
 }
 
 func TestLoadServices(t *testing.T) {
+	// Set required adapter configuration for tests
+	if os.Getenv("HYPERFLEET_CLUSTER_ADAPTERS") == "" {
+		t.Setenv("HYPERFLEET_CLUSTER_ADAPTERS", `["validation","dns","pullsecret","hypershift"]`)
+	}
+	if os.Getenv("HYPERFLEET_NODEPOOL_ADAPTERS") == "" {
+		t.Setenv("HYPERFLEET_NODEPOOL_ADAPTERS", `["validation","hypershift"]`)
+	}
+
 	env := Environment()
 	err := env.AddFlags(pflag.CommandLine)
 	if err != nil {

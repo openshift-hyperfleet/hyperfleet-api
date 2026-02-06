@@ -10,7 +10,6 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/presenters"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/auth"
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/dao"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/handlers"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/services"
@@ -21,14 +20,11 @@ import (
 type ServiceLocator func() services.NodePoolService
 
 func NewServiceLocator(env *environments.Env) ServiceLocator {
-	// Initialize adapter requirements config from environment variables
-	adapterConfig := config.NewAdapterRequirementsConfig()
-
 	return func() services.NodePoolService {
 		return services.NewNodePoolService(
 			dao.NewNodePoolDao(&env.Database.SessionFactory),
 			dao.NewAdapterStatusDao(&env.Database.SessionFactory),
-			adapterConfig,
+			env.Config.Adapters,
 		)
 	}
 }

@@ -13,12 +13,13 @@ import (
 )
 
 type ApplicationConfig struct {
-	Server   *ServerConfig   `json:"server"`
-	Metrics  *MetricsConfig  `json:"metrics"`
-	Health   *HealthConfig   `json:"health"`
-	Database *DatabaseConfig `json:"database"`
-	OCM      *OCMConfig      `json:"ocm"`
-	Logging  *LoggingConfig  `json:"logging"`
+	Server   *ServerConfig             `json:"server"`
+	Metrics  *MetricsConfig            `json:"metrics"`
+	Health   *HealthConfig             `json:"health"`
+	Database *DatabaseConfig           `json:"database"`
+	OCM      *OCMConfig                `json:"ocm"`
+	Logging  *LoggingConfig            `json:"logging"`
+	Adapters *AdapterRequirementsConfig `json:"adapters"`
 }
 
 func NewApplicationConfig() *ApplicationConfig {
@@ -40,6 +41,17 @@ func (c *ApplicationConfig) AddFlags(flagset *pflag.FlagSet) {
 	c.Database.AddFlags(flagset)
 	c.OCM.AddFlags(flagset)
 	c.Logging.AddFlags(flagset)
+}
+
+// LoadAdapters initializes the adapter configuration from environment variables.
+// This should be called once during application startup.
+func (c *ApplicationConfig) LoadAdapters() error {
+	adapters, err := NewAdapterRequirementsConfig()
+	if err != nil {
+		return err
+	}
+	c.Adapters = adapters
+	return nil
 }
 
 func (c *ApplicationConfig) ReadFiles() []string {
