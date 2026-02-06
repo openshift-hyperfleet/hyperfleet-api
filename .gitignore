@@ -56,3 +56,6 @@ secrets
 
 # Ignore Claude Code local configuration
 .claude/
+.claude-flow/
+.mcp.json
+.swarm/

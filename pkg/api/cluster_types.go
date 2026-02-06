@@ -13,7 +13,7 @@ type Cluster struct {
 
 	// Core fields
 	Kind   string         `json:"kind" gorm:"default:'Cluster'"`
-	Name   string         `json:"name" gorm:"uniqueIndex;size:63;not null"`
+	Name   string         `json:"name" gorm:"uniqueIndex;size:53;not null"`
 	Spec   datatypes.JSON `json:"spec" gorm:"type:jsonb;not null"`
 	Labels datatypes.JSON `json:"labels,omitempty" gorm:"type:jsonb"`
 	Href   string         `json:"href,omitempty" gorm:"size:500"`

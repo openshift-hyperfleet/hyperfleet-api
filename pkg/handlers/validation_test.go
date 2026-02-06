@@ -25,7 +25,7 @@ func TestValidateName_Valid(t *testing.T) {
 		req := openapi.ClusterCreateRequest{
 			Name: name,
 		}
-		validator := validateName(&req, "Name", "name", 3, 63)
+		validator := validateName(&req, "Name", "name", 3, 53)
 		err := validator()
 		Expect(err).To(BeNil(), "Expected name '%s' to be valid", name)
 	}
@@ -44,7 +44,7 @@ func TestValidateName_TooShort(t *testing.T) {
 		req := openapi.ClusterCreateRequest{
 			Name: name,
 		}
-		validator := validateName(&req, "Name", "name", 3, 63)
+		validator := validateName(&req, "Name", "name", 3, 53)
 		err := validator()
 		Expect(err).ToNot(BeNil(), "Expected name '%s' to be invalid (too short)", name)
 		if name == "" {
@@ -61,10 +61,10 @@ func TestValidateName_TooLong(t *testing.T) {
 	req := openapi.ClusterCreateRequest{
 		Name: "this-is-a-very-long-name-that-exceeds-the-maximum-allowed-length-for-cluster-names",
 	}
-	validator := validateName(&req, "Name", "name", 3, 63)
+	validator := validateName(&req, "Name", "name", 3, 53)
 	err := validator()
 	Expect(err).ToNot(BeNil())
-	Expect(err.Reason).To(ContainSubstring("at most 63 characters"))
+	Expect(err.Reason).To(ContainSubstring("at most 53 characters"))
 }
 
 func TestValidateName_InvalidCharacters(t *testing.T) {
@@ -88,7 +88,7 @@ func TestValidateName_InvalidCharacters(t *testing.T) {
 		req := openapi.ClusterCreateRequest{
 			Name: name,
 		}
-		validator := validateName(&req, "Name", "name", 3, 63)
+		validator := validateName(&req, "Name", "name", 3, 53)
 		err := validator()
 		Expect(err).ToNot(BeNil(), "Expected name '%s' to be invalid", name)
 		Expect(err.Reason).To(ContainSubstring("lowercase letters, numbers, and hyphens"))
@@ -148,4 +148,86 @@ func TestValidateKind_WrongKind(t *testing.T) {
 	err := validator()
 	Expect(err).ToNot(BeNil())
 	Expect(err.Reason).To(ContainSubstring("must be 'Cluster'"))
+}
+
+func TestValidateNodePoolName_Valid(t *testing.T) {
+	RegisterTestingT(t)
+
+	validNames := []string{
+		"abc",
+		"worker-pool-1",
+		"np1",
+		"a1b",
+		"my-pool",
+		"pool-123456789", // 15 chars
+	}
+
+	for _, name := range validNames {
+		req := openapi.NodePoolCreateRequest{
+			Name: name,
+		}
+		validator := validateName(&req, "Name", "name", 3, 15)
+		err := validator()
+		Expect(err).To(BeNil(), "Expected nodepool name '%s' to be valid", name)
+	}
+}
+
+func TestValidateNodePoolName_TooShort(t *testing.T) {
+	RegisterTestingT(t)
+
+	shortNames := []string{
+		"",   // empty
+		"a",  // 1 char
+		"ab", // 2 chars
+	}
+
+	for _, name := range shortNames {
+		req := openapi.NodePoolCreateRequest{
+			Name: name,
+		}
+		validator := validateName(&req, "Name", "name", 3, 15)
+		err := validator()
+		Expect(err).ToNot(BeNil(), "Expected nodepool name '%s' to be invalid (too short)", name)
+		if name == "" {
+			Expect(err.Reason).To(ContainSubstring("required"))
+		} else {
+			Expect(err.Reason).To(ContainSubstring("at least 3 characters"))
+		}
+	}
+}
+
+func TestValidateNodePoolName_TooLong(t *testing.T) {
+	RegisterTestingT(t)
+
+	req := openapi.NodePoolCreateRequest{
+		Name: "this-is-too-long", // 16 chars
+	}
+	validator := validateName(&req, "Name", "name", 3, 15)
+	err := validator()
+	Expect(err).ToNot(BeNil())
+	Expect(err.Reason).To(ContainSubstring("at most 15 characters"))
+}
+
+func TestValidateNodePoolName_InvalidCharacters(t *testing.T) {
+	RegisterTestingT(t)
+
+	invalidNames := []string{
+		"TEST",         // uppercase
+		"Test",         // mixed case
+		"test_pool",   // underscore
+		"test.pool",   // dot
+		"test pool",   // space
+		"-test",       // starts with hyphen
+		"test-",       // ends with hyphen
+	}
+
+	for _, name := range invalidNames {
+		req := openapi.NodePoolCreateRequest{
+			Name: name,
+		}
+		validator := validateName(&req, "Name", "name", 3, 15)
+		err := validator()
+		Expect(err).ToNot(BeNil(), "Expected nodepool name '%s' to be invalid", name)
+		Expect(err.Reason).To(ContainSubstring("lowercase letters, numbers, and hyphens"))
+	}
 }
