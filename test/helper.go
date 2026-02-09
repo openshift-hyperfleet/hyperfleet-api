@@ -108,9 +108,9 @@ func NewHelper(t *testing.T) *Helper {
 
 		// Start JWK certificate mock server for testing
 		jwkMockTeardown := helper.StartJWKCertServerMock()
-		// Teardown order: terminate the testcontainer FIRST so the Docker
+		// Teardown order: terminate the testcontainer FIRST so the
 		// container is removed before anything else. If server shutdown hangs
-		// and the force-exit goroutine kills the process, the Docker container
+		// and the force-exit goroutine kills the process, the container
 		// would remain alive and keep the Prow pod stuck (HYPERFLEET-625).
 		// CleanDB is omitted because the container is destroyed anyway.
 		helper.teardowns = []func() error{

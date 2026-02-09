@@ -778,3 +778,11 @@ func TestClusterPost_WrongKind(t *testing.T) {
 	Expect(ok).To(BeTrue())
 	Expect(detail).To(ContainSubstring("kind must be 'Cluster'"))
 }
+
+// TestClusterPanicFailure is a temporary test to verify that Prow correctly
+// reports integration test failures when a panic occurs during test execution.
+// This test should be removed after confirming the behavior.
+func TestClusterPanicFailure(t *testing.T) {
+	_, _ = test.RegisterIntegration(t)
+	panic("intentional panic to test Prow failure reporting")
+}
