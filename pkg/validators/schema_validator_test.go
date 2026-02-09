@@ -88,7 +88,7 @@ func TestNewSchemaValidator_InvalidPath(t *testing.T) {
 func TestNewSchemaValidator_MissingSchemas(t *testing.T) {
 	RegisterTestingT(t)
 
-	// Schema without required components
+	// Schema without any *Spec schemas
 	invalidSchema := `
 openapi: 3.0.0
 info:
@@ -106,10 +106,10 @@ components:
 	err := os.WriteFile(schemaPath, []byte(invalidSchema), 0600)
 	Expect(err).To(BeNil())
 
-	// Should fail because ClusterSpec is missing
+	// Should fail because no *Spec schemas are found
 	_, err = NewSchemaValidator(schemaPath)
 	Expect(err).ToNot(BeNil())
-	Expect(err.Error()).To(ContainSubstring("ClusterSpec schema not found"))
+	Expect(err.Error()).To(ContainSubstring("no *Spec schemas found"))
 }
 
 func TestValidateClusterSpec_Valid(t *testing.T) {

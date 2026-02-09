@@ -60,9 +60,7 @@ help:
 	@echo "make run/docs             run swagger and host the api spec"
 	@echo "make test                 run unit tests"
 	@echo "make test-integration     run integration tests"
-	@echo "make generate             generate openapi modules"
 	@echo "make generate-mocks       generate mock implementations for services"
-	@echo "make generate-all         generate all code (openapi + mocks)"
 	@echo "make clean                delete temporary generated files"
 	@echo "make image                build container image"
 	@echo "make image-push           build and push container image"
@@ -71,7 +69,6 @@ help:
 .PHONY: help
 
 # Encourage consistent tool versions
-OPENAPI_GENERATOR_VERSION:=5.4.0
 GO_VERSION:=go1.24.
 
 ### Constants:
@@ -135,14 +132,14 @@ lint: $(GOLANGCI_LINT)
 
 # Build binaries
 # NOTE it may be necessary to use CGO_ENABLED=0 for backwards compatibility with centos7 if not using centos7
-build: check-gopath generate-all
+build: check-gopath generate-mocks
 	@mkdir -p bin
 	echo "Building version: ${build_version}"
 	CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=boringcrypto ${GO} build -ldflags="$(ldflags)" -o bin/hyperfleet-api ./cmd/hyperfleet-api
 .PHONY: build
 
 # Install
-install: check-gopath generate-all
+install: check-gopath generate-mocks
 	CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=boringcrypto ${GO} install -ldflags="$(ldflags)" ./cmd/hyperfleet-api
 	@ ${GO} version | grep -q "$(GO_VERSION)" || \
 		( \
@@ -224,25 +221,16 @@ test-integration: install secrets $(GOTESTSUM)
 			./test/integration
 .PHONY: test-integration
 
-# Regenerate openapi types using oapi-codegen
-generate: $(OAPI_CODEGEN)
-	rm -rf pkg/api/openapi
-	mkdir -p pkg/api/openapi
-	$(OAPI_CODEGEN) --config openapi/oapi-codegen.yaml openapi/openapi.yaml
-.PHONY: generate
-
 # Generate mock implementations for service interfaces
 generate-mocks: $(MOCKGEN)
 	${GO} generate ./pkg/services/...
 .PHONY: generate-mocks
 
-# Generate all code (openapi + mocks)
-generate-all: generate generate-mocks
+# Generate all code (mocks only - OpenAPI types are now static)
+# Note: pkg/api/openapi/openapi.gen.go contains pre-generated types
+# OpenAPI spec is now dynamically generated from CRDs at runtime
+generate-all: generate-mocks
 .PHONY: generate-all
-
-# generate-vendor is now equivalent to generate (oapi-codegen handles dependencies)
-generate-vendor: generate
-.PHONY: generate-vendor
 
 run: build
 	./bin/hyperfleet-api migrate
@@ -253,17 +241,17 @@ run-no-auth: build
 	./bin/hyperfleet-api migrate
 	./bin/hyperfleet-api serve --enable-authz=false --enable-jwt=false
 
-# Run Swagger nd host the api docs
+# Run Swagger and host the api docs
+# Note: With dynamic OpenAPI generation, use the /api/hyperfleet/v1/openapi.html endpoint instead
 run/docs:
-	@echo "Please open http://localhost/"
-	docker run -d -p 80:8080 -e SWAGGER_JSON=/hyperfleet.yaml -v $(PWD)/openapi/hyperfleet.yaml:/hyperfleet.yaml swaggerapi/swagger-ui
+	@echo "OpenAPI spec is now dynamically generated from CRDs."
+	@echo "Start the server and visit: http://localhost:8000/api/hyperfleet/v1/openapi.html"
 .PHONY: run/docs
 
 # Delete temporary files
 clean:
 	rm -rf \
 		bin \
-		pkg/api/openapi \
 		data/generated/openapi/*.json \
 		secrets \
 .PHONY: clean

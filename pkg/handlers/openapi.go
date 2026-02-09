@@ -6,9 +6,10 @@ import (
 	"io/fs"
 	"net/http"
 
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/crd"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/openapi"
 )
 
 //go:embed openapi-ui.html
@@ -21,24 +22,19 @@ type openAPIHandler struct {
 
 func NewOpenAPIHandler() (*openAPIHandler, error) {
 	ctx := context.Background()
-	// Load the OpenAPI spec from the generated code's embedded swagger
-	swagger, err := openapi.GetSwagger()
-	if err != nil {
-		return nil, errors.GeneralError(
-			"can't load OpenAPI specification from generated code: %v",
-			err,
-		)
-	}
 
-	// Marshal the swagger spec to JSON
-	data, err := swagger.MarshalJSON()
+	// Generate the OpenAPI spec dynamically from CRD registry
+	spec := openapi.GenerateSpec(crd.Default())
+
+	// Marshal the spec to JSON
+	data, err := spec.MarshalJSON()
 	if err != nil {
 		return nil, errors.GeneralError(
 			"can't marshal OpenAPI specification to JSON: %v",
 			err,
 		)
 	}
-	logger.Info(ctx, "Loaded fully resolved OpenAPI specification from embedded pkg/api/openapi/api/openapi.yaml")
+	logger.Info(ctx, "Generated OpenAPI specification from CRD registry")
 
 	// Load the OpenAPI UI HTML content
 	uiContent, err := fs.ReadFile(openapiui, "openapi-ui.html")
