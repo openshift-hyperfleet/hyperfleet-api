@@ -34,6 +34,12 @@ func (h clusterStatusHandler) List(w http.ResponseWriter, r *http.Request) {
 			clusterID := mux.Vars(r)["id"]
 			listArgs := services.NewListArguments(r.URL.Query())
 
+			// Verify cluster exists
+			_, err := h.clusterService.Get(ctx, clusterID)
+			if err != nil {
+				return nil, err
+			}
+
 			// Fetch adapter statuses with pagination
 			adapterStatuses, total, err := h.adapterStatusService.FindByResourcePaginated(ctx, "Cluster", clusterID, listArgs)
 			if err != nil {

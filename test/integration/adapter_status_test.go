@@ -105,6 +105,22 @@ func TestClusterStatusGet(t *testing.T) {
 	Expect(len(resp.JSON200.Items)).To(BeNumerically(">=", 3))
 }
 
+// TestClusterStatusGet_NonExistentCluster tests that getting status for non-existent cluster returns 404
+func TestClusterStatusGet_NonExistentCluster(t *testing.T) {
+	h, client := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+
+	// Get status for non-existent cluster
+	resp, err := client.GetClusterStatusesWithResponse(
+		ctx, "non-existent-cluster", nil, test.WithAuthToken(ctx),
+	)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(resp.StatusCode()).To(Equal(http.StatusNotFound),
+		"Expected 404 Not Found for non-existent cluster")
+}
+
 // TestNodePoolStatusPost tests creating adapter status for a nodepool
 func TestNodePoolStatusPost(t *testing.T) {
 	h, client := test.RegisterIntegration(t)
