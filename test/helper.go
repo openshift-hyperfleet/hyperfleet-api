@@ -108,11 +108,17 @@ func NewHelper(t *testing.T) *Helper {
 
 		// Start JWK certificate mock server for testing
 		jwkMockTeardown := helper.StartJWKCertServerMock()
+		// Teardown order: terminate the testcontainer FIRST so the Docker
+		// container is removed before anything else. If server shutdown hangs
+		// and the force-exit goroutine kills the process, the Docker container
+		// would remain alive and keep the Prow pod stuck (HYPERFLEET-625).
+		// CleanDB is omitted because the container is destroyed anyway.
 		helper.teardowns = []func() error{
-			helper.CleanDB,
-			jwkMockTeardown,
-			helper.stopAPIServer,
 			helper.teardownEnv,
+			helper.stopAPIServer,
+			helper.stopMetricsServer,
+			helper.stopHealthServer,
+			jwkMockTeardown,
 		}
 		helper.startAPIServer()
 		helper.startMetricsServer()
@@ -177,6 +183,13 @@ func (helper *Helper) startMetricsServer() {
 func (helper *Helper) stopMetricsServer() error {
 	if err := helper.MetricsServer.Stop(); err != nil {
 		return fmt.Errorf("unable to stop metrics server: %s", err.Error())
+	}
+	return nil
+}
+
+func (helper *Helper) stopHealthServer() error {
+	if err := helper.HealthServer.Stop(); err != nil {
+		return fmt.Errorf("unable to stop health server: %s", err.Error())
 	}
 	return nil
 }

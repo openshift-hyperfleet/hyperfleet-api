@@ -147,7 +147,11 @@ func (f *Testcontainer) CheckConnection() error {
 }
 
 func (f *Testcontainer) Close() error {
-	ctx := context.Background()
+	// Use a timeout to prevent hanging indefinitely during teardown.
+	// Without this, a hung container.Terminate() would block the process from
+	// exiting, causing Prow CI jobs to stay in "pending" state (HYPERFLEET-625).
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 
 	// Close SQL connection
 	if f.sqlDB != nil {
