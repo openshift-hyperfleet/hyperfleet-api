@@ -30,33 +30,33 @@ func NewSchemaValidator(schemaPath string) (*SchemaValidator, error) {
 		return nil, fmt.Errorf("failed to load OpenAPI schema from %s: %w", schemaPath, err)
 	}
 
-	// Validate the loaded document
+	return NewSchemaValidatorFromSpec(doc)
+}
+
+// NewSchemaValidatorFromSpec creates a new schema validator from an existing OpenAPI spec.
+// This is useful when the spec is generated dynamically rather than loaded from a file.
+func NewSchemaValidatorFromSpec(doc *openapi3.T) (*SchemaValidator, error) {
+	// Validate the document
 	if err := doc.Validate(context.Background()); err != nil {
 		return nil, fmt.Errorf("invalid OpenAPI schema: %w", err)
 	}
 
-	// Extract ClusterSpec schema
-	clusterSpecSchema := doc.Components.Schemas["ClusterSpec"]
-	if clusterSpecSchema == nil {
-		return nil, fmt.Errorf("ClusterSpec schema not found in OpenAPI spec")
+	// Build schemas map dynamically from all *Spec schemas in the document
+	schemas := make(map[string]*ResourceSchema)
+
+	for name, schema := range doc.Components.Schemas {
+		if strings.HasSuffix(name, "Spec") {
+			// Extract resource type from schema name (e.g., "ClusterSpec" -> "cluster")
+			resourceType := strings.ToLower(strings.TrimSuffix(name, "Spec"))
+			schemas[resourceType] = &ResourceSchema{
+				TypeName: name,
+				Schema:   schema,
+			}
+		}
 	}
 
-	// Extract NodePoolSpec schema
-	nodePoolSpecSchema := doc.Components.Schemas["NodePoolSpec"]
-	if nodePoolSpecSchema == nil {
-		return nil, fmt.Errorf("NodePoolSpec schema not found in OpenAPI spec")
-	}
-
-	// Build schemas map
-	schemas := map[string]*ResourceSchema{
-		"cluster": {
-			TypeName: "ClusterSpec",
-			Schema:   clusterSpecSchema,
-		},
-		"nodepool": {
-			TypeName: "NodePoolSpec",
-			Schema:   nodePoolSpecSchema,
-		},
+	if len(schemas) == 0 {
+		return nil, fmt.Errorf("no *Spec schemas found in OpenAPI spec")
 	}
 
 	return &SchemaValidator{

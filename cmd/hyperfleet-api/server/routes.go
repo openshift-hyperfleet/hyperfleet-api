@@ -12,10 +12,12 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/server/logging"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/auth"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/crd"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/handlers"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/middleware"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/openapi"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/validators"
 )
 
@@ -114,31 +116,39 @@ func (s *apiServer) routes() *mux.Router {
 func registerApiMiddleware(router *mux.Router) {
 	router.Use(MetricsMiddleware)
 
-	// Schema validation middleware (validates cluster/nodepool spec fields)
-	// Load schema from environment variable, default to repo base schema
-	schemaPath := os.Getenv("OPENAPI_SCHEMA_PATH")
-	if schemaPath == "" {
-		// Default: use base schema in repo (provider-agnostic)
-		// Production: Helm sets OPENAPI_SCHEMA_PATH=/etc/hyperfleet/schemas/openapi.yaml
-		schemaPath = "openapi/openapi.yaml"
-	}
-
-	// Initialize schema validator (non-blocking - will warn if schema not found)
+	// Schema validation middleware (validates spec fields for all resources)
 	// Use background context for initialization logging
 	ctx := context.Background()
 
-	schemaValidator, err := validators.NewSchemaValidator(schemaPath)
-	if err != nil {
-		// Log warning but don't fail - schema validation is optional
-		logger.With(ctx, logger.FieldSchemaPath, schemaPath).WithError(err).Warn("Failed to load schema validator")
-		logger.Warn(ctx, "Schema validation is disabled. Spec fields will not be validated.")
-		logger.Info(ctx, "To enable schema validation:")
-		logger.Info(ctx, "  - Local: Run from repo root, or set OPENAPI_SCHEMA_PATH=openapi/openapi.yaml")
-		logger.Info(ctx, "  - Production: Helm sets OPENAPI_SCHEMA_PATH=/etc/hyperfleet/schemas/openapi.yaml")
+	// Check if an external schema file is specified (for production with provider-specific schemas)
+	schemaPath := os.Getenv("OPENAPI_SCHEMA_PATH")
+
+	var schemaValidator *validators.SchemaValidator
+	var err error
+
+	if schemaPath != "" {
+		// Production: Load schema from file (Helm sets OPENAPI_SCHEMA_PATH=/etc/hyperfleet/schemas/openapi.yaml)
+		schemaValidator, err = validators.NewSchemaValidator(schemaPath)
+		if err != nil {
+			logger.With(ctx, logger.FieldSchemaPath, schemaPath).WithError(err).Warn("Failed to load schema validator from file")
+		} else {
+			logger.With(ctx, logger.FieldSchemaPath, schemaPath).Info("Schema validation enabled from file")
+		}
 	} else {
-		// Apply schema validation middleware
-		logger.With(ctx, logger.FieldSchemaPath, schemaPath).Info("Schema validation enabled")
+		// Default: Generate schema dynamically from CRD registry
+		spec := openapi.GenerateSpec(crd.Default())
+		schemaValidator, err = validators.NewSchemaValidatorFromSpec(spec)
+		if err != nil {
+			logger.WithError(ctx, err).Warn("Failed to create schema validator from generated spec")
+		} else {
+			logger.Info(ctx, "Schema validation enabled from dynamically generated spec")
+		}
+	}
+
+	if schemaValidator != nil {
 		router.Use(middleware.SchemaValidationMiddleware(schemaValidator))
+	} else {
+		logger.Warn(ctx, "Schema validation is disabled. Spec fields will not be validated.")
 	}
 
 	router.Use(

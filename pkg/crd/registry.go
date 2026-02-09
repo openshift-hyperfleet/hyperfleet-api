@@ -163,6 +163,9 @@ func (r *Registry) parseCRD(crd *apiextensionsv1.CustomResourceDefinition) (*api
 	enabledStr := annotations[AnnotationEnabled]
 	enabled := enabledStr == "" || enabledStr == "true" // Default to enabled
 
+	// Extract OpenAPI schema from CRD
+	schema := extractOpenAPISchema(crd)
+
 	def := &api.ResourceDefinition{
 		APIVersion: HyperfleetGroup + "/v1",
 		Kind:       crd.Spec.Names.Kind,
@@ -174,9 +177,129 @@ func (r *Registry) parseCRD(crd *apiextensionsv1.CustomResourceDefinition) (*api
 			RequiredAdapters: requiredAdapters,
 		},
 		Enabled: enabled,
+		Schema:  schema,
 	}
 
 	return def, nil
+}
+
+// extractOpenAPISchema extracts the spec and status schemas from a CRD's openAPIV3Schema.
+// It looks for the first served version and extracts the properties.spec and properties.status fields.
+func extractOpenAPISchema(crd *apiextensionsv1.CustomResourceDefinition) *api.ResourceSchema {
+	// Find the storage version or first served version
+	var version *apiextensionsv1.CustomResourceDefinitionVersion
+	for i := range crd.Spec.Versions {
+		v := &crd.Spec.Versions[i]
+		if v.Storage {
+			version = v
+			break
+		}
+		if version == nil && v.Served {
+			version = v
+		}
+	}
+
+	if version == nil || version.Schema == nil || version.Schema.OpenAPIV3Schema == nil {
+		return nil
+	}
+
+	schema := &api.ResourceSchema{}
+	openAPISchema := version.Schema.OpenAPIV3Schema
+
+	// Extract properties from the schema
+	if openAPISchema.Properties != nil {
+		// Extract spec schema
+		if specSchema, ok := openAPISchema.Properties["spec"]; ok {
+			schema.Spec = jsonSchemaToMap(&specSchema)
+		}
+
+		// Extract status schema
+		if statusSchema, ok := openAPISchema.Properties["status"]; ok {
+			schema.Status = jsonSchemaToMap(&statusSchema)
+		}
+	}
+
+	return schema
+}
+
+// jsonSchemaToMap converts a JSONSchemaProps to a map[string]interface{} for OpenAPI generation.
+func jsonSchemaToMap(schema *apiextensionsv1.JSONSchemaProps) map[string]interface{} {
+	if schema == nil {
+		return nil
+	}
+
+	result := make(map[string]interface{})
+
+	if schema.Type != "" {
+		result["type"] = schema.Type
+	}
+	if schema.Description != "" {
+		result["description"] = schema.Description
+	}
+	if schema.Format != "" {
+		result["format"] = schema.Format
+	}
+	if len(schema.Enum) > 0 {
+		enumValues := make([]interface{}, len(schema.Enum))
+		for i, e := range schema.Enum {
+			enumValues[i] = string(e.Raw)
+		}
+		result["enum"] = enumValues
+	}
+	if schema.Minimum != nil {
+		result["minimum"] = *schema.Minimum
+	}
+	if schema.Maximum != nil {
+		result["maximum"] = *schema.Maximum
+	}
+	if schema.MinLength != nil {
+		result["minLength"] = *schema.MinLength
+	}
+	if schema.MaxLength != nil {
+		result["maxLength"] = *schema.MaxLength
+	}
+	if schema.Pattern != "" {
+		result["pattern"] = schema.Pattern
+	}
+	if schema.MinItems != nil {
+		result["minItems"] = *schema.MinItems
+	}
+	if schema.MaxItems != nil {
+		result["maxItems"] = *schema.MaxItems
+	}
+	if len(schema.Required) > 0 {
+		result["required"] = schema.Required
+	}
+
+	// Handle properties (for object types)
+	if len(schema.Properties) > 0 {
+		props := make(map[string]interface{})
+		for name, prop := range schema.Properties {
+			props[name] = jsonSchemaToMap(&prop)
+		}
+		result["properties"] = props
+	}
+
+	// Handle items (for array types)
+	if schema.Items != nil && schema.Items.Schema != nil {
+		result["items"] = jsonSchemaToMap(schema.Items.Schema)
+	}
+
+	// Handle additionalProperties
+	if schema.AdditionalProperties != nil {
+		if schema.AdditionalProperties.Allows {
+			result["additionalProperties"] = true
+		} else if schema.AdditionalProperties.Schema != nil {
+			result["additionalProperties"] = jsonSchemaToMap(schema.AdditionalProperties.Schema)
+		}
+	}
+
+	// Handle x-kubernetes-preserve-unknown-fields (translates to additionalProperties: true)
+	if schema.XPreserveUnknownFields != nil && *schema.XPreserveUnknownFields {
+		result["additionalProperties"] = true
+	}
+
+	return result
 }
 
 // getKubeConfig returns a Kubernetes client config.

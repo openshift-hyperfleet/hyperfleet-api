@@ -42,6 +42,15 @@ type StatusConfig struct {
 	RequiredAdapters []string `yaml:"requiredAdapters" json:"requiredAdapters"`
 }
 
+// ResourceSchema holds the OpenAPI schema extracted from a CRD.
+// It contains the spec and status property schemas for use in API documentation.
+type ResourceSchema struct {
+	// Spec contains the OpenAPI schema for the .spec field.
+	Spec map[string]interface{} `json:"spec,omitempty"`
+	// Status contains the OpenAPI schema for the .status field.
+	Status map[string]interface{} `json:"status,omitempty"`
+}
+
 // ResourceDefinition defines a custom resource type (CRD).
 // It specifies the resource's identity, scope, ownership, and status configuration.
 type ResourceDefinition struct {
@@ -61,6 +70,8 @@ type ResourceDefinition struct {
 	StatusConfig StatusConfig `yaml:"statusConfig" json:"statusConfig"`
 	// Enabled indicates whether this resource type is active.
 	Enabled bool `yaml:"enabled" json:"enabled"`
+	// Schema contains the OpenAPI schema extracted from the CRD.
+	Schema *ResourceSchema `yaml:"schema,omitempty" json:"schema,omitempty"`
 }
 
 // IsRoot returns true if this is a root-level resource.
