@@ -234,12 +234,13 @@ generate-all: generate-mocks
 
 run: build
 	./bin/hyperfleet-api migrate
-	./bin/hyperfleet-api serve
+	CRD_PATH=$(PWD)/charts/crds ./bin/hyperfleet-api serve
 .PHONY: run
 
 run-no-auth: build
 	./bin/hyperfleet-api migrate
-	./bin/hyperfleet-api serve --enable-authz=false --enable-jwt=false
+	CRD_PATH=$(PWD)/charts/crds ./bin/hyperfleet-api serve --enable-authz=false --enable-jwt=false
+.PHONY: run-no-auth
 
 # Run Swagger and host the api docs
 # Note: With dynamic OpenAPI generation, use the /api/hyperfleet/v1/openapi.html endpoint instead

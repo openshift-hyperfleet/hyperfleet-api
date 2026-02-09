@@ -122,8 +122,8 @@ func TestGenerateSpec_WithOwnedResource(t *testing.T) {
 	Expect(spec.Paths.Find("/api/hyperfleet/v1/clusters/{cluster_id}/nodepools")).ToNot(BeNil())
 	Expect(spec.Paths.Find("/api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepool_id}")).ToNot(BeNil())
 
-	// Should have global list path for owned resource
-	Expect(spec.Paths.Find("/api/hyperfleet/v1/nodepools")).ToNot(BeNil())
+	// Should NOT have global list path for owned resource (owned resources only accessible via parent)
+	Expect(spec.Paths.Find("/api/hyperfleet/v1/nodepools")).To(BeNil())
 }
 
 func TestGenerateSpec_JSON(t *testing.T) {

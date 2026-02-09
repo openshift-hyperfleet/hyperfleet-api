@@ -103,12 +103,6 @@ func addOwnedResourcePaths(doc *openapi3.T, def *api.ResourceDefinition, registr
 		Get:  buildListStatusesOperation(def, ownerDef),
 		Post: buildCreateStatusOperation(def, ownerDef),
 	})
-
-	// Also add a global list endpoint for owned resources (without owner filter)
-	globalListPath := fmt.Sprintf("%s/%s", basePath, def.Plural)
-	doc.Paths.Set(globalListPath, &openapi3.PathItem{
-		Get: buildGlobalListOperation(def),
-	})
 }
 
 // getOwnerDefinitionFromRegistry returns the ResourceDefinition for the owner of an owned resource.
@@ -151,24 +145,6 @@ func buildListOperation(def *api.ResourceDefinition, ownerDef *api.ResourceDefin
 		Parameters:  params,
 		Responses:   buildListResponses(def),
 		Security:    &openapi3.SecurityRequirements{{"BearerAuth": {}}},
-	}
-}
-
-// buildGlobalListOperation creates a GET operation for listing all resources globally.
-func buildGlobalListOperation(def *api.ResourceDefinition) *openapi3.Operation {
-	return &openapi3.Operation{
-		OperationID: fmt.Sprintf("get%s", inflection.Plural(def.Kind)),
-		Summary:     fmt.Sprintf("List all %s", def.Plural),
-		Description: fmt.Sprintf("Returns the list of all %s", def.Plural),
-		Parameters: []*openapi3.ParameterRef{
-			{Ref: "#/components/parameters/search"},
-			{Ref: "#/components/parameters/page"},
-			{Ref: "#/components/parameters/pageSize"},
-			{Ref: "#/components/parameters/orderBy"},
-			{Ref: "#/components/parameters/order"},
-		},
-		Responses: buildListResponses(def),
-		Security:  &openapi3.SecurityRequirements{{"BearerAuth": {}}},
 	}
 }
 

@@ -5,6 +5,7 @@ package resources
 import (
 	"context"
 	"net/http"
+	"os"
 
 	"github.com/gorilla/mux"
 	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/environments"
@@ -46,15 +47,31 @@ func Service(s *environments.Services) services.ResourceService {
 }
 
 func init() {
-	// Load CRDs from Kubernetes API
 	ctx := context.Background()
-	if err := crd.LoadFromKubernetes(ctx); err != nil {
-		// Log warning but don't fail - CRDs might not be present in all environments
-		logger.WithError(nil, err).Warn(
-			"Failed to load CRDs from Kubernetes API, generic resource API disabled")
-	} else {
-		logger.With(nil, "crd_count", crd.Default().Count()).Info(
-			"Loaded CRD definitions from Kubernetes API")
+	crdLoaded := false
+
+	// Try loading from local files first (for local development)
+	if crdPath := os.Getenv("CRD_PATH"); crdPath != "" {
+		if err := crd.LoadFromDirectory(crdPath); err != nil {
+			logger.WithError(nil, err).Warn(
+				"Failed to load CRDs from directory, trying Kubernetes API")
+		} else {
+			logger.With(nil, "crd_count", crd.DefaultRegistry().Count(), "path", crdPath).Info(
+				"Loaded CRD definitions from local files")
+			crdLoaded = true
+		}
+	}
+
+	// Fall back to Kubernetes API
+	if !crdLoaded {
+		if err := crd.LoadFromKubernetes(ctx); err != nil {
+			// Log warning but don't fail - CRDs might not be present in all environments
+			logger.WithError(nil, err).Warn(
+				"Failed to load CRDs from Kubernetes API, generic resource API disabled")
+		} else {
+			logger.With(nil, "crd_count", crd.DefaultRegistry().Count()).Info(
+				"Loaded CRD definitions from Kubernetes API")
+		}
 	}
 
 	// Service registration
