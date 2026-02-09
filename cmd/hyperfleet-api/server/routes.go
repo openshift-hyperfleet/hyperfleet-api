@@ -136,7 +136,7 @@ func registerApiMiddleware(router *mux.Router) {
 		}
 	} else {
 		// Default: Generate schema dynamically from CRD registry
-		spec := openapi.GenerateSpec(crd.Default())
+		spec := openapi.GenerateSpec(crd.DefaultRegistry())
 		schemaValidator, err = validators.NewSchemaValidatorFromSpec(spec)
 		if err != nil {
 			logger.WithError(ctx, err).Warn("Failed to create schema validator from generated spec")

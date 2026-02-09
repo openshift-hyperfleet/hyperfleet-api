@@ -145,12 +145,12 @@ install: generate-all ## Build and install binary to GOPATH/bin
 .PHONY: run
 run: build ## Run the application
 	./bin/hyperfleet-api migrate
-	./bin/hyperfleet-api serve
+	CRD_PATH=$(PWD)/charts/crds ./bin/hyperfleet-api serve
 
 .PHONY: run-no-auth
 run-no-auth: build ## Run the application without auth
 	./bin/hyperfleet-api migrate
-	./bin/hyperfleet-api serve --enable-authz=false --enable-jwt=false
+	CRD_PATH=$(PWD)/charts/crds ./bin/hyperfleet-api serve --enable-authz=false --enable-jwt=false
 
 .PHONY: run/docs
 run/docs: check-container-tool ## Run swagger and host the api spec

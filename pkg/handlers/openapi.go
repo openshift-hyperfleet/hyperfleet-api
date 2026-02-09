@@ -24,7 +24,7 @@ func NewOpenAPIHandler() (*openAPIHandler, error) {
 	ctx := context.Background()
 
 	// Generate the OpenAPI spec dynamically from CRD registry
-	spec := openapi.GenerateSpec(crd.Default())
+	spec := openapi.GenerateSpec(crd.DefaultRegistry())
 
 	// Marshal the spec to JSON
 	data, err := spec.MarshalJSON()

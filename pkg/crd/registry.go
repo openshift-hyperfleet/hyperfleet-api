@@ -21,6 +21,8 @@ package crd
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -29,6 +31,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+	"sigs.k8s.io/yaml"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 )
@@ -93,6 +96,59 @@ func (r *Registry) LoadFromKubernetes(ctx context.Context) error {
 		}
 
 		def, err := r.parseCRD(crd)
+		if err != nil {
+			return fmt.Errorf("failed to parse CRD %s: %w", crd.Name, err)
+		}
+
+		// Register the CRD
+		r.byKind[def.Kind] = def
+		r.byPlural[def.Plural] = def
+		if def.Enabled {
+			r.all = append(r.all, def)
+		}
+	}
+
+	return nil
+}
+
+// LoadFromDirectory loads CRDs from YAML files in the specified directory.
+// Files must have .yaml or .yml extension and contain valid CRD definitions.
+func (r *Registry) LoadFromDirectory(dir string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	// Find all YAML files
+	files, err := os.ReadDir(dir)
+	if err != nil {
+		return fmt.Errorf("failed to read directory %s: %w", dir, err)
+	}
+
+	for _, file := range files {
+		if file.IsDir() {
+			continue
+		}
+		if !strings.HasSuffix(file.Name(), ".yaml") && !strings.HasSuffix(file.Name(), ".yml") {
+			continue
+		}
+
+		path := filepath.Join(dir, file.Name())
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("failed to read file %s: %w", path, err)
+		}
+
+		// Parse YAML into CRD
+		var crd apiextensionsv1.CustomResourceDefinition
+		if err := yaml.Unmarshal(data, &crd); err != nil {
+			return fmt.Errorf("failed to parse CRD from %s: %w", path, err)
+		}
+
+		// Skip if not a HyperFleet CRD
+		if crd.Spec.Group != HyperfleetGroup {
+			continue
+		}
+
+		def, err := r.parseCRD(&crd)
 		if err != nil {
 			return fmt.Errorf("failed to parse CRD %s: %w", crd.Name, err)
 		}
@@ -379,14 +435,19 @@ func (r *Registry) Count() int {
 // Global default registry
 var defaultRegistry = NewRegistry()
 
-// Default returns the global default registry.
-func Default() *Registry {
+// DefaultRegistry returns the global default registry.
+func DefaultRegistry() *Registry {
 	return defaultRegistry
 }
 
 // LoadFromKubernetes loads CRDs into the default registry from Kubernetes API.
 func LoadFromKubernetes(ctx context.Context) error {
 	return defaultRegistry.LoadFromKubernetes(ctx)
+}
+
+// LoadFromDirectory loads CRDs into the default registry from local YAML files.
+func LoadFromDirectory(dir string) error {
+	return defaultRegistry.LoadFromDirectory(dir)
 }
 
 // GetByKind looks up a CRD by kind in the default registry.
