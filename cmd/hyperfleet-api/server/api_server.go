@@ -157,5 +157,7 @@ func (s apiServer) Start() {
 }
 
 func (s apiServer) Stop() error {
-	return s.httpServer.Shutdown(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return s.httpServer.Shutdown(ctx)
 }
