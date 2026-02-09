@@ -27,12 +27,13 @@ import (
 //
 // 4. Create one function in a separate file that returns your Migration. Add that single function call to this list.
 var MigrationList = []*gormigrate.Migration{
-	// addEvents(), // REMOVED: Events table no longer used - no event-driven components
-	addClusters(),
-	addNodePools(),
+	// Legacy migrations removed:
+	// - addClusters() - replaced by generic resources table
+	// - addNodePools() - replaced by generic resources table
+	// - addConditionsGinIndex() - GIN index now in resources migration
 	addAdapterStatus(),
-	addConditionsGinIndex(),
-	addResources(), // Generic resource table for CRD-driven API
+	addResources(),                 // Generic resource table for CRD-driven API
+	dropClusterNodePoolTables(),    // Drop legacy tables (safe even if they don't exist)
 }
 
 // Model represents the base model struct. All entities will have this struct embedded.
