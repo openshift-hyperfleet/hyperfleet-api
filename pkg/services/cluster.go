@@ -237,7 +237,8 @@ func (s *sqlClusterService) UpdateClusterStatusFromAdapters(
 }
 
 // ProcessAdapterStatus handles the business logic for adapter status:
-// - If Available condition is "Unknown": returns (nil, nil) indicating no-op
+// - If Available is "Unknown" and a status already exists: returns (nil, nil) as no-op
+// - If Available is "Unknown" and no status exists (first report): upserts the status
 // - Otherwise: upserts the status and triggers aggregation
 func (s *sqlClusterService) ProcessAdapterStatus(
 	ctx context.Context, clusterID string, adapterStatus *api.AdapterStatus,
@@ -272,8 +273,13 @@ func (s *sqlClusterService) ProcessAdapterStatus(
 
 		hasAvailableCondition = true
 		if cond.Status == api.AdapterConditionUnknown {
-			// Available condition is "Unknown", return nil to indicate no-op
-			return nil, nil
+			if existingStatus != nil {
+				// Available condition is "Unknown" and a status already exists, return nil to indicate no-op
+				return nil, nil
+			}
+			// First report from this adapter: allow storing even with Available=Unknown
+			// but skip aggregation since Unknown should not affect cluster-level conditions
+			hasAvailableCondition = false
 		}
 	}
 

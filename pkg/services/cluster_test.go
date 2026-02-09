@@ -163,8 +163,8 @@ func (d *mockAdapterStatusDao) All(ctx context.Context) (api.AdapterStatusList, 
 
 var _ dao.AdapterStatusDao = &mockAdapterStatusDao{}
 
-// TestProcessAdapterStatus_UnknownCondition tests that Unknown Available condition returns nil (no-op)
-func TestProcessAdapterStatus_UnknownCondition(t *testing.T) {
+// TestProcessAdapterStatus_FirstUnknownCondition tests that the first Unknown Available condition is stored
+func TestProcessAdapterStatus_FirstUnknownCondition(t *testing.T) {
 	RegisterTestingT(t)
 
 	clusterDao := newMockClusterDao()
@@ -186,21 +186,72 @@ func TestProcessAdapterStatus_UnknownCondition(t *testing.T) {
 	}
 	conditionsJSON, _ := json.Marshal(conditions)
 
+	now := time.Now()
 	adapterStatus := &api.AdapterStatus{
 		ResourceType: "Cluster",
 		ResourceID:   clusterID,
 		Adapter:      "test-adapter",
 		Conditions:   conditionsJSON,
+		CreatedTime:  &now,
 	}
 
 	result, err := service.ProcessAdapterStatus(ctx, clusterID, adapterStatus)
 
 	Expect(err).To(BeNil())
-	Expect(result).To(BeNil(), "ProcessAdapterStatus should return nil for Unknown status")
+	Expect(result).ToNot(BeNil(), "First report with Available=Unknown should be stored")
+	Expect(result.Adapter).To(Equal("test-adapter"))
 
-	// Verify nothing was stored
+	// Verify the status was stored
 	storedStatuses, _ := adapterStatusDao.FindByResource(ctx, "Cluster", clusterID)
-	Expect(len(storedStatuses)).To(Equal(0), "No status should be stored for Unknown")
+	Expect(len(storedStatuses)).To(Equal(1), "First Unknown status should be stored")
+}
+
+// TestProcessAdapterStatus_SubsequentUnknownCondition tests that subsequent Unknown Available conditions are discarded
+func TestProcessAdapterStatus_SubsequentUnknownCondition(t *testing.T) {
+	RegisterTestingT(t)
+
+	clusterDao := newMockClusterDao()
+	adapterStatusDao := newMockAdapterStatusDao()
+
+	config := testAdapterConfig()
+	service := NewClusterService(clusterDao, adapterStatusDao, config)
+
+	ctx := context.Background()
+	clusterID := testClusterID
+
+	// Pre-populate an existing adapter status to simulate a previously stored report
+	conditions := []api.AdapterCondition{
+		{
+			Type:               conditionTypeAvailable,
+			Status:             api.AdapterConditionUnknown,
+			LastTransitionTime: time.Now(),
+		},
+	}
+	conditionsJSON, _ := json.Marshal(conditions)
+
+	now := time.Now()
+	existingStatus := &api.AdapterStatus{
+		ResourceType: "Cluster",
+		ResourceID:   clusterID,
+		Adapter:      "test-adapter",
+		Conditions:   conditionsJSON,
+		CreatedTime:  &now,
+	}
+	_, _ = adapterStatusDao.Upsert(ctx, existingStatus)
+
+	// Now send another Unknown status report
+	newAdapterStatus := &api.AdapterStatus{
+		ResourceType: "Cluster",
+		ResourceID:   clusterID,
+		Adapter:      "test-adapter",
+		Conditions:   conditionsJSON,
+		CreatedTime:  &now,
+	}
+
+	result, err := service.ProcessAdapterStatus(ctx, clusterID, newAdapterStatus)
+
+	Expect(err).To(BeNil())
+	Expect(result).To(BeNil(), "Subsequent Unknown status should be discarded")
 }
 
 // TestProcessAdapterStatus_TrueCondition tests that True Available condition upserts and aggregates
@@ -383,8 +434,9 @@ func TestProcessAdapterStatus_NoAvailableCondition(t *testing.T) {
 		"Cluster status conditions should not be overwritten when adapter status lacks Available")
 }
 
-// TestProcessAdapterStatus_MultipleConditions_AvailableUnknown tests multiple conditions with Available=Unknown
-func TestProcessAdapterStatus_MultipleConditions_AvailableUnknown(t *testing.T) {
+// TestProcessAdapterStatus_FirstMultipleConditions_AvailableUnknown tests that the first report with
+// multiple conditions including Available=Unknown is stored
+func TestProcessAdapterStatus_FirstMultipleConditions_AvailableUnknown(t *testing.T) {
 	RegisterTestingT(t)
 
 	clusterDao := newMockClusterDao()
@@ -416,6 +468,79 @@ func TestProcessAdapterStatus_MultipleConditions_AvailableUnknown(t *testing.T) 
 	}
 	conditionsJSON, _ := json.Marshal(conditions)
 
+	now := time.Now()
+	adapterStatus := &api.AdapterStatus{
+		ResourceType: "Cluster",
+		ResourceID:   clusterID,
+		Adapter:      "test-adapter",
+		Conditions:   conditionsJSON,
+		CreatedTime:  &now,
+	}
+
+	result, err := service.ProcessAdapterStatus(ctx, clusterID, adapterStatus)
+
+	Expect(err).To(BeNil())
+	Expect(result).ToNot(BeNil(), "First report with Available=Unknown should be stored")
+
+	// Verify the status was stored
+	storedStatuses, _ := adapterStatusDao.FindByResource(ctx, "Cluster", clusterID)
+	Expect(len(storedStatuses)).To(Equal(1), "First Unknown status should be stored")
+}
+
+// TestProcessAdapterStatus_SubsequentMultipleConditions_AvailableUnknown tests that subsequent reports
+// with multiple conditions including Available=Unknown are discarded
+func TestProcessAdapterStatus_SubsequentMultipleConditions_AvailableUnknown(t *testing.T) {
+	RegisterTestingT(t)
+
+	clusterDao := newMockClusterDao()
+	adapterStatusDao := newMockAdapterStatusDao()
+
+	config := testAdapterConfig()
+	service := NewClusterService(clusterDao, adapterStatusDao, config)
+
+	ctx := context.Background()
+	clusterID := testClusterID
+
+	// Pre-populate an existing adapter status
+	existingConditions := []api.AdapterCondition{
+		{
+			Type:               conditionTypeAvailable,
+			Status:             api.AdapterConditionUnknown,
+			LastTransitionTime: time.Now(),
+		},
+	}
+	existingConditionsJSON, _ := json.Marshal(existingConditions)
+
+	now := time.Now()
+	existingStatus := &api.AdapterStatus{
+		ResourceType: "Cluster",
+		ResourceID:   clusterID,
+		Adapter:      "test-adapter",
+		Conditions:   existingConditionsJSON,
+		CreatedTime:  &now,
+	}
+	_, _ = adapterStatusDao.Upsert(ctx, existingStatus)
+
+	// Now send another report with multiple conditions including Available=Unknown
+	conditions := []api.AdapterCondition{
+		{
+			Type:               "Ready",
+			Status:             api.AdapterConditionTrue,
+			LastTransitionTime: time.Now(),
+		},
+		{
+			Type:               conditionTypeAvailable,
+			Status:             api.AdapterConditionUnknown,
+			LastTransitionTime: time.Now(),
+		},
+		{
+			Type:               "Progressing",
+			Status:             api.AdapterConditionTrue,
+			LastTransitionTime: time.Now(),
+		},
+	}
+	conditionsJSON, _ := json.Marshal(conditions)
+
 	adapterStatus := &api.AdapterStatus{
 		ResourceType: "Cluster",
 		ResourceID:   clusterID,
@@ -426,11 +551,7 @@ func TestProcessAdapterStatus_MultipleConditions_AvailableUnknown(t *testing.T) 
 	result, err := service.ProcessAdapterStatus(ctx, clusterID, adapterStatus)
 
 	Expect(err).To(BeNil())
-	Expect(result).To(BeNil(), "ProcessAdapterStatus should return nil when Available=Unknown")
-
-	// Verify nothing was stored
-	storedStatuses, _ := adapterStatusDao.FindByResource(ctx, "Cluster", clusterID)
-	Expect(len(storedStatuses)).To(Equal(0), "No status should be stored for Unknown")
+	Expect(result).To(BeNil(), "Subsequent Available=Unknown should be discarded")
 }
 
 func TestClusterAvailableReadyTransitions(t *testing.T) {

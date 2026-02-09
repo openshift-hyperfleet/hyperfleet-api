@@ -80,8 +80,8 @@ func (d *mockNodePoolDao) All(ctx context.Context) (api.NodePoolList, error) {
 
 var _ dao.NodePoolDao = &mockNodePoolDao{}
 
-// TestNodePoolProcessAdapterStatus_UnknownCondition tests that Unknown Available condition returns nil (no-op)
-func TestNodePoolProcessAdapterStatus_UnknownCondition(t *testing.T) {
+// TestNodePoolProcessAdapterStatus_FirstUnknownCondition tests that the first Unknown Available condition is stored
+func TestNodePoolProcessAdapterStatus_FirstUnknownCondition(t *testing.T) {
 	RegisterTestingT(t)
 
 	nodePoolDao := newMockNodePoolDao()
@@ -103,21 +103,72 @@ func TestNodePoolProcessAdapterStatus_UnknownCondition(t *testing.T) {
 	}
 	conditionsJSON, _ := json.Marshal(conditions)
 
+	now := time.Now()
 	adapterStatus := &api.AdapterStatus{
 		ResourceType: "NodePool",
 		ResourceID:   nodePoolID,
 		Adapter:      "test-adapter",
 		Conditions:   conditionsJSON,
+		CreatedTime:  &now,
 	}
 
 	result, err := service.ProcessAdapterStatus(ctx, nodePoolID, adapterStatus)
 
 	Expect(err).To(BeNil())
-	Expect(result).To(BeNil(), "ProcessAdapterStatus should return nil for Unknown status")
+	Expect(result).ToNot(BeNil(), "First report with Available=Unknown should be stored")
+	Expect(result.Adapter).To(Equal("test-adapter"))
 
-	// Verify nothing was stored
+	// Verify the status was stored
 	storedStatuses, _ := adapterStatusDao.FindByResource(ctx, "NodePool", nodePoolID)
-	Expect(len(storedStatuses)).To(Equal(0), "No status should be stored for Unknown")
+	Expect(len(storedStatuses)).To(Equal(1), "First Unknown status should be stored")
+}
+
+// TestNodePoolProcessAdapterStatus_SubsequentUnknownCondition tests that subsequent Unknown conditions are discarded
+func TestNodePoolProcessAdapterStatus_SubsequentUnknownCondition(t *testing.T) {
+	RegisterTestingT(t)
+
+	nodePoolDao := newMockNodePoolDao()
+	adapterStatusDao := newMockAdapterStatusDao()
+
+	config := testNodePoolAdapterConfig()
+	service := NewNodePoolService(nodePoolDao, adapterStatusDao, config)
+
+	ctx := context.Background()
+	nodePoolID := testNodePoolID
+
+	// Pre-populate an existing adapter status
+	conditions := []api.AdapterCondition{
+		{
+			Type:               conditionTypeAvailable,
+			Status:             api.AdapterConditionUnknown,
+			LastTransitionTime: time.Now(),
+		},
+	}
+	conditionsJSON, _ := json.Marshal(conditions)
+
+	now := time.Now()
+	existingStatus := &api.AdapterStatus{
+		ResourceType: "NodePool",
+		ResourceID:   nodePoolID,
+		Adapter:      "test-adapter",
+		Conditions:   conditionsJSON,
+		CreatedTime:  &now,
+	}
+	_, _ = adapterStatusDao.Upsert(ctx, existingStatus)
+
+	// Now send another Unknown status report
+	newAdapterStatus := &api.AdapterStatus{
+		ResourceType: "NodePool",
+		ResourceID:   nodePoolID,
+		Adapter:      "test-adapter",
+		Conditions:   conditionsJSON,
+		CreatedTime:  &now,
+	}
+
+	result, err := service.ProcessAdapterStatus(ctx, nodePoolID, newAdapterStatus)
+
+	Expect(err).To(BeNil())
+	Expect(result).To(BeNil(), "Subsequent Unknown status should be discarded")
 }
 
 // TestNodePoolProcessAdapterStatus_TrueCondition tests that True Available condition upserts and aggregates
@@ -171,8 +222,9 @@ func TestNodePoolProcessAdapterStatus_TrueCondition(t *testing.T) {
 	Expect(len(storedStatuses)).To(Equal(1), "Status should be stored for True condition")
 }
 
-// TestNodePoolProcessAdapterStatus_MultipleConditions_AvailableUnknown tests multiple conditions with Available=Unknown
-func TestNodePoolProcessAdapterStatus_MultipleConditions_AvailableUnknown(t *testing.T) {
+// TestNodePoolProcessAdapterStatus_FirstMultipleConditions_AvailableUnknown tests that the first report
+// with multiple conditions including Available=Unknown is stored
+func TestNodePoolProcessAdapterStatus_FirstMultipleConditions_AvailableUnknown(t *testing.T) {
 	RegisterTestingT(t)
 
 	nodePoolDao := newMockNodePoolDao()
@@ -199,6 +251,74 @@ func TestNodePoolProcessAdapterStatus_MultipleConditions_AvailableUnknown(t *tes
 	}
 	conditionsJSON, _ := json.Marshal(conditions)
 
+	now := time.Now()
+	adapterStatus := &api.AdapterStatus{
+		ResourceType: "NodePool",
+		ResourceID:   nodePoolID,
+		Adapter:      "test-adapter",
+		Conditions:   conditionsJSON,
+		CreatedTime:  &now,
+	}
+
+	result, err := service.ProcessAdapterStatus(ctx, nodePoolID, adapterStatus)
+
+	Expect(err).To(BeNil())
+	Expect(result).ToNot(BeNil(), "First report with Available=Unknown should be stored")
+
+	// Verify the status was stored
+	storedStatuses, _ := adapterStatusDao.FindByResource(ctx, "NodePool", nodePoolID)
+	Expect(len(storedStatuses)).To(Equal(1), "First Unknown status should be stored")
+}
+
+// TestNodePoolProcessAdapterStatus_SubsequentMultipleConditions_AvailableUnknown tests that subsequent
+// reports with multiple conditions including Available=Unknown are discarded
+func TestNodePoolProcessAdapterStatus_SubsequentMultipleConditions_AvailableUnknown(t *testing.T) {
+	RegisterTestingT(t)
+
+	nodePoolDao := newMockNodePoolDao()
+	adapterStatusDao := newMockAdapterStatusDao()
+
+	config := testNodePoolAdapterConfig()
+	service := NewNodePoolService(nodePoolDao, adapterStatusDao, config)
+
+	ctx := context.Background()
+	nodePoolID := testNodePoolID
+
+	// Pre-populate an existing adapter status
+	existingConditions := []api.AdapterCondition{
+		{
+			Type:               conditionTypeAvailable,
+			Status:             api.AdapterConditionUnknown,
+			LastTransitionTime: time.Now(),
+		},
+	}
+	existingConditionsJSON, _ := json.Marshal(existingConditions)
+
+	now := time.Now()
+	existingStatus := &api.AdapterStatus{
+		ResourceType: "NodePool",
+		ResourceID:   nodePoolID,
+		Adapter:      "test-adapter",
+		Conditions:   existingConditionsJSON,
+		CreatedTime:  &now,
+	}
+	_, _ = adapterStatusDao.Upsert(ctx, existingStatus)
+
+	// Now send another report with multiple conditions including Available=Unknown
+	conditions := []api.AdapterCondition{
+		{
+			Type:               conditionTypeReady,
+			Status:             api.AdapterConditionTrue,
+			LastTransitionTime: time.Now(),
+		},
+		{
+			Type:               conditionTypeAvailable,
+			Status:             api.AdapterConditionUnknown,
+			LastTransitionTime: time.Now(),
+		},
+	}
+	conditionsJSON, _ := json.Marshal(conditions)
+
 	adapterStatus := &api.AdapterStatus{
 		ResourceType: "NodePool",
 		ResourceID:   nodePoolID,
@@ -209,11 +329,7 @@ func TestNodePoolProcessAdapterStatus_MultipleConditions_AvailableUnknown(t *tes
 	result, err := service.ProcessAdapterStatus(ctx, nodePoolID, adapterStatus)
 
 	Expect(err).To(BeNil())
-	Expect(result).To(BeNil(), "ProcessAdapterStatus should return nil when Available=Unknown")
-
-	// Verify nothing was stored
-	storedStatuses, _ := adapterStatusDao.FindByResource(ctx, "NodePool", nodePoolID)
-	Expect(len(storedStatuses)).To(Equal(0), "No status should be stored for Unknown")
+	Expect(result).To(BeNil(), "Subsequent Available=Unknown should be discarded")
 }
 
 func TestNodePoolAvailableReadyTransitions(t *testing.T) {
