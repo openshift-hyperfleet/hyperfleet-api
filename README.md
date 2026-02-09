@@ -52,8 +52,8 @@ See [PREREQUISITES.md](PREREQUISITES.md) for installation instructions.
 ### Installation
 
 ```bash
-# 1. Generate OpenAPI code and mocks
-make generate-all
+# 1. Generate mocks for testing
+make generate-mocks
 
 # 2. Install dependencies
 go mod download
@@ -61,17 +61,20 @@ go mod download
 # 3. Build binary
 make build
 
-# 4. Setup database
+# 4. Initialize secrets
+make secrets
+
+# 5. Setup database
 make db/setup
 
-# 5. Run migrations
+# 6. Run migrations
 ./bin/hyperfleet-api migrate
 
-# 6. Start service (no auth)
+# 7. Start service (no auth)
 make run-no-auth
 ```
 
-**Note**: Generated code is not tracked in git. You must run `make generate-all` after cloning.
+**Note**: Mocks are generated from source interfaces. Run `make generate-mocks` after cloning.
 
 ### Accessing the API
 
@@ -105,7 +108,6 @@ Kubernetes clusters with provider-specific configurations, labels, and adapter-b
 Groups of compute nodes within clusters.
 
 **Main endpoints:**
-- `GET /api/hyperfleet/v1/nodepools`
 - `GET/POST /api/hyperfleet/v1/clusters/{cluster_id}/nodepools`
 - `GET /api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepool_id}`
 - `GET/POST /api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepool_id}/statuses`
@@ -131,12 +133,10 @@ curl -G http://localhost:8000/api/hyperfleet/v1/clusters \
 
 ```bash
 make build               # Build binary to bin/
-make run-no-auth         # Run without authentication
+make run-no-auth         # Run without authentication (loads CRDs from local files)
 make test                # Run unit tests
 make test-integration    # Run integration tests
-make generate            # Generate OpenAPI models
 make generate-mocks      # Generate test mocks
-make generate-all        # Generate OpenAPI models and mocks
 make db/setup            # Create PostgreSQL container
 make image               # Build container image
 ```
