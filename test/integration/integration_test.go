@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+	"time"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 	"github.com/openshift-hyperfleet/hyperfleet-api/test"
@@ -57,6 +58,21 @@ func TestMain(m *testing.M) {
 
 	helper := test.NewHelper(&testing.T{})
 	exitCode := m.Run()
+
+	// Force exit if teardown hangs (e.g., due to a panic leaving resources in a bad state).
+	// Without this, hung teardown blocks the process from exiting, causing
+	// Prow CI jobs to stay in "pending" state indefinitely (HYPERFLEET-625).
+	// 45s allows the testcontainer termination (30s timeout) to complete first.
+	localExit := exitCode
+	go func() {
+		time.Sleep(45 * time.Second)
+		logger.Error(ctx, "Teardown timed out after 45s, forcing exit")
+		if localExit == 0 {
+			localExit = 1
+		}
+		os.Exit(localExit)
+	}()
+
 	helper.Teardown()
 	os.Exit(exitCode)
 }

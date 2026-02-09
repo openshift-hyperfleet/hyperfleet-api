@@ -71,5 +71,7 @@ func (s metricsServer) Start() {
 }
 
 func (s metricsServer) Stop() error {
-	return s.httpServer.Shutdown(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return s.httpServer.Shutdown(ctx)
 }
