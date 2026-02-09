@@ -41,12 +41,6 @@ type sqlGenericService struct {
 
 var (
 	SearchDisallowedFields = map[string]map[string]string{
-		"Cluster": {
-			"spec": "spec", // Provider-specific field, not searchable
-		},
-		"NodePool": {
-			"spec": "spec", // Provider-specific field, not searchable
-		},
 		"Resource": {
 			"spec": "spec", // Generic resource spec is not searchable
 		},

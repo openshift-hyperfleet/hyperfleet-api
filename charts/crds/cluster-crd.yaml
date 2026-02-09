@@ -5,6 +5,10 @@ metadata:
   labels:
     app.kubernetes.io/name: hyperfleet-api
     app.kubernetes.io/part-of: hyperfleet
+  annotations:
+    hyperfleet.io/scope: "Root"
+    hyperfleet.io/required-adapters: "validation,dns,pullsecret,hypershift"
+    hyperfleet.io/enabled: "true"
 spec:
   group: hyperfleet.io
   names:

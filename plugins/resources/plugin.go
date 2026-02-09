@@ -1,10 +1,10 @@
 // Package resources provides a dynamic plugin that loads CRD definitions and registers routes.
-// Adding a new resource type only requires adding a YAML file to the config/crds directory.
+// CRD definitions are loaded from the Kubernetes API server at startup.
 package resources
 
 import (
+	"context"
 	"net/http"
-	"os"
 
 	"github.com/gorilla/mux"
 	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/environments"
@@ -18,13 +18,6 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/handlers"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/services"
-)
-
-const (
-	// DefaultCRDPath is the default path for CRD YAML files
-	DefaultCRDPath = "config/crds"
-	// CRDPathEnvVar is the environment variable to override the CRD path
-	CRDPathEnvVar = "CRD_CONFIG_PATH"
 )
 
 // ServiceLocator creates a ResourceService instance
@@ -52,24 +45,16 @@ func Service(s *environments.Services) services.ResourceService {
 	return nil
 }
 
-// getCRDPath returns the path to CRD configuration files
-func getCRDPath() string {
-	if path := os.Getenv(CRDPathEnvVar); path != "" {
-		return path
-	}
-	return DefaultCRDPath
-}
-
 func init() {
-	// Load CRDs from filesystem
-	crdPath := getCRDPath()
-	if err := crd.LoadFromDirectory(crdPath); err != nil {
+	// Load CRDs from Kubernetes API
+	ctx := context.Background()
+	if err := crd.LoadFromKubernetes(ctx); err != nil {
 		// Log warning but don't fail - CRDs might not be present in all environments
-		logger.With(nil, "crd_path", crdPath).Info(
-			"CRD directory not found or failed to load, generic resource API disabled")
+		logger.WithError(nil, err).Warn(
+			"Failed to load CRDs from Kubernetes API, generic resource API disabled")
 	} else {
 		logger.With(nil, "crd_count", crd.Default().Count()).Info(
-			"Loaded CRD definitions")
+			"Loaded CRD definitions from Kubernetes API")
 	}
 
 	// Service registration

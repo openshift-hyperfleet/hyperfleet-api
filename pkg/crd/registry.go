@@ -19,13 +19,30 @@ limitations under the License.
 package crd
 
 import (
+	"context"
 	"fmt"
-	"os"
-	"path/filepath"
+	"strings"
 	"sync"
 
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	apiextensionsclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
+
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
-	"gopkg.in/yaml.v3"
+)
+
+const (
+	// HyperfleetGroup is the API group for HyperFleet CRDs
+	HyperfleetGroup = "hyperfleet.io"
+
+	// Annotation keys for HyperFleet-specific configuration
+	AnnotationScope            = "hyperfleet.io/scope"
+	AnnotationOwnerKind        = "hyperfleet.io/owner-kind"
+	AnnotationOwnerPathParam   = "hyperfleet.io/owner-path-param"
+	AnnotationRequiredAdapters = "hyperfleet.io/required-adapters"
+	AnnotationEnabled          = "hyperfleet.io/enabled"
 )
 
 // Registry holds all loaded CRD definitions and provides lookup methods.
@@ -45,103 +62,137 @@ func NewRegistry() *Registry {
 	}
 }
 
-// LoadFromDirectory loads all YAML CRD files from the specified directory.
-// Files must have .yaml or .yml extension.
-func (r *Registry) LoadFromDirectory(dirPath string) error {
+// LoadFromKubernetes loads CRDs from the Kubernetes API server.
+// It discovers all CRDs in the hyperfleet.io group and parses their annotations.
+func (r *Registry) LoadFromKubernetes(ctx context.Context) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	// Check if directory exists
-	info, err := os.Stat(dirPath)
+	// Create Kubernetes client
+	config, err := getKubeConfig()
 	if err != nil {
-		if os.IsNotExist(err) {
-			return fmt.Errorf("CRD directory does not exist: %s", dirPath)
-		}
-		return fmt.Errorf("failed to stat CRD directory: %w", err)
-	}
-	if !info.IsDir() {
-		return fmt.Errorf("CRD path is not a directory: %s", dirPath)
+		return fmt.Errorf("failed to get kubernetes config: %w", err)
 	}
 
-	// Find all YAML files
-	entries, err := os.ReadDir(dirPath)
+	clientset, err := apiextensionsclient.NewForConfig(config)
 	if err != nil {
-		return fmt.Errorf("failed to read CRD directory: %w", err)
+		return fmt.Errorf("failed to create apiextensions client: %w", err)
 	}
 
-	for _, entry := range entries {
-		if entry.IsDir() {
+	// List all CRDs
+	crdList, err := clientset.ApiextensionsV1().CustomResourceDefinitions().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to list CRDs: %w", err)
+	}
+
+	// Filter and process HyperFleet CRDs
+	for i := range crdList.Items {
+		crd := &crdList.Items[i]
+		if crd.Spec.Group != HyperfleetGroup {
 			continue
 		}
 
-		ext := filepath.Ext(entry.Name())
-		if ext != ".yaml" && ext != ".yml" {
-			continue
+		def, err := r.parseCRD(crd)
+		if err != nil {
+			return fmt.Errorf("failed to parse CRD %s: %w", crd.Name, err)
 		}
 
-		filePath := filepath.Join(dirPath, entry.Name())
-		if err := r.loadFile(filePath); err != nil {
-			return fmt.Errorf("failed to load CRD from %s: %w", filePath, err)
+		// Register the CRD
+		r.byKind[def.Kind] = def
+		r.byPlural[def.Plural] = def
+		if def.Enabled {
+			r.all = append(r.all, def)
 		}
 	}
 
 	return nil
 }
 
-// loadFile loads a single CRD YAML file.
-func (r *Registry) loadFile(filePath string) error {
-	data, err := os.ReadFile(filePath)
-	if err != nil {
-		return fmt.Errorf("failed to read file: %w", err)
+// parseCRD converts a Kubernetes CRD to a ResourceDefinition using annotations.
+func (r *Registry) parseCRD(crd *apiextensionsv1.CustomResourceDefinition) (*api.ResourceDefinition, error) {
+	annotations := crd.Annotations
+	if annotations == nil {
+		annotations = make(map[string]string)
 	}
 
-	var def api.ResourceDefinition
-	if err := yaml.Unmarshal(data, &def); err != nil {
-		return fmt.Errorf("failed to parse YAML: %w", err)
+	// Parse scope
+	scopeStr := annotations[AnnotationScope]
+	if scopeStr == "" {
+		scopeStr = "Root" // Default to Root
+	}
+	var scope api.ResourceScope
+	switch scopeStr {
+	case "Root":
+		scope = api.ResourceScopeRoot
+	case "Owned":
+		scope = api.ResourceScopeOwned
+	default:
+		return nil, fmt.Errorf("invalid scope '%s': must be 'Root' or 'Owned'", scopeStr)
 	}
 
-	// Validate required fields
-	if def.Kind == "" {
-		return fmt.Errorf("missing required field 'kind'")
-	}
-	if def.Plural == "" {
-		return fmt.Errorf("missing required field 'plural'")
-	}
-	if def.Scope == "" {
-		return fmt.Errorf("missing required field 'scope'")
-	}
-
-	// Validate scope value
-	if def.Scope != api.ResourceScopeRoot && def.Scope != api.ResourceScopeOwned {
-		return fmt.Errorf("invalid scope '%s': must be 'Root' or 'Owned'", def.Scope)
-	}
-
-	// Validate owned resources have owner configuration
-	if def.Scope == api.ResourceScopeOwned && def.Owner == nil {
-		return fmt.Errorf("owned resource '%s' must have 'owner' configuration", def.Kind)
+	// Parse owner configuration for owned resources
+	var owner *api.OwnerRef
+	if scope == api.ResourceScopeOwned {
+		ownerKind := annotations[AnnotationOwnerKind]
+		ownerPathParam := annotations[AnnotationOwnerPathParam]
+		if ownerKind == "" {
+			return nil, fmt.Errorf("owned resource must have %s annotation", AnnotationOwnerKind)
+		}
+		if ownerPathParam == "" {
+			ownerPathParam = strings.ToLower(ownerKind) + "_id"
+		}
+		owner = &api.OwnerRef{
+			Kind:      ownerKind,
+			PathParam: ownerPathParam,
+		}
 	}
 
-	// Set singular default if not provided
-	if def.Singular == "" {
-		def.Singular = def.Kind
+	// Parse required adapters
+	var requiredAdapters []string
+	adaptersStr := annotations[AnnotationRequiredAdapters]
+	if adaptersStr != "" {
+		for _, adapter := range strings.Split(adaptersStr, ",") {
+			adapter = strings.TrimSpace(adapter)
+			if adapter != "" {
+				requiredAdapters = append(requiredAdapters, adapter)
+			}
+		}
 	}
 
-	// Check for duplicates
-	if _, exists := r.byKind[def.Kind]; exists {
-		return fmt.Errorf("duplicate kind '%s'", def.Kind)
-	}
-	if _, exists := r.byPlural[def.Plural]; exists {
-		return fmt.Errorf("duplicate plural '%s'", def.Plural)
+	// Parse enabled flag
+	enabledStr := annotations[AnnotationEnabled]
+	enabled := enabledStr == "" || enabledStr == "true" // Default to enabled
+
+	def := &api.ResourceDefinition{
+		APIVersion: HyperfleetGroup + "/v1",
+		Kind:       crd.Spec.Names.Kind,
+		Plural:     crd.Spec.Names.Plural,
+		Singular:   crd.Spec.Names.Singular,
+		Scope:      scope,
+		Owner:      owner,
+		StatusConfig: api.StatusConfig{
+			RequiredAdapters: requiredAdapters,
+		},
+		Enabled: enabled,
 	}
 
-	// Register the CRD
-	r.byKind[def.Kind] = &def
-	r.byPlural[def.Plural] = &def
-	if def.Enabled {
-		r.all = append(r.all, &def)
+	return def, nil
+}
+
+// getKubeConfig returns a Kubernetes client config.
+// It tries in-cluster config first, then falls back to kubeconfig file.
+func getKubeConfig() (*rest.Config, error) {
+	// Try in-cluster config first
+	config, err := rest.InClusterConfig()
+	if err == nil {
+		return config, nil
 	}
 
-	return nil
+	// Fall back to kubeconfig
+	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
+	configOverrides := &clientcmd.ConfigOverrides{}
+	kubeConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, configOverrides)
+	return kubeConfig.ClientConfig()
 }
 
 // Register adds a CRD definition programmatically.
@@ -210,9 +261,9 @@ func Default() *Registry {
 	return defaultRegistry
 }
 
-// LoadFromDirectory loads CRDs into the default registry.
-func LoadFromDirectory(dirPath string) error {
-	return defaultRegistry.LoadFromDirectory(dirPath)
+// LoadFromKubernetes loads CRDs into the default registry from Kubernetes API.
+func LoadFromKubernetes(ctx context.Context) error {
+	return defaultRegistry.LoadFromKubernetes(ctx)
 }
 
 // GetByKind looks up a CRD by kind in the default registry.

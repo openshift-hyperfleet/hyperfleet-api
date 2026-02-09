@@ -37,7 +37,7 @@ func TestSQLTranslation(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		var list []api.Cluster
+		var list []api.Resource
 		search := test["search"].(string)
 		errorMsg := test["error"].(string)
 		listCtx, model, serviceErr := genericService.newListContext(
@@ -73,7 +73,7 @@ func TestSQLTranslation(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		var list []api.Cluster
+		var list []api.Resource
 		search := test["search"].(string)
 		sqlReal := test["sql"].(string)
 		valuesReal := test["values"].(types.GomegaMatcher)

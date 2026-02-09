@@ -33,8 +33,7 @@ COPY --from=builder /build/bin/hyperfleet-api /app/hyperfleet-api
 # Copy OpenAPI schema for validation (uses the source spec, not the generated one)
 COPY --from=builder /build/openapi/openapi.yaml /app/openapi/openapi.yaml
 
-# Copy CRD definitions for generic resource API
-COPY --from=builder /build/config/crds /app/config/crds
+# CRD definitions are now loaded from Kubernetes API at runtime
 
 # Set default schema path (can be overridden by Helm for provider-specific schemas)
 ENV OPENAPI_SCHEMA_PATH=/app/openapi/openapi.yaml

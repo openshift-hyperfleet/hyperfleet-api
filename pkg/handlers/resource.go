@@ -4,10 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/gorilla/mux"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/crd"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/services"
 )
@@ -348,15 +350,11 @@ func (h *ResourceHandler) presentResource(resource *api.Resource) map[string]int
 }
 
 // getOwnerPlural returns the plural form of an owner kind.
-// This is a simple mapping; in production, you'd look this up from the CRD registry.
+// It looks up the plural from the CRD registry.
 func getOwnerPlural(kind string) string {
-	plurals := map[string]string{
-		"Cluster":  "clusters",
-		"NodePool": "nodepools",
-	}
-	if plural, ok := plurals[kind]; ok {
-		return plural
+	if def, found := crd.GetByKind(kind); found {
+		return def.Plural
 	}
 	// Default: lowercase + "s"
-	return kind + "s"
+	return strings.ToLower(kind) + "s"
 }

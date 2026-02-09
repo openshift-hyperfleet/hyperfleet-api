@@ -5,6 +5,12 @@ metadata:
   labels:
     app.kubernetes.io/name: hyperfleet-api
     app.kubernetes.io/part-of: hyperfleet
+  annotations:
+    hyperfleet.io/scope: "Owned"
+    hyperfleet.io/owner-kind: "Cluster"
+    hyperfleet.io/owner-path-param: "cluster_id"
+    hyperfleet.io/required-adapters: "validation,hypershift"
+    hyperfleet.io/enabled: "true"
 spec:
   group: hyperfleet.io
   names:
