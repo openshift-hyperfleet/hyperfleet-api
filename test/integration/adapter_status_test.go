@@ -319,8 +319,9 @@ func TestAdapterStatusIdempotency(t *testing.T) {
 		To(Equal(openapi.AdapterConditionStatusTrue), "Conditions should be updated to latest")
 }
 
-// TestClusterStatusPost_UnknownReturns204 tests that posting Unknown Available status returns 204 No Content
-func TestClusterStatusPost_UnknownReturns204(t *testing.T) {
+// TestClusterStatusPost_UnknownReturns201ThenSubsequent204 tests that the first Unknown Available
+// status report is stored (201), while subsequent Unknown reports return 204 No Content.
+func TestClusterStatusPost_UnknownReturns201ThenSubsequent204(t *testing.T) {
 	h, client := test.RegisterIntegration(t)
 
 	account := h.NewRandAccount()
@@ -344,27 +345,42 @@ func TestClusterStatusPost_UnknownReturns204(t *testing.T) {
 		nil,
 	)
 
+	// First report: should be stored (201 Created)
 	resp, err := client.PostClusterStatusesWithResponse(
 		ctx, cluster.ID,
 		openapi.PostClusterStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
 	)
 	Expect(err).NotTo(HaveOccurred(), "Error posting cluster status: %v", err)
 	Expect(resp.StatusCode()).
-		To(Equal(http.StatusNoContent), "Expected 204 No Content for Unknown status")
+		To(Equal(http.StatusCreated), "Expected 201 Created for first Unknown status report")
 
-	// Verify the status was NOT stored
+	// Verify the status was stored
 	listResp, err := client.GetClusterStatusesWithResponse(ctx, cluster.ID, nil, test.WithAuthToken(ctx))
 	Expect(err).NotTo(HaveOccurred())
 	Expect(listResp.JSON200).NotTo(BeNil())
 
-	// Check that no adapter status with "test-adapter-unknown" exists
+	found := false
 	for _, s := range listResp.JSON200.Items {
-		Expect(s.Adapter).NotTo(Equal("test-adapter-unknown"), "Unknown status should not be stored")
+		if s.Adapter == "test-adapter-unknown" {
+			found = true
+			break
+		}
 	}
+	Expect(found).To(BeTrue(), "First Unknown status report should be stored")
+
+	// Subsequent report with same adapter: should be no-op (204 No Content)
+	resp2, err := client.PostClusterStatusesWithResponse(
+		ctx, cluster.ID,
+		openapi.PostClusterStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
+	)
+	Expect(err).NotTo(HaveOccurred(), "Error posting cluster status: %v", err)
+	Expect(resp2.StatusCode()).
+		To(Equal(http.StatusNoContent), "Expected 204 No Content for subsequent Unknown status report")
 }
 
-// TestNodePoolStatusPost_UnknownReturns204 tests that posting Unknown Available status returns 204 No Content
-func TestNodePoolStatusPost_UnknownReturns204(t *testing.T) {
+// TestNodePoolStatusPost_UnknownReturns201ThenSubsequent204 tests that the first Unknown Available
+// status report is stored (201), while subsequent Unknown reports return 204 No Content.
+func TestNodePoolStatusPost_UnknownReturns201ThenSubsequent204(t *testing.T) {
 	h, client := test.RegisterIntegration(t)
 
 	account := h.NewRandAccount()
@@ -388,26 +404,39 @@ func TestNodePoolStatusPost_UnknownReturns204(t *testing.T) {
 		nil,
 	)
 
+	// First report: should be stored (201 Created)
 	resp, err := client.PostNodePoolStatusesWithResponse(
 		ctx, nodePool.OwnerID, nodePool.ID,
 		openapi.PostNodePoolStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
 	)
 	Expect(err).NotTo(HaveOccurred(), "Error posting nodepool status: %v", err)
 	Expect(resp.StatusCode()).
-		To(Equal(http.StatusNoContent), "Expected 204 No Content for Unknown status")
+		To(Equal(http.StatusCreated), "Expected 201 Created for first Unknown status report")
 
-	// Verify the status was NOT stored
+	// Verify the status was stored
 	listResp, err := client.GetNodePoolsStatusesWithResponse(
 		ctx, nodePool.OwnerID, nodePool.ID, nil, test.WithAuthToken(ctx),
 	)
 	Expect(err).NotTo(HaveOccurred())
 	Expect(listResp.JSON200).NotTo(BeNil())
 
-	// Check that no adapter status with "test-nodepool-adapter-unknown" exists
+	found := false
 	for _, s := range listResp.JSON200.Items {
-		Expect(s.Adapter).NotTo(Equal("test-nodepool-adapter-unknown"),
-			"Unknown status should not be stored")
+		if s.Adapter == "test-nodepool-adapter-unknown" {
+			found = true
+			break
+		}
 	}
+	Expect(found).To(BeTrue(), "First Unknown status report should be stored")
+
+	// Subsequent report with same adapter: should be no-op (204 No Content)
+	resp2, err := client.PostNodePoolStatusesWithResponse(
+		ctx, nodePool.OwnerID, nodePool.ID,
+		openapi.PostNodePoolStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
+	)
+	Expect(err).NotTo(HaveOccurred(), "Error posting nodepool status: %v", err)
+	Expect(resp2.StatusCode()).
+		To(Equal(http.StatusNoContent), "Expected 204 No Content for subsequent Unknown status report")
 }
 
 // TestClusterStatusPost_MultipleConditionsWithUnknownAvailable tests that
@@ -444,13 +473,23 @@ func TestClusterStatusPost_MultipleConditionsWithUnknownAvailable(t *testing.T) 
 		nil,
 	)
 
+	// First report: should be stored (201 Created) even with Available=Unknown
 	resp, err := client.PostClusterStatusesWithResponse(
 		ctx, cluster.ID,
 		openapi.PostClusterStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
 	)
 	Expect(err).NotTo(HaveOccurred(), "Error posting cluster status: %v", err)
-	Expect(resp.StatusCode()).To(Equal(http.StatusNoContent),
-		"Expected 204 No Content when Available=Unknown among multiple conditions")
+	Expect(resp.StatusCode()).To(Equal(http.StatusCreated),
+		"Expected 201 Created for first report with Available=Unknown among multiple conditions")
+
+	// Subsequent report: should be no-op (204 No Content)
+	resp2, err := client.PostClusterStatusesWithResponse(
+		ctx, cluster.ID,
+		openapi.PostClusterStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
+	)
+	Expect(err).NotTo(HaveOccurred(), "Error posting cluster status: %v", err)
+	Expect(resp2.StatusCode()).To(Equal(http.StatusNoContent),
+		"Expected 204 No Content for subsequent report with Available=Unknown among multiple conditions")
 }
 
 // TestAdapterStatusPagingEdgeCases tests edge cases in pagination
