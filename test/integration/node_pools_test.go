@@ -13,6 +13,10 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/test"
 )
 
+const (
+	kindNodePool = "NodePool"
+)
+
 // TestNodePoolGet is disabled because GET /nodepools/{id} is not in the OpenAPI spec
 // The API only supports:
 // - GET /api/hyperfleet/v1/nodepools (list all nodepools)
@@ -58,7 +62,7 @@ func TestNodePoolPost(t *testing.T) {
 	Expect(err).NotTo(HaveOccurred())
 
 	// POST responses per openapi spec: 201, 409, 500
-	kind := "NodePool"
+	kind := kindNodePool
 	nodePoolInput := openapi.NodePoolCreateRequest{
 		Kind: &kind,
 		Name: "test-name",
@@ -190,7 +194,7 @@ func TestGetNodePoolByClusterIdAndNodePoolId(t *testing.T) {
 	Expect(err).NotTo(HaveOccurred())
 
 	// Create a nodepool for this cluster using the API
-	kind := "NodePool"
+	kind := kindNodePool
 	nodePoolInput := openapi.NodePoolCreateRequest{
 		Kind: &kind,
 		Name: "test-np-get",
@@ -318,4 +322,49 @@ func TestNodePoolPost_WrongKind(t *testing.T) {
 	detail, ok := errorResponse["detail"].(string)
 	Expect(ok).To(BeTrue())
 	Expect(detail).To(ContainSubstring("kind must be 'NodePool'"))
+}
+
+// TestNodePoolDuplicateNames tests that duplicate nodepool names within a cluster are rejected
+func TestNodePoolDuplicateNames(t *testing.T) {
+	h, client := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+
+	// Create a cluster first
+	cluster, err := h.Factories.NewClusters(h.NewID())
+	Expect(err).NotTo(HaveOccurred())
+
+	// Create first nodepool with a specific name
+	kind := kindNodePool
+	nodePoolInput := openapi.NodePoolCreateRequest{
+		Kind: &kind,
+		Name: "test-duplicate",
+		Spec: map[string]interface{}{"test": "spec"},
+	}
+
+	resp, err := client.CreateNodePoolWithResponse(
+		ctx, cluster.ID, openapi.CreateNodePoolJSONRequestBody(nodePoolInput), test.WithAuthToken(ctx),
+	)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(resp.StatusCode()).To(Equal(http.StatusCreated))
+
+	// Create second nodepool with the same name in the same cluster
+	resp, err = client.CreateNodePoolWithResponse(
+		ctx, cluster.ID, openapi.CreateNodePoolJSONRequestBody(nodePoolInput), test.WithAuthToken(ctx),
+	)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(resp.StatusCode()).
+		To(Equal(http.StatusConflict), "Expected 409 Conflict for duplicate nodepool name in same cluster")
+
+	Expect(resp.ApplicationproblemJSONDefault).NotTo(BeNil(), "Expected response body to be present")
+	problemDetail := resp.ApplicationproblemJSONDefault
+
+	Expect(*problemDetail.Code).To(Equal("HYPERFLEET-CNF-001"), "Expected conflict error code")
+	Expect(problemDetail.Type).To(Equal("https://api.hyperfleet.io/errors/conflict"), "Expected conflict error type")
+	Expect(problemDetail.Title).To(Equal("Resource Conflict"), "Expected conflict error title")
+
+	Expect(problemDetail.Detail).NotTo(BeNil(), "Expected error detail to be present")
+	Expect(*problemDetail.Detail).To(ContainSubstring("already exists"),
+		"Expected error detail to mention that resource already exists")
 }
