@@ -485,6 +485,79 @@ The status object contains synthesized conditions computed from adapter reports:
 - `last_updated_time` - When adapter last reported (API-managed, from AdapterStatus.last_report_time)
 - `last_transition_time` - When status last changed (API-managed)
 
+## Parameter Restrictions
+
+### Query Parameters
+
+All list endpoints accept the following query parameters:
+
+| Parameter  | Type           | Required | Default        | Constraints          |
+|------------|----------------|----------|----------------|----------------------|
+| `search`   | string         | No       | -              | TSL query syntax     |
+| `page`     | integer (int32)| No       | `1`            | -                    |
+| `pageSize` | integer (int32)| No       | `20`           | -                    |
+| `orderBy`  | string         | No       | `created_time` | -                    |
+| `order`    | string         | No       | -              | Must be `asc` or `desc` |
+
+### Path Parameters
+
+| Parameter     | Type   | Required |
+|---------------|--------|----------|
+| `cluster_id`  | string | Yes      |
+| `nodepool_id` | string | Yes      |
+
+### Request Body Constraints
+
+#### Cluster Name (`ClusterCreateRequest.name`)
+
+| Constraint  | Value                                  |
+|-------------|----------------------------------------|
+| Required    | Yes                                    |
+| Type        | string                                 |
+| Min length  | 3                                      |
+| Max length  | 53                                     |
+| Pattern     | `^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`     |
+
+Must be lowercase alphanumeric, may contain hyphens, and must start and end with an alphanumeric character.
+
+#### NodePool Name (`NodePoolCreateRequest.name`)
+
+| Constraint  | Value                                  |
+|-------------|----------------------------------------|
+| Required    | Yes                                    |
+| Type        | string                                 |
+| Min length  | 3                                      |
+| Max length  | 15                                     |
+| Pattern     | `^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`     |
+
+Same naming rules as cluster, but with a shorter maximum length.
+
+#### Adapter Status (`AdapterStatusCreateRequest`)
+
+| Field                | Type           | Required |
+|----------------------|----------------|----------|
+| `adapter`            | string         | Yes      |
+| `observed_generation`| integer (int32)| Yes      |
+| `observed_time`      | string (date-time) | Yes  |
+| `conditions`         | array of `ConditionRequest` | Yes |
+| `metadata`           | object         | No       |
+| `data`               | object         | No       |
+
+#### Condition Request (`ConditionRequest`)
+
+| Field     | Type   | Required | Constraints                          |
+|-----------|--------|----------|--------------------------------------|
+| `type`    | string | Yes      | -                                    |
+| `status`  | string | Yes      | Must be `True`, `False`, or `Unknown` |
+| `reason`  | string | No       | -                                    |
+| `message` | string | No       | -                                    |
+
+### Enum Values
+
+- **AdapterConditionStatus** (used in adapter status reports): `True`, `False`, `Unknown`
+- **ResourceConditionStatus** (used in cluster/nodepool conditions): `True`, `False`
+- **OrderDirection**: `asc`, `desc`
+
 ## Related Documentation
 
 - [Example Usage](../README.md#example-usage) - Practical examples
