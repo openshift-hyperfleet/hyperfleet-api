@@ -157,6 +157,12 @@ paths:
                 $ref: '#/components/schemas/NodePoolCreateResponse'
         '400':
           description: The server could not understand the request due to invalid syntax.
+        '409':
+          description: The request conflicts with the current state of the server.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
         default:
           description: An unexpected error response.
           content:
