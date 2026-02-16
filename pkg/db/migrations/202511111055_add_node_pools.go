@@ -63,6 +63,13 @@ func addNodePools() *gormigrate.Migration {
 				return err
 			}
 
+			// Create unique index on (owner_id, name) to prevent duplicate nodepool names within a cluster
+			createUniqueIdxSQL := "CREATE UNIQUE INDEX IF NOT EXISTS idx_node_pools_owner_name " +
+				"ON node_pools(owner_id, name) WHERE deleted_at IS NULL;"
+			if err := tx.Exec(createUniqueIdxSQL).Error; err != nil {
+				return err
+			}
+
 			// Add foreign key constraint to clusters
 			addFKSQL := `
 				ALTER TABLE node_pools
@@ -83,6 +90,9 @@ func addNodePools() *gormigrate.Migration {
 			}
 
 			// Drop indexes
+			if err := tx.Exec("DROP INDEX IF EXISTS idx_node_pools_owner_name;").Error; err != nil {
+				return err
+			}
 			if err := tx.Exec("DROP INDEX IF EXISTS idx_node_pools_owner_id;").Error; err != nil {
 				return err
 			}
