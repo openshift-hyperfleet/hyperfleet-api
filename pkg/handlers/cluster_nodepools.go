@@ -141,6 +141,7 @@ func (h clusterNodePoolsHandler) Create(w http.ResponseWriter, r *http.Request) 
 			validateEmpty(&req, "Id", "id"),
 			validateName(&req, "Name", "name", 3, 15),
 			validateKind(&req, "Kind", "kind", "NodePool"),
+			validateSpec(&req, "Spec", "spec"),
 		},
 		func() (interface{}, *errors.ServiceError) {
 			ctx := r.Context()

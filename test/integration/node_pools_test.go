@@ -368,3 +368,82 @@ func TestNodePoolDuplicateNames(t *testing.T) {
 	Expect(*problemDetail.Detail).To(ContainSubstring("already exists"),
 		"Expected error detail to mention that resource already exists")
 }
+
+// TestNodePoolPost_NullSpec tests that null spec field returns 400
+func TestNodePoolPost_NullSpec(t *testing.T) {
+	h, _ := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+	jwtToken := test.GetAccessTokenFromContext(ctx)
+
+	cluster, err := h.Factories.NewClusters(h.NewID())
+	Expect(err).NotTo(HaveOccurred())
+
+	// Send request with null spec
+	invalidInput := `{
+		"kind": "NodePool",
+		"name": "test-nodepool",
+		"spec": null
+	}`
+
+	restyResp, err := resty.R().
+		SetHeader("Content-Type", "application/json").
+		SetHeader("Authorization", fmt.Sprintf("Bearer %s", jwtToken)).
+		SetBody(invalidInput).
+		Post(h.RestURL(fmt.Sprintf("/clusters/%s/nodepools", cluster.ID)))
+
+	Expect(err).ToNot(HaveOccurred())
+	Expect(restyResp.StatusCode()).To(Equal(http.StatusBadRequest))
+
+	var errorResponse map[string]interface{}
+	err = json.Unmarshal(restyResp.Body(), &errorResponse)
+	Expect(err).ToNot(HaveOccurred())
+
+	code, ok := errorResponse["code"].(string)
+	Expect(ok).To(BeTrue())
+	Expect(code).To(Equal("HYPERFLEET-VAL-000"))
+
+	detail, ok := errorResponse["detail"].(string)
+	Expect(ok).To(BeTrue())
+	Expect(detail).To(ContainSubstring("spec field must be an object"))
+}
+
+// TestNodePoolPost_MissingSpec tests that missing spec field returns 400
+func TestNodePoolPost_MissingSpec(t *testing.T) {
+	h, _ := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+	jwtToken := test.GetAccessTokenFromContext(ctx)
+
+	cluster, err := h.Factories.NewClusters(h.NewID())
+	Expect(err).NotTo(HaveOccurred())
+
+	// Send request without spec field
+	invalidInput := `{
+		"kind": "NodePool",
+		"name": "test-nodepool"
+	}`
+
+	restyResp, err := resty.R().
+		SetHeader("Content-Type", "application/json").
+		SetHeader("Authorization", fmt.Sprintf("Bearer %s", jwtToken)).
+		SetBody(invalidInput).
+		Post(h.RestURL(fmt.Sprintf("/clusters/%s/nodepools", cluster.ID)))
+
+	Expect(err).ToNot(HaveOccurred())
+	Expect(restyResp.StatusCode()).To(Equal(http.StatusBadRequest))
+
+	var errorResponse map[string]interface{}
+	err = json.Unmarshal(restyResp.Body(), &errorResponse)
+	Expect(err).ToNot(HaveOccurred())
+
+	code, ok := errorResponse["code"].(string)
+	Expect(ok).To(BeTrue())
+	Expect(code).To(Equal("HYPERFLEET-VAL-000"))
+
+	detail, ok := errorResponse["detail"].(string)
+	Expect(ok).To(BeTrue())
+	Expect(detail).To(ContainSubstring("spec is required"))
+}

@@ -555,8 +555,8 @@ func TestClusterList_DefaultSorting(t *testing.T) {
 		}
 
 		resp, err := client.PostClusterWithResponse(
-		ctx, openapi.PostClusterJSONRequestBody(clusterInput), test.WithAuthToken(ctx),
-	)
+			ctx, openapi.PostClusterJSONRequestBody(clusterInput), test.WithAuthToken(ctx),
+		)
 		Expect(err).NotTo(HaveOccurred(), "Failed to create cluster %d", i)
 		createdClusters = append(createdClusters, *resp.JSON201)
 
@@ -777,4 +777,77 @@ func TestClusterPost_WrongKind(t *testing.T) {
 	detail, ok := errorResponse["detail"].(string)
 	Expect(ok).To(BeTrue())
 	Expect(detail).To(ContainSubstring("kind must be 'Cluster'"))
+}
+
+// TestClusterPost_NullSpec tests that null spec field returns 400
+func TestClusterPost_NullSpec(t *testing.T) {
+	h, _ := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+	jwtToken := test.GetAccessTokenFromContext(ctx)
+
+	// Send request with null spec
+	invalidInput := `{
+		"kind": "Cluster",
+		"name": "test-cluster",
+		"spec": null
+	}`
+
+	restyResp, err := resty.R().
+		SetHeader("Content-Type", "application/json").
+		SetHeader("Authorization", fmt.Sprintf("Bearer %s", jwtToken)).
+		SetBody(invalidInput).
+		Post(h.RestURL("/clusters"))
+
+	Expect(err).ToNot(HaveOccurred())
+	Expect(restyResp.StatusCode()).To(Equal(http.StatusBadRequest))
+
+	var errorResponse map[string]interface{}
+	err = json.Unmarshal(restyResp.Body(), &errorResponse)
+	Expect(err).ToNot(HaveOccurred())
+
+	code, ok := errorResponse["code"].(string)
+	Expect(ok).To(BeTrue())
+	Expect(code).To(Equal("HYPERFLEET-VAL-000"))
+
+	detail, ok := errorResponse["detail"].(string)
+	Expect(ok).To(BeTrue())
+	Expect(detail).To(ContainSubstring("spec field must be an object"))
+}
+
+// TestClusterPost_MissingSpec tests that missing spec field returns 400
+func TestClusterPost_MissingSpec(t *testing.T) {
+	h, _ := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+	jwtToken := test.GetAccessTokenFromContext(ctx)
+
+	// Send request without spec field
+	invalidInput := `{
+		"kind": "Cluster",
+		"name": "test-cluster"
+	}`
+
+	restyResp, err := resty.R().
+		SetHeader("Content-Type", "application/json").
+		SetHeader("Authorization", fmt.Sprintf("Bearer %s", jwtToken)).
+		SetBody(invalidInput).
+		Post(h.RestURL("/clusters"))
+
+	Expect(err).ToNot(HaveOccurred())
+	Expect(restyResp.StatusCode()).To(Equal(http.StatusBadRequest))
+
+	var errorResponse map[string]interface{}
+	err = json.Unmarshal(restyResp.Body(), &errorResponse)
+	Expect(err).ToNot(HaveOccurred())
+
+	code, ok := errorResponse["code"].(string)
+	Expect(ok).To(BeTrue())
+	Expect(code).To(Equal("HYPERFLEET-VAL-000"))
+
+	detail, ok := errorResponse["detail"].(string)
+	Expect(ok).To(BeTrue())
+	Expect(detail).To(ContainSubstring("spec is required"))
 }

@@ -212,13 +212,13 @@ func TestValidateNodePoolName_InvalidCharacters(t *testing.T) {
 	RegisterTestingT(t)
 
 	invalidNames := []string{
-		"TEST",         // uppercase
-		"Test",         // mixed case
-		"test_pool",   // underscore
-		"test.pool",   // dot
-		"test pool",   // space
-		"-test",       // starts with hyphen
-		"test-",       // ends with hyphen
+		"TEST",      // uppercase
+		"Test",      // mixed case
+		"test_pool", // underscore
+		"test.pool", // dot
+		"test pool", // space
+		"-test",     // starts with hyphen
+		"test-",     // ends with hyphen
 	}
 
 	for _, name := range invalidNames {
@@ -230,4 +230,38 @@ func TestValidateNodePoolName_InvalidCharacters(t *testing.T) {
 		Expect(err).ToNot(BeNil(), "Expected nodepool name '%s' to be invalid", name)
 		Expect(err.Reason).To(ContainSubstring("lowercase letters, numbers, and hyphens"))
 	}
+}
+
+func TestValidateSpec_Valid(t *testing.T) {
+	RegisterTestingT(t)
+
+	req := openapi.ClusterCreateRequest{
+		Spec: map[string]interface{}{"test": "value"},
+	}
+	validator := validateSpec(&req, "Spec", "spec")
+	err := validator()
+	Expect(err).To(BeNil(), "Expected existing spec to be valid")
+}
+
+func TestValidateSpec_EmptyMap(t *testing.T) {
+	RegisterTestingT(t)
+
+	req := openapi.ClusterCreateRequest{
+		Spec: map[string]interface{}{},
+	}
+	validator := validateSpec(&req, "Spec", "spec")
+	err := validator()
+	Expect(err).To(BeNil(), "Expected empty map spec to be valid")
+}
+
+func TestValidateSpec_Nil(t *testing.T) {
+	RegisterTestingT(t)
+
+	req := openapi.ClusterCreateRequest{
+		Spec: nil,
+	}
+	validator := validateSpec(&req, "Spec", "spec")
+	err := validator()
+	Expect(err).ToNot(BeNil(), "Expected nil spec to be invalid")
+	Expect(err.Reason).To(ContainSubstring("spec is required"))
 }

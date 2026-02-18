@@ -113,3 +113,23 @@ func validateKind(i interface{}, fieldName string, field string, expectedKind st
 		return nil
 	}
 }
+
+// validateSpec validates that the spec field is not nil
+func validateSpec(i interface{}, fieldName string, field string) validate {
+	return func() *errors.ServiceError {
+		value := reflect.ValueOf(i).Elem().FieldByName(fieldName)
+
+		if value.Kind() == reflect.Ptr {
+			if value.IsNil() {
+				return errors.Validation("%s is required", field)
+			}
+			value = value.Elem()
+		}
+
+		if !value.IsValid() || value.IsNil() {
+			return errors.Validation("%s is required", field)
+		}
+
+		return nil
+	}
+}
