@@ -35,6 +35,7 @@ func (h clusterHandler) Create(w http.ResponseWriter, r *http.Request) {
 			validateEmpty(&req, "Id", "id"),
 			validateName(&req, "Name", "name", 3, 53),
 			validateKind(&req, "Kind", "kind", "Cluster"),
+			validateSpec(&req, "Spec", "spec"),
 		},
 		func() (interface{}, *errors.ServiceError) {
 			ctx := r.Context()
