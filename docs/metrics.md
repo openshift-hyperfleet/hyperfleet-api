@@ -11,11 +11,34 @@ Metrics are exposed at:
 
 ## Application Metrics
 
+### Build Info
+
+#### `hyperfleet_api_build_info`
+
+**Type:** Gauge (always 1)
+
+**Description:** Build information for the HyperFleet API component.
+
+**Labels:**
+
+| Label | Description | Example Values |
+|-------|-------------|----------------|
+| `component` | Component name | `api` |
+| `version` | Application version (git sha) | `abc123`, `abc123-modified` |
+| `commit` | Git commit SHA | `abc123` |
+| `go_version` | Go runtime version | `go1.24.0` |
+
+**Example output:**
+
+```text
+hyperfleet_api_build_info{component="api",version="abc123",commit="abc123",go_version="go1.24.0"} 1
+```
+
 ### API Request Metrics
 
 These metrics track all inbound HTTP requests to the API server.
 
-#### `api_inbound_request_count`
+#### `hyperfleet_api_requests_total`
 
 **Type:** Counter
 
@@ -25,6 +48,8 @@ These metrics track all inbound HTTP requests to the API server.
 
 | Label | Description | Example Values |
 |-------|-------------|----------------|
+| `component` | Component name | `api` |
+| `version` | Application version | `abc123` |
 | `method` | HTTP method | `GET`, `POST`, `PUT`, `PATCH`, `DELETE` |
 | `path` | Request path (with IDs replaced by `-`) | `/api/hyperfleet/v1/clusters/-` |
 | `code` | HTTP response status code | `200`, `201`, `400`, `404`, `500` |
@@ -32,37 +57,46 @@ These metrics track all inbound HTTP requests to the API server.
 **Path normalization:** Object identifiers in paths are replaced with `-` to reduce cardinality. For example, `/api/hyperfleet/v1/clusters/abc123` becomes `/api/hyperfleet/v1/clusters/-`.
 
 **Example output:**
+
 ```text
-api_inbound_request_count{code="200",method="GET",path="/api/hyperfleet/v1/clusters"} 1523
-api_inbound_request_count{code="200",method="GET",path="/api/hyperfleet/v1/clusters/-"} 8742
-api_inbound_request_count{code="201",method="POST",path="/api/hyperfleet/v1/clusters"} 156
-api_inbound_request_count{code="404",method="GET",path="/api/hyperfleet/v1/clusters/-"} 23
+hyperfleet_api_requests_total{component="api",version="abc123",code="200",method="GET",path="/api/hyperfleet/v1/clusters"} 1523
+hyperfleet_api_requests_total{component="api",version="abc123",code="200",method="GET",path="/api/hyperfleet/v1/clusters/-"} 8742
+hyperfleet_api_requests_total{component="api",version="abc123",code="201",method="POST",path="/api/hyperfleet/v1/clusters"} 156
+hyperfleet_api_requests_total{component="api",version="abc123",code="404",method="GET",path="/api/hyperfleet/v1/clusters/-"} 23
 ```
 
-#### `api_inbound_request_duration`
+#### `hyperfleet_api_request_duration_seconds`
 
 **Type:** Histogram
 
 **Description:** Distribution of request processing times in seconds.
 
-**Labels:** Same as `api_inbound_request_count`
+**Labels:** Same as `hyperfleet_api_requests_total`
 
-**Buckets:** `0.1s`, `1s`, `10s`, `30s`
+**Buckets:** `0.005s`, `0.01s`, `0.025s`, `0.05s`, `0.1s`, `0.25s`, `0.5s`, `1s`, `2.5s`, `5s`, `10s`
 
 **Derived metrics:**
-- `api_inbound_request_duration_sum` - Total time spent processing requests
-- `api_inbound_request_duration_count` - Number of requests measured
-- `api_inbound_request_duration_bucket` - Number of requests completed within each bucket
+- `hyperfleet_api_request_duration_seconds_sum` - Total time spent processing requests
+- `hyperfleet_api_request_duration_seconds_count` - Number of requests measured
+- `hyperfleet_api_request_duration_seconds_bucket` - Number of requests completed within each bucket
 
 **Example output:**
+
 ```text
-api_inbound_request_duration_bucket{code="200",method="GET",path="/api/hyperfleet/v1/clusters",le="0.1"} 1450
-api_inbound_request_duration_bucket{code="200",method="GET",path="/api/hyperfleet/v1/clusters",le="1"} 1520
-api_inbound_request_duration_bucket{code="200",method="GET",path="/api/hyperfleet/v1/clusters",le="10"} 1523
-api_inbound_request_duration_bucket{code="200",method="GET",path="/api/hyperfleet/v1/clusters",le="30"} 1523
-api_inbound_request_duration_bucket{code="200",method="GET",path="/api/hyperfleet/v1/clusters",le="+Inf"} 1523
-api_inbound_request_duration_sum{code="200",method="GET",path="/api/hyperfleet/v1/clusters"} 45.23
-api_inbound_request_duration_count{code="200",method="GET",path="/api/hyperfleet/v1/clusters"} 1523
+hyperfleet_api_request_duration_seconds_bucket{component="api",version="abc123",code="200",method="GET",path="/api/hyperfleet/v1/clusters",le="0.005"} 800
+hyperfleet_api_request_duration_seconds_bucket{component="api",version="abc123",code="200",method="GET",path="/api/hyperfleet/v1/clusters",le="0.01"} 1000
+hyperfleet_api_request_duration_seconds_bucket{component="api",version="abc123",code="200",method="GET",path="/api/hyperfleet/v1/clusters",le="0.025"} 1200
+hyperfleet_api_request_duration_seconds_bucket{component="api",version="abc123",code="200",method="GET",path="/api/hyperfleet/v1/clusters",le="0.05"} 1350
+hyperfleet_api_request_duration_seconds_bucket{component="api",version="abc123",code="200",method="GET",path="/api/hyperfleet/v1/clusters",le="0.1"} 1450
+hyperfleet_api_request_duration_seconds_bucket{component="api",version="abc123",code="200",method="GET",path="/api/hyperfleet/v1/clusters",le="0.25"} 1490
+hyperfleet_api_request_duration_seconds_bucket{component="api",version="abc123",code="200",method="GET",path="/api/hyperfleet/v1/clusters",le="0.5"} 1510
+hyperfleet_api_request_duration_seconds_bucket{component="api",version="abc123",code="200",method="GET",path="/api/hyperfleet/v1/clusters",le="1"} 1520
+hyperfleet_api_request_duration_seconds_bucket{component="api",version="abc123",code="200",method="GET",path="/api/hyperfleet/v1/clusters",le="2.5"} 1522
+hyperfleet_api_request_duration_seconds_bucket{component="api",version="abc123",code="200",method="GET",path="/api/hyperfleet/v1/clusters",le="5"} 1523
+hyperfleet_api_request_duration_seconds_bucket{component="api",version="abc123",code="200",method="GET",path="/api/hyperfleet/v1/clusters",le="10"} 1523
+hyperfleet_api_request_duration_seconds_bucket{component="api",version="abc123",code="200",method="GET",path="/api/hyperfleet/v1/clusters",le="+Inf"} 1523
+hyperfleet_api_request_duration_seconds_sum{component="api",version="abc123",code="200",method="GET",path="/api/hyperfleet/v1/clusters"} 45.23
+hyperfleet_api_request_duration_seconds_count{component="api",version="abc123",code="200",method="GET",path="/api/hyperfleet/v1/clusters"} 1523
 ```
 
 ## Go Runtime Metrics
@@ -144,59 +178,59 @@ The following metrics are automatically exposed by the Prometheus Go client libr
 
 ```promql
 # Total request rate (requests per second)
-sum(rate(api_inbound_request_count[5m]))
+sum(rate(hyperfleet_api_requests_total[5m]))
 
 # Request rate by pod/instance
-sum(rate(api_inbound_request_count[5m])) by (instance)
+sum(rate(hyperfleet_api_requests_total[5m])) by (instance)
 
 # Request rate by endpoint
-sum(rate(api_inbound_request_count[5m])) by (path)
+sum(rate(hyperfleet_api_requests_total[5m])) by (path)
 
 # Request rate by status code
-sum(rate(api_inbound_request_count[5m])) by (code)
+sum(rate(hyperfleet_api_requests_total[5m])) by (code)
 
 # Request rate by method
-sum(rate(api_inbound_request_count[5m])) by (method)
+sum(rate(hyperfleet_api_requests_total[5m])) by (method)
 ```
 
 ### Error Rate
 
 ```promql
 # Overall error rate (5xx responses)
-sum(rate(api_inbound_request_count{code=~"5.."}[5m])) /
-sum(rate(api_inbound_request_count[5m])) * 100
+sum(rate(hyperfleet_api_requests_total{code=~"5.."}[5m])) /
+sum(rate(hyperfleet_api_requests_total[5m])) * 100
 
 # Error rate by endpoint
-sum(rate(api_inbound_request_count{code=~"5.."}[5m])) by (path) /
-sum(rate(api_inbound_request_count[5m])) by (path) * 100
+sum(rate(hyperfleet_api_requests_total{code=~"5.."}[5m])) by (path) /
+sum(rate(hyperfleet_api_requests_total[5m])) by (path) * 100
 
 # Client error rate (4xx responses)
-sum(rate(api_inbound_request_count{code=~"4.."}[5m])) /
-sum(rate(api_inbound_request_count[5m])) * 100
+sum(rate(hyperfleet_api_requests_total{code=~"4.."}[5m])) /
+sum(rate(hyperfleet_api_requests_total[5m])) * 100
 ```
 
 ### Latency
 
 ```promql
 # Average request duration (last 10 minutes)
-rate(api_inbound_request_duration_sum[10m]) /
-rate(api_inbound_request_duration_count[10m])
+rate(hyperfleet_api_request_duration_seconds_sum[10m]) /
+rate(hyperfleet_api_request_duration_seconds_count[10m])
 
 # Average request duration by endpoint
-sum(rate(api_inbound_request_duration_sum[5m])) by (path) /
-sum(rate(api_inbound_request_duration_count[5m])) by (path)
+sum(rate(hyperfleet_api_request_duration_seconds_sum[5m])) by (path) /
+sum(rate(hyperfleet_api_request_duration_seconds_count[5m])) by (path)
 
 # P50 latency (approximate using histogram)
-histogram_quantile(0.5, sum(rate(api_inbound_request_duration_bucket[5m])) by (le))
+histogram_quantile(0.5, sum(rate(hyperfleet_api_request_duration_seconds_bucket[5m])) by (le))
 
 # P90 latency
-histogram_quantile(0.9, sum(rate(api_inbound_request_duration_bucket[5m])) by (le))
+histogram_quantile(0.9, sum(rate(hyperfleet_api_request_duration_seconds_bucket[5m])) by (le))
 
 # P99 latency
-histogram_quantile(0.99, sum(rate(api_inbound_request_duration_bucket[5m])) by (le))
+histogram_quantile(0.99, sum(rate(hyperfleet_api_request_duration_seconds_bucket[5m])) by (le))
 
 # P99 latency by endpoint
-histogram_quantile(0.99, sum(rate(api_inbound_request_duration_bucket[5m])) by (le, path))
+histogram_quantile(0.99, sum(rate(hyperfleet_api_request_duration_seconds_bucket[5m])) by (le, path))
 ```
 
 ### Resource Usage
@@ -226,22 +260,22 @@ process_open_fds / process_max_fds * 100
 ```promql
 # Slowest endpoints (average latency)
 topk(10,
-  sum(rate(api_inbound_request_duration_sum[5m])) by (path) /
-  sum(rate(api_inbound_request_duration_count[5m])) by (path)
+  sum(rate(hyperfleet_api_request_duration_seconds_sum[5m])) by (path) /
+  sum(rate(hyperfleet_api_request_duration_seconds_count[5m])) by (path)
 )
 
 # Most requested endpoints
-topk(10, sum(rate(api_inbound_request_count[5m])) by (path))
+topk(10, sum(rate(hyperfleet_api_requests_total[5m])) by (path))
 
 # Endpoints with highest error rate
 topk(10,
-  sum(rate(api_inbound_request_count{code=~"5.."}[5m])) by (path) /
-  sum(rate(api_inbound_request_count[5m])) by (path)
+  sum(rate(hyperfleet_api_requests_total{code=~"5.."}[5m])) by (path) /
+  sum(rate(hyperfleet_api_requests_total[5m])) by (path)
 )
 
 # Percentage of requests taking longer than 1 second
-1 - (sum(rate(api_inbound_request_duration_bucket{le="1"}[5m])) /
-sum(rate(api_inbound_request_duration_count[5m])))
+1 - (sum(rate(hyperfleet_api_request_duration_seconds_bucket{le="1"}[5m])) /
+sum(rate(hyperfleet_api_request_duration_seconds_count[5m])))
 ```
 
 ## Prometheus Operator Integration

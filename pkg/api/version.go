@@ -21,5 +21,8 @@ package api
 // Version is the application version set at compile time via ldflags
 var Version = "unknown"
 
+// Commit is the git commit SHA set at compile time via ldflags
+var Commit = "unknown"
+
 // BuildTime is the time when the binary was built, set at compile time via ldflags
 var BuildTime = "unknown"

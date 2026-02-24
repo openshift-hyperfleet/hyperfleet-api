@@ -16,10 +16,10 @@ limitations under the License.
 
 // This file contains an HTTP middleware that generates metrics about API requests:
 //
-//	api_inbound_request_count - Number of requests served.
-//	api_inbound_request_duration_sum - Total time to process requests, in seconds.
-//	api_inbound_request_duration_count - Total number of requests measured.
-//	api_inbound_request_duration_bucket - Number of requests that processed in less than a given time.
+//	hyperfleet_api_requests_total - Number of requests served.
+//	hyperfleet_api_request_duration_seconds_sum - Total time to process requests, in seconds.
+//	hyperfleet_api_request_duration_seconds_count - Total number of requests measured.
+//	hyperfleet_api_request_duration_seconds_bucket - Number of requests that processed in less than a given time.
 //
 // The duration buckets metrics contain an `le` label that indicates the upper. For example if the
 // `le` label is `1` then the value will be the number of requests that were processed in less than
@@ -27,21 +27,23 @@ limitations under the License.
 //
 // All the metrics have the following labels:
 //
+//	component - Component name, always "api".
+//	version - Application version.
 //	method - Name of the HTTP method, for example GET or POST.
-//	path - Request path, for example /api/clusters_mgmt/v1/clusters.
+//	path - Request path, for example /api/hyperfleet/v1/clusters.
 //	code - HTTP response code, for example 200 or 500.
 //
 // To calculate the average request duration during the last 10 minutes, for example, use a
 // Prometheus expression like this:
 //
-//	rate(api_inbound_request_duration_sum[10m]) / rate(api_inbound_request_duration_count[10m])
+//	rate(hyperfleet_api_request_duration_seconds_sum[10m]) / rate(hyperfleet_api_request_duration_seconds_count[10m])
 //
 // In order to reduce the cardinality of the metrics the path label is modified to remove the
 // identifiers of the objects. For example, if the original path is .../clusters/123 then it will
 // be replaced by .../clusters/-, and the values will be accumulated. The line returned by the
 // metrics server will be like this:
 //
-//	api_inbound_request_count{code="200",method="GET",path="/api/clusters_mgmt/v1/clusters/-"} 56
+//	hyperfleet_api_requests_total{...,code="200",method="GET",path="/api/hyperfleet/v1/clusters/-"} 56
 //
 // The meaning of that is that there were a total of 56 requests to get specific clusters,
 // independently of the specific identifier of the cluster.
@@ -51,11 +53,14 @@ package server
 import (
 	"net/http"
 	"regexp"
+	"runtime"
 	"strconv"
 	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 )
 
 // MetricsMiddleware creates a new handler that collects metrics for the requests processed by the
@@ -86,9 +91,11 @@ func MetricsMiddleware(handler http.Handler) http.Handler {
 
 		// Create the set of labels that we will add to all the requests:
 		labels := prometheus.Labels{
-			metricsMethodLabel: r.Method,
-			metricsPathLabel:   path,
-			metricsCodeLabel:   strconv.Itoa(wrapper.code),
+			metricsComponentLabel: metricsComponentValue,
+			metricsVersionLabel:   api.Version,
+			metricsMethodLabel:    r.Method,
+			metricsPathLabel:      path,
+			metricsCodeLabel:      strconv.Itoa(wrapper.code),
 		}
 
 		// Update the metric containing the number of requests:
@@ -112,17 +119,24 @@ var metricsPathVarRE = regexp.MustCompile(`{[^}]*}`)
 var PathVarSub = "-"
 
 // Subsystem used to define the metrics:
-const metricsSubsystem = "api_inbound"
+const metricsSubsystem = "hyperfleet_api"
 
 // Names of the labels added to metrics:
 const (
-	metricsMethodLabel = "method"
-	metricsPathLabel   = "path"
-	metricsCodeLabel   = "code"
+	metricsComponentLabel = "component"
+	metricsVersionLabel   = "version"
+	metricsMethodLabel    = "method"
+	metricsPathLabel      = "path"
+	metricsCodeLabel      = "code"
 )
+
+// metricsComponentValue is the value for the component label
+const metricsComponentValue = "api"
 
 // MetricsLabels - Array of labels added to metrics:
 var MetricsLabels = []string{
+	metricsComponentLabel,
+	metricsVersionLabel,
 	metricsMethodLabel,
 	metricsPathLabel,
 	metricsCodeLabel,
@@ -130,8 +144,8 @@ var MetricsLabels = []string{
 
 // Names of the metrics:
 const (
-	requestCount    = "request_count"
-	requestDuration = "request_duration"
+	requestCount    = "requests_total"
+	requestDuration = "request_duration_seconds"
 )
 
 // MetricsNames - Array of Names of the metrics:
@@ -145,7 +159,7 @@ var requestCountMetric = prometheus.NewCounterVec(
 	prometheus.CounterOpts{
 		Subsystem: metricsSubsystem,
 		Name:      requestCount,
-		Help:      "Number of requests served.",
+		Help:      "Total number of HTTP requests served.",
 	},
 	MetricsLabels,
 )
@@ -156,14 +170,19 @@ var requestDurationMetric = prometheus.NewHistogramVec(
 		Subsystem: metricsSubsystem,
 		Name:      requestDuration,
 		Help:      "Request duration in seconds.",
-		Buckets: []float64{
-			0.1,
-			1.0,
-			10.0,
-			30.0,
-		},
+		Buckets:   []float64{0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10},
 	},
 	MetricsLabels,
+)
+
+// Description of the build info metric:
+var buildInfoMetric = prometheus.NewGaugeVec(
+	prometheus.GaugeOpts{
+		Subsystem: metricsSubsystem,
+		Name:      "build_info",
+		Help:      "Build information for the HyperFleet API component.",
+	},
+	[]string{"component", "version", "commit", "go_version"},
 )
 
 // metricsResponseWrapper is an extension of the HTTP response writer that remembers the status code,
@@ -194,4 +213,13 @@ func init() {
 	// Register the metrics:
 	prometheus.MustRegister(requestCountMetric)
 	prometheus.MustRegister(requestDurationMetric)
+	prometheus.MustRegister(buildInfoMetric)
+
+	// Set the build info metric value:
+	buildInfoMetric.With(prometheus.Labels{
+		"component":  metricsComponentValue,
+		"version":    api.Version,
+		"commit":     api.Commit,
+		"go_version": runtime.Version(),
+	}).Set(1)
 }

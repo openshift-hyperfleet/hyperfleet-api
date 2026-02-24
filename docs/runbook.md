@@ -240,7 +240,7 @@ kubectl describe pod <pod-name> -n hyperfleet-system
 **Diagnosis:**
 ```bash
 # Check request duration metrics
-curl -s http://<metrics-endpoint>:9090/metrics | grep api_inbound_request_duration
+curl -s http://<metrics-endpoint>:9090/metrics | grep hyperfleet_api_request_duration_seconds
 
 # Check pod resource usage
 kubectl top pods -n hyperfleet-system
@@ -259,7 +259,7 @@ kubectl top pods -n hyperfleet-system
 **Diagnosis:**
 ```bash
 # Check error count by path and code
-curl -s http://<metrics-endpoint>:9090/metrics | grep api_inbound_request_count
+curl -s http://<metrics-endpoint>:9090/metrics | grep hyperfleet_api_requests_total
 
 # Review error logs
 kubectl logs deployment/hyperfleet-api -n hyperfleet-system --since=15m | grep -i error
