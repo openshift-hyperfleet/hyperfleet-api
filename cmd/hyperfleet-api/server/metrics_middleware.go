@@ -128,6 +128,8 @@ const (
 	metricsMethodLabel    = "method"
 	metricsPathLabel      = "path"
 	metricsCodeLabel      = "code"
+	metricsCommitLabel    = "commit"
+	metricsGoVersionLabel = "go_version"
 )
 
 // metricsComponentValue is the value for the component label
@@ -170,7 +172,7 @@ var requestDurationMetric = prometheus.NewHistogramVec(
 		Subsystem: metricsSubsystem,
 		Name:      requestDuration,
 		Help:      "Request duration in seconds.",
-		Buckets:   []float64{0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10},
+		Buckets:   prometheus.DefBuckets,
 	},
 	MetricsLabels,
 )
@@ -182,7 +184,7 @@ var buildInfoMetric = prometheus.NewGaugeVec(
 		Name:      "build_info",
 		Help:      "Build information for the HyperFleet API component.",
 	},
-	[]string{"component", "version", "commit", "go_version"},
+	[]string{metricsComponentLabel, metricsVersionLabel, metricsCommitLabel, metricsGoVersionLabel},
 )
 
 // metricsResponseWrapper is an extension of the HTTP response writer that remembers the status code,
@@ -217,9 +219,9 @@ func init() {
 
 	// Set the build info metric value:
 	buildInfoMetric.With(prometheus.Labels{
-		"component":  metricsComponentValue,
-		"version":    api.Version,
-		"commit":     api.Commit,
-		"go_version": runtime.Version(),
+		metricsComponentLabel: metricsComponentValue,
+		metricsVersionLabel:   api.Version,
+		metricsCommitLabel:    api.Commit,
+		metricsGoVersionLabel: runtime.Version(),
 	}).Set(1)
 }

@@ -189,6 +189,7 @@ func TestMetricsMiddleware_PathVariableSubstitution(t *testing.T) {
 	metricFamilies, err := prometheus.DefaultGatherer.Gather()
 	Expect(err).To(BeNil())
 
+	var found bool
 	for _, mf := range metricFamilies {
 		if mf.GetName() == testRequestsTotalMetric {
 			for _, metric := range mf.GetMetric() {
@@ -197,12 +198,14 @@ func TestMetricsMiddleware_PathVariableSubstitution(t *testing.T) {
 					labels[lp.GetName()] = lp.GetValue()
 				}
 				if labels["method"] == testMethodGet {
+					found = true
 					Expect(labels["path"]).To(Equal(testClustersPathWithSub))
 				}
 			}
 			break
 		}
 	}
+	Expect(found).To(BeTrue(), "expected requests_total metric with GET method and substituted path")
 }
 
 func TestMetricsMiddleware_CapturesStatusCode(t *testing.T) {
@@ -222,6 +225,7 @@ func TestMetricsMiddleware_CapturesStatusCode(t *testing.T) {
 	metricFamilies, err := prometheus.DefaultGatherer.Gather()
 	Expect(err).To(BeNil())
 
+	var found bool
 	for _, mf := range metricFamilies {
 		if mf.GetName() == testRequestsTotalMetric {
 			for _, metric := range mf.GetMetric() {
@@ -230,12 +234,14 @@ func TestMetricsMiddleware_CapturesStatusCode(t *testing.T) {
 					labels[lp.GetName()] = lp.GetValue()
 				}
 				if labels["method"] == testMethodGet && labels["path"] == testClustersPath {
+					found = true
 					Expect(labels["code"]).To(Equal("404"))
 				}
 			}
 			break
 		}
 	}
+	Expect(found).To(BeTrue(), testRequestsTotalMetric+" metric should exist with expected labels")
 }
 
 func TestMetricsMiddleware_DefaultStatusCodeOnWrite(t *testing.T) {
@@ -256,6 +262,7 @@ func TestMetricsMiddleware_DefaultStatusCodeOnWrite(t *testing.T) {
 	metricFamilies, err := prometheus.DefaultGatherer.Gather()
 	Expect(err).To(BeNil())
 
+	var found bool
 	for _, mf := range metricFamilies {
 		if mf.GetName() == testRequestsTotalMetric {
 			for _, metric := range mf.GetMetric() {
@@ -264,24 +271,28 @@ func TestMetricsMiddleware_DefaultStatusCodeOnWrite(t *testing.T) {
 					labels[lp.GetName()] = lp.GetValue()
 				}
 				if labels["method"] == testMethodGet && labels["path"] == testClustersPath {
+					found = true
 					Expect(labels["code"]).To(Equal("200"))
 				}
 			}
 			break
 		}
 	}
+	Expect(found).To(BeTrue(), testRequestsTotalMetric+" metric should exist with expected labels")
 }
 
 func TestHistogramBuckets(t *testing.T) {
 	RegisterTestingT(t)
 
-	expectedBuckets := []float64{0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10}
+	expectedBuckets := prometheus.DefBuckets
 
 	metricFamilies, err := prometheus.DefaultGatherer.Gather()
 	Expect(err).To(BeNil())
 
+	var found bool
 	for _, mf := range metricFamilies {
 		if mf.GetName() == testDurationMetric {
+			found = true
 			for _, metric := range mf.GetMetric() {
 				histogram := metric.GetHistogram()
 				buckets := histogram.GetBucket()
@@ -294,4 +305,5 @@ func TestHistogramBuckets(t *testing.T) {
 			break
 		}
 	}
+	Expect(found).To(BeTrue(), testDurationMetric+" metric should be registered")
 }
