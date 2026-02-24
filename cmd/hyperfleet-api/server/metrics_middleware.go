@@ -110,6 +110,13 @@ func MetricsMiddleware(handler http.Handler) http.Handler {
 func ResetMetricCollectors() {
 	requestCountMetric.Reset()
 	requestDurationMetric.Reset()
+	buildInfoMetric.Reset()
+	buildInfoMetric.With(prometheus.Labels{
+		metricsComponentLabel: metricsComponentValue,
+		metricsVersionLabel:   api.Version,
+		metricsCommitLabel:    api.Commit,
+		metricsGoVersionLabel: runtime.Version(),
+	}).Set(1)
 }
 
 // Regular expression used to remove variables from route path templates:
