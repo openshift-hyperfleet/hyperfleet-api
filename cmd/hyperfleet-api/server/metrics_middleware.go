@@ -61,6 +61,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db/db_metrics"
 )
 
 // MetricsMiddleware creates a new handler that collects metrics for the requests processed by the
@@ -110,6 +111,7 @@ func MetricsMiddleware(handler http.Handler) http.Handler {
 func ResetMetricCollectors() {
 	requestCountMetric.Reset()
 	requestDurationMetric.Reset()
+	db_metrics.ResetMetrics()
 	buildInfoMetric.Reset()
 	buildInfoMetric.With(prometheus.Labels{
 		metricsComponentLabel: metricsComponentValue,
