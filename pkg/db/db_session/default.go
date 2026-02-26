@@ -99,12 +99,12 @@ func (f *Default) Init(config *config.DatabaseConfig) {
 
 		// Register database metrics GORM plugin
 		if err = db_metrics.RegisterPlugin(g2); err != nil {
-			panic(fmt.Sprintf("Failed to register database metrics plugin: %s", err.Error()))
+			logger.WithError(context.Background(), err).Warn("Failed to register database metrics plugin")
 		}
 
 		// Register connection pool metrics collector
 		if err = db_metrics.RegisterPoolCollector(dbx); err != nil {
-			panic(fmt.Sprintf("Failed to register pool metrics collector: %s", err.Error()))
+			logger.WithError(context.Background(), err).Warn("Failed to register pool metrics collector")
 		}
 
 		f.config = config

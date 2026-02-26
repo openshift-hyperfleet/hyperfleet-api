@@ -28,6 +28,8 @@ limitations under the License.
 package db_metrics
 
 import (
+	"sync"
+
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
@@ -94,7 +96,17 @@ func ResetMetrics() {
 	ErrorsMetric.Reset()
 }
 
+var registerOnce sync.Once
+
+// RegisterMetrics registers the database metrics with Prometheus.
+// It is safe to call multiple times; registration happens only once.
+func RegisterMetrics() {
+	registerOnce.Do(func() {
+		prometheus.MustRegister(QueryDurationMetric)
+		prometheus.MustRegister(ErrorsMetric)
+	})
+}
+
 func init() {
-	prometheus.MustRegister(QueryDurationMetric)
-	prometheus.MustRegister(ErrorsMetric)
+	RegisterMetrics()
 }

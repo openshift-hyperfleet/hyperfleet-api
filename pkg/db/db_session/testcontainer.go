@@ -124,8 +124,12 @@ func (f *Testcontainer) Init(config *config.DatabaseConfig) {
 
 	// Register database metrics GORM plugin
 	if err := db_metrics.RegisterPlugin(f.g2); err != nil {
-		logger.WithError(ctx, err).Error("Failed to register database metrics plugin on testcontainer")
-		os.Exit(1)
+		logger.WithError(ctx, err).Warn("Failed to register database metrics plugin on testcontainer")
+	}
+
+	// Register connection pool metrics collector
+	if err := db_metrics.RegisterPoolCollector(f.sqlDB); err != nil {
+		logger.WithError(ctx, err).Warn("Failed to register pool metrics collector on testcontainer")
 	}
 
 	// Run migrations
