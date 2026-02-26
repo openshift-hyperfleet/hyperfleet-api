@@ -82,7 +82,7 @@ GIT_SHA ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 GIT_DIRTY ?= $(shell git diff --quiet 2>/dev/null || echo "-modified")
 build_version:=$(GIT_SHA)$(GIT_DIRTY)
 build_time:=$(shell date -u '+%Y-%m-%d %H:%M:%S UTC')
-ldflags=-X github.com/openshift-hyperfleet/hyperfleet-api/pkg/api.Version=$(build_version) -X 'github.com/openshift-hyperfleet/hyperfleet-api/pkg/api.BuildTime=$(build_time)'
+ldflags=-X github.com/openshift-hyperfleet/hyperfleet-api/pkg/api.Version=$(build_version) -X github.com/openshift-hyperfleet/hyperfleet-api/pkg/api.Commit=$(GIT_SHA) -X 'github.com/openshift-hyperfleet/hyperfleet-api/pkg/api.BuildTime=$(build_time)'
 
 ### Envrionment-sourced variables with defaults
 # Can be overriden by setting environment var before running
