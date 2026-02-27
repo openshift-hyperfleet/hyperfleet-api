@@ -17,6 +17,7 @@ import (
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db/db_metrics"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
@@ -119,6 +120,16 @@ func (f *Testcontainer) Init(config *config.DatabaseConfig) {
 	if err != nil {
 		logger.WithError(ctx, err).Error("Failed to connect GORM to testcontainer database")
 		os.Exit(1)
+	}
+
+	// Register database metrics GORM plugin
+	if err := db_metrics.RegisterPlugin(f.g2); err != nil {
+		logger.WithError(ctx, err).Warn("Failed to register database metrics plugin on testcontainer")
+	}
+
+	// Register connection pool metrics collector
+	if err := db_metrics.RegisterPoolCollector(f.sqlDB); err != nil {
+		logger.WithError(ctx, err).Warn("Failed to register pool metrics collector on testcontainer")
 	}
 
 	// Run migrations
