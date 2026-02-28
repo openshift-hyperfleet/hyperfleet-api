@@ -7,110 +7,77 @@ include .bingo/Variables.mk
 # Use ?= to allow Dockerfile to override (CGO_ENABLED=0 for Alpine-based dev images)
 CGO_ENABLED ?= 1
 
-# Enable users to override the golang used to accomodate custom installations
 GO ?= go
 
-# Version information for build metadata
-version:=$(shell date +%s)
+# Auto-detect container tool (podman preferred when available)
+CONTAINER_TOOL ?= $(shell command -v podman 2>/dev/null || command -v docker 2>/dev/null)
 
-# a tool for managing containers and images, etc. You can set it as docker
-container_tool ?= podman
+# Version information
+GIT_SHA ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+GIT_DIRTY ?= $(shell [ -z "$$(git status --porcelain 2>/dev/null)" ] || echo "-modified")
+VERSION ?= $(GIT_SHA)$(GIT_DIRTY)
+BUILD_DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-# Image configuration
+# Go build flags
+GOFLAGS ?= -trimpath
+LDFLAGS := -s -w \
+           -X github.com/openshift-hyperfleet/hyperfleet-api/pkg/api.Version=$(VERSION) \
+           -X github.com/openshift-hyperfleet/hyperfleet-api/pkg/api.Commit=$(GIT_SHA) \
+           -X 'github.com/openshift-hyperfleet/hyperfleet-api/pkg/api.BuildTime=$(BUILD_DATE)'
+
+# =============================================================================
+# Image Configuration
+# =============================================================================
 IMAGE_REGISTRY ?= quay.io/openshift-hyperfleet
 IMAGE_NAME ?= hyperfleet-api
-IMAGE_TAG ?= latest
+IMAGE_TAG ?= $(VERSION)
 
 # Dev image configuration - set QUAY_USER to push to personal registry
 # Usage: QUAY_USER=myuser make image-dev
 QUAY_USER ?=
 DEV_TAG ?= dev-$(GIT_SHA)
 
+# Encourage consistent tool versions
+OPENAPI_GENERATOR_VERSION := 5.4.0
+GO_VERSION := go1.25.
+
 # Database connection details
-db_name:=hyperfleet
-db_host=hyperfleet-db.$(namespace)
-db_port=5432
-db_user:=hyperfleet
-db_password:=foobar-bizz-buzz
-db_password_file=${PWD}/secrets/db.password
-db_sslmode:=disable
-db_image?=docker.io/library/postgres:14.2
+db_name := hyperfleet
+db_port := 5432
+db_user := hyperfleet
+db_password := foobar-bizz-buzz
+db_password_file := ${PWD}/secrets/db.password
+db_sslmode := disable
+db_image ?= docker.io/library/postgres:14.2
 
-# Log verbosity level
-glog_v:=10
-
-# Location of the JSON web key set used to verify tokens:
-jwks_url:=https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/certs
+# Location of the JSON web key set used to verify tokens
+jwks_url := https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/certs
 
 # Test output files
 unit_test_json_output ?= ${PWD}/unit-test-results.json
 integration_test_json_output ?= ${PWD}/integration-test-results.json
 
-# Prints a list of useful targets.
-help:
-	@echo ""
-	@echo "HyperFleet API - Cluster Lifecycle Management Service"
-	@echo ""
-	@echo "make verify               verify source code"
-	@echo "make lint                 run golangci-lint"
-	@echo "make build                compile binaries to bin/"
-	@echo "make install              compile binaries and install in GOPATH bin"
-	@echo "make secrets              initialize secrets directory with default values"
-	@echo "make run                  run the application"
-	@echo "make run/docs             run swagger and host the api spec"
-	@echo "make test                 run unit tests"
-	@echo "make test-integration     run integration tests"
-	@echo "make generate             generate openapi modules"
-	@echo "make generate-mocks       generate mock implementations for services"
-	@echo "make generate-all         generate all code (openapi + mocks)"
-	@echo "make clean                delete temporary generated files"
-	@echo "make image                build container image"
-	@echo "make image-push           build and push container image"
-	@echo "make image-dev            build and push to personal Quay registry"
-	@echo "$(fake)"
-.PHONY: help
-
-# Encourage consistent tool versions
-OPENAPI_GENERATOR_VERSION:=5.4.0
-GO_VERSION:=go1.24.
-
-### Constants:
-version:=$(shell date +%s)
-
-# Version information for ldflags
-GIT_SHA ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
-GIT_DIRTY ?= $(shell git diff --quiet 2>/dev/null || echo "-modified")
-build_version:=$(GIT_SHA)$(GIT_DIRTY)
-build_time:=$(shell date -u '+%Y-%m-%d %H:%M:%S UTC')
-ldflags=-X github.com/openshift-hyperfleet/hyperfleet-api/pkg/api.Version=$(build_version) -X github.com/openshift-hyperfleet/hyperfleet-api/pkg/api.Commit=$(GIT_SHA) -X 'github.com/openshift-hyperfleet/hyperfleet-api/pkg/api.BuildTime=$(build_time)'
-
-### Envrionment-sourced variables with defaults
-# Can be overriden by setting environment var before running
-# Example:
-#   OCM_ENV=unit_testing make run
-#   export OCM_ENV=testing; make run
-# Set the environment to development by default
+### Environment-sourced variables with defaults
 ifndef OCM_ENV
-	OCM_ENV:=development
+	OCM_ENV := development
 endif
 
 ifndef TEST_SUMMARY_FORMAT
-	TEST_SUMMARY_FORMAT=short-verbose
+	TEST_SUMMARY_FORMAT = short-verbose
 endif
 
 ifndef OCM_BASE_URL
-	OCM_BASE_URL:="https://api.integration.openshift.com"
+	OCM_BASE_URL := "https://api.integration.openshift.com"
 endif
 
-# Checks if a GOPATH is set, or emits an error message
-check-gopath:
-ifndef GOPATH
-	$(error GOPATH is not set)
-endif
-.PHONY: check-gopath
+.PHONY: help
+help: ## Display this help
+	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_\/-]+:.*?##/ { printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
 
-# Verifies that source passes standard checks.
-verify: check-gopath
+##@ Code Quality
+
+.PHONY: verify
+verify: ## Verify source passes standard checks
 	${GO} vet \
 		./cmd/... \
 		./pkg/...
@@ -125,37 +92,80 @@ verify: check-gopath
 			echo "* Your go version is not the expected $(GO_VERSION) *" | sed 's/./*/g'; \
 			printf '\033[0m'; \
 		)
-.PHONY: verify
 
-# Runs our linter to verify that everything is following best practices
-# Linter is set to ignore `unused` stuff due to example being incomplete by definition
-lint: $(GOLANGCI_LINT)
-	$(GOLANGCI_LINT) run ./cmd/... ./pkg/... ./test/...
 .PHONY: lint
+lint: $(GOLANGCI_LINT) ## Run golangci-lint
+	$(GOLANGCI_LINT) run ./cmd/... ./pkg/... ./test/...
 
-# Build binaries
-# NOTE it may be necessary to use CGO_ENABLED=0 for backwards compatibility with centos7 if not using centos7
-build: check-gopath generate-all
-	@mkdir -p bin
-	echo "Building version: ${build_version}"
-	CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=boringcrypto ${GO} build -ldflags="$(ldflags)" -o bin/hyperfleet-api ./cmd/hyperfleet-api
+##@ Code Generation
+
+.PHONY: generate
+generate: $(OAPI_CODEGEN) ## Generate OpenAPI types using oapi-codegen
+	rm -rf pkg/api/openapi
+	mkdir -p pkg/api/openapi
+	$(OAPI_CODEGEN) --config openapi/oapi-codegen.yaml openapi/openapi.yaml
+
+.PHONY: generate-mocks
+generate-mocks: $(MOCKGEN) ## Generate mock implementations for services
+	${GO} generate ./pkg/services/...
+
+.PHONY: generate-all
+generate-all: generate generate-mocks ## Generate all code (openapi + mocks)
+
+.PHONY: generate-vendor
+generate-vendor: generate
+
+##@ Development
+
 .PHONY: build
+build: generate-all ## Build the hyperfleet-api binary
+	@mkdir -p bin
+	@echo "Building version: ${VERSION}"
+	CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=boringcrypto ${GO} build $(GOFLAGS) -ldflags="$(LDFLAGS)" -o bin/hyperfleet-api ./cmd/hyperfleet-api
 
-# Install
-install: check-gopath generate-all
-	CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=boringcrypto ${GO} install -ldflags="$(ldflags)" ./cmd/hyperfleet-api
-	@ ${GO} version | grep -q "$(GO_VERSION)" || \
-		( \
-			printf '\033[41m\033[97m\n'; \
-			echo "* Your go version is not the expected $(GO_VERSION) *" | sed 's/./*/g'; \
-			echo "* Your go version is not the expected $(GO_VERSION) *"; \
-			echo "* Your go version is not the expected $(GO_VERSION) *" | sed 's/./*/g'; \
-			printf '\033[0m'; \
-		)
 .PHONY: install
+install: generate-all ## Build and install binary to GOPATH/bin
+	CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=boringcrypto ${GO} install $(GOFLAGS) -ldflags="$(LDFLAGS)" ./cmd/hyperfleet-api
 
-# Initialize secrets directory with default values
-secrets:
+.PHONY: run
+run: build ## Run the application
+	./bin/hyperfleet-api migrate
+	./bin/hyperfleet-api serve
+
+.PHONY: run-no-auth
+run-no-auth: build ## Run the application without auth
+	./bin/hyperfleet-api migrate
+	./bin/hyperfleet-api serve --enable-authz=false --enable-jwt=false
+
+.PHONY: run/docs
+run/docs: ## Run swagger and host the api spec
+	@echo "Please open http://localhost:8081/"
+	# Port 8081 instead of 80: ports <1024 are privileged and fail with rootless Podman.
+	# Port 8080 is avoided since it's used by the health endpoint server.
+	$(CONTAINER_TOOL) run -d -p 8081:8080 -e SWAGGER_JSON=/hyperfleet.yaml -v $(PWD)/openapi/hyperfleet.yaml:/hyperfleet.yaml swaggerapi/swagger-ui
+
+.PHONY: cmds
+cmds: ## Build all binaries under cmd/
+	@mkdir -p bin
+	for cmd in $$(ls cmd); do \
+		CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=boringcrypto ${GO} build \
+			$(GOFLAGS) \
+			-ldflags="$(LDFLAGS)" \
+			-o "bin/$${cmd}" \
+			"./cmd/$${cmd}" \
+			|| exit 1; \
+	done
+
+.PHONY: clean
+clean: ## Delete temporary generated files
+	rm -rf \
+		bin \
+		pkg/api/openapi \
+		data/generated/openapi/*.json \
+		secrets \
+
+.PHONY: secrets
+secrets: ## Initialize secrets directory with default values
 	@mkdir -p secrets
 	@printf "localhost" > secrets/db.host
 	@printf "$(db_name)" > secrets/db.name
@@ -166,159 +176,71 @@ secrets:
 	@printf "your-client-secret-here" > secrets/ocm-service.clientSecret
 	@printf "your-token-here" > secrets/ocm-service.token
 	@echo "Secrets directory initialized with default values"
-.PHONY: secrets
 
-# Runs the unit tests.
-#
-# Args:
-#   TESTFLAGS: Flags to pass to `go test`. The `-v` argument is always passed.
-#
-# Examples:
-#   make test TESTFLAGS="-run TestSomething"
-test: install secrets $(GOTESTSUM)
+##@ Testing
+
+.PHONY: test
+test: install secrets $(GOTESTSUM) ## Run unit tests
 	OCM_ENV=unit_testing $(GOTESTSUM) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -v $(TESTFLAGS) \
 		./pkg/... \
 		./cmd/...
-.PHONY: test
 
-# Runs the unit tests with json output
-#
-# Args:
-#   TESTFLAGS: Flags to pass to `go test`. The `-v` argument is always passed.
-#
-# Examples:
-#   make test-unit-json TESTFLAGS="-run TestSomething"
-ci-test-unit: install secrets $(GOTESTSUM)
+.PHONY: ci-test-unit
+ci-test-unit: install secrets $(GOTESTSUM) ## Run unit tests with JSON output
 	OCM_ENV=unit_testing $(GOTESTSUM) --jsonfile-timing-events=$(unit_test_json_output) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -v $(TESTFLAGS) \
 		./pkg/... \
 		./cmd/...
-.PHONY: ci-test-unit
 
-# Runs the integration tests.
-#
-# Args:
-#   TESTFLAGS: Flags to pass to `go test`. The `-v` argument is always passed.
-#
-# Example:
-#   make test-integration
-#   make test-integration TESTFLAGS="-run TestAccounts"     acts as TestAccounts* and run TestAccountsGet, TestAccountsPost, etc.
-#   make test-integration TESTFLAGS="-run TestAccountsGet"  runs TestAccountsGet
-#   make test-integration TESTFLAGS="-short"                skips long-run tests
-ci-test-integration: install secrets $(GOTESTSUM)
-	TESTCONTAINERS_RYUK_DISABLED=true OCM_ENV=integration_testing $(GOTESTSUM) --jsonfile-timing-events=$(integration_test_json_output) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) \
-			./test/integration
-.PHONY: ci-test-integration
-
-# Runs the integration tests.
-#
-# Args:
-#   TESTFLAGS: Flags to pass to `go test`. The `-v` argument is always passed.
-#
-# Example:
-#   make test-integration
-#   make test-integration TESTFLAGS="-run TestAccounts"     acts as TestAccounts* and run TestAccountsGet, TestAccountsPost, etc.
-#   make test-integration TESTFLAGS="-run TestAccountsGet"  runs TestAccountsGet
-#   make test-integration TESTFLAGS="-short"                skips long-run tests
-test-integration: install secrets $(GOTESTSUM)
+.PHONY: test-integration
+test-integration: install secrets $(GOTESTSUM) ## Run integration tests
 	TESTCONTAINERS_RYUK_DISABLED=true OCM_ENV=integration_testing $(GOTESTSUM) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) \
 			./test/integration
-.PHONY: test-integration
 
-# Regenerate openapi types using oapi-codegen
-generate: $(OAPI_CODEGEN)
-	rm -rf pkg/api/openapi
-	mkdir -p pkg/api/openapi
-	$(OAPI_CODEGEN) --config openapi/oapi-codegen.yaml openapi/openapi.yaml
-.PHONY: generate
+.PHONY: ci-test-integration
+ci-test-integration: install secrets $(GOTESTSUM) ## Run integration tests with JSON output
+	TESTCONTAINERS_RYUK_DISABLED=true OCM_ENV=integration_testing $(GOTESTSUM) --jsonfile-timing-events=$(integration_test_json_output) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) \
+			./test/integration
 
-# Generate mock implementations for service interfaces
-generate-mocks: $(MOCKGEN)
-	${GO} generate ./pkg/services/...
-.PHONY: generate-mocks
-
-# Generate all code (openapi + mocks)
-generate-all: generate generate-mocks
-.PHONY: generate-all
-
-# generate-vendor is now equivalent to generate (oapi-codegen handles dependencies)
-generate-vendor: generate
-.PHONY: generate-vendor
-
-run: build
-	./bin/hyperfleet-api migrate
-	./bin/hyperfleet-api serve
-.PHONY: run
-
-run-no-auth: build
-	./bin/hyperfleet-api migrate
-	./bin/hyperfleet-api serve --enable-authz=false --enable-jwt=false
-
-# Run Swagger nd host the api docs
-run/docs:
-	@echo "Please open http://localhost/"
-	docker run -d -p 80:8080 -e SWAGGER_JSON=/hyperfleet.yaml -v $(PWD)/openapi/hyperfleet.yaml:/hyperfleet.yaml swaggerapi/swagger-ui
-.PHONY: run/docs
-
-# Delete temporary files
-clean:
-	rm -rf \
-		bin \
-		pkg/api/openapi \
-		data/generated/openapi/*.json \
-		secrets \
-.PHONY: clean
-
-.PHONY: cmds
-cmds:
-	@mkdir -p bin
-	for cmd in $$(ls cmd); do \
-		CGO_ENABLED=$(CGO_ENABLED) ${GO} build \
-			-ldflags="$(ldflags)" \
-			-o "bin/$${cmd}" \
-			"./cmd/$${cmd}" \
-			|| exit 1; \
-	done
-
+##@ Database
 
 .PHONY: db/setup
-db/setup: secrets
+db/setup: secrets ## Start local PostgreSQL container
 	@echo $(db_password) > $(db_password_file)
-	$(container_tool) run --name psql-hyperfleet -e POSTGRES_DB=$(db_name) -e POSTGRES_USER=$(db_user) -e POSTGRES_PASSWORD=$(db_password) -p $(db_port):5432 -d $(db_image)
+	$(CONTAINER_TOOL) run --name psql-hyperfleet -e POSTGRES_DB=$(db_name) -e POSTGRES_USER=$(db_user) -e POSTGRES_PASSWORD=$(db_password) -p $(db_port):5432 -d $(db_image)
 
 .PHONY: db/login
-db/login:
-	$(container_tool) exec -it psql-hyperfleet bash -c "psql -h localhost -U $(db_user) $(db_name)"
+db/login: ## Login to local PostgreSQL
+	$(CONTAINER_TOOL) exec -it psql-hyperfleet bash -c "psql -h localhost -U $(db_user) $(db_name)"
 
 .PHONY: db/teardown
-db/teardown:
-	$(container_tool) stop psql-hyperfleet
-	$(container_tool) rm psql-hyperfleet
+db/teardown: ## Stop and remove local PostgreSQL container
+	$(CONTAINER_TOOL) stop psql-hyperfleet
+	$(CONTAINER_TOOL) rm psql-hyperfleet
 
-# Build container image (multi-stage build, no local binary needed)
+##@ Container Images
+
 .PHONY: image
-image:
+image: ## Build container image with configurable registry/tag
 	@echo "Building container image $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)..."
-	# --platform flag requires Docker >= 20.10 or Podman >= 3.4
-	# For older engines: use 'docker buildx build' or omit --platform
-	$(container_tool) build  \
+	$(CONTAINER_TOOL) build \
 		--platform linux/amd64 \
 		--build-arg GIT_SHA=$(GIT_SHA) \
 		--build-arg GIT_DIRTY=$(GIT_DIRTY) \
+		--build-arg BUILD_DATE=$(BUILD_DATE) \
+		--build-arg VERSION=$(VERSION) \
 		-t $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG) .
-	@echo "✅ Image built: $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)"
+	@echo "Image built: $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)"
 
-# Build and push container image to registry
 .PHONY: image-push
-image-push: image
+image-push: image ## Build and push container image
 	@echo "Pushing image $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)..."
-	$(container_tool) push $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)
-	@echo "✅ Image pushed: $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)"
+	$(CONTAINER_TOOL) push $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)
+	@echo "Image pushed: $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)"
 
-# Build and push to personal Quay registry (requires QUAY_USER)
 .PHONY: image-dev
-image-dev:
-ifndef QUAY_USER
-	@echo "❌ ERROR: QUAY_USER is not set"
+image-dev: ## Build and push to personal Quay registry (requires QUAY_USER)
+ifeq ($(strip $(QUAY_USER)),)
+	@echo "Error: QUAY_USER is not set"
 	@echo ""
 	@echo "Usage: QUAY_USER=myuser make image-dev"
 	@echo ""
@@ -326,15 +248,15 @@ ifndef QUAY_USER
 	@exit 1
 endif
 	@echo "Building dev image quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG)..."
-	# --platform flag requires Docker >= 20.10 or Podman >= 3.4
-	# For older engines: use 'docker buildx build' or omit --platform
-	$(container_tool) build \
+	$(CONTAINER_TOOL) build \
 		--platform linux/amd64 \
 		--build-arg BASE_IMAGE=alpine:3.21 \
 		--build-arg GIT_SHA=$(GIT_SHA) \
 		--build-arg GIT_DIRTY=$(GIT_DIRTY) \
+		--build-arg BUILD_DATE=$(BUILD_DATE) \
+		--build-arg VERSION=$(VERSION) \
 		-t quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG) .
 	@echo "Pushing dev image..."
-	$(container_tool) push quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG)
+	$(CONTAINER_TOOL) push quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG)
 	@echo ""
-	@echo "✅ Dev image pushed: quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG)"
+	@echo "Dev image pushed: quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG)"
