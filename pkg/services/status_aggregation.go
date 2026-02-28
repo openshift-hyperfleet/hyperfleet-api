@@ -10,9 +10,13 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 )
 
+// Mandatory condition types that must be present in all adapter status updates
+var mandatoryConditionTypes = []string{api.ConditionTypeAvailable, api.ConditionTypeApplied, api.ConditionTypeHealth}
+
+// Condition validation error types
 const (
-	conditionTypeAvailable = "Available"
-	conditionTypeReady     = "Ready"
+	ConditionValidationErrorDuplicate = "duplicate"
+	ConditionValidationErrorMissing   = "missing"
 )
 
 // Required adapter lists configured via pkg/config/adapter.go (see AdapterRequirementsConfig)
@@ -24,6 +28,35 @@ const (
 //	"dns": "Ready",
 var adapterConditionSuffixMap = map[string]string{
 	// Add custom mappings here when needed
+}
+
+// ValidateMandatoryConditions checks if all mandatory conditions are present and rejects duplicate condition types.
+// Returns (errorType, conditionName) where:
+// - If duplicate found: (ConditionValidationErrorDuplicate, duplicateConditionType)
+// - If missing condition: (ConditionValidationErrorMissing, missingConditionType)
+// - If all valid: ("", "")
+func ValidateMandatoryConditions(conditions []api.AdapterCondition) (errorType, conditionName string) {
+	// Check for duplicate condition types
+	seen := make(map[string]bool)
+	for _, cond := range conditions {
+		// Reject empty condition types
+		if cond.Type == "" {
+			return ConditionValidationErrorMissing, "<empty type>"
+		}
+		if seen[cond.Type] {
+			return ConditionValidationErrorDuplicate, cond.Type
+		}
+		seen[cond.Type] = true
+	}
+
+	// Check that all mandatory conditions are present
+	for _, mandatoryType := range mandatoryConditionTypes {
+		if !seen[mandatoryType] {
+			return ConditionValidationErrorMissing, mandatoryType
+		}
+	}
+
+	return "", ""
 }
 
 // MapAdapterToConditionType converts an adapter name to a semantic condition type
@@ -87,7 +120,7 @@ func ComputeAvailableCondition(adapterStatuses api.AdapterStatusList, requiredAd
 		if len(adapterStatus.Conditions) > 0 {
 			if err := json.Unmarshal(adapterStatus.Conditions, &conditions); err == nil {
 				for _, cond := range conditions {
-					if cond.Type == conditionTypeAvailable {
+					if cond.Type == api.ConditionTypeAvailable {
 						adapterMap[adapterStatus.Adapter] = struct {
 							available          string
 							observedGeneration int32
@@ -158,7 +191,7 @@ func ComputeReadyCondition(
 		if len(adapterStatus.Conditions) > 0 {
 			if err := json.Unmarshal(adapterStatus.Conditions, &conditions); err == nil {
 				for _, cond := range conditions {
-					if cond.Type == conditionTypeAvailable {
+					if cond.Type == api.ConditionTypeAvailable {
 						adapterMap[adapterStatus.Adapter] = struct {
 							available          string
 							observedGeneration int32
@@ -216,9 +249,9 @@ func BuildSyntheticConditions(
 		if err := json.Unmarshal(existingConditionsJSON, &existingConditions); err == nil {
 			for i := range existingConditions {
 				switch existingConditions[i].Type {
-				case conditionTypeAvailable:
+				case api.ConditionTypeAvailable:
 					existingAvailable = &existingConditions[i]
-				case conditionTypeReady:
+				case api.ConditionTypeReady:
 					existingReady = &existingConditions[i]
 				}
 			}
@@ -231,7 +264,7 @@ func BuildSyntheticConditions(
 		availableStatus = api.ConditionTrue
 	}
 	availableCondition := api.ResourceCondition{
-		Type:               conditionTypeAvailable,
+		Type:               api.ConditionTypeAvailable,
 		Status:             availableStatus,
 		ObservedGeneration: minObservedGeneration,
 		LastTransitionTime: now,
@@ -246,7 +279,7 @@ func BuildSyntheticConditions(
 		readyStatus = api.ConditionTrue
 	}
 	readyCondition := api.ResourceCondition{
-		Type:               conditionTypeReady,
+		Type:               api.ConditionTypeReady,
 		Status:             readyStatus,
 		ObservedGeneration: resourceGeneration,
 		LastTransitionTime: now,

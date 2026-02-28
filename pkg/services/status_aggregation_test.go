@@ -1,6 +1,11 @@
 package services
 
-import "testing"
+import (
+	"testing"
+	"time"
+
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
+)
 
 func TestMapAdapterToConditionType(t *testing.T) {
 	tests := []struct {
@@ -49,5 +54,151 @@ func TestMapAdapterToConditionType_DefaultAfterCustom(t *testing.T) {
 	if result != expected {
 		t.Errorf("MapAdapterToConditionType(%q) = %q, want %q (should revert to default)",
 			"dns", result, expected)
+	}
+}
+
+func TestValidateMandatoryConditions_AllPresent(t *testing.T) {
+	conditions := []api.AdapterCondition{
+		{Type: api.ConditionTypeAvailable, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.ConditionTypeHealth, Status: api.AdapterConditionFalse, LastTransitionTime: time.Now()},
+	}
+
+	errorType, conditionName := ValidateMandatoryConditions(conditions)
+	if errorType != "" {
+		t.Errorf("Expected no errors, got errorType: %s, conditionName: %s", errorType, conditionName)
+	}
+}
+
+func TestValidateMandatoryConditions_MissingAvailable(t *testing.T) {
+	conditions := []api.AdapterCondition{
+		{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+	}
+
+	errorType, conditionName := ValidateMandatoryConditions(conditions)
+	if errorType != ConditionValidationErrorMissing {
+		t.Errorf("Expected errorType ConditionValidationErrorMissing, got: %s", errorType)
+	}
+	if conditionName != api.ConditionTypeAvailable {
+		t.Errorf("Expected missing condition %s, got: %s", api.ConditionTypeAvailable, conditionName)
+	}
+}
+
+func TestValidateMandatoryConditions_MandatoryConditionUnknown(t *testing.T) {
+	// Unknown status in Applied/Health is allowed; only Available=Unknown has special handling elsewhere
+	conditions := []api.AdapterCondition{
+		{Type: api.ConditionTypeAvailable, Status: api.AdapterConditionUnknown, LastTransitionTime: time.Now()},
+		{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+	}
+
+	errorType, conditionName := ValidateMandatoryConditions(conditions)
+	if errorType != "" {
+		t.Errorf("Expected no errors (Unknown is allowed), got errorType: %s, conditionName: %s", errorType, conditionName)
+	}
+}
+
+func TestValidateMandatoryConditions_WithCustomConditions(t *testing.T) {
+	conditions := []api.AdapterCondition{
+		{Type: api.ConditionTypeAvailable, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: "CustomCondition", Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.ConditionTypeReady, Status: api.AdapterConditionFalse, LastTransitionTime: time.Now()},
+	}
+
+	errorType, conditionName := ValidateMandatoryConditions(conditions)
+	if errorType != "" {
+		t.Errorf("Expected no errors, got errorType: %s, conditionName: %s", errorType, conditionName)
+	}
+}
+
+func TestValidateMandatoryConditions_EmptyConditions(t *testing.T) {
+	conditions := []api.AdapterCondition{}
+
+	errorType, conditionName := ValidateMandatoryConditions(conditions)
+	if errorType != ConditionValidationErrorMissing {
+		t.Errorf("Expected errorType ConditionValidationErrorMissing, got: %s", errorType)
+	}
+	if conditionName != api.ConditionTypeAvailable {
+		t.Errorf("Expected missing condition %s, got: %s", api.ConditionTypeAvailable, conditionName)
+	}
+}
+
+func TestValidateMandatoryConditions_DuplicateCondition(t *testing.T) {
+	// Test: If Available appears twice, should reject as duplicate
+	conditions := []api.AdapterCondition{
+		{Type: api.ConditionTypeAvailable, Status: api.AdapterConditionUnknown, LastTransitionTime: time.Now()},
+		{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.ConditionTypeAvailable, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()}, // Duplicate!
+	}
+
+	errorType, conditionName := ValidateMandatoryConditions(conditions)
+
+	if errorType != ConditionValidationErrorDuplicate {
+		t.Errorf("Expected errorType ConditionValidationErrorDuplicate, got: %s", errorType)
+	}
+	if conditionName != api.ConditionTypeAvailable {
+		t.Errorf("Expected duplicate condition %s, got: %s", api.ConditionTypeAvailable, conditionName)
+	}
+}
+
+func TestValidateMandatoryConditions_DuplicateCustomCondition(t *testing.T) {
+	// Test: Duplicate custom condition should also be rejected
+	conditions := []api.AdapterCondition{
+		{Type: api.ConditionTypeAvailable, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: "CustomCondition", Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: "CustomCondition", Status: api.AdapterConditionFalse, LastTransitionTime: time.Now()}, // Duplicate!
+	}
+
+	errorType, conditionName := ValidateMandatoryConditions(conditions)
+
+	if errorType != ConditionValidationErrorDuplicate {
+		t.Errorf("Expected errorType ConditionValidationErrorDuplicate, got: %s", errorType)
+	}
+	if conditionName != "CustomCondition" {
+		t.Errorf("Expected duplicate condition CustomCondition, got: %s", conditionName)
+	}
+}
+
+// TestValidateMandatoryConditions_MissingMultiple tests that when multiple conditions are missing,
+// the function returns the first missing one
+func TestValidateMandatoryConditions_MissingMultiple(t *testing.T) {
+	// Test: Only Available present, missing Applied and Health
+	conditions := []api.AdapterCondition{
+		{Type: api.ConditionTypeAvailable, Status: api.AdapterConditionUnknown, LastTransitionTime: time.Now()},
+	}
+
+	errorType, conditionName := ValidateMandatoryConditions(conditions)
+
+	// Should return missing condition
+	if errorType != ConditionValidationErrorMissing {
+		t.Errorf("Expected errorType ConditionValidationErrorMissing, got: %s", errorType)
+	}
+	if conditionName != api.ConditionTypeApplied && conditionName != api.ConditionTypeHealth {
+		t.Errorf("Expected missing condition to be Applied or Health, got: %s", conditionName)
+	}
+}
+
+func TestValidateMandatoryConditions_EmptyConditionType(t *testing.T) {
+	// Test: Condition with empty type should be rejected
+	conditions := []api.AdapterCondition{
+		{Type: api.ConditionTypeAvailable, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: "", Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()}, // Empty type
+		{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+	}
+
+	errorType, conditionName := ValidateMandatoryConditions(conditions)
+
+	if errorType != ConditionValidationErrorMissing {
+		t.Errorf("Expected errorType ConditionValidationErrorMissing, got: %s", errorType)
+	}
+	if conditionName != "<empty type>" {
+		t.Errorf("Expected conditionName '<empty type>', got: %s", conditionName)
 	}
 }
