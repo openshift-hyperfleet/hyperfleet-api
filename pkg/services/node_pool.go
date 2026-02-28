@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	stderrors "errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -173,7 +174,7 @@ func (s *sqlNodePoolService) UpdateNodePoolStatusFromAdapters(
 		// Find the "Available" condition
 		var availableCondition *api.AdapterCondition
 		for i := range conditions {
-			if conditions[i].Type == conditionTypeAvailable {
+			if conditions[i].Type == api.ConditionTypeAvailable {
 				availableCondition = &conditions[i]
 				break
 			}
@@ -265,42 +266,33 @@ func (s *sqlNodePoolService) ProcessAdapterStatus(
 		}
 	}
 
-	// Find the "Available" condition
-	hasAvailableCondition := false
-	for _, cond := range conditions {
-		if cond.Type != conditionTypeAvailable {
-			continue
-		}
-
-		hasAvailableCondition = true
-		if cond.Status == api.AdapterConditionUnknown {
-			if existingStatus != nil {
-				// Available condition is "Unknown" and a status already exists, return nil to indicate no-op
-				return nil, nil
-			}
-			// First report from this adapter: allow storing even with Available=Unknown
-			// but skip aggregation since Unknown should not affect nodepool-level conditions
-			hasAvailableCondition = false
-		}
+	// Validate that all mandatory conditions are present and not Unknown
+	if missingCondition, unknownCondition := ValidateMandatoryConditions(conditions); missingCondition != "" {
+		// Missing mandatory condition - discard the update
+		logger.With(ctx, logger.FieldNodePoolID, nodePoolID).
+			Info(fmt.Sprintf("Discarding adapter status update from %s: missing mandatory condition %s",
+				adapterStatus.Adapter, missingCondition))
+		return nil, nil
+	} else if unknownCondition != "" {
+		// Mandatory condition has Unknown status - discard the update
+		logger.With(ctx, logger.FieldNodePoolID, nodePoolID).
+			Info(fmt.Sprintf("Discarding adapter status update from %s: mandatory condition %s has Unknown status",
+				adapterStatus.Adapter, unknownCondition))
+		return nil, nil
 	}
 
-	// Upsert the adapter status
+	// All validations passed - upsert the adapter status (complete replacement)
 	upsertedStatus, err := s.adapterStatusDao.Upsert(ctx, adapterStatus)
 	if err != nil {
 		return nil, handleCreateError("AdapterStatus", err)
 	}
 
-	// Only trigger aggregation when the adapter reported an Available condition.
-	// If the adapter status doesn't include Available, saving it should not overwrite
-	// the nodepool's synthetic Available/Ready conditions.
-	if hasAvailableCondition {
-		if _, aggregateErr := s.UpdateNodePoolStatusFromAdapters(
-			ctx, nodePoolID,
-		); aggregateErr != nil {
-			// Log error but don't fail the request - the status will be computed on next update
-			logger.With(ctx, logger.FieldNodePoolID, nodePoolID).
-				WithError(aggregateErr).Warn("Failed to aggregate nodepool status")
-		}
+	// Trigger aggregation to update nodepool-level conditions
+	if _, aggregateErr := s.UpdateNodePoolStatusFromAdapters(
+		ctx, nodePoolID,
+	); aggregateErr != nil {
+		logger.With(ctx, logger.FieldNodePoolID, nodePoolID).
+			WithError(aggregateErr).Warn("Failed to aggregate nodepool status")
 	}
 
 	return upsertedStatus, nil

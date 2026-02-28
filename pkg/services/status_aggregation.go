@@ -10,10 +10,8 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 )
 
-const (
-	conditionTypeAvailable = "Available"
-	conditionTypeReady     = "Ready"
-)
+// Mandatory condition types that must be present in all adapter status updates
+var mandatoryConditionTypes = []string{api.ConditionTypeAvailable, api.ConditionTypeApplied, api.ConditionTypeHealth}
 
 // Required adapter lists configured via pkg/config/adapter.go (see AdapterRequirementsConfig)
 
@@ -24,6 +22,45 @@ const (
 //	"dns": "Ready",
 var adapterConditionSuffixMap = map[string]string{
 	// Add custom mappings here when needed
+}
+
+// ValidateMandatoryConditions checks if all mandatory conditions are present and not Unknown.
+// Returns (missingCondition, unknownCondition) where:
+// - missingCondition: the name of the first missing mandatory condition, or empty string if all present
+// - unknownCondition: the name of the first mandatory condition with Unknown status, or empty string if none
+//
+// Usage:
+//
+//	if missing, unknown := ValidateMandatoryConditions(conditions); missing != "" {
+//	    // Handle missing condition
+//	} else if unknown != "" {
+//	    // Handle unknown condition
+//	}
+func ValidateMandatoryConditions(conditions []api.AdapterCondition) (missingCondition, unknownCondition string) {
+	// Build a map of condition types for validation
+	// If duplicate condition types exist, preserve Unknown status (highest severity)
+	conditionMap := make(map[string]api.AdapterConditionStatus)
+	for _, cond := range conditions {
+		existing, exists := conditionMap[cond.Type]
+		// If already Unknown, keep it (don't let True/False overwrite Unknown)
+		if exists && existing == api.AdapterConditionUnknown {
+			continue
+		}
+		conditionMap[cond.Type] = cond.Status
+	}
+
+	// Check that all mandatory conditions are present and not Unknown
+	for _, mandatoryType := range mandatoryConditionTypes {
+		status, exists := conditionMap[mandatoryType]
+		if !exists {
+			return mandatoryType, ""
+		}
+		if status == api.AdapterConditionUnknown {
+			return "", mandatoryType
+		}
+	}
+
+	return "", ""
 }
 
 // MapAdapterToConditionType converts an adapter name to a semantic condition type
@@ -87,7 +124,7 @@ func ComputeAvailableCondition(adapterStatuses api.AdapterStatusList, requiredAd
 		if len(adapterStatus.Conditions) > 0 {
 			if err := json.Unmarshal(adapterStatus.Conditions, &conditions); err == nil {
 				for _, cond := range conditions {
-					if cond.Type == conditionTypeAvailable {
+					if cond.Type == api.ConditionTypeAvailable {
 						adapterMap[adapterStatus.Adapter] = struct {
 							available          string
 							observedGeneration int32
@@ -158,7 +195,7 @@ func ComputeReadyCondition(
 		if len(adapterStatus.Conditions) > 0 {
 			if err := json.Unmarshal(adapterStatus.Conditions, &conditions); err == nil {
 				for _, cond := range conditions {
-					if cond.Type == conditionTypeAvailable {
+					if cond.Type == api.ConditionTypeAvailable {
 						adapterMap[adapterStatus.Adapter] = struct {
 							available          string
 							observedGeneration int32
@@ -216,9 +253,9 @@ func BuildSyntheticConditions(
 		if err := json.Unmarshal(existingConditionsJSON, &existingConditions); err == nil {
 			for i := range existingConditions {
 				switch existingConditions[i].Type {
-				case conditionTypeAvailable:
+				case api.ConditionTypeAvailable:
 					existingAvailable = &existingConditions[i]
-				case conditionTypeReady:
+				case api.ConditionTypeReady:
 					existingReady = &existingConditions[i]
 				}
 			}
@@ -231,7 +268,7 @@ func BuildSyntheticConditions(
 		availableStatus = api.ConditionTrue
 	}
 	availableCondition := api.ResourceCondition{
-		Type:               conditionTypeAvailable,
+		Type:               api.ConditionTypeAvailable,
 		Status:             availableStatus,
 		ObservedGeneration: minObservedGeneration,
 		LastTransitionTime: now,
@@ -246,7 +283,7 @@ func BuildSyntheticConditions(
 		readyStatus = api.ConditionTrue
 	}
 	readyCondition := api.ResourceCondition{
-		Type:               conditionTypeReady,
+		Type:               api.ConditionTypeReady,
 		Status:             readyStatus,
 		ObservedGeneration: resourceGeneration,
 		LastTransitionTime: now,

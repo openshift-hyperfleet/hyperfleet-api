@@ -8,6 +8,7 @@ import (
 
 	. "github.com/onsi/gomega"
 
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/util"
 	"github.com/openshift-hyperfleet/hyperfleet-api/test"
@@ -46,7 +47,22 @@ func TestClusterStatusPost(t *testing.T) {
 		cluster.Generation,
 		[]openapi.ConditionRequest{
 			{
-				Type:   "Ready",
+				Type:   api.ConditionTypeAvailable,
+				Status: openapi.AdapterConditionStatusTrue,
+				Reason: util.PtrString("ClusterAvailable"),
+			},
+			{
+				Type:   api.ConditionTypeApplied,
+				Status: openapi.AdapterConditionStatusTrue,
+				Reason: util.PtrString("ConfigurationApplied"),
+			},
+			{
+				Type:   api.ConditionTypeHealth,
+				Status: openapi.AdapterConditionStatusTrue,
+				Reason: util.PtrString("HealthyCluster"),
+			},
+			{
+				Type:   api.ConditionTypeReady,
 				Status: openapi.AdapterConditionStatusTrue,
 				Reason: util.PtrString("AdapterReady"),
 			},
@@ -84,7 +100,19 @@ func TestClusterStatusGet(t *testing.T) {
 			cluster.Generation,
 			[]openapi.ConditionRequest{
 				{
-					Type:   "Ready",
+					Type:   api.ConditionTypeAvailable,
+					Status: openapi.AdapterConditionStatusTrue,
+				},
+				{
+					Type:   api.ConditionTypeApplied,
+					Status: openapi.AdapterConditionStatusTrue,
+				},
+				{
+					Type:   api.ConditionTypeHealth,
+					Status: openapi.AdapterConditionStatusTrue,
+				},
+				{
+					Type:   api.ConditionTypeReady,
 					Status: openapi.AdapterConditionStatusTrue,
 				},
 			},
@@ -144,7 +172,22 @@ func TestNodePoolStatusPost(t *testing.T) {
 		1,
 		[]openapi.ConditionRequest{
 			{
-				Type:   "Ready",
+				Type:   api.ConditionTypeAvailable,
+				Status: openapi.AdapterConditionStatusFalse,
+				Reason: util.PtrString("Initializing"),
+			},
+			{
+				Type:   api.ConditionTypeApplied,
+				Status: openapi.AdapterConditionStatusTrue,
+				Reason: util.PtrString("ConfigurationApplied"),
+			},
+			{
+				Type:   api.ConditionTypeHealth,
+				Status: openapi.AdapterConditionStatusFalse,
+				Reason: util.PtrString("Initializing"),
+			},
+			{
+				Type:   api.ConditionTypeReady,
 				Status: openapi.AdapterConditionStatusFalse,
 				Reason: util.PtrString("Initializing"),
 			},
@@ -182,7 +225,19 @@ func TestNodePoolStatusGet(t *testing.T) {
 			1,
 			[]openapi.ConditionRequest{
 				{
-					Type:   "Ready",
+					Type:   api.ConditionTypeAvailable,
+					Status: openapi.AdapterConditionStatusTrue,
+				},
+				{
+					Type:   api.ConditionTypeApplied,
+					Status: openapi.AdapterConditionStatusTrue,
+				},
+				{
+					Type:   api.ConditionTypeHealth,
+					Status: openapi.AdapterConditionStatusTrue,
+				},
+				{
+					Type:   api.ConditionTypeReady,
 					Status: openapi.AdapterConditionStatusTrue,
 				},
 			},
@@ -222,7 +277,19 @@ func TestAdapterStatusPaging(t *testing.T) {
 			cluster.Generation,
 			[]openapi.ConditionRequest{
 				{
-					Type:   "Ready",
+					Type:   api.ConditionTypeAvailable,
+					Status: openapi.AdapterConditionStatusTrue,
+				},
+				{
+					Type:   api.ConditionTypeApplied,
+					Status: openapi.AdapterConditionStatusTrue,
+				},
+				{
+					Type:   api.ConditionTypeHealth,
+					Status: openapi.AdapterConditionStatusTrue,
+				},
+				{
+					Type:   api.ConditionTypeReady,
 					Status: openapi.AdapterConditionStatusTrue,
 				},
 			},
@@ -269,7 +336,22 @@ func TestAdapterStatusIdempotency(t *testing.T) {
 		cluster.Generation,
 		[]openapi.ConditionRequest{
 			{
-				Type:   "Ready",
+				Type:   api.ConditionTypeAvailable,
+				Status: openapi.AdapterConditionStatusFalse,
+				Reason: util.PtrString("Initializing"),
+			},
+			{
+				Type:   api.ConditionTypeApplied,
+				Status: openapi.AdapterConditionStatusTrue,
+				Reason: util.PtrString("ConfigurationApplied"),
+			},
+			{
+				Type:   api.ConditionTypeHealth,
+				Status: openapi.AdapterConditionStatusFalse,
+				Reason: util.PtrString("Initializing"),
+			},
+			{
+				Type:   api.ConditionTypeReady,
 				Status: openapi.AdapterConditionStatusFalse,
 				Reason: util.PtrString("Initializing"),
 			},
@@ -296,7 +378,22 @@ func TestAdapterStatusIdempotency(t *testing.T) {
 		cluster.Generation,
 		[]openapi.ConditionRequest{
 			{
-				Type:   "Ready",
+				Type:   api.ConditionTypeAvailable,
+				Status: openapi.AdapterConditionStatusTrue,
+				Reason: util.PtrString("ClusterAvailable"),
+			},
+			{
+				Type:   api.ConditionTypeApplied,
+				Status: openapi.AdapterConditionStatusTrue,
+				Reason: util.PtrString("ConfigurationApplied"),
+			},
+			{
+				Type:   api.ConditionTypeHealth,
+				Status: openapi.AdapterConditionStatusTrue,
+				Reason: util.PtrString("HealthyCluster"),
+			},
+			{
+				Type:   api.ConditionTypeReady,
 				Status: openapi.AdapterConditionStatusTrue,
 				Reason: util.PtrString("AdapterReady"),
 			},
@@ -335,9 +432,9 @@ func TestAdapterStatusIdempotency(t *testing.T) {
 		To(Equal(openapi.AdapterConditionStatusTrue), "Conditions should be updated to latest")
 }
 
-// TestClusterStatusPost_UnknownReturns201ThenSubsequent204 tests that the first Unknown Available
-// status report is stored (201), while subsequent Unknown reports return 204 No Content.
-func TestClusterStatusPost_UnknownReturns201ThenSubsequent204(t *testing.T) {
+// TestClusterStatusPost_UnknownReturns204 tests that status reports with Unknown
+// mandatory conditions are always rejected (HYPERFLEET-657)
+func TestClusterStatusPost_UnknownReturns204(t *testing.T) {
 	h, client := test.RegisterIntegration(t)
 
 	account := h.NewRandAccount()
@@ -347,30 +444,40 @@ func TestClusterStatusPost_UnknownReturns201ThenSubsequent204(t *testing.T) {
 	cluster, err := h.Factories.NewClusters(h.NewID())
 	Expect(err).NotTo(HaveOccurred())
 
-	// Create an adapter status with Available=Unknown
+	// Create an adapter status with all mandatory conditions but Available=Unknown
 	statusInput := newAdapterStatusRequest(
 		"test-adapter-unknown",
 		cluster.Generation,
 		[]openapi.ConditionRequest{
 			{
-				Type:   "Available",
+				Type:   api.ConditionTypeAvailable,
 				Status: openapi.AdapterConditionStatusUnknown,
 				Reason: util.PtrString("StartupPending"),
+			},
+			{
+				Type:   api.ConditionTypeApplied,
+				Status: openapi.AdapterConditionStatusTrue,
+				Reason: util.PtrString("ConfigurationApplied"),
+			},
+			{
+				Type:   api.ConditionTypeHealth,
+				Status: openapi.AdapterConditionStatusTrue,
+				Reason: util.PtrString("HealthyCluster"),
 			},
 		},
 		nil,
 	)
 
-	// First report: should be stored (201 Created)
+	// First report with Unknown mandatory condition: should be rejected (204 No Content)
 	resp, err := client.PostClusterStatusesWithResponse(
 		ctx, cluster.ID,
 		openapi.PostClusterStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
 	)
 	Expect(err).NotTo(HaveOccurred(), "Error posting cluster status: %v", err)
 	Expect(resp.StatusCode()).
-		To(Equal(http.StatusCreated), "Expected 201 Created for first Unknown status report")
+		To(Equal(http.StatusNoContent), "Expected 204 No Content for status with Unknown mandatory condition")
 
-	// Verify the status was stored
+	// Verify no status was stored
 	listResp, err := client.GetClusterStatusesWithResponse(ctx, cluster.ID, nil, test.WithAuthToken(ctx))
 	Expect(err).NotTo(HaveOccurred())
 	Expect(listResp.JSON200).NotTo(BeNil())
@@ -382,9 +489,9 @@ func TestClusterStatusPost_UnknownReturns201ThenSubsequent204(t *testing.T) {
 			break
 		}
 	}
-	Expect(found).To(BeTrue(), "First Unknown status report should be stored")
+	Expect(found).To(BeFalse(), "Status with Unknown mandatory condition should not be stored")
 
-	// Subsequent report with same adapter: should be no-op (204 No Content)
+	// Subsequent report with same adapter: should also be rejected (204 No Content)
 	resp2, err := client.PostClusterStatusesWithResponse(
 		ctx, cluster.ID,
 		openapi.PostClusterStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
@@ -394,9 +501,9 @@ func TestClusterStatusPost_UnknownReturns201ThenSubsequent204(t *testing.T) {
 		To(Equal(http.StatusNoContent), "Expected 204 No Content for subsequent Unknown status report")
 }
 
-// TestNodePoolStatusPost_UnknownReturns201ThenSubsequent204 tests that the first Unknown Available
-// status report is stored (201), while subsequent Unknown reports return 204 No Content.
-func TestNodePoolStatusPost_UnknownReturns201ThenSubsequent204(t *testing.T) {
+// TestNodePoolStatusPost_UnknownReturns204 tests that status reports with Unknown
+// mandatory conditions are always rejected (HYPERFLEET-657)
+func TestNodePoolStatusPost_UnknownReturns204(t *testing.T) {
 	h, client := test.RegisterIntegration(t)
 
 	account := h.NewRandAccount()
@@ -406,30 +513,40 @@ func TestNodePoolStatusPost_UnknownReturns201ThenSubsequent204(t *testing.T) {
 	nodePool, err := h.Factories.NewNodePools(h.NewID())
 	Expect(err).NotTo(HaveOccurred())
 
-	// Create an adapter status with Available=Unknown
+	// Create an adapter status with all mandatory conditions but Available=Unknown
 	statusInput := newAdapterStatusRequest(
 		"test-nodepool-adapter-unknown",
 		1,
 		[]openapi.ConditionRequest{
 			{
-				Type:   "Available",
+				Type:   api.ConditionTypeAvailable,
 				Status: openapi.AdapterConditionStatusUnknown,
 				Reason: util.PtrString("StartupPending"),
+			},
+			{
+				Type:   api.ConditionTypeApplied,
+				Status: openapi.AdapterConditionStatusTrue,
+				Reason: util.PtrString("ConfigurationApplied"),
+			},
+			{
+				Type:   api.ConditionTypeHealth,
+				Status: openapi.AdapterConditionStatusTrue,
+				Reason: util.PtrString("HealthyCluster"),
 			},
 		},
 		nil,
 	)
 
-	// First report: should be stored (201 Created)
+	// First report with Unknown mandatory condition: should be rejected (204 No Content)
 	resp, err := client.PostNodePoolStatusesWithResponse(
 		ctx, nodePool.OwnerID, nodePool.ID,
 		openapi.PostNodePoolStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
 	)
 	Expect(err).NotTo(HaveOccurred(), "Error posting nodepool status: %v", err)
 	Expect(resp.StatusCode()).
-		To(Equal(http.StatusCreated), "Expected 201 Created for first Unknown status report")
+		To(Equal(http.StatusNoContent), "Expected 204 No Content for status with Unknown mandatory condition")
 
-	// Verify the status was stored
+	// Verify no status was stored
 	listResp, err := client.GetNodePoolsStatusesWithResponse(
 		ctx, nodePool.OwnerID, nodePool.ID, nil, test.WithAuthToken(ctx),
 	)
@@ -443,9 +560,9 @@ func TestNodePoolStatusPost_UnknownReturns201ThenSubsequent204(t *testing.T) {
 			break
 		}
 	}
-	Expect(found).To(BeTrue(), "First Unknown status report should be stored")
+	Expect(found).To(BeFalse(), "Status with Unknown mandatory condition should not be stored")
 
-	// Subsequent report with same adapter: should be no-op (204 No Content)
+	// Subsequent report with same adapter: should also be rejected (204 No Content)
 	resp2, err := client.PostNodePoolStatusesWithResponse(
 		ctx, nodePool.OwnerID, nodePool.ID,
 		openapi.PostNodePoolStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
@@ -456,7 +573,7 @@ func TestNodePoolStatusPost_UnknownReturns201ThenSubsequent204(t *testing.T) {
 }
 
 // TestClusterStatusPost_MultipleConditionsWithUnknownAvailable tests that
-// Unknown Available is detected among multiple conditions
+// Unknown Available is always rejected even among multiple conditions (HYPERFLEET-657)
 func TestClusterStatusPost_MultipleConditionsWithUnknownAvailable(t *testing.T) {
 	h, client := test.RegisterIntegration(t)
 
@@ -467,19 +584,29 @@ func TestClusterStatusPost_MultipleConditionsWithUnknownAvailable(t *testing.T) 
 	cluster, err := h.Factories.NewClusters(h.NewID())
 	Expect(err).NotTo(HaveOccurred())
 
-	// Create an adapter status with multiple conditions including Available=Unknown
+	// Create an adapter status with all mandatory conditions but Available=Unknown
 	statusInput := newAdapterStatusRequest(
 		"test-adapter-multi-unknown",
 		cluster.Generation,
 		[]openapi.ConditionRequest{
 			{
-				Type:   "Ready",
-				Status: openapi.AdapterConditionStatusTrue,
-			},
-			{
-				Type:   "Available",
+				Type:   api.ConditionTypeAvailable,
 				Status: openapi.AdapterConditionStatusUnknown,
 				Reason: util.PtrString("StartupPending"),
+			},
+			{
+				Type:   api.ConditionTypeApplied,
+				Status: openapi.AdapterConditionStatusTrue,
+				Reason: util.PtrString("ConfigurationApplied"),
+			},
+			{
+				Type:   api.ConditionTypeHealth,
+				Status: openapi.AdapterConditionStatusTrue,
+				Reason: util.PtrString("HealthyCluster"),
+			},
+			{
+				Type:   api.ConditionTypeReady,
+				Status: openapi.AdapterConditionStatusTrue,
 			},
 			{
 				Type:   "Progressing",
@@ -489,16 +616,16 @@ func TestClusterStatusPost_MultipleConditionsWithUnknownAvailable(t *testing.T) 
 		nil,
 	)
 
-	// First report: should be stored (201 Created) even with Available=Unknown
+	// First report with Unknown mandatory condition: should be rejected (204 No Content)
 	resp, err := client.PostClusterStatusesWithResponse(
 		ctx, cluster.ID,
 		openapi.PostClusterStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
 	)
 	Expect(err).NotTo(HaveOccurred(), "Error posting cluster status: %v", err)
-	Expect(resp.StatusCode()).To(Equal(http.StatusCreated),
-		"Expected 201 Created for first report with Available=Unknown among multiple conditions")
+	Expect(resp.StatusCode()).To(Equal(http.StatusNoContent),
+		"Expected 204 No Content for first report with Available=Unknown among multiple conditions")
 
-	// Subsequent report: should be no-op (204 No Content)
+	// Subsequent report: should also be rejected (204 No Content)
 	resp2, err := client.PostClusterStatusesWithResponse(
 		ctx, cluster.ID,
 		openapi.PostClusterStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
@@ -526,7 +653,19 @@ func TestAdapterStatusPagingEdgeCases(t *testing.T) {
 			cluster.Generation,
 			[]openapi.ConditionRequest{
 				{
-					Type:   "Ready",
+					Type:   api.ConditionTypeAvailable,
+					Status: openapi.AdapterConditionStatusTrue,
+				},
+				{
+					Type:   api.ConditionTypeApplied,
+					Status: openapi.AdapterConditionStatusTrue,
+				},
+				{
+					Type:   api.ConditionTypeHealth,
+					Status: openapi.AdapterConditionStatusTrue,
+				},
+				{
+					Type:   api.ConditionTypeReady,
 					Status: openapi.AdapterConditionStatusTrue,
 				},
 			},
@@ -571,7 +710,19 @@ func TestAdapterStatusPagingEdgeCases(t *testing.T) {
 		singleCluster.Generation,
 		[]openapi.ConditionRequest{
 			{
-				Type:   "Ready",
+				Type:   api.ConditionTypeAvailable,
+				Status: openapi.AdapterConditionStatusTrue,
+			},
+			{
+				Type:   api.ConditionTypeApplied,
+				Status: openapi.AdapterConditionStatusTrue,
+			},
+			{
+				Type:   api.ConditionTypeHealth,
+				Status: openapi.AdapterConditionStatusTrue,
+			},
+			{
+				Type:   api.ConditionTypeReady,
 				Status: openapi.AdapterConditionStatusTrue,
 			},
 		},
@@ -622,4 +773,166 @@ func TestAdapterStatusPagingEdgeCases(t *testing.T) {
 
 	// Verify we got all 10 unique adapters
 	Expect(len(allItems)).To(Equal(10), "Should retrieve all items exactly once across pages")
+}
+// TestHYPERFLEET657_MandatoryConditionsPreserved tests that adapter status updates
+// without mandatory conditions are rejected and existing conditions are preserved
+func TestHYPERFLEET657_MandatoryConditionsPreserved(t *testing.T) {
+	h, client := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+
+	// Create a cluster first
+	cluster, err := h.Factories.NewClusters(h.NewID())
+	Expect(err).NotTo(HaveOccurred())
+
+	// Send initial valid status with all mandatory conditions
+	initialStatus := newAdapterStatusRequest(
+		"adapter1",
+		cluster.Generation,
+		[]openapi.ConditionRequest{
+			{
+				Type:    api.ConditionTypeAvailable,
+				Status:  openapi.AdapterConditionStatusFalse,
+				Reason:  util.PtrString("ConfigMap data not yet available"),
+				Message: util.PtrString("ConfigMap data not yet available"),
+			},
+			{
+				Type:    api.ConditionTypeApplied,
+				Status:  openapi.AdapterConditionStatusTrue,
+				Reason:  util.PtrString("ConfigMapApplied"),
+				Message: util.PtrString("ConfigMap has been applied correctly"),
+			},
+			{
+				Type:    api.ConditionTypeHealth,
+				Status:  openapi.AdapterConditionStatusFalse,
+				Reason:  util.PtrString("ConfigMap data not yet available"),
+				Message: util.PtrString("ConfigMap data not yet available"),
+			},
+		},
+		nil,
+	)
+
+	resp1, err := client.PostClusterStatusesWithResponse(
+		ctx, cluster.ID,
+		openapi.PostClusterStatusesJSONRequestBody(initialStatus), test.WithAuthToken(ctx),
+	)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(resp1.StatusCode()).To(Equal(http.StatusCreated))
+	Expect(resp1.JSON201).ToNot(BeNil())
+	Expect(len(resp1.JSON201.Conditions)).To(Equal(3))
+
+	// Verify Available, Applied, Health are present
+	conditionTypes := make(map[string]bool)
+	for _, cond := range resp1.JSON201.Conditions {
+		conditionTypes[cond.Type] = true
+	}
+	Expect(conditionTypes[api.ConditionTypeAvailable]).To(BeTrue())
+	Expect(conditionTypes[api.ConditionTypeApplied]).To(BeTrue())
+	Expect(conditionTypes[api.ConditionTypeHealth]).To(BeTrue())
+
+	// Now send an incomplete update (missing mandatory conditions) - this is the bug scenario
+	incompleteStatus := newAdapterStatusRequest(
+		"adapter1",
+		cluster.Generation,
+		[]openapi.ConditionRequest{
+			{
+				Type:    "Available2",
+				Status:  openapi.AdapterConditionStatusUnknown,
+				Reason:  util.PtrString("ClusterProvisioned"),
+				Message: util.PtrString("Cluster successfully provisioned"),
+			},
+			{
+				Type:    "Health2",
+				Status:  openapi.AdapterConditionStatusUnknown,
+				Reason:  util.PtrString("ClusterProvisioned"),
+				Message: util.PtrString("Cluster successfully provisioned"),
+			},
+		},
+		&map[string]interface{}{
+			"duration": "10m",
+			"job_name": "provision-job-123",
+		},
+	)
+
+	resp2, err := client.PostClusterStatusesWithResponse(
+		ctx, cluster.ID,
+		openapi.PostClusterStatusesJSONRequestBody(incompleteStatus), test.WithAuthToken(ctx),
+	)
+	Expect(err).NotTo(HaveOccurred())
+	// Should return 204 No Content (update was discarded)
+	Expect(resp2.StatusCode()).To(Equal(http.StatusNoContent))
+
+	// Verify that the original conditions are preserved
+	respGet, err := client.GetClusterStatusesWithResponse(ctx, cluster.ID, nil, test.WithAuthToken(ctx))
+	Expect(err).NotTo(HaveOccurred())
+	Expect(respGet.StatusCode()).To(Equal(http.StatusOK))
+	Expect(respGet.JSON200).ToNot(BeNil())
+	Expect(len(respGet.JSON200.Items)).To(Equal(1))
+
+	// Verify Available, Applied, Health are still present (not replaced by Available2/Health2)
+	storedConditionTypes := make(map[string]bool)
+	for _, cond := range respGet.JSON200.Items[0].Conditions {
+		storedConditionTypes[cond.Type] = true
+	}
+	Expect(storedConditionTypes[api.ConditionTypeAvailable]).To(BeTrue(), "Available condition should be preserved")
+	Expect(storedConditionTypes[api.ConditionTypeApplied]).To(BeTrue(), "Applied condition should be preserved")
+	Expect(storedConditionTypes[api.ConditionTypeHealth]).To(BeTrue(), "Health condition should be preserved")
+	Expect(storedConditionTypes["Available2"]).To(BeFalse(), "Available2 should not be present")
+	Expect(storedConditionTypes["Health2"]).To(BeFalse(), "Health2 should not be present")
+}
+
+// TestHYPERFLEET657_UnknownMandatoryConditionsRejected tests that updates with
+// Unknown status for mandatory conditions are rejected
+func TestHYPERFLEET657_UnknownMandatoryConditionsRejected(t *testing.T) {
+	h, client := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+
+	// Create a cluster first
+	cluster, err := h.Factories.NewClusters(h.NewID())
+	Expect(err).NotTo(HaveOccurred())
+
+	// Try to send status with all mandatory conditions but Available=Unknown
+	statusWithUnknown := newAdapterStatusRequest(
+		"adapter1",
+		cluster.Generation,
+		[]openapi.ConditionRequest{
+			{
+				Type:    api.ConditionTypeAvailable,
+				Status:  openapi.AdapterConditionStatusUnknown,
+				Reason:  util.PtrString("Checking"),
+				Message: util.PtrString("Checking availability"),
+			},
+			{
+				Type:    api.ConditionTypeApplied,
+				Status:  openapi.AdapterConditionStatusTrue,
+				Reason:  util.PtrString("Applied"),
+				Message: util.PtrString("Configuration applied"),
+			},
+			{
+				Type:    api.ConditionTypeHealth,
+				Status:  openapi.AdapterConditionStatusTrue,
+				Reason:  util.PtrString("Healthy"),
+				Message: util.PtrString("Cluster is healthy"),
+			},
+		},
+		nil,
+	)
+
+	resp, err := client.PostClusterStatusesWithResponse(
+		ctx, cluster.ID,
+		openapi.PostClusterStatusesJSONRequestBody(statusWithUnknown), test.WithAuthToken(ctx),
+	)
+	Expect(err).NotTo(HaveOccurred())
+	// Should return 204 No Content (update was discarded because Available=Unknown)
+	Expect(resp.StatusCode()).To(Equal(http.StatusNoContent))
+
+	// Verify no status was stored
+	respGet, err := client.GetClusterStatusesWithResponse(ctx, cluster.ID, nil, test.WithAuthToken(ctx))
+	Expect(err).NotTo(HaveOccurred())
+	Expect(respGet.StatusCode()).To(Equal(http.StatusOK))
+	Expect(respGet.JSON200).ToNot(BeNil())
+	Expect(len(respGet.JSON200.Items)).To(Equal(0), "No status should be stored when mandatory condition is Unknown")
 }
