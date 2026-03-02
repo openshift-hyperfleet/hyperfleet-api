@@ -1,0 +1,227 @@
+package presenters
+
+import (
+	"testing"
+	"time"
+
+	. "github.com/onsi/gomega"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
+)
+
+const clusterKind = "Cluster"
+
+func createTestClusterList() openapi.ClusterList {
+	id1 := "cluster-id1"
+	id2 := "cluster-id2"
+	kind := clusterKind
+
+	labels1 := map[string]string{
+		"env":  "prod",
+		"team": "platform",
+	}
+	labels2 := map[string]string{
+		"env": "dev",
+	}
+
+	now := time.Now()
+
+	return openapi.ClusterList{
+		Kind:  "ClusterList",
+		Page:  1,
+		Size:  2,
+		Total: 2,
+		Items: []openapi.Cluster{
+			{
+				Id:          &id1,
+				Kind:        &kind,
+				Name:        "test-cluster",
+				Generation:  1,
+				Labels:      &labels1,
+				CreatedTime: now,
+				UpdatedTime: now,
+				Spec:        openapi.ClusterSpec{},
+			},
+			{
+				Id:          &id2,
+				Kind:        &kind,
+				Name:        "development-cluster",
+				Generation:  2,
+				Labels:      &labels2,
+				CreatedTime: now,
+				UpdatedTime: now,
+				Spec:        openapi.ClusterSpec{},
+			},
+		},
+	}
+}
+
+func TestSliceFilter(t *testing.T) {
+	RegisterTestingT(t)
+
+	tests := []struct {
+		name     string
+		fields   []string
+		model    interface{}
+		validate func(result *ProjectionList, err *errors.ServiceError)
+	}{
+		{
+			name:   "include and exclude fields with different types",
+			fields: []string{"id", "name", "generation"},
+			model:  createTestClusterList(),
+			validate: func(result *ProjectionList, err *errors.ServiceError) {
+				Expect(err).To(BeNil())
+				Expect(result).ToNot(BeNil())
+				Expect(result.Kind).To(Equal("ClusterList"))
+				Expect(result.Page).To(Equal(int32(1)))
+				Expect(result.Size).To(Equal(int32(2)))
+				Expect(result.Total).To(Equal(int32(2)))
+				Expect(result.Items).To(HaveLen(2))
+
+				// Included fields
+				id1 := result.Items[0]["id"].(*string)
+				Expect(*id1).To(Equal("cluster-id1"))
+				Expect(result.Items[0]["name"]).To(Equal("test-cluster"))
+				Expect(result.Items[0]["generation"]).To(Equal(int32(1)))
+
+				id2 := result.Items[1]["id"].(*string)
+				Expect(*id2).To(Equal("cluster-id2"))
+				Expect(result.Items[1]["name"]).To(Equal("development-cluster"))
+				Expect(result.Items[1]["generation"]).To(Equal(int32(2)))
+
+				// Excluded fields
+				Expect(result.Items[0]).ToNot(HaveKey("labels"))
+				Expect(result.Items[0]).ToNot(HaveKey("spec"))
+				Expect(result.Items[0]).ToNot(HaveKey("created_time"))
+			},
+		},
+		{
+			name:   "nested field handling",
+			fields: []string{"id", "name", "labels"},
+			model:  createTestClusterList(),
+			validate: func(result *ProjectionList, err *errors.ServiceError) {
+				Expect(err).To(BeNil())
+				Expect(result).ToNot(BeNil())
+				Expect(result.Items).To(HaveLen(2))
+
+				id1 := result.Items[0]["id"].(*string)
+				Expect(*id1).To(Equal("cluster-id1"))
+				Expect(result.Items[0]["name"]).To(Equal("test-cluster"))
+
+				// Verify nested labels map is included
+				labels := result.Items[0]["labels"].(*map[string]string)
+				Expect((*labels)["env"]).To(Equal("prod"))
+				Expect((*labels)["team"]).To(Equal("platform"))
+
+				id2 := result.Items[1]["id"].(*string)
+				Expect(*id2).To(Equal("cluster-id2"))
+				labels2 := result.Items[1]["labels"].(*map[string]string)
+				Expect((*labels2)["env"]).To(Equal("dev"))
+
+				Expect(result.Items[0]).ToNot(HaveKey("spec"))
+				Expect(result.Items[0]).ToNot(HaveKey("generation"))
+			},
+		},
+		{
+			name:   "time field handling",
+			fields: []string{"id", "created_time"},
+			model:  createTestClusterList(),
+			validate: func(result *ProjectionList, err *errors.ServiceError) {
+				Expect(err).To(BeNil())
+				Expect(result).ToNot(BeNil())
+				Expect(result.Items).To(HaveLen(2))
+
+				id1 := result.Items[0]["id"].(*string)
+				Expect(*id1).To(Equal("cluster-id1"))
+
+				createdTime, ok := result.Items[0]["created_time"].(string)
+				Expect(ok).To(BeTrue(), "created_time should be a string")
+				Expect(createdTime).ToNot(BeEmpty())
+
+				// Verify it's valid RFC3339 format
+				parsedTime, parseErr := time.Parse(time.RFC3339, createdTime)
+				Expect(parseErr).To(BeNil(), "created_time should be valid RFC3339 format")
+				Expect(parsedTime.IsZero()).To(BeFalse(), "parsed time should not be zero")
+			},
+		},
+		{
+			name:   "nil input",
+			fields: []string{"id"},
+			model:  nil,
+			validate: func(result *ProjectionList, err *errors.ServiceError) {
+				Expect(result).To(BeNil())
+				Expect(err).ToNot(BeNil())
+				Expect(err.Type).To(Equal(errors.ErrorTypeValidation))
+				Expect(err.Error()).To(ContainSubstring("Empty model"))
+			},
+		},
+		{
+			name:   "empty field list",
+			fields: []string{},
+			model:  createTestClusterList(),
+			validate: func(result *ProjectionList, err *errors.ServiceError) {
+				Expect(err).To(BeNil())
+				Expect(result).ToNot(BeNil())
+				Expect(result.Kind).To(Equal("ClusterList"))
+				Expect(result.Page).To(Equal(int32(1)))
+				Expect(result.Items).To(HaveLen(2))
+
+				// No fields requested, so items should be empty maps
+				Expect(result.Items[0]).To(HaveLen(0))
+				Expect(result.Items[1]).To(HaveLen(0))
+			},
+		},
+		{
+			name:   "nil field list",
+			fields: nil,
+			model:  createTestClusterList(),
+			validate: func(result *ProjectionList, err *errors.ServiceError) {
+				Expect(err).To(BeNil())
+				Expect(result).ToNot(BeNil())
+				Expect(result.Kind).To(Equal("ClusterList"))
+				Expect(result.Items).To(HaveLen(2))
+				Expect(result.Items[0]).To(HaveLen(0))
+			},
+		},
+		{
+			name:   "invalid field name",
+			fields: []string{"id", "nonexistent_field"},
+			model:  createTestClusterList(),
+			validate: func(result *ProjectionList, err *errors.ServiceError) {
+				Expect(result).To(BeNil())
+				Expect(err).ToNot(BeNil())
+				Expect(err.Type).To(Equal(errors.ErrorTypeValidation))
+				Expect(err.Error()).To(ContainSubstring("doesn't exist"))
+				Expect(err.Error()).To(ContainSubstring("nonexistent_field"))
+			},
+		},
+		{
+			name:   "empty items - panic prevention",
+			fields: []string{"id", "name"},
+			model: openapi.ClusterList{
+				Kind:  "ClusterList",
+				Page:  1,
+				Size:  0,
+				Total: 0,
+				Items: []openapi.Cluster{},
+			},
+			validate: func(result *ProjectionList, err *errors.ServiceError) {
+				Expect(err).To(BeNil())
+				Expect(result).ToNot(BeNil())
+				Expect(result.Kind).To(Equal("ClusterList"))
+				Expect(result.Page).To(Equal(int32(1)))
+				Expect(result.Size).To(Equal(int32(0)))
+				Expect(result.Total).To(Equal(int32(0)))
+				Expect(result.Items).To(BeNil())
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			RegisterTestingT(t)
+			result, err := SliceFilter(tt.fields, tt.model)
+			tt.validate(result, err)
+		})
+	}
+}
