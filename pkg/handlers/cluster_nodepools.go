@@ -83,7 +83,7 @@ func (h clusterNodePoolsHandler) List(w http.ResponseWriter, r *http.Request) {
 			}
 
 			if listArgs.Fields != nil {
-				filteredItems, err := presenters.SliceFilter(listArgs.Fields, nodePoolList.Items)
+				filteredItems, err := presenters.SliceFilter(listArgs.Fields, nodePoolList)
 				if err != nil {
 					return nil, err
 				}
