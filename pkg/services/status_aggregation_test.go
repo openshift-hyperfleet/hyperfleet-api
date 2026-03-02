@@ -1,6 +1,11 @@
 package services
 
-import "testing"
+import (
+	"testing"
+	"time"
+
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
+)
 
 func TestMapAdapterToConditionType(t *testing.T) {
 	tests := []struct {
@@ -49,5 +54,128 @@ func TestMapAdapterToConditionType_DefaultAfterCustom(t *testing.T) {
 	if result != expected {
 		t.Errorf("MapAdapterToConditionType(%q) = %q, want %q (should revert to default)",
 			"dns", result, expected)
+	}
+}
+
+func TestValidateMandatoryConditions_AllPresent(t *testing.T) {
+	conditions := []api.AdapterCondition{
+		{Type: api.ConditionTypeAvailable, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.ConditionTypeHealth, Status: api.AdapterConditionFalse, LastTransitionTime: time.Now()},
+	}
+
+	missing, unknown := ValidateMandatoryConditions(conditions)
+	if missing != "" {
+		t.Errorf("Expected no missing conditions, got missing: %s", missing)
+	}
+	if unknown != "" {
+		t.Errorf("Expected no unknown conditions, got unknown: %s", unknown)
+	}
+}
+
+func TestValidateMandatoryConditions_MissingAvailable(t *testing.T) {
+	conditions := []api.AdapterCondition{
+		{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+	}
+
+	missing, unknown := ValidateMandatoryConditions(conditions)
+	if missing != api.ConditionTypeAvailable {
+		t.Errorf("Expected missing condition %s, got: %s", api.ConditionTypeAvailable, missing)
+	}
+	if unknown != "" {
+		t.Errorf("Expected no unknown conditions, got: %s", unknown)
+	}
+}
+
+func TestValidateMandatoryConditions_MandatoryConditionUnknown(t *testing.T) {
+	conditions := []api.AdapterCondition{
+		{Type: api.ConditionTypeAvailable, Status: api.AdapterConditionUnknown, LastTransitionTime: time.Now()},
+		{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+	}
+
+	missing, unknown := ValidateMandatoryConditions(conditions)
+	if missing != "" {
+		t.Errorf("Expected no missing conditions, got: %s", missing)
+	}
+	if unknown != api.ConditionTypeAvailable {
+		t.Errorf("Expected unknown condition %s, got: %s", api.ConditionTypeAvailable, unknown)
+	}
+}
+
+func TestValidateMandatoryConditions_WithCustomConditions(t *testing.T) {
+	conditions := []api.AdapterCondition{
+		{Type: api.ConditionTypeAvailable, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: "CustomCondition", Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.ConditionTypeReady, Status: api.AdapterConditionFalse, LastTransitionTime: time.Now()},
+	}
+
+	missing, unknown := ValidateMandatoryConditions(conditions)
+	if missing != "" {
+		t.Errorf("Expected no missing conditions, got: %s", missing)
+	}
+	if unknown != "" {
+		t.Errorf("Expected no unknown conditions, got: %s", unknown)
+	}
+}
+
+func TestValidateMandatoryConditions_EmptyConditions(t *testing.T) {
+	conditions := []api.AdapterCondition{}
+
+	missing, unknown := ValidateMandatoryConditions(conditions)
+	if missing != api.ConditionTypeAvailable {
+		t.Errorf("Expected missing condition %s, got: %s", api.ConditionTypeAvailable, missing)
+	}
+	if unknown != "" {
+		t.Errorf("Expected no unknown conditions, got: %s", unknown)
+	}
+}
+
+func TestValidateMandatoryConditions_DuplicateCondition_UnknownThenTrue(t *testing.T) {
+	// Test: If Available appears twice (Unknown first, True second),
+	// should detect Unknown (Unknown has highest priority)
+	conditions := []api.AdapterCondition{
+		{Type: api.ConditionTypeAvailable, Status: api.AdapterConditionUnknown, LastTransitionTime: time.Now()},
+		{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.ConditionTypeAvailable, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()}, // Duplicate!
+	}
+
+	missing, unknown := ValidateMandatoryConditions(conditions)
+
+	// Should detect Unknown even though True comes later
+	if missing != "" {
+		t.Errorf("Expected no missing conditions, got: %s", missing)
+	}
+	if unknown != api.ConditionTypeAvailable {
+		t.Errorf("Expected unknown condition %s (Unknown should be preserved), got: %s",
+			api.ConditionTypeAvailable, unknown)
+	}
+}
+
+func TestValidateMandatoryConditions_DuplicateCondition_TrueThenUnknown(t *testing.T) {
+	// Test: If Available appears twice (True first, Unknown second),
+	// should detect Unknown (Unknown has highest priority)
+	conditions := []api.AdapterCondition{
+		// First: True
+		{Type: api.ConditionTypeAvailable, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		// Duplicate: Unknown!
+		{Type: api.ConditionTypeAvailable, Status: api.AdapterConditionUnknown, LastTransitionTime: time.Now()},
+	}
+
+	missing, unknown := ValidateMandatoryConditions(conditions)
+
+	// Should detect Unknown even though True comes first
+	if missing != "" {
+		t.Errorf("Expected no missing conditions, got: %s", missing)
+	}
+	if unknown != api.ConditionTypeAvailable {
+		t.Errorf("Expected unknown condition %s (Unknown should overwrite True), got: %s",
+			api.ConditionTypeAvailable, unknown)
 	}
 }

@@ -21,6 +21,14 @@ const (
 	AdapterConditionUnknown AdapterConditionStatus = "Unknown"
 )
 
+// Condition type constants
+const (
+	ConditionTypeAvailable = "Available"
+	ConditionTypeApplied   = "Applied"
+	ConditionTypeHealth    = "Health"
+	ConditionTypeReady     = "Ready"
+)
+
 // ResourceCondition represents a condition of a resource
 // Domain equivalent of openapi.ResourceCondition
 // JSON tags match database JSONB structure
