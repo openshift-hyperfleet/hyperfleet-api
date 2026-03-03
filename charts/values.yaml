@@ -4,7 +4,7 @@
 replicaCount: 1
 
 image:
-  registry: CHANGE_ME
+  registry: quay.io/openshift-hyperfleet
   repository: hyperfleet-api
   pullPolicy: Always
   tag: "latest"
