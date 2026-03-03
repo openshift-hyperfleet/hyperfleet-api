@@ -66,6 +66,7 @@ help:
 	@echo "make clean                delete temporary generated files"
 	@echo "make image                build container image"
 	@echo "make image-push           build and push container image"
+	@echo "make test-helm            test Helm charts (lint, template, validate)"
 	@echo "make image-dev            build and push to personal Quay registry"
 	@echo "$(fake)"
 .PHONY: help
@@ -293,6 +294,89 @@ db/login:
 db/teardown:
 	$(container_tool) stop psql-hyperfleet
 	$(container_tool) rm psql-hyperfleet
+
+.PHONY: test-helm
+test-helm: ## Test Helm charts (lint, template, validate)
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	@echo "Testing Helm charts..."
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	@if ! command -v helm > /dev/null; then \
+		echo "Error: helm not found. Please install Helm:"; \
+		echo "  brew install helm  # macOS"; \
+		echo "  curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash  # Linux"; \
+		exit 1; \
+	fi
+	@echo "Linting Helm chart..."
+	helm lint charts/ \
+		--set 'adapters.cluster=["validation"]' \
+		--set 'adapters.nodepool=["validation"]'
+	@echo ""
+	@echo "Testing template rendering with default values..."
+	helm template test-release charts/ \
+		--set 'adapters.cluster=["validation"]' \
+		--set 'adapters.nodepool=["validation"]' > /dev/null
+	@echo "Default values template OK"
+	@echo ""
+	@echo "Testing template with external database..."
+	helm template test-release charts/ \
+		--set 'adapters.cluster=["validation"]' \
+		--set 'adapters.nodepool=["validation"]' \
+		--set database.postgresql.enabled=false \
+		--set database.external.enabled=true \
+		--set database.external.secretName=my-db-secret > /dev/null
+	@echo "External database config template OK"
+	@echo ""
+	@echo "Testing template with autoscaling..."
+	helm template test-release charts/ \
+		--set 'adapters.cluster=["validation"]' \
+		--set 'adapters.nodepool=["validation"]' \
+		--set autoscaling.enabled=true \
+		--set autoscaling.minReplicas=2 \
+		--set autoscaling.maxReplicas=5 > /dev/null
+	@echo "Autoscaling config template OK"
+	@echo ""
+	@echo "Testing template with PDB enabled..."
+	helm template test-release charts/ \
+		--set 'adapters.cluster=["validation"]' \
+		--set 'adapters.nodepool=["validation"]' \
+		--set podDisruptionBudget.enabled=true \
+		--set podDisruptionBudget.minAvailable=1 > /dev/null
+	@echo "PDB config template OK"
+	@echo ""
+	@echo "Testing template with ServiceMonitor enabled..."
+	helm template test-release charts/ \
+		--set 'adapters.cluster=["validation"]' \
+		--set 'adapters.nodepool=["validation"]' \
+		--set serviceMonitor.enabled=true \
+		--set serviceMonitor.interval=15s > /dev/null
+	@echo "ServiceMonitor config template OK"
+	@echo ""
+	@echo "Testing template with auth disabled..."
+	helm template test-release charts/ \
+		--set 'adapters.cluster=["validation"]' \
+		--set 'adapters.nodepool=["validation"]' \
+		--set auth.enableJwt=false \
+		--set auth.enableAuthz=false > /dev/null
+	@echo "Auth disabled config template OK"
+	@echo ""
+	@echo "Testing template with custom image..."
+	helm template test-release charts/ \
+		--set 'adapters.cluster=["validation"]' \
+		--set 'adapters.nodepool=["validation"]' \
+		--set image.registry=quay.io/myorg \
+		--set image.repository=hyperfleet-api \
+		--set image.tag=v1.0.0 > /dev/null
+	@echo "Custom image config template OK"
+	@echo ""
+	@echo "Testing template with full adapter config..."
+	helm template test-release charts/ \
+		--set-json 'adapters.cluster=["validation","dns","pullsecret","hypershift"]' \
+		--set-json 'adapters.nodepool=["validation","hypershift"]' > /dev/null
+	@echo "Full adapter config template OK"
+	@echo ""
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	@echo "All Helm chart tests passed!"
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 # Build container image (multi-stage build, no local binary needed)
 .PHONY: image
