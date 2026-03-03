@@ -408,40 +408,14 @@ GET /api/hyperfleet/v1/clusters?page=1&pageSize=10
 
 ### Search
 
-Search using TSL (Tree Search Language) query syntax:
+All list endpoints support filtering using TSL (Tree Search Language) query syntax. Example:
 
 ```bash
-# Simple equality
-curl -G http://localhost:8000/api/hyperfleet/v1/clusters \
-  --data-urlencode "search=name='my-cluster'"
-
-# AND query with condition-based status
 curl -G http://localhost:8000/api/hyperfleet/v1/clusters \
   --data-urlencode "search=status.conditions.Ready='True' and labels.environment='production'"
-
-# OR query
-curl -G http://localhost:8000/api/hyperfleet/v1/clusters \
-  --data-urlencode "search=labels.environment='dev' or labels.environment='staging'"
-
-# Query for available resources
-curl -G http://localhost:8000/api/hyperfleet/v1/clusters \
-  --data-urlencode "search=status.conditions.Available='True'"
 ```
 
-**Supported fields:**
-
-- `name` - Resource name
-- `status.conditions.<Type>` - Condition status (True, False). Examples:
-  - `status.conditions.Ready='True'` - Resources that are ready
-  - `status.conditions.Available='True'` - Resources that are available
-- `labels.<key>` - Label values
-
-**Supported operators:**
-
-- `=` - Equality
-- `in` - In list
-- `and` - Logical AND
-- `or` - Logical OR
+See **[search.md](search.md)** for complete documentation.
 
 ## Field Descriptions
 
