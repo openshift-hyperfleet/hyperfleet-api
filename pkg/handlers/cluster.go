@@ -125,7 +125,7 @@ func (h clusterHandler) List(w http.ResponseWriter, r *http.Request) {
 				clusterList.Items = append(clusterList.Items, presented)
 			}
 			if listArgs.Fields != nil {
-				filteredItems, err := presenters.SliceFilter(listArgs.Fields, clusterList.Items)
+				filteredItems, err := presenters.SliceFilter(listArgs.Fields, clusterList)
 				if err != nil {
 					return nil, err
 				}

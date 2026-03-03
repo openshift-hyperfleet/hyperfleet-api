@@ -105,7 +105,7 @@ func validate(model interface{}, in map[string]bool, prefix string) *errors.Serv
 		name := strings.Split(tag, ",")[0]
 		switch kind { //nolint:exhaustive // Only Struct and Slice need special handling, rest handled by default
 		case reflect.Struct:
-			if t.Type == reflect.TypeOf(&time.Time{}) {
+			if t.Type == reflect.TypeOf(&time.Time{}) || t.Type == reflect.TypeOf(time.Time{}) {
 				delete(in, name)
 			} else {
 				star := name + ".*"
@@ -191,10 +191,12 @@ func structToMap(item interface{}, in map[string]bool, prefix string) map[string
 		name := strings.Split(tag, ",")[0]
 		switch kind { //nolint:exhaustive // Only Struct and Slice need special handling, rest handled by default
 		case reflect.Struct:
-			if t.Type == reflect.TypeOf(&time.Time{}) {
+			if t.Type == reflect.TypeOf(&time.Time{}) || t.Type == reflect.TypeOf(time.Time{}) {
 				if _, ok := in[name]; ok {
 					if timePtr, ok := field.(*time.Time); ok && timePtr != nil {
 						res[name] = timePtr.Format(time.RFC3339)
+					} else if timeVal, ok := field.(time.Time); ok && !timeVal.IsZero() {
+						res[name] = timeVal.Format(time.RFC3339)
 					}
 				}
 			} else {
