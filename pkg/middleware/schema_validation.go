@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/crd"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/validators"
@@ -36,12 +37,13 @@ func handleValidationError(w http.ResponseWriter, r *http.Request, err *errors.S
 	}
 }
 
-// SchemaValidationMiddleware validates cluster and nodepool spec fields against OpenAPI schemas
-func SchemaValidationMiddleware(validator *validators.SchemaValidator) func(http.Handler) http.Handler {
+// SchemaValidationMiddleware validates resource spec fields against OpenAPI schemas.
+// It uses the CRD registry to dynamically determine which paths require validation.
+func SchemaValidationMiddleware(validator *validators.SchemaValidator, registry *crd.Registry) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Check if the request requires spec validation
-			shouldValidate, resourceType := shouldValidateRequest(r.Method, r.URL.Path)
+			shouldValidate, resourceType := shouldValidateRequest(r.Method, r.URL.Path, registry)
 			if !shouldValidate {
 				next.ServeHTTP(w, r)
 				return
@@ -108,25 +110,38 @@ func SchemaValidationMiddleware(validator *validators.SchemaValidator) func(http
 	}
 }
 
-// shouldValidateRequest determines if the request requires spec validation
+// shouldValidateRequest determines if the request requires spec validation by
+// matching path segments against registered CRD plural names.
 // Returns (shouldValidate bool, resourceType string)
-func shouldValidateRequest(method, path string) (bool, string) {
+func shouldValidateRequest(method, path string, registry *crd.Registry) (bool, string) {
 	// Only validate POST and PATCH requests
 	if method != http.MethodPost && method != http.MethodPatch {
 		return false, ""
 	}
 
-	// Check nodepools first (more specific path)
-	// POST /api/hyperfleet/v1/clusters/{cluster_id}/nodepools
-	// PATCH /api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepool_id}
-	if strings.Contains(path, "/nodepools") {
-		return true, "nodepool"
+	// Skip status subresource paths (handled separately)
+	if strings.HasSuffix(path, "/statuses") {
+		return false, ""
 	}
 
-	// POST /api/hyperfleet/v1/clusters
-	// PATCH /api/hyperfleet/v1/clusters/{cluster_id}
-	if strings.HasSuffix(path, "/clusters") || strings.Contains(path, "/clusters/") {
-		return true, "cluster"
+	// Extract path segments after /api/hyperfleet/v1/ and match against registered CRDs
+	prefix := "/api/hyperfleet/v1/"
+	trimmed := path
+	if idx := strings.Index(path, prefix); idx >= 0 {
+		trimmed = path[idx+len(prefix):]
+	}
+
+	// Walk segments from right to find the most specific resource match.
+	// e.g., /clusters/{id}/nodepools → match "nodepools" first
+	segments := strings.Split(trimmed, "/")
+	for i := len(segments) - 1; i >= 0; i-- {
+		seg := segments[i]
+		if seg == "" {
+			continue
+		}
+		if def, found := registry.GetByPlural(seg); found {
+			return true, strings.ToLower(def.Kind)
+		}
 	}
 
 	return false, ""

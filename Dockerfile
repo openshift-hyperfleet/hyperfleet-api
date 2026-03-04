@@ -35,15 +35,18 @@ RUN --mount=type=cache,target=/opt/app-root/src/go/pkg/mod,uid=1001 \
     GIT_SHA=${GIT_SHA} GIT_DIRTY=${GIT_DIRTY} BUILD_DATE=${BUILD_DATE} VERSION=${VERSION} \
     make build
 
-# Runtime stage
-FROM ${BASE_IMAGE}
+# Runtime stage - use target architecture for the base image
+ARG BASE_IMAGE
+ARG TARGETARCH
+FROM --platform=linux/${TARGETARCH} ${BASE_IMAGE}
 
 WORKDIR /app
 
 COPY --from=builder /build/bin/hyperfleet-api /app/hyperfleet-api
-COPY --from=builder /build/openapi/openapi.yaml /app/openapi/openapi.yaml
 
-ENV OPENAPI_SCHEMA_PATH=/app/openapi/openapi.yaml
+# CRD definitions are now loaded from Kubernetes API at runtime
+# OpenAPI schema is generated dynamically from CRDs
+# For provider-specific schemas, set OPENAPI_SCHEMA_PATH to override
 
 USER 65532:65532
 

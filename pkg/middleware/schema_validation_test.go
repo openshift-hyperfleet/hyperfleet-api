@@ -10,7 +10,9 @@ import (
 	"testing"
 
 	. "github.com/onsi/gomega"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/crd"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/validators"
 )
 
@@ -40,13 +42,23 @@ components:
           type: integer
           minimum: 1
           maximum: 10
+
+    IDPSpec:
+      type: object
+      required:
+        - type
+      properties:
+        type:
+          type: string
+          enum: [OIDC, LDAP, SAML]
 `
 
 func TestSchemaValidationMiddleware_PostRequestValidation(t *testing.T) {
 	RegisterTestingT(t)
 
 	validator := setupTestValidator(t)
-	middleware := SchemaValidationMiddleware(validator)
+	registry := setupTestRegistry(t)
+	middleware := SchemaValidationMiddleware(validator, registry)
 
 	// Create a valid cluster creation request
 	validRequest := map[string]interface{}{
@@ -78,7 +90,8 @@ func TestSchemaValidationMiddleware_PostRequestInvalidSpec(t *testing.T) {
 	RegisterTestingT(t)
 
 	validator := setupTestValidator(t)
-	middleware := SchemaValidationMiddleware(validator)
+	registry := setupTestRegistry(t)
+	middleware := SchemaValidationMiddleware(validator, registry)
 
 	// Create an invalid cluster creation request (missing required field)
 	invalidRequest := map[string]interface{}{
@@ -116,7 +129,8 @@ func TestSchemaValidationMiddleware_PatchRequestValidation(t *testing.T) {
 	RegisterTestingT(t)
 
 	validator := setupTestValidator(t)
-	middleware := SchemaValidationMiddleware(validator)
+	registry := setupTestRegistry(t)
+	middleware := SchemaValidationMiddleware(validator, registry)
 
 	// Create a valid cluster patch request
 	validRequest := map[string]interface{}{
@@ -147,7 +161,8 @@ func TestSchemaValidationMiddleware_GetRequestSkipped(t *testing.T) {
 	RegisterTestingT(t)
 
 	validator := setupTestValidator(t)
-	middleware := SchemaValidationMiddleware(validator)
+	registry := setupTestRegistry(t)
+	middleware := SchemaValidationMiddleware(validator, registry)
 
 	// GET request should skip validation
 	req := httptest.NewRequest(http.MethodGet, "/api/hyperfleet/v1/clusters", nil)
@@ -170,7 +185,8 @@ func TestSchemaValidationMiddleware_DeleteRequestSkipped(t *testing.T) {
 	RegisterTestingT(t)
 
 	validator := setupTestValidator(t)
-	middleware := SchemaValidationMiddleware(validator)
+	registry := setupTestRegistry(t)
+	middleware := SchemaValidationMiddleware(validator, registry)
 
 	// DELETE request should skip validation
 	req := httptest.NewRequest(http.MethodDelete, "/api/hyperfleet/v1/clusters/123", nil)
@@ -189,13 +205,14 @@ func TestSchemaValidationMiddleware_DeleteRequestSkipped(t *testing.T) {
 	Expect(rr.Code).To(Equal(http.StatusNoContent))
 }
 
-func TestSchemaValidationMiddleware_NonClusterPath(t *testing.T) {
+func TestSchemaValidationMiddleware_NonRegisteredPath(t *testing.T) {
 	RegisterTestingT(t)
 
 	validator := setupTestValidator(t)
-	middleware := SchemaValidationMiddleware(validator)
+	registry := setupTestRegistry(t)
+	middleware := SchemaValidationMiddleware(validator, registry)
 
-	// POST to non-cluster/nodepool path should skip validation
+	// POST to non-registered path should skip validation
 	validRequest := map[string]interface{}{
 		"name": "test",
 		"spec": map[string]interface{}{},
@@ -223,7 +240,8 @@ func TestSchemaValidationMiddleware_NodePoolValidation(t *testing.T) {
 	RegisterTestingT(t)
 
 	validator := setupTestValidator(t)
-	middleware := SchemaValidationMiddleware(validator)
+	registry := setupTestRegistry(t)
+	middleware := SchemaValidationMiddleware(validator, registry)
 
 	// Create a valid nodepool request
 	validRequest := map[string]interface{}{
@@ -261,7 +279,8 @@ func TestSchemaValidationMiddleware_NodePoolInvalidSpec(t *testing.T) {
 	RegisterTestingT(t)
 
 	validator := setupTestValidator(t)
-	middleware := SchemaValidationMiddleware(validator)
+	registry := setupTestRegistry(t)
+	middleware := SchemaValidationMiddleware(validator, registry)
 
 	// Create an invalid nodepool request (replicas out of range)
 	invalidRequest := map[string]interface{}{
@@ -288,11 +307,73 @@ func TestSchemaValidationMiddleware_NodePoolInvalidSpec(t *testing.T) {
 	Expect(rr.Code).To(Equal(http.StatusBadRequest))
 }
 
+func TestSchemaValidationMiddleware_IDPValidation(t *testing.T) {
+	RegisterTestingT(t)
+
+	validator := setupTestValidator(t)
+	registry := setupTestRegistry(t)
+	middleware := SchemaValidationMiddleware(validator, registry)
+
+	// Create a valid IDP request — dynamically matched via registry
+	validRequest := map[string]interface{}{
+		"name": "test-idp",
+		"spec": map[string]interface{}{
+			"type": "OIDC",
+		},
+	}
+
+	body, _ := json.Marshal(validRequest)
+	req := httptest.NewRequest(http.MethodPost, "/api/hyperfleet/v1/clusters/123/idps", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	nextHandlerCalled := false
+	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nextHandlerCalled = true
+		w.WriteHeader(http.StatusCreated)
+	})
+
+	middleware(nextHandler).ServeHTTP(rr, req)
+
+	Expect(nextHandlerCalled).To(BeTrue())
+	Expect(rr.Code).To(Equal(http.StatusCreated))
+}
+
+func TestSchemaValidationMiddleware_StatusPathSkipped(t *testing.T) {
+	RegisterTestingT(t)
+
+	validator := setupTestValidator(t)
+	registry := setupTestRegistry(t)
+	middleware := SchemaValidationMiddleware(validator, registry)
+
+	// PATCH to status subresource path should skip validation
+	validRequest := map[string]interface{}{
+		"status": map[string]interface{}{},
+	}
+
+	body, _ := json.Marshal(validRequest)
+	req := httptest.NewRequest(http.MethodPatch, "/api/hyperfleet/v1/clusters/123/statuses", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	nextHandlerCalled := false
+	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nextHandlerCalled = true
+		w.WriteHeader(http.StatusOK)
+	})
+
+	middleware(nextHandler).ServeHTTP(rr, req)
+
+	Expect(nextHandlerCalled).To(BeTrue())
+	Expect(rr.Code).To(Equal(http.StatusOK))
+}
+
 func TestSchemaValidationMiddleware_MissingSpecField(t *testing.T) {
 	RegisterTestingT(t)
 
 	validator := setupTestValidator(t)
-	middleware := SchemaValidationMiddleware(validator)
+	registry := setupTestRegistry(t)
+	middleware := SchemaValidationMiddleware(validator, registry)
 
 	// Request without spec field should pass through (spec is optional in request)
 	requestWithoutSpec := map[string]interface{}{
@@ -320,7 +401,8 @@ func TestSchemaValidationMiddleware_InvalidSpecType(t *testing.T) {
 	RegisterTestingT(t)
 
 	validator := setupTestValidator(t)
-	middleware := SchemaValidationMiddleware(validator)
+	registry := setupTestRegistry(t)
+	middleware := SchemaValidationMiddleware(validator, registry)
 
 	// Spec field is not an object
 	invalidRequest := map[string]interface{}{
@@ -355,7 +437,8 @@ func TestSchemaValidationMiddleware_MalformedJSON(t *testing.T) {
 	RegisterTestingT(t)
 
 	validator := setupTestValidator(t)
-	middleware := SchemaValidationMiddleware(validator)
+	registry := setupTestRegistry(t)
+	middleware := SchemaValidationMiddleware(validator, registry)
 
 	// Invalid JSON
 	invalidJSON := []byte(`{"name": "test", "spec": {invalid}`)
@@ -390,4 +473,31 @@ func setupTestValidator(t *testing.T) *validators.SchemaValidator {
 	}
 
 	return validator
+}
+
+// setupTestRegistry creates a test CRD registry with cluster, nodepool, and IDP definitions
+func setupTestRegistry(t *testing.T) *crd.Registry {
+	t.Helper()
+	registry := crd.NewRegistry()
+
+	_ = registry.Register(&api.ResourceDefinition{
+		Kind:    "Cluster",
+		Plural:  "clusters",
+		Scope:   api.ResourceScopeRoot,
+		Enabled: true,
+	})
+	_ = registry.Register(&api.ResourceDefinition{
+		Kind:    "NodePool",
+		Plural:  "nodepools",
+		Scope:   api.ResourceScopeOwned,
+		Enabled: true,
+	})
+	_ = registry.Register(&api.ResourceDefinition{
+		Kind:    "IDP",
+		Plural:  "idps",
+		Scope:   api.ResourceScopeOwned,
+		Enabled: true,
+	})
+
+	return registry
 }

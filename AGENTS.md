@@ -75,8 +75,7 @@ make db/teardown  # Stop and remove PostgreSQL container
 
 ### Code Generation
 ```bash
-make generate        # Regenerate Go models from openapi/openapi.yaml
-make generate-vendor # Generate using vendor dependencies (offline mode)
+make generate-mocks  # Generate mock implementations for testing
 ```
 
 ## Project Structure
@@ -126,25 +125,24 @@ hyperfleet-api/
 
 ## Core Components
 
-### 1. API Specification Workflow
+### 1. CRD-Driven API
 
-The API is specified using TypeSpec, which compiles to OpenAPI, which then generates Go models:
+The API is dynamically generated from Kubernetes Custom Resource Definitions (CRDs):
 
 ```
-TypeSpec (.tsp files in hyperfleet-api-spec repo)
-    ↓ tsp compile
-openapi/openapi.yaml (32KB, uses $ref for DRY)
-    ↓ make generate (openapi-generator-cli in Podman)
-pkg/api/openapi/model_*.go (Go structs)
-pkg/api/openapi/api/openapi.yaml (44KB, fully resolved, embedded in binary)
+charts/crds/*.yaml (CRD definitions)
+    ↓ loaded at startup
+pkg/crd/registry.go (CRD registry)
+    ↓ generates
+Dynamic routes + OpenAPI spec at runtime
 ```
 
 **Key Points**:
-- TypeSpec definitions are maintained in a separate `hyperfleet-api-spec` repository
-- `openapi/openapi.yaml` is the source of truth for this repository (generated from TypeSpec)
-- `make generate` uses Podman to run openapi-generator-cli, ensuring consistent versions
-- Generated code includes JSON tags, validation, and type definitions
-- The fully resolved spec is embedded at compile time via `//go:embed`
+- CRD definitions in `charts/crds/` define resource types (Cluster, NodePool, IDP, etc.)
+- Routes and OpenAPI spec are generated dynamically at startup
+- No code generation required - just modify CRD YAML files
+- Local development uses `CRD_PATH` env var to load CRDs from files
+- Production loads CRDs from Kubernetes API
 
 ### 2. Database Layer
 
@@ -401,8 +399,8 @@ All subcommands support these logging flags:
 ```bash
 # Prerequisites: Go 1.24, Podman, PostgreSQL client tools
 
-# Generate OpenAPI code (required before go mod download)
-make generate
+# Generate mocks for testing
+make generate-mocks
 
 # Download Go module dependencies
 go mod download
@@ -419,24 +417,23 @@ make build
 # Run migrations
 ./bin/hyperfleet-api migrate
 
-# Start server (no authentication)
+# Start server (no authentication, loads CRDs from local files)
 make run-no-auth
 ```
 
-### Code Generation
+### CRD Configuration
 
-When the TypeSpec specification changes:
+Resource types are defined by CRDs in `charts/crds/`. To add or modify resource types:
 
 ```bash
-# Regenerate Go models from openapi/openapi.yaml
-make generate
-
-# This will:
-# 1. Remove pkg/api/openapi/*
-# 2. Build Docker image with openapi-generator-cli
-# 3. Generate model_*.go files
-# 4. Copy fully resolved openapi.yaml to pkg/api/openapi/api/
+# Edit CRD files in charts/crds/
+# Restart the server to pick up changes
+make run-no-auth
 ```
+
+The `CRD_PATH` environment variable controls where CRDs are loaded from:
+- `make run-no-auth` sets `CRD_PATH=$(PWD)/charts/crds` automatically
+- In production, CRDs are loaded from the Kubernetes API
 
 ### Testing
 
@@ -712,13 +709,13 @@ The server is configured in cmd/hyperfleet/server/:
 
 **Solution**: Always run `./bin/hyperfleet-api migrate` after pulling code or changing schemas
 
-### 2. Using Wrong OpenAPI File
+### 2. CRD Changes Not Reflected
 
-**Problem**: There are two openapi.yaml files:
-- `openapi/openapi.yaml` (32KB, source, has $ref)
-- `pkg/api/openapi/api/openapi.yaml` (44KB, generated, fully resolved)
+**Problem**: Changes to CRD files in `charts/crds/` aren't showing up.
 
-**Rule**: Only edit the source file. The generated file is overwritten by `make generate`.
+**Solution**: Restart the server. CRDs are loaded at startup.
+- For local dev: `make run-no-auth` loads from `charts/crds/`
+- For production: CRDs are loaded from Kubernetes API
 
 ### 3. Context Session Access
 
@@ -795,6 +792,7 @@ The API is designed to be stateless and horizontally scalable:
 Common issues and solutions:
 
 1. **Database connection errors**: Check `make db/setup` was run and container is running
-2. **Generated code issues**: Run `make generate` to regenerate from OpenAPI spec
-3. **Test failures**: Ensure PostgreSQL container is running and `OCM_ENV` is set
-4. **Build errors**: Verify Go version is 1.24+ with `go version`
+2. **Missing mocks**: Run `make generate-mocks` to regenerate test mocks
+3. **CRDs not loading**: Ensure `CRD_PATH` is set or Kubernetes cluster is accessible
+4. **Test failures**: Ensure PostgreSQL container is running and `OCM_ENV` is set
+5. **Build errors**: Verify Go version is 1.24+ with `go version`

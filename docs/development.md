@@ -23,8 +23,8 @@ make --version
 Set up your local development environment:
 
 ```bash
-# 1. Generate OpenAPI code and mocks
-make generate-all
+# 1. Generate mocks for testing
+make generate-mocks
 
 # 2. Install dependencies
 go mod download
@@ -32,18 +32,20 @@ go mod download
 # 3. Build the binary
 make build
 
-# 4. Setup PostgreSQL database
+# 4. Initialize secrets
+make secrets
+
+# 5. Setup PostgreSQL database
 make db/setup
 
-# 5. Run database migrations
+# 6. Run database migrations
 ./bin/hyperfleet-api migrate
 
-# 6. Verify database schema
-make db/login
-\dt
+# 7. Start the service (development mode)
+make run-no-auth
 ```
 
-**Important**: Generated code is not tracked in git. You must run `make generate-all` after cloning to generate both OpenAPI models and mocks.
+**Important**: Mocks are generated from source interfaces. Run `make generate-mocks` after cloning.
 
 ## Pre-commit Hooks (Optional)
 
@@ -143,14 +145,8 @@ All API endpoints have integration test coverage.
 ### Common Commands
 
 ```bash
-# Generate OpenAPI client code
-make generate
-
 # Generate mocks for testing
 make generate-mocks
-
-# Generate both OpenAPI and mocks
-make generate-all
 
 # Build binary
 make build
@@ -158,7 +154,7 @@ make build
 # Run database migrations
 ./bin/hyperfleet-api migrate
 
-# Start server (no auth)
+# Start server (no auth, local CRDs)
 make run-no-auth
 
 # Run tests
@@ -175,64 +171,39 @@ make db/login      # Connect to database shell
 
 | Command | Description |
 |---------|-------------|
-| `make generate` | Generate Go models from OpenAPI spec |
 | `make generate-mocks` | Generate mock implementations for testing |
-| `make generate-all` | Generate both OpenAPI models and mocks |
 | `make build` | Build hyperfleet-api executable to bin/ |
 | `make test` | Run unit tests |
 | `make test-integration` | Run integration tests |
-| `make run-no-auth` | Start server without authentication |
-| `make run` | Start server with OCM authentication |
+| `make run-no-auth` | Start server without authentication (loads CRDs from local files) |
+| `make run` | Start server with OCM authentication (loads CRDs from local files) |
 | `make db/setup` | Create PostgreSQL container |
 | `make db/teardown` | Remove PostgreSQL container |
 | `make db/login` | Connect to database shell |
 
 ## Development Workflow
 
-### Code Generation
+### CRD-Driven API
 
-HyperFleet API generates Go models from OpenAPI specifications using `openapi-generator-cli`.
+HyperFleet API dynamically generates its OpenAPI specification and routes from Kubernetes Custom Resource Definitions (CRDs). The CRD files are located in `charts/crds/`.
 
-**Workflow**:
-```text
-openapi/openapi.yaml
-    ↓
-make generate (podman + openapi-generator-cli)
-    ↓
-pkg/api/openapi/model_*.go (Go structs)
-pkg/api/openapi/api/openapi.yaml (embedded spec)
-```
+**How it works**:
+- At startup, the API loads CRD definitions and generates routes dynamically
+- OpenAPI spec is generated at runtime from the loaded CRDs
+- No code generation required for API types
 
-**Generated artifacts**:
-- Go model structs with JSON tags (`model_*.go`)
-- Fully resolved OpenAPI specification (embedded in binary)
+**CRD Loading Priority**:
+1. If `CRD_PATH` environment variable is set, load from that directory
+2. Otherwise, try to load from Kubernetes API
+3. If both fail, dynamic routes are disabled (warning logged)
 
-**Important**:
-- Generated files are NOT tracked in git
-- Must run `make generate` after cloning
-- Must run after OpenAPI spec updates
-
-**OpenAPI spec source**:
-The `openapi/openapi.yaml` is maintained in the [hyperfleet-api-spec](https://github.com/openshift-hyperfleet/hyperfleet-api-spec) repository using TypeSpec. When the spec changes, the compiled YAML is copied here. Developers working on hyperfleet-api only need to run `make generate` - no TypeSpec knowledge required.
-
-**Commands**:
+**Environment Variable**:
 ```bash
-# Generate Go models from OpenAPI spec
-make generate
+# Set CRD_PATH to load CRDs from local files (used by make run/run-no-auth)
+CRD_PATH=/path/to/crds ./bin/hyperfleet-api serve
 
-# Generate both OpenAPI models and mocks
-make generate-all
-```
-
-**Troubleshooting**:
-```bash
-# If "pkg/api/openapi not found"
-make generate
-go mod download
-
-# If generator container fails
-podman info  # Check podman is running
-make generate
+# The Makefile targets set this automatically:
+make run-no-auth  # Sets CRD_PATH=$(PWD)/charts/crds
 ```
 
 ### Mock Generation
@@ -252,11 +223,8 @@ Service files contain `//go:generate` directives that specify how to generate mo
 
 **Commands**:
 ```bash
-# Generate mocks only
+# Generate mocks
 make generate-mocks
-
-# Generate OpenAPI models and mocks together
-make generate-all
 ```
 
 ### Tool Dependency Management (Bingo)
@@ -294,10 +262,9 @@ Tool versions are tracked in `.bingo/*.mod` files and loaded automatically via `
 
 2. **Make your changes** to the code
 
-3. **Update OpenAPI spec if needed**:
-   - Make changes in the [hyperfleet-api-spec](https://github.com/openshift-hyperfleet/hyperfleet-api-spec) repository
-   - Copy updated `openapi.yaml` to this repository
-   - Run `make generate` to regenerate Go models
+3. **Update CRDs if needed**:
+   - Modify CRD files in `charts/crds/`
+   - The API will pick up changes on restart
 
 4. **Regenerate mocks if service interfaces changed**:
    ```bash
@@ -323,16 +290,6 @@ Tool versions are tracked in `.bingo/*.mod` files and loaded automatically via `
    ```
 
 ## Troubleshooting
-
-### "pkg/api/openapi not found"
-
-**Problem**: Missing generated OpenAPI code
-
-**Solution**:
-```bash
-make generate
-go mod download
-```
 
 ### "undefined: Mock*" or missing mock files
 
