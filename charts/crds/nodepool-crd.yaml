@@ -68,6 +68,7 @@ spec:
                         enum:
                           - "True"
                           - "False"
+                          - "Unknown"
                       reason:
                         type: string
                         description: Machine-readable reason for the condition's last transition

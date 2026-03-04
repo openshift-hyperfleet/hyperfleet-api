@@ -1,6 +1,7 @@
 package services
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	stderrors "errors"
@@ -109,7 +110,16 @@ func (s *sqlResourceService) Create(ctx context.Context, resource *api.Resource,
 }
 
 func (s *sqlResourceService) Replace(ctx context.Context, resource *api.Resource) (*api.Resource, *errors.ServiceError) {
-	resource, err := s.resourceDao.Replace(ctx, resource)
+	existing, err := s.resourceDao.GetByKindAndID(ctx, resource.Kind, resource.ID)
+	if err != nil {
+		return nil, handleGetError(resource.Kind, "id", resource.ID, err)
+	}
+
+	if !bytes.Equal(existing.Spec, resource.Spec) {
+		resource.Generation = existing.Generation + 1
+	}
+
+	resource, err = s.resourceDao.Replace(ctx, resource)
 	if err != nil {
 		return nil, handleUpdateError(resource.Kind, err)
 	}

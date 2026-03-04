@@ -3,9 +3,12 @@
 # Include bingo-managed tool variables
 include .bingo/Variables.mk
 
-# CGO_ENABLED=0 is not FIPS compliant. large commercial vendors and FedRAMP require FIPS compliant crypto
-# Use ?= to allow Dockerfile to override (CGO_ENABLED=0 for Alpine-based dev images)
-CGO_ENABLED ?= 1
+# Go 1.25+ uses native FIPS 140-3 support (GOFIPS140) instead of BoringCrypto/GOEXPERIMENT.
+# CGO is no longer required for FIPS compliance. Set GOFIPS140=latest at build time and
+# GODEBUG=fips140=on at runtime to enable FIPS 140-3 mode.
+# Use ?= to allow Dockerfile to override
+CGO_ENABLED ?= 0
+GOFIPS140 ?= latest
 
 GO ?= go
 
@@ -136,21 +139,21 @@ generate-vendor: generate
 build: generate-all ## Build the hyperfleet-api binary
 	@mkdir -p bin
 	@echo "Building version: ${VERSION}"
-	CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=boringcrypto ${GO} build $(GOFLAGS) -ldflags="$(LDFLAGS)" -o bin/hyperfleet-api ./cmd/hyperfleet-api
+	CGO_ENABLED=$(CGO_ENABLED) GOFIPS140=$(GOFIPS140) ${GO} build $(GOFLAGS) -ldflags="$(LDFLAGS)" -o bin/hyperfleet-api ./cmd/hyperfleet-api
 
 .PHONY: install
 install: generate-all ## Build and install binary to GOPATH/bin
-	CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=boringcrypto ${GO} install $(GOFLAGS) -ldflags="$(LDFLAGS)" ./cmd/hyperfleet-api
+	CGO_ENABLED=$(CGO_ENABLED) GOFIPS140=$(GOFIPS140) ${GO} install $(GOFLAGS) -ldflags="$(LDFLAGS)" ./cmd/hyperfleet-api
 
 .PHONY: run
 run: build ## Run the application
-	./bin/hyperfleet-api migrate
-	CRD_PATH=$(PWD)/charts/crds ./bin/hyperfleet-api serve
+	GODEBUG=fips140=on ./bin/hyperfleet-api migrate
+	GODEBUG=fips140=on CRD_PATH=$(PWD)/charts/crds ./bin/hyperfleet-api serve
 
 .PHONY: run-no-auth
 run-no-auth: build ## Run the application without auth
-	./bin/hyperfleet-api migrate
-	CRD_PATH=$(PWD)/charts/crds ./bin/hyperfleet-api serve --enable-authz=false --enable-jwt=false
+	GODEBUG=fips140=on ./bin/hyperfleet-api migrate
+	GODEBUG=fips140=on CRD_PATH=$(PWD)/charts/crds ./bin/hyperfleet-api serve --enable-authz=false --enable-jwt=false
 
 .PHONY: run/docs
 run/docs: check-container-tool ## Run swagger and host the api spec
@@ -163,7 +166,7 @@ run/docs: check-container-tool ## Run swagger and host the api spec
 cmds: ## Build all binaries under cmd/
 	@mkdir -p bin
 	for cmd in $$(ls cmd); do \
-		CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=boringcrypto ${GO} build \
+		CGO_ENABLED=$(CGO_ENABLED) GOFIPS140=$(GOFIPS140) ${GO} build \
 			$(GOFLAGS) \
 			-ldflags="$(LDFLAGS)" \
 			-o "bin/$${cmd}" \
@@ -196,24 +199,24 @@ secrets: ## Initialize secrets directory with default values
 
 .PHONY: test
 test: install secrets $(GOTESTSUM) ## Run unit tests
-	OCM_ENV=unit_testing $(GOTESTSUM) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -v $(TESTFLAGS) \
+	GODEBUG=fips140=on OCM_ENV=unit_testing $(GOTESTSUM) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -v $(TESTFLAGS) \
 		./pkg/... \
 		./cmd/...
 
 .PHONY: ci-test-unit
 ci-test-unit: install secrets $(GOTESTSUM) ## Run unit tests with JSON output
-	OCM_ENV=unit_testing $(GOTESTSUM) --jsonfile-timing-events=$(unit_test_json_output) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -v $(TESTFLAGS) \
+	GODEBUG=fips140=on OCM_ENV=unit_testing $(GOTESTSUM) --jsonfile-timing-events=$(unit_test_json_output) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -v $(TESTFLAGS) \
 		./pkg/... \
 		./cmd/...
 
 .PHONY: test-integration
 test-integration: install secrets $(GOTESTSUM) ## Run integration tests
-	TESTCONTAINERS_RYUK_DISABLED=true OCM_ENV=integration_testing $(GOTESTSUM) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) \
+	GODEBUG=fips140=on TESTCONTAINERS_RYUK_DISABLED=true OCM_ENV=integration_testing $(GOTESTSUM) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) \
 			./test/integration
 
 .PHONY: ci-test-integration
 ci-test-integration: install secrets $(GOTESTSUM) ## Run integration tests with JSON output
-	TESTCONTAINERS_RYUK_DISABLED=true OCM_ENV=integration_testing $(GOTESTSUM) --jsonfile-timing-events=$(integration_test_json_output) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) \
+	GODEBUG=fips140=on TESTCONTAINERS_RYUK_DISABLED=true OCM_ENV=integration_testing $(GOTESTSUM) --jsonfile-timing-events=$(integration_test_json_output) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) \
 			./test/integration
 
 .PHONY: test-all

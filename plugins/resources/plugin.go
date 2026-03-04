@@ -6,6 +6,7 @@ import (
 	"context"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/gorilla/mux"
 	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/environments"
@@ -99,10 +100,8 @@ func init() {
 		}
 	})
 
-	// Presenter registration for Resource type
-	presenters.RegisterPath(api.Resource{}, "resources")
+	// Presenter registration for Resource type (pointer only)
 	presenters.RegisterPath(&api.Resource{}, "resources")
-	presenters.RegisterKind(api.Resource{}, "Resource")
 	presenters.RegisterKind(&api.Resource{}, "Resource")
 }
 
@@ -161,5 +160,5 @@ func getOwnerPlural(kind string) string {
 		return def.Plural
 	}
 	// Fallback: lowercase + "s"
-	return kind + "s"
+	return strings.ToLower(kind) + "s"
 }

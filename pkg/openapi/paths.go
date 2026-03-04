@@ -337,6 +337,7 @@ func buildCreateStatusOperation(def *api.ResourceDefinition, ownerDef *api.Resou
 			},
 		},
 		Responses: buildStatusCreateResponses(),
+		Security:  &openapi3.SecurityRequirements{{"BearerAuth": {}}},
 	}
 }
 

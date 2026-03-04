@@ -278,18 +278,13 @@ func applySchemaProperties(schema *openapi3.Schema, crdSchema map[string]interfa
 		}
 	}
 
-	if required, ok := crdSchema["required"].([]string); ok {
-		schema.Required = required
-	}
+	schema.Required = toStringSlice(crdSchema["required"])
 
 	if desc, ok := crdSchema["description"].(string); ok {
 		schema.Description = desc
 	}
 
-	// Handle additionalProperties
-	if addProps, ok := crdSchema["additionalProperties"].(bool); ok && addProps {
-		schema.AdditionalProperties = openapi3.AdditionalProperties{Has: boolPtr(true)}
-	}
+	applyAdditionalProperties(schema, crdSchema)
 }
 
 // convertCRDSchemaToOpenAPI converts a CRD schema map to an OpenAPI SchemaRef.
@@ -320,13 +315,12 @@ func convertCRDSchemaToOpenAPI(crdSchema map[string]interface{}) *openapi3.Schem
 		schema.Max = &max
 	}
 
-	if minLen, ok := crdSchema["minLength"].(int64); ok {
-		schema.MinLength = uint64(minLen)
+	if v, ok := toUint64(crdSchema["minLength"]); ok {
+		schema.MinLength = v
 	}
 
-	if maxLen, ok := crdSchema["maxLength"].(int64); ok {
-		uval := uint64(maxLen)
-		schema.MaxLength = &uval
+	if v, ok := toUint64(crdSchema["maxLength"]); ok {
+		schema.MaxLength = &v
 	}
 
 	if pattern, ok := crdSchema["pattern"].(string); ok {
@@ -346,15 +340,58 @@ func convertCRDSchemaToOpenAPI(crdSchema map[string]interface{}) *openapi3.Schem
 		schema.Items = convertCRDSchemaToOpenAPI(items)
 	}
 
-	if required, ok := crdSchema["required"].([]string); ok {
-		schema.Required = required
-	}
+	schema.Required = toStringSlice(crdSchema["required"])
 
-	if addProps, ok := crdSchema["additionalProperties"].(bool); ok && addProps {
-		schema.AdditionalProperties = openapi3.AdditionalProperties{Has: boolPtr(true)}
-	}
+	applyAdditionalProperties(schema, crdSchema)
 
 	return &openapi3.SchemaRef{Value: schema}
+}
+
+// toStringSlice converts an interface{} (typically []interface{} from JSON/YAML unmarshal) to []string.
+// Returns nil if the value is nil or not convertible.
+func toStringSlice(v interface{}) []string {
+	switch val := v.(type) {
+	case []string:
+		return val
+	case []interface{}:
+		result := make([]string, 0, len(val))
+		for _, item := range val {
+			if s, ok := item.(string); ok {
+				result = append(result, s)
+			}
+		}
+		return result
+	}
+	return nil
+}
+
+// toUint64 converts an interface{} (typically float64 or int from JSON/YAML unmarshal) to uint64.
+func toUint64(v interface{}) (uint64, bool) {
+	switch val := v.(type) {
+	case float64:
+		return uint64(val), true
+	case int:
+		return uint64(val), true
+	case int64:
+		return uint64(val), true
+	}
+	return 0, false
+}
+
+// applyAdditionalProperties handles the additionalProperties field which can be a bool or an object.
+func applyAdditionalProperties(schema *openapi3.Schema, crdSchema map[string]interface{}) {
+	ap := crdSchema["additionalProperties"]
+	if ap == nil {
+		return
+	}
+	switch val := ap.(type) {
+	case bool:
+		schema.AdditionalProperties = openapi3.AdditionalProperties{Has: boolPtr(val)}
+	case map[string]interface{}:
+		schema.AdditionalProperties = openapi3.AdditionalProperties{
+			Schema: convertCRDSchemaToOpenAPI(val),
+		}
+	}
 }
 
 // uint64Ptr returns a pointer to a uint64 value.
