@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gorilla/mux"
+	"gorm.io/datatypes"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/crd"
@@ -18,6 +20,7 @@ import (
 // It is CRD-aware and adapts behavior based on the resource definition.
 type ResourceHandler struct {
 	resource         services.ResourceService
+	adapterStatus    services.AdapterStatusService
 	kind             string
 	plural           string
 	isOwned          bool
@@ -39,10 +42,12 @@ type ResourceHandlerConfig struct {
 // NewResourceHandler creates a new ResourceHandler instance.
 func NewResourceHandler(
 	resourceService services.ResourceService,
+	adapterStatusService services.AdapterStatusService,
 	cfg ResourceHandlerConfig,
 ) *ResourceHandler {
 	return &ResourceHandler{
 		resource:         resourceService,
+		adapterStatus:    adapterStatusService,
 		kind:             cfg.Kind,
 		plural:           cfg.Plural,
 		isOwned:          cfg.IsOwned,
@@ -247,6 +252,85 @@ func (h *ResourceHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	handleDelete(w, r, cfg, http.StatusNoContent)
+}
+
+// ListStatuses handles GET requests to list adapter statuses for a resource.
+func (h *ResourceHandler) ListStatuses(w http.ResponseWriter, r *http.Request) {
+	cfg := &handlerConfig{
+		Action: func() (interface{}, *errors.ServiceError) {
+			ctx := r.Context()
+			id := mux.Vars(r)["id"]
+			listArgs := services.NewListArguments(r.URL.Query())
+
+			statuses, total, svcErr := h.adapterStatus.FindByResourcePaginated(ctx, h.kind, id, listArgs)
+			if svcErr != nil {
+				return nil, svcErr
+			}
+
+			return map[string]interface{}{
+				"kind":  "AdapterStatusList",
+				"page":  listArgs.Page,
+				"size":  len(statuses),
+				"total": total,
+				"items": statuses,
+			}, nil
+		},
+	}
+
+	handleList(w, r, cfg)
+}
+
+// CreateStatus handles POST requests to create or update an adapter status for a resource.
+func (h *ResourceHandler) CreateStatus(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Adapter            string                 `json:"adapter"`
+		ObservedGeneration int32                  `json:"observed_generation"`
+		ObservedTime       time.Time              `json:"observed_time"`
+		Conditions         []api.AdapterCondition `json:"conditions"`
+		Data               json.RawMessage        `json:"data,omitempty"`
+		Metadata           json.RawMessage        `json:"metadata,omitempty"`
+	}
+
+	cfg := &handlerConfig{
+		&req,
+		[]validate{},
+		func() (interface{}, *errors.ServiceError) {
+			ctx := r.Context()
+			id := mux.Vars(r)["id"]
+
+			conditionsJSON, err := json.Marshal(req.Conditions)
+			if err != nil {
+				return nil, errors.GeneralError("Failed to marshal conditions: %v", err)
+			}
+
+			now := req.ObservedTime
+			adapterStatus := &api.AdapterStatus{
+				ResourceType:       h.kind,
+				ResourceID:         id,
+				Adapter:            req.Adapter,
+				ObservedGeneration: req.ObservedGeneration,
+				LastReportTime:     &now,
+				Conditions:         conditionsJSON,
+				Data:               datatypes.JSON([]byte(req.Data)),
+				Metadata:           datatypes.JSON([]byte(req.Metadata)),
+			}
+
+			result, svcErr := h.resource.ProcessAdapterStatus(ctx, h.kind, id, adapterStatus, h.requiredAdapters)
+			if svcErr != nil {
+				return nil, svcErr
+			}
+
+			// ProcessAdapterStatus returns nil when the status is a no-op (e.g., Available=Unknown)
+			if result == nil {
+				return map[string]interface{}{"status": "no-op"}, nil
+			}
+
+			return result, nil
+		},
+		handleError,
+	}
+
+	handle(w, r, cfg, http.StatusCreated)
 }
 
 // convertCreateRequest converts the API request to a domain Resource model.

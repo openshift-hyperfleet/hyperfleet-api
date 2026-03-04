@@ -100,10 +100,15 @@ func (s *sqlResourceService) Create(ctx context.Context, resource *api.Resource,
 		return nil, handleCreateError(resource.Kind, err)
 	}
 
-	// Trigger status aggregation after creation
+	// Trigger status aggregation after creation.
+	// If this fails, log the error but return the committed resource — the resource
+	// already exists and status will be recomputed on the next adapter report.
 	updatedResource, svcErr := s.UpdateResourceStatusFromAdapters(ctx, resource.Kind, resource.ID, requiredAdapters)
 	if svcErr != nil {
-		return nil, svcErr
+		ctx = logger.WithResourceID(ctx, resource.ID)
+		ctx = logger.WithResourceType(ctx, resource.Kind)
+		logger.WithError(ctx, svcErr).Warn("Failed to aggregate initial resource status after create")
+		return resource, nil
 	}
 
 	return updatedResource, nil
@@ -115,7 +120,9 @@ func (s *sqlResourceService) Replace(ctx context.Context, resource *api.Resource
 		return nil, handleGetError(resource.Kind, "id", resource.ID, err)
 	}
 
-	if !bytes.Equal(existing.Spec, resource.Spec) {
+	if bytes.Equal(existing.Spec, resource.Spec) {
+		resource.Generation = existing.Generation
+	} else {
 		resource.Generation = existing.Generation + 1
 	}
 

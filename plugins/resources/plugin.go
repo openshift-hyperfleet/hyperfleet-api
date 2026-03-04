@@ -19,16 +19,16 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/dao"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/handlers"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/services"
+	svc "github.com/openshift-hyperfleet/hyperfleet-api/pkg/services"
 )
 
 // ServiceLocator creates a ResourceService instance
-type ServiceLocator func() services.ResourceService
+type ServiceLocator func() svc.ResourceService
 
 // NewServiceLocator creates a new service locator for resources
 func NewServiceLocator(env *environments.Env) ServiceLocator {
-	return func() services.ResourceService {
-		return services.NewResourceService(
+	return func() svc.ResourceService {
+		return svc.NewResourceService(
 			dao.NewResourceDao(&env.Database.SessionFactory),
 			dao.NewAdapterStatusDao(&env.Database.SessionFactory),
 		)
@@ -36,7 +36,7 @@ func NewServiceLocator(env *environments.Env) ServiceLocator {
 }
 
 // Service retrieves the ResourceService from the services registry
-func Service(s *environments.Services) services.ResourceService {
+func Service(s *environments.Services) svc.ResourceService {
 	if s == nil {
 		return nil
 	}
@@ -80,6 +80,13 @@ func init() {
 		return NewServiceLocator(env.(*environments.Env))
 	})
 
+	registry.RegisterService("AdapterStatuses", func(env interface{}) interface{} {
+		e := env.(*environments.Env)
+		return svc.NewAdapterStatusService(
+			dao.NewAdapterStatusDao(&e.Database.SessionFactory),
+		)
+	})
+
 	// Dynamic route registration based on loaded CRDs
 	server.RegisterRoutes("resources", func(
 		apiV1Router *mux.Router,
@@ -94,9 +101,14 @@ func init() {
 			return
 		}
 
+		var adapterStatusService svc.AdapterStatusService
+		if obj := envServices.GetService("AdapterStatuses"); obj != nil {
+			adapterStatusService = obj.(svc.AdapterStatusService)
+		}
+
 		// Register routes for each enabled CRD
 		for _, def := range crd.All() {
-			registerResourceRoutes(apiV1Router, def, resourceService, authMiddleware, authzMiddleware)
+			registerResourceRoutes(apiV1Router, def, resourceService, adapterStatusService, authMiddleware, authzMiddleware)
 		}
 	})
 
@@ -109,7 +121,8 @@ func init() {
 func registerResourceRoutes(
 	apiV1Router *mux.Router,
 	def *api.ResourceDefinition,
-	resourceService services.ResourceService,
+	resourceService svc.ResourceService,
+	adapterStatusService svc.AdapterStatusService,
 	authMiddleware auth.JWTMiddleware,
 	authzMiddleware auth.AuthorizationMiddleware,
 ) {
@@ -122,7 +135,7 @@ func registerResourceRoutes(
 		RequiredAdapters: def.StatusConfig.RequiredAdapters,
 	}
 
-	handler := handlers.NewResourceHandler(resourceService, handlerCfg)
+	handler := handlers.NewResourceHandler(resourceService, adapterStatusService, handlerCfg)
 
 	var router *mux.Router
 
@@ -144,6 +157,10 @@ func registerResourceRoutes(
 	router.HandleFunc("/{id}", handler.Get).Methods(http.MethodGet)
 	router.HandleFunc("/{id}", handler.Patch).Methods(http.MethodPatch)
 	router.HandleFunc("/{id}", handler.Delete).Methods(http.MethodDelete)
+
+	// Register status subresource routes
+	router.HandleFunc("/{id}/statuses", handler.ListStatuses).Methods(http.MethodGet)
+	router.HandleFunc("/{id}/statuses", handler.CreateStatus).Methods(http.MethodPost)
 
 	// Apply authentication and authorization middleware
 	router.Use(authMiddleware.AuthenticateAccountJWT)
