@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 
@@ -79,7 +78,7 @@ func (c *ApplicationConfig) ReadFiles() []string {
 // Read the contents of file into integer value
 func readFileValueInt(file string, val *int) error {
 	fileContents, err := ReadFile(file)
-	if err != nil {
+	if err != nil || fileContents == "" {
 		return err
 	}
 
@@ -122,10 +121,14 @@ func ReadFile(file string) (string, error) {
 		return "", nil
 	}
 
-	// Ensure the absolute file path is used
+	// Resolve relative paths from the current working directory
 	absFilePath := unquotedFile
 	if !filepath.IsAbs(unquotedFile) {
-		absFilePath = filepath.Join(GetProjectRootDir(), unquotedFile)
+		wd, wdErr := os.Getwd()
+		if wdErr != nil {
+			return "", fmt.Errorf("failed to get working directory: %w", wdErr)
+		}
+		absFilePath = filepath.Join(wd, unquotedFile)
 	}
 
 	// Read the file
@@ -134,11 +137,4 @@ func ReadFile(file string) (string, error) {
 		return "", err
 	}
 	return string(buf), nil
-}
-
-// GetProjectRootDir Return project root path based on the relative path of this file
-func GetProjectRootDir() string {
-	_, b, _, _ := runtime.Caller(0)
-	basepath := filepath.Dir(filepath.Join(b, "..", ".."))
-	return basepath
 }

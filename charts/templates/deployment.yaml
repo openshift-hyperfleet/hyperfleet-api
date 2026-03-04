@@ -40,7 +40,7 @@ spec:
         command: ["/app/hyperfleet-api", "migrate"]
         volumeMounts:
         - name: secrets
-          mountPath: /build/secrets
+          mountPath: /app/secrets
           readOnly: true
       {{- end }}
       containers:
@@ -113,7 +113,7 @@ spec:
           mountPath: /tmp
         {{- if or .Values.database.external.enabled .Values.database.postgresql.enabled }}
         - name: secrets
-          mountPath: /build/secrets
+          mountPath: /app/secrets
           readOnly: true
         {{- end }}
         {{- if .Values.extraVolumeMounts }}
