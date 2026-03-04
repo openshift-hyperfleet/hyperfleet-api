@@ -39,6 +39,9 @@ spec:
             spec:
               type: object
               description: IDPSpec defines the desired state of an IDP
+              required:
+                - clusterRef
+                - type
               properties:
                 clusterRef:
                   type: string
@@ -54,49 +57,15 @@ spec:
                     - GitLab
                     - Google
                     - Microsoft
-              x-kubernetes-preserve-unknown-fields: true
+                displayName:
+                  type: string
+                  description: Human-readable name for the identity provider
+                config:
+                  type: object
+                  description: Provider-specific configuration
+                  x-kubernetes-preserve-unknown-fields: true
             status:
               type: object
-              description: IDPStatus defines the observed state of an IDP
-              properties:
-                conditions:
-                  type: array
-                  description: Conditions represent the latest available observations of the IDP's state
-                  items:
-                    type: object
-                    required:
-                      - type
-                      - status
-                      - lastTransitionTime
-                    properties:
-                      type:
-                        type: string
-                        description: Type of condition (e.g., Ready)
-                      status:
-                        type: string
-                        description: Status of the condition
-                        enum:
-                          - "True"
-                          - "False"
-                          - "Unknown"
-                      reason:
-                        type: string
-                        description: Machine-readable reason for the condition's last transition
-                      message:
-                        type: string
-                        description: Human-readable message indicating details about the transition
-                      observedGeneration:
-                        type: integer
-                        format: int32
-                        description: The generation observed by the controller
-                      lastTransitionTime:
-                        type: string
-                        format: date-time
-                        description: Last time the condition transitioned from one status to another
-                      lastUpdatedTime:
-                        type: string
-                        format: date-time
-                        description: Last time the condition was updated
               x-kubernetes-preserve-unknown-fields: true
       subresources:
         status: {}

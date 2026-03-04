@@ -146,7 +146,7 @@ func registerApiMiddleware(router *mux.Router) {
 	}
 
 	if schemaValidator != nil {
-		router.Use(middleware.SchemaValidationMiddleware(schemaValidator))
+		router.Use(middleware.SchemaValidationMiddleware(schemaValidator, crd.DefaultRegistry()))
 	} else {
 		logger.Warn(ctx, "Schema validation is disabled. Spec fields will not be validated.")
 	}

@@ -34,6 +34,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
 const (
@@ -95,6 +96,12 @@ func (r *Registry) LoadFromKubernetes(ctx context.Context) error {
 			continue
 		}
 
+		// Validate CRD governance — warn and skip non-compliant CRDs
+		if violations := ValidateCRDGovernance(crd); len(violations) > 0 {
+			logger.Warn(ctx, fmt.Sprintf("Skipping CRD %s: governance violations: %s", crd.Name, strings.Join(violations, "; ")))
+			continue
+		}
+
 		def, err := r.parseCRD(crd)
 		if err != nil {
 			return fmt.Errorf("failed to parse CRD %s: %w", crd.Name, err)
@@ -145,6 +152,12 @@ func (r *Registry) LoadFromDirectory(dir string) error {
 
 		// Skip if not a HyperFleet CRD
 		if crd.Spec.Group != HyperfleetGroup {
+			continue
+		}
+
+		// Validate CRD governance — warn and skip non-compliant CRDs
+		if violations := ValidateCRDGovernance(&crd); len(violations) > 0 {
+			logger.Warn(context.Background(), fmt.Sprintf("Skipping CRD %s (%s): governance violations: %s", crd.Name, path, strings.Join(violations, "; ")))
 			continue
 		}
 
@@ -262,16 +275,11 @@ func extractOpenAPISchema(crd *apiextensionsv1.CustomResourceDefinition) *api.Re
 	schema := &api.ResourceSchema{}
 	openAPISchema := version.Schema.OpenAPIV3Schema
 
-	// Extract properties from the schema
+	// Extract spec schema only — status schema is generated programmatically
+	// by buildStatusSchema() in pkg/openapi/schemas.go
 	if openAPISchema.Properties != nil {
-		// Extract spec schema
 		if specSchema, ok := openAPISchema.Properties["spec"]; ok {
 			schema.Spec = jsonSchemaToMap(&specSchema)
-		}
-
-		// Extract status schema
-		if statusSchema, ok := openAPISchema.Properties["status"]; ok {
-			schema.Status = jsonSchemaToMap(&statusSchema)
 		}
 	}
 

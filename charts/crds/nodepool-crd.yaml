@@ -40,53 +40,29 @@ spec:
             spec:
               type: object
               description: NodePoolSpec defines the desired state of a NodePool
+              required:
+                - clusterRef
               properties:
                 clusterRef:
                   type: string
                   description: Reference to the parent Cluster resource
-              x-kubernetes-preserve-unknown-fields: true
+                replicas:
+                  type: integer
+                  description: Desired number of nodes in the pool
+                  minimum: 0
+                instanceType:
+                  type: string
+                  description: Cloud provider instance type (e.g., m5.xlarge)
+                autoScaling:
+                  type: object
+                  description: Auto-scaling configuration
+                  x-kubernetes-preserve-unknown-fields: true
+                platform:
+                  type: object
+                  description: Platform-specific node pool configuration
+                  x-kubernetes-preserve-unknown-fields: true
             status:
               type: object
-              description: NodePoolStatus defines the observed state of a NodePool
-              properties:
-                conditions:
-                  type: array
-                  description: Conditions represent the latest available observations of the nodepool's state
-                  items:
-                    type: object
-                    required:
-                      - type
-                      - status
-                      - lastTransitionTime
-                    properties:
-                      type:
-                        type: string
-                        description: Type of condition (e.g., Ready, Available)
-                      status:
-                        type: string
-                        description: Status of the condition
-                        enum:
-                          - "True"
-                          - "False"
-                          - "Unknown"
-                      reason:
-                        type: string
-                        description: Machine-readable reason for the condition's last transition
-                      message:
-                        type: string
-                        description: Human-readable message indicating details about the transition
-                      observedGeneration:
-                        type: integer
-                        format: int32
-                        description: The generation observed by the controller
-                      lastTransitionTime:
-                        type: string
-                        format: date-time
-                        description: Last time the condition transitioned from one status to another
-                      lastUpdatedTime:
-                        type: string
-                        format: date-time
-                        description: Last time the condition was updated
               x-kubernetes-preserve-unknown-fields: true
       subresources:
         status: {}
