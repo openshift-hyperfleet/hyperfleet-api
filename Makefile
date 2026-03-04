@@ -117,21 +117,13 @@ lint: $(GOLANGCI_LINT) ## Run golangci-lint
 
 ##@ Code Generation
 
-.PHONY: generate
-generate: $(OAPI_CODEGEN) ## Generate OpenAPI types using oapi-codegen
-	rm -rf pkg/api/openapi
-	mkdir -p pkg/api/openapi
-	$(OAPI_CODEGEN) --config openapi/oapi-codegen.yaml openapi/openapi.yaml
-
 .PHONY: generate-mocks
 generate-mocks: $(MOCKGEN) ## Generate mock implementations for services
 	${GO} generate ./pkg/services/...
 
+# OpenAPI spec is now dynamically generated from CRDs at runtime
 .PHONY: generate-all
-generate-all: generate generate-mocks ## Generate all code (openapi + mocks)
-
-.PHONY: generate-vendor
-generate-vendor: generate
+generate-all: generate-mocks ## Generate all code (mocks only - OpenAPI is dynamic)
 
 ##@ Development
 
