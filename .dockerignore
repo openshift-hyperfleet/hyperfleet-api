@@ -1,9 +1,75 @@
-.git
-.gitignore
-.github
+# Build artifacts
 bin/
-docs/
-charts/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Git
+.git/
+.gitignore
+.github/
+
+# Environment files
 .env
 .env.*
 
+# Local config files
+*.local.yaml
+
+# CI/CD files (not needed in container)
+.gitlab-ci.yml
+.travis.yml
+Jenkinsfile
+
+# Kubernetes and deployment files
+chart/
+charts/
+deployments/
+
+# License and owners
+LICENSE
+OWNERS
+CONTRIBUTING.md
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Log files
+*.log
+
+# Test and coverage files
+coverage/
+*.out
+*.test
+*.prof
+
+# Linter config (not needed for build)
+.golangci.yml
+.golangciversion
+
+# AI assistant config
+.claude/
+
+# Dockerfile itself
+Dockerfile
+
+# Documentation (not needed in container)
+*.md
+docs/
+
+# Secrets (should never be in container image)
+secrets/
+
+# Test request files
+test-requests/
