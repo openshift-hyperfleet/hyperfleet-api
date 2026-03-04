@@ -1,12 +1,3 @@
-{{- if and .Values.database.external.enabled .Values.database.external.usePodIdentity }}
-{{- if not .Values.database.external.createSecretProviderClass }}
-{{- if not .Values.database.external.secretProviderClass }}
-{{- fail "database.external.secretProviderClass is required when database.external.usePodIdentity is true and createSecretProviderClass is false" }}
-{{- end }}
-{{- else if not (index .Values.database.external.aws "region") }}
-{{- fail "database.external.aws.region is required when database.external.createSecretProviderClass is true" }}
-{{- end }}
-{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:

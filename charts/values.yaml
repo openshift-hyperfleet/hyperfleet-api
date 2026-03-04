@@ -92,7 +92,6 @@ database:
   external:
     enabled: false
     # Name of existing secret with db.host, db.port, db.name, db.user, db.password keys
-    # secretName: "hyperfleet/db-credentials"
     secretName: ""
     # Use AWS Pod Identity / Secrets Store CSI driver for DB credentials (no Kubernetes Secret)
     usePodIdentity: false
@@ -105,7 +104,8 @@ database:
     # AWS Secrets Manager config when createSecretProviderClass is true
     aws:
       region: ""
-    # Secrets Manager secret name or ARN (objectName in SecretProviderClass)
+      # Secrets Manager secret name or ARN (objectName in SecretProviderClass)
+      secretName: "hyperfleet/db-credentials"
     # PostgreSQL SSL mode: disable | require | verify-ca | verify-full
     sslMode: require
 
@@ -141,15 +141,12 @@ auth:
 
 # Adapter configuration (REQUIRED)
 # Configure which adapters must be ready for resources to be marked as "Ready"
-# Both cluster and nodepool adapters MUST be specified - the application will not start without them
-# Empty arrays [] are valid if you want no adapters required for the Ready state
+# Both cluster and nodepool MUST be specified (empty arrays [] are valid)
 adapters:
-  # Required adapters for cluster "Ready" state (REQUIRED)
-  # Example: ["validation", "dns", "pullsecret", "hypershift"]
-  # cluster: []
-  # Required adapters for nodepool "Ready" state (REQUIRED)
-  # Example: ["validation", "hypershift"]
-  # nodepool: []
+  # Required adapters for cluster "Ready" state. Example: ["validation", "dns", "pullsecret", "hypershift"]
+  cluster: []
+  # Required adapters for nodepool "Ready" state. Example: ["validation", "hypershift"]
+  nodepool: []
 
 # ServiceMonitor for Prometheus Operator
 # Enables automatic metrics discovery in clusters with Prometheus Operator
@@ -170,8 +167,8 @@ serviceMonitor:
 # Additional environment variables
 # You can override adapters by setting HYPERFLEET_*_ADAPTERS here
 env: []
-  # - name: GLOG_V
-  #   value: "10"
+#  - name: GLOG_V
+#    value: "10"
 
 # Volume mounts for additional configs
 extraVolumeMounts: []
