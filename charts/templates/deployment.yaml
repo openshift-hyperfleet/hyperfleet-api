@@ -1,3 +1,12 @@
+{{- if and .Values.database.external.enabled .Values.database.external.usePodIdentity }}
+{{- if not .Values.database.external.createSecretProviderClass }}
+{{- if not .Values.database.external.secretProviderClass }}
+{{- fail "database.external.secretProviderClass is required when database.external.usePodIdentity is true and createSecretProviderClass is false" }}
+{{- end }}
+{{- else if not (index .Values.database.external.aws "region") }}
+{{- fail "database.external.aws.region is required when database.external.createSecretProviderClass is true" }}
+{{- end }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -37,10 +46,20 @@ spec:
       - name: db-migrate
         image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
         imagePullPolicy: {{ .Values.image.pullPolicy }}
-        command: ["/app/hyperfleet-api", "migrate"]
+        command:
+        - /app/hyperfleet-api
+        - migrate
+        {{- if and .Values.database.external.enabled .Values.database.external.usePodIdentity }}
+        - --db-host-file={{ .Values.database.external.secretMountPath }}/db.host
+        - --db-port-file={{ .Values.database.external.secretMountPath }}/db.port
+        - --db-name-file={{ .Values.database.external.secretMountPath }}/db.name
+        - --db-user-file={{ .Values.database.external.secretMountPath }}/db.user
+        - --db-password-file={{ .Values.database.external.secretMountPath }}/db.password
+        - --db-sslmode={{ .Values.database.external.sslMode | default "require" }}
+        {{- end }}
         volumeMounts:
         - name: secrets
-          mountPath: /build/secrets
+          mountPath: {{ if and .Values.database.external.enabled .Values.database.external.usePodIdentity }}{{ .Values.database.external.secretMountPath }}{{ else }}/build/secrets{{ end }}
           readOnly: true
       {{- end }}
       containers:
@@ -55,6 +74,14 @@ spec:
         - --api-server-bindaddress={{ .Values.server.bindAddress | default ":8000" }}
         - --health-server-bindaddress={{ .Values.server.healthBindAddress | default ":8080" }}
         - --metrics-server-bindaddress={{ .Values.server.metricsBindAddress | default ":9090" }}
+        {{- if and .Values.database.external.enabled .Values.database.external.usePodIdentity }}
+        - --db-host-file={{ .Values.database.external.secretMountPath }}/db.host
+        - --db-port-file={{ .Values.database.external.secretMountPath }}/db.port
+        - --db-name-file={{ .Values.database.external.secretMountPath }}/db.name
+        - --db-user-file={{ .Values.database.external.secretMountPath }}/db.user
+        - --db-password-file={{ .Values.database.external.secretMountPath }}/db.password
+        - --db-sslmode={{ .Values.database.external.sslMode | default "require" }}
+        {{- end }}
         ports:
         - name: http
           containerPort: 8000
@@ -113,7 +140,7 @@ spec:
           mountPath: /tmp
         {{- if or .Values.database.external.enabled .Values.database.postgresql.enabled }}
         - name: secrets
-          mountPath: /build/secrets
+          mountPath: {{ if and .Values.database.external.enabled .Values.database.external.usePodIdentity }}{{ .Values.database.external.secretMountPath }}{{ else }}/build/secrets{{ end }}
           readOnly: true
         {{- end }}
         {{- if .Values.extraVolumeMounts }}
@@ -124,12 +151,20 @@ spec:
         emptyDir: {}
       {{- if or .Values.database.external.enabled .Values.database.postgresql.enabled }}
       - name: secrets
+      {{- if and .Values.database.external.enabled .Values.database.external.usePodIdentity }}
+        csi:
+          driver: secrets-store.csi.k8s.io
+          readOnly: true
+          volumeAttributes:
+            secretProviderClass: {{ ternary (printf "%s-db-secrets" (include "hyperfleet-api.fullname" .)) .Values.database.external.secretProviderClass .Values.database.external.createSecretProviderClass | quote }}
+      {{- else }}
         secret:
           {{- if .Values.database.external.enabled }}
           secretName: {{ .Values.database.external.secretName }}
           {{- else }}
           secretName: {{ include "hyperfleet-api.fullname" . }}-db-secrets
           {{- end }}
+      {{- end }}
       {{- end }}
       {{- if .Values.extraVolumes }}
       {{- toYaml .Values.extraVolumes | nindent 6 }}

@@ -92,7 +92,22 @@ database:
   external:
     enabled: false
     # Name of existing secret with db.host, db.port, db.name, db.user, db.password keys
+    # secretName: "hyperfleet/db-credentials"
     secretName: ""
+    # Use AWS Pod Identity / Secrets Store CSI driver for DB credentials (no Kubernetes Secret)
+    usePodIdentity: false
+    # Mount path for CSI secrets-store volume (when usePodIdentity is true)
+    secretMountPath: /mnt/secrets-store
+    # Name of SecretProviderClass for CSI secrets-store driver (required when usePodIdentity is true and createSecretProviderClass is false)
+    secretProviderClass: ""
+    # Create a SecretProviderClass from the chart (uses database.external.aws when true)
+    createSecretProviderClass: false
+    # AWS Secrets Manager config when createSecretProviderClass is true
+    aws:
+      region: ""
+    # Secrets Manager secret name or ARN (objectName in SecretProviderClass)
+    # PostgreSQL SSL mode: disable | require | verify-ca | verify-full
+    sslMode: require
 
   # Built-in PostgreSQL for development/testing
   postgresql:
