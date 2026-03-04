@@ -24,6 +24,14 @@ func (e *integrationTestingEnvImpl) OverrideConfig(c *config.ApplicationConfig) 
 	if os.Getenv("DB_DEBUG") == "true" {
 		c.Database.Debug = true
 	}
+
+	// Clear secret file paths — integration tests use testcontainers and don't need file-based credentials
+	c.Database.HostFile = ""
+	c.Database.PortFile = ""
+	c.Database.NameFile = ""
+	c.Database.UsernameFile = ""
+	c.Database.PasswordFile = ""
+
 	return nil
 }
 
