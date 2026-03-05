@@ -89,7 +89,7 @@ func readFileValueInt(file string, val *int) error {
 // Read the contents of file into string value
 func readFileValueString(file string, val *string) error {
 	fileContents, err := ReadFile(file)
-	if err != nil {
+	if err != nil || fileContents == "" {
 		return err
 	}
 
@@ -100,7 +100,7 @@ func readFileValueString(file string, val *string) error {
 // Read the contents of file into boolean value
 func readFileValueBool(file string, val *bool) error {
 	fileContents, err := ReadFile(file)
-	if err != nil {
+	if err != nil || fileContents == "" {
 		return err
 	}
 
