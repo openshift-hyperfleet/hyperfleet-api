@@ -66,6 +66,9 @@ func (f *Default) Init(config *config.DatabaseConfig) {
 			}
 		}
 		dbx.SetMaxOpenConns(config.MaxOpenConnections)
+		dbx.SetConnMaxLifetime(config.ConnMaxLifetime)
+		dbx.SetConnMaxIdleTime(config.ConnMaxIdleTime)
+		dbx.SetMaxIdleConns(config.MaxIdleConnections)
 
 		var gormLog gormlogger.Interface
 		if config.Debug {

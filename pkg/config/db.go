@@ -5,6 +5,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/spf13/pflag"
 	"gorm.io/gorm/logger"
@@ -15,6 +16,10 @@ type DatabaseConfig struct {
 	SSLMode            string `json:"sslmode"`
 	Debug              bool   `json:"debug"`
 	MaxOpenConnections int    `json:"max_connections"`
+
+	ConnMaxLifetime    time.Duration `json:"conn_max_lifetime"`
+	ConnMaxIdleTime    time.Duration `json:"conn_max_idle_time"`
+	MaxIdleConnections int           `json:"max_idle_connections"`
 
 	Host     string `json:"host"`
 	Port     int    `json:"port"`
@@ -36,6 +41,10 @@ func NewDatabaseConfig() *DatabaseConfig {
 		SSLMode:            "disable",
 		Debug:              false,
 		MaxOpenConnections: 50,
+
+		ConnMaxLifetime:    5 * time.Minute,
+		ConnMaxIdleTime:    1 * time.Minute,
+		MaxIdleConnections: 10,
 
 		HostFile:     "secrets/db.host",
 		PortFile:     "secrets/db.port",
@@ -59,6 +68,9 @@ func (c *DatabaseConfig) AddFlags(fs *pflag.FlagSet) {
 		&c.MaxOpenConnections, "db-max-open-connections", c.MaxOpenConnections,
 		"Maximum open DB connections for this instance",
 	)
+	fs.DurationVar(&c.ConnMaxLifetime, "db-conn-max-lifetime", c.ConnMaxLifetime, "Maximum lifetime of a DB connection")
+	fs.DurationVar(&c.ConnMaxIdleTime, "db-conn-max-idle-time", c.ConnMaxIdleTime, "Maximum idle time of a DB connection")
+	fs.IntVar(&c.MaxIdleConnections, "db-max-idle-connections", c.MaxIdleConnections, "Maximum idle DB connections")
 }
 
 // BindEnv reads configuration from environment variables
