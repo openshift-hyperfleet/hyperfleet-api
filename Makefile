@@ -219,6 +219,13 @@ ci-test-integration: install secrets $(GOTESTSUM) ## Run integration tests with 
 .PHONY: test-all
 test-all: lint test test-integration test-helm ## Run all checks (lint, unit, integration, helm)
 
+##@ Agent Verification
+
+.PHONY: verify-all
+verify-all: verify lint test ## Run all static checks + unit tests (no database required)
+	@echo "All static checks and unit tests passed."
+	@echo "Run 'make test-integration' separately for integration tests (requires database)."
+
 ##@ Database
 
 .PHONY: db/setup
