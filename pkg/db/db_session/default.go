@@ -104,8 +104,8 @@ func (f *Default) Init(config *config.DatabaseConfig) {
 				))
 			}
 			logger.With(context.Background(),
-				"attempt", attempt+1,
-				"max_attempts", config.ConnRetryAttempts,
+				"retry", attempt+1,
+				"max_retries", config.ConnRetryAttempts,
 				"retry_interval", config.ConnRetryInterval,
 			).WithError(err).Warn("Database connection failed, retrying...")
 			time.Sleep(config.ConnRetryInterval)
@@ -114,7 +114,7 @@ func (f *Default) Init(config *config.DatabaseConfig) {
 			if dbx != nil {
 				_ = dbx.Close()
 			}
-			// Re-open sql.DB for the next attempt since GORM closes it on failure
+			// Re-open sql.DB for the next attempt since the previous handle was closed above
 			dbx, err = sql.Open(config.Dialect, config.ConnectionString(config.SSLMode != disable))
 			if err != nil {
 				dbx, err = sql.Open(config.Dialect, config.ConnectionString(false))
