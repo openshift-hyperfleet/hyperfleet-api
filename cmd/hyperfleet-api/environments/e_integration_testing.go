@@ -24,6 +24,18 @@ func (e *integrationTestingEnvImpl) OverrideConfig(c *config.ApplicationConfig) 
 	if os.Getenv("DB_DEBUG") == "true" {
 		c.Database.Debug = true
 	}
+
+	// Integration tests use testcontainers — set defaults directly instead of reading from secret files
+	c.Database.HostFile = ""
+	c.Database.PortFile = ""
+	c.Database.NameFile = ""
+	c.Database.UsernameFile = ""
+	c.Database.PasswordFile = ""
+	c.Database.Name = "hyperfleet_test"
+	c.Database.Username = "test"
+	c.Database.Password = "test"
+	c.Database.Port = 5432
+
 	return nil
 }
 

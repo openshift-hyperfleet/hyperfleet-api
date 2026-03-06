@@ -24,6 +24,14 @@ func (e *unitTestingEnvImpl) OverrideConfig(c *config.ApplicationConfig) error {
 	if os.Getenv("DB_DEBUG") == "true" {
 		c.Database.Debug = true
 	}
+
+	// Clear secret file paths — unit tests use a mock DB and don't need real credentials
+	c.Database.HostFile = ""
+	c.Database.PortFile = ""
+	c.Database.NameFile = ""
+	c.Database.UsernameFile = ""
+	c.Database.PasswordFile = ""
+
 	return nil
 }
 
