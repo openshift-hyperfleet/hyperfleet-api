@@ -1,7 +1,9 @@
 package db
 
 import (
+	"context"
 	"net/http"
+	"time"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/response"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db/db_context"
@@ -11,9 +13,16 @@ import (
 
 // TransactionMiddleware creates a new HTTP middleware that begins a database transaction
 // and stores it in the request context.
-func TransactionMiddleware(next http.Handler, connection SessionFactory) http.Handler {
+func TransactionMiddleware(next http.Handler, connection SessionFactory, requestTimeout time.Duration) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx, err := NewContext(r.Context(), connection)
+		ctx := r.Context()
+		if requestTimeout > 0 {
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(ctx, requestTimeout)
+			defer cancel()
+		}
+
+		ctx, err := NewContext(ctx, connection)
 		if err != nil {
 			logger.WithError(r.Context(), err).Error("Could not create transaction")
 			// use default error to avoid exposing internals to users
