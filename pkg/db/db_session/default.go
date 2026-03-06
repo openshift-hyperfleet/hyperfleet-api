@@ -82,22 +82,53 @@ func (f *Default) Init(config *config.DatabaseConfig) {
 			FullSaveAssociations: false,
 			Logger:               gormLog,
 		}
-		g2, err = gorm.Open(postgres.New(postgres.Config{
+		pgConfig := postgres.Config{
 			Conn: dbx,
 			// Disable implicit prepared statement usage (GORM V2 uses pgx as database/sql driver and it enables prepared
 			/// statement cache by default)
 			// In migrations we both change tables' structure and running SQLs to modify data.
 			// This way all prepared statements becomes invalid.
 			PreferSimpleProtocol: true,
-		}), conf)
-		if err != nil {
-			panic(fmt.Sprintf(
-				"GORM failed to connect to %s database %s with connection string: %s\nError: %s",
-				config.Dialect,
-				config.Name,
-				config.LogSafeConnectionString(config.SSLMode != disable),
-				err.Error(),
-			))
+		}
+
+		// Retry GORM connection to handle sidecar startup races (e.g. pgbouncer)
+		for attempt := 0; ; attempt++ {
+			g2, err = gorm.Open(postgres.New(pgConfig), conf)
+			if err == nil {
+				break
+			}
+			if attempt >= config.ConnRetryAttempts {
+				panic(fmt.Sprintf(
+					"GORM failed to connect to %s database %s with connection string: %s\nError: %s",
+					config.Dialect,
+					config.Name,
+					config.LogSafeConnectionString(config.SSLMode != disable),
+					err.Error(),
+				))
+			}
+			logger.With(context.Background(),
+				"attempt", attempt+1,
+				"max_attempts", config.ConnRetryAttempts,
+				"retry_interval", config.ConnRetryInterval,
+			).WithError(err).Warn("Database connection failed, retrying...")
+			time.Sleep(config.ConnRetryInterval)
+
+			// Re-open sql.DB for the next attempt since GORM closes it on failure
+			dbx, err = sql.Open(config.Dialect, config.ConnectionString(config.SSLMode != disable))
+			if err != nil {
+				dbx, err = sql.Open(config.Dialect, config.ConnectionString(false))
+				if err != nil {
+					panic(fmt.Sprintf(
+						"SQL failed to reconnect to %s database %s: %s",
+						config.Dialect, config.Name, err.Error(),
+					))
+				}
+			}
+			dbx.SetMaxOpenConns(config.MaxOpenConnections)
+			dbx.SetConnMaxLifetime(config.ConnMaxLifetime)
+			dbx.SetConnMaxIdleTime(config.ConnMaxIdleTime)
+			dbx.SetMaxIdleConns(config.MaxIdleConnections)
+			pgConfig.Conn = dbx
 		}
 
 		// Register database metrics GORM plugin
