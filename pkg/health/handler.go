@@ -1,8 +1,10 @@
 package health
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
 )
@@ -10,12 +12,14 @@ import (
 // Handler provides HTTP handlers for health checks
 type Handler struct {
 	sessionFactory db.SessionFactory
+	dbPingTimeout  time.Duration
 }
 
 // NewHandler creates a new health handler
-func NewHandler(sessionFactory db.SessionFactory) *Handler {
+func NewHandler(sessionFactory db.SessionFactory, dbPingTimeout time.Duration) *Handler {
 	return &Handler{
 		sessionFactory: sessionFactory,
+		dbPingTimeout:  dbPingTimeout,
 	}
 }
 
@@ -65,7 +69,10 @@ func (h *Handler) ReadinessHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if err := sqlDB.PingContext(r.Context()); err != nil {
+		pingCtx, cancel := context.WithTimeout(r.Context(), h.dbPingTimeout)
+		defer cancel()
+
+		if err := sqlDB.PingContext(pingCtx); err != nil {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			_ = json.NewEncoder(w).Encode(map[string]string{
 				"status": "not_ready",

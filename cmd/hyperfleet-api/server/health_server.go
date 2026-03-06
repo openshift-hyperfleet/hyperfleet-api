@@ -19,7 +19,7 @@ func NewHealthServer() Server {
 	mainRouter.NotFoundHandler = http.HandlerFunc(api.SendNotFound)
 
 	// health endpoints (HyperFleet standard)
-	healthHandler := health.NewHandler(env().Database.SessionFactory)
+	healthHandler := health.NewHandler(env().Database.SessionFactory, env().Config.Health.DBPingTimeout)
 	mainRouter.HandleFunc("/healthz", healthHandler.LivenessHandler).Methods(http.MethodGet)
 	mainRouter.HandleFunc("/readyz", healthHandler.ReadinessHandler).Methods(http.MethodGet)
 
