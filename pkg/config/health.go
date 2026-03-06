@@ -26,7 +26,8 @@ func (s *HealthConfig) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&s.BindAddress, "health-server-bindaddress", s.BindAddress, "Health server bind address")
 	fs.BoolVar(&s.EnableHTTPS, "enable-health-https", s.EnableHTTPS, "Enable HTTPS for health server")
 	fs.DurationVar(&s.ShutdownTimeout, "health-shutdown-timeout", s.ShutdownTimeout, "Health server shutdown timeout")
-	fs.DurationVar(&s.DBPingTimeout, "health-db-ping-timeout", s.DBPingTimeout, "Timeout for database ping in readiness check")
+	fs.DurationVar(&s.DBPingTimeout, "health-db-ping-timeout", s.DBPingTimeout,
+		"Timeout for database ping in readiness check")
 }
 
 func (s *HealthConfig) ReadFiles() error {

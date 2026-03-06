@@ -142,7 +142,10 @@ spec:
         - name: POSTGRESQL_USERNAME
           value: {{ .Values.database.postgresql.user }}
         - name: POSTGRESQL_PASSWORD
-          value: {{ .Values.database.postgresql.password }}
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "hyperfleet-api.fullname" . }}-db-secrets
+              key: db.password
         - name: PGBOUNCER_PORT
           value: {{ .Values.database.pgbouncer.port | quote }}
         - name: PGBOUNCER_POOL_MODE

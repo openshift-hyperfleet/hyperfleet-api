@@ -113,6 +113,10 @@ func (f *Default) Init(config *config.DatabaseConfig) {
 			).WithError(err).Warn("Database connection failed, retrying...")
 			time.Sleep(config.ConnRetryInterval)
 
+			// Close the existing handle before re-opening to avoid leaking connections
+			if dbx != nil {
+				_ = dbx.Close()
+			}
 			// Re-open sql.DB for the next attempt since GORM closes it on failure
 			dbx, err = sql.Open(config.Dialect, config.ConnectionString(config.SSLMode != disable))
 			if err != nil {

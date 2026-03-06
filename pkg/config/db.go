@@ -77,9 +77,12 @@ func (c *DatabaseConfig) AddFlags(fs *pflag.FlagSet) {
 	fs.DurationVar(&c.ConnMaxLifetime, "db-conn-max-lifetime", c.ConnMaxLifetime, "Maximum lifetime of a DB connection")
 	fs.DurationVar(&c.ConnMaxIdleTime, "db-conn-max-idle-time", c.ConnMaxIdleTime, "Maximum idle time of a DB connection")
 	fs.IntVar(&c.MaxIdleConnections, "db-max-idle-connections", c.MaxIdleConnections, "Maximum idle DB connections")
-	fs.DurationVar(&c.RequestTimeout, "db-request-timeout", c.RequestTimeout, "Maximum time for a database request context")
-	fs.IntVar(&c.ConnRetryAttempts, "db-conn-retry-attempts", c.ConnRetryAttempts, "Number of retry attempts for initial database connection")
-	fs.DurationVar(&c.ConnRetryInterval, "db-conn-retry-interval", c.ConnRetryInterval, "Interval between database connection retry attempts")
+	fs.DurationVar(&c.RequestTimeout, "db-request-timeout", c.RequestTimeout,
+		"Maximum time for a database request context")
+	fs.IntVar(&c.ConnRetryAttempts, "db-conn-retry-attempts", c.ConnRetryAttempts,
+		"Number of retry attempts for initial DB connection")
+	fs.DurationVar(&c.ConnRetryInterval, "db-conn-retry-interval", c.ConnRetryInterval,
+		"Interval between DB connection retry attempts")
 }
 
 // BindEnv reads configuration from environment variables

@@ -73,10 +73,14 @@ func (h *Handler) ReadinessHandler(w http.ResponseWriter, r *http.Request) {
 		defer cancel()
 
 		if err := sqlDB.PingContext(pingCtx); err != nil {
+			reason := err.Error()
+			if pingCtx.Err() == context.DeadlineExceeded {
+				reason = "database ping timeout"
+			}
 			w.WriteHeader(http.StatusServiceUnavailable)
 			_ = json.NewEncoder(w).Encode(map[string]string{
 				"status": "not_ready",
-				"reason": "Database ping failed",
+				"reason": reason,
 			})
 			return
 		}

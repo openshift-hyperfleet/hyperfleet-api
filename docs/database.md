@@ -94,6 +94,8 @@ The API manages a Go `sql.DB` connection pool with the following tunable paramet
 
 Every API request that touches the database gets a context deadline via `--db-request-timeout`. If a request cannot acquire a connection or complete its query within this window, it fails with a `500` and the connection is released. This prevents requests from hanging indefinitely when the pool is exhausted under load.
 
+> **Note:** Under heavy load you may see `500` responses caused by the request timeout. This is expected backpressure behavior — the API deliberately fails fast rather than letting requests queue indefinitely. Clients (e.g., adapters) should treat these as transient errors and retry with backoff. If `500` rates are sustained, consider scaling the deployment or tuning `--db-max-open-connections` and `--db-request-timeout`.
+
 ### Connection Retries
 
 On startup the API retries the database connection up to `--db-conn-retry-attempts` times. This handles sidecar startup races (e.g., pgbouncer may not be listening when the API container starts). Retries are logged at WARN level with attempt counts.
@@ -172,15 +174,15 @@ All pgbouncer settings are in `values.yaml` under `database.pgbouncer`:
 
 ### Pool Modes
 
-- **`transaction`** (default, recommended): Server connection is assigned per transaction. Best for stateless CRUD APIs like HyperFleet. Allows high client concurrency with fewer server connections.
-- **`session`**: Server connection held for the entire client session. Use only if the application relies on session-level state (prepared statements, temp tables, etc.).
+- **`transaction`** (default, recommended): Server connection is assigned per transaction. Best for stateless CRUD APIs like HyperFleet. Allows high client concurrency with fewer server connections. HyperFleet uses GORM with simple queries and no prepared statements, so transaction mode is safe.
+- **`session`**: Server connection held for the entire client session. Required if the application relies on session-level state (prepared statements, `SET` commands, advisory locks, temp tables). Provides less connection multiplexing than transaction mode.
 - **`statement`**: Server connection per statement. Most aggressive pooling but breaks multi-statement transactions.
 
 ### Monitoring
 
 PgBouncer logs connection stats every 60 seconds:
 
-```
+```text
 LOG stats: 15 xacts/s, 30 queries/s, in 1234 B/s, out 5678 B/s, xact 2ms, query 1ms, wait 0us
 ```
 
