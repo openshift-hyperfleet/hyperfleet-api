@@ -310,6 +310,13 @@ test-helm: ## Test Helm charts (lint, template, validate)
 		--set image.tag=v1.0.0 > /dev/null
 	@echo "Custom image config template OK"
 	@echo ""
+	@echo "Testing template with pgbouncer enabled..."
+	helm template test-release charts/ \
+		--set 'adapters.cluster=["validation"]' \
+		--set 'adapters.nodepool=["validation"]' \
+		--set database.pgbouncer.enabled=true > /dev/null
+	@echo "PgBouncer sidecar config template OK"
+	@echo ""
 	@echo "Testing template with full adapter config..."
 	helm template test-release charts/ \
 		--set-json 'adapters.cluster=["validation","dns","pullsecret","hypershift"]' \

@@ -94,6 +94,26 @@ database:
     # Name of existing secret with db.host, db.port, db.name, db.user, db.password keys
     secretName: ""
 
+  # PgBouncer connection pooler sidecar (opt-in for production)
+  # Runs as a sidecar container, proxying connections to PostgreSQL
+  pgbouncer:
+    enabled: false
+    image: docker.io/bitnami/pgbouncer:1.23.1
+    port: 6432
+    poolMode: transaction
+    defaultPoolSize: 20
+    maxClientConn: 100
+    minPoolSize: 5
+    serverIdleTimeout: 600
+    serverLifetime: 3600
+    resources:
+      limits:
+        cpu: 200m
+        memory: 128Mi
+      requests:
+        cpu: 50m
+        memory: 64Mi
+
   # Built-in PostgreSQL for development/testing
   postgresql:
     enabled: true
