@@ -65,10 +65,7 @@ func (f *Default) Init(config *config.DatabaseConfig) {
 				))
 			}
 		}
-		dbx.SetMaxOpenConns(config.MaxOpenConnections)
-		dbx.SetConnMaxLifetime(config.ConnMaxLifetime)
-		dbx.SetConnMaxIdleTime(config.ConnMaxIdleTime)
-		dbx.SetMaxIdleConns(config.MaxIdleConnections)
+		applyPoolSettings(dbx, config)
 
 		var gormLog gormlogger.Interface
 		if config.Debug {
@@ -128,10 +125,7 @@ func (f *Default) Init(config *config.DatabaseConfig) {
 					))
 				}
 			}
-			dbx.SetMaxOpenConns(config.MaxOpenConnections)
-			dbx.SetConnMaxLifetime(config.ConnMaxLifetime)
-			dbx.SetConnMaxIdleTime(config.ConnMaxIdleTime)
-			dbx.SetMaxIdleConns(config.MaxIdleConnections)
+			applyPoolSettings(dbx, config)
 			pgConfig.Conn = dbx
 		}
 
@@ -149,6 +143,13 @@ func (f *Default) Init(config *config.DatabaseConfig) {
 		f.g2 = g2
 		f.db = dbx
 	})
+}
+
+func applyPoolSettings(db *sql.DB, cfg *config.DatabaseConfig) {
+	db.SetMaxOpenConns(cfg.MaxOpenConnections)
+	db.SetConnMaxLifetime(cfg.ConnMaxLifetime)
+	db.SetConnMaxIdleTime(cfg.ConnMaxIdleTime)
+	db.SetMaxIdleConns(cfg.MaxIdleConnections)
 }
 
 func (f *Default) DirectDB() *sql.DB {

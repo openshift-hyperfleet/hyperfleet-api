@@ -138,18 +138,18 @@ helm upgrade hyperfleet-api charts/ --set database.pgbouncer.enabled=true
 When pgbouncer is enabled, the deployment changes:
 
 ```text
-┌─────────────────────────────────────────────────┐
-│  Pod                                            │
-│                                                 │
-│  ┌──────────────┐     ┌──────────┐              │
-│  │  hyperfleet   │────▶│ pgbouncer │──────▶ PostgreSQL
-│  │  API          │     │ :6432    │              │
-│  │  (localhost)  │     └──────────┘              │
-│  └──────────────┘                               │
-│                                                 │
-│  Init containers (migrate) ──────────▶ PostgreSQL
-│  (direct connection, bypasses pgbouncer)         │
-└─────────────────────────────────────────────────┘
+┌─────────────────────────────────────────┐
+│  Pod                                    │
+│                                         │
+│  ┌──────────────┐     ┌──────────┐      │
+│  │  hyperfleet   │────▶│ pgbouncer │─────┼──▶ PostgreSQL
+│  │  API          │     │ :6432    │      │   (separate pod)
+│  │  (localhost)  │     └──────────┘      │
+│  └──────────────┘                       │
+│                                         │
+│  Init containers (migrate) ─────────────┼──▶ PostgreSQL
+│  (direct connection, bypasses pgbouncer) │
+└─────────────────────────────────────────┘
 ```
 
 - **API container** connects to `localhost:6432` (pgbouncer)

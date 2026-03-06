@@ -191,13 +191,17 @@ spec:
         emptyDir: {}
       {{- if .Values.database.pgbouncer.enabled }}
       - name: pgbouncer-tmp
-        emptyDir: {}
+        emptyDir:
+          sizeLimit: 100Mi
       - name: pgbouncer-conf
-        emptyDir: {}
+        emptyDir:
+          sizeLimit: 10Mi
       - name: pgbouncer-logs
-        emptyDir: {}
+        emptyDir:
+          sizeLimit: 100Mi
       - name: pgbouncer-pid
-        emptyDir: {}
+        emptyDir:
+          sizeLimit: 1Mi
       {{- end }}
       {{- if or .Values.database.external.enabled .Values.database.postgresql.enabled }}
       {{- if .Values.database.pgbouncer.enabled }}
