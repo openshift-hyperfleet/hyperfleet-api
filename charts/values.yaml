@@ -101,7 +101,7 @@ database:
     image: public.ecr.aws/bitnami/pgbouncer:1.25.1
     port: 6432
     poolMode: transaction
-    defaultPoolSize: 20
+    defaultPoolSize: 50
     maxClientConn: 100
     minPoolSize: 5
     serverIdleTimeout: 600

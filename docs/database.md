@@ -76,6 +76,124 @@ make db/login
 
 See [development.md](development.md) for detailed setup instructions.
 
+## Connection Pool Configuration
+
+The API manages a Go `sql.DB` connection pool with the following tunable parameters, exposed as CLI flags:
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--db-max-open-connections` | 50 | Maximum open connections to the database |
+| `--db-max-idle-connections` | 10 | Maximum idle connections retained in the pool |
+| `--db-conn-max-lifetime` | 5m | Maximum time a connection can be reused before being closed |
+| `--db-conn-max-idle-time` | 1m | Maximum time a connection can sit idle before being closed |
+| `--db-request-timeout` | 30s | Context deadline applied to each HTTP request's database transaction |
+| `--db-conn-retry-attempts` | 10 | Retry attempts for initial database connection on startup |
+| `--db-conn-retry-interval` | 3s | Wait time between connection retry attempts |
+
+### Request Timeout
+
+Every API request that touches the database gets a context deadline via `--db-request-timeout`. If a request cannot acquire a connection or complete its query within this window, it fails with a `500` and the connection is released. This prevents requests from hanging indefinitely when the pool is exhausted under load.
+
+### Connection Retries
+
+On startup the API retries the database connection up to `--db-conn-retry-attempts` times. This handles sidecar startup races (e.g., pgbouncer may not be listening when the API container starts). Retries are logged at WARN level with attempt counts.
+
+### Health Check Timeout
+
+The readiness probe (`/readyz`) pings the database with a separate timeout controlled by `--health-db-ping-timeout` (default 5s). This ensures health checks respond quickly even when the main connection pool is under pressure, preventing Kubernetes from restarting pods due to probe timeouts during load spikes.
+
+## PgBouncer Connection Pooler
+
+For production deployments, the Helm chart includes an optional [PgBouncer](https://www.pgbouncer.org/) sidecar that acts as a lightweight connection pooler between the API and PostgreSQL.
+
+### Why PgBouncer?
+
+Without pgbouncer, each API pod opens up to `--db-max-open-connections` (default 50) direct connections to PostgreSQL. At scale:
+
+- 10 pods = 500 direct connections to a single PostgreSQL instance
+- Connection setup overhead (TLS handshake, authentication) is paid per connection
+- PostgreSQL `max_connections` becomes a bottleneck
+
+PgBouncer in **transaction mode** multiplexes many client connections over a smaller pool of server connections. A server connection is only held for the duration of a single transaction, then returned to the pool.
+
+### Enabling PgBouncer
+
+```yaml
+# values.yaml
+database:
+  pgbouncer:
+    enabled: true
+```
+
+Or via Helm install/upgrade:
+
+```bash
+helm upgrade hyperfleet-api charts/ --set database.pgbouncer.enabled=true
+```
+
+### Architecture
+
+When pgbouncer is enabled, the deployment changes:
+
+```text
+┌─────────────────────────────────────────────────┐
+│  Pod                                            │
+│                                                 │
+│  ┌──────────────┐     ┌──────────┐              │
+│  │  hyperfleet   │────▶│ pgbouncer │──────▶ PostgreSQL
+│  │  API          │     │ :6432    │              │
+│  │  (localhost)  │     └──────────┘              │
+│  └──────────────┘                               │
+│                                                 │
+│  Init containers (migrate) ──────────▶ PostgreSQL
+│  (direct connection, bypasses pgbouncer)         │
+└─────────────────────────────────────────────────┘
+```
+
+- **API container** connects to `localhost:6432` (pgbouncer)
+- **Init containers** (migrations) connect directly to PostgreSQL — they run before the sidecar starts and need DDL operations that don't work well with transaction pooling
+- Two Kubernetes Secrets are created: one with the direct PostgreSQL host, one pointing to `localhost:6432`
+
+### Configuration
+
+All pgbouncer settings are in `values.yaml` under `database.pgbouncer`:
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `enabled` | `false` | Enable pgbouncer sidecar |
+| `image` | `public.ecr.aws/bitnami/pgbouncer:1.25.1` | PgBouncer container image |
+| `port` | `6432` | Port pgbouncer listens on |
+| `poolMode` | `transaction` | Pool mode (`transaction` recommended for stateless APIs) |
+| `defaultPoolSize` | `50` | Server connections per database per user |
+| `maxClientConn` | `100` | Maximum client connections accepted |
+| `minPoolSize` | `5` | Minimum server connections kept open |
+| `serverIdleTimeout` | `600` | Close idle server connections after this many seconds |
+| `serverLifetime` | `3600` | Close server connections after this many seconds regardless of activity |
+
+### Pool Modes
+
+- **`transaction`** (default, recommended): Server connection is assigned per transaction. Best for stateless CRUD APIs like HyperFleet. Allows high client concurrency with fewer server connections.
+- **`session`**: Server connection held for the entire client session. Use only if the application relies on session-level state (prepared statements, temp tables, etc.).
+- **`statement`**: Server connection per statement. Most aggressive pooling but breaks multi-statement transactions.
+
+### Monitoring
+
+PgBouncer logs connection stats every 60 seconds:
+
+```
+LOG stats: 15 xacts/s, 30 queries/s, in 1234 B/s, out 5678 B/s, xact 2ms, query 1ms, wait 0us
+```
+
+Key metrics:
+- **xacts/s**: Transactions per second
+- **wait**: Time clients spend waiting for a server connection (should be near 0)
+- **xact**: Average transaction duration
+
+### Limitations
+
+- PgBouncer sidecar is currently only supported with the built-in PostgreSQL deployment (`database.postgresql.enabled=true`). External database support requires manual pgbouncer configuration.
+- Migrations bypass pgbouncer intentionally — DDL statements and `SET` commands are not compatible with transaction-mode pooling.
+
 ## Related Documentation
 
 - [Development Guide](development.md) - Database setup and migrations
