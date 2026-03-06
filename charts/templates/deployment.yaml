@@ -157,6 +157,8 @@ spec:
           value: {{ .Values.database.pgbouncer.serverIdleTimeout | quote }}
         - name: PGBOUNCER_SERVER_LIFETIME
           value: {{ .Values.database.pgbouncer.serverLifetime | quote }}
+        - name: PGBOUNCER_DATABASE
+          value: {{ .Values.database.postgresql.database }}
         - name: PGBOUNCER_IGNORE_STARTUP_PARAMETERS
           value: extra_float_digits
         readinessProbe:
@@ -171,10 +173,29 @@ spec:
           periodSeconds: 10
         resources:
           {{- toYaml .Values.database.pgbouncer.resources | nindent 10 }}
+        volumeMounts:
+        - name: pgbouncer-tmp
+          mountPath: /tmp
+        - name: pgbouncer-conf
+          mountPath: /opt/bitnami/pgbouncer/conf
+        - name: pgbouncer-logs
+          mountPath: /opt/bitnami/pgbouncer/logs
+        - name: pgbouncer-pid
+          mountPath: /opt/bitnami/pgbouncer/tmp
       {{- end }}
       volumes:
       - name: tmp
         emptyDir: {}
+      {{- if .Values.database.pgbouncer.enabled }}
+      - name: pgbouncer-tmp
+        emptyDir: {}
+      - name: pgbouncer-conf
+        emptyDir: {}
+      - name: pgbouncer-logs
+        emptyDir: {}
+      - name: pgbouncer-pid
+        emptyDir: {}
+      {{- end }}
       {{- if or .Values.database.external.enabled .Values.database.postgresql.enabled }}
       {{- if .Values.database.pgbouncer.enabled }}
       - name: secrets-direct
