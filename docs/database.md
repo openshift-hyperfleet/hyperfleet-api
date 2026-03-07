@@ -61,6 +61,46 @@ Uses GORM AutoMigrate:
 - Additive (creates missing tables, columns, indexes)
 - Run via `./bin/hyperfleet-api migrate`
 
+### Migration Coordination
+
+**Problem:** During rolling deployments, multiple pods attempt to run migrations simultaneously, causing race conditions and deployment failures.
+
+**Solution:** PostgreSQL advisory locks ensure exclusive migration execution.
+
+#### How It Works
+
+```go
+// Only one pod/process acquires the lock and runs migrations
+// Others wait until the lock is released
+db.MigrateWithLock(ctx, factory)
+```
+
+**Implementation:**
+1. Pod acquires advisory lock via `pg_advisory_xact_lock(hash("migrations"), hash("Migrations"))`
+2. Lock holder runs migrations exclusively
+3. Other pods block until lock is released
+4. Lock automatically released on transaction commit
+
+**Key Features:**
+- **Zero infrastructure overhead** - Uses native PostgreSQL locks
+- **Automatic cleanup** - Locks released on transaction end or pod crash
+- **Nested lock support** - Same lock can be acquired in nested contexts without deadlock
+- **UUID-based ownership** - Only original acquirer can unlock
+
+#### Testing Concurrent Migrations
+
+Integration tests validate concurrent behavior:
+
+```bash
+make test-integration  # Runs TestConcurrentMigrations
+```
+
+**Test coverage:**
+- `TestConcurrentMigrations` - Multiple pods running migrations simultaneously
+- `TestAdvisoryLocksConcurrently` - Lock serialization under race conditions
+- `TestAdvisoryLocksWithTransactions` - Lock + transaction interaction
+- `TestAdvisoryLockBlocking` - Lock blocking behavior
+
 ## Database Setup
 
 ```bash
