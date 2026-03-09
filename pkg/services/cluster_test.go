@@ -21,8 +21,10 @@ const (
 // testAdapterConfig creates a test adapter config with default values
 func testAdapterConfig() *config.AdapterRequirementsConfig {
 	return &config.AdapterRequirementsConfig{
-		RequiredClusterAdapters:  []string{"validation", "dns", "pullsecret", "hypershift"},
-		RequiredNodePoolAdapters: []string{"validation", "hypershift"},
+		Required: config.RequiredAdapters{
+			Cluster:  []string{"validation", "dns", "pullsecret", "hypershift"},
+			Nodepool: []string{"validation", "hypershift"},
+		},
 	}
 }
 
@@ -504,7 +506,7 @@ func TestClusterAvailableReadyTransitions(t *testing.T) {
 
 	adapterConfig := testAdapterConfig()
 	// Keep this small so we can cover transitions succinctly.
-	adapterConfig.RequiredClusterAdapters = []string{"validation", "dns"}
+	adapterConfig.Required.Cluster = []string{"validation", "dns"}
 
 	service := NewClusterService(clusterDao, adapterStatusDao, adapterConfig)
 
@@ -657,7 +659,7 @@ func TestClusterStaleAdapterStatusUpdatePolicy(t *testing.T) {
 	adapterStatusDao := newMockAdapterStatusDao()
 
 	adapterConfig := testAdapterConfig()
-	adapterConfig.RequiredClusterAdapters = []string{"validation", "dns"}
+	adapterConfig.Required.Cluster = []string{"validation", "dns"}
 
 	service := NewClusterService(clusterDao, adapterStatusDao, adapterConfig)
 
@@ -734,7 +736,7 @@ func TestClusterSyntheticTimestampsStableWithoutAdapterStatus(t *testing.T) {
 	adapterStatusDao := newMockAdapterStatusDao()
 
 	adapterConfig := testAdapterConfig()
-	adapterConfig.RequiredClusterAdapters = []string{"validation"}
+	adapterConfig.Required.Cluster = []string{"validation"}
 
 	service := NewClusterService(clusterDao, adapterStatusDao, adapterConfig)
 

@@ -212,7 +212,7 @@ func (s *sqlClusterService) UpdateClusterStatusFromAdapters(
 	availableCondition, readyCondition := BuildSyntheticConditions(
 		cluster.StatusConditions,
 		adapterStatuses,
-		s.adapterConfig.RequiredClusterAdapters,
+		s.adapterConfig.RequiredClusterAdapters(),
 		cluster.Generation,
 		now,
 	)

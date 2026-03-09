@@ -21,20 +21,24 @@ func (e *integrationTestingEnvImpl) OverrideDatabase(c *Database) error {
 
 func (e *integrationTestingEnvImpl) OverrideConfig(c *config.ApplicationConfig) error {
 	// Support a one-off env to allow enabling db debug in testing
-	if os.Getenv("DB_DEBUG") == "true" {
+	if os.Getenv("DB_DEBUG") == "true" { //nolint:goconst // Environment variable check
 		c.Database.Debug = true
 	}
 
-	// Integration tests use testcontainers — set defaults directly instead of reading from secret files
-	c.Database.HostFile = ""
-	c.Database.PortFile = ""
-	c.Database.NameFile = ""
-	c.Database.UsernameFile = ""
-	c.Database.PasswordFile = ""
+	// Integration tests use testcontainers — set defaults directly
 	c.Database.Name = "hyperfleet_test"
 	c.Database.Username = "test"
 	c.Database.Password = "test"
+	c.Database.Host = "localhost"
 	c.Database.Port = 5432
+
+	// Ensure SSL mode is set to disable for testing
+	if c.Database.SSL.Mode == "" {
+		c.Database.SSL.Mode = SSLModeDisable
+	}
+
+	// Enable OCM mocks for integration testing (no real OCM connection needed)
+	c.OCM.Mock.Enabled = true
 
 	return nil
 }
@@ -52,14 +56,7 @@ func (e *integrationTestingEnvImpl) OverrideClients(c *Clients) error {
 }
 
 func (e *integrationTestingEnvImpl) Flags() map[string]string {
-	return map[string]string{
-		"v":                    "0",
-		"logtostderr":          "true",
-		"ocm-base-url":         "https://api.integration.openshift.com",
-		"enable-https":         "false",
-		"enable-metrics-https": "false",
-		"enable-authz":         "true",
-		"ocm-debug":            "false",
-		"enable-ocm-mock":      "true",
-	}
+	// Return empty map - new config system has appropriate defaults
+	// and OverrideConfig() sets test-specific values programmatically
+	return map[string]string{}
 }

@@ -19,6 +19,7 @@ import (
 )
 
 const slowQueryThreshold = 200 * time.Millisecond
+const disable = "disable"
 
 type Default struct {
 	config *config.DatabaseConfig
@@ -52,7 +53,7 @@ func (f *Default) Init(config *config.DatabaseConfig) {
 		)
 
 		// Open connection to DB via standard library
-		dbx, err = sql.Open(config.Dialect, config.ConnectionString(config.SSLMode != disable))
+		dbx, err = sql.Open(config.Dialect, config.ConnectionString(config.SSLMode() != disable))
 		if err != nil {
 			dbx, err = sql.Open(config.Dialect, config.ConnectionString(false))
 			if err != nil {
@@ -60,7 +61,7 @@ func (f *Default) Init(config *config.DatabaseConfig) {
 					"SQL failed to connect to %s database %s with connection string: %s\nError: %s",
 					config.Dialect,
 					config.Name,
-					config.LogSafeConnectionString(config.SSLMode != disable),
+					config.LogSafeConnectionString(config.SSLMode() != disable),
 					err.Error(),
 				))
 			}
@@ -94,28 +95,28 @@ func (f *Default) Init(config *config.DatabaseConfig) {
 			if err == nil {
 				break
 			}
-			if attempt >= config.ConnRetryAttempts {
+			if attempt >= config.Pool.ConnRetryAttempts {
 				panic(fmt.Sprintf(
 					"GORM failed to connect to %s database %s with connection string: %s\nError: %s",
 					config.Dialect,
 					config.Name,
-					config.LogSafeConnectionString(config.SSLMode != disable),
+					config.LogSafeConnectionString(config.SSLMode() != disable),
 					err.Error(),
 				))
 			}
 			logger.With(context.Background(),
 				"retry", attempt+1,
-				"max_retries", config.ConnRetryAttempts,
-				"retry_interval", config.ConnRetryInterval,
+				"max_retries", config.Pool.ConnRetryAttempts,
+				"retry_interval", config.Pool.ConnRetryInterval,
 			).WithError(err).Warn("Database connection failed, retrying...")
-			time.Sleep(config.ConnRetryInterval)
+			time.Sleep(config.Pool.ConnRetryInterval)
 
 			// Close the existing handle before re-opening to avoid leaking connections
 			if dbx != nil {
 				_ = dbx.Close()
 			}
 			// Re-open sql.DB for the next attempt since the previous handle was closed above
-			dbx, err = sql.Open(config.Dialect, config.ConnectionString(config.SSLMode != disable))
+			dbx, err = sql.Open(config.Dialect, config.ConnectionString(config.SSLMode() != disable))
 			if err != nil {
 				dbx, err = sql.Open(config.Dialect, config.ConnectionString(false))
 				if err != nil {
@@ -145,11 +146,13 @@ func (f *Default) Init(config *config.DatabaseConfig) {
 	})
 }
 
+// applyPoolSettings configures database connection pool settings
+// Uses configuration from HYPERFLEET-694 for connection lifecycle management
 func applyPoolSettings(db *sql.DB, cfg *config.DatabaseConfig) {
-	db.SetMaxOpenConns(cfg.MaxOpenConnections)
-	db.SetConnMaxLifetime(cfg.ConnMaxLifetime)
-	db.SetConnMaxIdleTime(cfg.ConnMaxIdleTime)
-	db.SetMaxIdleConns(cfg.MaxIdleConnections)
+	db.SetMaxOpenConns(cfg.Pool.MaxConnections)
+	db.SetMaxIdleConns(cfg.Pool.MaxIdleConnections)
+	db.SetConnMaxLifetime(cfg.Pool.ConnMaxLifetime)
+	db.SetConnMaxIdleTime(cfg.Pool.ConnMaxIdleTime)
 }
 
 func (f *Default) DirectDB() *sql.DB {
