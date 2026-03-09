@@ -1,156 +1,135 @@
 package config
 
 import (
+	"context"
 	"testing"
 
 	. "github.com/onsi/gomega"
+	"github.com/spf13/cobra"
 )
 
-func TestNewAdapterRequirementsConfig_MissingClusterAdapters(t *testing.T) {
+// Test that NewAdapterRequirementsConfig returns default empty config
+func TestNewAdapterRequirementsConfig_ReturnsDefaults(t *testing.T) {
 	RegisterTestingT(t)
 
-	// Ensure env vars are not set
-	t.Setenv("HYPERFLEET_CLUSTER_ADAPTERS", "")
-	t.Setenv("HYPERFLEET_NODEPOOL_ADAPTERS", `["validation"]`)
+	config := NewAdapterRequirementsConfig()
 
-	_, err := NewAdapterRequirementsConfig()
-
-	Expect(err).To(HaveOccurred())
-	Expect(err.Error()).To(ContainSubstring("HYPERFLEET_CLUSTER_ADAPTERS"))
-	Expect(err.Error()).To(ContainSubstring("required"))
+	Expect(config).NotTo(BeNil())
+	Expect(config.RequiredClusterAdapters()).To(Equal([]string{}))
+	Expect(config.RequiredNodePoolAdapters()).To(Equal([]string{}))
 }
 
-func TestNewAdapterRequirementsConfig_MissingNodePoolAdapters(t *testing.T) {
+// Test loading adapter config via ConfigLoader with valid JSON env vars
+func TestConfigLoader_AdaptersFromEnv(t *testing.T) {
 	RegisterTestingT(t)
 
-	t.Setenv("HYPERFLEET_CLUSTER_ADAPTERS", `["validation"]`)
-	t.Setenv("HYPERFLEET_NODEPOOL_ADAPTERS", "")
+	// Set minimal test environment
+	SetMinimalTestEnv(t)
 
-	_, err := NewAdapterRequirementsConfig()
+	// Set environment variables for adapters
+	t.Setenv("HYPERFLEET_ADAPTERS_REQUIRED_CLUSTER", `["validation","dns"]`)
+	t.Setenv("HYPERFLEET_ADAPTERS_REQUIRED_NODEPOOL", `["validation","hypershift"]`)
 
-	Expect(err).To(HaveOccurred())
-	Expect(err.Error()).To(ContainSubstring("HYPERFLEET_NODEPOOL_ADAPTERS"))
-	Expect(err.Error()).To(ContainSubstring("required"))
-}
+	loader := NewConfigLoader()
+	cmd := &cobra.Command{}
+	ctx := context.Background()
 
-func TestNewAdapterRequirementsConfig_MissingBothAdapters(t *testing.T) {
-	RegisterTestingT(t)
-
-	t.Setenv("HYPERFLEET_CLUSTER_ADAPTERS", "")
-	t.Setenv("HYPERFLEET_NODEPOOL_ADAPTERS", "")
-
-	_, err := NewAdapterRequirementsConfig()
-
-	Expect(err).To(HaveOccurred())
-	Expect(err.Error()).To(ContainSubstring("HYPERFLEET_CLUSTER_ADAPTERS"))
-}
-
-func TestLoadFromEnv_ClusterAdapters(t *testing.T) {
-	RegisterTestingT(t)
-
-	t.Setenv("HYPERFLEET_CLUSTER_ADAPTERS", `["validation","dns"]`)
-	t.Setenv("HYPERFLEET_NODEPOOL_ADAPTERS", `["validation","hypershift"]`)
-
-	config, err := NewAdapterRequirementsConfig()
+	// Load config
+	appConfig, err := loader.Load(ctx, cmd)
 
 	Expect(err).NotTo(HaveOccurred())
-	Expect(config.RequiredClusterAdapters).To(Equal([]string{
+	Expect(appConfig.Adapters).NotTo(BeNil())
+	Expect(appConfig.Adapters.RequiredClusterAdapters()).To(Equal([]string{
 		"validation",
 		"dns",
 	}))
-	Expect(config.RequiredNodePoolAdapters).To(Equal([]string{
+	Expect(appConfig.Adapters.RequiredNodePoolAdapters()).To(Equal([]string{
 		"validation",
 		"hypershift",
 	}))
 }
 
-func TestLoadFromEnv_BothAdapters(t *testing.T) {
+// Test loading adapter config with single adapter
+func TestConfigLoader_AdaptersSingleValue(t *testing.T) {
 	RegisterTestingT(t)
 
-	t.Setenv("HYPERFLEET_CLUSTER_ADAPTERS", `["validation","dns"]`)
-	t.Setenv("HYPERFLEET_NODEPOOL_ADAPTERS", `["validation"]`)
+	SetMinimalTestEnv(t)
 
-	config, err := NewAdapterRequirementsConfig()
+	t.Setenv("HYPERFLEET_ADAPTERS_REQUIRED_CLUSTER", `["validation"]`)
+	t.Setenv("HYPERFLEET_ADAPTERS_REQUIRED_NODEPOOL", `["hypershift"]`)
+
+	loader := NewConfigLoader()
+	cmd := &cobra.Command{}
+	ctx := context.Background()
+
+	appConfig, err := loader.Load(ctx, cmd)
 
 	Expect(err).NotTo(HaveOccurred())
-	Expect(config.RequiredClusterAdapters).To(Equal([]string{
-		"validation",
-		"dns",
-	}))
-	Expect(config.RequiredNodePoolAdapters).To(Equal([]string{
-		"validation",
-	}))
+	Expect(appConfig.Adapters.RequiredClusterAdapters()).To(Equal([]string{"validation"}))
+	Expect(appConfig.Adapters.RequiredNodePoolAdapters()).To(Equal([]string{"hypershift"}))
 }
 
-func TestLoadFromEnv_EmptyArray(t *testing.T) {
+// Test loading adapter config with empty arrays
+func TestConfigLoader_AdaptersEmptyArrays(t *testing.T) {
 	RegisterTestingT(t)
 
-	t.Setenv("HYPERFLEET_CLUSTER_ADAPTERS", `[]`)
-	t.Setenv("HYPERFLEET_NODEPOOL_ADAPTERS", `[]`)
+	SetMinimalTestEnv(t)
 
-	config, err := NewAdapterRequirementsConfig()
+	t.Setenv("HYPERFLEET_ADAPTERS_REQUIRED_CLUSTER", `[]`)
+	t.Setenv("HYPERFLEET_ADAPTERS_REQUIRED_NODEPOOL", `[]`)
+
+	loader := NewConfigLoader()
+	cmd := &cobra.Command{}
+	ctx := context.Background()
+
+	appConfig, err := loader.Load(ctx, cmd)
 
 	Expect(err).NotTo(HaveOccurred())
-	Expect(config.RequiredClusterAdapters).To(Equal([]string{}))
-	Expect(config.RequiredNodePoolAdapters).To(Equal([]string{}))
+	Expect(appConfig.Adapters.RequiredClusterAdapters()).To(Equal([]string{}))
+	Expect(appConfig.Adapters.RequiredNodePoolAdapters()).To(Equal([]string{}))
 }
 
-func TestLoadFromEnv_InvalidJSON_ClusterAdapters(t *testing.T) {
+// Test loading adapter config with invalid JSON should fail
+func TestConfigLoader_AdaptersInvalidJSON(t *testing.T) {
 	RegisterTestingT(t)
 
-	t.Setenv("HYPERFLEET_CLUSTER_ADAPTERS", `not-valid-json`)
-	t.Setenv("HYPERFLEET_NODEPOOL_ADAPTERS", `["validation"]`)
+	SetMinimalTestEnv(t)
 
-	_, err := NewAdapterRequirementsConfig()
+	t.Setenv("HYPERFLEET_ADAPTERS_REQUIRED_CLUSTER", `not-valid-json`)
+
+	loader := NewConfigLoader()
+	cmd := &cobra.Command{}
+	ctx := context.Background()
+
+	_, err := loader.Load(ctx, cmd)
 
 	Expect(err).To(HaveOccurred())
-	Expect(err.Error()).To(ContainSubstring("failed to parse HYPERFLEET_CLUSTER_ADAPTERS"))
+	Expect(err.Error()).To(ContainSubstring("failed to parse"))
+	Expect(err.Error()).To(ContainSubstring("HYPERFLEET_ADAPTERS_REQUIRED_CLUSTER"))
 }
 
-func TestLoadFromEnv_InvalidJSON_NodePoolAdapters(t *testing.T) {
+// Test loading adapter config with custom adapter names
+func TestConfigLoader_AdaptersCustomNames(t *testing.T) {
 	RegisterTestingT(t)
 
-	t.Setenv("HYPERFLEET_CLUSTER_ADAPTERS", `["validation"]`)
-	t.Setenv("HYPERFLEET_NODEPOOL_ADAPTERS", `{invalid}`)
+	SetMinimalTestEnv(t)
 
-	_, err := NewAdapterRequirementsConfig()
+	t.Setenv("HYPERFLEET_ADAPTERS_REQUIRED_CLUSTER", `["custom-adapter-1","custom-adapter-2","test"]`)
+	t.Setenv("HYPERFLEET_ADAPTERS_REQUIRED_NODEPOOL", `["custom-np-adapter"]`)
 
-	Expect(err).To(HaveOccurred())
-	Expect(err.Error()).To(ContainSubstring("failed to parse HYPERFLEET_NODEPOOL_ADAPTERS"))
-}
+	loader := NewConfigLoader()
+	cmd := &cobra.Command{}
+	ctx := context.Background()
 
-func TestLoadFromEnv_SingleAdapter(t *testing.T) {
-	RegisterTestingT(t)
-
-	t.Setenv("HYPERFLEET_CLUSTER_ADAPTERS", `["validation"]`)
-	t.Setenv("HYPERFLEET_NODEPOOL_ADAPTERS", `["hypershift"]`)
-
-	config, err := NewAdapterRequirementsConfig()
+	appConfig, err := loader.Load(ctx, cmd)
 
 	Expect(err).NotTo(HaveOccurred())
-	Expect(config.RequiredClusterAdapters).To(Equal([]string{
-		"validation",
-	}))
-	Expect(config.RequiredNodePoolAdapters).To(Equal([]string{
-		"hypershift",
-	}))
-}
-
-func TestLoadFromEnv_CustomAdapterNames(t *testing.T) {
-	RegisterTestingT(t)
-
-	t.Setenv("HYPERFLEET_CLUSTER_ADAPTERS", `["custom-adapter-1","custom-adapter-2","test"]`)
-	t.Setenv("HYPERFLEET_NODEPOOL_ADAPTERS", `["custom-np-adapter"]`)
-
-	config, err := NewAdapterRequirementsConfig()
-
-	Expect(err).NotTo(HaveOccurred())
-	Expect(config.RequiredClusterAdapters).To(Equal([]string{
+	Expect(appConfig.Adapters.RequiredClusterAdapters()).To(Equal([]string{
 		"custom-adapter-1",
 		"custom-adapter-2",
 		"test",
 	}))
-	Expect(config.RequiredNodePoolAdapters).To(Equal([]string{
+	Expect(appConfig.Adapters.RequiredNodePoolAdapters()).To(Equal([]string{
 		"custom-np-adapter",
 	}))
 }

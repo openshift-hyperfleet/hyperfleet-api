@@ -1,34 +1,49 @@
 package config
 
 import (
+	"net"
+	"strconv"
 	"time"
-
-	"github.com/spf13/pflag"
 )
 
+// MetricsConfig holds Prometheus metrics server configuration
+// Follows HyperFleet Configuration Standard
 type MetricsConfig struct {
-	BindAddress                   string        `json:"bind_address"`
-	EnableHTTPS                   bool          `json:"enable_https"`
-	LabelMetricsInclusionDuration time.Duration `json:"label_metrics_inclusion_duration"`
+	Host                             string        `mapstructure:"host" json:"host" validate:"required"`
+	Port                             int           `mapstructure:"port" json:"port" validate:"required,min=1,max=65535"`
+	TLS                              TLSConfig     `mapstructure:"tls" json:"tls" validate:"required"`
+	LabelMetricsInclusionDuration    time.Duration `mapstructure:"label_metrics_inclusion_duration" json:"label_metrics_inclusion_duration" validate:"required"` //nolint:lll
 }
 
+// NewMetricsConfig returns default MetricsConfig values
+// These defaults can be overridden by config file, env vars, or CLI flags
 func NewMetricsConfig() *MetricsConfig {
 	return &MetricsConfig{
-		BindAddress:                   "localhost:9090",
-		EnableHTTPS:                   false,
-		LabelMetricsInclusionDuration: 7 * 24 * time.Hour,
+		Host: "localhost",
+		Port: 9090,
+		TLS: TLSConfig{
+			Enabled: false,
+		},
+		LabelMetricsInclusionDuration: 168 * time.Hour, // 7 days
 	}
 }
 
-func (s *MetricsConfig) AddFlags(fs *pflag.FlagSet) {
-	fs.StringVar(&s.BindAddress, "metrics-server-bindaddress", s.BindAddress, "Metrics server bind adddress")
-	fs.BoolVar(&s.EnableHTTPS, "enable-metrics-https", s.EnableHTTPS, "Enable HTTPS for metrics server")
-	fs.DurationVar(
-		&s.LabelMetricsInclusionDuration, "label-metrics-inclusion-duration", 7*24*time.Hour,
-		"A cluster's last telemetry date needs be within in this duration in order to have labels collected",
-	)
+// ============================================================
+// BACKWARD COMPATIBILITY HELPERS
+// ============================================================
+
+// BindAddress returns bind address in host:port format (legacy accessor)
+// Uses net.JoinHostPort to correctly handle IPv6 addresses
+func (m *MetricsConfig) BindAddress() string {
+	return net.JoinHostPort(m.Host, strconv.Itoa(m.Port))
 }
 
-func (s *MetricsConfig) ReadFiles() error {
-	return nil
+// EnableHTTPS returns TLS enabled flag (legacy accessor)
+func (m *MetricsConfig) EnableHTTPS() bool {
+	return m.TLS.Enabled
+}
+
+// GetLabelMetricsInclusionDuration returns label metrics inclusion duration (legacy accessor)
+func (m *MetricsConfig) GetLabelMetricsInclusionDuration() time.Duration {
+	return m.LabelMetricsInclusionDuration
 }

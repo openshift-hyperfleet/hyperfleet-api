@@ -1,7 +1,7 @@
 package config
 
 import (
-	"flag"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,16 +11,20 @@ import (
 	"github.com/spf13/pflag"
 )
 
+// ApplicationConfig holds all application configuration
+// Follows HyperFleet Configuration Standard with validation and structured marshaling
 type ApplicationConfig struct {
-	Server   *ServerConfig             `json:"server"`
-	Metrics  *MetricsConfig            `json:"metrics"`
-	Health   *HealthConfig             `json:"health"`
-	Database *DatabaseConfig           `json:"database"`
-	OCM      *OCMConfig                `json:"ocm"`
-	Logging  *LoggingConfig            `json:"logging"`
-	Adapters *AdapterRequirementsConfig `json:"adapters"`
+	Server   *ServerConfig              `mapstructure:"server" json:"server" validate:"required"`
+	Metrics  *MetricsConfig             `mapstructure:"metrics" json:"metrics" validate:"required"`
+	Health   *HealthConfig              `mapstructure:"health" json:"health" validate:"required"`
+	Database *DatabaseConfig            `mapstructure:"database" json:"database" validate:"required"`
+	OCM      *OCMConfig                 `mapstructure:"ocm" json:"ocm" validate:"required"`
+	Logging  *LoggingConfig             `mapstructure:"logging" json:"logging" validate:"required"`
+	Adapters *AdapterRequirementsConfig `mapstructure:"adapters" json:"adapters" validate:"required"`
 }
 
+// NewApplicationConfig returns default ApplicationConfig with all sub-configs initialized
+// These defaults can be overridden by config file, env vars, or CLI flags
 func NewApplicationConfig() *ApplicationConfig {
 	return &ApplicationConfig{
 		Server:   NewServerConfig(),
@@ -29,50 +33,128 @@ func NewApplicationConfig() *ApplicationConfig {
 		Database: NewDatabaseConfig(),
 		OCM:      NewOCMConfig(),
 		Logging:  NewLoggingConfig(),
+		Adapters: NewAdapterRequirementsConfig(),
 	}
 }
 
-func (c *ApplicationConfig) AddFlags(flagset *pflag.FlagSet) {
-	flagset.AddGoFlagSet(flag.CommandLine)
-	c.Server.AddFlags(flagset)
-	c.Metrics.AddFlags(flagset)
-	c.Health.AddFlags(flagset)
-	c.Database.AddFlags(flagset)
-	c.OCM.AddFlags(flagset)
-	c.Logging.AddFlags(flagset)
+// ============================================================
+// BACKWARD COMPATIBILITY METHODS
+// These methods maintain compatibility with old code
+// They are deprecated and will be removed after full migration
+// ============================================================
+
+// AddFlags adds configuration flags using the old interface
+//
+// Deprecated: Use config.AddAllConfigFlags(cmd) instead
+func (c *ApplicationConfig) AddFlags(flagset interface{}) {
+	// This method is called by environments/framework.go for the old config system
+	// It's a no-op since flags are added by AddAllConfigFlags in servecmd
+	// Flag values are populated by LoadFromFlags() after parsing
 }
 
-// LoadAdapters initializes the adapter configuration from environment variables.
-// This should be called once during application startup.
-func (c *ApplicationConfig) LoadAdapters() error {
-	adapters, err := NewAdapterRequirementsConfig()
-	if err != nil {
-		return err
+// LoadFromFlags reads flag values from the FlagSet and populates the config struct
+// This is used by the old config system to read flag values after cobra parses them
+func (c *ApplicationConfig) LoadFromFlags(flags *pflag.FlagSet) error {
+	// Database flags
+	if v, err := flags.GetString("db-host"); err == nil && flags.Changed("db-host") {
+		c.Database.Host = v
 	}
-	c.Adapters = adapters
+	if v, err := flags.GetInt("db-port"); err == nil && flags.Changed("db-port") {
+		c.Database.Port = v
+	}
+	if v, err := flags.GetString("db-username"); err == nil && flags.Changed("db-username") {
+		c.Database.Username = v
+	}
+	if v, err := flags.GetString("db-password"); err == nil && flags.Changed("db-password") {
+		c.Database.Password = v
+	}
+	if v, err := flags.GetString("db-name"); err == nil && flags.Changed("db-name") {
+		c.Database.Name = v
+	}
+	if v, err := flags.GetString("db-ssl-mode"); err == nil && flags.Changed("db-ssl-mode") {
+		c.Database.SSL.Mode = v
+	}
+	if v, err := flags.GetBool("db-debug"); err == nil && flags.Changed("db-debug") {
+		c.Database.Debug = v
+	}
+	if v, err := flags.GetInt("db-max-open-connections"); err == nil && flags.Changed("db-max-open-connections") {
+		c.Database.Pool.MaxConnections = v
+	}
+	// Server flags
+	if v, err := flags.GetBool("server-jwt-enabled"); err == nil && flags.Changed("server-jwt-enabled") {
+		c.Server.JWT.Enabled = v
+	}
+	if v, err := flags.GetBool("server-authz-enabled"); err == nil && flags.Changed("server-authz-enabled") {
+		c.Server.Authz.Enabled = v
+	}
 	return nil
 }
 
+// ReadFiles loads configuration from files using the old interface
+//
+// Deprecated: Configuration loading is now handled by ConfigLoader
 func (c *ApplicationConfig) ReadFiles() []string {
-	readFiles := []struct {
-		f    func() error
-		name string
-	}{
-		{c.Server.ReadFiles, "Server"},
-		{c.Database.ReadFiles, "Database"},
-		{c.OCM.ReadFiles, "OCM"},
-		{c.Metrics.ReadFiles, "Metrics"},
-		{c.Health.ReadFiles, "Health"},
-		{c.Logging.ReadFiles, "Logging"},
+	// This method is called by environments/framework.go
+	// In the new system, file loading is handled by ConfigLoader
+	if IsNewConfigEnabled() {
+		return []string{} // New system handles file loading
 	}
+
+	// Old system: read from files
 	var messages []string
-	for _, rf := range readFiles {
-		if err := rf.f(); err != nil {
-			msg := fmt.Sprintf("%s %s", rf.name, err.Error())
-			messages = append(messages, msg)
-		}
+	if err := c.Database.ReadFiles(); err != nil {
+		messages = append(messages, fmt.Sprintf("Database.ReadFiles: %s", err.Error()))
 	}
+	// Other config sections don't have ReadFiles() methods yet
 	return messages
+}
+
+// LoadAdapters initializes adapter configuration using the old interface
+//
+// Deprecated: Adapters are now loaded via Viper in the new system
+func (c *ApplicationConfig) LoadAdapters() error {
+	// This method is called by environments/framework.go
+	// In the old system, adapters were loaded from env vars
+	// In the new system, they're loaded via Viper
+	// If using old system, load from env vars; if new system, already loaded
+	if IsNewConfigEnabled() {
+		// Already loaded by ConfigLoader
+		return nil
+	}
+
+	// Old system: load from environment variables
+	clusterAdapters := os.Getenv("HYPERFLEET_CLUSTER_ADAPTERS")
+	nodepoolAdapters := os.Getenv("HYPERFLEET_NODEPOOL_ADAPTERS")
+
+	// If neither is configured, return early (this is OK for some environments)
+	if clusterAdapters == "" && nodepoolAdapters == "" {
+		return nil
+	}
+
+	// Initialize adapters config before any assignment
+	if c.Adapters == nil {
+		c.Adapters = NewAdapterRequirementsConfig()
+	}
+
+	// Parse cluster adapters if provided
+	if clusterAdapters != "" {
+		var cluster []string
+		if err := json.Unmarshal([]byte(clusterAdapters), &cluster); err != nil {
+			return fmt.Errorf("failed to parse HYPERFLEET_CLUSTER_ADAPTERS: %w", err)
+		}
+		c.Adapters.Required.Cluster = cluster
+	}
+
+	// Parse nodepool adapters if provided
+	if nodepoolAdapters != "" {
+		var nodepool []string
+		if err := json.Unmarshal([]byte(nodepoolAdapters), &nodepool); err != nil {
+			return fmt.Errorf("failed to parse HYPERFLEET_NODEPOOL_ADAPTERS: %w", err)
+		}
+		c.Adapters.Required.Nodepool = nodepool
+	}
+
+	return nil
 }
 
 // Read the contents of file into integer value

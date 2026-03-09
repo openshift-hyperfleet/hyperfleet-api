@@ -1,37 +1,34 @@
 package config
 
 import (
-	"os"
-	"strconv"
 	"strings"
-
-	"github.com/spf13/pflag"
 )
 
 // LoggingConfig holds logging configuration
+// Follows HyperFleet Configuration Standard
 type LoggingConfig struct {
-	Level  string `json:"log_level"`
-	Format string `json:"log_format"`
-	Output string `json:"log_output"`
-
-	OTel    OTelConfig    `json:"otel"`
-	Masking MaskingConfig `json:"masking"`
+	Level   string        `mapstructure:"level" json:"level" validate:"required,oneof=debug info warn error"`
+	Format  string        `mapstructure:"format" json:"format" validate:"required,oneof=json text"`
+	Output  string        `mapstructure:"output" json:"output" validate:"required,oneof=stdout stderr"`
+	OTel    OTelConfig    `mapstructure:"otel" json:"otel" validate:"required"`
+	Masking MaskingConfig `mapstructure:"masking" json:"masking" validate:"required"`
 }
 
 // OTelConfig holds OpenTelemetry configuration
 type OTelConfig struct {
-	Enabled      bool    `json:"enabled"`
-	SamplingRate float64 `json:"sampling_rate"`
+	Enabled      bool    `mapstructure:"enabled" json:"enabled"`
+	SamplingRate float64 `mapstructure:"sampling_rate" json:"sampling_rate" validate:"gte=0,lte=1"`
 }
 
-// MaskingConfig holds data masking configuration
+// MaskingConfig holds log masking configuration
 type MaskingConfig struct {
-	Enabled          bool   `json:"enabled"`
-	SensitiveHeaders string `json:"sensitive_headers"`
-	SensitiveFields  string `json:"sensitive_fields"`
+	Enabled bool     `mapstructure:"enabled" json:"enabled"`
+	Headers []string `mapstructure:"headers" json:"headers"`
+	Fields  []string `mapstructure:"fields" json:"fields"`
 }
 
-// NewLoggingConfig creates a new LoggingConfig with default values
+// NewLoggingConfig returns default LoggingConfig values
+// These defaults can be overridden by config file, env vars, or CLI flags
 func NewLoggingConfig() *LoggingConfig {
 	return &LoggingConfig{
 		Level:  "info",
@@ -42,94 +39,90 @@ func NewLoggingConfig() *LoggingConfig {
 			SamplingRate: 1.0,
 		},
 		Masking: MaskingConfig{
-			Enabled:          true,
-			SensitiveHeaders: "Authorization,X-API-Key,Cookie,X-Auth-Token",
-			SensitiveFields:  "password,secret,token,api_key,access_token,refresh_token",
+			Enabled: true,
+			Headers: []string{
+				"Authorization",
+				"X-API-Key",
+				"Cookie",
+				"X-Auth-Token",
+				"X-Forwarded-Authorization",
+			},
+			Fields: []string{
+				"password",
+				"secret",
+				"token",
+				"api_key",
+				"access_token",
+				"refresh_token",
+				"client_secret",
+			},
 		},
 	}
 }
 
-// AddFlags adds CLI flags for core logging configuration
-func (l *LoggingConfig) AddFlags(fs *pflag.FlagSet) {
-	fs.StringVar(&l.Level, "log-level", l.Level, "Log level (debug, info, warn, error)")
-	fs.StringVar(&l.Format, "log-format", l.Format, "Log format (text, json)")
-	fs.StringVar(&l.Output, "log-output", l.Output, "Log output (stdout, stderr)")
-}
+// ============================================================
+// HELPER METHODS
+// ============================================================
 
-// ReadFiles satisfies the config interface
-func (l *LoggingConfig) ReadFiles() error {
-	return nil
-}
-
-// BindEnv reads configuration from environment variables
-// Priority: flags > env vars > defaults
-// If fs is nil, all env vars are applied (backward compatibility)
-func (l *LoggingConfig) BindEnv(fs *pflag.FlagSet) {
-	// Fields with flags: only apply env if flag not set
-	if val := os.Getenv("LOG_LEVEL"); val != "" {
-		if fs == nil || !fs.Changed("log-level") {
-			l.Level = val
-		}
-	}
-	if val := os.Getenv("LOG_FORMAT"); val != "" {
-		if fs == nil || !fs.Changed("log-format") {
-			l.Format = val
-		}
-	}
-	if val := os.Getenv("LOG_OUTPUT"); val != "" {
-		if fs == nil || !fs.Changed("log-output") {
-			l.Output = val
-		}
-	}
-
-	// Fields without flags: always apply env vars
-	if val := os.Getenv("OTEL_ENABLED"); val != "" {
-		enabled, err := strconv.ParseBool(val)
-		if err == nil {
-			l.OTel.Enabled = enabled
-		}
-	}
-	if val := os.Getenv("OTEL_SAMPLING_RATE"); val != "" {
-		rate, err := strconv.ParseFloat(val, 64)
-		if err == nil && rate >= 0.0 && rate <= 1.0 {
-			l.OTel.SamplingRate = rate
-		}
-	}
-
-	if val := os.Getenv("MASKING_ENABLED"); val != "" {
-		enabled, err := strconv.ParseBool(val)
-		if err == nil {
-			l.Masking.Enabled = enabled
-		}
-	}
-	if val := os.Getenv("MASKING_HEADERS"); val != "" {
-		l.Masking.SensitiveHeaders = val
-	}
-	if val := os.Getenv("MASKING_FIELDS"); val != "" {
-		l.Masking.SensitiveFields = val
-	}
-}
-
-// GetSensitiveHeadersList parses comma-separated sensitive headers
+// GetSensitiveHeadersList returns list of sensitive headers
+// This is used by logger for masking
 func (l *LoggingConfig) GetSensitiveHeadersList() []string {
-	if l.Masking.SensitiveHeaders == "" {
-		return []string{}
-	}
-	headers := strings.Split(l.Masking.SensitiveHeaders, ",")
-	for i := range headers {
-		headers[i] = strings.TrimSpace(headers[i])
-	}
-	return headers
+	return l.Masking.Headers
 }
 
-// GetSensitiveFieldsList parses comma-separated sensitive fields
+// GetSensitiveFieldsList returns list of sensitive fields
+// This is used by logger for masking
 func (l *LoggingConfig) GetSensitiveFieldsList() []string {
-	if l.Masking.SensitiveFields == "" {
-		return []string{}
+	return l.Masking.Fields
+}
+
+// ============================================================
+// BACKWARD COMPATIBILITY HELPERS
+// For old configuration system that uses comma-separated strings
+// ============================================================
+
+// GetSensitiveHeadersString returns headers as comma-separated string (legacy)
+func (l *LoggingConfig) GetSensitiveHeadersString() string {
+	return strings.Join(l.Masking.Headers, ",")
+}
+
+// GetSensitiveFieldsString returns fields as comma-separated string (legacy)
+func (l *LoggingConfig) GetSensitiveFieldsString() string {
+	return strings.Join(l.Masking.Fields, ",")
+}
+
+// SetSensitiveHeadersFromString sets headers from comma-separated string (legacy)
+func (l *LoggingConfig) SetSensitiveHeadersFromString(headers string) {
+	if headers == "" {
+		l.Masking.Headers = []string{}
+		return
 	}
-	fields := strings.Split(l.Masking.SensitiveFields, ",")
-	for i := range fields {
-		fields[i] = strings.TrimSpace(fields[i])
+
+	parts := strings.Split(headers, ",")
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed != "" {
+			result = append(result, trimmed)
+		}
 	}
-	return fields
+	l.Masking.Headers = result
+}
+
+// SetSensitiveFieldsFromString sets fields from comma-separated string (legacy)
+func (l *LoggingConfig) SetSensitiveFieldsFromString(fields string) {
+	if fields == "" {
+		l.Masking.Fields = []string{}
+		return
+	}
+
+	parts := strings.Split(fields, ",")
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	l.Masking.Fields = result
 }
