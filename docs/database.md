@@ -102,7 +102,7 @@ On startup the API retries the database connection up to `--db-conn-retry-attemp
 
 ### Health Check Timeout
 
-The readiness probe (`/readyz`) pings the database with a separate timeout controlled by `--health-db-ping-timeout` (default 5s). This ensures health checks respond quickly even when the main connection pool is under pressure, preventing Kubernetes from restarting pods due to probe timeouts during load spikes.
+The readiness probe (`/readyz`) pings the database with a separate timeout controlled by `--health-db-ping-timeout` (default 2s). This ensures health checks respond quickly even when the main connection pool is under pressure, preventing Kubernetes from removing the pod from service endpoints due to slow readiness responses during load spikes. The default is set below the Kubernetes readiness probe `timeoutSeconds` (3s) so the Go-level timeout fires first and returns a proper 503 rather than a connection timeout.
 
 ## PgBouncer Connection Pooler
 

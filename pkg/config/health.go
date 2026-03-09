@@ -18,7 +18,7 @@ func NewHealthConfig() *HealthConfig {
 		BindAddress:     "localhost:8080",
 		EnableHTTPS:     false,
 		ShutdownTimeout: 20 * time.Second,
-		DBPingTimeout:   5 * time.Second,
+		DBPingTimeout:   2 * time.Second,
 	}
 }
 
