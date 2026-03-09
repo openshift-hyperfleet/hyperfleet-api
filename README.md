@@ -122,8 +122,14 @@ curl -X POST http://localhost:8000/api/hyperfleet/v1/clusters \
 
 # Search clusters
 curl -G http://localhost:8000/api/hyperfleet/v1/clusters \
-  --data-urlencode "search=labels.env='production'" | jq
+  --data-urlencode "search=labels.environment='production'" | jq
+
+# Search ready clusters in a specific region
+curl -G http://localhost:8000/api/hyperfleet/v1/clusters \
+  --data-urlencode "search=status.conditions.Ready='True' and labels.region='us-east'" | jq
 ```
+
+See [docs/search.md](docs/search.md) for search and filtering documentation.
 
 ## Development
 
@@ -161,6 +167,7 @@ This project uses [pre-commit](https://pre-commit.io/) for code quality checks. 
 ### Additional Resources
 
 - **[PREREQUISITES.md](PREREQUISITES.md)** - Prerequisite installation
+- **[Search and Filtering](docs/search.md)** - Guide to TSL query syntax, operators, and examples
 - **[docs/continuous-delivery-migration.md](docs/continuous-delivery-migration.md)** - CD migration guide
 - **[docs/dao.md](docs/dao.md)** - Data access patterns
 - **[docs/testcontainers.md](docs/testcontainers.md)** - Testcontainers usage
