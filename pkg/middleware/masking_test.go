@@ -85,8 +85,8 @@ func TestMaskHeaders(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := &config.LoggingConfig{
 				Masking: config.MaskingConfig{
-					Enabled:          tt.enabled,
-					SensitiveHeaders: "Authorization,X-API-Key,Cookie",
+					Enabled: tt.enabled,
+					Headers: []string{"Authorization", "X-API-Key", "Cookie"},
 				},
 			}
 			m := NewMaskingMiddleware(cfg)
@@ -237,8 +237,8 @@ func TestMaskBody(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := &config.LoggingConfig{
 				Masking: config.MaskingConfig{
-					Enabled:         tt.enabled,
-					SensitiveFields: "password,secret,token,api_key,access_token",
+					Enabled: tt.enabled,
+					Fields:  []string{"password", "secret", "token", "api_key", "access_token"},
 				},
 			}
 			m := NewMaskingMiddleware(cfg)
@@ -286,8 +286,8 @@ func TestMaskBody(t *testing.T) {
 func TestIsSensitiveHeader(t *testing.T) {
 	cfg := &config.LoggingConfig{
 		Masking: config.MaskingConfig{
-			Enabled:          true,
-			SensitiveHeaders: "Authorization,X-API-Key,Cookie",
+			Enabled: true,
+			Headers: []string{"Authorization", "X-API-Key", "Cookie"},
 		},
 	}
 	m := NewMaskingMiddleware(cfg)
@@ -319,8 +319,8 @@ func TestIsSensitiveHeader(t *testing.T) {
 func TestIsSensitiveField(t *testing.T) {
 	cfg := &config.LoggingConfig{
 		Masking: config.MaskingConfig{
-			Enabled:         true,
-			SensitiveFields: "password,secret,token,api_key",
+			Enabled: true,
+			Fields:  []string{"password", "secret", "token", "api_key"},
 		},
 	}
 	m := NewMaskingMiddleware(cfg)

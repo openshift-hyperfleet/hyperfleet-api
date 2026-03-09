@@ -52,7 +52,7 @@ func (f *Default) Init(config *config.DatabaseConfig) {
 		)
 
 		// Open connection to DB via standard library
-		dbx, err = sql.Open(config.Dialect, config.ConnectionString(config.SSLMode != disable))
+		dbx, err = sql.Open(config.Dialect, config.ConnectionString(config.SSLMode() != disable))
 		if err != nil {
 			dbx, err = sql.Open(config.Dialect, config.ConnectionString(false))
 			if err != nil {
@@ -60,12 +60,12 @@ func (f *Default) Init(config *config.DatabaseConfig) {
 					"SQL failed to connect to %s database %s with connection string: %s\nError: %s",
 					config.Dialect,
 					config.Name,
-					config.LogSafeConnectionString(config.SSLMode != disable),
+					config.LogSafeConnectionString(config.SSLMode() != disable),
 					err.Error(),
 				))
 			}
 		}
-		dbx.SetMaxOpenConns(config.MaxOpenConnections)
+		dbx.SetMaxOpenConns(config.MaxOpenConnections())
 
 		var gormLog gormlogger.Interface
 		if config.Debug {
@@ -92,7 +92,7 @@ func (f *Default) Init(config *config.DatabaseConfig) {
 				"GORM failed to connect to %s database %s with connection string: %s\nError: %s",
 				config.Dialect,
 				config.Name,
-				config.LogSafeConnectionString(config.SSLMode != disable),
+				config.LogSafeConnectionString(config.SSLMode() != disable),
 				err.Error(),
 			))
 		}

@@ -213,7 +213,7 @@ func (s *sqlNodePoolService) UpdateNodePoolStatusFromAdapters(
 	availableCondition, readyCondition := BuildSyntheticConditions(
 		nodePool.StatusConditions,
 		adapterStatuses,
-		s.adapterConfig.RequiredNodePoolAdapters,
+		s.adapterConfig.RequiredNodePoolAdapters(),
 		nodePool.Generation,
 		now,
 	)

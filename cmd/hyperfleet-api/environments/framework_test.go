@@ -24,6 +24,9 @@ func BenchmarkGetDynos(b *testing.B) {
 }
 
 func TestLoadServices(t *testing.T) {
+	// Set environment to unit_testing to use mocks
+	t.Setenv("OCM_ENV", "unit_testing")
+
 	// Set required adapter configuration for tests
 	if os.Getenv("HYPERFLEET_CLUSTER_ADAPTERS") == "" {
 		t.Setenv("HYPERFLEET_CLUSTER_ADAPTERS", `["validation","dns","pullsecret","hypershift"]`)

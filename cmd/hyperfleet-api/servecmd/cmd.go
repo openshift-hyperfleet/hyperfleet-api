@@ -13,6 +13,7 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/environments"
 	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/server"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db/db_session"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/health"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
@@ -27,7 +28,15 @@ func NewServeCommand() *cobra.Command {
 		Long:  "Serve the hyperfleet.",
 		Run:   runServe,
 	}
-	err := environments.Environment().AddFlags(cmd.PersistentFlags())
+
+	// Add new configuration system flags FIRST (for migration)
+	// These will be used when HYPERFLEET_USE_NEW_CONFIG=true
+	// Must be added before legacy system to allow flag name resolution
+	config.AddAllConfigFlags(cmd)
+
+	// Add legacy configuration flags (old system)
+	// Note: Use cmd.Flags() instead of cmd.PersistentFlags() to match new system
+	err := environments.Environment().AddFlags(cmd.Flags())
 	if err != nil {
 		logger.WithError(ctx, err).Error("Unable to add environment flags to serve command")
 		os.Exit(1)
@@ -39,19 +48,81 @@ func NewServeCommand() *cobra.Command {
 func runServe(cmd *cobra.Command, args []string) {
 	ctx := context.Background()
 
-	// Bind database environment variables BEFORE Initialize (database is initialized inside)
-	environments.Environment().Config.Database.BindEnv(cmd.PersistentFlags())
+	// ============================================================
+	// CONFIGURATION LOADING WITH MIGRATION SUPPORT
+	// ============================================================
+	// Phase 1: Select configuration system and load config
+	var finalConfig *config.ApplicationConfig
+	var oldConfig *config.ApplicationConfig
 
+	// For old config system: load flag values into config struct
+	if !config.IsNewConfigEnabled() {
+		if err := environments.Environment().Config.LoadFromFlags(cmd.Flags()); err != nil {
+			logger.WithError(ctx, err).Error("Failed to load configuration from flags")
+			os.Exit(1)
+		}
+	}
+
+	if config.IsNewConfigEnabled() {
+		logger.Info(ctx, "Using new Viper-based configuration system")
+
+		// Load old config for comparison (without full initialization)
+		oldConfig = environments.Environment().Config
+
+		// Load configuration using new system
+		loader := config.NewConfigLoader()
+		newConfig, err := loader.Load(ctx, cmd)
+		if err != nil {
+			logger.WithError(ctx, err).Error("Failed to load configuration with new system")
+			os.Exit(1)
+		}
+
+		// Apply environment-specific configuration overrides (e.g., development disables JWT/TLS)
+		// This must happen BEFORE comparison to match old system behavior
+		if err := environments.ApplyEnvironmentOverrides(newConfig); err != nil {
+			logger.WithError(ctx, err).Error("Failed to apply environment overrides")
+			os.Exit(1)
+		}
+
+		// Verify configuration equivalence for critical fields
+		if err := config.VerifyConfigEquivalence(ctx, oldConfig, newConfig); err != nil {
+			logger.WithError(ctx, err).Warn("Configuration equivalence check failed - differences detected")
+			// Log but don't fail - allow new config to be used
+		} else {
+			logger.Info(ctx, "Configuration equivalence verified - old and new systems produce same config")
+		}
+
+		finalConfig = newConfig
+	} else {
+		logger.Info(ctx, "Using legacy configuration system (set HYPERFLEET_USE_NEW_CONFIG=true to use new system)")
+		// Old system needs to read config from flags first
+		// This is handled by Initialize() which calls ReadFiles() and LoadAdapters()
+		finalConfig = environments.Environment().Config
+	}
+
+	// Phase 2: Set the selected configuration and initialize environment
+	// IMPORTANT: Set config BEFORE calling Initialize() to avoid double initialization
+	// and ensure SessionFactory, clients, services, handlers all use the correct config
+	environments.Environment().Config = finalConfig
+
+	// Initialize environment with the selected configuration
+	// This creates SessionFactory, loads clients, services, and handlers
 	err := environments.Environment().Initialize()
 	if err != nil {
 		logger.WithError(ctx, err).Error("Unable to initialize environment")
 		os.Exit(1)
 	}
 
-	// Bind logging environment variables AFTER Initialize (logger is reconfigured later in initLogger)
-	environments.Environment().Config.Logging.BindEnv(cmd.PersistentFlags())
+	if config.IsNewConfigEnabled() {
+		logger.Info(ctx, "Environment initialized successfully with new configuration")
+	}
 
+	// Phase 4: Initialize logger with configured settings
 	initLogger()
+
+	// Log effective configuration (with sensitive values redacted)
+	// This happens AFTER initLogger() so it uses the configured logger settings
+	logger.Debug(ctx, config.DumpConfig(environments.Environment().Config))
 
 	var tp *trace.TracerProvider
 	if environments.Environment().Config.Logging.OTel.Enabled {
@@ -169,9 +240,7 @@ func initLogger() {
 	// Reconfigure database logger to follow LOG_LEVEL
 	dbSessionFactory := environments.Environment().Database.SessionFactory
 	if dbSessionFactory != nil {
-		gormLevel := environments.Environment().Config.Database.GetGormLogLevel(
-			environments.Environment().Config.Logging.Level,
-		)
+		gormLevel := environments.Environment().Config.Database.SetLogLevel()
 		if reconfigurable, ok := dbSessionFactory.(db_session.LoggerReconfigurable); ok {
 			reconfigurable.ReconfigureLogger(gormLevel)
 		}

@@ -55,7 +55,7 @@ func (s *apiServer) routes() *mux.Router {
 
 	var authMiddleware auth.JWTMiddleware
 	authMiddleware = &auth.MiddlewareMock{}
-	if env().Config.Server.EnableJWT {
+	if env().Config.Server.EnableJWT() {
 		var err error
 		authMiddleware, err = auth.NewAuthMiddleware()
 		check(err, "Unable to create auth middleware")

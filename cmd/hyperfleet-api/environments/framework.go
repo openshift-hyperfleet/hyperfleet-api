@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/pflag"
@@ -56,9 +57,23 @@ func Environment() *Env {
 	return environment
 }
 
+// ApplyEnvironmentOverrides applies environment-specific configuration overrides
+// This is used by the new config system to apply environment-specific settings
+// (e.g., development environment disables JWT and TLS)
+func ApplyEnvironmentOverrides(cfg *config.ApplicationConfig) error {
+	// Read current environment from env var instead of using cached environment.Name
+	// to ensure we use the most up-to-date value
+	envName := GetEnvironmentStrFromEnv()
+	envImpl, found := environments[envName]
+	if !found {
+		return fmt.Errorf("unknown runtime environment: %s", envName)
+	}
+	return envImpl.OverrideConfig(cfg)
+}
+
 // AddFlags Adds environment flags, using the environment's config struct, to the flagset 'flags'
 func (e *Env) AddFlags(flags *pflag.FlagSet) error {
-	e.Config.AddFlags(flags)
+	e.Config.AddFlags(flags) //nolint:staticcheck // Intentional for backward compatibility with old config system
 	return setConfigDefaults(flags, environments[e.Name].Flags())
 }
 
@@ -67,6 +82,11 @@ func (e *Env) AddFlags(flags *pflag.FlagSet) error {
 // The environment does NOT handle flag parsing
 func (e *Env) Initialize() error {
 	ctx := context.Background()
+
+	// Re-read environment name from env var to support tests that set OCM_ENV after init()
+	envName := GetEnvironmentStrFromEnv()
+	e.Name = envName
+
 	logger.With(ctx, logger.FieldEnvironment, e.Name).Info("Initializing environment")
 
 	envImpl, found := environments[e.Name]
@@ -75,12 +95,18 @@ func (e *Env) Initialize() error {
 		os.Exit(1)
 	}
 
+	// For backward compatibility with old configuration system:
+	// Read database configuration from environment variables if not using new config system
+	if !config.IsNewConfigEnabled() {
+		loadDatabaseConfigFromEnv(e.Config.Database)
+	}
+
 	if err := envImpl.OverrideConfig(e.Config); err != nil {
 		logger.WithError(ctx, err).Error("Failed to configure ApplicationConfig")
 		os.Exit(1)
 	}
 
-	messages := environment.Config.ReadFiles()
+	messages := environment.Config.ReadFiles() //nolint:staticcheck // Intentional for backward compatibility
 	if len(messages) != 0 {
 		err := fmt.Errorf("%s", strings.Join(messages, "\n"))
 		logger.WithError(ctx, err).Error("Unable to read configuration files")
@@ -88,7 +114,7 @@ func (e *Env) Initialize() error {
 	}
 
 	// Load adapter configuration from environment variables
-	if err := e.Config.LoadAdapters(); err != nil {
+	if err := e.Config.LoadAdapters(); err != nil { //nolint:staticcheck // Intentional for backward compatibility
 		logger.WithError(ctx, err).Error("Failed to load adapter configuration")
 		os.Exit(1)
 	}
@@ -153,7 +179,7 @@ func (e *Env) LoadClients() error {
 	}
 
 	// Create OCM Authz client
-	if e.Config.OCM.EnableMock {
+	if e.Config.OCM.EnableMock() {
 		logger.Info(ctx, "Using Mock OCM Authz Client")
 		e.Clients.OCM, err = ocm.NewClientMock(ocmConfig)
 	} else {
@@ -190,4 +216,62 @@ func setConfigDefaults(flags *pflag.FlagSet, defaults map[string]string) error {
 		}
 	}
 	return nil
+}
+
+// loadDatabaseConfigFromEnv loads database configuration from environment variables
+// This provides backward compatibility with the old configuration system
+func loadDatabaseConfigFromEnv(dbConfig *config.DatabaseConfig) {
+	// Support both old (DB_*) and new (HYPERFLEET_DATABASE_*) environment variable names
+	if host := os.Getenv("DB_HOST"); host != "" {
+		dbConfig.Host = host
+	}
+	if host := os.Getenv("HYPERFLEET_DATABASE_HOST"); host != "" {
+		dbConfig.Host = host
+	}
+
+	if port := os.Getenv("DB_PORT"); port != "" {
+		if p, err := strconv.Atoi(port); err == nil {
+			dbConfig.Port = p
+		}
+	}
+	if port := os.Getenv("HYPERFLEET_DATABASE_PORT"); port != "" {
+		if p, err := strconv.Atoi(port); err == nil {
+			dbConfig.Port = p
+		}
+	}
+
+	if name := os.Getenv("DB_NAME"); name != "" {
+		dbConfig.Name = name
+	}
+	if name := os.Getenv("HYPERFLEET_DATABASE_NAME"); name != "" {
+		dbConfig.Name = name
+	}
+
+	if username := os.Getenv("DB_USERNAME"); username != "" {
+		dbConfig.Username = username
+	}
+	if username := os.Getenv("HYPERFLEET_DATABASE_USERNAME"); username != "" {
+		dbConfig.Username = username
+	}
+
+	if password := os.Getenv("DB_PASSWORD"); password != "" {
+		dbConfig.Password = password
+	}
+	if password := os.Getenv("HYPERFLEET_DATABASE_PASSWORD"); password != "" {
+		dbConfig.Password = password
+	}
+
+	if sslMode := os.Getenv("DB_SSL_MODE"); sslMode != "" {
+		dbConfig.SSL.Mode = sslMode
+	}
+	if sslMode := os.Getenv("HYPERFLEET_DATABASE_SSL_MODE"); sslMode != "" {
+		dbConfig.SSL.Mode = sslMode
+	}
+
+	if debug := os.Getenv("DB_DEBUG"); debug == "true" { //nolint:goconst // Environment variable check
+		dbConfig.Debug = true
+	}
+	if debug := os.Getenv("HYPERFLEET_DATABASE_DEBUG"); debug == "true" { //nolint:goconst // Environment variable check
+		dbConfig.Debug = true
+	}
 }
