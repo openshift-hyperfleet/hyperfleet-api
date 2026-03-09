@@ -1,0 +1,182 @@
+# HyperFleet API Configuration Example
+# Follows HyperFleet Configuration Standard
+# Copy this to /etc/hyperfleet/config.yaml (production) or ./configs/config.yaml (development)
+
+# Server Configuration
+server:
+  hostname: ""                      # Public hostname (optional)
+  host: "0.0.0.0"                   # Server bind host
+  port: 8000                        # Server bind port
+
+  timeouts:
+    read: 5s                        # HTTP read timeout
+    write: 30s                      # HTTP write timeout
+
+  tls:
+    enabled: false                  # Enable TLS
+    cert_file: ""                   # Path to TLS cert file (required if enabled=true)
+    key_file: ""                    # Path to TLS key file (required if enabled=true)
+
+  jwt:
+    enabled: true                   # Enable JWT authentication
+
+  authz:
+    enabled: true                   # Enable authorization
+
+  jwk:
+    cert_file: ""                   # JWK certificate file path
+    cert_url: "https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/certs"
+
+  acl:
+    file: ""                        # Access control list file
+
+# Database Configuration
+database:
+  dialect: postgres                 # Database dialect (postgres, mysql)
+  host: localhost                   # Database host
+  port: 5432                        # Database port
+  name: hyperfleet                  # Database name
+  username: hyperfleet              # Database username
+  password: ""                      # Database password (use env var HYPERFLEET_DATABASE_PASSWORD instead)
+  debug: false                      # Enable database debug logging
+
+  ssl:
+    mode: disable                   # SSL mode (disable, require, verify-ca, verify-full)
+    root_cert_file: ""              # Root certificate file (for SSL)
+
+  pool:
+    max_connections: 50             # Maximum open connections
+
+# Logging Configuration
+logging:
+  level: info                       # Log level (debug, info, warn, error)
+  format: json                      # Log format (json, text)
+  output: stdout                    # Log output (stdout, stderr)
+
+  otel:
+    enabled: false                  # Enable OpenTelemetry tracing
+    sampling_rate: 1.0              # Sampling rate (0.0-1.0, 1.0 = 100%)
+
+  masking:
+    enabled: true                   # Enable masking of sensitive data
+
+    headers:                        # Sensitive HTTP headers to mask
+      - Authorization
+      - X-API-Key
+      - Cookie
+      - X-Auth-Token
+      - X-Forwarded-Authorization
+
+    fields:                         # Sensitive JSON fields to mask
+      - password
+      - secret
+      - token
+      - api_key
+      - access_token
+      - refresh_token
+      - client_secret
+
+# OCM (OpenShift Cluster Manager) Configuration
+ocm:
+  base_url: https://api.integration.openshift.com  # OCM API base URL
+  client_id: ""                     # OCM client ID (use env var HYPERFLEET_OCM_CLIENT_ID instead)
+  client_secret: ""                 # OCM client secret (use env var HYPERFLEET_OCM_CLIENT_SECRET instead)
+  self_token: ""                    # OCM self token (use env var HYPERFLEET_OCM_SELF_TOKEN instead)
+  token_url: https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token
+  debug: false                      # Enable OCM debug mode
+
+  mock:
+    enabled: true                   # Enable mock OCM clients (for testing)
+
+# Metrics Configuration
+metrics:
+  host: localhost                   # Metrics server host
+  port: 9090                        # Metrics server port
+
+  tls:
+    enabled: false                  # Enable TLS for metrics server
+
+  label_metrics_inclusion_duration: 168h  # Duration for label metrics inclusion (7 days)
+
+# Health Check Configuration
+health:
+  host: localhost                   # Health check server host
+  port: 8080                        # Health check server port
+
+  tls:
+    enabled: false                  # Enable TLS for health server
+
+  shutdown_timeout: 20s             # Graceful shutdown timeout
+
+# Adapter Requirements Configuration
+adapters:
+  required:
+    cluster:                        # Required adapters for cluster resources
+      - validation
+      - dns
+      - pullsecret
+      - hypershift
+
+    nodepool:                       # Required adapters for nodepool resources
+      - validation
+      - hypershift
+
+# ----------------------------------------------------------------------------
+# Configuration Priority (highest to lowest):
+# 1. Command-line flags (e.g., --server-host=0.0.0.0 --server-port=8000)
+# 2. Environment variables (e.g., HYPERFLEET_SERVER_HOST=0.0.0.0)
+# 3. Configuration file (this file)
+# 4. Default values
+#
+# Environment Variable Naming Convention:
+# - All env vars use HYPERFLEET_ prefix
+# - Nested values use underscores: HYPERFLEET_LOGGING_OTEL_SAMPLING_RATE=0.5
+# - All uppercase: HYPERFLEET_SERVER_HOST=localhost
+#
+# Example: server.host → HYPERFLEET_SERVER_HOST
+# Example: logging.otel.sampling_rate → HYPERFLEET_LOGGING_OTEL_SAMPLING_RATE
+#
+# CLI Flag Naming Convention:
+# - All flags use kebab-case with hyphens
+# - Nested values use hyphens: --server-host --server-port
+# - All lowercase: --log-level=info
+#
+# Example: server.host → --server-host
+# Example: logging.otel.sampling_rate → --logging-otel-sampling-rate
+#
+# YAML Naming Convention:
+# - All properties use snake_case (single words with underscores for multi-word labels)
+# - Single-word hierarchy nodes: server, database, logging, timeouts, pool, masking
+# - Multi-word keys use underscores: base_url, cert_file, max_connections
+#
+# Backward Compatibility:
+# The following old environment variables are still supported but deprecated:
+# - LOG_LEVEL          → HYPERFLEET_LOGGING_LEVEL
+# - LOG_FORMAT         → HYPERFLEET_LOGGING_FORMAT
+# - LOG_OUTPUT         → HYPERFLEET_LOGGING_OUTPUT
+# - DB_DEBUG           → HYPERFLEET_DATABASE_DEBUG
+# - OTEL_ENABLED       → HYPERFLEET_LOGGING_OTEL_ENABLED
+# - OTEL_SAMPLING_RATE → HYPERFLEET_LOGGING_OTEL_SAMPLING_RATE
+# - MASKING_ENABLED    → HYPERFLEET_LOGGING_MASKING_ENABLED
+# - MASKING_HEADERS    → HYPERFLEET_LOGGING_MASKING_HEADERS
+# - MASKING_FIELDS     → HYPERFLEET_LOGGING_MASKING_FIELDS
+#
+# File-based Secrets:
+# Sensitive values can be loaded from files using *_FILE environment variables.
+# The file content will be read and used as the configuration value.
+#
+# Note: File path fields (cert_file, key_file, acl.file, etc.) should be set
+# directly via environment variables, not loaded from files, since they already
+# represent file paths. Use HYPERFLEET_SERVER_TLS_CERT_FILE=/path/to/cert.pem
+# to set the path directly.
+#
+# Supported file-based secrets:
+# - HYPERFLEET_DATABASE_HOST_FILE=/secrets/db-host
+# - HYPERFLEET_DATABASE_PORT_FILE=/secrets/db-port
+# - HYPERFLEET_DATABASE_USERNAME_FILE=/secrets/db-username
+# - HYPERFLEET_DATABASE_PASSWORD_FILE=/secrets/db-password
+# - HYPERFLEET_DATABASE_NAME_FILE=/secrets/db-name
+# - HYPERFLEET_OCM_CLIENT_ID_FILE=/secrets/ocm-client-id
+# - HYPERFLEET_OCM_CLIENT_SECRET_FILE=/secrets/ocm-client-secret
+# - HYPERFLEET_OCM_SELF_TOKEN_FILE=/secrets/ocm-self-token
+# ----------------------------------------------------------------------------
