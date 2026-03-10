@@ -5,6 +5,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/spf13/pflag"
 	"gorm.io/gorm/logger"
@@ -15,6 +16,13 @@ type DatabaseConfig struct {
 	SSLMode            string `json:"sslmode"`
 	Debug              bool   `json:"debug"`
 	MaxOpenConnections int    `json:"max_connections"`
+
+	ConnMaxLifetime    time.Duration `json:"conn_max_lifetime"`
+	ConnMaxIdleTime    time.Duration `json:"conn_max_idle_time"`
+	MaxIdleConnections int           `json:"max_idle_connections"`
+	RequestTimeout     time.Duration `json:"request_timeout"`
+	ConnRetryAttempts  int           `json:"conn_retry_attempts"`
+	ConnRetryInterval  time.Duration `json:"conn_retry_interval"`
 
 	Host     string `json:"host"`
 	Port     int    `json:"port"`
@@ -36,6 +44,13 @@ func NewDatabaseConfig() *DatabaseConfig {
 		SSLMode:            "disable",
 		Debug:              false,
 		MaxOpenConnections: 50,
+
+		ConnMaxLifetime:    5 * time.Minute,
+		ConnMaxIdleTime:    1 * time.Minute,
+		MaxIdleConnections: 10,
+		RequestTimeout:     30 * time.Second,
+		ConnRetryAttempts:  10,
+		ConnRetryInterval:  3 * time.Second,
 
 		HostFile:     "secrets/db.host",
 		PortFile:     "secrets/db.port",
@@ -59,6 +74,15 @@ func (c *DatabaseConfig) AddFlags(fs *pflag.FlagSet) {
 		&c.MaxOpenConnections, "db-max-open-connections", c.MaxOpenConnections,
 		"Maximum open DB connections for this instance",
 	)
+	fs.DurationVar(&c.ConnMaxLifetime, "db-conn-max-lifetime", c.ConnMaxLifetime, "Maximum lifetime of a DB connection")
+	fs.DurationVar(&c.ConnMaxIdleTime, "db-conn-max-idle-time", c.ConnMaxIdleTime, "Maximum idle time of a DB connection")
+	fs.IntVar(&c.MaxIdleConnections, "db-max-idle-connections", c.MaxIdleConnections, "Maximum idle DB connections")
+	fs.DurationVar(&c.RequestTimeout, "db-request-timeout", c.RequestTimeout,
+		"Maximum time for a database request context")
+	fs.IntVar(&c.ConnRetryAttempts, "db-conn-retry-attempts", c.ConnRetryAttempts,
+		"Number of retry attempts for initial DB connection")
+	fs.DurationVar(&c.ConnRetryInterval, "db-conn-retry-interval", c.ConnRetryInterval,
+		"Interval between DB connection retry attempts")
 }
 
 // BindEnv reads configuration from environment variables

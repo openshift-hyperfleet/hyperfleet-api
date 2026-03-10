@@ -1,3 +1,9 @@
+{{- if and .Values.database.pgbouncer.enabled (not .Values.database.postgresql.enabled) }}
+{{- fail "pgbouncer sidecar is currently only supported with built-in PostgreSQL" }}
+{{- end }}
+{{- if and .Values.database.pgbouncer.enabled (not (has .Values.database.pgbouncer.poolMode (list "transaction" "session" "statement"))) }}
+{{- fail "database.pgbouncer.poolMode must be one of: transaction, session, statement" }}
+{{- end }}
 {{- if .Values.database.postgresql.enabled }}
 ---
 apiVersion: v1
@@ -13,6 +19,22 @@ stringData:
   db.name: {{ .Values.database.postgresql.database }}
   db.user: {{ .Values.database.postgresql.user }}
   db.password: {{ .Values.database.postgresql.password }}
+{{- if .Values.database.pgbouncer.enabled }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "hyperfleet-api.fullname" . }}-db-secrets-pgbouncer
+  labels:
+    {{- include "hyperfleet-api.labels" . | nindent 4 }}
+type: Opaque
+stringData:
+  db.host: "localhost"
+  db.port: {{ .Values.database.pgbouncer.port | quote }}
+  db.name: {{ .Values.database.postgresql.database }}
+  db.user: {{ .Values.database.postgresql.user }}
+  db.password: {{ .Values.database.postgresql.password }}
+{{- end }}
 ---
 apiVersion: v1
 kind: Service
