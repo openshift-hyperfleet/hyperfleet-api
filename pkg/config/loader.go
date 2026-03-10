@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"reflect"
 	"strings"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
@@ -20,6 +22,7 @@ type ConfigLoader struct {
 	viper               *viper.Viper
 	validator           *validator.Validate
 	deprecationWarnings []string
+	explicitlyBoundKeys map[string]bool // Tracks keys explicitly bound via BindEnv/BindPFlag
 }
 
 // NewConfigLoader creates a new configuration loader
@@ -28,6 +31,7 @@ func NewConfigLoader() *ConfigLoader {
 		viper:               viper.New(),
 		validator:           validator.New(),
 		deprecationWarnings: make([]string, 0),
+		explicitlyBoundKeys: make(map[string]bool),
 	}
 }
 
@@ -45,7 +49,7 @@ func (l *ConfigLoader) Load(ctx context.Context, cmd *cobra.Command) (*Applicati
 	}
 
 	// Step 2: Setup environment variable handling with HYPERFLEET_ prefix
-	l.viper.SetEnvPrefix("HYPERFLEET")
+	l.viper.SetEnvPrefix(EnvPrefix)
 	l.viper.AutomaticEnv()
 	l.viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_", "-", "_"))
 
@@ -57,6 +61,12 @@ func (l *ConfigLoader) Load(ctx context.Context, cmd *cobra.Command) (*Applicati
 
 	// Step 4: Bind command-line flags to Viper (maps flag names to nested config keys)
 	l.bindFlags(cmd)
+
+	// Step 4.5: Validate that all bound keys match actual struct fields
+	// This catches typos in bindAllEnvVars() or bindFlags() early
+	if err := l.validateBoundKeys(); err != nil {
+		return nil, err
+	}
 
 	// Step 5: Handle file-based secrets (env vars ending with _FILE)
 	if err := l.handleFileSecrets(ctx); err != nil {
@@ -161,13 +171,10 @@ func (l *ConfigLoader) resolveAndReadConfigFile(ctx context.Context, cmd *cobra.
 // handleBackwardCompatibility maps old environment variables to new standard names
 // Collects deprecation warnings for logging at startup
 //
-// KNOWN LIMITATION: Old environment variables (LOG_LEVEL, OTEL_ENABLED, etc.) have higher
-// priority than CLI flags due to v.Set() being called before BindPFlags().
-// This is a temporary limitation and will be resolved when old environment variables
-// support is removed in the next Helm update.
-//
-// Workaround: Use new environment variables (HYPERFLEET_*) instead of old ones,
-// or avoid mixing old environment variables with CLI flags.
+// Old environment variables are set as defaults (lowest priority) using SetDefault(),
+// which means they only apply when no other source (config file, new env vars, CLI flags)
+// provides the value. This gives correct backward compatibility semantics:
+// old env vars are a fallback, not an override.
 func (l *ConfigLoader) handleBackwardCompatibility(ctx context.Context) {
 	// Backward compatibility mappings: old env var -> new Viper key (updated to match new structure)
 	backwardCompatMappings := map[string]string{
@@ -196,11 +203,12 @@ func (l *ConfigLoader) handleBackwardCompatibility(ctx context.Context) {
 		}
 
 		// Check if new environment variable is also set
-		newEnvVar := "HYPERFLEET_" + strings.ReplaceAll(strings.ToUpper(viperKey), ".", "_")
+		newEnvVar := EnvPrefix + "_" + strings.ReplaceAll(strings.ToUpper(viperKey), ".", "_")
 		newValue := os.Getenv(newEnvVar)
 
 		if newValue != "" {
 			// Both old and new are set - warn and use new value
+			// No need to call SetDefault() since new env var (via BindEnv) has higher priority
 			warning := fmt.Sprintf(
 				"Both old (%s=%s) and new (%s=%s) environment variables are set. Using new value. "+
 					"Please remove the old variable.",
@@ -209,10 +217,9 @@ func (l *ConfigLoader) handleBackwardCompatibility(ctx context.Context) {
 			l.deprecationWarnings = append(l.deprecationWarnings, warning)
 			logger.With(ctx, "old_var", oldEnvVar, "new_var", newEnvVar).Warn(warning)
 		} else {
-			// Only old env var is set - use it but warn about deprecation
-			if !l.viper.IsSet(viperKey) {
-				l.viper.Set(viperKey, oldValue)
-			}
+			// Only old env var is set - set it as default (lowest priority)
+			// This ensures CLI flags, new env vars, and config file can override it
+			l.viper.SetDefault(viperKey, oldValue)
 			warning := fmt.Sprintf(
 				"Deprecated environment variable %s is in use. Please migrate to %s.",
 				oldEnvVar, newEnvVar,
@@ -229,14 +236,14 @@ func (l *ConfigLoader) handleBackwardCompatibility(ctx context.Context) {
 func (l *ConfigLoader) handleFileSecrets(ctx context.Context) error {
 	// Define file secret mappings: env var suffix -> viper key (updated to match new structure)
 	fileSecretMappings := map[string]string{
-		"HYPERFLEET_DATABASE_HOST_FILE":      "database.host",
-		"HYPERFLEET_DATABASE_PORT_FILE":      "database.port",
-		"HYPERFLEET_DATABASE_USERNAME_FILE":  "database.username",
-		"HYPERFLEET_DATABASE_PASSWORD_FILE":  "database.password",
-		"HYPERFLEET_DATABASE_NAME_FILE":      "database.name",
-		"HYPERFLEET_OCM_CLIENT_ID_FILE":      "ocm.client_id",
-		"HYPERFLEET_OCM_CLIENT_SECRET_FILE":  "ocm.client_secret",
-		"HYPERFLEET_OCM_SELF_TOKEN_FILE":     "ocm.self_token",
+		EnvPrefix + "_DATABASE_HOST_FILE":     "database.host",
+		EnvPrefix + "_DATABASE_PORT_FILE":     "database.port",
+		EnvPrefix + "_DATABASE_USERNAME_FILE": "database.username",
+		EnvPrefix + "_DATABASE_PASSWORD_FILE": "database.password",
+		EnvPrefix + "_DATABASE_NAME_FILE":     "database.name",
+		EnvPrefix + "_OCM_CLIENT_ID_FILE":     "ocm.client_id",     //nolint:gosec // Config key path, not credential
+		EnvPrefix + "_OCM_CLIENT_SECRET_FILE": "ocm.client_secret", //nolint:gosec // Config key path, not credential
+		EnvPrefix + "_OCM_SELF_TOKEN_FILE":    "ocm.self_token",    //nolint:gosec // Config key path, not credential
 	}
 
 	for envVar, viperKey := range fileSecretMappings {
@@ -332,8 +339,8 @@ func (l *ConfigLoader) validateConfig(config *ApplicationConfig) error {
 func (l *ConfigLoader) handleJSONArrayEnvVars(ctx context.Context) error {
 	// Map of env var name -> viper key
 	jsonArrayMappings := map[string]string{
-		"HYPERFLEET_ADAPTERS_REQUIRED_CLUSTER":  "adapters.required.cluster",
-		"HYPERFLEET_ADAPTERS_REQUIRED_NODEPOOL": "adapters.required.nodepool",
+		EnvPrefix + "_ADAPTERS_REQUIRED_CLUSTER":  "adapters.required.cluster",
+		EnvPrefix + "_ADAPTERS_REQUIRED_NODEPOOL": "adapters.required.nodepool",
 	}
 
 	for envVar, viperKey := range jsonArrayMappings {
@@ -365,72 +372,82 @@ func (l *ConfigLoader) handleJSONArrayEnvVars(ctx context.Context) error {
 	return nil
 }
 
+// bindEnv wraps viper.BindEnv and tracks the key for validation
+func (l *ConfigLoader) bindEnv(key string) {
+	l.viper.BindEnv(key) //nolint:errcheck,gosec // BindEnv errors are rare and indicate programming errors
+	l.explicitlyBoundKeys[key] = true
+}
+
+// bindPFlag wraps viper.BindPFlag and tracks the key for validation
+func (l *ConfigLoader) bindPFlag(key string, flag *pflag.Flag) {
+	l.viper.BindPFlag(key, flag) //nolint:errcheck,gosec // BindPFlag errors are rare and indicate programming errors
+	l.explicitlyBoundKeys[key] = true
+}
+
 // bindAllEnvVars explicitly binds all configuration keys to environment variables
 // This is required for Viper's Unmarshal() to work with env vars (AutomaticEnv only works with Get* methods)
-//
-//nolint:gosec,errcheck // BindEnv errors are rare and indicate programming errors, not runtime errors
 func (l *ConfigLoader) bindAllEnvVars() {
-	// Server config - updated to match new structure
-	l.viper.BindEnv("server.hostname")
-	l.viper.BindEnv("server.host")
-	l.viper.BindEnv("server.port")
-	l.viper.BindEnv("server.timeouts.read")
-	l.viper.BindEnv("server.timeouts.write")
-	l.viper.BindEnv("server.tls.enabled")
-	l.viper.BindEnv("server.tls.cert_file")
-	l.viper.BindEnv("server.tls.key_file")
-	l.viper.BindEnv("server.jwt.enabled")
-	l.viper.BindEnv("server.jwk.cert_file")
-	l.viper.BindEnv("server.jwk.cert_url")
-	l.viper.BindEnv("server.authz.enabled")
-	l.viper.BindEnv("server.acl.file")
+	// Server config
+	l.bindEnv("server.hostname")
+	l.bindEnv("server.host")
+	l.bindEnv("server.port")
+	l.bindEnv("server.timeouts.read")
+	l.bindEnv("server.timeouts.write")
+	l.bindEnv("server.tls.enabled")
+	l.bindEnv("server.tls.cert_file")
+	l.bindEnv("server.tls.key_file")
+	l.bindEnv("server.jwt.enabled")
+	l.bindEnv("server.jwk.cert_file")
+	l.bindEnv("server.jwk.cert_url")
+	l.bindEnv("server.authz.enabled")
+	l.bindEnv("server.acl.file")
 
-	// Database config - updated to match new structure
-	l.viper.BindEnv("database.dialect")
-	l.viper.BindEnv("database.host")
-	l.viper.BindEnv("database.port")
-	l.viper.BindEnv("database.name")
-	l.viper.BindEnv("database.username")
-	l.viper.BindEnv("database.password")
-	l.viper.BindEnv("database.debug")
-	l.viper.BindEnv("database.ssl.mode")
-	l.viper.BindEnv("database.ssl.root_cert_file")
-	l.viper.BindEnv("database.pool.max_connections")
+	// Database config
+	l.bindEnv("database.dialect")
+	l.bindEnv("database.host")
+	l.bindEnv("database.port")
+	l.bindEnv("database.name")
+	l.bindEnv("database.username")
+	l.bindEnv("database.password")
+	l.bindEnv("database.debug")
+	l.bindEnv("database.ssl.mode")
+	l.bindEnv("database.ssl.root_cert_file")
+	l.bindEnv("database.pool.max_connections")
 
-	// Logging config - updated to match new structure
-	l.viper.BindEnv("logging.level")
-	l.viper.BindEnv("logging.format")
-	l.viper.BindEnv("logging.output")
-	l.viper.BindEnv("logging.otel.enabled")
-	l.viper.BindEnv("logging.otel.sampling_rate")
-	l.viper.BindEnv("logging.masking.enabled")
-	l.viper.BindEnv("logging.masking.headers")
-	l.viper.BindEnv("logging.masking.fields")
+	// Logging config
+	l.bindEnv("logging.level")
+	l.bindEnv("logging.format")
+	l.bindEnv("logging.output")
+	l.bindEnv("logging.otel.enabled")
+	l.bindEnv("logging.otel.sampling_rate")
+	l.bindEnv("logging.masking.enabled")
+	l.bindEnv("logging.masking.headers")
+	l.bindEnv("logging.masking.fields")
 
-	// OCM config - updated to match new structure (snake_case)
-	l.viper.BindEnv("ocm.base_url")
-	l.viper.BindEnv("ocm.client_id")
-	l.viper.BindEnv("ocm.client_secret")
-	l.viper.BindEnv("ocm.self_token")
-	l.viper.BindEnv("ocm.token_url")
-	l.viper.BindEnv("ocm.debug")
-	l.viper.BindEnv("ocm.mock.enabled")
+	// OCM config
+	l.bindEnv("ocm.base_url")
+	l.bindEnv("ocm.client_id")
+	l.bindEnv("ocm.client_secret")
+	l.bindEnv("ocm.self_token")
+	l.bindEnv("ocm.token_url")
+	l.bindEnv("ocm.debug")
+	l.bindEnv("ocm.mock.enabled")
 
-	// Metrics config - updated to match new structure
-	l.viper.BindEnv("metrics.host")
-	l.viper.BindEnv("metrics.port")
-	l.viper.BindEnv("metrics.tls.enabled")
-	l.viper.BindEnv("metrics.label_metrics_inclusion_duration")
+	// Metrics config
+	l.bindEnv("metrics.host")
+	l.bindEnv("metrics.port")
+	l.bindEnv("metrics.tls.enabled")
+	l.bindEnv("metrics.label_metrics_inclusion_duration")
 
-	// Health config - updated to match new structure
-	l.viper.BindEnv("health.host")
-	l.viper.BindEnv("health.port")
-	l.viper.BindEnv("health.tls.enabled")
-	l.viper.BindEnv("health.shutdown_timeout")
+	// Health config
+	l.bindEnv("health.host")
+	l.bindEnv("health.port")
+	l.bindEnv("health.tls.enabled")
+	l.bindEnv("health.shutdown_timeout")
 
 	// Adapters config
-	l.viper.BindEnv("adapters.required.cluster")
-	l.viper.BindEnv("adapters.required.nodepool")
+	l.bindEnv("adapters.required.cluster")
+	l.bindEnv("adapters.required.nodepool")
 }
 
 // bindFlags binds command-line flags to their corresponding Viper config keys
@@ -443,65 +460,152 @@ func (l *ConfigLoader) bindFlags(cmd *cobra.Command) {
 	// This is handled separately in resolveAndReadConfigFile()
 
 	// Server flags: --server-* -> server.*
-	l.viper.BindPFlag("server.hostname", cmd.Flags().Lookup("server-hostname"))
-	l.viper.BindPFlag("server.host", cmd.Flags().Lookup("server-host"))
-	l.viper.BindPFlag("server.port", cmd.Flags().Lookup("server-port"))
-	l.viper.BindPFlag("server.timeouts.read", cmd.Flags().Lookup("server-read-timeout"))
-	l.viper.BindPFlag("server.timeouts.write", cmd.Flags().Lookup("server-write-timeout"))
-	l.viper.BindPFlag("server.tls.cert_file", cmd.Flags().Lookup("server-https-cert-file"))
-	l.viper.BindPFlag("server.tls.key_file", cmd.Flags().Lookup("server-https-key-file"))
-	l.viper.BindPFlag("server.tls.enabled", cmd.Flags().Lookup("server-https-enabled"))
-	l.viper.BindPFlag("server.jwt.enabled", cmd.Flags().Lookup("server-jwt-enabled"))
-	l.viper.BindPFlag("server.jwk.cert_file", cmd.Flags().Lookup("server-jwk-cert-file"))
-	l.viper.BindPFlag("server.jwk.cert_url", cmd.Flags().Lookup("server-jwk-cert-url"))
-	l.viper.BindPFlag("server.authz.enabled", cmd.Flags().Lookup("server-authz-enabled"))
-	l.viper.BindPFlag("server.acl.file", cmd.Flags().Lookup("server-acl-file"))
+	l.bindPFlag("server.hostname", cmd.Flags().Lookup("server-hostname"))
+	l.bindPFlag("server.host", cmd.Flags().Lookup("server-host"))
+	l.bindPFlag("server.port", cmd.Flags().Lookup("server-port"))
+	l.bindPFlag("server.timeouts.read", cmd.Flags().Lookup("server-read-timeout"))
+	l.bindPFlag("server.timeouts.write", cmd.Flags().Lookup("server-write-timeout"))
+	l.bindPFlag("server.tls.cert_file", cmd.Flags().Lookup("server-https-cert-file"))
+	l.bindPFlag("server.tls.key_file", cmd.Flags().Lookup("server-https-key-file"))
+	l.bindPFlag("server.tls.enabled", cmd.Flags().Lookup("server-https-enabled"))
+	l.bindPFlag("server.jwt.enabled", cmd.Flags().Lookup("server-jwt-enabled"))
+	l.bindPFlag("server.jwk.cert_file", cmd.Flags().Lookup("server-jwk-cert-file"))
+	l.bindPFlag("server.jwk.cert_url", cmd.Flags().Lookup("server-jwk-cert-url"))
+	l.bindPFlag("server.authz.enabled", cmd.Flags().Lookup("server-authz-enabled"))
+	l.bindPFlag("server.acl.file", cmd.Flags().Lookup("server-acl-file"))
 
 	// Database flags: --db-* -> database.*
-	l.viper.BindPFlag("database.host", cmd.Flags().Lookup("db-host"))
-	l.viper.BindPFlag("database.port", cmd.Flags().Lookup("db-port"))
-	l.viper.BindPFlag("database.username", cmd.Flags().Lookup("db-username"))
-	l.viper.BindPFlag("database.password", cmd.Flags().Lookup("db-password"))
-	l.viper.BindPFlag("database.name", cmd.Flags().Lookup("db-name"))
-	l.viper.BindPFlag("database.dialect", cmd.Flags().Lookup("db-dialect"))
-	l.viper.BindPFlag("database.ssl.mode", cmd.Flags().Lookup("db-ssl-mode"))
-	l.viper.BindPFlag("database.debug", cmd.Flags().Lookup("db-debug"))
-	l.viper.BindPFlag("database.pool.max_connections", cmd.Flags().Lookup("db-max-open-connections"))
-	l.viper.BindPFlag("database.ssl.root_cert_file", cmd.Flags().Lookup("db-root-cert-file"))
+	l.bindPFlag("database.host", cmd.Flags().Lookup("db-host"))
+	l.bindPFlag("database.port", cmd.Flags().Lookup("db-port"))
+	l.bindPFlag("database.username", cmd.Flags().Lookup("db-username"))
+	l.bindPFlag("database.password", cmd.Flags().Lookup("db-password"))
+	l.bindPFlag("database.name", cmd.Flags().Lookup("db-name"))
+	l.bindPFlag("database.dialect", cmd.Flags().Lookup("db-dialect"))
+	l.bindPFlag("database.ssl.mode", cmd.Flags().Lookup("db-ssl-mode"))
+	l.bindPFlag("database.debug", cmd.Flags().Lookup("db-debug"))
+	l.bindPFlag("database.pool.max_connections", cmd.Flags().Lookup("db-max-open-connections"))
+	l.bindPFlag("database.ssl.root_cert_file", cmd.Flags().Lookup("db-root-cert-file"))
 
 	// Logging flags: --log-* -> logging.*
-	l.viper.BindPFlag("logging.level", cmd.Flags().Lookup("log-level"))
-	l.viper.BindPFlag("logging.format", cmd.Flags().Lookup("log-format"))
-	l.viper.BindPFlag("logging.output", cmd.Flags().Lookup("log-output"))
-	l.viper.BindPFlag("logging.otel.enabled", cmd.Flags().Lookup("log-otel-enabled"))
-	l.viper.BindPFlag("logging.otel.sampling_rate", cmd.Flags().Lookup("log-otel-sampling-rate"))
-	l.viper.BindPFlag("logging.masking.enabled", cmd.Flags().Lookup("log-masking-enabled"))
-	l.viper.BindPFlag("logging.masking.headers", cmd.Flags().Lookup("log-masking-sensitive-headers"))
-	l.viper.BindPFlag("logging.masking.fields", cmd.Flags().Lookup("log-masking-sensitive-fields"))
+	l.bindPFlag("logging.level", cmd.Flags().Lookup("log-level"))
+	l.bindPFlag("logging.format", cmd.Flags().Lookup("log-format"))
+	l.bindPFlag("logging.output", cmd.Flags().Lookup("log-output"))
+	l.bindPFlag("logging.otel.enabled", cmd.Flags().Lookup("log-otel-enabled"))
+	l.bindPFlag("logging.otel.sampling_rate", cmd.Flags().Lookup("log-otel-sampling-rate"))
+	l.bindPFlag("logging.masking.enabled", cmd.Flags().Lookup("log-masking-enabled"))
+	l.bindPFlag("logging.masking.headers", cmd.Flags().Lookup("log-masking-sensitive-headers"))
+	l.bindPFlag("logging.masking.fields", cmd.Flags().Lookup("log-masking-sensitive-fields"))
 
 	// Metrics flags: --metrics-* -> metrics.*
-	l.viper.BindPFlag("metrics.host", cmd.Flags().Lookup("metrics-host"))
-	l.viper.BindPFlag("metrics.port", cmd.Flags().Lookup("metrics-port"))
-	l.viper.BindPFlag("metrics.tls.enabled", cmd.Flags().Lookup("metrics-https-enabled"))
-	l.viper.BindPFlag("metrics.label_metrics_inclusion_duration",
+	l.bindPFlag("metrics.host", cmd.Flags().Lookup("metrics-host"))
+	l.bindPFlag("metrics.port", cmd.Flags().Lookup("metrics-port"))
+	l.bindPFlag("metrics.tls.enabled", cmd.Flags().Lookup("metrics-https-enabled"))
+	l.bindPFlag("metrics.label_metrics_inclusion_duration",
 		cmd.Flags().Lookup("metrics-label-metrics-inclusion-duration"))
 
 	// Health flags: --health-* -> health.*
-	l.viper.BindPFlag("health.host", cmd.Flags().Lookup("health-host"))
-	l.viper.BindPFlag("health.port", cmd.Flags().Lookup("health-port"))
-	l.viper.BindPFlag("health.tls.enabled", cmd.Flags().Lookup("health-https-enabled"))
-	l.viper.BindPFlag("health.shutdown_timeout", cmd.Flags().Lookup("health-shutdown-timeout"))
+	l.bindPFlag("health.host", cmd.Flags().Lookup("health-host"))
+	l.bindPFlag("health.port", cmd.Flags().Lookup("health-port"))
+	l.bindPFlag("health.tls.enabled", cmd.Flags().Lookup("health-https-enabled"))
+	l.bindPFlag("health.shutdown_timeout", cmd.Flags().Lookup("health-shutdown-timeout"))
 
 	// OCM flags: --ocm-* -> ocm.*
-	l.viper.BindPFlag("ocm.base_url", cmd.Flags().Lookup("ocm-base-url"))
-	l.viper.BindPFlag("ocm.token_url", cmd.Flags().Lookup("ocm-token-url"))
-	l.viper.BindPFlag("ocm.client_id", cmd.Flags().Lookup("ocm-client-id"))
-	l.viper.BindPFlag("ocm.client_secret", cmd.Flags().Lookup("ocm-client-secret"))
-	l.viper.BindPFlag("ocm.self_token", cmd.Flags().Lookup("ocm-self-token"))
-	l.viper.BindPFlag("ocm.debug", cmd.Flags().Lookup("ocm-debug"))
-	l.viper.BindPFlag("ocm.mock.enabled", cmd.Flags().Lookup("ocm-mock-enabled"))
+	l.bindPFlag("ocm.base_url", cmd.Flags().Lookup("ocm-base-url"))
+	l.bindPFlag("ocm.token_url", cmd.Flags().Lookup("ocm-token-url"))
+	l.bindPFlag("ocm.client_id", cmd.Flags().Lookup("ocm-client-id"))
+	l.bindPFlag("ocm.client_secret", cmd.Flags().Lookup("ocm-client-secret"))
+	l.bindPFlag("ocm.self_token", cmd.Flags().Lookup("ocm-self-token"))
+	l.bindPFlag("ocm.debug", cmd.Flags().Lookup("ocm-debug"))
+	l.bindPFlag("ocm.mock.enabled", cmd.Flags().Lookup("ocm-mock-enabled"))
 
 	// Adapters: No flags (configured via env vars only)
+}
+
+// validateBoundKeys validates that all keys bound in bindAllEnvVars() and bindFlags()
+// match actual struct fields in ApplicationConfig. This catches typos and mismatches
+// that would otherwise cause silent configuration failures.
+//
+// NOTE: This only validates keys that we explicitly bind (via BindEnv/BindPFlag),
+// not keys from config files. Config file typos are caught later by UnmarshalExact.
+func (l *ConfigLoader) validateBoundKeys() error {
+	// Collect all valid configuration keys from ApplicationConfig struct tags
+	validKeys := collectValidConfigKeys(reflect.TypeOf(ApplicationConfig{}), "")
+	validKeySet := make(map[string]bool)
+	for _, key := range validKeys {
+		validKeySet[key] = true
+	}
+
+	// Check that all explicitly bound keys match struct fields
+	var invalidKeys []string
+	for key := range l.explicitlyBoundKeys {
+		if !validKeySet[key] {
+			invalidKeys = append(invalidKeys, key)
+		}
+	}
+
+	if len(invalidKeys) > 0 {
+		return fmt.Errorf(
+			"configuration binding error: the following keys do not match any struct fields: %v\n"+
+				"This usually indicates a typo in bindAllEnvVars() or bindFlags()",
+			invalidKeys,
+		)
+	}
+
+	return nil
+}
+
+// collectValidConfigKeys recursively collects all valid configuration key paths
+// from a struct type by reading mapstructure tags. This is used to validate
+// that all bound keys match actual struct fields.
+func collectValidConfigKeys(t reflect.Type, prefix string) []string {
+	var keys []string
+
+	// Handle pointer types
+	if t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+
+	// Only process structs
+	if t.Kind() != reflect.Struct {
+		return keys
+	}
+
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+
+		// Skip unexported fields
+		if !field.IsExported() {
+			continue
+		}
+
+		// Get mapstructure tag (Viper uses mapstructure for field mapping)
+		tag := field.Tag.Get("mapstructure")
+		if tag == "" || tag == "-" {
+			continue
+		}
+
+		// Build full key path
+		fullKey := tag
+		if prefix != "" {
+			fullKey = prefix + "." + tag
+		}
+
+		// If field is a struct, recursively collect its keys
+		fieldType := field.Type
+		if fieldType.Kind() == reflect.Ptr {
+			fieldType = fieldType.Elem()
+		}
+
+		if fieldType.Kind() == reflect.Struct {
+			// Recursively collect nested keys
+			keys = append(keys, collectValidConfigKeys(fieldType, fullKey)...)
+		} else {
+			// Leaf field - add the key
+			keys = append(keys, fullKey)
+		}
+	}
+
+	return keys
 }
 
 // logDeprecationWarnings logs all collected deprecation warnings once at startup

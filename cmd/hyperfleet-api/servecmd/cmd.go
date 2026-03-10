@@ -53,21 +53,10 @@ func runServe(cmd *cobra.Command, args []string) {
 	// ============================================================
 	// Phase 1: Select configuration system and load config
 	var finalConfig *config.ApplicationConfig
-	var oldConfig *config.ApplicationConfig
-
-	// For old config system: load flag values into config struct
-	if !config.IsNewConfigEnabled() {
-		if err := environments.Environment().Config.LoadFromFlags(cmd.Flags()); err != nil {
-			logger.WithError(ctx, err).Error("Failed to load configuration from flags")
-			os.Exit(1)
-		}
-	}
 
 	if config.IsNewConfigEnabled() {
+		// New Viper-based configuration system
 		logger.Info(ctx, "Using new Viper-based configuration system")
-
-		// Load old config for comparison (without full initialization)
-		oldConfig = environments.Environment().Config
 
 		// Load configuration using new system
 		loader := config.NewConfigLoader()
@@ -78,25 +67,31 @@ func runServe(cmd *cobra.Command, args []string) {
 		}
 
 		// Apply environment-specific configuration overrides (e.g., development disables JWT/TLS)
-		// This must happen BEFORE comparison to match old system behavior
 		if err := environments.ApplyEnvironmentOverrides(newConfig); err != nil {
 			logger.WithError(ctx, err).Error("Failed to apply environment overrides")
 			os.Exit(1)
 		}
 
-		// Verify configuration equivalence for critical fields
-		if err := config.VerifyConfigEquivalence(ctx, oldConfig, newConfig); err != nil {
-			logger.WithError(ctx, err).Warn("Configuration equivalence check failed - differences detected")
-			// Log but don't fail - allow new config to be used
-		} else {
-			logger.Info(ctx, "Configuration equivalence verified - old and new systems produce same config")
-		}
+		// NOTE: Runtime config equivalence verification was removed because it compared
+		// an uninitialized old config (only defaults + flags) against fully loaded new config,
+		// resulting in false differences. The old config's full initialization (ReadFiles,
+		// OverrideConfig, LoadAdapters) happens later in Initialize().
+		// Config system correctness is verified through comprehensive tests instead.
 
 		finalConfig = newConfig
+		logger.Info(ctx, "New configuration loaded successfully")
 	} else {
+		// Legacy configuration system
 		logger.Info(ctx, "Using legacy configuration system (set HYPERFLEET_USE_NEW_CONFIG=true to use new system)")
+
+		// Load flag values into config struct (old system only)
+		if err := environments.Environment().Config.LoadFromFlags(cmd.Flags()); err != nil {
+			logger.WithError(ctx, err).Error("Failed to load configuration from flags")
+			os.Exit(1)
+		}
+
 		// Old system needs to read config from flags first
-		// This is handled by Initialize() which calls ReadFiles() and LoadAdapters()
+		// Full initialization (ReadFiles, OverrideConfig, LoadAdapters) happens in Initialize()
 		finalConfig = environments.Environment().Config
 	}
 
@@ -113,11 +108,7 @@ func runServe(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	if config.IsNewConfigEnabled() {
-		logger.Info(ctx, "Environment initialized successfully with new configuration")
-	}
-
-	// Phase 4: Initialize logger with configured settings
+	// Phase 3: Initialize logger with configured settings
 	initLogger()
 
 	// Log effective configuration (with sensitive values redacted)
@@ -240,7 +231,9 @@ func initLogger() {
 	// Reconfigure database logger to follow LOG_LEVEL
 	dbSessionFactory := environments.Environment().Database.SessionFactory
 	if dbSessionFactory != nil {
-		gormLevel := environments.Environment().Config.Database.SetLogLevel()
+		gormLevel := environments.Environment().Config.Database.SetLogLevel(
+			environments.Environment().Config.Logging.Level,
+		)
 		if reconfigurable, ok := dbSessionFactory.(db_session.LoggerReconfigurable); ok {
 			reconfigurable.ReconfigureLogger(gormLevel)
 		}

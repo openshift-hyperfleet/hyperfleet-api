@@ -30,19 +30,11 @@ func (c OCMConfig) MarshalJSON() ([]byte, error) {
 		SelfToken    string `json:"self_token"`
 		*Alias
 	}{
-		ClientID:     redactOCMIfSet(c.ClientID),
-		ClientSecret: redactOCMIfSet(c.ClientSecret),
-		SelfToken:    redactOCMIfSet(c.SelfToken),
+		ClientID:     redactIfSet(c.ClientID),
+		ClientSecret: redactIfSet(c.ClientSecret),
+		SelfToken:    redactIfSet(c.SelfToken),
 		Alias:        (*Alias)(&c),
 	})
-}
-
-// redactOCMIfSet returns RedactedValue if value is non-empty, otherwise empty string
-func redactOCMIfSet(value string) string {
-	if value == "" {
-		return ""
-	}
-	return RedactedValue
 }
 
 // NewOCMConfig returns default OCMConfig values

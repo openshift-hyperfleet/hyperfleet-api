@@ -86,7 +86,7 @@ type ACLConfig struct {
 func NewServerConfig() *ServerConfig {
 	return &ServerConfig{
 		Hostname: "",
-		Host:     "0.0.0.0",
+		Host:     "localhost",
 		Port:     8000,
 		Timeouts: TimeoutsConfig{
 			Read:  5 * time.Second,

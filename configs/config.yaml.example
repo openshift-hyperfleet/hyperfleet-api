@@ -5,7 +5,7 @@
 # Server Configuration
 server:
   hostname: ""                      # Public hostname (optional)
-  host: "0.0.0.0"                   # Server bind host
+  host: "0.0.0.0"                   # Server bind host (use "localhost" for local dev, "0.0.0.0" for containers/K8s)
   port: 8000                        # Server bind port
 
   timeouts:

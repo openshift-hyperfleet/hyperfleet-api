@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -15,6 +16,10 @@ const (
 	// Must match pkg/middleware/masking.go RedactedValue for consistency
 	RedactedValue = "***REDACTED***"
 )
+
+// simpleDSNValuePattern matches PostgreSQL DSN simple values that don't need quoting.
+// Per libpq spec, simple values contain only: letters (a-z, A-Z), digits (0-9), hyphens (-), and dots (.)
+var simpleDSNValuePattern = regexp.MustCompile(`^[a-zA-Z0-9.-]+$`)
 
 // DatabaseConfig holds database connection configuration
 // Follows HyperFleet Configuration Standard
@@ -122,7 +127,14 @@ func (c *DatabaseConfig) RootCertFile() string {
 // ============================================================
 
 // escapeDSNValue escapes a PostgreSQL DSN parameter value according to libpq rules.
-// It escapes backslashes and single quotes, and wraps values containing spaces in single quotes.
+//
+// According to PostgreSQL libpq documentation:
+//   - Simple values (containing only letters, digits, hyphens, dots) don't need quoting
+//   - Values with special characters (spaces, =, ', \, etc.) must be quoted
+//   - '\': escape character (must be escaped as \\)
+//   - "'": quote character (must be escaped as \')
+//
+// This function follows the libpq specification: only quote when necessary.
 func escapeDSNValue(value string) string {
 	if value == "" {
 		return value
@@ -133,11 +145,11 @@ func escapeDSNValue(value string) string {
 	// Escape single quotes
 	escaped = strings.ReplaceAll(escaped, `'`, `\'`)
 
-	// Wrap in single quotes if the value contains spaces or special characters
-	if strings.ContainsAny(escaped, " \t\n\r") {
+	// Quote if the value contains any non-simple characters
+	// Per libpq spec, simple values match: ^[a-zA-Z0-9.-]+$
+	if !simpleDSNValuePattern.MatchString(escaped) {
 		return fmt.Sprintf("'%s'", escaped)
 	}
-
 	return escaped
 }
 
@@ -239,9 +251,27 @@ func (c *DatabaseConfig) ReadFiles() error {
 
 // SetLogLevel sets GORM logger level based on Debug flag
 // This is called during database initialization
-func (c *DatabaseConfig) SetLogLevel() logger.LogLevel {
+// SetLogLevel determines the GORM logger level based on DB_DEBUG and global LOG_LEVEL.
+// Priority: DB_DEBUG > LOG_LEVEL > default
+//
+// Behavior:
+//   - DB_DEBUG=true → logger.Info (show all SQL queries)
+//   - LOG_LEVEL=debug → logger.Info (show all SQL queries)
+//   - LOG_LEVEL=error → logger.Silent (suppress all SQL logs)
+//   - default → logger.Warn (show only slow queries and errors)
+func (c *DatabaseConfig) SetLogLevel(globalLogLevel string) logger.LogLevel {
+	// DB_DEBUG takes precedence for explicit database debugging
 	if c.Debug {
 		return logger.Info
 	}
-	return logger.Warn
+
+	// Fall back to global log level for production debugging
+	switch globalLogLevel {
+	case "debug":
+		return logger.Info // Enable SQL query logging when global debug is on
+	case "error":
+		return logger.Silent // Suppress SQL logs in error-only mode
+	default:
+		return logger.Warn // Default: log slow queries and errors
+	}
 }
