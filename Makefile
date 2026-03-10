@@ -356,7 +356,7 @@ endif
 		--build-arg GIT_SHA=$(GIT_SHA) \
 		--build-arg GIT_DIRTY=$(GIT_DIRTY) \
 		--build-arg BUILD_DATE=$(BUILD_DATE) \
-		--build-arg APP_VERSION=$(APP_VERSION) \
+		--build-arg APP_VERSION=0.0.0-dev \
 		-t quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG) .
 	@echo "Pushing dev image..."
 	$(CONTAINER_TOOL) push quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG)
