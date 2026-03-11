@@ -99,7 +99,7 @@ Query resources by status conditions: `status.conditions.<Type>='<Status>'`
 
 Condition types must be PascalCase (`Ready`, `Available`) and status must be `True` or `False` for resource conditions.
 
-**Note:** Only the `=` operator is supported for condition queries. Other  operators (`!=`, `<`, `>`, `in`, etc.) will return an error. Use `not` with  conditions cautiously — `not status.conditions.Ready='True'` does not work as expected.
+**Note:** Only the `=` operator is supported for condition queries. Unsupported operators (`!=`, `<`, `<=`, `>`, `>=`, `in`, `not`) return a `400 Bad Request` error.
 
 ```bash
 # Find available clusters

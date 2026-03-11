@@ -281,8 +281,8 @@ func TestSearchStatusConditionsCombinedWithLabels(t *testing.T) {
 		&h.Factories,
 		h.DBFactory,
 		h.NewID(),
-		true,  // isAvailable
-		true,  // isReady
+		true, // isAvailable
+		true, // isReady
 		map[string]string{"region": "us-east"},
 	)
 	Expect(err).NotTo(HaveOccurred())
@@ -366,4 +366,47 @@ func TestSearchStatusConditionsInvalidValues(t *testing.T) {
 
 	Expect(err).NotTo(HaveOccurred())
 	Expect(invalidTypeResp.StatusCode()).To(Equal(http.StatusBadRequest))
+}
+
+// TestSearchStatusConditionsNotOperator verifies that using "not" with condition
+// queries returns 400 Bad Request
+func TestSearchStatusConditionsNotOperator(t *testing.T) {
+	RegisterTestingT(t)
+	h, client := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+
+	// "not" wrapping a condition query
+	searchStr := "not status.conditions.Ready='True'"
+	search := openapi.SearchParams(searchStr)
+	params := &openapi.GetClustersParams{
+		Search: &search,
+	}
+	resp, err := client.GetClustersWithResponse(ctx, params, test.WithAuthToken(ctx))
+
+	Expect(err).NotTo(HaveOccurred())
+	Expect(resp.StatusCode()).To(Equal(http.StatusBadRequest))
+
+	// "not" wrapping subtree containing a condition
+	searchMixed := "not (labels.region='us-east' AND status.conditions.Ready='True')"
+	searchMixedParam := openapi.SearchParams(searchMixed)
+	mixedParams := &openapi.GetClustersParams{
+		Search: &searchMixedParam,
+	}
+	mixedResp, err := client.GetClustersWithResponse(ctx, mixedParams, test.WithAuthToken(ctx))
+
+	Expect(err).NotTo(HaveOccurred())
+	Expect(mixedResp.StatusCode()).To(Equal(http.StatusBadRequest))
+
+	// "not" wrapping a non-condition
+	searchAllowed := "status.conditions.Ready='True' AND not labels.region='us-west'"
+	searchAllowedParam := openapi.SearchParams(searchAllowed)
+	allowedParams := &openapi.GetClustersParams{
+		Search: &searchAllowedParam,
+	}
+	allowedResp, err := client.GetClustersWithResponse(ctx, allowedParams, test.WithAuthToken(ctx))
+
+	Expect(err).NotTo(HaveOccurred())
+	Expect(allowedResp.StatusCode()).To(Equal(http.StatusOK))
 }
