@@ -2,12 +2,15 @@ package integration
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/rand"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	. "github.com/onsi/gomega"
 	"gorm.io/gorm"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
@@ -18,16 +21,15 @@ import (
 // concurrent access to shared resources. This test uses actual database operations
 // to prove the lock prevents race conditions at the database level.
 func TestAdvisoryLocksConcurrently(t *testing.T) {
-	helper := test.NewHelper(t)
+	h, _ := test.RegisterIntegration(t)
 
 	// Create a counter table and initialize to 0
-	g2 := helper.DBFactory.New(context.Background())
-	if err := g2.Exec("CREATE TABLE IF NOT EXISTS lock_test_counter (id INTEGER PRIMARY KEY, value INTEGER)").Error; err != nil {
-		t.Fatalf("Failed to create counter table: %v", err)
-	}
-	if err := g2.Exec("INSERT INTO lock_test_counter (id, value) VALUES (1, 0)").Error; err != nil {
-		t.Fatalf("Failed to initialize counter: %v", err)
-	}
+	g2 := h.DBFactory.New(context.Background())
+	err := g2.Exec("CREATE TABLE IF NOT EXISTS lock_test_counter (id INTEGER PRIMARY KEY, value INTEGER)").Error
+	Expect(err).NotTo(HaveOccurred(), "Failed to create counter table")
+
+	err = g2.Exec("INSERT INTO lock_test_counter (id, value) VALUES (1, 0)").Error
+	Expect(err).NotTo(HaveOccurred(), "Failed to initialize counter")
 	defer g2.Exec("DROP TABLE IF EXISTS lock_test_counter")
 
 	total := 10
@@ -37,7 +39,7 @@ func TestAdvisoryLocksConcurrently(t *testing.T) {
 	// Simulate a race condition where multiple threads are trying to access and modify the counter.
 	// The acquireLock func uses an advisory lock so the accesses should be properly serialized.
 	for i := 0; i < total; i++ {
-		go acquireLock(helper, &waiter)
+		go acquireLock(h, &waiter)
 	}
 
 	// Wait for all goroutines to complete
@@ -45,61 +47,50 @@ func TestAdvisoryLocksConcurrently(t *testing.T) {
 
 	// All goroutines should have incremented the counter by 1, resulting in 10
 	var finalValue int
-	if err := g2.Raw("SELECT value FROM lock_test_counter WHERE id = 1").Scan(&finalValue).Error; err != nil {
-		t.Fatalf("Failed to read final counter value: %v", err)
-	}
-	if finalValue != total {
-		t.Errorf("Expected counter to be %d, got %d", total, finalValue)
-	}
+	err = g2.Raw("SELECT value FROM lock_test_counter WHERE id = 1").Scan(&finalValue).Error
+	Expect(err).NotTo(HaveOccurred(), "Failed to read final counter value")
+	Expect(finalValue).To(Equal(total), "Counter should equal total")
 }
 
-func acquireLock(helper *test.Helper, waiter *sync.WaitGroup) {
+func acquireLock(h *test.Helper, waiter *sync.WaitGroup) {
 	defer waiter.Done()
 
 	ctx := context.Background()
 
 	// Acquire advisory lock
-	ctx, lockOwnerID, err := db.NewAdvisoryLockContext(ctx, helper.DBFactory, "test-resource", db.Migrations)
-	if err != nil {
-		helper.T.Errorf("Failed to acquire lock: %v", err)
-		return
-	}
+	ctx, lockOwnerID, err := db.NewAdvisoryLockContext(ctx, h.DBFactory, "test-resource", db.Migrations)
+	Expect(err).NotTo(HaveOccurred(), "Failed to acquire lock")
 	defer db.Unlock(ctx, lockOwnerID)
 
-	g2 := helper.DBFactory.New(ctx)
+	g2 := h.DBFactory.New(ctx)
 
 	// Read current value from database
 	var currentValue int
-	if err := g2.Raw("SELECT value FROM lock_test_counter WHERE id = 1").Scan(&currentValue).Error; err != nil {
-		helper.T.Errorf("Failed to read counter: %v", err)
-		return
-	}
+	err = g2.Raw("SELECT value FROM lock_test_counter WHERE id = 1").Scan(&currentValue).Error
+	Expect(err).NotTo(HaveOccurred(), "Failed to read counter")
 
 	// Some slow work to increase the likelihood of race conditions
 	time.Sleep(20 * time.Millisecond)
 
 	// Increment and save to database
 	newValue := currentValue + 1
-	if err := g2.Exec("UPDATE lock_test_counter SET value = ? WHERE id = 1", newValue).Error; err != nil {
-		helper.T.Errorf("Failed to update counter: %v", err)
-		return
-	}
+	err = g2.Exec("UPDATE lock_test_counter SET value = ? WHERE id = 1", newValue).Error
+	Expect(err).NotTo(HaveOccurred(), "Failed to update counter")
 }
 
 // TestAdvisoryLocksWithTransactions validates that advisory locks work correctly
 // when combined with database transactions in various orders. Uses actual database
 // operations to prove serialization.
 func TestAdvisoryLocksWithTransactions(t *testing.T) {
-	helper := test.NewHelper(t)
+	h, _ := test.RegisterIntegration(t)
 
 	// Create a counter table and initialize to 0
-	g2 := helper.DBFactory.New(context.Background())
-	if err := g2.Exec("CREATE TABLE IF NOT EXISTS lock_test_counter_tx (id INTEGER PRIMARY KEY, value INTEGER)").Error; err != nil {
-		t.Fatalf("Failed to create counter table: %v", err)
-	}
-	if err := g2.Exec("INSERT INTO lock_test_counter_tx (id, value) VALUES (1, 0)").Error; err != nil {
-		t.Fatalf("Failed to initialize counter: %v", err)
-	}
+	g2 := h.DBFactory.New(context.Background())
+	err := g2.Exec("CREATE TABLE IF NOT EXISTS lock_test_counter_tx (id INTEGER PRIMARY KEY, value INTEGER)").Error
+	Expect(err).NotTo(HaveOccurred(), "Failed to create counter table")
+
+	err = g2.Exec("INSERT INTO lock_test_counter_tx (id, value) VALUES (1, 0)").Error
+	Expect(err).NotTo(HaveOccurred(), "Failed to initialize counter")
 	defer g2.Exec("DROP TABLE IF EXISTS lock_test_counter_tx")
 
 	total := 10
@@ -107,22 +98,19 @@ func TestAdvisoryLocksWithTransactions(t *testing.T) {
 	waiter.Add(total)
 
 	for i := 0; i < total; i++ {
-		go acquireLockWithTransaction(helper, &waiter)
+		go acquireLockWithTransaction(h, &waiter)
 	}
 
 	waiter.Wait()
 
 	// All goroutines should have incremented the counter by 1, resulting in 10
 	var finalValue int
-	if err := g2.Raw("SELECT value FROM lock_test_counter_tx WHERE id = 1").Scan(&finalValue).Error; err != nil {
-		t.Fatalf("Failed to read final counter value: %v", err)
-	}
-	if finalValue != total {
-		t.Errorf("Expected counter to be %d, got %d", total, finalValue)
-	}
+	err = g2.Raw("SELECT value FROM lock_test_counter_tx WHERE id = 1").Scan(&finalValue).Error
+	Expect(err).NotTo(HaveOccurred(), "Failed to read final counter value")
+	Expect(finalValue).To(Equal(total), "Counter should equal total")
 }
 
-func acquireLockWithTransaction(helper *test.Helper, waiter *sync.WaitGroup) {
+func acquireLockWithTransaction(h *test.Helper, waiter *sync.WaitGroup) {
 	defer waiter.Done()
 
 	ctx := context.Background()
@@ -137,50 +125,37 @@ func acquireLockWithTransaction(helper *test.Helper, waiter *sync.WaitGroup) {
 
 	// Randomly add Tx before lock to demonstrate it works
 	if txBeforeLock {
-		ctx, dberr = db.NewContext(ctx, helper.DBFactory)
-		if dberr != nil {
-			helper.T.Errorf("Failed to create transaction context: %v", dberr)
-			return
-		}
+		ctx, dberr = db.NewContext(ctx, h.DBFactory)
+		Expect(dberr).NotTo(HaveOccurred(), "Failed to create transaction context")
 		defer db.Resolve(ctx)
 	}
 
 	// Acquire advisory lock
-	ctx, lockOwnerID, dberr := db.NewAdvisoryLockContext(ctx, helper.DBFactory, "test-resource-tx", db.Migrations)
-	if dberr != nil {
-		helper.T.Errorf("Failed to acquire lock: %v", dberr)
-		return
-	}
+	ctx, lockOwnerID, dberr := db.NewAdvisoryLockContext(ctx, h.DBFactory, "test-resource-tx", db.Migrations)
+	Expect(dberr).NotTo(HaveOccurred(), "Failed to acquire lock")
 	defer db.Unlock(ctx, lockOwnerID)
 
 	// Randomly add Tx after lock to demonstrate it works
 	if txAfterLock {
-		ctx, dberr = db.NewContext(ctx, helper.DBFactory)
-		if dberr != nil {
-			helper.T.Errorf("Failed to create transaction context: %v", dberr)
-			return
-		}
+		ctx, dberr = db.NewContext(ctx, h.DBFactory)
+		Expect(dberr).NotTo(HaveOccurred(), "Failed to create transaction context")
 		defer db.Resolve(ctx)
 	}
 
-	g2 := helper.DBFactory.New(ctx)
+	g2 := h.DBFactory.New(ctx)
 
 	// Read current value from database
 	var currentValue int
-	if err := g2.Raw("SELECT value FROM lock_test_counter_tx WHERE id = 1").Scan(&currentValue).Error; err != nil {
-		helper.T.Errorf("Failed to read counter: %v", err)
-		return
-	}
+	err := g2.Raw("SELECT value FROM lock_test_counter_tx WHERE id = 1").Scan(&currentValue).Error
+	Expect(err).NotTo(HaveOccurred(), "Failed to read counter")
 
 	// Some slow work
 	time.Sleep(20 * time.Millisecond)
 
 	// Increment and save to database
 	newValue := currentValue + 1
-	if err := g2.Exec("UPDATE lock_test_counter_tx SET value = ? WHERE id = 1", newValue).Error; err != nil {
-		helper.T.Errorf("Failed to update counter: %v", err)
-		return
-	}
+	err = g2.Exec("UPDATE lock_test_counter_tx SET value = ? WHERE id = 1", newValue).Error
+	Expect(err).NotTo(HaveOccurred(), "Failed to update counter")
 }
 
 // TestLocksAndExpectedWaits validates the behavior of advisory locks:
@@ -188,35 +163,30 @@ func acquireLockWithTransaction(helper *test.Helper, waiter *sync.WaitGroup) {
 // - Different (id, lockType) combinations should create separate locks
 // - Unlocking should only affect the lock matching the owner ID
 func TestLocksAndExpectedWaits(t *testing.T) {
-	helper := test.NewHelper(t)
+	h, _ := test.RegisterIntegration(t)
 
 	// Start lock
 	ctx := context.Background()
-	ctx, lockOwnerID, err := db.NewAdvisoryLockContext(ctx, helper.DBFactory, "system", db.Migrations)
-	if err != nil {
-		t.Fatalf("Failed to acquire lock: %v", err)
-	}
+	ctx, lockOwnerID, err := db.NewAdvisoryLockContext(ctx, h.DBFactory, "system", db.Migrations)
+	Expect(err).NotTo(HaveOccurred(), "Failed to acquire lock")
+	defer db.Unlock(ctx, lockOwnerID) // Ensure lock is released on test exit
 
 	// It should have 1 lock
-	g2 := helper.DBFactory.New(ctx)
+	g2 := h.DBFactory.New(ctx)
 	var pgLocks []struct{ Granted bool }
 	g2.Raw("select granted from pg_locks WHERE locktype = 'advisory' and granted = true").Scan(&pgLocks)
-	if len(pgLocks) != 1 {
-		t.Errorf("Expected 1 lock, got %d", len(pgLocks))
-	}
+	Expect(len(pgLocks)).To(Equal(1), "Expected 1 lock")
 
 	// Successive locking should have no effect (nested lock with same id/type)
 	// Pretend this runs in a nested func
-	ctx, lockOwnerID2, err := db.NewAdvisoryLockContext(ctx, helper.DBFactory, "system", db.Migrations)
-	if err != nil {
-		t.Fatalf("Failed to acquire nested lock: %v", err)
-	}
+	ctx, lockOwnerID2, err := db.NewAdvisoryLockContext(ctx, h.DBFactory, "system", db.Migrations)
+	Expect(err).NotTo(HaveOccurred(), "Failed to acquire nested lock")
+	defer db.Unlock(ctx, lockOwnerID2) // Ensure lock is released on test exit
+
 	// It should still have 1 lock
 	pgLocks = nil
 	g2.Raw("select granted from pg_locks WHERE locktype = 'advisory' and granted = true").Scan(&pgLocks)
-	if len(pgLocks) != 1 {
-		t.Errorf("Expected 1 lock after nested acquire, got %d", len(pgLocks))
-	}
+	Expect(len(pgLocks)).To(Equal(1), "Expected 1 lock after nested acquire")
 
 	// Unlock should have no effect either (unlocking nested lock)
 	// Pretend this runs in the nested func
@@ -224,31 +194,25 @@ func TestLocksAndExpectedWaits(t *testing.T) {
 	// It should still have 1 lock
 	pgLocks = nil
 	g2.Raw("select granted from pg_locks WHERE locktype = 'advisory' and granted = true").Scan(&pgLocks)
-	if len(pgLocks) != 1 {
-		t.Errorf("Expected 1 lock after nested unlock, got %d", len(pgLocks))
-	}
+	Expect(len(pgLocks)).To(Equal(1), "Expected 1 lock after nested unlock")
 
 	// Lock on a different (id, lockType) should work
 	// Pretend this runs in a nested func
-	ctx, lockOwnerID3, err := db.NewAdvisoryLockContext(ctx, helper.DBFactory, "diff_system", db.Migrations)
-	if err != nil {
-		t.Fatalf("Failed to acquire different lock: %v", err)
-	}
+	ctx, lockOwnerID3, err := db.NewAdvisoryLockContext(ctx, h.DBFactory, "diff_system", db.Migrations)
+	Expect(err).NotTo(HaveOccurred(), "Failed to acquire different lock")
+	defer db.Unlock(ctx, lockOwnerID3) // Ensure lock is released on test exit
+
 	// It should have 2 locks
 	pgLocks = nil
 	g2.Raw("select granted from pg_locks WHERE locktype = 'advisory' and granted = true").Scan(&pgLocks)
-	if len(pgLocks) != 2 {
-		t.Errorf("Expected 2 locks, got %d", len(pgLocks))
-	}
+	Expect(len(pgLocks)).To(Equal(2), "Expected 2 locks")
 
 	// Pretend it releases the new lock in the nested func
 	db.Unlock(ctx, lockOwnerID3)
 	// It should have 1 lock
 	pgLocks = nil
 	g2.Raw("select granted from pg_locks WHERE locktype = 'advisory' and granted = true").Scan(&pgLocks)
-	if len(pgLocks) != 1 {
-		t.Errorf("Expected 1 lock after releasing different lock, got %d", len(pgLocks))
-	}
+	Expect(len(pgLocks)).To(Equal(1), "Expected 1 lock after releasing different lock")
 
 	// Unlock the topmost lock
 	// Pretend it returns back to the parent func
@@ -256,21 +220,18 @@ func TestLocksAndExpectedWaits(t *testing.T) {
 	// The lock should be gone
 	pgLocks = nil
 	g2.Raw("select granted from pg_locks WHERE locktype = 'advisory' and granted = true").Scan(&pgLocks)
-	if len(pgLocks) != 0 {
-		t.Errorf("Expected 0 locks after final unlock, got %d", len(pgLocks))
-	}
+	Expect(len(pgLocks)).To(Equal(0), "Expected 0 locks after final unlock")
 }
 
 // TestConcurrentMigrations validates that the MigrateWithLock function
 // properly serializes concurrent migration attempts, ensuring only one
 // instance actually runs migrations at a time.
 func TestConcurrentMigrations(t *testing.T) {
-	helper := test.NewHelper(t)
+	h, _ := test.RegisterIntegration(t)
 
 	// First, reset the database to a clean state
-	if err := helper.ResetDB(); err != nil {
-		t.Fatalf("Failed to reset database: %v", err)
-	}
+	err := h.ResetDB()
+	Expect(err).NotTo(HaveOccurred(), "Failed to reset database")
 
 	total := 5
 	var waiter sync.WaitGroup
@@ -287,7 +248,7 @@ func TestConcurrentMigrations(t *testing.T) {
 			defer waiter.Done()
 
 			ctx := context.Background()
-			err := db.MigrateWithLock(ctx, helper.DBFactory)
+			err := db.MigrateWithLock(ctx, h.DBFactory)
 
 			mu.Lock()
 			defer mu.Unlock()
@@ -303,28 +264,23 @@ func TestConcurrentMigrations(t *testing.T) {
 	waiter.Wait()
 
 	// All migrations should succeed (they're idempotent)
-	if len(errors) > 0 {
-		t.Errorf("Expected no errors, but got %d: %v", len(errors), errors)
-	}
+	Expect(errors).To(BeEmpty(), "Expected no errors during concurrent migrations")
 
 	// All goroutines should complete successfully
-	if successCount != total {
-		t.Errorf("Expected %d successful migrations, got %d", total, successCount)
-	}
+	Expect(successCount).To(Equal(total), "All migrations should succeed")
 }
 
 // TestAdvisoryLockBlocking validates that a second goroutine trying to acquire
 // the same lock will block until the first goroutine releases it.
 func TestAdvisoryLockBlocking(t *testing.T) {
-	helper := test.NewHelper(t)
+	h, _ := test.RegisterIntegration(t)
 
 	ctx := context.Background()
 
 	// First goroutine acquires the lock
-	ctx1, lockOwnerID1, err := db.NewAdvisoryLockContext(ctx, helper.DBFactory, "blocking-test", db.Migrations)
-	if err != nil {
-		t.Fatalf("Failed to acquire first lock: %v", err)
-	}
+	ctx1, lockOwnerID1, err := db.NewAdvisoryLockContext(ctx, h.DBFactory, "blocking-test", db.Migrations)
+	Expect(err).NotTo(HaveOccurred(), "Failed to acquire first lock")
+	defer db.Unlock(ctx1, lockOwnerID1) // Ensure lock is released on test exit
 
 	// Track when the second goroutine acquires the lock
 	acquired := make(chan bool, 1)
@@ -332,11 +288,8 @@ func TestAdvisoryLockBlocking(t *testing.T) {
 
 	// Second goroutine tries to acquire the same lock
 	go func() {
-		ctx2, lockOwnerID2, err := db.NewAdvisoryLockContext(context.Background(), helper.DBFactory, "blocking-test", db.Migrations)
-		if err != nil {
-			t.Errorf("Failed to acquire second lock: %v", err)
-			return
-		}
+		ctx2, lockOwnerID2, err := db.NewAdvisoryLockContext(context.Background(), h.DBFactory, "blocking-test", db.Migrations)
+		Expect(err).NotTo(HaveOccurred(), "Failed to acquire second lock")
 		defer db.Unlock(ctx2, lockOwnerID2)
 
 		acquired <- true
@@ -346,14 +299,13 @@ func TestAdvisoryLockBlocking(t *testing.T) {
 	// Wait for the second goroutine to be actively waiting on the lock
 	// by polling pg_locks for a non-granted advisory lock.
 	// This is more reliable than sleep, especially in slow CI environments.
-	g2 := helper.DBFactory.New(ctx)
+	g2 := h.DBFactory.New(ctx)
 	waitingForLock := false
 	for i := 0; i < 50; i++ { // Poll for up to 5 seconds (50 * 100ms)
 		var waitingLocks []struct{ Granted bool }
-		if err := g2.Raw("SELECT granted FROM pg_locks WHERE locktype = 'advisory' AND granted = false").Scan(&waitingLocks).Error; err != nil {
-			t.Errorf("Failed to query pg_locks: %v", err)
-			break
-		}
+		err := g2.Raw("SELECT granted FROM pg_locks WHERE locktype = 'advisory' AND granted = false").Scan(&waitingLocks).Error
+		Expect(err).NotTo(HaveOccurred(), "Failed to query pg_locks")
+
 		if len(waitingLocks) > 0 {
 			waitingForLock = true
 			break
@@ -361,9 +313,7 @@ func TestAdvisoryLockBlocking(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 	}
 
-	if !waitingForLock {
-		t.Fatal("Second goroutine did not reach the lock waiting state within timeout")
-	}
+	Expect(waitingForLock).To(BeTrue(), "Second goroutine should be waiting for lock")
 
 	// The second goroutine should still be blocked
 	select {
@@ -390,15 +340,13 @@ func TestAdvisoryLockBlocking(t *testing.T) {
 // terminates a waiting advisory lock acquisition. The context is passed through
 // connection.New(ctx) and affects the blocking pg_advisory_xact_lock SQL call.
 func TestAdvisoryLockContextCancellation(t *testing.T) {
-	helper := test.NewHelper(t)
+	h, _ := test.RegisterIntegration(t)
 
 	ctx := context.Background()
 
 	// First goroutine acquires the lock
-	ctx1, lockOwnerID1, err := db.NewAdvisoryLockContext(ctx, helper.DBFactory, "cancel-test", db.Migrations)
-	if err != nil {
-		t.Fatalf("Failed to acquire first lock: %v", err)
-	}
+	ctx1, lockOwnerID1, err := db.NewAdvisoryLockContext(ctx, h.DBFactory, "cancel-test", db.Migrations)
+	Expect(err).NotTo(HaveOccurred(), "Failed to acquire first lock")
 	defer db.Unlock(ctx1, lockOwnerID1)
 
 	// Track when the second goroutine gets cancelled
@@ -409,25 +357,30 @@ func TestAdvisoryLockContextCancellation(t *testing.T) {
 
 	// Second goroutine tries to acquire the same lock with cancellable context
 	go func() {
-		_, _, err := db.NewAdvisoryLockContext(ctx2, helper.DBFactory, "cancel-test", db.Migrations)
+		_, _, err := db.NewAdvisoryLockContext(ctx2, h.DBFactory, "cancel-test", db.Migrations)
 		if err != nil {
-			// Expected: context cancellation causes "canceling statement due to user request"
-			t.Logf("Second goroutine got error (expected): %v", err)
-			gotCancelError <- true
+			// Check if this is a cancellation-type error
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) ||
+				strings.Contains(err.Error(), "canceling statement due to user request") {
+				// Expected: context cancellation causes proper cancellation error
+				gotCancelError <- true
+				return
+			}
+			// Unexpected error - fail the test
+			t.Errorf("Unexpected error from lock acquisition: %v", err)
 			return
 		}
 		t.Error("Second goroutine acquired lock despite context cancellation (unexpected)")
 	}()
 
 	// Wait for the second goroutine to be actively waiting on the lock
-	g2 := helper.DBFactory.New(ctx)
+	g2 := h.DBFactory.New(ctx)
 	waitingForLock := false
 	for i := 0; i < 50; i++ {
 		var waitingLocks []struct{ Granted bool }
-		if err := g2.Raw("SELECT granted FROM pg_locks WHERE locktype = 'advisory' AND granted = false").Scan(&waitingLocks).Error; err != nil {
-			t.Errorf("Failed to query pg_locks: %v", err)
-			break
-		}
+		err := g2.Raw("SELECT granted FROM pg_locks WHERE locktype = 'advisory' AND granted = false").Scan(&waitingLocks).Error
+		Expect(err).NotTo(HaveOccurred(), "Failed to query pg_locks")
+
 		if len(waitingLocks) > 0 {
 			waitingForLock = true
 			break
@@ -435,9 +388,7 @@ func TestAdvisoryLockContextCancellation(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 	}
 
-	if !waitingForLock {
-		t.Fatal("Second goroutine did not reach the lock waiting state within timeout")
-	}
+	Expect(waitingForLock).To(BeTrue(), "Second goroutine should be waiting for lock")
 
 	// Cancel the context while the second goroutine is waiting
 	cancel()
@@ -446,7 +397,6 @@ func TestAdvisoryLockContextCancellation(t *testing.T) {
 	select {
 	case <-gotCancelError:
 		// Expected: context cancellation terminates the lock acquisition
-		t.Log("Confirmed: context cancellation properly terminates waiting advisory lock")
 	case <-time.After(2 * time.Second):
 		t.Error("Second goroutine did not exit after context cancellation within timeout")
 	}
@@ -456,12 +406,11 @@ func TestAdvisoryLockContextCancellation(t *testing.T) {
 // the advisory lock, the lock is properly released via defer, allowing other waiters
 // to proceed. This tests the error path and cleanup behavior.
 func TestMigrationFailureUnderLock(t *testing.T) {
-	helper := test.NewHelper(t)
+	h, _ := test.RegisterIntegration(t)
 
 	// Reset database to clean state
-	if err := helper.ResetDB(); err != nil {
-		t.Fatalf("Failed to reset database: %v", err)
-	}
+	err := h.ResetDB()
+	Expect(err).NotTo(HaveOccurred(), "Failed to reset database")
 
 	// Track results
 	var mu sync.Mutex
@@ -480,15 +429,12 @@ func TestMigrationFailureUnderLock(t *testing.T) {
 		defer wg.Done()
 
 		ctx := context.Background()
-		ctx, lockOwnerID, err := db.NewAdvisoryLockContext(ctx, helper.DBFactory, "migration-fail-test", db.Migrations)
-		if err != nil {
-			t.Errorf("Failed to acquire lock: %v", err)
-			return
-		}
+		ctx, lockOwnerID, err := db.NewAdvisoryLockContext(ctx, h.DBFactory, "migration-fail-test", db.Migrations)
+		Expect(err).NotTo(HaveOccurred(), "Failed to acquire lock")
 		defer db.Unlock(ctx, lockOwnerID)
 
 		// Simulate migration failure
-		if err := failingMigration(helper.DBFactory.New(ctx)); err != nil {
+		if err := failingMigration(h.DBFactory.New(ctx)); err != nil {
 			mu.Lock()
 			failureCount++
 			mu.Unlock()
@@ -505,11 +451,8 @@ func TestMigrationFailureUnderLock(t *testing.T) {
 		defer wg.Done()
 
 		ctx := context.Background()
-		ctx, lockOwnerID, err := db.NewAdvisoryLockContext(ctx, helper.DBFactory, "migration-fail-test", db.Migrations)
-		if err != nil {
-			t.Errorf("Failed to acquire lock after failure: %v", err)
-			return
-		}
+		ctx, lockOwnerID, err := db.NewAdvisoryLockContext(ctx, h.DBFactory, "migration-fail-test", db.Migrations)
+		Expect(err).NotTo(HaveOccurred(), "Failed to acquire lock after failure")
 		defer db.Unlock(ctx, lockOwnerID)
 
 		// This one succeeds
@@ -521,12 +464,6 @@ func TestMigrationFailureUnderLock(t *testing.T) {
 	wg.Wait()
 
 	// Verify both completed
-	if failureCount != 1 {
-		t.Errorf("Expected 1 failure, got %d", failureCount)
-	}
-	if successCount != 1 {
-		t.Errorf("Expected 1 success, got %d", successCount)
-	}
-
-	t.Log("Confirmed: lock properly released after migration failure, allowing subsequent operations")
+	Expect(failureCount).To(Equal(1), "Expected 1 failure")
+	Expect(successCount).To(Equal(1), "Expected 1 success")
 }
