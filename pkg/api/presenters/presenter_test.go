@@ -45,13 +45,17 @@ func createTestClusterList() openapi.ClusterList {
 			Type:               "Ready",
 			Status:             openapi.ResourceConditionStatus("True"),
 			Message:            &msg1,
+			CreatedTime:        time.Date(2026, 1, 25, 0, 0, 0, 0, time.UTC),
 			LastTransitionTime: now,
+			LastUpdatedTime:    now,
 		},
 		{
 			Type:               "Progressing",
 			Status:             openapi.ResourceConditionStatus("False"),
 			Message:            &msg2,
+			CreatedTime:        time.Date(2026, 3, 11, 0, 0, 0, 0, time.UTC),
 			LastTransitionTime: now,
+			LastUpdatedTime:    now,
 		},
 	}
 
@@ -247,17 +251,50 @@ func TestSliceFilter(t *testing.T) {
 			},
 		},
 		{
+			name:   "multiple sub-fields from same slice element",
+			fields: []string{"id", "status.conditions.type", "status.conditions.status"},
+			model:  createTestClusterList(),
+			validate: func(result *ProjectionList, err *errors.ServiceError) {
+				Expect(err).To(BeNil())
+				Expect(result).ToNot(BeNil())
+				Expect(result.Items).To(HaveLen(2))
+				status := result.Items[0]["status"].(map[string]interface{})
+				conditions := status["conditions"].([]interface{})
+				Expect(conditions).To(HaveLen(2))
+
+				elem0 := conditions[0].(map[string]interface{})
+				Expect(elem0["type"]).To(Equal("Ready"))
+				Expect(elem0["status"]).To(Equal(openapi.ResourceConditionStatus("True")))
+				Expect(elem0).ToNot(HaveKey("message"))
+				Expect(elem0).ToNot(HaveKey("last_transition_time"))
+
+				elem1 := conditions[1].(map[string]interface{})
+				Expect(elem1["type"]).To(Equal("Progressing"))
+				Expect(elem1["status"]).To(Equal(openapi.ResourceConditionStatus("False")))
+				Expect(elem1).ToNot(HaveKey("message"))
+				Expect(elem1).ToNot(HaveKey("last_transition_time"))
+			},
+		},
+		{
 			name:   "time sub-field of slice element",
-			fields: []string{"id", "status.conditions.last_transition_time"},
+			fields: []string{"id", "status.conditions.created_time"},
 			model:  createTestClusterList(),
 			validate: func(result *ProjectionList, err *errors.ServiceError) {
 				Expect(err).To(BeNil())
 				Expect(result).ToNot(BeNil())
 				status := result.Items[0]["status"].(map[string]interface{})
 				conditions := status["conditions"].([]interface{})
-				elem := conditions[0].(map[string]interface{})
-				Expect(elem).To(HaveKey("last_transition_time"))
-				Expect(elem).ToNot(HaveKey("type"))
+				elem0 := conditions[0].(map[string]interface{})
+				Expect(elem0).ToNot(HaveKey("type"))
+				ltt0, ok := elem0["created_time"].(string)
+				Expect(ok).To(BeTrue(), "created_time should be a string")
+				Expect(ltt0).To(Equal("2026-01-25T00:00:00Z"))
+
+				elem1 := conditions[1].(map[string]interface{})
+				Expect(elem1).ToNot(HaveKey("type"))
+				ltt1, ok := elem1["created_time"].(string)
+				Expect(ok).To(BeTrue(), "created_time should be a string")
+				Expect(ltt1).To(Equal("2026-03-11T00:00:00Z"))
 			},
 		},
 		{
@@ -273,6 +310,49 @@ func TestSliceFilter(t *testing.T) {
 			},
 		},
 		{
+			name:   "invalid sub-field alongside slice star selector returns error",
+			fields: []string{"id", "status.conditions.*", "status.conditions.nonexistent_field"},
+			model:  createTestClusterList(),
+			validate: func(result *ProjectionList, err *errors.ServiceError) {
+				Expect(result).To(BeNil())
+				Expect(err).ToNot(BeNil())
+				Expect(err.Type).To(Equal(errors.ErrorTypeValidation))
+				Expect(err.Error()).To(ContainSubstring("nonexistent_field"))
+			},
+		},
+		{
+			name:   "invalid sub-field alongside struct star selector returns error",
+			fields: []string{"id", "status.*", "status.nonexistent_field"},
+			model:  createTestClusterList(),
+			validate: func(result *ProjectionList, err *errors.ServiceError) {
+				Expect(result).To(BeNil())
+				Expect(err).ToNot(BeNil())
+				Expect(err.Type).To(Equal(errors.ErrorTypeValidation))
+				Expect(err.Error()).To(ContainSubstring("nonexistent_field"))
+			},
+		},
+		{
+			name:   "parent star selector includes slice fields",
+			fields: []string{"id", "status.*"},
+			model:  createTestClusterList(),
+			validate: func(result *ProjectionList, err *errors.ServiceError) {
+				Expect(err).To(BeNil())
+				Expect(result).ToNot(BeNil())
+				Expect(result.Items).To(HaveLen(2))
+				status := result.Items[0]["status"].(map[string]interface{})
+
+				// status.* must include conditions slice with all element fields
+				conditions, ok := status["conditions"].([]interface{})
+				Expect(ok).To(BeTrue(), "conditions should be present under status.*")
+				Expect(conditions).To(HaveLen(2))
+
+				elem0 := conditions[0].(map[string]interface{})
+				Expect(elem0).To(HaveLen(8))
+				Expect(elem0["type"]).To(Equal("Ready"))
+				Expect(elem0["status"]).To(Equal(openapi.ResourceConditionStatus("True")))
+			},
+		},
+		{
 			name:   "star selector for slice elements is valid",
 			fields: []string{"id", "status.conditions.*"},
 			model:  createTestClusterList(),
@@ -284,12 +364,15 @@ func TestSliceFilter(t *testing.T) {
 				conditions := status["conditions"].([]interface{})
 				Expect(conditions).To(HaveLen(2))
 
+				// All fields of ResourceCondition must be present
 				elem0 := conditions[0].(map[string]interface{})
+				Expect(elem0).To(HaveLen(8))
 				Expect(elem0["type"]).To(Equal("Ready"))
 				Expect(elem0["status"]).To(Equal(openapi.ResourceConditionStatus("True")))
 				Expect(elem0).To(HaveKey("message"))
 
 				elem1 := conditions[1].(map[string]interface{})
+				Expect(elem1).To(HaveLen(8))
 				Expect(elem1["type"]).To(Equal("Progressing"))
 				Expect(elem1["status"]).To(Equal(openapi.ResourceConditionStatus("False")))
 				Expect(elem1).To(HaveKey("message"))
@@ -303,22 +386,20 @@ func TestSliceFilter(t *testing.T) {
 				Expect(err).To(BeNil())
 				Expect(result).ToNot(BeNil())
 				Expect(result.Items).To(HaveLen(2))
-				id1 := result.Items[0]["id"].(*string)
-				Expect(*id1).To(Equal("cluster-id1"))
-				// Bare slice request returns all element fields
+				// Bare slice request promotes to star, all fields must be returned
 				status := result.Items[0]["status"].(map[string]interface{})
 				conditions := status["conditions"].([]interface{})
 				Expect(conditions).To(HaveLen(2))
 
 				elem0 := conditions[0].(map[string]interface{})
-				Expect(elem0["type"]).To(Equal("Ready"))
-				Expect(elem0["status"]).To(Equal(openapi.ResourceConditionStatus("True")))
+				Expect(elem0).To(HaveLen(8))
 				Expect(elem0).To(HaveKey("message"))
+				Expect(elem0).To(HaveKey("last_transition_time"))
 
 				elem1 := conditions[1].(map[string]interface{})
-				Expect(elem1["type"]).To(Equal("Progressing"))
-				Expect(elem1["status"]).To(Equal(openapi.ResourceConditionStatus("False")))
+				Expect(elem1).To(HaveLen(8))
 				Expect(elem1).To(HaveKey("message"))
+				Expect(elem1).To(HaveKey("last_transition_time"))
 			},
 		},
 		{
