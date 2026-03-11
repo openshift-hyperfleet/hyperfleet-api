@@ -181,7 +181,9 @@ func hasCondition(n tsl.Node) bool {
 
 // conditionsNodeConverter handles status.conditions.<ConditionType>='<Status>' queries
 // Transforms: status.conditions.Ready='True' ->
-//   jsonb_path_query_first(status_conditions, '$[*] ? (@.type == "Ready")') ->> 'status' = 'True'
+//
+//	jsonb_path_query_first(status_conditions, '$[*] ? (@.type == "Ready")') ->> 'status' = 'True'
+//
 // This uses the BTREE expression index on Ready conditions for efficient lookups.
 func conditionsNodeConverter(n tsl.Node) (interface{}, *errors.ServiceError) {
 	// Get the left side operator.
@@ -255,8 +257,44 @@ func ExtractConditionQueries(n tsl.Node, tableName string) (tsl.Node, []sq.Sqliz
 	return modifiedTree, conditions, err
 }
 
+// Returns true if any node in the subtree rooted at n is a condition query
+func subtreeHasCondition(n tsl.Node) bool {
+	if hasCondition(n) {
+		return true
+	}
+
+	l, ok := n.Left.(tsl.Node)
+	if ok && subtreeHasCondition(l) {
+		return true
+	}
+
+	r, ok := n.Right.(tsl.Node)
+	if ok && subtreeHasCondition(r) {
+		return true
+	}
+
+	rr, ok := n.Right.([]tsl.Node)
+	if ok {
+		for _, r := range rr {
+			if subtreeHasCondition(r) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // extractConditionsWalk recursively walks the tree and extracts condition queries
 func extractConditionsWalk(n tsl.Node, conditions *[]sq.Sqlizer) (tsl.Node, *errors.ServiceError) {
+	if n.Func == tsl.NotOp {
+		l, ok := n.Left.(tsl.Node)
+		if ok && subtreeHasCondition(l) {
+			return n, errors.BadRequest(
+				"not operator is not supported for condition queries",
+			)
+		}
+	}
+
 	// Check if this node is a condition query
 	if hasCondition(n) {
 		expr, err := conditionsNodeConverter(n)
