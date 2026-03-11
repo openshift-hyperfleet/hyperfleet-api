@@ -19,7 +19,10 @@ type AdapterStatusDao interface {
 	Get(ctx context.Context, id string) (*api.AdapterStatus, error)
 	Create(ctx context.Context, adapterStatus *api.AdapterStatus) (*api.AdapterStatus, error)
 	Replace(ctx context.Context, adapterStatus *api.AdapterStatus) (*api.AdapterStatus, error)
-	Upsert(ctx context.Context, adapterStatus *api.AdapterStatus) (*api.AdapterStatus, error)
+	// Upsert creates or replaces an adapter status. The second return value reports whether the
+	// write was actually applied: false means the incoming observed_generation was stale (either
+	// detected immediately or lost a race to a concurrent write with a higher generation).
+	Upsert(ctx context.Context, adapterStatus *api.AdapterStatus) (*api.AdapterStatus, bool, error)
 	Delete(ctx context.Context, id string) error
 	FindByResource(ctx context.Context, resourceType, resourceID string) (api.AdapterStatusList, error)
 	FindByResourcePaginated(
@@ -72,49 +75,66 @@ func (d *sqlAdapterStatusDao) Replace(
 	return adapterStatus, nil
 }
 
-// Upsert creates or updates an adapter status based on resource_type, resource_id, and adapter
-// This implements the upsert semantic required by the new API spec
+// Upsert creates or updates an adapter status based on resource_type, resource_id, and adapter.
+// The UPDATE path includes a WHERE predicate on observed_generation so that a stale write can
+// never overwrite a newer generation, even under concurrent requests.
+// Returns (status, true, nil) when the write was applied, or (existing, false, nil) when the
+// incoming observed_generation was stale (fast-path check) or lost a race to a concurrent write.
 func (d *sqlAdapterStatusDao) Upsert(
 	ctx context.Context, adapterStatus *api.AdapterStatus,
-) (*api.AdapterStatus, error) {
+) (*api.AdapterStatus, bool, error) {
 	g2 := (*d.sessionFactory).New(ctx)
 
-	// Try to find existing adapter status
+	// Try to find existing adapter status.
 	existing, err := d.FindByResourceAndAdapter(
 		ctx, adapterStatus.ResourceType, adapterStatus.ResourceID, adapterStatus.Adapter,
 	)
-
 	if err != nil {
-		// If not found, create new
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return d.Create(ctx, adapterStatus)
+			created, createErr := d.Create(ctx, adapterStatus)
+			if createErr != nil {
+				return nil, false, createErr
+			}
+			return created, true, nil
 		}
-		// Other errors
 		db.MarkForRollback(ctx, err)
-		return nil, err
+		return nil, false, err
 	}
 
-	// Update existing record
-	// Keep the original ID and CreatedTime
+	// Fast-path stale check: if the stored generation is already strictly newer, skip the write.
+	if existing.ObservedGeneration > adapterStatus.ObservedGeneration {
+		return existing, false, nil
+	}
+
+	// Prepare the update: keep original ID and CreatedTime.
 	adapterStatus.ID = existing.ID
 	if existing.CreatedTime != nil {
 		adapterStatus.CreatedTime = existing.CreatedTime
 	}
 
-	// Update LastReportTime to now
+	// Update LastReportTime to now.
 	now := time.Now()
 	adapterStatus.LastReportTime = &now
 
-	// Preserve LastTransitionTime for conditions whose status hasn't changed
+	// Preserve LastTransitionTime for conditions whose status hasn't changed.
 	adapterStatus.Conditions = preserveLastTransitionTime(existing.Conditions, adapterStatus.Conditions)
 
-	// Save (update) the record
-	if err := g2.Omit(clause.Associations).Save(adapterStatus).Error; err != nil {
-		db.MarkForRollback(ctx, err)
-		return nil, err
+	// Atomic conditional UPDATE: only applies when the stored observed_generation is still <=
+	// the incoming one. A concurrent request that wrote a higher generation will cause
+	// RowsAffected to be 0, signalling a no-op.
+	result := g2.Omit(clause.Associations).
+		Where("observed_generation <= ?", adapterStatus.ObservedGeneration).
+		Save(adapterStatus)
+	if result.Error != nil {
+		db.MarkForRollback(ctx, result.Error)
+		return nil, false, result.Error
+	}
+	if result.RowsAffected == 0 {
+		// A concurrent write with a higher generation won the race.
+		return existing, false, nil
 	}
 
-	return adapterStatus, nil
+	return adapterStatus, true, nil
 }
 
 func (d *sqlAdapterStatusDao) Delete(ctx context.Context, id string) error {

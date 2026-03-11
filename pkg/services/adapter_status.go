@@ -71,11 +71,11 @@ func (s *sqlAdapterStatusService) Replace(
 func (s *sqlAdapterStatusService) Upsert(
 	ctx context.Context, adapterStatus *api.AdapterStatus,
 ) (*api.AdapterStatus, *errors.ServiceError) {
-	adapterStatus, err := s.adapterStatusDao.Upsert(ctx, adapterStatus)
+	result, _, err := s.adapterStatusDao.Upsert(ctx, adapterStatus)
 	if err != nil {
 		return nil, handleCreateError("AdapterStatus", err)
 	}
-	return adapterStatus, nil
+	return result, nil
 }
 
 func (s *sqlAdapterStatusService) Delete(ctx context.Context, id string) *errors.ServiceError {

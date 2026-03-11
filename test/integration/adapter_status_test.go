@@ -432,9 +432,9 @@ func TestAdapterStatusIdempotency(t *testing.T) {
 		To(Equal(openapi.AdapterConditionStatusTrue), "Conditions should be updated to latest")
 }
 
-// TestClusterStatusPost_FirstUnknownAccepted tests that first status reports with Unknown
-// Available condition are accepted, subsequent ones are rejected (HYPERFLEET-657)
-func TestClusterStatusPost_FirstUnknownAccepted(t *testing.T) {
+// TestClusterStatusPost_UnknownAvailableAlwaysDiscarded tests that status reports with
+// Available=Unknown are always discarded (P3 rule), regardless of whether it's the first report.
+func TestClusterStatusPost_UnknownAvailableAlwaysDiscarded(t *testing.T) {
 	h, client := test.RegisterIntegration(t)
 
 	account := h.NewRandAccount()
@@ -468,30 +468,26 @@ func TestClusterStatusPost_FirstUnknownAccepted(t *testing.T) {
 		nil,
 	)
 
-	// First report with Unknown Available condition: should be accepted
+	// First report with Unknown Available condition: discarded per P3 (204 No Content)
 	resp, err := client.PostClusterStatusesWithResponse(
 		ctx, cluster.ID,
 		openapi.PostClusterStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
 	)
 	Expect(err).NotTo(HaveOccurred(), "Error posting cluster status: %v", err)
 	Expect(resp.StatusCode()).
-		To(Equal(http.StatusCreated), "Expected 201 Created for first status with Unknown Available condition")
+		To(Equal(http.StatusNoContent), "Expected 204 No Content: Available=Unknown is always discarded")
 
-	// Verify status was stored
+	// Verify status was NOT stored
 	listResp, err := client.GetClusterStatusesWithResponse(ctx, cluster.ID, nil, test.WithAuthToken(ctx))
 	Expect(err).NotTo(HaveOccurred())
 	Expect(listResp.JSON200).NotTo(BeNil())
 
-	found := false
 	for _, s := range listResp.JSON200.Items {
-		if s.Adapter == "test-adapter-unknown" {
-			found = true
-			break
-		}
+		Expect(s.Adapter).NotTo(Equal("test-adapter-unknown"),
+			"Status with Available=Unknown must not be stored")
 	}
-	Expect(found).To(BeTrue(), "First status with Unknown Available condition should be stored")
 
-	// Subsequent report with same adapter: should be rejected (204 No Content)
+	// Subsequent report with same adapter: also discarded (204 No Content)
 	resp2, err := client.PostClusterStatusesWithResponse(
 		ctx, cluster.ID,
 		openapi.PostClusterStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
@@ -501,9 +497,9 @@ func TestClusterStatusPost_FirstUnknownAccepted(t *testing.T) {
 		To(Equal(http.StatusNoContent), "Expected 204 No Content for subsequent Unknown status report")
 }
 
-// TestNodePoolStatusPost_FirstUnknownAccepted tests that first status reports with Unknown
-// Available condition are accepted, subsequent ones are rejected (HYPERFLEET-657)
-func TestNodePoolStatusPost_FirstUnknownAccepted(t *testing.T) {
+// TestNodePoolStatusPost_UnknownAvailableAlwaysDiscarded tests that status reports with
+// Available=Unknown are always discarded (P3 rule), regardless of whether it's the first report.
+func TestNodePoolStatusPost_UnknownAvailableAlwaysDiscarded(t *testing.T) {
 	h, client := test.RegisterIntegration(t)
 
 	account := h.NewRandAccount()
@@ -537,32 +533,28 @@ func TestNodePoolStatusPost_FirstUnknownAccepted(t *testing.T) {
 		nil,
 	)
 
-	// First report with Unknown Available condition: should be accepted
+	// First report with Unknown Available condition: discarded per P3 (204 No Content)
 	resp, err := client.PostNodePoolStatusesWithResponse(
 		ctx, nodePool.OwnerID, nodePool.ID,
 		openapi.PostNodePoolStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
 	)
 	Expect(err).NotTo(HaveOccurred(), "Error posting nodepool status: %v", err)
 	Expect(resp.StatusCode()).
-		To(Equal(http.StatusCreated), "Expected 201 Created for first status with Unknown Available condition")
+		To(Equal(http.StatusNoContent), "Expected 204 No Content: Available=Unknown is always discarded")
 
-	// Verify status was stored
+	// Verify status was NOT stored
 	listResp, err := client.GetNodePoolsStatusesWithResponse(
 		ctx, nodePool.OwnerID, nodePool.ID, nil, test.WithAuthToken(ctx),
 	)
 	Expect(err).NotTo(HaveOccurred())
 	Expect(listResp.JSON200).NotTo(BeNil())
 
-	found := false
 	for _, s := range listResp.JSON200.Items {
-		if s.Adapter == "test-nodepool-adapter-unknown" {
-			found = true
-			break
-		}
+		Expect(s.Adapter).NotTo(Equal("test-nodepool-adapter-unknown"),
+			"Status with Available=Unknown must not be stored")
 	}
-	Expect(found).To(BeTrue(), "First status with Unknown Available condition should be stored")
 
-	// Subsequent report with same adapter: should be rejected (204 No Content)
+	// Subsequent report with same adapter: also discarded (204 No Content)
 	resp2, err := client.PostNodePoolStatusesWithResponse(
 		ctx, nodePool.OwnerID, nodePool.ID,
 		openapi.PostNodePoolStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
@@ -572,8 +564,8 @@ func TestNodePoolStatusPost_FirstUnknownAccepted(t *testing.T) {
 		To(Equal(http.StatusNoContent), "Expected 204 No Content for subsequent Unknown status report")
 }
 
-// TestClusterStatusPost_MultipleConditionsWithUnknownAvailable tests that
-// first report with Unknown Available is accepted, subsequent ones rejected (HYPERFLEET-657)
+// TestClusterStatusPost_MultipleConditionsWithUnknownAvailable tests that reports with
+// Available=Unknown are discarded (P3 rule) even when other conditions are present.
 func TestClusterStatusPost_MultipleConditionsWithUnknownAvailable(t *testing.T) {
 	h, client := test.RegisterIntegration(t)
 
@@ -616,16 +608,16 @@ func TestClusterStatusPost_MultipleConditionsWithUnknownAvailable(t *testing.T) 
 		nil,
 	)
 
-	// First report with Unknown Available condition: should be accepted
+	// First report with Available=Unknown among multiple conditions: discarded per P3 (204 No Content)
 	resp, err := client.PostClusterStatusesWithResponse(
 		ctx, cluster.ID,
 		openapi.PostClusterStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
 	)
 	Expect(err).NotTo(HaveOccurred(), "Error posting cluster status: %v", err)
-	Expect(resp.StatusCode()).To(Equal(http.StatusCreated),
-		"Expected 201 Created for first report with Available=Unknown among multiple conditions")
+	Expect(resp.StatusCode()).To(Equal(http.StatusNoContent),
+		"Expected 204 No Content: Available=Unknown is always discarded regardless of other conditions")
 
-	// Subsequent report: should be rejected (204 No Content)
+	// Subsequent report: also discarded (204 No Content)
 	resp2, err := client.PostClusterStatusesWithResponse(
 		ctx, cluster.ID,
 		openapi.PostClusterStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
@@ -883,9 +875,9 @@ func TestClusterStatusPost_MissingMandatoryConditionsRejected(t *testing.T) {
 	Expect(storedConditionTypes["Health2"]).To(BeFalse(), "Health2 should not be present")
 }
 
-// TestClusterStatusPost_FirstUnknownAcceptedSubsequentRejected tests that first status with
-// Unknown Available is accepted, subsequent ones are rejected
-func TestClusterStatusPost_FirstUnknownAcceptedSubsequentRejected(t *testing.T) {
+// TestClusterStatusPost_UnknownAvailableNeverStored tests that Available=Unknown reports
+// are never stored, regardless of first or subsequent attempts.
+func TestClusterStatusPost_UnknownAvailableNeverStored(t *testing.T) {
 	h, client := test.RegisterIntegration(t)
 
 	account := h.NewRandAccount()
@@ -895,7 +887,7 @@ func TestClusterStatusPost_FirstUnknownAcceptedSubsequentRejected(t *testing.T) 
 	cluster, err := h.Factories.NewClusters(h.NewID())
 	Expect(err).NotTo(HaveOccurred())
 
-	// Send first status with all mandatory conditions but Available=Unknown
+	// Send status with all mandatory conditions but Available=Unknown
 	statusWithUnknown := newAdapterStatusRequest(
 		"adapter1",
 		cluster.Generation,
@@ -922,29 +914,30 @@ func TestClusterStatusPost_FirstUnknownAcceptedSubsequentRejected(t *testing.T) 
 		nil,
 	)
 
-	// First report: should be accepted
+	// First report: discarded per P3 (204 No Content)
 	resp, err := client.PostClusterStatusesWithResponse(
 		ctx, cluster.ID,
 		openapi.PostClusterStatusesJSONRequestBody(statusWithUnknown), test.WithAuthToken(ctx),
 	)
 	Expect(err).NotTo(HaveOccurred())
-	Expect(resp.StatusCode()).To(Equal(http.StatusCreated), "First status with Unknown Available should be accepted")
+	Expect(resp.StatusCode()).To(Equal(http.StatusNoContent),
+		"Available=Unknown status must always be discarded")
 
-	// Verify status was stored
+	// Verify status was NOT stored
 	respGet, err := client.GetClusterStatusesWithResponse(ctx, cluster.ID, nil, test.WithAuthToken(ctx))
 	Expect(err).NotTo(HaveOccurred())
 	Expect(respGet.StatusCode()).To(Equal(http.StatusOK))
 	Expect(respGet.JSON200).ToNot(BeNil())
-	Expect(len(respGet.JSON200.Items)).To(Equal(1), "First status with Unknown Available should be stored")
+	Expect(len(respGet.JSON200.Items)).To(Equal(0), "Available=Unknown status must not be stored")
 
-	// Subsequent report: should be rejected (204 No Content)
+	// Subsequent report: also discarded (204 No Content)
 	resp2, err := client.PostClusterStatusesWithResponse(
 		ctx, cluster.ID,
 		openapi.PostClusterStatusesJSONRequestBody(statusWithUnknown), test.WithAuthToken(ctx),
 	)
 	Expect(err).NotTo(HaveOccurred())
 	Expect(resp2.StatusCode()).To(Equal(http.StatusNoContent),
-		"Subsequent status with Unknown Available should be rejected")
+		"Subsequent Available=Unknown status must also be discarded")
 }
 
 // TestClusterStatusPost_DuplicateConditionsRejected tests that adapter status updates
