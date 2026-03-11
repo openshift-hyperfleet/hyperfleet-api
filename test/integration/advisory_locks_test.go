@@ -285,6 +285,7 @@ func TestAdvisoryLockBlocking(t *testing.T) {
 	// Track when the second goroutine acquires the lock
 	acquired := make(chan bool, 1)
 	released := make(chan bool, 1)
+	defer close(released) // ensure goroutine exits even on timeout
 
 	// Second goroutine tries to acquire the same lock
 	go func() {
