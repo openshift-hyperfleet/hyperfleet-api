@@ -2,9 +2,11 @@ package db
 
 import (
 	"fmt"
+	"math"
 	"reflect"
 	"regexp"
 	"strings"
+	"time"
 
 	sq "github.com/Masterminds/squirrel"
 	"github.com/jinzhu/inflection"
@@ -157,6 +159,83 @@ var validConditionStatuses = map[string]bool{
 	"Unknown": true,
 }
 
+// conditionSubfieldPattern matches 4-part condition paths like status.conditions.Ready.last_updated_time
+// and encodes them to 3-part paths (status.conditions.Ready__last_updated_time) so the TSL parser can handle them.
+// The TSL grammar only supports up to 3-part identifiers (database.table.column).
+// The (^|[\s(]) anchor ensures we don't match things like "xstatus.conditions.Ready.last_updated_time".
+// Group 1 captures the leading boundary (start-of-string, whitespace, or opening paren) to preserve it.
+var conditionSubfieldPattern = regexp.MustCompile(
+	`(^|[\s(])(status\.conditions\.[A-Z][a-zA-Z0-9]*)\.([a-z][a-z_]+)`,
+)
+
+// PreprocessConditionSubfields rewrites 4-part condition paths into 3-part paths
+// before TSL parsing. The TSL parser supports at most 3 dot-separated segments.
+// Only replaces in unquoted segments to avoid mutating string literals.
+//
+// Example: status.conditions.Ready.last_updated_time < '2026-03-06T00:00:00Z'
+// becomes: status.conditions.Ready__last_updated_time < '2026-03-06T00:00:00Z'
+func PreprocessConditionSubfields(search string) string {
+	var result strings.Builder
+	result.Grow(len(search))
+	inQuote := false
+	quoteChar := byte(0)
+	segStart := 0
+
+	for i := 0; i < len(search); i++ {
+		ch := search[i]
+		if inQuote {
+			if ch == quoteChar {
+				// Flush quoted segment as-is (no replacement)
+				result.WriteString(search[segStart : i+1])
+				segStart = i + 1
+				inQuote = false
+			}
+			continue
+		}
+		if ch == '\'' || ch == '"' {
+			// Flush unquoted segment with replacement applied
+			result.WriteString(
+				conditionSubfieldPattern.ReplaceAllString(search[segStart:i], "${1}${2}__${3}"),
+			)
+			segStart = i
+			inQuote = true
+			quoteChar = ch
+		}
+	}
+	// Flush remaining segment — only apply replacement if outside a quote
+	if inQuote {
+		result.WriteString(search[segStart:])
+	} else {
+		result.WriteString(
+			conditionSubfieldPattern.ReplaceAllString(search[segStart:], "${1}${2}__${3}"),
+		)
+	}
+	return result.String()
+}
+
+// conditionTimeSubfields are condition subfields that store timestamps and require TIMESTAMPTZ casting.
+// Note: created_time is intentionally excluded — it reflects when the condition was first created
+// and is not useful for Sentinel polling or staleness queries.
+var conditionTimeSubfields = map[string]bool{
+	"last_updated_time":    true,
+	"last_transition_time": true,
+}
+
+// conditionIntSubfields are condition subfields that store integers and require INTEGER casting
+var conditionIntSubfields = map[string]bool{
+	"observed_generation": true,
+}
+
+// comparisonOperators maps TSL operator constants to SQL operator strings
+var comparisonOperators = map[string]string{
+	tsl.EqOp:    "=",
+	tsl.NotEqOp: "!=",
+	tsl.LtOp:    "<",
+	tsl.LteOp:   "<=",
+	tsl.GtOp:    ">",
+	tsl.GteOp:   ">=",
+}
+
 // startsWithConditions checks if a field starts with status.conditions.
 func startsWithConditions(s string) bool {
 	return strings.HasPrefix(s, "status.conditions.")
@@ -179,12 +258,17 @@ func hasCondition(n tsl.Node) bool {
 	return true
 }
 
-// conditionsNodeConverter handles status.conditions.<ConditionType>='<Status>' queries
-// Transforms: status.conditions.Ready='True' ->
+// conditionsNodeConverter handles condition queries in two forms:
 //
-//	jsonb_path_query_first(status_conditions, '$[*] ? (@.type == "Ready")') ->> 'status' = 'True'
+// 3-part path (status query): status.conditions.<ConditionType>='<Status>'
 //
-// This uses the BTREE expression index on Ready conditions for efficient lookups.
+//	Transforms to: jsonb_path_query_first(status_conditions, '$[*] ? (@.type == "Ready")') ->> 'status' = 'True'
+//
+// 4-part path (subfield query):
+//
+//	status.conditions.<ConditionType>.<Subfield> <op> '<Value>'
+//	Time subfields use CAST(... AS TIMESTAMPTZ)
+//	Integer subfields use CAST(... AS INTEGER)
 func conditionsNodeConverter(n tsl.Node) (interface{}, *errors.ServiceError) {
 	// Get the left side operator.
 	l, ok := n.Left.(tsl.Node)
@@ -198,12 +282,19 @@ func conditionsNodeConverter(n tsl.Node) (interface{}, *errors.ServiceError) {
 		return nil, errors.BadRequest("expected string for left side of condition")
 	}
 
-	// Extract condition type from path (e.g., "status.conditions.Ready" -> "Ready")
+	// After PreprocessConditionSubfields, the path is always 3 parts:
+	// - status.conditions.Ready (status query)
+	// - status.conditions.Ready__last_updated_time (subfield query, encoded with __)
 	parts := strings.Split(leftStr, ".")
 	if len(parts) != 3 || parts[0] != "status" || parts[1] != "conditions" {
 		return nil, errors.BadRequest("invalid condition field path: %s", leftStr)
 	}
-	conditionType := parts[2]
+
+	// Check if the 3rd part contains an encoded subfield (e.g., Ready__last_updated_time).
+	// The __ encoding is produced by PreprocessConditionSubfields, but users can also
+	// submit the encoded form directly — the same validation applies either way.
+	subfieldParts := strings.SplitN(parts[2], "__", 2)
+	conditionType := subfieldParts[0]
 
 	// Validate condition type to prevent SQL injection
 	if !conditionTypePattern.MatchString(conditionType) {
@@ -212,6 +303,18 @@ func conditionsNodeConverter(n tsl.Node) (interface{}, *errors.ServiceError) {
 		)
 	}
 
+	// Subfield query (e.g., Ready__last_updated_time -> conditionType=Ready, subfield=last_updated_time)
+	if len(subfieldParts) == 2 {
+		return conditionSubfieldConverter(n, conditionType, subfieldParts[1])
+	}
+
+	// Status query (e.g., status.conditions.Ready='True')
+	return conditionStatusConverter(n, conditionType)
+}
+
+// conditionStatusConverter handles 3-part condition status queries:
+// status.conditions.<ConditionType>='<Status>'
+func conditionStatusConverter(n tsl.Node, conditionType string) (interface{}, *errors.ServiceError) {
 	// Get the right side value (the expected status)
 	r, ok := n.Right.(tsl.Node)
 	if !ok {
@@ -230,17 +333,94 @@ func conditionsNodeConverter(n tsl.Node) (interface{}, *errors.ServiceError) {
 		)
 	}
 
-	// Only support equality operator for condition queries
+	// Only support equality operator for condition status queries
 	if n.Func != tsl.EqOp {
-		return nil, errors.BadRequest("only equality operator (=) is supported for condition queries")
+		return nil, errors.BadRequest("only equality operator (=) is supported for condition status queries")
 	}
 
-	// Build query using jsonb_path_query_first to leverage BTREE expression index
-	// The index is: CREATE INDEX ... USING BTREE
-	// ((jsonb_path_query_first(status_conditions, '$[*] ? (@.type == "Ready")')))
+	// Build query using jsonb_path_query_first.
+	// NOTE: Ideally the jsonpath literal would be inlined so PostgreSQL can match expression
+	// indexes, but Squirrel treats the '?' in jsonpath filter syntax ($[*] ? (...)) as a bind
+	// placeholder. HYPERFLEET-736 evaluates generated columns or table normalization as a
+	// proper fix to enable index usage.
+	jsonPath := fmt.Sprintf(`$[*] ? (@.type == "%s")`, conditionType)
+	return sq.Expr("jsonb_path_query_first(status_conditions, ?::jsonpath) ->> 'status' = ?", jsonPath, rightStr), nil
+}
+
+// conditionSubfieldConverter handles 4-part condition subfield queries:
+// status.conditions.<ConditionType>.<Subfield> <op> '<Value>'
+func conditionSubfieldConverter(n tsl.Node, conditionType, subfield string) (interface{}, *errors.ServiceError) {
+	// Validate the operator is a supported comparison operator
+	sqlOp, ok := comparisonOperators[n.Func]
+	if !ok {
+		return nil, errors.BadRequest(
+			"operator '%s' is not supported for condition subfield queries; use =, !=, <, <=, >, or >=", n.Func,
+		)
+	}
+
+	// Get the right side value
+	r, rOk := n.Right.(tsl.Node)
+	if !rOk {
+		return nil, errors.BadRequest("invalid condition query structure: missing right side")
+	}
+
+	// NOTE: Ideally the jsonpath and subfield literals would be inlined so PostgreSQL can
+	// match expression indexes, but Squirrel treats '?' in jsonpath filter syntax as a bind
+	// placeholder. HYPERFLEET-736 evaluates generated columns or table normalization as a
+	// proper fix to enable index usage.
 	jsonPath := fmt.Sprintf(`$[*] ? (@.type == "%s")`, conditionType)
 
-	return sq.Expr("jsonb_path_query_first(status_conditions, ?::jsonpath) ->> 'status' = ?", jsonPath, rightStr), nil
+	// Handle time subfields
+	if conditionTimeSubfields[subfield] {
+		rightStr, strOk := r.Left.(string)
+		if !strOk {
+			return nil, errors.BadRequest(
+				"expected string timestamp value for condition subfield '%s'", subfield,
+			)
+		}
+		if _, parseErr := time.Parse(time.RFC3339, rightStr); parseErr != nil {
+			return nil, errors.BadRequest(
+				"invalid timestamp for condition subfield '%s': expected RFC3339 format (e.g., 2026-01-01T00:00:00Z)",
+				subfield,
+			)
+		}
+		query := fmt.Sprintf(
+			"CAST(jsonb_path_query_first(status_conditions, ?::jsonpath) ->> ? AS TIMESTAMPTZ) %s ?::timestamptz",
+			sqlOp,
+		)
+		return sq.Expr(query, jsonPath, subfield, rightStr), nil
+	}
+
+	// Handle integer subfields
+	if conditionIntSubfields[subfield] {
+		rightVal, numOk := r.Left.(float64)
+		if !numOk {
+			return nil, errors.BadRequest(
+				"expected numeric value for condition subfield '%s'", subfield,
+			)
+		}
+		if rightVal != math.Trunc(rightVal) {
+			return nil, errors.BadRequest(
+				"expected integer value for condition subfield '%s', got %v", subfield, rightVal,
+			)
+		}
+		if rightVal < math.MinInt32 || rightVal > math.MaxInt32 {
+			return nil, errors.BadRequest(
+				"value %v is out of 32-bit integer range for condition subfield '%s'",
+				rightVal, subfield,
+			)
+		}
+		query := fmt.Sprintf(
+			"CAST(jsonb_path_query_first(status_conditions, ?::jsonpath) ->> ? AS INTEGER) %s ?",
+			sqlOp,
+		)
+		return sq.Expr(query, jsonPath, subfield, int(rightVal)), nil
+	}
+
+	return nil, errors.BadRequest(
+		"condition subfield '%s' is not supported; use last_updated_time, last_transition_time, or observed_generation",
+		subfield,
+	)
 }
 
 // ConditionExpression represents an extracted condition query as a Squirrel expression
@@ -286,11 +466,14 @@ func subtreeHasCondition(n tsl.Node) bool {
 
 // extractConditionsWalk recursively walks the tree and extracts condition queries
 func extractConditionsWalk(n tsl.Node, conditions *[]sq.Sqlizer) (tsl.Node, *errors.ServiceError) {
+	// Reject NOT applied to condition queries — the condition is extracted before
+	// NOT is applied, so the negation would be silently lost, producing wrong results.
+	// Scan the entire NOT subtree, not just the direct child, to catch conditions
+	// nested inside AND/OR under NOT (e.g., NOT (condA AND x)).
 	if n.Func == tsl.NotOp {
-		l, ok := n.Left.(tsl.Node)
-		if ok && subtreeHasCondition(l) {
+		if child, ok := n.Left.(tsl.Node); ok && subtreeHasCondition(child) {
 			return n, errors.BadRequest(
-				"not operator is not supported for condition queries",
+				"NOT operator is not supported with condition queries; use the inverse condition instead (e.g., Ready='False')",
 			)
 		}
 	}

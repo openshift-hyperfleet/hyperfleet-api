@@ -79,18 +79,23 @@ func reloadNodePool(dbSession *gorm.DB, nodePool *api.NodePool) error {
 	return dbSession.First(nodePool, "id = ?", nodePool.ID).Error
 }
 
-// NewNodePoolWithStatus creates a node pool with specific status conditions
-// dbFactory parameter is needed to update database fields
-// The isAvailable and isReady parameters control which synthetic conditions are set
+// NewNodePoolWithStatus creates a node pool with specific status conditions using the current time.
 func NewNodePoolWithStatus(
 	f *Factories, dbFactory db.SessionFactory, id string, isAvailable, isReady bool,
+) (*api.NodePool, error) {
+	return NewNodePoolWithStatusAtTime(f, dbFactory, id, isAvailable, isReady, time.Now())
+}
+
+// NewNodePoolWithStatusAtTime creates a node pool with specific status conditions and custom timestamps.
+func NewNodePoolWithStatusAtTime(
+	f *Factories, dbFactory db.SessionFactory, id string,
+	isAvailable, isReady bool, conditionTime time.Time,
 ) (*api.NodePool, error) {
 	nodePool, err := f.NewNodePool(id)
 	if err != nil {
 		return nil, err
 	}
 
-	now := time.Now()
 	availableStatus := api.ConditionFalse
 	if isAvailable {
 		availableStatus = api.ConditionTrue
@@ -105,17 +110,17 @@ func NewNodePoolWithStatus(
 			Type:               "Available",
 			Status:             availableStatus,
 			ObservedGeneration: nodePool.Generation,
-			LastTransitionTime: now,
-			CreatedTime:        now,
-			LastUpdatedTime:    now,
+			LastTransitionTime: conditionTime,
+			CreatedTime:        conditionTime,
+			LastUpdatedTime:    conditionTime,
 		},
 		{
 			Type:               "Ready",
 			Status:             readyStatus,
 			ObservedGeneration: nodePool.Generation,
-			LastTransitionTime: now,
-			CreatedTime:        now,
-			LastUpdatedTime:    now,
+			LastTransitionTime: conditionTime,
+			CreatedTime:        conditionTime,
+			LastUpdatedTime:    conditionTime,
 		},
 	}
 
@@ -124,14 +129,12 @@ func NewNodePoolWithStatus(
 		return nil, err
 	}
 
-	// Update database record with status conditions
 	dbSession := dbFactory.New(context.Background())
 	err = dbSession.Model(nodePool).Update("status_conditions", conditionsJSON).Error
 	if err != nil {
 		return nil, err
 	}
 
-	// Reload to get updated values
 	if err := reloadNodePool(dbSession, nodePool); err != nil {
 		return nil, err
 	}
