@@ -76,14 +76,16 @@ db.MigrateWithLock(ctx, factory)
 ```
 
 **Implementation:**
-1. Pod acquires advisory lock via `pg_advisory_xact_lock(hash("migrations"), hash("Migrations"))`
-2. Lock holder runs migrations exclusively
-3. Other pods block until lock is released
-4. Lock automatically released on transaction commit
+1. Pod sets statement timeout (5 minutes) to prevent indefinite blocking
+2. Pod acquires advisory lock via `pg_advisory_xact_lock(hash("migrations"), hash("Migrations"))`
+3. Lock holder runs migrations exclusively
+4. Other pods block until lock is released or timeout is reached
+5. Lock automatically released on transaction commit
 
 **Key Features:**
 - **Zero infrastructure overhead** - Uses native PostgreSQL locks
 - **Automatic cleanup** - Locks released on transaction end or pod crash
+- **Timeout protection** - 5-minute timeout prevents indefinite blocking if a pod hangs
 - **Nested lock support** - Same lock can be acquired in nested contexts without deadlock
 - **UUID-based ownership** - Only original acquirer can unlock
 

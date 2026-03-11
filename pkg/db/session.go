@@ -17,4 +17,5 @@ type SessionFactory interface {
 	Close() error
 	ResetDB()
 	NewListener(ctx context.Context, channel string, callback func(id string))
+	GetAdvisoryLockTimeout() int
 }

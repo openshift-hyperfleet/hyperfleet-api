@@ -27,7 +27,7 @@ func Migrate(g2 *gorm.DB) error {
 // MigrateWithLock runs migrations with an advisory lock to prevent concurrent migrations
 func MigrateWithLock(ctx context.Context, factory SessionFactory) error {
 	// Acquire advisory lock for migrations
-	ctx, lockOwnerID, err := NewAdvisoryLockContext(ctx, factory, "migrations", Migrations)
+	ctx, lockOwnerID, err := NewAdvisoryLockContext(ctx, factory, MigrationsLockID, Migrations)
 	if err != nil {
 		logger.WithError(ctx, err).Error("Could not lock migrations")
 		return err

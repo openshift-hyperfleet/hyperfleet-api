@@ -31,6 +31,9 @@ const (
 	FieldConnectionString = "connection_string"
 	FieldTable            = "table"
 	FieldChannel          = "channel"
+	FieldLockID           = "lock_id"
+	FieldLockType         = "lock_type"
+	FieldLockDurationMs   = "lock_duration_ms"
 	// Note: transaction_id is a context field (see context.go)
 )
 

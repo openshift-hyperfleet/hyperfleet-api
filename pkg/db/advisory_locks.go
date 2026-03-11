@@ -3,9 +3,11 @@ package db
 import (
 	"context"
 	"errors"
+	"fmt"
 	"hash/fnv"
 	"time"
 
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 	"gorm.io/gorm"
 )
 
@@ -15,6 +17,9 @@ type LockType string
 const (
 	// Migrations lock type for database migrations
 	Migrations LockType = "Migrations"
+
+	// MigrationsLockID is the advisory lock ID used for migration coordination
+	MigrationsLockID = "migrations"
 )
 
 // AdvisoryLock represents a postgres advisory lock
@@ -27,12 +32,12 @@ const (
 // service call that owns the lock will have the correct ownerUUID. This is necessary
 // to allow functions to call other service functions as part of the same lock (id, lockType).
 type AdvisoryLock struct {
-	g2        *gorm.DB
-	txid      int64
-	ownerUUID *string
-	id        *string
-	lockType  *LockType
-	startTime time.Time
+	g2             *gorm.DB
+	ownerUUID      *string
+	id             *string
+	lockType       *LockType
+	timeoutSeconds int
+	startTime      time.Time
 }
 
 // newAdvisoryLock constructs a new AdvisoryLock object.
@@ -50,24 +55,19 @@ func newAdvisoryLock(ctx context.Context, connection SessionFactory, ownerUUID *
 		return nil, tx.Error
 	}
 
-	// current transaction ID set by postgres.  these are *not* distinct across time
-	// and do get reset after postgres performs "vacuuming" to reclaim used IDs.
-	var txid struct{ ID int64 }
-	err := tx.Raw("select txid_current() as id").Scan(&txid).Error
-
 	return &AdvisoryLock{
-		txid:      txid.ID,
-		ownerUUID: ownerUUID,
-		id:        id,
-		lockType:  locktype,
-		g2:        tx,
-		startTime: time.Now(),
-	}, err
+		ownerUUID:      ownerUUID,
+		id:             id,
+		lockType:       locktype,
+		timeoutSeconds: connection.GetAdvisoryLockTimeout(),
+		g2:             tx,
+		startTime:      time.Now(),
+	}, nil
 }
 
 // lock calls select pg_advisory_xact_lock(id, lockType) to obtain the lock defined by (id, lockType).
-// it is blocked if some other thread currently is holding the same lock (id, lockType).
-// if blocked, it can be unblocked or timed out when overloaded.
+// It blocks until the lock is acquired or the statement timeout is reached.
+// The timeout prevents indefinite blocking if a pod hangs while holding the lock.
 func (l *AdvisoryLock) lock() error {
 	if l.g2 == nil {
 		return errors.New("AdvisoryLock: transaction is missing")
@@ -79,20 +79,35 @@ func (l *AdvisoryLock) lock() error {
 		return errors.New("AdvisoryLock: lockType is missing")
 	}
 
+	// Set statement timeout to prevent indefinite blocking.
+	// This is transaction-scoped (SET LOCAL), so it only affects this lock acquisition.
+	// Note: We cannot use parameter binding (?) for SET commands in PostgreSQL
+	timeoutMs := l.timeoutSeconds * 1000
+	if err := l.g2.Exec(fmt.Sprintf("SET LOCAL statement_timeout = %d", timeoutMs)).Error; err != nil {
+		return err
+	}
+
 	idAsInt := hash(*l.id)
 	typeAsInt := hash(string(*l.lockType))
 	err := l.g2.Exec("select pg_advisory_xact_lock(?, ?)", idAsInt, typeAsInt).Error
 	return err
 }
 
-func (l *AdvisoryLock) unlock() error {
+func (l *AdvisoryLock) unlock(ctx context.Context) error {
 	if l.g2 == nil {
 		return errors.New("AdvisoryLock: transaction is missing")
 	}
 
+	duration := time.Since(l.startTime)
+
 	// it ends the Tx and implicitly releases the lock.
 	err := l.g2.Commit().Error
 	l.g2 = nil
+
+	if err == nil {
+		logger.With(ctx, logger.FieldLockDurationMs, duration.Milliseconds()).Info("Released advisory lock")
+	}
+
 	return err
 }
 

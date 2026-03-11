@@ -78,7 +78,11 @@ func MarkForRollback(ctx context.Context, err error) {
 }
 
 // NewAdvisoryLockContext returns a new context with AdvisoryLock stored in it.
-// Upon error, the original context is still returned along with an error
+// Upon error, the original context is still returned along with an error.
+//
+// CONCURRENCY: The returned context must not be shared across goroutines that call
+// NewAdvisoryLockContext or Unlock concurrently, as the internal lock map is not
+// protected by a mutex. Each goroutine should derive its own context chain.
 func NewAdvisoryLockContext(ctx context.Context, connection SessionFactory, id string, lockType LockType) (context.Context, string, error) {
 	// lockOwnerID will be different for every service function that attempts to start a lock.
 	// only the initial call in the stack must unlock.
@@ -104,39 +108,44 @@ func NewAdvisoryLockContext(ctx context.Context, connection SessionFactory, id s
 	err = lock.lock()
 	if err != nil {
 		logger.WithError(ctx, err).Error("Failed to acquire advisory lock")
+		lock.g2.Rollback() // clean up the open transaction
 		return ctx, lockOwnerID, err
 	}
 
 	locks.set(id, lockType, lock)
 
 	ctx = context.WithValue(ctx, advisoryLock, locks)
-	logger.With(ctx, "lock_id", id, "lock_type", lockType).Info("Acquired advisory lock")
+	logger.With(ctx, logger.FieldLockID, id, logger.FieldLockType, lockType).Info("Acquired advisory lock")
 
 	return ctx, lockOwnerID, nil
 }
 
 // Unlock searches current locks and unlocks the one matching its owner id.
-func Unlock(ctx context.Context, callerUUID string) context.Context {
+func Unlock(ctx context.Context, callerUUID string) {
 	locks, ok := ctx.Value(advisoryLock).(advisoryLockMap)
 	if !ok {
 		logger.Error(ctx, "Could not retrieve locks from context")
-		return ctx
+		return
 	}
 
 	for k, lock := range locks {
 		if lock.ownerUUID == nil {
-			logger.With(ctx, "lock_id", lock.id).Warn("lockOwnerID could not be found in AdvisoryLock")
+			logger.With(ctx, logger.FieldLockID, lock.id).Warn("lockOwnerID could not be found in AdvisoryLock")
 		} else if *lock.ownerUUID == callerUUID {
 			lockID := "<missing>"
-			lockType := *lock.lockType
+			lockType := LockType("<missing>")
+
 			if lock.id != nil {
 				lockID = *lock.id
 			}
+			if lock.lockType != nil {
+				lockType = *lock.lockType
+			}
 
-			if err := lock.unlock(); err != nil {
-				logger.With(ctx, "lock_id", lockID, "lock_type", lockType).WithError(err).Error("Could not unlock lock")
+			if err := lock.unlock(ctx); err != nil {
+				logger.With(ctx, logger.FieldLockID, lockID, logger.FieldLockType, lockType).WithError(err).Error("Could not unlock lock")
 			} else {
-				logger.With(ctx, "lock_id", lockID, "lock_type", lockType).Info("Unlocked lock")
+				logger.With(ctx, logger.FieldLockID, lockID, logger.FieldLockType, lockType).Info("Unlocked lock")
 			}
 			delete(locks, k)
 		} else {
@@ -144,6 +153,4 @@ func Unlock(ctx context.Context, callerUUID string) context.Context {
 			// it is ignored.
 		}
 	}
-
-	return ctx
 }

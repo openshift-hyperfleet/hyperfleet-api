@@ -77,3 +77,7 @@ func (m *MockSessionFactory) ResetDB() {
 func (m *MockSessionFactory) NewListener(ctx context.Context, channel string, callback func(id string)) {
 	// Mock implementation - does nothing
 }
+
+func (m *MockSessionFactory) GetAdvisoryLockTimeout() int {
+	return 300 // 5 minutes default
+}

@@ -11,10 +11,11 @@ import (
 )
 
 type DatabaseConfig struct {
-	Dialect            string `json:"dialect"`
-	SSLMode            string `json:"sslmode"`
-	Debug              bool   `json:"debug"`
-	MaxOpenConnections int    `json:"max_connections"`
+	Dialect                    string `json:"dialect"`
+	SSLMode                    string `json:"sslmode"`
+	Debug                      bool   `json:"debug"`
+	MaxOpenConnections         int    `json:"max_connections"`
+	AdvisoryLockTimeoutSeconds int    `json:"advisory_lock_timeout_seconds"`
 
 	Host     string `json:"host"`
 	Port     int    `json:"port"`
@@ -32,10 +33,11 @@ type DatabaseConfig struct {
 
 func NewDatabaseConfig() *DatabaseConfig {
 	return &DatabaseConfig{
-		Dialect:            "postgres",
-		SSLMode:            "disable",
-		Debug:              false,
-		MaxOpenConnections: 50,
+		Dialect:                    "postgres",
+		SSLMode:                    "disable",
+		Debug:                      false,
+		MaxOpenConnections:         50,
+		AdvisoryLockTimeoutSeconds: 300, // 5 minutes - prevents indefinite blocking on migrations
 
 		HostFile:     "secrets/db.host",
 		PortFile:     "secrets/db.port",
@@ -59,6 +61,10 @@ func (c *DatabaseConfig) AddFlags(fs *pflag.FlagSet) {
 		&c.MaxOpenConnections, "db-max-open-connections", c.MaxOpenConnections,
 		"Maximum open DB connections for this instance",
 	)
+	fs.IntVar(
+		&c.AdvisoryLockTimeoutSeconds, "db-advisory-lock-timeout", c.AdvisoryLockTimeoutSeconds,
+		"Advisory lock timeout in seconds (prevents indefinite blocking during migrations)",
+	)
 }
 
 // BindEnv reads configuration from environment variables
@@ -69,6 +75,15 @@ func (c *DatabaseConfig) BindEnv(fs *pflag.FlagSet) {
 			debug, err := strconv.ParseBool(val)
 			if err == nil {
 				c.Debug = debug
+			}
+		}
+	}
+
+	if val := os.Getenv("DB_ADVISORY_LOCK_TIMEOUT"); val != "" {
+		if fs == nil || !fs.Changed("db-advisory-lock-timeout") {
+			timeout, err := strconv.Atoi(val)
+			if err == nil && timeout > 0 {
+				c.AdvisoryLockTimeoutSeconds = timeout
 			}
 		}
 	}
