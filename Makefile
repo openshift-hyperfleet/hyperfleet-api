@@ -27,13 +27,13 @@ endif
 # Version information
 GIT_SHA ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 GIT_DIRTY ?= $(shell [ -z "$$(git status --porcelain 2>/dev/null)" ] || echo "-modified")
-VERSION ?= $(GIT_SHA)$(GIT_DIRTY)
+APP_VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
 BUILD_DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 
 # Go build flags
 GOFLAGS ?= -trimpath
 LDFLAGS := -s -w \
-           -X github.com/openshift-hyperfleet/hyperfleet-api/pkg/api.Version=$(VERSION) \
+           -X github.com/openshift-hyperfleet/hyperfleet-api/pkg/api.Version=$(APP_VERSION) \
            -X github.com/openshift-hyperfleet/hyperfleet-api/pkg/api.Commit=$(GIT_SHA) \
            -X 'github.com/openshift-hyperfleet/hyperfleet-api/pkg/api.BuildTime=$(BUILD_DATE)'
 
@@ -42,7 +42,7 @@ LDFLAGS := -s -w \
 # =============================================================================
 IMAGE_REGISTRY ?= quay.io/openshift-hyperfleet
 IMAGE_NAME ?= hyperfleet-api
-IMAGE_TAG ?= $(VERSION)
+IMAGE_TAG ?= $(APP_VERSION)
 
 PLATFORM ?= linux/amd64
 
@@ -135,7 +135,7 @@ generate-vendor: generate
 .PHONY: build
 build: generate-all ## Build the hyperfleet-api binary
 	@mkdir -p bin
-	@echo "Building version: ${VERSION}"
+	@echo "Building version: ${APP_VERSION}"
 	CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=boringcrypto ${GO} build $(GOFLAGS) -ldflags="$(LDFLAGS)" -o bin/hyperfleet-api ./cmd/hyperfleet-api
 
 .PHONY: install
@@ -218,6 +218,13 @@ ci-test-integration: install secrets $(GOTESTSUM) ## Run integration tests with 
 
 .PHONY: test-all
 test-all: lint test test-integration test-helm ## Run all checks (lint, unit, integration, helm)
+
+##@ Agent Verification
+
+.PHONY: verify-all
+verify-all: verify lint test ## Run all static checks + unit tests (no database required)
+	@echo "All static checks and unit tests passed."
+	@echo "Run 'make test-integration' separately for integration tests (requires database)."
 
 ##@ Database
 
@@ -310,6 +317,13 @@ test-helm: ## Test Helm charts (lint, template, validate)
 		--set image.tag=v1.0.0 > /dev/null
 	@echo "Custom image config template OK"
 	@echo ""
+	@echo "Testing template with pgbouncer enabled..."
+	helm template test-release charts/ \
+		--set 'adapters.cluster=["validation"]' \
+		--set 'adapters.nodepool=["validation"]' \
+		--set database.pgbouncer.enabled=true > /dev/null
+	@echo "PgBouncer sidecar config template OK"
+	@echo ""
 	@echo "Testing template with full adapter config..."
 	helm template test-release charts/ \
 		--set-json 'adapters.cluster=["validation","dns","pullsecret","hypershift"]' \
@@ -329,7 +343,7 @@ image: check-container-tool ## Build container image with configurable registry/
 		--build-arg GIT_SHA=$(GIT_SHA) \
 		--build-arg GIT_DIRTY=$(GIT_DIRTY) \
 		--build-arg BUILD_DATE=$(BUILD_DATE) \
-		--build-arg VERSION=$(VERSION) \
+		--build-arg APP_VERSION=$(APP_VERSION) \
 		-t $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG) .
 	@echo "Image built: $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)"
 
@@ -356,7 +370,7 @@ endif
 		--build-arg GIT_SHA=$(GIT_SHA) \
 		--build-arg GIT_DIRTY=$(GIT_DIRTY) \
 		--build-arg BUILD_DATE=$(BUILD_DATE) \
-		--build-arg VERSION=$(VERSION) \
+		--build-arg APP_VERSION=0.0.0-dev \
 		-t quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG) .
 	@echo "Pushing dev image..."
 	$(CONTAINER_TOOL) push quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG)

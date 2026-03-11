@@ -65,7 +65,7 @@ func (f *Default) Init(config *config.DatabaseConfig) {
 				))
 			}
 		}
-		dbx.SetMaxOpenConns(config.MaxOpenConnections)
+		applyPoolSettings(dbx, config)
 
 		var gormLog gormlogger.Interface
 		if config.Debug {
@@ -79,22 +79,54 @@ func (f *Default) Init(config *config.DatabaseConfig) {
 			FullSaveAssociations: false,
 			Logger:               gormLog,
 		}
-		g2, err = gorm.Open(postgres.New(postgres.Config{
+		pgConfig := postgres.Config{
 			Conn: dbx,
 			// Disable implicit prepared statement usage (GORM V2 uses pgx as database/sql driver and it enables prepared
 			/// statement cache by default)
 			// In migrations we both change tables' structure and running SQLs to modify data.
 			// This way all prepared statements becomes invalid.
 			PreferSimpleProtocol: true,
-		}), conf)
-		if err != nil {
-			panic(fmt.Sprintf(
-				"GORM failed to connect to %s database %s with connection string: %s\nError: %s",
-				config.Dialect,
-				config.Name,
-				config.LogSafeConnectionString(config.SSLMode != disable),
-				err.Error(),
-			))
+		}
+
+		// Retry GORM connection to handle sidecar startup races (e.g. pgbouncer)
+		for attempt := 0; ; attempt++ {
+			g2, err = gorm.Open(postgres.New(pgConfig), conf)
+			if err == nil {
+				break
+			}
+			if attempt >= config.ConnRetryAttempts {
+				panic(fmt.Sprintf(
+					"GORM failed to connect to %s database %s with connection string: %s\nError: %s",
+					config.Dialect,
+					config.Name,
+					config.LogSafeConnectionString(config.SSLMode != disable),
+					err.Error(),
+				))
+			}
+			logger.With(context.Background(),
+				"retry", attempt+1,
+				"max_retries", config.ConnRetryAttempts,
+				"retry_interval", config.ConnRetryInterval,
+			).WithError(err).Warn("Database connection failed, retrying...")
+			time.Sleep(config.ConnRetryInterval)
+
+			// Close the existing handle before re-opening to avoid leaking connections
+			if dbx != nil {
+				_ = dbx.Close()
+			}
+			// Re-open sql.DB for the next attempt since the previous handle was closed above
+			dbx, err = sql.Open(config.Dialect, config.ConnectionString(config.SSLMode != disable))
+			if err != nil {
+				dbx, err = sql.Open(config.Dialect, config.ConnectionString(false))
+				if err != nil {
+					panic(fmt.Sprintf(
+						"SQL failed to reconnect to %s database %s: %s",
+						config.Dialect, config.Name, err.Error(),
+					))
+				}
+			}
+			applyPoolSettings(dbx, config)
+			pgConfig.Conn = dbx
 		}
 
 		// Register database metrics GORM plugin
@@ -111,6 +143,13 @@ func (f *Default) Init(config *config.DatabaseConfig) {
 		f.g2 = g2
 		f.db = dbx
 	})
+}
+
+func applyPoolSettings(db *sql.DB, cfg *config.DatabaseConfig) {
+	db.SetMaxOpenConns(cfg.MaxOpenConnections)
+	db.SetConnMaxLifetime(cfg.ConnMaxLifetime)
+	db.SetConnMaxIdleTime(cfg.ConnMaxIdleTime)
+	db.SetMaxIdleConns(cfg.MaxIdleConnections)
 }
 
 func (f *Default) DirectDB() *sql.DB {

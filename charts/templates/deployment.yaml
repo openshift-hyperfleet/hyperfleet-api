@@ -39,7 +39,11 @@ spec:
         imagePullPolicy: {{ .Values.image.pullPolicy }}
         command: ["/app/hyperfleet-api", "migrate"]
         volumeMounts:
+        {{- if .Values.database.pgbouncer.enabled }}
+        - name: secrets-direct
+        {{- else }}
         - name: secrets
+        {{- end }}
           mountPath: /app/secrets
           readOnly: true
       {{- end }}
@@ -119,10 +123,95 @@ spec:
         {{- if .Values.extraVolumeMounts }}
         {{- toYaml .Values.extraVolumeMounts | nindent 8 }}
         {{- end }}
+      {{- if .Values.database.pgbouncer.enabled }}
+      - name: pgbouncer
+        image: {{ .Values.database.pgbouncer.image }}
+        securityContext:
+          {{- toYaml .Values.securityContext | nindent 10 }}
+        ports:
+        - name: pgbouncer
+          containerPort: {{ .Values.database.pgbouncer.port }}
+          protocol: TCP
+        env:
+        - name: POSTGRESQL_HOST
+          value: {{ include "hyperfleet-api.fullname" . }}-postgresql
+        - name: POSTGRESQL_PORT
+          value: {{ .Values.database.postgresql.port | quote }}
+        - name: POSTGRESQL_DATABASE
+          value: {{ .Values.database.postgresql.database }}
+        - name: POSTGRESQL_USERNAME
+          value: {{ .Values.database.postgresql.user }}
+        - name: POSTGRESQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "hyperfleet-api.fullname" . }}-db-secrets
+              key: db.password
+        - name: PGBOUNCER_PORT
+          value: {{ .Values.database.pgbouncer.port | quote }}
+        - name: PGBOUNCER_POOL_MODE
+          value: {{ .Values.database.pgbouncer.poolMode }}
+        - name: PGBOUNCER_DEFAULT_POOL_SIZE
+          value: {{ .Values.database.pgbouncer.defaultPoolSize | quote }}
+        - name: PGBOUNCER_MAX_CLIENT_CONN
+          value: {{ .Values.database.pgbouncer.maxClientConn | quote }}
+        - name: PGBOUNCER_MIN_POOL_SIZE
+          value: {{ .Values.database.pgbouncer.minPoolSize | quote }}
+        - name: PGBOUNCER_SERVER_IDLE_TIMEOUT
+          value: {{ .Values.database.pgbouncer.serverIdleTimeout | quote }}
+        - name: PGBOUNCER_SERVER_LIFETIME
+          value: {{ .Values.database.pgbouncer.serverLifetime | quote }}
+        - name: PGBOUNCER_DATABASE
+          value: {{ .Values.database.postgresql.database }}
+        - name: PGBOUNCER_IGNORE_STARTUP_PARAMETERS
+          value: extra_float_digits
+        readinessProbe:
+          tcpSocket:
+            port: pgbouncer
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        livenessProbe:
+          tcpSocket:
+            port: pgbouncer
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        resources:
+          {{- toYaml .Values.database.pgbouncer.resources | nindent 10 }}
+        volumeMounts:
+        - name: pgbouncer-tmp
+          mountPath: /tmp
+        - name: pgbouncer-conf
+          mountPath: /opt/bitnami/pgbouncer/conf
+        - name: pgbouncer-logs
+          mountPath: /opt/bitnami/pgbouncer/logs
+        - name: pgbouncer-pid
+          mountPath: /opt/bitnami/pgbouncer/tmp
+      {{- end }}
       volumes:
       - name: tmp
         emptyDir: {}
+      {{- if .Values.database.pgbouncer.enabled }}
+      - name: pgbouncer-tmp
+        emptyDir:
+          sizeLimit: 100Mi
+      - name: pgbouncer-conf
+        emptyDir:
+          sizeLimit: 10Mi
+      - name: pgbouncer-logs
+        emptyDir:
+          sizeLimit: 100Mi
+      - name: pgbouncer-pid
+        emptyDir:
+          sizeLimit: 1Mi
+      {{- end }}
       {{- if or .Values.database.external.enabled .Values.database.postgresql.enabled }}
+      {{- if .Values.database.pgbouncer.enabled }}
+      - name: secrets-direct
+        secret:
+          secretName: {{ include "hyperfleet-api.fullname" . }}-db-secrets
+      - name: secrets
+        secret:
+          secretName: {{ include "hyperfleet-api.fullname" . }}-db-secrets-pgbouncer
+      {{- else }}
       - name: secrets
         secret:
           {{- if .Values.database.external.enabled }}
@@ -130,6 +219,7 @@ spec:
           {{- else }}
           secretName: {{ include "hyperfleet-api.fullname" . }}-db-secrets
           {{- end }}
+      {{- end }}
       {{- end }}
       {{- if .Values.extraVolumes }}
       {{- toYaml .Values.extraVolumes | nindent 6 }}

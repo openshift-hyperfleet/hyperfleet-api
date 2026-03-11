@@ -3,7 +3,6 @@ package presenters
 import (
 	"fmt"
 	"reflect"
-	"regexp"
 	"strings"
 	"time"
 
@@ -18,20 +17,7 @@ type ProjectionList struct {
 	Items []map[string]interface{} `json:"items"`
 }
 
-/*
-	SliceFilter
-
-Convert slice of structures to a []byte stream.
-Non-existing fields will cause a validation error
-
-@param fields2Store []string - list of fields to export (from `json` tag)
-
-@param items []interface{} - slice of structures to export
-
-@param kind, page, size, total - from openapi.SubscriptionList et al.
-
-@return []byte
-*/
+// SliceFilter returns a projected list containing requested fields from each item
 func SliceFilter(fields2Store []string, model interface{}) (*ProjectionList, *errors.ServiceError) {
 	if model == nil {
 		return nil, errors.Validation("Empty model")
@@ -105,23 +91,64 @@ func validate(model interface{}, in map[string]bool, prefix string) *errors.Serv
 		name := strings.Split(tag, ",")[0]
 		switch kind { //nolint:exhaustive // Only Struct and Slice need special handling, rest handled by default
 		case reflect.Struct:
+			prefixedName := name
+			if prefix != "" {
+				prefixedName = fmt.Sprintf("%s.%s", prefix, name)
+			}
 			if t.Type == reflect.TypeOf(&time.Time{}) || t.Type == reflect.TypeOf(time.Time{}) {
-				delete(in, name)
+				delete(in, prefixedName)
 			} else {
-				star := name + ".*"
+				star := prefixedName + ".*"
 				if _, ok := in[star]; ok {
-					in = removeStar(in, name)
+					in = removeStar(in, prefixedName)
 				} else {
-					if err := validate(field, in, name); err != nil {
+					if err := validate(field, in, prefixedName); err != nil {
 						return err
 					}
 				}
 			}
 		case reflect.Slice:
-			// TODO: We don't support Slices' validation :(
-			in = removeStar(in, name)
-			continue
-			// _ = validate(slice, in, name)
+			prefixedName := name
+			if prefix != "" {
+				prefixedName = fmt.Sprintf("%s.%s", prefix, name)
+			}
+			delete(in, prefixedName)
+			if _, ok := in[prefixedName+".*"]; ok {
+				in = removeStar(in, prefixedName)
+				continue
+			}
+			sliceType := ttype.Type()
+			if sliceType.Kind() == reflect.Pointer {
+				sliceType = sliceType.Elem()
+			}
+			elemType := sliceType.Elem()
+			if elemType.Kind() == reflect.Pointer {
+				elemType = elemType.Elem()
+			}
+			if elemType.Kind() == reflect.Struct && elemType != reflect.TypeOf(time.Time{}) {
+				sliceFieldPrefix := prefixedName + "."
+				subIn := make(map[string]bool)
+				for k := range in {
+					if strings.HasPrefix(k, sliceFieldPrefix) {
+						subIn[k] = true
+					}
+				}
+				if len(subIn) > 0 {
+					subKeys := make([]string, 0, len(subIn))
+					for k := range subIn {
+						subKeys = append(subKeys, k)
+					}
+					elemValue := reflect.New(elemType).Elem().Interface()
+					if err := validate(elemValue, subIn, prefixedName); err != nil {
+						return err
+					}
+					for _, k := range subKeys {
+						delete(in, k)
+					}
+				}
+			} else {
+				in = removeStar(in, prefixedName)
+			}
 		default:
 			prefixedName := name
 			if prefix != "" {
@@ -146,19 +173,12 @@ func validate(model interface{}, in map[string]bool, prefix string) *errors.Serv
 }
 
 func removeStar(in map[string]bool, name string) map[string]bool {
-	pattern := `(` + name + `\..*)`
-	pat, err := regexp.Compile(pattern)
-	if err != nil {
-		// Invalid pattern, return unchanged
-		return in
-	}
+	prefix := name + "."
 	for k := range in {
-		matched := pat.FindAllString(k, -1)
-		for _, m := range matched {
-			delete(in, m)
+		if strings.HasPrefix(k, prefix) {
+			delete(in, k)
 		}
 	}
-
 	return in
 }
 
@@ -192,7 +212,12 @@ func structToMap(item interface{}, in map[string]bool, prefix string) map[string
 		switch kind { //nolint:exhaustive // Only Struct and Slice need special handling, rest handled by default
 		case reflect.Struct:
 			if t.Type == reflect.TypeOf(&time.Time{}) || t.Type == reflect.TypeOf(time.Time{}) {
-				if _, ok := in[name]; ok {
+				prefixedName := name
+				if prefix != "" {
+					prefixedName = fmt.Sprintf("%s.%s", prefix, name)
+				}
+				prefixedStar := fmt.Sprintf("%s.*", prefix)
+				if _, ok := in[prefixedName]; ok || in[prefixedStar] {
 					if timePtr, ok := field.(*time.Time); ok && timePtr != nil {
 						res[name] = timePtr.Format(time.RFC3339)
 					} else if timeVal, ok := field.(time.Time); ok && !timeVal.IsZero() {
@@ -200,23 +225,65 @@ func structToMap(item interface{}, in map[string]bool, prefix string) map[string
 					}
 				}
 			} else {
-				nexPrefix := name
+				nextPrefix := name
 				if prefix != "" {
-					nexPrefix = prefix + "." + name
+					nextPrefix = prefix + "." + name
 				}
-				subStruct := structToMap(field, in, nexPrefix)
+				subStruct := structToMap(field, in, nextPrefix)
 				if len(subStruct) > 0 {
 					res[name] = subStruct
 				}
 			}
 		case reflect.Slice:
 			s := reflect.ValueOf(field)
-			if s.Len() > 0 {
+			nextPrefix := name
+			if prefix != "" {
+				nextPrefix = prefix + "." + name
+			}
+			starSelectorKey := nextPrefix + ".*"
+			requested := in[nextPrefix] || in[starSelectorKey]
+			if !requested {
+				subPrefix := nextPrefix + "."
+				for k := range in {
+					if strings.HasPrefix(k, subPrefix) {
+						requested = true
+						break
+					}
+				}
+			}
+			if s.Len() == 0 {
+				if requested {
+					res[name] = []interface{}{}
+				}
+			} else {
+				// Bare slice request acts as a star selector, returning all element fields.
+				elemIn := in
+				if _, ok := in[nextPrefix]; ok && !in[starSelectorKey] {
+					elemIn = make(map[string]bool, len(in)+1)
+					for k, v := range in {
+						elemIn[k] = v
+					}
+					elemIn[starSelectorKey] = true
+				}
 				result := make([]interface{}, 0, s.Len())
 				for i := 0; i < s.Len(); i++ {
-					slice := structToMap(s.Index(i).Interface(), in, name)
+					elem := s.Index(i)
+					elemKind := elem.Kind()
+					if elemKind == reflect.Pointer {
+						if elem.IsNil() {
+							continue
+						}
+						elemKind = elem.Elem().Kind()
+					}
+					if elemKind != reflect.Struct {
+						if elemIn[starSelectorKey] {
+							result = append(result, elem.Interface())
+						}
+						continue
+					}
+					slice := structToMap(elem.Interface(), elemIn, nextPrefix)
 					if len(slice) == 0 {
-						break
+						continue
 					}
 					result = append(result, slice)
 				}

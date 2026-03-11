@@ -54,8 +54,9 @@ secrets
 # Ignore generated mock files
 *_mock.go
 
-# Ignore Claude Code local configuration
-.claude/
+# Ignore Claude Code local configuration (but track shared settings)
+.claude/*
+!.claude/settings.json
 .claude-flow/
 .mcp.json
 .swarm/

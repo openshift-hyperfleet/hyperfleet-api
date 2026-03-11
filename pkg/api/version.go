@@ -19,7 +19,7 @@ limitations under the License.
 package api
 
 // Version is the application version set at compile time via ldflags
-var Version = "unknown"
+var Version = "0.0.0-dev"
 
 // Commit is the git commit SHA set at compile time via ldflags
 var Commit = "unknown"
