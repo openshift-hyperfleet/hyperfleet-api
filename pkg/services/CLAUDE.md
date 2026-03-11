@@ -22,8 +22,10 @@ func NewClusterService(dao, adapterStatusDao, config) ClusterService
 ## Status Aggregation
 
 `UpdateClusterStatusFromAdapters()` in `cluster.go` synthesizes two top-level conditions:
-- **Available**: True if all required adapters report `Available=True` (any generation)
+- **Available**: True if all required adapters report `Available=True` at ANY generation (last-known-good semantics). `ObservedGeneration` = minimum observed generation across qualifying adapters. When False, `ObservedGeneration` = current resource generation.
 - **Ready**: True if all adapters report `Available=True` AND `observed_generation` matches current generation
+
+Ready's `LastUpdatedTime` is computed in `status_aggregation.computeReadyLastUpdated`: when Ready=False it is the minimum of `LastReportTime` across all required adapters (falls back to `now` if any required adapter has no stored status yet); when Ready=True it is the minimum of `LastReportTime` across required adapters that have Available=True at the current generation. True→False transitions override this with the triggering adapter's `observedTime`.
 
 `ProcessAdapterStatus()` validates mandatory conditions (`Available`, `Applied`, `Health`) before persisting. Rejects `Available=Unknown` on subsequent reports (only allowed on first report).
 

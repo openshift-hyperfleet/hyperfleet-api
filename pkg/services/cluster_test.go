@@ -165,7 +165,8 @@ func (d *mockAdapterStatusDao) All(ctx context.Context) (api.AdapterStatusList, 
 
 var _ dao.AdapterStatusDao = &mockAdapterStatusDao{}
 
-// TestProcessAdapterStatus_FirstUnknownCondition tests that the first Unknown Available condition is stored
+// TestProcessAdapterStatus_FirstUnknownCondition tests that Available=Unknown is discarded
+// per spec §2 P3, regardless of whether it is the first or a subsequent report.
 func TestProcessAdapterStatus_FirstUnknownCondition(t *testing.T) {
 	RegisterTestingT(t)
 
@@ -202,14 +203,60 @@ func TestProcessAdapterStatus_FirstUnknownCondition(t *testing.T) {
 
 	result, err := service.ProcessAdapterStatus(ctx, clusterID, adapterStatus)
 
-	// First report with Unknown should be accepted
+	// Per spec §2 P3: Available=Unknown is always discarded.
 	Expect(err).To(BeNil())
-	Expect(result).ToNot(BeNil(), "First report with Available=Unknown should be stored")
-	Expect(result.Adapter).To(Equal("test-adapter"))
+	Expect(result).To(BeNil(), "Available=Unknown must be discarded (spec §2 P3)")
 
-	// Verify the status was stored
+	// Verify the status was NOT stored
 	storedStatuses, _ := adapterStatusDao.FindByResource(ctx, "Cluster", clusterID)
-	Expect(len(storedStatuses)).To(Equal(1), "First Unknown status should be stored")
+	Expect(len(storedStatuses)).To(Equal(0), "Unknown status must not be stored")
+}
+
+// TestProcessAdapterStatus_FutureObservedGeneration tests that a report with
+// observed_generation > resource.Generation is discarded per spec §2 P1.
+func TestProcessAdapterStatus_FutureObservedGeneration(t *testing.T) {
+	RegisterTestingT(t)
+
+	clusterDao := newMockClusterDao()
+	adapterStatusDao := newMockAdapterStatusDao()
+	config := testAdapterConfig()
+	service := NewClusterService(clusterDao, adapterStatusDao, config)
+
+	ctx := context.Background()
+	clusterID := testClusterID
+
+	// Create cluster at generation 1
+	cluster := &api.Cluster{Generation: 1}
+	cluster.ID = clusterID
+	_, svcErr := service.Create(ctx, cluster)
+	Expect(svcErr).To(BeNil())
+
+	// Send a report claiming observed_generation=2, but resource is at gen=1
+	conditions := []api.AdapterCondition{
+		{Type: api.ConditionTypeAvailable, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+	}
+	conditionsJSON, _ := json.Marshal(conditions)
+	now := time.Now()
+	adapterStatus := &api.AdapterStatus{
+		ResourceType:       "Cluster",
+		ResourceID:         clusterID,
+		Adapter:            "test-adapter",
+		Conditions:         conditionsJSON,
+		ObservedGeneration: 2, // ahead of resource gen=1
+		CreatedTime:        &now,
+	}
+
+	result, err := service.ProcessAdapterStatus(ctx, clusterID, adapterStatus)
+
+	// Per spec §2 P1: observed_generation > G → Discard.
+	Expect(err).To(BeNil())
+	Expect(result).To(BeNil(), "Report with observed_generation > resource.Generation must be discarded (spec §2 P1)")
+
+	// Verify the status was NOT stored
+	storedStatuses, _ := adapterStatusDao.FindByResource(ctx, "Cluster", clusterID)
+	Expect(len(storedStatuses)).To(Equal(0), "Future-generation report must not be stored")
 }
 
 // TestProcessAdapterStatus_SubsequentUnknownCondition tests that subsequent Unknown Available conditions are discarded
@@ -379,8 +426,8 @@ func TestProcessAdapterStatus_FalseCondition(t *testing.T) {
 	Expect(len(storedStatuses)).To(Equal(1), "Status should be stored for False condition")
 }
 
-// TestProcessAdapterStatus_FirstMultipleConditions_AvailableUnknown tests that first reports with
-// Available=Unknown are accepted even when other conditions are present
+// TestProcessAdapterStatus_FirstMultipleConditions_AvailableUnknown tests that Available=Unknown
+// is discarded per spec §2 P3, even when other conditions are present and it is the first report.
 func TestProcessAdapterStatus_FirstMultipleConditions_AvailableUnknown(t *testing.T) {
 	RegisterTestingT(t)
 
@@ -435,12 +482,13 @@ func TestProcessAdapterStatus_FirstMultipleConditions_AvailableUnknown(t *testin
 
 	result, err := service.ProcessAdapterStatus(ctx, clusterID, adapterStatus)
 
+	// Per spec §2 P3: Available=Unknown is always discarded, even on first report.
 	Expect(err).To(BeNil())
-	Expect(result).ToNot(BeNil(), "First report with Available=Unknown should be accepted")
+	Expect(result).To(BeNil(), "Available=Unknown must be discarded (spec §2 P3)")
 
-	// Verify the status was stored
+	// Verify the status was NOT stored
 	storedStatuses, _ := adapterStatusDao.FindByResource(ctx, "Cluster", clusterID)
-	Expect(len(storedStatuses)).To(Equal(1), "First status with Available=Unknown should be stored")
+	Expect(len(storedStatuses)).To(Equal(0), "Unknown status must not be stored")
 }
 
 // TestProcessAdapterStatus_SubsequentMultipleConditions_AvailableUnknown tests that subsequent reports
@@ -596,24 +644,19 @@ func TestClusterAvailableReadyTransitions(t *testing.T) {
 	Expect(ready.Status).To(Equal(api.ConditionFalse))
 	Expect(ready.ObservedGeneration).To(Equal(int32(2)))
 
-	// One adapter updates to gen=2 => Ready still False; Available still True (minObservedGeneration still 1).
+	// One adapter updates to gen=2 while the other stays at gen=1 => all_at_X=false.
+	// Per spec §5.2: all_at_X=false → no change → Available stays True@gen1.
 	upsert("validation", api.AdapterConditionTrue, 2)
 	avail, ready = getSynth()
 	Expect(avail.Status).To(Equal(api.ConditionTrue))
 	Expect(avail.ObservedGeneration).To(Equal(int32(1)))
 	Expect(ready.Status).To(Equal(api.ConditionFalse))
 
-	// One adapter updates to gen=1 => Ready still False; Available still True (minObservedGeneration still 1).
-	// This is an edge case where an adapter reports a gen=1 status after a gen=2 status.
-	// Since we don't allow downgrading observed generations, we should not overwrite the cluster conditions.
-	// And Available should remain True, but in reality it should be False.
-	// This should be an unexpected edge case, since once a resource changes generation,
-	// all adapters should report a gen=2 status.
-	// So, while we are keeping Available True for gen=1,
-	// there should be soon an update to gen=2, which will overwrite the Available condition.
+	// Stale gen=1 report from validation is rejected (we don't allow downgrading observed generations).
+	// DAO state remains: validation@gen2=True, dns@gen1=True => Available still True@gen1.
 	upsert("validation", api.AdapterConditionFalse, 1)
 	avail, ready = getSynth()
-	Expect(avail.Status).To(Equal(api.ConditionTrue)) // <-- this is the edge case
+	Expect(avail.Status).To(Equal(api.ConditionTrue))
 	Expect(avail.ObservedGeneration).To(Equal(int32(1)))
 	Expect(ready.Status).To(Equal(api.ConditionFalse))
 
@@ -628,7 +671,7 @@ func TestClusterAvailableReadyTransitions(t *testing.T) {
 	upsert("dns", api.AdapterConditionFalse, 2)
 	avail, ready = getSynth()
 	Expect(avail.Status).To(Equal(api.ConditionFalse))
-	Expect(avail.ObservedGeneration).To(Equal(int32(0)))
+	Expect(avail.ObservedGeneration).To(Equal(int32(2)))
 	Expect(ready.Status).To(Equal(api.ConditionFalse))
 
 	// Available=Unknown is a no-op (does not store, does not overwrite cluster conditions).
@@ -722,7 +765,7 @@ func TestClusterStaleAdapterStatusUpdatePolicy(t *testing.T) {
 	Expect(available.Status).To(Equal(api.ConditionTrue))
 	Expect(available.ObservedGeneration).To(Equal(int32(2)))
 
-	// Stale False is more restrictive and should override.
+	// Stale False from gen=1 is discarded by the stale check (validation is already at gen=2).
 	upsert("validation", api.AdapterConditionFalse, 1)
 	available = getAvailable()
 	Expect(available.Status).To(Equal(api.ConditionTrue))
@@ -769,7 +812,9 @@ func TestClusterSyntheticTimestampsStableWithoutAdapterStatus(t *testing.T) {
 		StatusConditions: initialConditionsJSON,
 	}
 	cluster.ID = clusterID
+	beforeCreate := time.Now()
 	created, svcErr := service.Create(ctx, cluster)
+	afterCreate := time.Now()
 	Expect(svcErr).To(BeNil())
 
 	var createdConds []api.ResourceCondition
@@ -789,12 +834,17 @@ func TestClusterSyntheticTimestampsStableWithoutAdapterStatus(t *testing.T) {
 	Expect(createdReady).ToNot(BeNil())
 	Expect(createdAvailable.CreatedTime).To(Equal(fixedNow))
 	Expect(createdAvailable.LastTransitionTime).To(Equal(fixedNow))
+	// No adapters reported → all_at_X=false → spec §5.2 no change → Available preserved from initialConditions.
 	Expect(createdAvailable.LastUpdatedTime).To(Equal(fixedNow))
 	Expect(createdReady.CreatedTime).To(Equal(fixedNow))
 	Expect(createdReady.LastTransitionTime).To(Equal(fixedNow))
-	Expect(createdReady.LastUpdatedTime).To(Equal(fixedNow))
+	// Ready.LastUpdatedTime is refreshed to the evaluation time when isReady=false; assert it lies in the Create() window.
+	Expect(createdReady.LastUpdatedTime).To(BeTemporally(">=", beforeCreate))
+	Expect(createdReady.LastUpdatedTime).To(BeTemporally("<=", afterCreate))
 
+	beforeUpdate := time.Now()
 	updated, err := service.UpdateClusterStatusFromAdapters(ctx, clusterID)
+	afterUpdate := time.Now()
 	Expect(err).To(BeNil())
 
 	var updatedConds []api.ResourceCondition
@@ -814,10 +864,14 @@ func TestClusterSyntheticTimestampsStableWithoutAdapterStatus(t *testing.T) {
 	Expect(updatedReady).ToNot(BeNil())
 	Expect(updatedAvailable.CreatedTime).To(Equal(fixedNow))
 	Expect(updatedAvailable.LastTransitionTime).To(Equal(fixedNow))
+	// No adapters reported → all_at_X=false → Available still preserved from fixedNow.
 	Expect(updatedAvailable.LastUpdatedTime).To(Equal(fixedNow))
 	Expect(updatedReady.CreatedTime).To(Equal(fixedNow))
 	Expect(updatedReady.LastTransitionTime).To(Equal(fixedNow))
-	Expect(updatedReady.LastUpdatedTime).To(Equal(fixedNow))
+	// Ready.LastUpdatedTime is refreshed to the evaluation time when isReady=false;
+	// assert it lies in the UpdateClusterStatusFromAdapters() window.
+	Expect(updatedReady.LastUpdatedTime).To(BeTemporally(">=", beforeUpdate))
+	Expect(updatedReady.LastUpdatedTime).To(BeTemporally("<=", afterUpdate))
 }
 
 // TestProcessAdapterStatus_MissingMandatoryCondition_Available tests that updates missing Available are rejected
@@ -1003,6 +1057,9 @@ func TestProcessAdapterStatus_CustomConditionRemoval(t *testing.T) {
 	unmarshalErr := json.Unmarshal(result1.Conditions, &storedConditions1)
 	Expect(unmarshalErr).To(BeNil())
 	Expect(len(storedConditions1)).To(Equal(4))
+
+	// Bump cluster generation to 2 so the second update (ObservedGeneration=2) is not blocked by P1.
+	clusterDao.clusters[clusterID].Generation = 2
 
 	// Second update: remove custom condition (only send mandatory conditions)
 	conditions2 := []api.AdapterCondition{

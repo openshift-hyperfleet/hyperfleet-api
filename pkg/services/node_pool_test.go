@@ -82,7 +82,8 @@ func (d *mockNodePoolDao) All(ctx context.Context) (api.NodePoolList, error) {
 
 var _ dao.NodePoolDao = &mockNodePoolDao{}
 
-// TestNodePoolProcessAdapterStatus_FirstUnknownCondition tests that the first Unknown Available condition is stored
+// TestNodePoolProcessAdapterStatus_FirstUnknownCondition tests that Available=Unknown is discarded
+// per spec §2 P3, regardless of whether it is the first or a subsequent report.
 func TestNodePoolProcessAdapterStatus_FirstUnknownCondition(t *testing.T) {
 	RegisterTestingT(t)
 
@@ -95,7 +96,13 @@ func TestNodePoolProcessAdapterStatus_FirstUnknownCondition(t *testing.T) {
 	ctx := context.Background()
 	nodePoolID := testNodePoolID
 
-	// Create first adapter status with all mandatory conditions but Available=Unknown
+	// Create nodepool first (needed for P1 check)
+	nodePool := &api.NodePool{Generation: 1}
+	nodePool.ID = nodePoolID
+	_, svcErr := service.Create(ctx, nodePool)
+	Expect(svcErr).To(BeNil())
+
+	// Send first status with Available=Unknown
 	conditions := []api.AdapterCondition{
 		{
 			Type:               api.ConditionTypeAvailable,
@@ -117,22 +124,71 @@ func TestNodePoolProcessAdapterStatus_FirstUnknownCondition(t *testing.T) {
 
 	now := time.Now()
 	adapterStatus := &api.AdapterStatus{
-		ResourceType: "NodePool",
-		ResourceID:   nodePoolID,
-		Adapter:      "test-adapter",
-		Conditions:   conditionsJSON,
-		CreatedTime:  &now,
+		ResourceType:       "NodePool",
+		ResourceID:         nodePoolID,
+		Adapter:            "test-adapter",
+		Conditions:         conditionsJSON,
+		ObservedGeneration: 1,
+		CreatedTime:        &now,
 	}
 
 	result, err := service.ProcessAdapterStatus(ctx, nodePoolID, adapterStatus)
 
+	// Per spec §2 P3: Available=Unknown is always discarded.
 	Expect(err).To(BeNil())
-	Expect(result).ToNot(BeNil(), "First report with Available=Unknown should be accepted")
-	Expect(result.Adapter).To(Equal("test-adapter"))
+	Expect(result).To(BeNil(), "Available=Unknown must be discarded (spec §2 P3)")
 
-	// Verify the status was stored
+	// Verify the status was NOT stored
 	storedStatuses, _ := adapterStatusDao.FindByResource(ctx, "NodePool", nodePoolID)
-	Expect(len(storedStatuses)).To(Equal(1), "First Unknown status should be stored")
+	Expect(len(storedStatuses)).To(Equal(0), "Unknown status must not be stored")
+}
+
+// TestNodePoolProcessAdapterStatus_FutureObservedGeneration tests that a report with
+// observed_generation > resource.Generation is discarded per spec §2 P1.
+func TestNodePoolProcessAdapterStatus_FutureObservedGeneration(t *testing.T) {
+	RegisterTestingT(t)
+
+	nodePoolDao := newMockNodePoolDao()
+	adapterStatusDao := newMockAdapterStatusDao()
+
+	config := testNodePoolAdapterConfig()
+	service := NewNodePoolService(nodePoolDao, adapterStatusDao, config)
+
+	ctx := context.Background()
+	nodePoolID := testNodePoolID
+
+	// Create nodepool at generation 1
+	nodePool := &api.NodePool{Generation: 1}
+	nodePool.ID = nodePoolID
+	_, svcErr := service.Create(ctx, nodePool)
+	Expect(svcErr).To(BeNil())
+
+	// Send a report claiming observed_generation=2, but resource is at gen=1
+	conditions := []api.AdapterCondition{
+		{Type: api.ConditionTypeAvailable, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+	}
+	conditionsJSON, _ := json.Marshal(conditions)
+	now := time.Now()
+	adapterStatus := &api.AdapterStatus{
+		ResourceType:       "NodePool",
+		ResourceID:         nodePoolID,
+		Adapter:            "test-adapter",
+		Conditions:         conditionsJSON,
+		ObservedGeneration: 2, // ahead of resource gen=1
+		CreatedTime:        &now,
+	}
+
+	result, err := service.ProcessAdapterStatus(ctx, nodePoolID, adapterStatus)
+
+	// Per spec §2 P1: observed_generation > G → Discard.
+	Expect(err).To(BeNil())
+	Expect(result).To(BeNil(), "Report with observed_generation > resource.Generation must be discarded (spec §2 P1)")
+
+	// Verify the status was NOT stored
+	storedStatuses, _ := adapterStatusDao.FindByResource(ctx, "NodePool", nodePoolID)
+	Expect(len(storedStatuses)).To(Equal(0), "Future-generation report must not be stored")
 }
 
 // TestNodePoolProcessAdapterStatus_SubsequentUnknownCondition tests that subsequent Unknown conditions are discarded
@@ -242,8 +298,8 @@ func TestNodePoolProcessAdapterStatus_TrueCondition(t *testing.T) {
 	Expect(len(storedStatuses)).To(Equal(1), "Status should be stored for True condition")
 }
 
-// TestNodePoolProcessAdapterStatus_FirstMultipleConditions_AvailableUnknown tests that first reports
-// with Available=Unknown are accepted even when other conditions are present
+// TestNodePoolProcessAdapterStatus_FirstMultipleConditions_AvailableUnknown tests that Available=Unknown
+// is discarded per spec §2 P3, even when other conditions are present and it is the first report.
 func TestNodePoolProcessAdapterStatus_FirstMultipleConditions_AvailableUnknown(t *testing.T) {
 	RegisterTestingT(t)
 
@@ -255,6 +311,12 @@ func TestNodePoolProcessAdapterStatus_FirstMultipleConditions_AvailableUnknown(t
 
 	ctx := context.Background()
 	nodePoolID := testNodePoolID
+
+	// Create nodepool first (needed for P1 check)
+	nodePool := &api.NodePool{Generation: 1}
+	nodePool.ID = nodePoolID
+	_, svcErr := service.Create(ctx, nodePool)
+	Expect(svcErr).To(BeNil())
 
 	// Create first adapter status with all mandatory conditions but Available=Unknown
 	conditions := []api.AdapterCondition{
@@ -283,21 +345,23 @@ func TestNodePoolProcessAdapterStatus_FirstMultipleConditions_AvailableUnknown(t
 
 	now := time.Now()
 	adapterStatus := &api.AdapterStatus{
-		ResourceType: "NodePool",
-		ResourceID:   nodePoolID,
-		Adapter:      "test-adapter",
-		Conditions:   conditionsJSON,
-		CreatedTime:  &now,
+		ResourceType:       "NodePool",
+		ResourceID:         nodePoolID,
+		Adapter:            "test-adapter",
+		Conditions:         conditionsJSON,
+		ObservedGeneration: 1,
+		CreatedTime:        &now,
 	}
 
 	result, err := service.ProcessAdapterStatus(ctx, nodePoolID, adapterStatus)
 
+	// Per spec §2 P3: Available=Unknown is always discarded, even on first report.
 	Expect(err).To(BeNil())
-	Expect(result).ToNot(BeNil(), "First report with Available=Unknown should be accepted")
+	Expect(result).To(BeNil(), "Available=Unknown must be discarded (spec §2 P3)")
 
-	// Verify the status was stored
+	// Verify the status was NOT stored
 	storedStatuses, _ := adapterStatusDao.FindByResource(ctx, "NodePool", nodePoolID)
-	Expect(len(storedStatuses)).To(Equal(1), "First status with Available=Unknown should be stored")
+	Expect(len(storedStatuses)).To(Equal(0), "Unknown status must not be stored")
 }
 
 // TestNodePoolProcessAdapterStatus_SubsequentMultipleConditions_AvailableUnknown tests that subsequent
@@ -451,7 +515,8 @@ func TestNodePoolAvailableReadyTransitions(t *testing.T) {
 	Expect(ready.Status).To(Equal(api.ConditionFalse))
 	Expect(ready.ObservedGeneration).To(Equal(int32(2)))
 
-	// One adapter updates to gen=2 => Ready still False; Available still True (minObservedGeneration still 1).
+	// One adapter updates to gen=2 while the other stays at gen=1 => all_at_X=false.
+	// Per spec §5.2: all_at_X=false → no change → Available stays True@gen1.
 	upsert("validation", api.AdapterConditionTrue, 2)
 	avail, ready = getSynth()
 	Expect(avail.Status).To(Equal(api.ConditionTrue))
@@ -469,7 +534,7 @@ func TestNodePoolAvailableReadyTransitions(t *testing.T) {
 	upsert("hypershift", api.AdapterConditionFalse, 2)
 	avail, ready = getSynth()
 	Expect(avail.Status).To(Equal(api.ConditionFalse))
-	Expect(avail.ObservedGeneration).To(Equal(int32(0)))
+	Expect(avail.ObservedGeneration).To(Equal(int32(2)))
 	Expect(ready.Status).To(Equal(api.ConditionFalse))
 
 	// Adapter status missing mandatory conditions should be rejected and not overwrite synthetic conditions.
@@ -582,7 +647,7 @@ func TestNodePoolStaleAdapterStatusUpdatePolicy(t *testing.T) {
 	Expect(available.Status).To(Equal(api.ConditionTrue))
 	Expect(available.ObservedGeneration).To(Equal(int32(2)))
 
-	// Stale False is more restrictive and should override but we do not override newer generation responses
+	// Stale False from gen=1 is discarded by the stale check (validation is already at gen=2).
 	upsert("validation", api.AdapterConditionFalse, 1)
 	available = getAvailable()
 	Expect(available.Status).To(Equal(api.ConditionTrue))
@@ -629,7 +694,9 @@ func TestNodePoolSyntheticTimestampsStableWithoutAdapterStatus(t *testing.T) {
 		StatusConditions: initialConditionsJSON,
 	}
 	nodePool.ID = nodePoolID
+	beforeCreate := time.Now()
 	created, svcErr := service.Create(ctx, nodePool)
+	afterCreate := time.Now()
 	Expect(svcErr).To(BeNil())
 
 	var createdConds []api.ResourceCondition
@@ -649,12 +716,17 @@ func TestNodePoolSyntheticTimestampsStableWithoutAdapterStatus(t *testing.T) {
 	Expect(createdReady).ToNot(BeNil())
 	Expect(createdAvailable.CreatedTime).To(Equal(fixedNow))
 	Expect(createdAvailable.LastTransitionTime).To(Equal(fixedNow))
+	// No adapters reported → all_at_X=false → spec §5.2 no change → Available preserved from initialConditions.
 	Expect(createdAvailable.LastUpdatedTime).To(Equal(fixedNow))
 	Expect(createdReady.CreatedTime).To(Equal(fixedNow))
 	Expect(createdReady.LastTransitionTime).To(Equal(fixedNow))
-	Expect(createdReady.LastUpdatedTime).To(Equal(fixedNow))
+	// Ready.LastUpdatedTime is refreshed to the evaluation time when isReady=false; assert it lies in the Create() window.
+	Expect(createdReady.LastUpdatedTime).To(BeTemporally(">=", beforeCreate))
+	Expect(createdReady.LastUpdatedTime).To(BeTemporally("<=", afterCreate))
 
+	beforeUpdate := time.Now()
 	updated, err := service.UpdateNodePoolStatusFromAdapters(ctx, nodePoolID)
+	afterUpdate := time.Now()
 	Expect(err).To(BeNil())
 
 	var updatedConds []api.ResourceCondition
@@ -674,8 +746,12 @@ func TestNodePoolSyntheticTimestampsStableWithoutAdapterStatus(t *testing.T) {
 	Expect(updatedReady).ToNot(BeNil())
 	Expect(updatedAvailable.CreatedTime).To(Equal(fixedNow))
 	Expect(updatedAvailable.LastTransitionTime).To(Equal(fixedNow))
+	// No adapters reported → all_at_X=false → Available still preserved from fixedNow.
 	Expect(updatedAvailable.LastUpdatedTime).To(Equal(fixedNow))
 	Expect(updatedReady.CreatedTime).To(Equal(fixedNow))
 	Expect(updatedReady.LastTransitionTime).To(Equal(fixedNow))
-	Expect(updatedReady.LastUpdatedTime).To(Equal(fixedNow))
+	// Ready.LastUpdatedTime is refreshed to the evaluation time when isReady=false;
+	// assert it lies in the UpdateNodePoolStatusFromAdapters() window.
+	Expect(updatedReady.LastUpdatedTime).To(BeTemporally(">=", beforeUpdate))
+	Expect(updatedReady.LastUpdatedTime).To(BeTemporally("<=", afterUpdate))
 }

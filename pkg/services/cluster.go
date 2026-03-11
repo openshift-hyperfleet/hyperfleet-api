@@ -96,8 +96,12 @@ func (s *sqlClusterService) Replace(ctx context.Context, cluster *api.Cluster) (
 		return nil, handleUpdateError("Cluster", err)
 	}
 
-	// REMOVED: Event creation - no event-driven components
-	return cluster, nil
+	updatedCluster, svcErr := s.UpdateClusterStatusFromAdapters(ctx, cluster.ID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+
+	return updatedCluster, nil
 }
 
 func (s *sqlClusterService) Delete(ctx context.Context, id string) *errors.ServiceError {
@@ -143,9 +147,22 @@ func (s *sqlClusterService) OnDelete(ctx context.Context, id string) error {
 	return nil
 }
 
-// UpdateClusterStatusFromAdapters aggregates adapter statuses into cluster status
+// UpdateClusterStatusFromAdapters aggregates adapter statuses into cluster status.
+// Uses time.Now() as the observed time (for generation-change recomputations).
+// Called from Create/Replace, so isLifecycleChange=true (Available frozen, Ready resets).
 func (s *sqlClusterService) UpdateClusterStatusFromAdapters(
 	ctx context.Context, clusterID string,
+) (*api.Cluster, *errors.ServiceError) {
+	return s.updateClusterStatusFromAdapters(ctx, clusterID, time.Now(), true)
+}
+
+// updateClusterStatusFromAdapters is the internal implementation.
+// observedTime is the triggering adapter's observed_time (its LastReportTime) and is used
+// for transition timestamps in the synthetic conditions.
+// isLifecycleChange=true freezes Available and resets Ready.lut=now (Create/Replace path).
+// isLifecycleChange=false uses the normal adapter-report aggregation path.
+func (s *sqlClusterService) updateClusterStatusFromAdapters(
+	ctx context.Context, clusterID string, observedTime time.Time, isLifecycleChange bool,
 ) (*api.Cluster, *errors.ServiceError) {
 	// Get the cluster
 	cluster, err := s.clusterDao.Get(ctx, clusterID)
@@ -210,11 +227,14 @@ func (s *sqlClusterService) UpdateClusterStatusFromAdapters(
 
 	// Compute synthetic Available and Ready conditions
 	availableCondition, readyCondition := BuildSyntheticConditions(
+		ctx,
 		cluster.StatusConditions,
 		adapterStatuses,
 		s.adapterConfig.RequiredClusterAdapters(),
 		cluster.Generation,
 		now,
+		observedTime,
+		isLifecycleChange,
 	)
 
 	// Combine synthetic conditions with adapter conditions
@@ -238,13 +258,15 @@ func (s *sqlClusterService) UpdateClusterStatusFromAdapters(
 	return cluster, nil
 }
 
-// ProcessAdapterStatus handles the business logic for adapter status:
-// - Validates that all mandatory conditions (Available, Applied, Health) are present
-// - Rejects duplicate condition types
-// - For first status report: accepts Unknown Available condition to avoid data loss
-// - For subsequent reports: rejects Unknown Available condition to preserve existing valid state
-// - Uses complete replacement semantics: each update replaces all conditions for this adapter
-// - Returns (nil, nil) for discarded updates
+// ProcessAdapterStatus handles the business logic for adapter status.
+// Pre-processing rules applied in order (spec §2):
+//   - Stale: discards if observed_generation < existing adapter generation
+//   - P1: discards if observed_generation > resource generation (report ahead of resource)
+//   - P2: rejects if mandatory conditions (Available, Applied, Health) are missing or have invalid status
+//   - P3: discards if Available == Unknown (not processed per spec)
+//
+// Otherwise: upserts the status and triggers aggregation.
+// Returns (nil, nil) for discarded/rejected updates.
 func (s *sqlClusterService) ProcessAdapterStatus(
 	ctx context.Context, clusterID string, adapterStatus *api.AdapterStatus,
 ) (*api.AdapterStatus, *errors.ServiceError) {
@@ -256,12 +278,12 @@ func (s *sqlClusterService) ProcessAdapterStatus(
 			return nil, errors.GeneralError("Failed to get adapter status: %s", findErr)
 		}
 	}
+	// Stale check: discard if older than the adapter's last recorded generation.
 	if existingStatus != nil && adapterStatus.ObservedGeneration < existingStatus.ObservedGeneration {
-		// Discard stale status updates (older observed_generation).
 		return nil, nil
 	}
 
-	// Parse conditions from the adapter status
+	// Parse conditions from the adapter status (needed for P2 and P3 before resource fetch).
 	var conditions []api.AdapterCondition
 	if len(adapterStatus.Conditions) > 0 {
 		if err := json.Unmarshal(adapterStatus.Conditions, &conditions); err != nil {
@@ -269,7 +291,7 @@ func (s *sqlClusterService) ProcessAdapterStatus(
 		}
 	}
 
-	// Validate mandatory conditions and check for duplicates
+	// P2: validate mandatory conditions (presence and valid status values).
 	if errorType, conditionName := ValidateMandatoryConditions(conditions); errorType != "" {
 		ctx = logger.WithClusterID(ctx, clusterID)
 		logger.Info(ctx, fmt.Sprintf("Discarding adapter status update from %s: %s condition %s",
@@ -277,44 +299,44 @@ func (s *sqlClusterService) ProcessAdapterStatus(
 		return nil, nil
 	}
 
-	// Check Available condition for Unknown status
-	triggerAggregation := false
+	// P3: discard if Available == Unknown (spec §2, all reports).
 	for _, cond := range conditions {
-		if cond.Type != api.ConditionTypeAvailable {
-			continue
-		}
-
-		triggerAggregation = true
-		if cond.Status == api.AdapterConditionUnknown {
-			if existingStatus != nil {
-				// Non-first report && Available=Unknown → reject
-				ctx = logger.WithClusterID(ctx, clusterID)
-				logger.Info(ctx, fmt.Sprintf("Discarding adapter status update from %s: subsequent Unknown Available",
-					adapterStatus.Adapter))
-				return nil, nil
-			}
-			// First report from this adapter: allow storing even with Available=Unknown
-			// but skip aggregation since Unknown should not affect cluster-level conditions
-			triggerAggregation = false
-		}
-		break
-	}
-
-	// Upsert the adapter status (complete replacement)
-	upsertedStatus, err := s.adapterStatusDao.Upsert(ctx, adapterStatus)
-	if err != nil {
-		return nil, handleCreateError("AdapterStatus", err)
-	}
-
-	// Only trigger aggregation when triggerAggregation is true
-	if triggerAggregation {
-		if _, aggregateErr := s.UpdateClusterStatusFromAdapters(
-			ctx, clusterID,
-		); aggregateErr != nil {
-			// Log error but don't fail the request - the status will be computed on next update
+		if cond.Type == api.ConditionTypeAvailable && cond.Status == api.AdapterConditionUnknown {
 			ctx = logger.WithClusterID(ctx, clusterID)
-			logger.WithError(ctx, aggregateErr).Warn("Failed to aggregate cluster status")
+			logger.Info(ctx, fmt.Sprintf("Discarding adapter status update from %s: Available=Unknown reports are not processed",
+				adapterStatus.Adapter))
+			return nil, nil
 		}
+	}
+
+	// P1: discard if observed_generation is ahead of the current resource generation.
+	// Checked after P2/P3 to avoid unnecessary resource fetches for invalid/Unknown reports.
+	cluster, err := s.clusterDao.Get(ctx, clusterID)
+	if err != nil {
+		return nil, handleGetError("Cluster", "id", clusterID, err)
+	}
+	if adapterStatus.ObservedGeneration > cluster.Generation {
+		ctx = logger.WithClusterID(ctx, clusterID)
+		logger.Info(ctx, fmt.Sprintf(
+			"Discarding adapter status update from %s: observed_generation %d > resource generation %d",
+			adapterStatus.Adapter, adapterStatus.ObservedGeneration, cluster.Generation))
+		return nil, nil
+	}
+
+	// Upsert the adapter status (complete replacement).
+	upsertedStatus, upsertErr := s.adapterStatusDao.Upsert(ctx, adapterStatus)
+	if upsertErr != nil {
+		return nil, handleCreateError("AdapterStatus", upsertErr)
+	}
+
+	// Trigger aggregation using the adapter's observed_time for transition timestamps.
+	observedTime := time.Now()
+	if upsertedStatus.LastReportTime != nil {
+		observedTime = *upsertedStatus.LastReportTime
+	}
+	if _, aggregateErr := s.updateClusterStatusFromAdapters(ctx, clusterID, observedTime, false); aggregateErr != nil {
+		ctx = logger.WithClusterID(ctx, clusterID)
+		logger.WithError(ctx, aggregateErr).Warn("Failed to aggregate cluster status")
 	}
 
 	return upsertedStatus, nil
