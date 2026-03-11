@@ -15,17 +15,16 @@ A practical guide for deploying, configuring, and operating the HyperFleet API c
    - [Status Aggregation](#23-status-aggregation)
       - [Resource conditions](#231-resource-conditions)
       - [Adapter condition types](#232-adapter-condition-types)
-      - [Aggregation logic](#233-aggregation-logic)
+      - [Resource-level condition aggregation](#233-resource-level-condition-aggregation)
       - [Special handling for `Available=Unknown`](#234-special-handling-for-availableunknown)
    - [Generation](#24-generation)
 3. [Configuration Reference](#3-configuration-reference)
-   - [Configuration Overview](#31-configuration-overview)
-   - [Adapter Requirements (REQUIRED)](#32-adapter-requirements-required)
-   - [Database Configuration](#33-database-configuration)
-   - [Authentication Configuration](#34-authentication-configuration)
-   - [Server Binding](#35-server-binding)
-   - [Logging Configuration](#36-logging-configuration)
-   - [Schema Validation](#37-schema-validation)
+   - [Adapter Requirements (REQUIRED)](#31-adapter-requirements-required)
+   - [Database Configuration](#32-database-configuration)
+   - [Authentication Configuration](#33-authentication-configuration)
+   - [Server Binding](#34-server-binding)
+   - [Logging Configuration](#35-logging-configuration)
+   - [Schema Validation](#36-schema-validation)
 4. [Deployment Checklist](#4-deployment-checklist)
 5. [Additional Resources](#additional-resources)
 
@@ -54,7 +53,7 @@ The HyperFleet API is the **central data layer** within the HyperFleet system. A
 1. **CRUD operations** for resources (cluster, nodepool) with provider-agnostic specifications
 2. **Status aggregation** from multiple adapters into unified resource conditions
 3. **Generation tracking** to coordinate spec changes across distributed adapters
-4. **Resource lifecycle management** with cascade deletion and referential integrity
+4. **Resource lifecycle management** with referential integrity between parent and child resources
 
 The API does **not** contain business logic or event generation—those responsibilities belong to separate controllers (Sentinel, adapters). This separation enables horizontal scaling and simplifies the deployment model.
 
@@ -72,7 +71,7 @@ Every resource (cluster, nodepool) has these key fields:
 
 ```
 Resource (e.g., Cluster)
-├── id                    (UUID, auto-generated)
+├── id                    (32-character unique identifier, auto-generated)
 ├── kind                  (Resource "Cluster" or "NodePool")
 ├── name                  (Unique identifier)
 ├── spec                  (JSONB - desired state, provider-specific)
@@ -97,7 +96,7 @@ Resource (e.g., Cluster)
 
 **How the Resource Model Works:**
 
-1. **Desired State (spec)**: When you create or update a resource, you provide a `spec` containing the desired configuration (e.g., cluster region, version, node count). The API stores this as-is without validation or interpretation.
+1. **Desired State (spec)**: When you create or update a resource, you provide a `spec` containing the desired configuration (e.g., cluster region, version, node count). The API stores this without business-logic interpretation, but validates it against the OpenAPI schema when a schema is configured.
 
 2. **Automatic Version Tracking (generation)**: Every time you update the `spec`, the API automatically increments the `generation` counter. This allows distributed adapters to detect when they need to reconcile infrastructure changes.
 
@@ -278,7 +277,7 @@ The nodepool resource structure and status aggregation work identically to clust
 **How registration works:** You define which adapters are required for each resource type to be marked as `Ready`. Adapters are registered at API startup via environment variables or Helm configuration, and the API will not start if this configuration is missing.
 
 Only **registered adapters** participate in status aggregation:
-- The `Ready` condition checks if all registered adapters report `Available=True`
+- The `Ready` condition checks if all registered adapters report `Available=True` at the current `resource.spec.generation`
 - Unregistered adapters can report status, but don't affect resource readiness
 - Changing registered adapters requires an API restart (configuration is read at startup)
 
@@ -287,24 +286,24 @@ Only **registered adapters** participate in status aggregation:
 Currently, the API supports cluster and nodepool resource types:
 
 ```bash
-# Required cluster adapters
-HYPERFLEET_CLUSTER_ADAPTERS='["validation","dns","pullsecret","hypershift"]'
+# Required cluster adapters (example - adjust to match your deployment)
+HYPERFLEET_CLUSTER_ADAPTERS='["cluster-validation","dns","pullsecret","hypershift"]'
 
-# Required nodepool adapters
-HYPERFLEET_NODEPOOL_ADAPTERS='["validation","hypershift"]'
+# Required nodepool adapters (example - adjust to match your deployment)
+HYPERFLEET_NODEPOOL_ADAPTERS='["nodepool-validation","hypershift"]'
 ```
 
 When using Helm (recommended):
 
 ```yaml
 adapters:
-  cluster:
-    - validation
+  cluster:   # Example adapter names - adjust to match your deployment
+    - cluster-validation
     - dns
     - pullsecret
     - hypershift
-  nodepool:
-    - validation
+  nodepool:  # Example adapter names - adjust to match your deployment
+    - nodepool-validation
     - hypershift
 ```
 
@@ -320,8 +319,8 @@ Every resource has these synthesized conditions:
 
 | Condition | Meaning | When True |
 |-----------|---------|-----------|
-| **Available** | Resource is operational at any known good configuration | All registered adapters report `Available=True` for the **same** `observed_generation` |
-| **Ready** | Resource is fully reconciled at current spec | All registered adapters report `Available=True` at the **current** generation |
+| **Available** | Resource is operational at any known good configuration | All registered adapters report `Available=True` (at any generation) |
+| **Ready** | Resource is fully reconciled at current spec | All registered adapters report `Available=True` at the **current** `resource.spec.generation` |
 
 #### 2.3.2 Adapter condition types
 
@@ -330,7 +329,7 @@ Adapters report three mandatory condition types:
 | Type | Meaning |
 |------|---------|
 | **Available** | Adapter's work is complete and operational |
-| **Applied** | Kubernetes resources were created/configured |
+| **Applied** | Kubernetes/Maestro resources were created/applied |
 | **Health** | Adapter framework executed without errors |
 
 **Validation rules** (enforced by API):
@@ -340,47 +339,58 @@ Adapters report three mandatory condition types:
 - `status` must be `True`, `False`, or `Unknown`
 - `observed_generation` must be a valid integer
 
-#### 2.3.3 Aggregation logic
+#### 2.3.3 Resource-level condition aggregation
 
-The API computes resource conditions via `/pkg/services/status_aggregation.go`:
+The API synthesizes two resource-level conditions (`Available` and `Ready`) from adapter reports. Each condition is a complete state with both `status` and `observed_generation` working together:
 
-**Available condition:**
-```go
-// True when all registered adapters report Available=True for the SAME observed_generation
-// False when all adapters report at the same generation, but at least one is Available=False
-// Unchanged if adapters report from different generations
-```
+**Available condition states:**
 
-**Ready condition:**
-```go
-// True when all registered adapters report Available=True at CURRENT generation
-// False when generation > observed_generation for any adapter
-// False when no adapters have reported yet
-```
+| Status | observed_generation | Meaning |
+|--------|-------------------|---------|
+| `True` | Min across all adapters with `Available=True` | All required adapters are operational, resource is running at generation N (last known good generation). N may be less than `resource.spec.generation` during reconciliation of new spec changes. |
+| `False` | `0` | At least one required adapter has `Available!=True` or hasn't reported. Resource is not operational. |
+| `False` | `1` | Initial state: no adapters have reported OR no adapters are required. |
+
+**Why Available tracks minimum generation:** When a spec is updated (e.g., `generation=5` → `generation=6`), adapters reconcile at different speeds. If all adapters continue reporting `Available=True` (even at different generations), the resource-level Available remains `True` with `observed_generation=5` (the minimum generation across all Available=True adapters). This preserves the "last known good configuration" while adapters work through the new spec. If any adapter reports `Available=False` during reconciliation, the resource becomes `Available=False, observed_generation=0`.
+
+**Ready condition states:**
+
+| Status | observed_generation | Meaning |
+|--------|-------------------|---------|
+| `True` | Current `resource.spec.generation` | All required adapters report `Available=True` at the current generation. Resource is fully reconciled. |
+| `False` | Current `resource.spec.generation` | At least one adapter hasn't caught up to the current generation OR has `Available!=True`. |
+
+**Why Ready always uses current generation:** Ready always sets `observed_generation = resource.spec.generation`, regardless of status. This indicates whether adapters have finished reconciling the current spec.
 
 #### 2.3.4 Special handling for `Available=Unknown`
 
 The API handles `Available=Unknown` status reports differently based on whether the adapter has reported before:
 
 **When `Available=Unknown` is reported for the first time** (no prior status from this adapter):
-- ✅ Accepts and stores the status
-- ⏭️ Skips status aggregation (resource-level conditions unchanged)
+- ✅ Accepts and stores the adapter status with `Available=Unknown`
 - Returns `201 Created` with the stored status object
+- Resource-level conditions (`Available`, `Ready`) remain unchanged
 
 **When `Available=Unknown` is reported again** (adapter has reported before):
 - ❌ Discards the status (not stored)
 - Returns `204 No Content` (no action taken)
 
 **When `Available=True` or `Available=False` is reported** (any time):
-- ✅ Always stored and triggers status aggregation
-- ✅ Updates resource-level `Available` and `Ready` conditions
-- Returns `201 Created` with full status object
+- ✅ If the reported generation is newer than or equal to the existing stored generation:
+  - Stored and triggers status aggregation
+  - Updates resource-level `Available` and `Ready` conditions
+  - Returns `201 Created` with the stored status object
+- ❌ If the reported generation is older than the existing stored generation:
+  - Discarded (stale update, not stored)
+  - Returns `204 No Content`
 
 This pattern allows adapters to signal initial progress without affecting resource readiness, while ensuring eventual convergence to a definitive state (`True` or `False`).
 
 ### 2.4 Generation
 
 Generation is a version number that the API automatically increments every time a resource's desired state (`spec`) changes. It provides a way to track which version of the spec is being processed.
+
+**IMPORTANT - No optimistic locking:** Unlike Kubernetes-style APIs, HyperFleet API does **not** implement optimistic locking with generation. You cannot provide generation in update requests, and the API does not verify generation matches before applying updates. The API uses a "last write wins" model where concurrent updates to the same resource may overwrite each other. Generation is purely a tracking mechanism for adapters to detect spec changes.
 
 **How the API manages generation:**
 
@@ -413,98 +423,31 @@ For comprehensive guides on specific topics:
 - **Authentication**: See [Authentication Guide](authentication.md)
 - **Helm chart values**: See [Deployment Guide](deployment.md)
 
-### 3.1 Configuration Overview
+### 3.1 Adapter Requirements (REQUIRED)
 
-**Configuration Precedence:**
-
-When multiple configuration sources are present, they are applied in this order:
-
-1. **CLI flags** (highest priority) - Direct command-line arguments
-2. **Environment variables** (medium priority) - Process environment
-3. **Built-in defaults** (lowest priority) - Hardcoded in the application
-
-For Helm deployments, values from `values.yaml` are rendered as either CLI flags or environment variables in the pod, giving them precedence over built-in defaults.
-
-**Configuration Patterns:**
-
-<details>
-<summary><b>Development Configuration Example</b></summary>
-
-```yaml
-adapters:
-  cluster: [validation]
-  nodepool: [validation]
-database:
-  postgresql:
-    enabled: true          # Built-in PostgreSQL
-auth:
-  enableJwt: false         # No authentication
-```
-
-Use this for local testing and development. The built-in PostgreSQL is not suitable for production.
-
-</details>
-
-<details>
-<summary><b>Production Configuration</b></summary>
-
-```yaml
-adapters:
-  cluster: [validation, dns, pullsecret, hypershift]
-  nodepool: [validation, hypershift]
-database:
-  postgresql:
-    enabled: false
-  external:
-    enabled: true
-    secretName: hyperfleet-db-prod
-auth:
-  enableJwt: true
-replicaCount: 3
-podDisruptionBudget:
-  enabled: true
-  minAvailable: 2
-serviceMonitor:
-  enabled: true
-```
-
-This configuration provides high availability, external database, and full authentication.
-
-</details>
-
-### 3.2 Adapter Requirements (REQUIRED)
-
-The API will not start without these variables:
+The API will not start without these variables. **Note:** The adapter names shown below are examples - you must configure them to match the adapters actually deployed in your environment.
 
 ```bash
-HYPERFLEET_CLUSTER_ADAPTERS='["validation","dns","pullsecret","hypershift"]'
-HYPERFLEET_NODEPOOL_ADAPTERS='["validation","hypershift"]'
+# Example configuration - adjust adapter names to match your deployment
+HYPERFLEET_CLUSTER_ADAPTERS='["cluster-validation","dns","pullsecret","hypershift"]'
+HYPERFLEET_NODEPOOL_ADAPTERS='["nodepool-validation","hypershift"]'
 ```
 
 **Helm equivalent**:
 
 ```yaml
 adapters:
-  cluster:
-    - validation
+  cluster:   # Example adapter names - adjust to match your deployment
+    - cluster-validation
     - dns
     - pullsecret
     - hypershift
-  nodepool:
-    - validation
+  nodepool:  # Example adapter names - adjust to match your deployment
+    - nodepool-validation
     - hypershift
 ```
 
-**Empty arrays are valid** if you don't want adapter-based readiness checks:
-
-```bash
-HYPERFLEET_CLUSTER_ADAPTERS='[]'
-HYPERFLEET_NODEPOOL_ADAPTERS='[]'
-```
-
-This makes all resources immediately `Ready=True`.
-
-### 3.3 Database Configuration
+### 3.2 Database Configuration
 
 The API requires PostgreSQL 13 or later.
 
@@ -522,12 +465,12 @@ database:
 The secret must contain these fields:
 
 ```
-secrets/db.host         → PostgreSQL hostname
-secrets/db.port         → PostgreSQL port
-secrets/db.name         → Database name
-secrets/db.user         → Database username
-secrets/db.password     → Database password
-secrets/db.rootcert     → (Optional) SSL root certificate
+db.host         → PostgreSQL hostname
+db.port         → PostgreSQL port
+db.name         → Database name
+db.user         → Database username
+db.password     → Database password
+db.rootcert     → (Optional) SSL root certificate
 ```
 
 **SSL configuration:**
@@ -545,7 +488,7 @@ Use the `--db-sslmode` flag when running the binary directly:
 | `verify-ca` | Verify server cert against CA |
 | `verify-full` | Verify cert and hostname (recommended for production) |
 
-### 3.4 Authentication Configuration
+### 3.3 Authentication Configuration
 
 **What is JWT authentication?** JWT (JSON Web Token) is a secure way to verify that API requests come from authorized users or services. In production, the API validates tokens to ensure only authenticated clients can create or modify clusters.
 
@@ -579,23 +522,27 @@ auth:
 
 See [Authentication Guide](authentication.md) for detailed JWT setup.
 
-### 3.5 Server Binding
+### 3.4 Server Binding
 
 The API runs three independent servers on different ports:
-- **API server** (default: `:8000`) - REST endpoints
-- **Health server** (default: `:8080`) - Liveness/readiness probes
-- **Metrics server** (default: `:9090`) - Prometheus metrics
+- **API server** (built-in default: `localhost:8000`) - REST endpoints
+- **Health server** (built-in default: `localhost:8080`) - Liveness/readiness probes
+- **Metrics server** (built-in default: `localhost:9090`) - Prometheus metrics
 
 **Helm deployment:**
 
+The Helm chart overrides the built-in defaults to bind to all interfaces (required for Kubernetes):
+
 ```yaml
 server:
-  bindAddress: ":8000"
-  healthBindAddress: ":8080"
-  metricsBindAddress: ":9090"
+  bindAddress: ":8000"          # Overrides localhost:8000
+  healthBindAddress: ":8080"    # Overrides localhost:8080
+  metricsBindAddress: ":9090"   # Overrides localhost:9090
 ```
 
 **Direct binary execution:**
+
+The built-in defaults (`localhost:*`) bind to loopback only. For production deployments or to make the API accessible from outside the host, bind to all interfaces:
 
 ```bash
 ./hyperfleet-api serve \
@@ -604,9 +551,9 @@ server:
   --metrics-server-bindaddress=:9090
 ```
 
-Use `:PORT` format to bind to all interfaces (required for Kubernetes), or `localhost:PORT` for local-only binding.
+**Note:** Use `:PORT` format to bind to all interfaces (0.0.0.0), or `localhost:PORT` for local-only binding (127.0.0.1). 
 
-### 3.6 Logging Configuration
+### 3.5 Logging Configuration
 
 ```bash
 LOG_LEVEL=info            # debug | info | warn | error
@@ -616,17 +563,42 @@ LOG_OUTPUT=stdout         # stdout | stderr
 
 Production should use `LOG_LEVEL=info` and `LOG_FORMAT=json` for structured logging.
 
-### 3.7 Schema Validation
+### 3.6 Schema Validation
 
 ```bash
 OPENAPI_SCHEMA_PATH=/etc/hyperfleet/schemas/openapi.yaml
 ```
 
-The API validates resource `spec` fields (e.g., cluster, nodepool) against this OpenAPI schema. This allows different providers (GCP, AWS, Azure) to enforce different spec structures.
+The API validates resource `spec` fields (e.g., cluster, nodepool) against this OpenAPI schema when configured. This allows different providers (GCP, AWS, Azure) to enforce different spec structures.
+
+**How validation works:**
+
+The API uses a two-step process to validate specs:
+
+1. **Resource type detection** — The validation middleware inspects the request URL path to determine the resource type:
+   - Paths containing `/nodepools` → validated as `nodepool`
+   - Paths containing `/clusters` → validated as `cluster`
+
+2. **Schema lookup** — The validator maps each resource type to a specific OpenAPI schema component:
+   - `cluster` → looks for `ClusterSpec` in the OpenAPI schema's `components.schemas`
+   - `nodepool` → looks for `NodePoolSpec` in the OpenAPI schema's `components.schemas`
+
+**Current limitations:**
+
+- Resource types and schema mappings are currently hardcoded for `cluster` and `nodepool`
+- Adding new resource types requires code changes in both the validation middleware and the schema validator
+- This design may be generalized in the future to support dynamic resource type registration
+
+**Behavior:**
+
+- **Schema configured and valid**: Specs are validated against the OpenAPI schema. Invalid specs return `400 Bad Request`.
+- **Schema missing or invalid**: API logs a warning and starts without validation. Specs are stored without schema validation.
+
+**Configuration:**
 
 - Default: Uses `openapi/openapi.yaml` from the repository
 - Custom: Set `OPENAPI_SCHEMA_PATH` for provider-specific schemas
-- Validation is **non-blocking** — if schema file is missing, API starts without validation (logs warning)
+- Startup is **non-blocking** — missing or invalid schema files do not prevent API startup
 
 ---
 
@@ -686,8 +658,9 @@ Choose your database deployment strategy based on your environment:
 **Define Adapter Requirements**
 
 - [ ] List required adapters for each resource type (see [Adapter Registration](#22-adapter-registration))
-  - Cluster adapters: `validation`, `dns`, `pullsecret`, `hypershift`
-  - Nodepool adapters: `validation`, `hypershift`
+  - **Example** cluster adapters: `cluster-validation`, `dns`, `pullsecret`, `hypershift`
+  - **Example** nodepool adapters: `nodepool-validation`, `hypershift`
+  - **Note:** These are example adapter names - configure to match your actual deployment
 - [ ] Confirm all adapters are deployed or will be deployed alongside the API
 
 **Prepare Helm Values File**
@@ -716,11 +689,10 @@ Choose your database deployment strategy based on your environment:
   kubectl get deployment -n hyperfleet-system hyperfleet-api
   ```
 
-- [ ] Monitor pod startup:
+- [ ] Wait for pods to be ready:
   ```bash
-  kubectl get pods -n hyperfleet-system -l app=hyperfleet-api -w
+  kubectl wait --for=condition=Ready pod -l app=hyperfleet-api -n hyperfleet-system --timeout=300s
   ```
-  Wait until all pods show `1/1` READY and `Running` status (press Ctrl+C to stop watching)
 
 **Verify Database Migration**
 
@@ -732,8 +704,9 @@ Choose your database deployment strategy based on your environment:
 
 - [ ] Verify database tables were created:
   ```bash
-  kubectl exec -it deployment/hyperfleet-api -n hyperfleet-system -- \
-    /bin/sh -c 'psql -h $DB_HOST -U $DB_USER -d $DB_NAME -c "\dt"'
+  kubectl run pg-debug --rm -it --image=postgres:15-alpine \
+    --restart=Never -n hyperfleet-system -- \
+    psql -h <db-host> -U hyperfleet -d hyperfleet -c "\dt"
   ```
   Expected tables: `adapter_statuses`, `clusters`, `labels`, `node_pools`
 
@@ -829,7 +802,6 @@ The API does not currently enforce rate limits, but clients should implement:
 
 - **Exponential backoff** on retries (5xx errors, conflicts)
 - **Polling intervals** of at least 5-10 seconds for status checks
-- **Batch operations** when creating multiple resources
 
 ### For Adapter Developers
 
@@ -916,19 +888,19 @@ For comprehensive operational procedures, see the [Operational Runbook](runbook.
 
 This section provides a **quick reference** for common API-specific issues and their solutions.
 
-| Symptom | Likely Cause | Solution                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-|---------|--------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **API won't start: `HYPERFLEET_CLUSTER_ADAPTERS environment variable is required`** | Required environment variables not set | Verify Helm values: `helm get values hyperfleet-api -n hyperfleet-system`. If missing, upgrade: `helm upgrade hyperfleet-api ./charts/ --namespace hyperfleet-system --set adapters.cluster='{validation,dns}' --set adapters.nodepool='{validation}' --reuse-values`. Verify in pod: `kubectl exec -n hyperfleet-system deployment/hyperfleet-api -- env \| grep HYPERFLEET`.                                                                                                                                                                                                     |
-| **Adapters report status but resource remains `Ready=False`** | Adapter name mismatch, missing conditions, or generation mismatch | Check adapter names match registration: `kubectl exec -n hyperfleet-system deployment/hyperfleet-api -- env \| grep HYPERFLEET_CLUSTER_ADAPTERS` and compare with `curl http://localhost:8000/api/hyperfleet/v1/clusters/$CLUSTER_ID/statuses`. Verify all conditions present: `curl http://localhost:8000/api/hyperfleet/v1/clusters/$CLUSTER_ID/statuses \| jq '.items[] \| {adapter, conditions: [.conditions[].type]}'`. Check generation: `curl -s http://localhost:8000/api/hyperfleet/v1/clusters/$CLUSTER_ID/statuses \| jq ".items[] \| {adapter, observed_generation}"`. |
-| **Pods stuck in init phase, migration fails: `permission denied for schema public`** | Database user lacks schema permissions | Grant permissions: `GRANT ALL ON SCHEMA public TO hyperfleet; GRANT ALL ON ALL TABLES IN SCHEMA public TO hyperfleet;`                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| **Pods stuck in init phase: `database does not exist`** | Database not created | Create database: `CREATE DATABASE hyperfleet;`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| **Pods stuck in init phase: `connection timeout`** | Init container timeout too short | Increase timeout in Helm values or directly in deployment: `initContainers.command: ["/app/hyperfleet-api", "migrate", "--db-timeout=60s"]`                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| **High API latency, slow responses** | Resource limits, database slow queries, or connection pool exhausted | Check metrics: `curl http://<api-service>:9090/metrics \| grep hyperfleet_api_request_duration_seconds`. Check resources: `kubectl top pods -n hyperfleet-system`. Check slow queries: `kubectl logs -n hyperfleet-system deployment/hyperfleet-api \| grep "slow query"`. Resolution: Increase resource limits/replicas, add database indexes, or increase `--db-max-open-connections` (default: 50).                                                                                                                                                                             |
-| **400 Bad Request** | Resource spec doesn't match OpenAPI schema | Check loaded schema: `kubectl logs -n hyperfleet-system deployment/hyperfleet-api \| grep "OPENAPI_SCHEMA_PATH"`. Retrieve schema: `kubectl exec -n hyperfleet-system deployment/hyperfleet-api -- cat /etc/hyperfleet/schemas/openapi.yaml`. Validate and fix spec.                                                                                                                                                                                                                                                                                                               |
-| **401 Unauthorized** | Missing or invalid JWT token | Verify authentication is enabled (`auth.enableJwt=true`). If production, ensure valid JWT token is provided. Reference: [Authentication Guide](authentication.md).                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| **404 Not Found** | Resource doesn't exist | Verify resource ID is correct. Check if resource was deleted: `curl http://<api-service>:8000/api/hyperfleet/v1/clusters/$CLUSTER_ID`.                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| **409 Conflict** | Concurrent update or generation mismatch | Retry with exponential backoff. Ensure only one controller updates the same resource.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| **500 Internal Server Error** | Database error or unexpected panic | Check API logs: `kubectl logs -n hyperfleet-system -l app=hyperfleet-api --tail=100`. Verify database connectivity with `/readyz` endpoint.                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| **503 Service Unavailable** | Readiness probe failing | Check readiness: `curl http://<api-service>:8080/readyz`. Verify database connectivity and API initialization. Check logs for startup errors.                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| Symptom | Likely Cause | Solution                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+|---------|--------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **API won't start: `HYPERFLEET_CLUSTER_ADAPTERS environment variable is required`** | Required environment variables not set | Verify Helm values: `helm get values hyperfleet-api -n hyperfleet-system`. If missing, configure adapter requirements in your Helm values file (see [Adapter Requirements](#31-adapter-requirements-required)) and upgrade the release.                                                                                                                                                                                                                                                                                                                                                        |
+| **Adapters report status but resource remains `Ready=False`** | Adapter name mismatch, missing conditions, or generation mismatch | Check adapter names match registration: `kubectl exec -n hyperfleet-system deployment/hyperfleet-api -- env \| grep HYPERFLEET_CLUSTER_ADAPTERS` and compare with `curl http://<api-service>:8000/api/hyperfleet/v1/clusters/$CLUSTER_ID/statuses`. Verify all conditions present: `curl http://<api-service>:8000/api/hyperfleet/v1/clusters/$CLUSTER_ID/statuses \| jq '.items[] \| {adapter, conditions: [.conditions[].type]}'`. Check generation: `curl -s http://<api-service>:8000/api/hyperfleet/v1/clusters/$CLUSTER_ID/statuses \| jq ".items[] \| {adapter, observed_generation}"`. |
+| **Pods stuck in init phase, migration fails: `permission denied for schema public`** | Database user lacks schema permissions | Grant permissions: `GRANT ALL ON SCHEMA public TO hyperfleet; GRANT ALL ON ALL TABLES IN SCHEMA public TO hyperfleet;`                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| **Pods stuck in init phase: `database does not exist`** | Database not created | Create database: `CREATE DATABASE hyperfleet;`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| **Pods stuck in init phase: `connection timeout`** | Database connection retry settings too low | Increase database connection retry settings using `--db-conn-retry-attempts` and `--db-conn-retry-interval` flags in the init container command                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| **High API latency, slow responses** | Resource limits, database slow queries, or connection pool exhausted | Check metrics: `curl http://<api-service>:9090/metrics \| grep hyperfleet_api_request_duration_seconds`. Check resources: `kubectl top pods -n hyperfleet-system`. Check slow queries: `kubectl logs -n hyperfleet-system deployment/hyperfleet-api \| grep "slow query"`. Resolution: Increase resource limits/replicas, add database indexes, or increase `--db-max-open-connections` (default: 50).                                                                                                                                                                                         |
+| **400 Bad Request** | Resource spec doesn't match OpenAPI schema | Check loaded schema: `kubectl logs -n hyperfleet-system deployment/hyperfleet-api \| grep "OPENAPI_SCHEMA_PATH"`. Retrieve schema: `kubectl exec -n hyperfleet-system deployment/hyperfleet-api -- cat /etc/hyperfleet/schemas/openapi.yaml`. Validate and fix spec.                                                                                                                                                                                                                                                                                                                           |
+| **401 Unauthorized** | Missing or invalid JWT token | Verify authentication is enabled (`auth.enableJwt=true`). If production, ensure valid JWT token is provided. Reference: [Authentication Guide](authentication.md).                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| **404 Not Found** | Resource doesn't exist | Verify resource ID is correct. Check if resource was deleted: `curl http://<api-service>:8000/api/hyperfleet/v1/clusters/$CLUSTER_ID`.                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| **409 Conflict** | Concurrent update or generation mismatch | Retry with exponential backoff. Ensure only one controller updates the same resource.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| **500 Internal Server Error** | Database error or unexpected panic | Check API logs: `kubectl logs -n hyperfleet-system -l app=hyperfleet-api --tail=100`. Verify database connectivity with `/readyz` endpoint.                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| **503 Service Unavailable** | Readiness probe failing | Check readiness: `curl http://<api-service>:8080/readyz`. Verify database connectivity and API initialization. Check logs for startup errors.                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 
 ---
