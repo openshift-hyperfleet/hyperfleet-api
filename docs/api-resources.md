@@ -456,7 +456,7 @@ The status object contains synthesized conditions computed from adapter reports:
 - All above fields plus:
 - `observed_generation` - Generation this condition reflects
 - `created_time` - When condition was first created (API-managed)
-- `last_updated_time` - When adapter last reported (API-managed, from AdapterStatus.last_report_time)
+- `last_updated_time` - When this condition was last refreshed (API-managed). For **Available**, always the evaluation time. For **Ready**: when Ready=True, the minimum of `last_report_time` across all required adapters that report Available=True at the current generation; when Ready=False, the evaluation time (so consumers can detect staleness).
 - `last_transition_time` - When status last changed (API-managed)
 
 ## Parameter Restrictions

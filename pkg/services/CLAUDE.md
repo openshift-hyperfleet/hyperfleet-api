@@ -25,6 +25,8 @@ func NewClusterService(dao, adapterStatusDao, config) ClusterService
 - **Available**: True if all required adapters report `Available=True` (any generation)
 - **Ready**: True if all adapters report `Available=True` AND `observed_generation` matches current generation
 
+Ready's `LastUpdatedTime` is computed in `status_aggregation.computeReadyLastUpdated`: when Ready=False it is the evaluation time (so Sentinel can apply a freshness threshold); when Ready=True it is the minimum of `LastReportTime` across required adapters that have Available=True at the current generation.
+
 `ProcessAdapterStatus()` validates mandatory conditions (`Available`, `Applied`, `Health`) before persisting. Rejects `Available=Unknown` on subsequent reports (only allowed on first report).
 
 ## GenericService
