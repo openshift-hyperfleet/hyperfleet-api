@@ -1,0 +1,135 @@
+{{- if not .Values.config.existingConfigMap }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "hyperfleet-api.fullname" . }}-config
+  labels:
+    {{- include "hyperfleet-api.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    # HyperFleet API Configuration
+    # Generated from Helm values.yaml
+
+    server:
+      hostname: {{ .Values.config.server.hostname | quote }}
+      host: {{ .Values.config.server.host | quote }}
+      port: {{ .Values.config.server.port }}
+
+      timeouts:
+        read: {{ .Values.config.server.timeouts.read }}
+        write: {{ .Values.config.server.timeouts.write }}
+
+      tls:
+        enabled: {{ .Values.config.server.tls.enabled }}
+        cert_file: {{ .Values.config.server.tls.cert_file | quote }}
+        key_file: {{ .Values.config.server.tls.key_file | quote }}
+
+      jwt:
+        enabled: {{ .Values.config.server.jwt.enabled }}
+
+      authz:
+        enabled: {{ .Values.config.server.authz.enabled }}
+
+      jwk:
+        cert_file: {{ .Values.config.server.jwk.cert_file | quote }}
+        cert_url: {{ .Values.config.server.jwk.cert_url | quote }}
+
+      acl:
+        file: {{ .Values.config.server.acl.file | quote }}
+
+    database:
+      dialect: {{ .Values.config.database.dialect }}
+
+      # ============================================================
+      # Database Connection (Provided by Secret in Kubernetes)
+      # ============================================================
+      # The following connection values are placeholders for documentation.
+      # In Kubernetes deployments, actual values come from Secret
+      # via *_FILE environment variables (HYPERFLEET_DATABASE_*_FILE).
+      #
+      # For custom ConfigMap users: update these values as needed.
+      # ============================================================
+      {{- if .Values.database.postgresql.enabled }}
+      host: {{ include "hyperfleet-api.fullname" . }}-postgresql
+      {{- else if .Values.config.database.host }}
+      host: {{ .Values.config.database.host }}
+      {{- else }}
+      host: localhost
+      {{- end }}
+      port: {{ .Values.config.database.port }}
+      name: {{ .Values.config.database.name }}
+      {{- if .Values.config.database.username }}
+      username: {{ .Values.config.database.username | quote }}
+      {{- end }}
+      {{- if .Values.config.database.password }}
+      password: {{ .Values.config.database.password | quote }}
+      {{- end }}
+
+      # Application behavior settings
+      debug: {{ .Values.config.database.debug }}
+
+      ssl:
+        mode: {{ .Values.config.database.ssl.mode }}
+        root_cert_file: {{ .Values.config.database.ssl.root_cert_file | quote }}
+
+      pool:
+        max_connections: {{ .Values.config.database.pool.max_connections }}
+
+    logging:
+      level: {{ .Values.config.logging.level }}
+      format: {{ .Values.config.logging.format }}
+      output: {{ .Values.config.logging.output }}
+
+      otel:
+        enabled: {{ .Values.config.logging.otel.enabled }}
+        sampling_rate: {{ .Values.config.logging.otel.sampling_rate }}
+
+      masking:
+        enabled: {{ .Values.config.logging.masking.enabled }}
+        headers:
+{{- range .Values.config.logging.masking.headers }}
+          - {{ . }}
+{{- end }}
+        fields:
+{{- range .Values.config.logging.masking.fields }}
+          - {{ . }}
+{{- end }}
+
+    metrics:
+      host: {{ .Values.config.metrics.host }}
+      port: {{ .Values.config.metrics.port }}
+
+      tls:
+        enabled: {{ .Values.config.metrics.tls.enabled }}
+
+      label_metrics_inclusion_duration: {{ .Values.config.metrics.label_metrics_inclusion_duration }}
+
+    health:
+      host: {{ .Values.config.health.host }}
+      port: {{ .Values.config.health.port }}
+
+      tls:
+        enabled: {{ .Values.config.health.tls.enabled }}
+
+      shutdown_timeout: {{ .Values.config.health.shutdown_timeout }}
+
+    adapters:
+      required:
+        cluster:
+{{- if .Values.config.adapters.required.cluster }}
+{{- range .Values.config.adapters.required.cluster }}
+          - {{ . }}
+{{- end }}
+{{- else }}
+          []
+{{- end }}
+        nodepool:
+{{- if .Values.config.adapters.required.nodepool }}
+{{- range .Values.config.adapters.required.nodepool }}
+          - {{ . }}
+{{- end }}
+{{- else }}
+          []
+{{- end }}
+{{- end }}

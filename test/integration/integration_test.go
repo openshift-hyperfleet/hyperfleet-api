@@ -20,11 +20,11 @@ func TestMain(m *testing.M) {
 
 	// Set adapter configuration for integration tests if not already set
 	// These are required by the NodePool plugin
-	if os.Getenv("HYPERFLEET_CLUSTER_ADAPTERS") == "" {
-		_ = os.Setenv("HYPERFLEET_CLUSTER_ADAPTERS", `["validation","dns","pullsecret","hypershift"]`)
+	if os.Getenv("HYPERFLEET_ADAPTERS_REQUIRED_CLUSTER") == "" {
+		_ = os.Setenv("HYPERFLEET_ADAPTERS_REQUIRED_CLUSTER", `["validation","dns","pullsecret","hypershift"]`)
 	}
-	if os.Getenv("HYPERFLEET_NODEPOOL_ADAPTERS") == "" {
-		_ = os.Setenv("HYPERFLEET_NODEPOOL_ADAPTERS", `["validation","hypershift"]`)
+	if os.Getenv("HYPERFLEET_ADAPTERS_REQUIRED_NODEPOOL") == "" {
+		_ = os.Setenv("HYPERFLEET_ADAPTERS_REQUIRED_NODEPOOL", `["validation","hypershift"]`)
 	}
 
 	// Set OPENAPI_SCHEMA_PATH for integration tests if not already set

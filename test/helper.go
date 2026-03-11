@@ -81,9 +81,9 @@ func NewHelper(t *testing.T) *Helper {
 		}
 
 		env := environments.Environment()
-		err = env.AddFlags(pflag.CommandLine)
+		err = env.SetEnvironmentDefaults(pflag.CommandLine)
 		if err != nil {
-			logger.WithError(ctx, err).Error("Unable to add environment flags")
+			logger.WithError(ctx, err).Error("Unable to set environment defaults")
 			os.Exit(1)
 		}
 		if logLevel := os.Getenv("LOGLEVEL"); logLevel != "" {
@@ -233,8 +233,8 @@ func (helper *Helper) Reset() {
 	// This new flag set ensures we don't hit conflicts defining the same flag twice
 	// Also on reset, we don't care to be re-defining 'v' and other glog flags
 	flagset := pflag.NewFlagSet(helper.NewID(), pflag.ContinueOnError)
-	if err := env.AddFlags(flagset); err != nil {
-		logger.WithError(ctx, err).Error("Unable to add environment flags on Reset")
+	if err := env.SetEnvironmentDefaults(flagset); err != nil {
+		logger.WithError(ctx, err).Error("Unable to set environment defaults on Reset")
 		os.Exit(1)
 	}
 	pflag.Parse()

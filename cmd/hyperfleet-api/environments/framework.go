@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"strconv"
-	"strings"
 
 	"github.com/spf13/pflag"
 
@@ -37,7 +35,7 @@ func init() {
 // Each environment provides a set of flags for basic set/override of the environment
 // and configuration functions for each component type.
 type EnvironmentImpl interface {
-	Flags() map[string]string
+	EnvironmentDefaults() map[string]string
 	OverrideConfig(c *config.ApplicationConfig) error
 	OverrideServices(s *Services) error
 	OverrideDatabase(s *Database) error
@@ -71,10 +69,10 @@ func ApplyEnvironmentOverrides(cfg *config.ApplicationConfig) error {
 	return envImpl.OverrideConfig(cfg)
 }
 
-// AddFlags Adds environment flags, using the environment's config struct, to the flagset 'flags'
-func (e *Env) AddFlags(flags *pflag.FlagSet) error {
-	e.Config.AddFlags(flags) //nolint:staticcheck // Intentional for backward compatibility with old config system
-	return setConfigDefaults(flags, environments[e.Name].Flags())
+// SetEnvironmentDefaults sets environment-specific flag defaults
+// This is used for environment-specific behavior flags (e.g., verbose mode, OCM debug)
+func (e *Env) SetEnvironmentDefaults(flags *pflag.FlagSet) error {
+	return setFlagDefaults(flags, environments[e.Name].EnvironmentDefaults())
 }
 
 // Initialize loads the environment's resources
@@ -95,27 +93,8 @@ func (e *Env) Initialize() error {
 		os.Exit(1)
 	}
 
-	// For backward compatibility with old configuration system:
-	// Read database configuration from environment variables if not using new config system
-	if !config.IsNewConfigEnabled() {
-		loadDatabaseConfigFromEnv(e.Config.Database)
-	}
-
 	if err := envImpl.OverrideConfig(e.Config); err != nil {
 		logger.WithError(ctx, err).Error("Failed to configure ApplicationConfig")
-		os.Exit(1)
-	}
-
-	messages := environment.Config.ReadFiles() //nolint:staticcheck // Intentional for backward compatibility
-	if len(messages) != 0 {
-		err := fmt.Errorf("%s", strings.Join(messages, "\n"))
-		logger.WithError(ctx, err).Error("Unable to read configuration files")
-		os.Exit(1)
-	}
-
-	// Load adapter configuration from environment variables
-	if err := e.Config.LoadAdapters(); err != nil { //nolint:staticcheck // Intentional for backward compatibility
-		logger.WithError(ctx, err).Error("Failed to load adapter configuration")
 		os.Exit(1)
 	}
 
@@ -207,7 +186,7 @@ func (e *Env) Teardown() {
 	}
 }
 
-func setConfigDefaults(flags *pflag.FlagSet, defaults map[string]string) error {
+func setFlagDefaults(flags *pflag.FlagSet, defaults map[string]string) error {
 	ctx := context.Background()
 	for name, value := range defaults {
 		if err := flags.Set(name, value); err != nil {
@@ -216,62 +195,4 @@ func setConfigDefaults(flags *pflag.FlagSet, defaults map[string]string) error {
 		}
 	}
 	return nil
-}
-
-// loadDatabaseConfigFromEnv loads database configuration from environment variables
-// This provides backward compatibility with the old configuration system
-func loadDatabaseConfigFromEnv(dbConfig *config.DatabaseConfig) {
-	// Support both old (DB_*) and new (HYPERFLEET_DATABASE_*) environment variable names
-	if host := os.Getenv("DB_HOST"); host != "" {
-		dbConfig.Host = host
-	}
-	if host := os.Getenv("HYPERFLEET_DATABASE_HOST"); host != "" {
-		dbConfig.Host = host
-	}
-
-	if port := os.Getenv("DB_PORT"); port != "" {
-		if p, err := strconv.Atoi(port); err == nil {
-			dbConfig.Port = p
-		}
-	}
-	if port := os.Getenv("HYPERFLEET_DATABASE_PORT"); port != "" {
-		if p, err := strconv.Atoi(port); err == nil {
-			dbConfig.Port = p
-		}
-	}
-
-	if name := os.Getenv("DB_NAME"); name != "" {
-		dbConfig.Name = name
-	}
-	if name := os.Getenv("HYPERFLEET_DATABASE_NAME"); name != "" {
-		dbConfig.Name = name
-	}
-
-	if username := os.Getenv("DB_USERNAME"); username != "" {
-		dbConfig.Username = username
-	}
-	if username := os.Getenv("HYPERFLEET_DATABASE_USERNAME"); username != "" {
-		dbConfig.Username = username
-	}
-
-	if password := os.Getenv("DB_PASSWORD"); password != "" {
-		dbConfig.Password = password
-	}
-	if password := os.Getenv("HYPERFLEET_DATABASE_PASSWORD"); password != "" {
-		dbConfig.Password = password
-	}
-
-	if sslMode := os.Getenv("DB_SSL_MODE"); sslMode != "" {
-		dbConfig.SSL.Mode = sslMode
-	}
-	if sslMode := os.Getenv("HYPERFLEET_DATABASE_SSL_MODE"); sslMode != "" {
-		dbConfig.SSL.Mode = sslMode
-	}
-
-	if debug := os.Getenv("DB_DEBUG"); debug == "true" { //nolint:goconst // Environment variable check
-		dbConfig.Debug = true
-	}
-	if debug := os.Getenv("HYPERFLEET_DATABASE_DEBUG"); debug == "true" { //nolint:goconst // Environment variable check
-		dbConfig.Debug = true
-	}
 }

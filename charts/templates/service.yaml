@@ -7,15 +7,15 @@ metadata:
 spec:
   type: {{ .Values.service.type }}
   ports:
-  - port: {{ .Values.service.port }}
+  - port: {{ .Values.ports.api }}
     targetPort: http
     protocol: TCP
     name: http
-  - port: 8080
+  - port: {{ .Values.ports.health }}
     targetPort: health
     protocol: TCP
     name: health
-  - port: 9090
+  - port: {{ .Values.ports.metrics }}
     targetPort: metrics
     protocol: TCP
     name: metrics

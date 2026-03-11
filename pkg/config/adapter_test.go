@@ -73,16 +73,7 @@ func TestConfigLoader_AdaptersSingleValue(t *testing.T) {
 func TestConfigLoader_AdaptersEmptyArrays(t *testing.T) {
 	RegisterTestingT(t)
 
-	SetMinimalTestEnv(t)
-
-	t.Setenv("HYPERFLEET_ADAPTERS_REQUIRED_CLUSTER", `[]`)
-	t.Setenv("HYPERFLEET_ADAPTERS_REQUIRED_NODEPOOL", `[]`)
-
-	loader := NewConfigLoader()
-	cmd := &cobra.Command{}
-	ctx := context.Background()
-
-	appConfig, err := loader.Load(ctx, cmd)
+	appConfig, err := LoadTestConfig(t)
 
 	Expect(err).NotTo(HaveOccurred())
 	Expect(appConfig.Adapters.RequiredClusterAdapters()).To(Equal([]string{}))

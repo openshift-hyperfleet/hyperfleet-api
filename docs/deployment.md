@@ -45,7 +45,80 @@ podman push your-registry.io/yourorg/hyperfleet-api:v1.0.0
 
 ## Configuration
 
-HyperFleet API is configured via environment variables.
+HyperFleet API is configured via environment variables and configuration files.
+
+### Configuration Methods
+
+**Kubernetes deployments (recommended):**
+- Non-sensitive config: ConfigMap (automatically created by Helm Chart from `values.yaml`)
+- Sensitive data: Secrets with `*_FILE` environment variables (automatic via Helm Chart)
+
+**Local development:**
+- Configuration file: `./configs/config.yaml` or `--config` flag
+- Environment variables: Direct values for quick testing
+
+**See [Configuration Guide](config.md) for complete reference and priority rules.**
+
+<details>
+<summary><b>Configuration Flow in Kubernetes</b> (click to expand)</summary>
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                       Helm Chart                            │
+│                                                             │
+│  values.yaml                                                │
+│    ├─ server.port, logging.level, etc.                      │
+│    └─ database.external.secretName                          │
+└──────────────────┬──────────────────────────────────────────┘
+                   │
+                   ├─────────────────┬────────────────────────┐
+                   ▼                 ▼                        ▼
+         ┌──────────────────┐ ┌─────────────┐     ┌──────────────┐
+         │    ConfigMap     │ │   Secret    │     │  Deployment  │
+         │                  │ │             │     │              │
+         │ Non-sensitive:   │ │ Sensitive:  │     │ Env vars:    │
+         │ - server.host    │ │ - db.host   │     │ - HYPERFLEET │
+         │ - server.port    │ │ - db.user   │     │   _CONFIG    │
+         │ - logging.level  │ │ - db.pass   │     │              │
+         └──────┬───────────┘ └──────┬──────┘     └──────┬───────┘
+                │                    │                   │
+                │                    │                   │
+                └────────────────────┴───────────────────┘
+                                     │
+                                     ▼
+                    ┌─────────────────────────────────────┐
+                    │              Pod                    │
+                    │                                     │
+                    │  Volume Mounts:                     │
+                    │  - /etc/hyperfleet/config.yaml      │
+                    │    (from ConfigMap)                 │
+                    │  - /app/secrets/database/           │
+                    │    (from Secret)                    │
+                    │                                     │
+                    │  Environment Variables:             │
+                    │  - HYPERFLEET_CONFIG=               │
+                    │    /etc/hyperfleet/config.yaml      │
+                    │  - HYPERFLEET_DATABASE_PASSWORD_    │
+                    │    FILE=/app/secrets/database/...   │
+                    └─────────────┬───────────────────────┘
+                                  │
+                                  ▼
+                    ┌─────────────────────────────────────┐
+                    │         Application                 │
+                    │                                     │
+                    │  1. Load config from file           │
+                    │     (/etc/hyperfleet/config.yaml)   │
+                    │  2. Read *_FILE env vars            │
+                    │  3. Load secrets from files         │
+                    │  4. Apply environment variables     │
+                    │  5. Apply CLI flags (if any)        │
+                    │                                     │
+                    │  Priority: Flags > Plain Env >      │
+                    │    *_FILE Env > ConfigMap > Defaults│
+                    └─────────────────────────────────────┘
+```
+
+</details>
 
 ### Schema Validation
 
@@ -63,57 +136,57 @@ export OPENAPI_SCHEMA_PATH=/path/to/custom-schema.yaml
 ### Environment Variables
 
 **Database:**
-- `DB_HOST` - PostgreSQL hostname (default: `localhost`)
-- `DB_PORT` - PostgreSQL port (default: `5432`)
-- `DB_NAME` - Database name (default: `hyperfleet`)
-- `DB_USER` - Database username (default: `hyperfleet`)
-- `DB_PASSWORD` - Database password (required)
-- `DB_SSLMODE` - SSL mode: `disable`, `require`, `verify-ca`, `verify-full` (default: `disable`)
+- `HYPERFLEET_DATABASE_HOST` - PostgreSQL hostname
+  - Built-in PostgreSQL: Automatically set to service name by Helm Chart
+  - External database: Set via Secret (recommended) or environment variable
+- `HYPERFLEET_DATABASE_PORT` - PostgreSQL port (default: `5432`)
+- `HYPERFLEET_DATABASE_NAME` - Database name (default: `hyperfleet`)
+- `HYPERFLEET_DATABASE_USERNAME` - Database username (default: `hyperfleet`)
+- `HYPERFLEET_DATABASE_PASSWORD` - Database password (direct value, not recommended for production)
+- `HYPERFLEET_DATABASE_PASSWORD_FILE` - Path to password file (recommended for Kubernetes, automatically configured by Helm Chart when using Secrets)
+- `HYPERFLEET_DATABASE_SSL_MODE` - SSL mode: `disable`, `require`, `verify-ca`, `verify-full` (default: `disable`)
+- `HYPERFLEET_DATABASE_DEBUG` - Enable SQL query logging (default: `false`)
 
 **Authentication:**
-- `AUTH_ENABLED` - Enable JWT authentication (default: `true`)
-- `OCM_URL` - OpenShift Cluster Manager API URL (default: `https://api.openshift.com`)
-- `JWT_ISSUER` - JWT token issuer URL (default: `https://sso.redhat.com/auth/realms/redhat-external`)
-- `JWT_AUDIENCE` - JWT token audience (default: `https://api.openshift.com`)
+- `HYPERFLEET_SERVER_JWT_ENABLED` - Enable JWT authentication (default: `true`)
+- `HYPERFLEET_SERVER_JWK_CERT_URL` - JWK certificate URL (default: `https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/certs`)
+- `HYPERFLEET_OCM_BASE_URL` - OpenShift Cluster Manager API URL (default: `https://api.integration.openshift.com`)
 
 **Server:**
-- `PORT` - API server port (default: `8000`)
-- `HEALTH_PORT` - Health endpoints port (default: `8080`)
-- `METRICS_PORT` - Metrics endpoint port (default: `9090`)
+- `HYPERFLEET_SERVER_PORT` - API server port (default: `8000`)
+- `HYPERFLEET_HEALTH_HOST` - Health endpoints bind address
+  - Kubernetes: `0.0.0.0` (required for probes, automatically set by Helm Chart)
+  - Local development: `localhost`
+- `HYPERFLEET_HEALTH_PORT` - Health endpoints port (default: `8080`)
+- `HYPERFLEET_METRICS_HOST` - Metrics bind address
+  - Kubernetes: `0.0.0.0` (required for Service access, automatically set by Helm Chart)
+  - Local development: `localhost`
+- `HYPERFLEET_METRICS_PORT` - Metrics endpoint port (default: `9090`)
 
 **Logging:**
-- `LOG_LEVEL` - Logging level: `debug`, `info`, `warn`, `error` (default: `info`)
-- `LOG_FORMAT` - Log format: `json`, `text` (default: `json`)
+- `HYPERFLEET_LOGGING_LEVEL` - Logging level: `debug`, `info`, `warn`, `error` (default: `info`)
+- `HYPERFLEET_LOGGING_FORMAT` - Log format: `json`, `text` (default: `json`)
 
-**Adapter Requirements (REQUIRED):**
+**Adapter Requirements:**
 
-Configure which adapters must be ready for resources to be marked as "Ready".
-These environment variables are **required** - the application will not start without them.
+Configure which adapters must be ready for resources to be marked as "Ready". Should be configured for production deployments.
 
-- `HYPERFLEET_CLUSTER_ADAPTERS` - JSON array of required cluster adapters (e.g., `["validation","dns","pullsecret","hypershift"]`)
-- `HYPERFLEET_NODEPOOL_ADAPTERS` - JSON array of required nodepool adapters (e.g., `["validation","hypershift"]`)
+- `HYPERFLEET_ADAPTERS_REQUIRED_CLUSTER` - JSON array of required cluster adapters
+- `HYPERFLEET_ADAPTERS_REQUIRED_NODEPOOL` - JSON array of required nodepool adapters
 
-**Option 1: Using structured values (Helm only, recommended)**
-```yaml
-# values.yaml
-adapters:
-  cluster:
-    - validation
-    - dns
-    - pullsecret
-    - hypershift
-  nodepool:
-    - validation
-    - hypershift
-```
-
-**Option 2: Direct environment variable (non-Helm)**
+**Using Helm (recommended):**
 ```bash
-export HYPERFLEET_CLUSTER_ADAPTERS='["validation","dns","pullsecret","hypershift"]'
-export HYPERFLEET_NODEPOOL_ADAPTERS='["validation","hypershift"]'
+--set config.adapters.required.cluster={validation,dns,pullsecret,hypershift} \
+--set config.adapters.required.nodepool={validation,hypershift}
 ```
 
-**Note:** Empty arrays (`[]`) are valid if you want no adapters to be required for the Ready state.
+**Using environment variables:**
+```bash
+export HYPERFLEET_ADAPTERS_REQUIRED_CLUSTER='["validation","dns","pullsecret","hypershift"]'
+export HYPERFLEET_ADAPTERS_REQUIRED_NODEPOOL='["validation","hypershift"]'
+```
+
+**Note:** Defaults to empty arrays (`[]`) if not specified, meaning no adapters are required for the Ready state.
 
 ## Kubernetes Deployment
 
@@ -129,8 +202,8 @@ Deploy with built-in PostgreSQL for development and testing:
 helm install hyperfleet-api ./charts/ \
   --namespace hyperfleet-system \
   --create-namespace \
-  --set adapters.cluster='{validation,dns,pullsecret,hypershift}' \
-  --set adapters.nodepool='{validation,hypershift}'
+  --set config.adapters.required.cluster={validation,dns,pullsecret,hypershift} \
+  --set config.adapters.required.nodepool={validation,hypershift}
 ```
 
 This creates:
@@ -163,13 +236,22 @@ helm install hyperfleet-api ./charts/ \
   --set database.postgresql.enabled=false \
   --set database.external.enabled=true \
   --set database.external.secretName=hyperfleet-db-external \
-  --set adapters.cluster='{validation,dns,pullsecret,hypershift}' \
-  --set adapters.nodepool='{validation,hypershift}'
+  --set config.adapters.required.cluster={validation,dns,pullsecret,hypershift} \
+  --set config.adapters.required.nodepool={validation,hypershift}
 ```
+
+**How it works:**
+1. Helm Chart creates a ConfigMap with non-sensitive configuration
+2. Your Secret (created in Step 1) contains database credentials
+3. Pod mounts Secret files to `/app/secrets/database/` directory
+4. Application reads credentials from files via `*_FILE` environment variables
+5. File-based values override ConfigMap values for security
+
+This is the recommended pattern for handling sensitive data in Kubernetes.
 
 #### Custom Image Deployment
 
-Deploy with custom container image:
+Deploy with custom container image (e.g., `quay.io/myuser/hyperfleet-api:v1.0.0`):
 
 ```bash
 helm install hyperfleet-api ./charts/ \
@@ -177,9 +259,11 @@ helm install hyperfleet-api ./charts/ \
   --set image.registry=quay.io \
   --set image.repository=myuser/hyperfleet-api \
   --set image.tag=v1.0.0 \
-  --set adapters.cluster='{validation,dns,pullsecret,hypershift}' \
-  --set adapters.nodepool='{validation,hypershift}'
+  --set config.adapters.required.cluster={validation,dns,pullsecret,hypershift} \
+  --set config.adapters.required.nodepool={validation,hypershift}
 ```
+
+**Note**: The `registry` should contain only the registry domain (e.g., `quay.io`, `docker.io`). The `repository` includes the organization and image name (e.g., `myuser/hyperfleet-api`).
 
 #### Upgrade Deployment
 
@@ -208,10 +292,10 @@ helm uninstall hyperfleet-api --namespace hyperfleet-system
 | `image.registry` | Container registry | `quay.io` |
 | `image.repository` | Image repository | `openshift-hyperfleet/hyperfleet-api` |
 | `image.tag` | Image tag | `latest` |
-| `image.pullPolicy` | Image pull policy | `IfNotPresent` |
-| `adapters.cluster` | Required cluster adapters (REQUIRED) | - |
-| `adapters.nodepool` | Required nodepool adapters (REQUIRED) | - |
-| `auth.enableJwt` | Enable JWT authentication | `true` |
+| `image.pullPolicy` | Image pull policy | `Always` |
+| `config.adapters.required.cluster` | Cluster adapters required for Ready state | `[]` |
+| `config.adapters.required.nodepool` | Nodepool adapters required for Ready state | `[]` |
+| `config.server.jwt.enabled` | Enable JWT authentication | `true` |
 | `database.postgresql.enabled` | Enable built-in PostgreSQL | `true` |
 | `database.external.enabled` | Use external database | `false` |
 | `database.external.secretName` | Secret containing database credentials | `hyperfleet-db-external` |
@@ -238,8 +322,21 @@ image:
   repository: myuser/hyperfleet-api
   tag: v1.0.0
 
-auth:
-  enableJwt: true
+config:
+  server:
+    jwt:
+      enabled: true
+
+  adapters:
+    required:
+      cluster:
+        - validation
+        - dns
+        - pullsecret
+        - hypershift
+      nodepool:
+        - validation
+        - hypershift
 
 database:
   postgresql:
@@ -247,17 +344,6 @@ database:
   external:
     enabled: true
     secretName: hyperfleet-db-external
-
-# Required: specify adapter requirements
-adapters:
-  cluster:
-    - validation
-    - dns
-    - pullsecret
-    - hypershift
-  nodepool:
-    - validation
-    - hypershift
 
 replicaCount: 3
 
@@ -381,14 +467,30 @@ helm install hyperfleet-api ./charts/ \
   --set serviceMonitor.namespace=monitoring
 ```
 
+## Production Deployment Checklist
+
+Before deploying to production, ensure:
+
+- [ ] **Database**: External managed database configured (Cloud SQL, RDS, Azure Database)
+- [ ] **Secrets**: Database credentials stored in Secret (not ConfigMap)
+- [ ] **Authentication**: JWT enabled (`auth.enableJwt=true`)
+- [ ] **Adapters**: Required adapters specified for cluster and nodepool
+- [ ] **Resources**: CPU/memory limits and requests set
+- [ ] **Replicas**: Multiple replicas configured (`replicaCount >= 2`)
+- [ ] **Image**: Specific version tag (not `latest`)
+- [ ] **Disruption**: PodDisruptionBudget enabled (`podDisruptionBudget.enabled=true`)
+- [ ] **Monitoring**: ServiceMonitor enabled if using Prometheus Operator
+- [ ] **TLS**: HTTPS enabled for API endpoint (optional)
+
 ## Production Best Practices
 
-- Use external managed database (Cloud SQL, RDS, Azure Database)
+- Use external managed database (Cloud SQL, RDS, Azure Database) with automated backups
+- Store all sensitive data in Kubernetes Secrets, never in ConfigMap or values.yaml
 - Enable authentication with `auth.enableJwt=true`
-- Set resource limits and use multiple replicas
-- Use specific image tags instead of `latest`
-- Enable monitoring and regular database backups
-- Enable PodDisruptionBudget with `podDisruptionBudget.enabled=true` for high availability during node maintenance
+- Set resource limits and use multiple replicas for high availability
+- Use specific image tags (semantic versioning) instead of `latest`
+- Enable PodDisruptionBudget for zero-downtime during cluster maintenance
+- Configure health probes with appropriate timeouts for your workload
 
 ## Complete Deployment Example
 
@@ -425,8 +527,8 @@ helm install hyperfleet-api ./charts/ \
   --set auth.enableJwt=false \
   --set database.postgresql.enabled=false \
   --set database.external.enabled=true \
-  --set adapters.cluster='{validation,dns,pullsecret,hypershift}' \
-  --set adapters.nodepool='{validation,hypershift}'
+  --set config.adapters.required.cluster={validation,dns,pullsecret,hypershift} \
+  --set config.adapters.required.nodepool={validation,hypershift}
 
 # 6. Verify deployment
 kubectl get pods

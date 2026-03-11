@@ -49,35 +49,6 @@ func TestConfigLoader_LoggingFromEnv(t *testing.T) {
 	Expect(appConfig.Logging.OTel.SamplingRate).To(Equal(0.5))
 }
 
-// TestConfigLoader_LoggingBackwardCompat tests backward compatibility env vars
-func TestConfigLoader_LoggingBackwardCompat(t *testing.T) {
-	RegisterTestingT(t)
-
-	SetMinimalTestEnv(t)
-
-	// Unset new env vars to test backward compatibility with old vars only
-	t.Setenv("HYPERFLEET_LOGGING_LEVEL", "")
-	t.Setenv("HYPERFLEET_LOGGING_FORMAT", "")
-
-	// Set old-style env vars
-	t.Setenv("LOG_LEVEL", "warn")
-	t.Setenv("LOG_FORMAT", "text")
-	t.Setenv("OTEL_ENABLED", "true")
-	t.Setenv("OTEL_SAMPLING_RATE", "0.25")
-
-	loader := NewConfigLoader()
-	cmd := &cobra.Command{}
-	ctx := context.Background()
-
-	appConfig, err := loader.Load(ctx, cmd)
-
-	Expect(err).NotTo(HaveOccurred())
-	Expect(appConfig.Logging.Level).To(Equal("warn"))
-	Expect(appConfig.Logging.Format).To(Equal("text"))
-	Expect(appConfig.Logging.OTel.Enabled).To(BeTrue())
-	Expect(appConfig.Logging.OTel.SamplingRate).To(Equal(0.25))
-}
-
 // TestLoggingConfig_GetSensitiveHeadersList tests the headers array accessor
 func TestLoggingConfig_GetSensitiveHeadersList(t *testing.T) {
 	RegisterTestingT(t)

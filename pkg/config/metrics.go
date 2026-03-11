@@ -29,21 +29,21 @@ func NewMetricsConfig() *MetricsConfig {
 }
 
 // ============================================================
-// BACKWARD COMPATIBILITY HELPERS
+// Convenience Accessor Methods
 // ============================================================
 
-// BindAddress returns bind address in host:port format (legacy accessor)
+// BindAddress returns bind address in host:port format
 // Uses net.JoinHostPort to correctly handle IPv6 addresses
 func (m *MetricsConfig) BindAddress() string {
 	return net.JoinHostPort(m.Host, strconv.Itoa(m.Port))
 }
 
-// EnableHTTPS returns TLS enabled flag (legacy accessor)
+// EnableHTTPS returns TLS enabled flag
 func (m *MetricsConfig) EnableHTTPS() bool {
 	return m.TLS.Enabled
 }
 
-// GetLabelMetricsInclusionDuration returns label metrics inclusion duration (legacy accessor)
+// GetLabelMetricsInclusionDuration returns label metrics inclusion duration
 func (m *MetricsConfig) GetLabelMetricsInclusionDuration() time.Duration {
 	return m.LabelMetricsInclusionDuration
 }

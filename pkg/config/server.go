@@ -114,61 +114,61 @@ func NewServerConfig() *ServerConfig {
 }
 
 // ============================================================
-// BACKWARD COMPATIBILITY HELPERS
+// Convenience Accessor Methods
 // ============================================================
 
-// BindAddress returns bind address in host:port format (legacy accessor)
+// BindAddress returns bind address in host:port format
 // Uses net.JoinHostPort to correctly handle IPv6 addresses
 func (s *ServerConfig) BindAddress() string {
 	return net.JoinHostPort(s.Host, strconv.Itoa(s.Port))
 }
 
-// ReadTimeout returns read timeout (legacy accessor)
+// ReadTimeout returns read timeout
 func (s *ServerConfig) ReadTimeout() time.Duration {
 	return s.Timeouts.Read
 }
 
-// WriteTimeout returns write timeout (legacy accessor)
+// WriteTimeout returns write timeout
 func (s *ServerConfig) WriteTimeout() time.Duration {
 	return s.Timeouts.Write
 }
 
-// EnableHTTPS returns TLS enabled flag (legacy accessor)
+// EnableHTTPS returns TLS enabled flag
 func (s *ServerConfig) EnableHTTPS() bool {
 	return s.TLS.Enabled
 }
 
-// HTTPSCertFile returns TLS cert file (legacy accessor)
+// HTTPSCertFile returns TLS cert file
 func (s *ServerConfig) HTTPSCertFile() string {
 	return s.TLS.CertFile
 }
 
-// HTTPSKeyFile returns TLS key file (legacy accessor)
+// HTTPSKeyFile returns TLS key file
 func (s *ServerConfig) HTTPSKeyFile() string {
 	return s.TLS.KeyFile
 }
 
-// EnableJWT returns JWT enabled flag (legacy accessor)
+// EnableJWT returns JWT enabled flag
 func (s *ServerConfig) EnableJWT() bool {
 	return s.JWT.Enabled
 }
 
-// EnableAuthz returns authz enabled flag (legacy accessor)
+// EnableAuthz returns authz enabled flag
 func (s *ServerConfig) EnableAuthz() bool {
 	return s.Authz.Enabled
 }
 
-// JwkCertFile returns JWK cert file (legacy accessor)
+// JwkCertFile returns JWK cert file
 func (s *ServerConfig) JwkCertFile() string {
 	return s.JWK.CertFile
 }
 
-// JwkCertURL returns JWK cert URL (legacy accessor)
+// JwkCertURL returns JWK cert URL
 func (s *ServerConfig) JwkCertURL() string {
 	return s.JWK.CertURL
 }
 
-// ACLFile returns ACL file (legacy accessor)
+// ACLFile returns ACL file
 func (s *ServerConfig) ACLFile() string {
 	return s.ACL.File
 }

@@ -54,35 +54,10 @@ func NewOCMConfig() *OCMConfig {
 }
 
 // ============================================================
-// BACKWARD COMPATIBILITY HELPERS
+// Convenience Accessor Methods
 // ============================================================
 
-// GetBaseURL returns base URL (legacy accessor)
-func (c *OCMConfig) GetBaseURL() string {
-	return c.BaseURL
-}
-
-// GetClientID returns client ID (legacy accessor)
-func (c *OCMConfig) GetClientID() string {
-	return c.ClientID
-}
-
-// GetClientSecret returns client secret (legacy accessor)
-func (c *OCMConfig) GetClientSecret() string {
-	return c.ClientSecret
-}
-
-// GetSelfToken returns self token (legacy accessor)
-func (c *OCMConfig) GetSelfToken() string {
-	return c.SelfToken
-}
-
-// GetTokenURL returns token URL (legacy accessor)
-func (c *OCMConfig) GetTokenURL() string {
-	return c.TokenURL
-}
-
-// EnableMock returns mock enabled flag (legacy accessor)
+// EnableMock returns mock enabled flag
 func (c *OCMConfig) EnableMock() bool {
 	return c.Mock.Enabled
 }

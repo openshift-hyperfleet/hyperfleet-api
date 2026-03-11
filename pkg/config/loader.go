@@ -21,7 +21,6 @@ import (
 type ConfigLoader struct {
 	viper               *viper.Viper
 	validator           *validator.Validate
-	deprecationWarnings []string
 	explicitlyBoundKeys map[string]bool // Tracks keys explicitly bound via BindEnv/BindPFlag
 }
 
@@ -30,7 +29,6 @@ func NewConfigLoader() *ConfigLoader {
 	return &ConfigLoader{
 		viper:               viper.New(),
 		validator:           validator.New(),
-		deprecationWarnings: make([]string, 0),
 		explicitlyBoundKeys: make(map[string]bool),
 	}
 }
@@ -53,11 +51,16 @@ func (l *ConfigLoader) Load(ctx context.Context, cmd *cobra.Command) (*Applicati
 	l.viper.AutomaticEnv()
 	l.viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_", "-", "_"))
 
-	// Bind all environment variables explicitly (required for Unmarshal to work)
-	l.bindAllEnvVars()
+	// Step 2.5: Handle file-based secrets (env vars ending with _FILE)
+	// Process *_FILE before binding env vars so they become regular env vars
+	// This ensures correct priority: Flags > Env (including *_FILE) > Config > Defaults
+	if err := l.handleFileSecrets(ctx); err != nil {
+		return nil, fmt.Errorf("failed to handle file secrets: %w", err)
+	}
 
-	// Step 3: Handle backward compatibility for old environment variables
-	l.handleBackwardCompatibility(ctx)
+	// Step 3: Bind all environment variables explicitly (required for Unmarshal to work)
+	// This includes the env vars set by handleFileSecrets
+	l.bindAllEnvVars()
 
 	// Step 4: Bind command-line flags to Viper (maps flag names to nested config keys)
 	l.bindFlags(cmd)
@@ -66,11 +69,6 @@ func (l *ConfigLoader) Load(ctx context.Context, cmd *cobra.Command) (*Applicati
 	// This catches typos in bindAllEnvVars() or bindFlags() early
 	if err := l.validateBoundKeys(); err != nil {
 		return nil, err
-	}
-
-	// Step 5: Handle file-based secrets (env vars ending with _FILE)
-	if err := l.handleFileSecrets(ctx); err != nil {
-		return nil, fmt.Errorf("failed to handle file secrets: %w", err)
 	}
 
 	// Step 5.5: Handle JSON array environment variables (for adapters)
@@ -91,9 +89,6 @@ func (l *ConfigLoader) Load(ctx context.Context, cmd *cobra.Command) (*Applicati
 	if err := l.validateConfig(config); err != nil {
 		return nil, err
 	}
-
-	// Step 8: Log deprecation warnings once at startup
-	l.logDeprecationWarnings(ctx)
 
 	return config, nil
 }
@@ -168,87 +163,38 @@ func (l *ConfigLoader) resolveAndReadConfigFile(ctx context.Context, cmd *cobra.
 	return nil
 }
 
-// handleBackwardCompatibility maps old environment variables to new standard names
-// Collects deprecation warnings for logging at startup
-//
-// Old environment variables are set as defaults (lowest priority) using SetDefault(),
-// which means they only apply when no other source (config file, new env vars, CLI flags)
-// provides the value. This gives correct backward compatibility semantics:
-// old env vars are a fallback, not an override.
-func (l *ConfigLoader) handleBackwardCompatibility(ctx context.Context) {
-	// Backward compatibility mappings: old env var -> new Viper key (updated to match new structure)
-	backwardCompatMappings := map[string]string{
-		// Logging config
-		"LOG_LEVEL":  "logging.level",
-		"LOG_FORMAT": "logging.format",
-		"LOG_OUTPUT": "logging.output",
-
-		// Database config
-		"DB_DEBUG": "database.debug",
-
-		// OpenTelemetry config - updated to match new structure
-		"OTEL_ENABLED":       "logging.otel.enabled",
-		"OTEL_SAMPLING_RATE": "logging.otel.sampling_rate",
-
-		// Masking config - updated to match new structure (now arrays, not strings)
-		"MASKING_ENABLED": "logging.masking.enabled",
-		"MASKING_HEADERS": "logging.masking.headers",
-		"MASKING_FIELDS":  "logging.masking.fields",
-	}
-
-	for oldEnvVar, viperKey := range backwardCompatMappings {
-		oldValue := os.Getenv(oldEnvVar)
-		if oldValue == "" {
-			continue
-		}
-
-		// Check if new environment variable is also set
-		newEnvVar := EnvPrefix + "_" + strings.ReplaceAll(strings.ToUpper(viperKey), ".", "_")
-		newValue := os.Getenv(newEnvVar)
-
-		if newValue != "" {
-			// Both old and new are set - warn and use new value
-			// No need to call SetDefault() since new env var (via BindEnv) has higher priority
-			warning := fmt.Sprintf(
-				"Both old (%s=%s) and new (%s=%s) environment variables are set. Using new value. "+
-					"Please remove the old variable.",
-				oldEnvVar, oldValue, newEnvVar, newValue,
-			)
-			l.deprecationWarnings = append(l.deprecationWarnings, warning)
-			logger.With(ctx, "old_var", oldEnvVar, "new_var", newEnvVar).Warn(warning)
-		} else {
-			// Only old env var is set - set it as default (lowest priority)
-			// This ensures CLI flags, new env vars, and config file can override it
-			l.viper.SetDefault(viperKey, oldValue)
-			warning := fmt.Sprintf(
-				"Deprecated environment variable %s is in use. Please migrate to %s.",
-				oldEnvVar, newEnvVar,
-			)
-			l.deprecationWarnings = append(l.deprecationWarnings, warning)
-		}
-	}
-}
-
 // handleFileSecrets processes environment variables ending with _FILE suffix
-// Reads the file content and sets the corresponding Viper key
+// Reads the file content and sets it as a regular environment variable
+// This is called BEFORE binding env vars, so the file content becomes a normal env var
+// and Viper's native priority applies: Flags > Env > Config > Defaults
+//
 // Note: Fields that already store file paths (e.g., cert_file, key_file, acl.file) are excluded
 // because they should be set directly via environment variables, not loaded from files.
 func (l *ConfigLoader) handleFileSecrets(ctx context.Context) error {
-	// Define file secret mappings: env var suffix -> viper key (updated to match new structure)
-	fileSecretMappings := map[string]string{
-		EnvPrefix + "_DATABASE_HOST_FILE":     "database.host",
-		EnvPrefix + "_DATABASE_PORT_FILE":     "database.port",
-		EnvPrefix + "_DATABASE_USERNAME_FILE": "database.username",
-		EnvPrefix + "_DATABASE_PASSWORD_FILE": "database.password",
-		EnvPrefix + "_DATABASE_NAME_FILE":     "database.name",
-		EnvPrefix + "_OCM_CLIENT_ID_FILE":     "ocm.client_id",     //nolint:gosec // Config key path, not credential
-		EnvPrefix + "_OCM_CLIENT_SECRET_FILE": "ocm.client_secret", //nolint:gosec // Config key path, not credential
-		EnvPrefix + "_OCM_SELF_TOKEN_FILE":    "ocm.self_token",    //nolint:gosec // Config key path, not credential
+	// List of *_FILE environment variables to process
+	fileSecretEnvVars := []string{
+		EnvPrefix + "_DATABASE_HOST_FILE",
+		EnvPrefix + "_DATABASE_PORT_FILE",
+		EnvPrefix + "_DATABASE_USERNAME_FILE",
+		EnvPrefix + "_DATABASE_PASSWORD_FILE",
+		EnvPrefix + "_DATABASE_NAME_FILE",
+		EnvPrefix + "_OCM_CLIENT_ID_FILE",
+		EnvPrefix + "_OCM_CLIENT_SECRET_FILE",
+		EnvPrefix + "_OCM_SELF_TOKEN_FILE",
 	}
 
-	for envVar, viperKey := range fileSecretMappings {
+	for _, envVar := range fileSecretEnvVars {
 		filePath := os.Getenv(envVar)
 		if filePath == "" {
+			continue
+		}
+
+		// Check if plain env var is set (e.g., HYPERFLEET_DATABASE_PASSWORD)
+		// Plain env vars have higher priority than *_FILE env vars
+		plainEnvVar := strings.TrimSuffix(envVar, "_FILE")
+		if os.Getenv(plainEnvVar) != "" {
+			logger.With(ctx, "plain_env", plainEnvVar, "file_env", envVar).
+				Debug("Plain env var already set, skipping file secret")
 			continue
 		}
 
@@ -261,11 +207,15 @@ func (l *ConfigLoader) handleFileSecrets(ctx context.Context) error {
 		// Trim whitespace and newlines
 		value := strings.TrimSpace(string(content))
 
-		// Set in Viper (only if not already set by higher priority source)
-		if !l.viper.IsSet(viperKey) {
-			l.viper.Set(viperKey, value)
-			logger.With(ctx, "env_var", envVar, "viper_key", viperKey).Debug("Loaded secret from file")
+		// Set as regular environment variable (without _FILE suffix)
+		// This will be picked up by Viper's AutomaticEnv in the next step
+		// Priority: Flags > Plain Env (including *_FILE content) > Config Files > Defaults
+		if err := os.Setenv(plainEnvVar, value); err != nil {
+			return fmt.Errorf("failed to set env var %s from file %s: %w", plainEnvVar, filePath, err)
 		}
+
+		logger.With(ctx, "file_env", envVar, "plain_env", plainEnvVar).
+			Debug("Loaded secret from file and set as env var")
 	}
 
 	return nil
@@ -608,15 +558,3 @@ func collectValidConfigKeys(t reflect.Type, prefix string) []string {
 	return keys
 }
 
-// logDeprecationWarnings logs all collected deprecation warnings once at startup
-func (l *ConfigLoader) logDeprecationWarnings(ctx context.Context) {
-	if len(l.deprecationWarnings) == 0 {
-		return
-	}
-
-	logger.Warn(ctx, "=== DEPRECATION WARNINGS ===")
-	for _, warning := range l.deprecationWarnings {
-		logger.Warn(ctx, warning)
-	}
-	logger.With(ctx, "count", len(l.deprecationWarnings)).Warn("=== End of deprecation warnings ===")
-}

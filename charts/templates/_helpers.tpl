@@ -61,3 +61,58 @@ Create the name of the service account to use
 {{- default "default" .Values.serviceAccount.name }}
 {{- end }}
 {{- end }}
+
+{{/*
+Database environment variables (using *_FILE pattern for Viper)
+*/}}
+{{- define "hyperfleet-api.databaseEnvVars" -}}
+{{- if .Values.database.external.enabled }}
+- name: HYPERFLEET_DATABASE_HOST_FILE
+  value: /app/secrets/database/db-host
+- name: HYPERFLEET_DATABASE_PORT_FILE
+  value: /app/secrets/database/db-port
+- name: HYPERFLEET_DATABASE_NAME_FILE
+  value: /app/secrets/database/db-name
+- name: HYPERFLEET_DATABASE_USERNAME_FILE
+  value: /app/secrets/database/db-username
+- name: HYPERFLEET_DATABASE_PASSWORD_FILE
+  value: /app/secrets/database/db-password
+{{- else if .Values.database.postgresql.enabled }}
+- name: HYPERFLEET_DATABASE_HOST_FILE
+  value: /app/secrets/database/db.host
+- name: HYPERFLEET_DATABASE_PORT_FILE
+  value: /app/secrets/database/db.port
+- name: HYPERFLEET_DATABASE_NAME_FILE
+  value: /app/secrets/database/db.name
+- name: HYPERFLEET_DATABASE_USERNAME_FILE
+  value: /app/secrets/database/db.user
+- name: HYPERFLEET_DATABASE_PASSWORD_FILE
+  value: /app/secrets/database/db.password
+{{- end }}
+{{- end }}
+
+{{/*
+Secret volume mounts
+*/}}
+{{- define "hyperfleet-api.secretVolumeMounts" -}}
+{{- if or .Values.database.external.enabled .Values.database.postgresql.enabled }}
+- name: database-secrets
+  mountPath: /app/secrets/database
+  readOnly: true
+{{- end }}
+{{- end }}
+
+{{/*
+Secret volumes
+*/}}
+{{- define "hyperfleet-api.secretVolumes" -}}
+{{- if or .Values.database.external.enabled .Values.database.postgresql.enabled }}
+- name: database-secrets
+  secret:
+    {{- if .Values.database.external.enabled }}
+    secretName: {{ .Values.database.external.secretName }}
+    {{- else }}
+    secretName: {{ include "hyperfleet-api.fullname" . }}-db-secrets
+    {{- end }}
+{{- end }}
+{{- end }}

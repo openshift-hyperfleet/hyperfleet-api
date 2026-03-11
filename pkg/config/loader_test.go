@@ -85,13 +85,7 @@ func TestConfigLoader_ConfigFileNotFound(t *testing.T) {
 func TestConfigLoader_NoConfigFile(t *testing.T) {
 	RegisterTestingT(t)
 
-	SetMinimalTestEnv(t)
-
-	loader := NewConfigLoader()
-	cmd := &cobra.Command{}
-	ctx := context.Background()
-
-	cfg, err := loader.Load(ctx, cmd)
+	cfg, err := LoadTestConfig(t)
 
 	Expect(err).NotTo(HaveOccurred())
 	Expect(cfg.Server.Host).To(Equal("localhost"))
@@ -146,6 +140,8 @@ func TestConfigLoader_FileSecretNotFound(t *testing.T) {
 
 	SetMinimalTestEnv(t)
 
+	// Unset password from env (so file secret will be used)
+	t.Setenv("HYPERFLEET_DATABASE_PASSWORD", "")
 	t.Setenv("HYPERFLEET_DATABASE_PASSWORD_FILE", "/nonexistent/secret")
 
 	loader := NewConfigLoader()
@@ -185,6 +181,35 @@ func TestConfigLoader_EnvVarTakesPrecedenceOverFileSecret(t *testing.T) {
 	// Explicitly assert that env var takes precedence over file secret
 	Expect(appConfig.Database.Password).To(Equal("env-password"),
 		"env var should take precedence over file secret")
+}
+
+// TestConfigLoader_FlagTakesPrecedenceOverFileSecret tests priority: flag > file secret
+// When both --db-password flag and HYPERFLEET_DATABASE_PASSWORD_FILE are set,
+// the flag takes precedence because flags have highest priority in Viper.
+func TestConfigLoader_FlagTakesPrecedenceOverFileSecret(t *testing.T) {
+	RegisterTestingT(t)
+
+	tmpDir := t.TempDir()
+	passwordFile := filepath.Join(tmpDir, "password")
+	err := os.WriteFile(passwordFile, []byte("file-password"), 0600)
+	Expect(err).NotTo(HaveOccurred())
+
+	SetMinimalTestEnv(t)
+
+	t.Setenv("HYPERFLEET_DATABASE_PASSWORD_FILE", passwordFile)
+
+	loader := NewConfigLoader()
+	cmd := &cobra.Command{}
+	AddAllConfigFlags(cmd)
+	cmd.Flags().Set("db-password", "flag-password") //nolint:errcheck,gosec
+	ctx := context.Background()
+
+	appConfig, err := loader.Load(ctx, cmd)
+
+	Expect(err).NotTo(HaveOccurred())
+	// Explicitly assert that flag takes precedence over file secret
+	Expect(appConfig.Database.Password).To(Equal("flag-password"),
+		"flag should take precedence over file secret")
 }
 
 // ==============================================================
@@ -300,58 +325,6 @@ adapters:
 }
 
 // ==============================================================
-// Backward Compatibility Tests
-// ==============================================================
-
-// TestConfigLoader_DeprecatedEnvVars tests backward compatibility
-func TestConfigLoader_DeprecatedEnvVars(t *testing.T) {
-	RegisterTestingT(t)
-
-	SetMinimalTestEnv(t)
-
-	// Unset new env vars first so deprecated ones will be used
-	t.Setenv("HYPERFLEET_LOGGING_LEVEL", "")
-	t.Setenv("HYPERFLEET_LOGGING_OTEL_ENABLED", "")
-
-	// Use deprecated environment variables
-	t.Setenv("LOG_LEVEL", "debug")
-	t.Setenv("OTEL_ENABLED", "true")
-
-	loader := NewConfigLoader()
-	cmd := &cobra.Command{}
-	ctx := context.Background()
-
-	cfg, err := loader.Load(ctx, cmd)
-
-	Expect(err).NotTo(HaveOccurred())
-	Expect(cfg.Logging.Level).To(Equal("debug"),
-		"Deprecated LOG_LEVEL should still work")
-	Expect(cfg.Logging.OTel.Enabled).To(BeTrue(),
-		"Deprecated OTEL_ENABLED should still work")
-}
-
-// TestConfigLoader_NewEnvVarOverridesOld tests that new vars take precedence
-func TestConfigLoader_NewEnvVarOverridesOld(t *testing.T) {
-	RegisterTestingT(t)
-
-	SetMinimalTestEnv(t)
-
-	// Set both old and new environment variables
-	t.Setenv("LOG_LEVEL", "debug")                      // Old
-	t.Setenv("HYPERFLEET_LOGGING_LEVEL", "error")      // New (should win)
-
-	loader := NewConfigLoader()
-	cmd := &cobra.Command{}
-	ctx := context.Background()
-
-	cfg, err := loader.Load(ctx, cmd)
-
-	Expect(err).NotTo(HaveOccurred())
-	Expect(cfg.Logging.Level).To(Equal("error"),
-		"New environment variable should take precedence over deprecated one")
-}
-
-// ==============================================================
 // JSON Array Parsing Tests
 // ==============================================================
 
@@ -398,126 +371,14 @@ func TestConfigLoader_InvalidJSONArray(t *testing.T) {
 // Configuration Priority Tests
 // ==============================================================
 
-// TestConfigLoader_EnvVarOverridesFile tests env var > file priority
-func TestConfigLoader_EnvVarOverridesFile(t *testing.T) {
-	RegisterTestingT(t)
-
-	tmpDir := t.TempDir()
-	configPath := filepath.Join(tmpDir, "config.yaml")
-	configContent := `
-server:
-  host: "file-host"
-  port: 7777
-database:
-  host: "localhost"
-  port: 5432
-  name: "test"
-  username: "test"
-  password: "test"
-logging:
-  level: "info"
-ocm:
-  base_url: "https://api.example.com"
-metrics:
-  host: "localhost"
-  port: 9090
-health:
-  host: "localhost"
-  port: 8080
-adapters:
-  required:
-    cluster: []
-    nodepool: []
-`
-	err := os.WriteFile(configPath, []byte(configContent), 0600)
-	Expect(err).NotTo(HaveOccurred())
-
-	// Set config path via env var
-	t.Setenv("HYPERFLEET_CONFIG", configPath)
-
-	// Environment variable (should override file)
-	t.Setenv("HYPERFLEET_SERVER_HOST", "env-host")
-
-	loader := NewConfigLoader()
-	cmd := &cobra.Command{}
-	ctx := context.Background()
-
-	cfg, err := loader.Load(ctx, cmd)
-
-	Expect(err).NotTo(HaveOccurred())
-	Expect(cfg.Server.Host).To(Equal("env-host"),
-		"Environment variable should override config file value")
-	Expect(cfg.Server.Port).To(Equal(7777),
-		"File value should be used when no env var")
-}
-
-// TestConfigLoader_FlagOverridesEnvAndFile tests that CLI flags have highest priority
-func TestConfigLoader_FlagOverridesEnvAndFile(t *testing.T) {
-	RegisterTestingT(t)
-
-	// Create config file
-	tmpDir := t.TempDir()
-	configPath := filepath.Join(tmpDir, "config.yaml")
-	configContent := `
-server:
-  host: "file-host"
-  port: 7000
-database:
-  host: "file-db-host"
-  port: 5432
-  name: "test"
-  username: "test"
-  password: "test"
-logging:
-  level: "info"
-ocm:
-  base_url: "https://api.example.com"
-metrics:
-  host: "localhost"
-  port: 9090
-health:
-  host: "localhost"
-  port: 8080
-adapters:
-  required:
-    cluster: []
-    nodepool: []
-`
-	err := os.WriteFile(configPath, []byte(configContent), 0600)
-	Expect(err).NotTo(HaveOccurred())
-
-	// Set config path and env vars
-	t.Setenv("HYPERFLEET_CONFIG", configPath)
-	t.Setenv("HYPERFLEET_SERVER_HOST", "env-host")
-	t.Setenv("HYPERFLEET_SERVER_PORT", "8000")
-	t.Setenv("HYPERFLEET_DATABASE_HOST", "env-db-host")
-
-	loader := NewConfigLoader()
-	cmd := &cobra.Command{}
-	AddAllConfigFlags(cmd)
-
-	// Set CLI flags (should have highest priority)
-	cmd.Flags().Set("server-host", "flag-host")       //nolint:errcheck,gosec
-	cmd.Flags().Set("server-port", "9000")            //nolint:errcheck,gosec
-	// Note: not setting db-host flag, so env var should win
-
-	ctx := context.Background()
-	cfg, err := loader.Load(ctx, cmd)
-
-	Expect(err).NotTo(HaveOccurred())
-
-	// CLI flag should win
-	Expect(cfg.Server.Host).To(Equal("flag-host"),
-		"CLI flag should override env var and config file")
-	Expect(cfg.Server.Port).To(Equal(9000),
-		"CLI flag should override env var and config file")
-
-	// Env var should win (no flag set)
-	Expect(cfg.Database.Host).To(Equal("env-db-host"),
-		"Env var should override config file when no flag is set")
-}
-
-// TestConfigLoader_CompletePriorityChain tests all priority levels
+// TestConfigLoader_CompletePriorityChain tests the complete priority chain:
+// CLI Flag > Environment Variable > Config File > Default
+//
+// This test comprehensively validates all four priority levels in a single test:
+// - Priority 1 (Highest): CLI flags override everything
+// - Priority 2: Environment variables override file and defaults
+// - Priority 3: Config file values override defaults
+// - Priority 4 (Lowest): Default values from NewApplicationConfig()
 func TestConfigLoader_CompletePriorityChain(t *testing.T) {
 	RegisterTestingT(t)
 
@@ -594,14 +455,7 @@ adapters:
 func TestConfigLoader_DefaultValues(t *testing.T) {
 	RegisterTestingT(t)
 
-	SetMinimalTestEnv(t)
-
-	loader := NewConfigLoader()
-	cmd := &cobra.Command{}
-	AddAllConfigFlags(cmd)
-
-	ctx := context.Background()
-	cfg, err := loader.Load(ctx, cmd)
+	cfg, err := LoadTestConfig(t)
 
 	Expect(err).NotTo(HaveOccurred())
 
@@ -616,66 +470,6 @@ func TestConfigLoader_DefaultValues(t *testing.T) {
 	Expect(cfg.Database.Port).To(Equal(5432), "Default database port")
 	Expect(cfg.Logging.Level).To(Equal("info"), "Default log level")
 	Expect(cfg.Logging.Format).To(Equal("json"), "Default log format")
-}
-
-// TestConfigLoader_FlagOnlyOverridesDefaults tests flags work without file or env
-func TestConfigLoader_FlagOnlyOverridesDefaults(t *testing.T) {
-	RegisterTestingT(t)
-
-	SetMinimalTestEnv(t)
-
-	loader := NewConfigLoader()
-	cmd := &cobra.Command{}
-	AddAllConfigFlags(cmd)
-
-	// Set only flags, no config file or env vars
-	cmd.Flags().Set("server-host", "0.0.0.0") //nolint:errcheck,gosec
-	cmd.Flags().Set("server-port", "9000")    //nolint:errcheck,gosec
-	cmd.Flags().Set("log-level", "debug")     //nolint:errcheck,gosec
-
-	ctx := context.Background()
-	cfg, err := loader.Load(ctx, cmd)
-
-	Expect(err).NotTo(HaveOccurred())
-
-	// Flags should override defaults
-	Expect(cfg.Server.Host).To(Equal("0.0.0.0"), "Flag overrides default")
-	Expect(cfg.Server.Port).To(Equal(9000), "Flag overrides default")
-	Expect(cfg.Logging.Level).To(Equal("debug"), "Flag overrides default")
-
-	// Other values should still be defaults
-	Expect(cfg.Database.Port).To(Equal(5432), "Default value (no flag)")
-	Expect(cfg.Logging.Format).To(Equal("json"), "Default value (no flag)")
-}
-
-// TestConfigLoader_EnvOnlyOverridesDefaults tests env vars work without file or flags
-func TestConfigLoader_EnvOnlyOverridesDefaults(t *testing.T) {
-	RegisterTestingT(t)
-
-	SetMinimalTestEnv(t)
-
-	// Set only env vars, no config file or flags
-	t.Setenv("HYPERFLEET_SERVER_HOST", "0.0.0.0")
-	t.Setenv("HYPERFLEET_SERVER_PORT", "9000")
-	t.Setenv("HYPERFLEET_LOGGING_LEVEL", "debug")
-
-	loader := NewConfigLoader()
-	cmd := &cobra.Command{}
-	AddAllConfigFlags(cmd)
-
-	ctx := context.Background()
-	cfg, err := loader.Load(ctx, cmd)
-
-	Expect(err).NotTo(HaveOccurred())
-
-	// Env vars should override defaults
-	Expect(cfg.Server.Host).To(Equal("0.0.0.0"), "Env overrides default")
-	Expect(cfg.Server.Port).To(Equal(9000), "Env overrides default")
-	Expect(cfg.Logging.Level).To(Equal("debug"), "Env overrides default")
-
-	// Other values should still be defaults
-	Expect(cfg.Database.Port).To(Equal(5432), "Default value (no env)")
-	Expect(cfg.Logging.Format).To(Equal("json"), "Default value (no env)")
 }
 
 // TestConfigLoader_MultipleFlags tests setting multiple flags
@@ -738,39 +532,4 @@ func TestConfigLoader_FlagParsing(t *testing.T) {
 	Expect(cfg.Server.JWT.Enabled).To(BeFalse(), "bool parsing")
 	Expect(cfg.Database.Pool.MaxConnections).To(Equal(50), "int parsing")
 	Expect(cfg.Logging.OTel.SamplingRate).To(Equal(0.5), "float64 parsing")
-}
-
-// TestConfigLoader_OldEnvVarsAreLowestPriority verifies that old environment variables
-// (LOG_LEVEL, DB_DEBUG, etc.) use SetDefault() and thus have lowest priority.
-// This test validates that the KNOWN LIMITATION has been resolved:
-// CLI flags and new env vars should override old env vars.
-func TestConfigLoader_OldEnvVarsAreLowestPriority(t *testing.T) {
-	RegisterTestingT(t)
-
-	loader := NewConfigLoader()
-	cmd := &cobra.Command{}
-	AddAllConfigFlags(cmd)
-
-	// Set required database fields
-	t.Setenv("HYPERFLEET_DATABASE_HOST", "localhost")
-	t.Setenv("HYPERFLEET_DATABASE_PORT", "5432")
-	t.Setenv("HYPERFLEET_DATABASE_NAME", "testdb")
-
-	// Set old environment variable (should be lowest priority)
-	t.Setenv("LOG_LEVEL", "debug")
-	t.Setenv("DB_DEBUG", "true")
-
-	// Set CLI flag (should override old env var)
-	cmd.Flags().Set("log-level", "warn") //nolint:errcheck,gosec
-
-	ctx := context.Background()
-	cfg, err := loader.Load(ctx, cmd)
-
-	Expect(err).NotTo(HaveOccurred())
-
-	// CLI flag should win over old env var
-	Expect(cfg.Logging.Level).To(Equal("warn"), "CLI flag should override old env var LOG_LEVEL")
-
-	// Old env var should still apply when no CLI flag is set
-	Expect(cfg.Database.Debug).To(Equal(true), "Old env var DB_DEBUG should apply as fallback")
 }

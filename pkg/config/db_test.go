@@ -425,43 +425,43 @@ func TestSetLogLevel(t *testing.T) {
 		expected       logger.LogLevel
 	}{
 		{
-			name:           "DB_DEBUG=true takes precedence over LOG_LEVEL=info",
+			name:           "database.debug=true takes precedence over global log level (info)",
 			debug:          true,
 			globalLogLevel: "info",
 			expected:       logger.Info,
 		},
 		{
-			name:           "DB_DEBUG=true takes precedence over LOG_LEVEL=error",
+			name:           "database.debug=true takes precedence over global log level (error)",
 			debug:          true,
 			globalLogLevel: "error",
 			expected:       logger.Info,
 		},
 		{
-			name:           "LOG_LEVEL=debug enables SQL query logging",
+			name:           "global log level debug enables SQL query logging",
 			debug:          false,
 			globalLogLevel: "debug",
 			expected:       logger.Info,
 		},
 		{
-			name:           "LOG_LEVEL=error suppresses SQL logs",
+			name:           "global log level error suppresses SQL logs",
 			debug:          false,
 			globalLogLevel: "error",
 			expected:       logger.Silent,
 		},
 		{
-			name:           "LOG_LEVEL=info defaults to Warn",
+			name:           "global log level info defaults to Warn",
 			debug:          false,
 			globalLogLevel: "info",
 			expected:       logger.Warn,
 		},
 		{
-			name:           "LOG_LEVEL=warn defaults to Warn",
+			name:           "global log level warn defaults to Warn",
 			debug:          false,
 			globalLogLevel: "warn",
 			expected:       logger.Warn,
 		},
 		{
-			name:           "empty LOG_LEVEL defaults to Warn",
+			name:           "empty global log level defaults to Warn",
 			debug:          false,
 			globalLogLevel: "",
 			expected:       logger.Warn,

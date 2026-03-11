@@ -104,17 +104,14 @@ func AddOCMFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool("ocm-mock-enabled", defaults.Mock.Enabled, "Enable mock OCM clients")
 }
 
-// AddAdaptersFlags adds adapter configuration flags following standard naming
-// Note: Adapter lists are configured via JSON-array environment variables (no CLI flags)
-func AddAdaptersFlags(cmd *cobra.Command) {
-	// Adapters are configured via environment variables (JSON arrays):
-	// - New config system: HYPERFLEET_ADAPTERS_REQUIRED_CLUSTER, HYPERFLEET_ADAPTERS_REQUIRED_NODEPOOL
-	// - Legacy compatibility: HYPERFLEET_CLUSTER_ADAPTERS, HYPERFLEET_NODEPOOL_ADAPTERS
-	// No CLI flags are provided as adapters are complex types (arrays)
-}
-
 // AddAllConfigFlags adds all configuration flags to the command
 // This is a convenience function that adds all flag groups
+//
+// Note: Adapter configuration is handled via environment variables (JSON arrays):
+//   - HYPERFLEET_ADAPTERS_REQUIRED_CLUSTER: Required cluster adapters
+//   - HYPERFLEET_ADAPTERS_REQUIRED_NODEPOOL: Required nodepool adapters
+//
+// No CLI flags are provided for adapters as they are complex types (arrays)
 func AddAllConfigFlags(cmd *cobra.Command) {
 	AddConfigFlag(cmd)
 	AddServerFlags(cmd)
@@ -123,5 +120,4 @@ func AddAllConfigFlags(cmd *cobra.Command) {
 	AddMetricsFlags(cmd)
 	AddHealthFlags(cmd)
 	AddOCMFlags(cmd)
-	AddAdaptersFlags(cmd)
 }

@@ -28,15 +28,15 @@ func TestLoadServices(t *testing.T) {
 	t.Setenv("OCM_ENV", "unit_testing")
 
 	// Set required adapter configuration for tests
-	if os.Getenv("HYPERFLEET_CLUSTER_ADAPTERS") == "" {
-		t.Setenv("HYPERFLEET_CLUSTER_ADAPTERS", `["validation","dns","pullsecret","hypershift"]`)
+	if os.Getenv("HYPERFLEET_ADAPTERS_REQUIRED_CLUSTER") == "" {
+		t.Setenv("HYPERFLEET_ADAPTERS_REQUIRED_CLUSTER", `["validation","dns","pullsecret","hypershift"]`)
 	}
-	if os.Getenv("HYPERFLEET_NODEPOOL_ADAPTERS") == "" {
-		t.Setenv("HYPERFLEET_NODEPOOL_ADAPTERS", `["validation","hypershift"]`)
+	if os.Getenv("HYPERFLEET_ADAPTERS_REQUIRED_NODEPOOL") == "" {
+		t.Setenv("HYPERFLEET_ADAPTERS_REQUIRED_NODEPOOL", `["validation","hypershift"]`)
 	}
 
 	env := Environment()
-	err := env.AddFlags(pflag.CommandLine)
+	err := env.SetEnvironmentDefaults(pflag.CommandLine)
 	if err != nil {
 		t.Errorf("Unable to add flags for testing environment: %s", err.Error())
 		return

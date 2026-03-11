@@ -2,16 +2,7 @@ package config
 
 import (
 	"fmt"
-	"os"
 )
-
-// IsNewConfigEnabled checks if the new configuration system should be used
-// Controlled by HYPERFLEET_USE_NEW_CONFIG environment variable
-// Default: false (use old system for safety)
-func IsNewConfigEnabled() bool {
-	value := os.Getenv("HYPERFLEET_USE_NEW_CONFIG")
-	return value == "true" || value == "1"
-}
 
 // DumpConfig returns a human-readable string representation of configuration
 // with sensitive fields redacted. Useful for debugging.

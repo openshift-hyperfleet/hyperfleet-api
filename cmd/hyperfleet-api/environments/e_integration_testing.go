@@ -21,7 +21,7 @@ func (e *integrationTestingEnvImpl) OverrideDatabase(c *Database) error {
 
 func (e *integrationTestingEnvImpl) OverrideConfig(c *config.ApplicationConfig) error {
 	// Support a one-off env to allow enabling db debug in testing
-	if os.Getenv("DB_DEBUG") == "true" { //nolint:goconst // Environment variable check
+	if os.Getenv("HYPERFLEET_DATABASE_DEBUG") == "true" { //nolint:goconst - "true" is not extracted to constant (standard env var idiom)
 		c.Database.Debug = true
 	}
 
@@ -55,7 +55,7 @@ func (e *integrationTestingEnvImpl) OverrideClients(c *Clients) error {
 	return nil
 }
 
-func (e *integrationTestingEnvImpl) Flags() map[string]string {
+func (e *integrationTestingEnvImpl) EnvironmentDefaults() map[string]string {
 	// Return empty map - new config system has appropriate defaults
 	// and OverrideConfig() sets test-specific values programmatically
 	return map[string]string{}

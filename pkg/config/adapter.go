@@ -25,15 +25,15 @@ func NewAdapterRequirementsConfig() *AdapterRequirementsConfig {
 }
 
 // ============================================================
-// BACKWARD COMPATIBILITY HELPERS
+// Convenience Accessor Methods
 // ============================================================
 
-// RequiredClusterAdapters returns cluster adapters (legacy accessor)
+// RequiredClusterAdapters returns cluster adapters
 func (a *AdapterRequirementsConfig) RequiredClusterAdapters() []string {
 	return a.Required.Cluster
 }
 
-// RequiredNodePoolAdapters returns nodepool adapters (legacy accessor)
+// RequiredNodePoolAdapters returns nodepool adapters
 func (a *AdapterRequirementsConfig) RequiredNodePoolAdapters() []string {
 	return a.Required.Nodepool
 }

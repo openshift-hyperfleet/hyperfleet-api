@@ -95,7 +95,9 @@ func NewAPIServer() Server {
 	s.httpServer = &http.Server{
 		Addr:              env().Config.Server.BindAddress(),
 		Handler:           mainHandler,
-		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       env().Config.Server.ReadTimeout(),
+		WriteTimeout:      env().Config.Server.WriteTimeout(),
+		ReadHeaderTimeout: 10 * time.Second, // Hardcoded to prevent Slowloris attacks (not user-configurable)
 	}
 
 	return s

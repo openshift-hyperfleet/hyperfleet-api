@@ -3,7 +3,6 @@ package config
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -104,26 +103,26 @@ func NewDatabaseConfig() *DatabaseConfig {
 }
 
 // ============================================================
-// BACKWARD COMPATIBILITY HELPERS
+// Convenience Accessor Methods
 // ============================================================
 
-// SSLMode returns SSL mode (legacy accessor)
+// SSLMode returns SSL mode
 func (c *DatabaseConfig) SSLMode() string {
 	return c.SSL.Mode
 }
 
-// MaxOpenConnections returns max open connections (legacy accessor)
+// MaxOpenConnections returns max open connections
 func (c *DatabaseConfig) MaxOpenConnections() int {
 	return c.Pool.MaxConnections
 }
 
-// RootCertFile returns root cert file (legacy accessor)
+// RootCertFile returns root cert file
 func (c *DatabaseConfig) RootCertFile() string {
 	return c.SSL.RootCertFile
 }
 
 // ============================================================
-// LEGACY METHODS (for old configuration system)
+// Connection String Generation
 // ============================================================
 
 // escapeDSNValue escapes a PostgreSQL DSN parameter value according to libpq rules.
@@ -216,51 +215,16 @@ func (c *DatabaseConfig) LogSafeConnectionStringWithName(name string, ssl bool) 
 
 const disable = "disable"
 
-// ReadFiles reads database configuration from files (legacy method for old system)
-// In new system, file reading is handled by ConfigLoader
-func (c *DatabaseConfig) ReadFiles() error {
-	// This method is kept for backward compatibility with old system
-	// In new system, ConfigLoader handles file reading
-	if IsNewConfigEnabled() {
-		return nil
-	}
-
-	// Old system: read from environment variables with _FILE suffix
-	if err := readFileValueString(os.Getenv("DB_HOST_FILE"), &c.Host); err != nil {
-		return err
-	}
-	if err := readFileValueInt(os.Getenv("DB_PORT_FILE"), &c.Port); err != nil {
-		return err
-	}
-	if err := readFileValueString(os.Getenv("DB_USERNAME_FILE"), &c.Username); err != nil {
-		return err
-	}
-	if err := readFileValueString(os.Getenv("DB_PASSWORD_FILE"), &c.Password); err != nil {
-		return err
-	}
-	if err := readFileValueString(os.Getenv("DB_NAME_FILE"), &c.Name); err != nil {
-		return err
-	}
-	if err := readFileValueString(os.Getenv("DB_ROOTCERT_FILE"), &c.SSL.RootCertFile); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-
-// SetLogLevel sets GORM logger level based on Debug flag
-// This is called during database initialization
-// SetLogLevel determines the GORM logger level based on DB_DEBUG and global LOG_LEVEL.
-// Priority: DB_DEBUG > LOG_LEVEL > default
+// SetLogLevel determines the GORM logger level based on database.debug flag and global logging level.
+// Priority: database.debug > global logging level > default
 //
 // Behavior:
-//   - DB_DEBUG=true → logger.Info (show all SQL queries)
-//   - LOG_LEVEL=debug → logger.Info (show all SQL queries)
-//   - LOG_LEVEL=error → logger.Silent (suppress all SQL logs)
+//   - database.debug=true → logger.Info (show all SQL queries)
+//   - logging.level=debug → logger.Info (show all SQL queries)
+//   - logging.level=error → logger.Silent (suppress all SQL logs)
 //   - default → logger.Warn (show only slow queries and errors)
 func (c *DatabaseConfig) SetLogLevel(globalLogLevel string) logger.LogLevel {
-	// DB_DEBUG takes precedence for explicit database debugging
+	// database.debug takes precedence for explicit database debugging
 	if c.Debug {
 		return logger.Info
 	}

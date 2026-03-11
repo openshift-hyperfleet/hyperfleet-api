@@ -149,18 +149,6 @@ adapters:
 # - Single-word hierarchy nodes: server, database, logging, timeouts, pool, masking
 # - Multi-word keys use underscores: base_url, cert_file, max_connections
 #
-# Backward Compatibility:
-# The following old environment variables are still supported but deprecated:
-# - LOG_LEVEL          → HYPERFLEET_LOGGING_LEVEL
-# - LOG_FORMAT         → HYPERFLEET_LOGGING_FORMAT
-# - LOG_OUTPUT         → HYPERFLEET_LOGGING_OUTPUT
-# - DB_DEBUG           → HYPERFLEET_DATABASE_DEBUG
-# - OTEL_ENABLED       → HYPERFLEET_LOGGING_OTEL_ENABLED
-# - OTEL_SAMPLING_RATE → HYPERFLEET_LOGGING_OTEL_SAMPLING_RATE
-# - MASKING_ENABLED    → HYPERFLEET_LOGGING_MASKING_ENABLED
-# - MASKING_HEADERS    → HYPERFLEET_LOGGING_MASKING_HEADERS
-# - MASKING_FIELDS     → HYPERFLEET_LOGGING_MASKING_FIELDS
-#
 # File-based Secrets:
 # Sensitive values can be loaded from files using *_FILE environment variables.
 # The file content will be read and used as the configuration value.

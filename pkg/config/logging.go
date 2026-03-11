@@ -77,52 +77,16 @@ func (l *LoggingConfig) GetSensitiveFieldsList() []string {
 }
 
 // ============================================================
-// BACKWARD COMPATIBILITY HELPERS
-// For old configuration system that uses comma-separated strings
+// Convenience Accessor Methods
+// String conversion methods for CLI flags
 // ============================================================
 
-// GetSensitiveHeadersString returns headers as comma-separated string (legacy)
+// GetSensitiveHeadersString returns headers as comma-separated string
 func (l *LoggingConfig) GetSensitiveHeadersString() string {
 	return strings.Join(l.Masking.Headers, ",")
 }
 
-// GetSensitiveFieldsString returns fields as comma-separated string (legacy)
+// GetSensitiveFieldsString returns fields as comma-separated string
 func (l *LoggingConfig) GetSensitiveFieldsString() string {
 	return strings.Join(l.Masking.Fields, ",")
-}
-
-// SetSensitiveHeadersFromString sets headers from comma-separated string (legacy)
-func (l *LoggingConfig) SetSensitiveHeadersFromString(headers string) {
-	if headers == "" {
-		l.Masking.Headers = []string{}
-		return
-	}
-
-	parts := strings.Split(headers, ",")
-	result := make([]string, 0, len(parts))
-	for _, part := range parts {
-		trimmed := strings.TrimSpace(part)
-		if trimmed != "" {
-			result = append(result, trimmed)
-		}
-	}
-	l.Masking.Headers = result
-}
-
-// SetSensitiveFieldsFromString sets fields from comma-separated string (legacy)
-func (l *LoggingConfig) SetSensitiveFieldsFromString(fields string) {
-	if fields == "" {
-		l.Masking.Fields = []string{}
-		return
-	}
-
-	parts := strings.Split(fields, ",")
-	result := make([]string, 0, len(parts))
-	for _, part := range parts {
-		trimmed := strings.TrimSpace(part)
-		if trimmed != "" {
-			result = append(result, trimmed)
-		}
-	}
-	l.Masking.Fields = result
 }

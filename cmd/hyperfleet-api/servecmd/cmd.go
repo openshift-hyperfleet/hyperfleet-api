@@ -21,7 +21,6 @@ import (
 )
 
 func NewServeCommand() *cobra.Command {
-	ctx := context.Background()
 	cmd := &cobra.Command{
 		Use:   "serve",
 		Short: "Serve the hyperfleet",
@@ -29,18 +28,8 @@ func NewServeCommand() *cobra.Command {
 		Run:   runServe,
 	}
 
-	// Add new configuration system flags FIRST (for migration)
-	// These will be used when HYPERFLEET_USE_NEW_CONFIG=true
-	// Must be added before legacy system to allow flag name resolution
+	// Add configuration system flags
 	config.AddAllConfigFlags(cmd)
-
-	// Add legacy configuration flags (old system)
-	// Note: Use cmd.Flags() instead of cmd.PersistentFlags() to match new system
-	err := environments.Environment().AddFlags(cmd.Flags())
-	if err != nil {
-		logger.WithError(ctx, err).Error("Unable to add environment flags to serve command")
-		os.Exit(1)
-	}
 
 	return cmd
 }
@@ -49,71 +38,40 @@ func runServe(cmd *cobra.Command, args []string) {
 	ctx := context.Background()
 
 	// ============================================================
-	// CONFIGURATION LOADING WITH MIGRATION SUPPORT
+	// CONFIGURATION LOADING
 	// ============================================================
-	// Phase 1: Select configuration system and load config
-	var finalConfig *config.ApplicationConfig
-
-	if config.IsNewConfigEnabled() {
-		// New Viper-based configuration system
-		logger.Info(ctx, "Using new Viper-based configuration system")
-
-		// Load configuration using new system
-		loader := config.NewConfigLoader()
-		newConfig, err := loader.Load(ctx, cmd)
-		if err != nil {
-			logger.WithError(ctx, err).Error("Failed to load configuration with new system")
-			os.Exit(1)
-		}
-
-		// Apply environment-specific configuration overrides (e.g., development disables JWT/TLS)
-		if err := environments.ApplyEnvironmentOverrides(newConfig); err != nil {
-			logger.WithError(ctx, err).Error("Failed to apply environment overrides")
-			os.Exit(1)
-		}
-
-		// NOTE: Runtime config equivalence verification was removed because it compared
-		// an uninitialized old config (only defaults + flags) against fully loaded new config,
-		// resulting in false differences. The old config's full initialization (ReadFiles,
-		// OverrideConfig, LoadAdapters) happens later in Initialize().
-		// Config system correctness is verified through comprehensive tests instead.
-
-		finalConfig = newConfig
-		logger.Info(ctx, "New configuration loaded successfully")
-	} else {
-		// Legacy configuration system
-		logger.Info(ctx, "Using legacy configuration system (set HYPERFLEET_USE_NEW_CONFIG=true to use new system)")
-
-		// Load flag values into config struct (old system only)
-		if err := environments.Environment().Config.LoadFromFlags(cmd.Flags()); err != nil {
-			logger.WithError(ctx, err).Error("Failed to load configuration from flags")
-			os.Exit(1)
-		}
-
-		// Old system needs to read config from flags first
-		// Full initialization (ReadFiles, OverrideConfig, LoadAdapters) happens in Initialize()
-		finalConfig = environments.Environment().Config
+	// Load configuration using Viper-based system
+	loader := config.NewConfigLoader()
+	cfg, err := loader.Load(ctx, cmd)
+	if err != nil {
+		logger.WithError(ctx, err).Error("Failed to load configuration")
+		os.Exit(1)
 	}
 
-	// Phase 2: Set the selected configuration and initialize environment
+	// Apply environment-specific configuration overrides (e.g., development disables JWT/TLS)
+	if err := environments.ApplyEnvironmentOverrides(cfg); err != nil {
+		logger.WithError(ctx, err).Error("Failed to apply environment overrides")
+		os.Exit(1)
+	}
+
 	// IMPORTANT: Set config BEFORE calling Initialize() to avoid double initialization
 	// and ensure SessionFactory, clients, services, handlers all use the correct config
-	environments.Environment().Config = finalConfig
+	environments.Environment().Config = cfg
 
-	// Initialize environment with the selected configuration
-	// This creates SessionFactory, loads clients, services, and handlers
-	err := environments.Environment().Initialize()
+	// Initialize environment (creates SessionFactory, loads clients, services, handlers)
+	err = environments.Environment().Initialize()
 	if err != nil {
 		logger.WithError(ctx, err).Error("Unable to initialize environment")
 		os.Exit(1)
 	}
 
-	// Phase 3: Initialize logger with configured settings
+	// Initialize logger with configured settings
 	initLogger()
 
 	// Log effective configuration (with sensitive values redacted)
 	// This happens AFTER initLogger() so it uses the configured logger settings
-	logger.Debug(ctx, config.DumpConfig(environments.Environment().Config))
+	logger.Info(ctx, "Starting HyperFleet API with configuration (sensitive values redacted):")
+	logger.Info(ctx, config.DumpConfig(environments.Environment().Config))
 
 	var tp *trace.TracerProvider
 	if environments.Environment().Config.Logging.OTel.Enabled {
@@ -213,7 +171,11 @@ func initLogger() {
 		output = os.Stdout
 	}
 
-	hostname, _ := os.Hostname()
+	// Use configured hostname with fallback to os.Hostname()
+	hostname := environments.Environment().Config.Server.Hostname
+	if hostname == "" {
+		hostname, _ = os.Hostname()
+	}
 
 	logConfig := &logger.LogConfig{
 		Level:     level,
@@ -228,7 +190,7 @@ func initLogger() {
 	// InitGlobalLogger was already called in main() with default config
 	logger.ReconfigureGlobalLogger(logConfig)
 
-	// Reconfigure database logger to follow LOG_LEVEL
+	// Reconfigure database logger to follow global logging level
 	dbSessionFactory := environments.Environment().Database.SessionFactory
 	if dbSessionFactory != nil {
 		gormLevel := environments.Environment().Config.Database.SetLogLevel(
