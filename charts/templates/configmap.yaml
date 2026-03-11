@@ -59,12 +59,10 @@ data:
       {{- end }}
       port: {{ .Values.config.database.port }}
       name: {{ .Values.config.database.name }}
-      {{- if .Values.config.database.username }}
-      username: {{ .Values.config.database.username | quote }}
-      {{- end }}
-      {{- if .Values.config.database.password }}
-      password: {{ .Values.config.database.password | quote }}
-      {{- end }}
+      # username/password: Not included in ConfigMap for security.
+      #   This Helm chart provides credentials via Kubernetes Secret using *_FILE environment variables.
+      #   The application also supports direct env vars or config file values.
+      #   See deployment.md for Kubernetes setup or docs/config.md for all configuration options.
 
       # Application behavior settings
       debug: {{ .Values.config.database.debug }}
@@ -75,6 +73,12 @@ data:
 
       pool:
         max_connections: {{ .Values.config.database.pool.max_connections }}
+        max_idle_connections: {{ .Values.config.database.pool.max_idle_connections }}
+        conn_max_lifetime: {{ .Values.config.database.pool.conn_max_lifetime }}
+        conn_max_idle_time: {{ .Values.config.database.pool.conn_max_idle_time }}
+        request_timeout: {{ .Values.config.database.pool.request_timeout }}
+        conn_retry_attempts: {{ .Values.config.database.pool.conn_retry_attempts }}
+        conn_retry_interval: {{ .Values.config.database.pool.conn_retry_interval }}
 
     logging:
       level: {{ .Values.config.logging.level }}
@@ -113,6 +117,7 @@ data:
         enabled: {{ .Values.config.health.tls.enabled }}
 
       shutdown_timeout: {{ .Values.config.health.shutdown_timeout }}
+      db_ping_timeout: {{ .Values.config.health.db_ping_timeout }}
 
     adapters:
       required:

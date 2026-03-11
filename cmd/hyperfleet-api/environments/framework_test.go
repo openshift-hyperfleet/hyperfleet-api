@@ -1,7 +1,6 @@
 package environments
 
 import (
-	"os"
 	"os/exec"
 	"reflect"
 	"testing"
@@ -27,13 +26,9 @@ func TestLoadServices(t *testing.T) {
 	// Set environment to unit_testing to use mocks
 	t.Setenv("OCM_ENV", "unit_testing")
 
-	// Set required adapter configuration for tests
-	if os.Getenv("HYPERFLEET_ADAPTERS_REQUIRED_CLUSTER") == "" {
-		t.Setenv("HYPERFLEET_ADAPTERS_REQUIRED_CLUSTER", `["validation","dns","pullsecret","hypershift"]`)
-	}
-	if os.Getenv("HYPERFLEET_ADAPTERS_REQUIRED_NODEPOOL") == "" {
-		t.Setenv("HYPERFLEET_ADAPTERS_REQUIRED_NODEPOOL", `["validation","hypershift"]`)
-	}
+	// Set required adapter configuration for tests (always use fixed values for deterministic tests)
+	t.Setenv("HYPERFLEET_ADAPTERS_REQUIRED_CLUSTER", `["validation","dns","pullsecret","hypershift"]`)
+	t.Setenv("HYPERFLEET_ADAPTERS_REQUIRED_NODEPOOL", `["validation","hypershift"]`)
 
 	env := Environment()
 	err := env.SetEnvironmentDefaults(pflag.CommandLine)

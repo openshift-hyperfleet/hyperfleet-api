@@ -15,8 +15,8 @@ hyperfleet-api serve --config=config.yaml
 **Production (Kubernetes):**
 ```bash
 helm install hyperfleet-api ./charts/ \
-  --set config.adapters.required.cluster={validation,dns} \
-  --set config.adapters.required.nodepool={validation}
+  --set 'config.adapters.required.cluster={validation,dns}' \
+  --set 'config.adapters.required.nodepool={validation}'
 ```
 
 See [Configuration Examples](#configuration-examples) for complete setup.
@@ -45,7 +45,7 @@ All configuration follows these conventions:
 
 Configuration sources are applied in the following order (highest to lowest priority):
 
-```
+```text
 1. Command-line flags (highest)
    ↓
 2. Environment variables
@@ -126,6 +126,12 @@ PostgreSQL database connection settings.
 | `database.ssl.mode` | string | `disable` | SSL mode: `disable`, `require`, `verify-ca`, `verify-full` |
 | `database.ssl.root_cert_file` | string | `""` | Root CA certificate for SSL verification |
 | `database.pool.max_connections` | int | `50` | Maximum open database connections |
+| `database.pool.max_idle_connections` | int | `10` | Maximum idle database connections |
+| `database.pool.conn_max_lifetime` | duration | `5m` | Maximum connection lifetime |
+| `database.pool.conn_max_idle_time` | duration | `1m` | Maximum connection idle time |
+| `database.pool.request_timeout` | duration | `30s` | Database request timeout |
+| `database.pool.conn_retry_attempts` | int | `10` | Connection retry attempts on startup (for pgbouncer/sidecar startup races) |
+| `database.pool.conn_retry_interval` | duration | `3s` | Interval between connection retry attempts |
 | `database.debug` | bool | `false` | Enable SQL query logging |
 
 **Example:**
@@ -141,6 +147,12 @@ database:
     root_cert_file: /etc/certs/ca.crt
   pool:
     max_connections: 100
+    max_idle_connections: 20
+    conn_max_lifetime: 10m
+    conn_max_idle_time: 2m
+    request_timeout: 60s
+    conn_retry_attempts: 15
+    conn_retry_interval: 5s
 ```
 
 ### Adapters Configuration
@@ -215,8 +227,8 @@ HTTP server settings for the API endpoint.
 | `server.hostname` | string | `""` | Public hostname for logging (optional) |
 | `server.host` | string | `localhost` | Server bind host (`0.0.0.0` for Kubernetes) |
 | `server.port` | int | `8000` | Server bind port |
-| `server.timeouts.read` | duration | `15s` | HTTP read timeout |
-| `server.timeouts.write` | duration | `15s` | HTTP write timeout |
+| `server.timeouts.read` | duration | `5s` | HTTP read timeout |
+| `server.timeouts.write` | duration | `30s` | HTTP write timeout |
 | `server.tls.enabled` | bool | `false` | Enable HTTPS/TLS |
 | `server.tls.cert_file` | string | `""` | Path to TLS certificate file |
 | `server.tls.key_file` | string | `""` | Path to TLS key file |
@@ -254,7 +266,7 @@ Prometheus metrics endpoint settings.
 | `metrics.host` | string | `localhost` | Metrics bind host (`0.0.0.0` for Kubernetes) |
 | `metrics.port` | int | `9090` | Metrics port |
 | `metrics.tls.enabled` | bool | `false` | Enable TLS for metrics endpoint |
-| `metrics.label_metrics_inclusion_duration` | duration | `5m` | Duration to include label metrics |
+| `metrics.label_metrics_inclusion_duration` | duration | `168h` | Duration to include label metrics (7 days) |
 
 **Example:**
 ```yaml
@@ -277,7 +289,8 @@ Health check endpoint settings.
 | `health.host` | string | `localhost` | Health bind host (`0.0.0.0` for Kubernetes) |
 | `health.port` | int | `8080` | Health port |
 | `health.tls.enabled` | bool | `false` | Enable TLS for health endpoint |
-| `health.shutdown_timeout` | duration | `30s` | Graceful shutdown timeout |
+| `health.shutdown_timeout` | duration | `20s` | Graceful shutdown timeout |
+| `health.db_ping_timeout` | duration | `2s` | Database ping timeout for readiness check |
 
 **Example:**
 ```yaml
@@ -285,6 +298,7 @@ health:
   host: 0.0.0.0  # Required for Kubernetes probes
   port: 8080
   shutdown_timeout: 30s
+  db_ping_timeout: 2s
 ```
 
 </details>
@@ -328,8 +342,8 @@ Complete table of all configuration properties, their environment variables, and
 | `server.hostname` | `HYPERFLEET_SERVER_HOSTNAME` | string | `""` |
 | `server.host` | `HYPERFLEET_SERVER_HOST` | string | `localhost` |
 | `server.port` | `HYPERFLEET_SERVER_PORT` | int | `8000` |
-| `server.timeouts.read` | `HYPERFLEET_SERVER_TIMEOUTS_READ` | duration | `15s` |
-| `server.timeouts.write` | `HYPERFLEET_SERVER_TIMEOUTS_WRITE` | duration | `15s` |
+| `server.timeouts.read` | `HYPERFLEET_SERVER_TIMEOUTS_READ` | duration | `5s` |
+| `server.timeouts.write` | `HYPERFLEET_SERVER_TIMEOUTS_WRITE` | duration | `30s` |
 | `server.tls.enabled` | `HYPERFLEET_SERVER_TLS_ENABLED` | bool | `false` |
 | `server.tls.cert_file` | `HYPERFLEET_SERVER_TLS_CERT_FILE` | string | `""` |
 | `server.tls.key_file` | `HYPERFLEET_SERVER_TLS_KEY_FILE` | string | `""` |
@@ -349,6 +363,12 @@ Complete table of all configuration properties, their environment variables, and
 | `database.ssl.mode` | `HYPERFLEET_DATABASE_SSL_MODE` | string | `disable` |
 | `database.ssl.root_cert_file` | `HYPERFLEET_DATABASE_SSL_ROOT_CERT_FILE` | string | `""` |
 | `database.pool.max_connections` | `HYPERFLEET_DATABASE_POOL_MAX_CONNECTIONS` | int | `50` |
+| `database.pool.max_idle_connections` | `HYPERFLEET_DATABASE_POOL_MAX_IDLE_CONNECTIONS` | int | `10` |
+| `database.pool.conn_max_lifetime` | `HYPERFLEET_DATABASE_POOL_CONN_MAX_LIFETIME` | duration | `5m` |
+| `database.pool.conn_max_idle_time` | `HYPERFLEET_DATABASE_POOL_CONN_MAX_IDLE_TIME` | duration | `1m` |
+| `database.pool.request_timeout` | `HYPERFLEET_DATABASE_POOL_REQUEST_TIMEOUT` | duration | `30s` |
+| `database.pool.conn_retry_attempts` | `HYPERFLEET_DATABASE_POOL_CONN_RETRY_ATTEMPTS` | int | `10` |
+| `database.pool.conn_retry_interval` | `HYPERFLEET_DATABASE_POOL_CONN_RETRY_INTERVAL` | duration | `3s` |
 | **Logging** | | | |
 | `logging.level` | `HYPERFLEET_LOGGING_LEVEL` | string | `info` |
 | `logging.format` | `HYPERFLEET_LOGGING_FORMAT` | string | `json` |
@@ -356,8 +376,8 @@ Complete table of all configuration properties, their environment variables, and
 | `logging.otel.enabled` | `HYPERFLEET_LOGGING_OTEL_ENABLED` | bool | `false` |
 | `logging.otel.sampling_rate` | `HYPERFLEET_LOGGING_OTEL_SAMPLING_RATE` | float | `1.0` |
 | `logging.masking.enabled` | `HYPERFLEET_LOGGING_MASKING_ENABLED` | bool | `true` |
-| `logging.masking.headers` | `HYPERFLEET_LOGGING_MASKING_SENSITIVE_HEADERS` | csv | `Authorization,Cookie` |
-| `logging.masking.fields` | `HYPERFLEET_LOGGING_MASKING_SENSITIVE_FIELDS` | csv | `password,token` |
+| `logging.masking.headers` | `HYPERFLEET_LOGGING_MASKING_HEADERS` | csv | `Authorization,Cookie` |
+| `logging.masking.fields` | `HYPERFLEET_LOGGING_MASKING_FIELDS` | csv | `password,token` |
 | **OCM** | | | |
 | `ocm.base_url` | `HYPERFLEET_OCM_BASE_URL` | string | `https://api.integration.openshift.com` |
 | `ocm.client_id` | `HYPERFLEET_OCM_CLIENT_ID` | string | `""` |
@@ -369,12 +389,13 @@ Complete table of all configuration properties, their environment variables, and
 | `metrics.host` | `HYPERFLEET_METRICS_HOST` | string | `localhost` |
 | `metrics.port` | `HYPERFLEET_METRICS_PORT` | int | `9090` |
 | `metrics.tls.enabled` | `HYPERFLEET_METRICS_TLS_ENABLED` | bool | `false` |
-| `metrics.label_metrics_inclusion_duration` | `HYPERFLEET_METRICS_LABEL_METRICS_INCLUSION_DURATION` | duration | `5m` |
+| `metrics.label_metrics_inclusion_duration` | `HYPERFLEET_METRICS_LABEL_METRICS_INCLUSION_DURATION` | duration | `168h` |
 | **Health** | | | |
 | `health.host` | `HYPERFLEET_HEALTH_HOST` | string | `localhost` |
 | `health.port` | `HYPERFLEET_HEALTH_PORT` | int | `8080` |
 | `health.tls.enabled` | `HYPERFLEET_HEALTH_TLS_ENABLED` | bool | `false` |
-| `health.shutdown_timeout` | `HYPERFLEET_HEALTH_SHUTDOWN_TIMEOUT` | duration | `30s` |
+| `health.shutdown_timeout` | `HYPERFLEET_HEALTH_SHUTDOWN_TIMEOUT` | duration | `20s` |
+| `health.db_ping_timeout` | `HYPERFLEET_HEALTH_DB_PING_TIMEOUT` | duration | `2s` |
 | **Adapters** | | | |
 | `adapters.required.cluster` | `HYPERFLEET_ADAPTERS_REQUIRED_CLUSTER` | json | `[]` |
 | `adapters.required.nodepool` | `HYPERFLEET_ADAPTERS_REQUIRED_NODEPOOL` | json | `[]` |
@@ -552,7 +573,7 @@ The application performs comprehensive validation at startup.
 
 If validation fails, the application will exit with a detailed error message:
 
-```
+```text
 Error: Configuration validation failed:
 - Server.Port must be between 1 and 65535 (got: 0)
 - Database.Host is required
@@ -596,19 +617,19 @@ export SERVER_PORT=8000  # ❌ Missing HYPERFLEET_ prefix
 **Common issues:**
 
 1. **Invalid log level:**
-   ```
+   ```text
    Error: Logging.Level must be one of: debug, info, warn, error
    ```
    Solution: Use lowercase: `info`, not `INFO`
 
 2. **Invalid port:**
-   ```
+   ```text
    Error: Server.Port must be between 1 and 65535
    ```
    Solution: Check port value in config file or environment variable
 
 3. **Missing required field:**
-   ```
+   ```text
    Error: Database.Host is required
    ```
    Solution: Set via config file, environment variable, or CLI flag

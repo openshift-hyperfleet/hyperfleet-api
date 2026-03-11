@@ -21,7 +21,8 @@ func (e *unitTestingEnvImpl) OverrideDatabase(c *Database) error {
 
 func (e *unitTestingEnvImpl) OverrideConfig(c *config.ApplicationConfig) error {
 	// Support a one-off env to allow enabling db debug in testing
-	if os.Getenv("HYPERFLEET_DATABASE_DEBUG") == "true" { //nolint:goconst - "true" is not extracted to constant (standard env var idiom)
+	//nolint:goconst // "true" is not extracted to constant (standard env var idiom)
+	if os.Getenv("HYPERFLEET_DATABASE_DEBUG") == "true" {
 		c.Database.Debug = true
 	}
 

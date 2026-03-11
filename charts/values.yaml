@@ -65,12 +65,12 @@ config:
   database:
     dialect: postgres
 
-    # Connection settings (overridden by Secret in Kubernetes)
+    # Connection settings
+    # Note: username/password MUST be provided via Secret (not ConfigMap)
+    # See database.external.secretName or database.postgresql.enabled for credentials
     host: ""  # Auto-set for built-in DB, or specify external host
     port: 5432
     name: hyperfleet
-    username: ""
-    password: ""
 
     # Application behavior settings
     debug: false
@@ -81,6 +81,12 @@ config:
 
     pool:
       max_connections: 50
+      max_idle_connections: 10
+      conn_max_lifetime: 5m
+      conn_max_idle_time: 1m
+      request_timeout: 30s
+      conn_retry_attempts: 10
+      conn_retry_interval: 3s
 
   # Logging configuration
   logging:
@@ -128,6 +134,7 @@ config:
       enabled: false
 
     shutdown_timeout: 20s
+    db_ping_timeout: 2s
 
   # Adapters required for resources to reach "Ready" state
   # Production deployments should specify adapters
@@ -135,47 +142,6 @@ config:
     required:
       cluster: []  # Example: [validation, dns, pullsecret, hypershift]
       nodepool: []  # Example: [validation, hypershift]
-
-# ============================================================
-# Database Configuration
-# ============================================================
-# Database credentials are provided via Secret, not ConfigMap.
-# The ConfigMap contains only non-sensitive settings (dialect, debug, ssl, pool).
-#
-# Two options for database setup:
-# 1. Use built-in PostgreSQL (postgresql.enabled: true) - for dev/test
-# 2. Use external database (external.enabled: true) - for production
-# ============================================================
-database:
-  # External database (production)
-  external:
-    enabled: false
-    # Name of Secret with database credentials
-    # Required keys: db-host, db-port, db-name, db-username, db-password
-    secretName: ""
-
-  # Built-in PostgreSQL (development/testing)
-  # These values generate a Secret with database credentials
-  postgresql:
-    enabled: true
-    image: docker.io/library/postgres:14.2
-    database: hyperfleet
-    user: hyperfleet
-    password: hyperfleet-dev-password
-    port: 5432
-
-    resources:
-      limits:
-        cpu: 500m
-        memory: 512Mi
-      requests:
-        cpu: 100m
-        memory: 128Mi
-
-    persistence:
-      enabled: false
-      size: 1Gi
-      storageClass: ""
 
 # ============================================================
 # Kubernetes Resources
@@ -203,7 +169,7 @@ securityContext:
 
 service:
   type: ClusterIP
-  # Service port defaults to ports.api value
+  # Service ports are set to match container ports (ports.api, ports.health, ports.metrics)
 
 resources:
   limits:

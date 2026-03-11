@@ -8,8 +8,6 @@ import (
 	"os"
 	"time"
 
-	_ "github.com/auth0/go-jwt-middleware"
-	_ "github.com/golang-jwt/jwt/v4"
 	gorillahandlers "github.com/gorilla/handlers"
 	"github.com/openshift-online/ocm-sdk-go/authentication"
 
@@ -109,10 +107,13 @@ func (s apiServer) Serve(listener net.Listener) {
 	ctx := context.Background()
 	var err error
 	if env().Config.Server.EnableHTTPS() {
-		// Check https cert and key path path
+		// Check https cert and key path
 		if env().Config.Server.HTTPSCertFile() == "" || env().Config.Server.HTTPSKeyFile() == "" {
 			check(
-				fmt.Errorf("unspecified required --https-cert-file, --https-key-file"),
+				fmt.Errorf(
+					"HTTPS certificate or key not configured; "+
+						"set via server.tls.cert_file/key_file in config file, env vars, or flags",
+				),
 				"Can't start https server",
 			)
 		}

@@ -74,7 +74,9 @@ func AddMetricsFlags(cmd *cobra.Command) {
 
 	cmd.Flags().String("metrics-host", defaults.Host, "Metrics server bind host")
 	cmd.Flags().Int("metrics-port", defaults.Port, "Metrics server bind port")
-	cmd.Flags().Bool("metrics-https-enabled", defaults.TLS.Enabled, "Enable HTTPS for metrics server")
+	cmd.Flags().Bool("metrics-tls-enabled", defaults.TLS.Enabled, "Enable TLS for metrics server")
+	cmd.Flags().String("metrics-tls-cert-file", defaults.TLS.CertFile, "Path to TLS certificate file for metrics")
+	cmd.Flags().String("metrics-tls-key-file", defaults.TLS.KeyFile, "Path to TLS key file for metrics")
 	cmd.Flags().Duration("metrics-label-metrics-inclusion-duration", defaults.LabelMetricsInclusionDuration,
 		"Duration for cluster telemetry label inclusion")
 }
@@ -86,8 +88,11 @@ func AddHealthFlags(cmd *cobra.Command) {
 
 	cmd.Flags().String("health-host", defaults.Host, "Health check server bind host")
 	cmd.Flags().Int("health-port", defaults.Port, "Health check server bind port")
-	cmd.Flags().Bool("health-https-enabled", defaults.TLS.Enabled, "Enable HTTPS for health server")
+	cmd.Flags().Bool("health-tls-enabled", defaults.TLS.Enabled, "Enable TLS for health server")
+	cmd.Flags().String("health-tls-cert-file", defaults.TLS.CertFile, "Path to TLS certificate file for health")
+	cmd.Flags().String("health-tls-key-file", defaults.TLS.KeyFile, "Path to TLS key file for health")
 	cmd.Flags().Duration("health-shutdown-timeout", defaults.ShutdownTimeout, "Graceful shutdown timeout")
+	cmd.Flags().Duration("health-db-ping-timeout", defaults.DBPingTimeout, "Database ping timeout")
 }
 
 // AddOCMFlags adds OCM configuration flags following standard naming

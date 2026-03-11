@@ -43,13 +43,13 @@ type SSLConfig struct {
 // PoolConfig holds connection pool configuration
 // Includes fields from HYPERFLEET-694 for connection lifecycle management
 type PoolConfig struct {
-	MaxConnections     int           `mapstructure:"max_connections" json:"max_connections" validate:"required,min=1,max=200"`
-	MaxIdleConnections int           `mapstructure:"max_idle_connections" json:"max_idle_connections" validate:"min=0"`
-	ConnMaxLifetime    time.Duration `mapstructure:"conn_max_lifetime" json:"conn_max_lifetime"`
-	ConnMaxIdleTime    time.Duration `mapstructure:"conn_max_idle_time" json:"conn_max_idle_time"`
-	RequestTimeout     time.Duration `mapstructure:"request_timeout" json:"request_timeout"`
-	ConnRetryAttempts  int           `mapstructure:"conn_retry_attempts" json:"conn_retry_attempts" validate:"min=1"`
-	ConnRetryInterval  time.Duration `mapstructure:"conn_retry_interval" json:"conn_retry_interval"`
+	MaxConnections int `mapstructure:"max_connections" json:"max_connections" validate:"required,min=1,max=200"`
+	MaxIdleConnections int `mapstructure:"max_idle_connections" json:"max_idle_connections" validate:"min=0"`
+	ConnMaxLifetime time.Duration `mapstructure:"conn_max_lifetime" json:"conn_max_lifetime"`
+	ConnMaxIdleTime time.Duration `mapstructure:"conn_max_idle_time" json:"conn_max_idle_time"`
+	RequestTimeout time.Duration `mapstructure:"request_timeout" json:"request_timeout"`
+	ConnRetryAttempts int `mapstructure:"conn_retry_attempts" json:"conn_retry_attempts" validate:"min=1"`
+	ConnRetryInterval time.Duration `mapstructure:"conn_retry_interval" json:"conn_retry_interval"`
 }
 
 // MarshalJSON implements custom JSON marshaling to redact sensitive fields
@@ -176,15 +176,6 @@ func (c *DatabaseConfig) ConnectionString(ssl bool) string {
 		escapeDSNValue(c.Password),
 		strings.Join(params, " "),
 	)
-	fs.DurationVar(&c.ConnMaxLifetime, "db-conn-max-lifetime", c.ConnMaxLifetime, "Maximum lifetime of a DB connection")
-	fs.DurationVar(&c.ConnMaxIdleTime, "db-conn-max-idle-time", c.ConnMaxIdleTime, "Maximum idle time of a DB connection")
-	fs.IntVar(&c.MaxIdleConnections, "db-max-idle-connections", c.MaxIdleConnections, "Maximum idle DB connections")
-	fs.DurationVar(&c.RequestTimeout, "db-request-timeout", c.RequestTimeout,
-		"Maximum time for a database request context")
-	fs.IntVar(&c.ConnRetryAttempts, "db-conn-retry-attempts", c.ConnRetryAttempts,
-		"Number of retry attempts for initial DB connection")
-	fs.DurationVar(&c.ConnRetryInterval, "db-conn-retry-interval", c.ConnRetryInterval,
-		"Interval between DB connection retry attempts")
 }
 
 // LogSafeConnectionString returns connection string with username and password redacted

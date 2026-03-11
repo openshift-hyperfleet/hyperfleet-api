@@ -68,15 +68,15 @@ Database environment variables (using *_FILE pattern for Viper)
 {{- define "hyperfleet-api.databaseEnvVars" -}}
 {{- if .Values.database.external.enabled }}
 - name: HYPERFLEET_DATABASE_HOST_FILE
-  value: /app/secrets/database/db-host
+  value: /app/secrets/database/db.host
 - name: HYPERFLEET_DATABASE_PORT_FILE
-  value: /app/secrets/database/db-port
+  value: /app/secrets/database/db.port
 - name: HYPERFLEET_DATABASE_NAME_FILE
-  value: /app/secrets/database/db-name
+  value: /app/secrets/database/db.name
 - name: HYPERFLEET_DATABASE_USERNAME_FILE
-  value: /app/secrets/database/db-username
+  value: /app/secrets/database/db.user
 - name: HYPERFLEET_DATABASE_PASSWORD_FILE
-  value: /app/secrets/database/db-password
+  value: /app/secrets/database/db.password
 {{- else if .Values.database.postgresql.enabled }}
 - name: HYPERFLEET_DATABASE_HOST_FILE
   value: /app/secrets/database/db.host
@@ -92,7 +92,9 @@ Database environment variables (using *_FILE pattern for Viper)
 {{- end }}
 
 {{/*
-Secret volume mounts
+Database secret volume mounts
+With pgbouncer: app connects to pgbouncer at localhost (using pgbouncer secret)
+Without pgbouncer: app connects directly to DB (using real DB or external secret)
 */}}
 {{- define "hyperfleet-api.secretVolumeMounts" -}}
 {{- if or .Values.database.external.enabled .Values.database.postgresql.enabled }}
@@ -103,13 +105,17 @@ Secret volume mounts
 {{- end }}
 
 {{/*
-Secret volumes
+Database secret volumes
+With pgbouncer: use pgbouncer secret (db.host=localhost, db.port=6432)
+Without pgbouncer: use external secret or postgresql secret (real DB connection)
 */}}
 {{- define "hyperfleet-api.secretVolumes" -}}
 {{- if or .Values.database.external.enabled .Values.database.postgresql.enabled }}
 - name: database-secrets
   secret:
-    {{- if .Values.database.external.enabled }}
+    {{- if .Values.database.pgbouncer.enabled }}
+    secretName: {{ include "hyperfleet-api.fullname" . }}-db-secrets-pgbouncer
+    {{- else if .Values.database.external.enabled }}
     secretName: {{ .Values.database.external.secretName }}
     {{- else }}
     secretName: {{ include "hyperfleet-api.fullname" . }}-db-secrets

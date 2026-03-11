@@ -143,7 +143,7 @@ func registerApiMiddleware(router *mux.Router) {
 
 	router.Use(
 		func(next http.Handler) http.Handler {
-			return db.TransactionMiddleware(next, env().Database.SessionFactory, env().Config.Database.RequestTimeout)
+			return db.TransactionMiddleware(next, env().Database.SessionFactory, env().Config.Database.Pool.RequestTimeout)
 		},
 	)
 

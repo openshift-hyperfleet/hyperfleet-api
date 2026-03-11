@@ -46,6 +46,12 @@ database:
 
   pool:
     max_connections: 50             # Maximum open connections
+    max_idle_connections: 10        # Maximum idle connections
+    conn_max_lifetime: 5m           # Maximum connection lifetime
+    conn_max_idle_time: 1m          # Maximum connection idle time
+    request_timeout: 30s            # Database request timeout
+    conn_retry_attempts: 10         # Connection retry attempts on startup
+    conn_retry_interval: 3s         # Interval between retry attempts
 
 # Logging Configuration
 logging:
@@ -107,6 +113,7 @@ health:
     enabled: false                  # Enable TLS for health server
 
   shutdown_timeout: 20s             # Graceful shutdown timeout
+  db_ping_timeout: 2s               # Database ping timeout for readiness check
 
 # Adapter Requirements Configuration
 adapters:

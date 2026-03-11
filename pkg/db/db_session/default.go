@@ -19,7 +19,6 @@ import (
 )
 
 const slowQueryThreshold = 200 * time.Millisecond
-const disable = "disable"
 
 type Default struct {
 	config *config.DatabaseConfig

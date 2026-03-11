@@ -11,7 +11,7 @@ import (
 // Follows HyperFleet Configuration Standard
 type ServerConfig struct {
 	Hostname string         `mapstructure:"hostname" json:"hostname" validate:"omitempty,hostname|ip"`
-	Host     string         `mapstructure:"host" json:"host" validate:"required"`
+	Host     string         `mapstructure:"host" json:"host" validate:"required,hostname|ip"`
 	Port     int            `mapstructure:"port" json:"port" validate:"required,min=1,max=65535"`
 	Timeouts TimeoutsConfig `mapstructure:"timeouts" json:"timeouts" validate:"required"`
 	TLS      TLSConfig      `mapstructure:"tls" json:"tls" validate:"required"`

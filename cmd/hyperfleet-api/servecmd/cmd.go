@@ -48,17 +48,12 @@ func runServe(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	// Apply environment-specific configuration overrides (e.g., development disables JWT/TLS)
-	if err := environments.ApplyEnvironmentOverrides(cfg); err != nil {
-		logger.WithError(ctx, err).Error("Failed to apply environment overrides")
-		os.Exit(1)
-	}
-
-	// IMPORTANT: Set config BEFORE calling Initialize() to avoid double initialization
+	// IMPORTANT: Set config BEFORE calling Initialize()
+	// Initialize() will apply environment-specific overrides (e.g., development disables JWT/TLS)
 	// and ensure SessionFactory, clients, services, handlers all use the correct config
 	environments.Environment().Config = cfg
 
-	// Initialize environment (creates SessionFactory, loads clients, services, handlers)
+	// Initialize environment (applies overrides, creates SessionFactory, loads clients, services, handlers)
 	err = environments.Environment().Initialize()
 	if err != nil {
 		logger.WithError(ctx, err).Error("Unable to initialize environment")

@@ -15,7 +15,13 @@ spec:
     metadata:
       annotations:
         # Force pod restart when ConfigMap changes
+        {{- if .Values.config.existingConfigMap }}
+        # Checksum of external ConfigMap (via lookup)
+        checksum/config: {{ (lookup "v1" "ConfigMap" .Release.Namespace .Values.config.existingConfigMap).data | toYaml | sha256sum }}
+        {{- else }}
+        # Checksum of generated ConfigMap
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- end }}
         {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}

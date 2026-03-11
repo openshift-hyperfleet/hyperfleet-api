@@ -176,8 +176,8 @@ Configure which adapters must be ready for resources to be marked as "Ready". Sh
 
 **Using Helm (recommended):**
 ```bash
---set config.adapters.required.cluster={validation,dns,pullsecret,hypershift} \
---set config.adapters.required.nodepool={validation,hypershift}
+--set 'config.adapters.required.cluster={validation,dns,pullsecret,hypershift}' \
+--set 'config.adapters.required.nodepool={validation,hypershift}'
 ```
 
 **Using environment variables:**
@@ -202,8 +202,8 @@ Deploy with built-in PostgreSQL for development and testing:
 helm install hyperfleet-api ./charts/ \
   --namespace hyperfleet-system \
   --create-namespace \
-  --set config.adapters.required.cluster={validation,dns,pullsecret,hypershift} \
-  --set config.adapters.required.nodepool={validation,hypershift}
+  --set 'config.adapters.required.cluster={validation,dns,pullsecret,hypershift}' \
+  --set 'config.adapters.required.nodepool={validation,hypershift}'
 ```
 
 This creates:
@@ -236,8 +236,8 @@ helm install hyperfleet-api ./charts/ \
   --set database.postgresql.enabled=false \
   --set database.external.enabled=true \
   --set database.external.secretName=hyperfleet-db-external \
-  --set config.adapters.required.cluster={validation,dns,pullsecret,hypershift} \
-  --set config.adapters.required.nodepool={validation,hypershift}
+  --set 'config.adapters.required.cluster={validation,dns,pullsecret,hypershift}' \
+  --set 'config.adapters.required.nodepool={validation,hypershift}'
 ```
 
 **How it works:**
@@ -259,8 +259,8 @@ helm install hyperfleet-api ./charts/ \
   --set image.registry=quay.io \
   --set image.repository=myuser/hyperfleet-api \
   --set image.tag=v1.0.0 \
-  --set config.adapters.required.cluster={validation,dns,pullsecret,hypershift} \
-  --set config.adapters.required.nodepool={validation,hypershift}
+  --set 'config.adapters.required.cluster={validation,dns,pullsecret,hypershift}' \
+  --set 'config.adapters.required.nodepool={validation,hypershift}'
 ```
 
 **Note**: The `registry` should contain only the registry domain (e.g., `quay.io`, `docker.io`). The `repository` includes the organization and image name (e.g., `myuser/hyperfleet-api`).
@@ -473,7 +473,7 @@ Before deploying to production, ensure:
 
 - [ ] **Database**: External managed database configured (Cloud SQL, RDS, Azure Database)
 - [ ] **Secrets**: Database credentials stored in Secret (not ConfigMap)
-- [ ] **Authentication**: JWT enabled (`auth.enableJwt=true`)
+- [ ] **Authentication**: JWT enabled (`config.server.jwt.enabled=true`)
 - [ ] **Adapters**: Required adapters specified for cluster and nodepool
 - [ ] **Resources**: CPU/memory limits and requests set
 - [ ] **Replicas**: Multiple replicas configured (`replicaCount >= 2`)
@@ -486,7 +486,7 @@ Before deploying to production, ensure:
 
 - Use external managed database (Cloud SQL, RDS, Azure Database) with automated backups
 - Store all sensitive data in Kubernetes Secrets, never in ConfigMap or values.yaml
-- Enable authentication with `auth.enableJwt=true`
+- Enable authentication with `config.server.jwt.enabled=true`
 - Set resource limits and use multiple replicas for high availability
 - Use specific image tags (semantic versioning) instead of `latest`
 - Enable PodDisruptionBudget for zero-downtime during cluster maintenance
@@ -524,11 +524,11 @@ helm install hyperfleet-api ./charts/ \
   --set image.registry=quay.io \
   --set image.repository=myuser/hyperfleet-api \
   --set image.tag=dev-abc123 \
-  --set auth.enableJwt=false \
+  --set config.server.jwt.enabled=false \
   --set database.postgresql.enabled=false \
   --set database.external.enabled=true \
-  --set config.adapters.required.cluster={validation,dns,pullsecret,hypershift} \
-  --set config.adapters.required.nodepool={validation,hypershift}
+  --set 'config.adapters.required.cluster={validation,dns,pullsecret,hypershift}' \
+  --set 'config.adapters.required.nodepool={validation,hypershift}'
 
 # 6. Verify deployment
 kubectl get pods

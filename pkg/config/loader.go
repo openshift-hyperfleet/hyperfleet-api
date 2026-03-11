@@ -21,7 +21,8 @@ import (
 type ConfigLoader struct {
 	viper               *viper.Viper
 	validator           *validator.Validate
-	explicitlyBoundKeys map[string]bool // Tracks keys explicitly bound via BindEnv/BindPFlag
+	explicitlyBoundKeys map[string]bool   // Tracks keys explicitly bound via BindEnv/BindPFlag
+	viperKeyToFlag      map[string]string // Maps Viper keys to CLI flag names
 }
 
 // NewConfigLoader creates a new configuration loader
@@ -30,6 +31,7 @@ func NewConfigLoader() *ConfigLoader {
 		viper:               viper.New(),
 		validator:           validator.New(),
 		explicitlyBoundKeys: make(map[string]bool),
+		viperKeyToFlag:      make(map[string]string),
 	}
 }
 
@@ -191,10 +193,11 @@ func (l *ConfigLoader) handleFileSecrets(ctx context.Context) error {
 
 		// Check if plain env var is set (e.g., HYPERFLEET_DATABASE_PASSWORD)
 		// Plain env vars have higher priority than *_FILE env vars
+		// Use LookupEnv to distinguish between unset and explicitly set to empty string
 		plainEnvVar := strings.TrimSuffix(envVar, "_FILE")
-		if os.Getenv(plainEnvVar) != "" {
+		if plainValue, exists := os.LookupEnv(plainEnvVar); exists && plainValue != "" {
 			logger.With(ctx, "plain_env", plainEnvVar, "file_env", envVar).
-				Debug("Plain env var already set, skipping file secret")
+				Debug("Plain env var already set with non-empty value, skipping file secret")
 			continue
 		}
 
@@ -275,7 +278,14 @@ func (l *ConfigLoader) validateConfig(config *ApplicationConfig) error {
 		msg += fmt.Sprintf("\n      • Config file: %s", viperPath)
 		msg += fmt.Sprintf("\n      • Environment variable: HYPERFLEET_%s",
 			strings.ToUpper(strings.ReplaceAll(viperPath, ".", "_")))
-		msg += fmt.Sprintf("\n      • CLI flag: --%s", strings.ReplaceAll(viperPath, ".", "-"))
+
+		// Use actual flag name from bindFlags() mapping, fall back to synthesized name
+		flagName := l.viperKeyToFlag[viperPath]
+		if flagName == "" {
+			// Fallback: synthesize flag name if no mapping exists
+			flagName = strings.ReplaceAll(viperPath, ".", "-")
+		}
+		msg += fmt.Sprintf("\n      • CLI flag: --%s", flagName)
 
 		errMessages = append(errMessages, msg)
 	}
@@ -330,8 +340,13 @@ func (l *ConfigLoader) bindEnv(key string) {
 
 // bindPFlag wraps viper.BindPFlag and tracks the key for validation
 func (l *ConfigLoader) bindPFlag(key string, flag *pflag.Flag) {
+	if flag == nil {
+		return
+	}
 	l.viper.BindPFlag(key, flag) //nolint:errcheck,gosec // BindPFlag errors are rare and indicate programming errors
 	l.explicitlyBoundKeys[key] = true
+	// Record the mapping from Viper key to flag name for validation error messages
+	l.viperKeyToFlag[key] = flag.Name
 }
 
 // bindAllEnvVars explicitly binds all configuration keys to environment variables
@@ -363,6 +378,12 @@ func (l *ConfigLoader) bindAllEnvVars() {
 	l.bindEnv("database.ssl.mode")
 	l.bindEnv("database.ssl.root_cert_file")
 	l.bindEnv("database.pool.max_connections")
+	l.bindEnv("database.pool.max_idle_connections")
+	l.bindEnv("database.pool.conn_max_lifetime")
+	l.bindEnv("database.pool.conn_max_idle_time")
+	l.bindEnv("database.pool.request_timeout")
+	l.bindEnv("database.pool.conn_retry_attempts")
+	l.bindEnv("database.pool.conn_retry_interval")
 
 	// Logging config
 	l.bindEnv("logging.level")
@@ -394,6 +415,7 @@ func (l *ConfigLoader) bindAllEnvVars() {
 	l.bindEnv("health.port")
 	l.bindEnv("health.tls.enabled")
 	l.bindEnv("health.shutdown_timeout")
+	l.bindEnv("health.db_ping_timeout")
 
 	// Adapters config
 	l.bindEnv("adapters.required.cluster")
@@ -449,15 +471,20 @@ func (l *ConfigLoader) bindFlags(cmd *cobra.Command) {
 	// Metrics flags: --metrics-* -> metrics.*
 	l.bindPFlag("metrics.host", cmd.Flags().Lookup("metrics-host"))
 	l.bindPFlag("metrics.port", cmd.Flags().Lookup("metrics-port"))
-	l.bindPFlag("metrics.tls.enabled", cmd.Flags().Lookup("metrics-https-enabled"))
+	l.bindPFlag("metrics.tls.enabled", cmd.Flags().Lookup("metrics-tls-enabled"))
+	l.bindPFlag("metrics.tls.cert_file", cmd.Flags().Lookup("metrics-tls-cert-file"))
+	l.bindPFlag("metrics.tls.key_file", cmd.Flags().Lookup("metrics-tls-key-file"))
 	l.bindPFlag("metrics.label_metrics_inclusion_duration",
 		cmd.Flags().Lookup("metrics-label-metrics-inclusion-duration"))
 
 	// Health flags: --health-* -> health.*
 	l.bindPFlag("health.host", cmd.Flags().Lookup("health-host"))
 	l.bindPFlag("health.port", cmd.Flags().Lookup("health-port"))
-	l.bindPFlag("health.tls.enabled", cmd.Flags().Lookup("health-https-enabled"))
+	l.bindPFlag("health.tls.enabled", cmd.Flags().Lookup("health-tls-enabled"))
+	l.bindPFlag("health.tls.cert_file", cmd.Flags().Lookup("health-tls-cert-file"))
+	l.bindPFlag("health.tls.key_file", cmd.Flags().Lookup("health-tls-key-file"))
 	l.bindPFlag("health.shutdown_timeout", cmd.Flags().Lookup("health-shutdown-timeout"))
+	l.bindPFlag("health.db_ping_timeout", cmd.Flags().Lookup("health-db-ping-timeout"))
 
 	// OCM flags: --ocm-* -> ocm.*
 	l.bindPFlag("ocm.base_url", cmd.Flags().Lookup("ocm-base-url"))
