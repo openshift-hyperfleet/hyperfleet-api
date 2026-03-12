@@ -1,8 +1,10 @@
 package integration
 
 import (
+	"fmt"
 	"net/http"
 	"testing"
+	"time"
 
 	. "github.com/onsi/gomega"
 
@@ -409,4 +411,291 @@ func TestSearchStatusConditionsNotOperator(t *testing.T) {
 
 	Expect(err).NotTo(HaveOccurred())
 	Expect(allowedResp.StatusCode()).To(Equal(http.StatusOK))
+}
+
+// TestSearchConditionSubfieldLastUpdatedTime verifies that
+// status.conditions.<Type>.last_updated_time queries work correctly
+func TestSearchConditionSubfieldLastUpdatedTime(t *testing.T) {
+	RegisterTestingT(t)
+	h, client := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+
+	// Create a "stale" cluster with conditions updated 2 hours ago
+	staleTime := time.Now().Add(-2 * time.Hour)
+	staleCluster, err := factories.NewClusterWithStatusAtTime(
+		&h.Factories, h.DBFactory, h.NewID(),
+		true, true, // isAvailable, isReady
+		staleTime,
+	)
+	Expect(err).NotTo(HaveOccurred())
+
+	// Create a "fresh" cluster with conditions updated just now
+	freshTime := time.Now()
+	freshCluster, err := factories.NewClusterWithStatusAtTime(
+		&h.Factories, h.DBFactory, h.NewID(),
+		true, true, // isAvailable, isReady
+		freshTime,
+	)
+	Expect(err).NotTo(HaveOccurred())
+
+	// Search for clusters where Ready.last_updated_time is older than 1 hour ago
+	cutoff := time.Now().Add(-1 * time.Hour).UTC().Format(time.RFC3339)
+	searchStr := fmt.Sprintf("status.conditions.Ready.last_updated_time < '%s'", cutoff)
+	search := openapi.SearchParams(searchStr)
+	params := &openapi.GetClustersParams{
+		Search: &search,
+	}
+	resp, err := client.GetClustersWithResponse(ctx, params, test.WithAuthToken(ctx))
+
+	Expect(err).NotTo(HaveOccurred())
+	Expect(resp.StatusCode()).To(Equal(http.StatusOK))
+	list := resp.JSON200
+	Expect(list).NotTo(BeNil())
+	Expect(list.Total).To(BeNumerically(">=", 1))
+
+	// Should contain staleCluster but NOT freshCluster
+	foundStale := false
+	for _, item := range list.Items {
+		if *item.Id == staleCluster.ID {
+			foundStale = true
+		}
+		Expect(*item.Id).NotTo(Equal(freshCluster.ID))
+	}
+	Expect(foundStale).To(BeTrue(), "Expected to find the stale cluster")
+}
+
+// TestSearchConditionSubfieldCombinedWithStatus verifies that condition subfield
+// queries can be combined with condition status queries using AND.
+// This is the primary Sentinel use case: fetch ready-but-stale resources.
+func TestSearchConditionSubfieldCombinedWithStatus(t *testing.T) {
+	RegisterTestingT(t)
+	h, client := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+
+	// Create a stale ready cluster (Ready=True, updated 2h ago) - should match
+	staleTime := time.Now().Add(-2 * time.Hour)
+	staleReadyCluster, err := factories.NewClusterWithStatusAtTime(
+		&h.Factories, h.DBFactory, h.NewID(),
+		true, true,
+		staleTime,
+	)
+	Expect(err).NotTo(HaveOccurred())
+
+	// Create a fresh ready cluster (Ready=True, updated now) - should NOT match
+	freshTime := time.Now()
+	freshReadyCluster, err := factories.NewClusterWithStatusAtTime(
+		&h.Factories, h.DBFactory, h.NewID(),
+		true, true,
+		freshTime,
+	)
+	Expect(err).NotTo(HaveOccurred())
+
+	// Search: Ready=True AND last_updated_time < cutoff (stale resources)
+	cutoff := time.Now().Add(-1 * time.Hour).UTC().Format(time.RFC3339)
+	searchStr := fmt.Sprintf(
+		"status.conditions.Ready='True' AND "+
+			"status.conditions.Ready.last_updated_time < '%s'",
+		cutoff,
+	)
+	search := openapi.SearchParams(searchStr)
+	params := &openapi.GetClustersParams{
+		Search: &search,
+	}
+	resp, err := client.GetClustersWithResponse(ctx, params, test.WithAuthToken(ctx))
+
+	Expect(err).NotTo(HaveOccurred())
+	Expect(resp.StatusCode()).To(Equal(http.StatusOK))
+	list := resp.JSON200
+	Expect(list).NotTo(BeNil())
+	Expect(list.Total).To(BeNumerically(">=", 1))
+
+	foundStaleReady := false
+	for _, item := range list.Items {
+		if *item.Id == staleReadyCluster.ID {
+			foundStaleReady = true
+		}
+		// Should NOT contain freshReadyCluster
+		Expect(*item.Id).NotTo(Equal(freshReadyCluster.ID))
+	}
+	Expect(foundStaleReady).To(BeTrue(), "Expected to find the stale ready cluster")
+}
+
+// TestSearchConditionSubfieldGreaterThan verifies the > operator works for time subfield queries
+func TestSearchConditionSubfieldGreaterThan(t *testing.T) {
+	RegisterTestingT(t)
+	h, client := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+
+	// Compute timestamps upfront for determinism
+	now := time.Now().UTC()
+	staleTime := now.Add(-2 * time.Hour)
+	freshTime := now
+	cutoff := now.Add(-1 * time.Hour).Format(time.RFC3339)
+
+	// Create a "stale" cluster (updated 2h ago) — should NOT match > cutoff
+	_, err := factories.NewClusterWithStatusAtTime(
+		&h.Factories, h.DBFactory, h.NewID(),
+		true, true,
+		staleTime,
+	)
+	Expect(err).NotTo(HaveOccurred())
+
+	// Create a "fresh" cluster (updated now) — should match > cutoff
+	freshCluster, err := factories.NewClusterWithStatusAtTime(
+		&h.Factories, h.DBFactory, h.NewID(),
+		true, true,
+		freshTime,
+	)
+	Expect(err).NotTo(HaveOccurred())
+
+	// Search for clusters where Ready.last_updated_time is newer than 1 hour ago
+	searchStr := fmt.Sprintf("status.conditions.Ready.last_updated_time > '%s'", cutoff)
+	search := openapi.SearchParams(searchStr)
+	params := &openapi.GetClustersParams{
+		Search: &search,
+	}
+	resp, err := client.GetClustersWithResponse(ctx, params, test.WithAuthToken(ctx))
+
+	Expect(err).NotTo(HaveOccurred())
+	Expect(resp.StatusCode()).To(Equal(http.StatusOK))
+	list := resp.JSON200
+	Expect(list).NotTo(BeNil())
+	Expect(list.Total).To(BeNumerically(">=", 1))
+
+	foundFresh := false
+	for _, item := range list.Items {
+		if *item.Id == freshCluster.ID {
+			foundFresh = true
+		}
+	}
+	Expect(foundFresh).To(BeTrue(), "Expected to find the fresh cluster with > operator")
+}
+
+// TestSearchConditionSubfieldObservedGeneration verifies that
+// status.conditions.<Type>.observed_generation queries work correctly (INTEGER cast path)
+func TestSearchConditionSubfieldObservedGeneration(t *testing.T) {
+	RegisterTestingT(t)
+	h, client := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+
+	// Create cluster with observed_generation = 2
+	lowGenCluster, err := factories.NewClusterWithObservedGeneration(
+		&h.Factories, h.DBFactory, h.NewID(),
+		true, true, 2,
+	)
+	Expect(err).NotTo(HaveOccurred())
+
+	// Create cluster with observed_generation = 10
+	highGenCluster, err := factories.NewClusterWithObservedGeneration(
+		&h.Factories, h.DBFactory, h.NewID(),
+		true, true, 10,
+	)
+	Expect(err).NotTo(HaveOccurred())
+
+	// Search for clusters where Ready.observed_generation < 5
+	searchStr := "status.conditions.Ready.observed_generation < 5"
+	search := openapi.SearchParams(searchStr)
+	params := &openapi.GetClustersParams{
+		Search: &search,
+	}
+	resp, err := client.GetClustersWithResponse(ctx, params, test.WithAuthToken(ctx))
+
+	Expect(err).NotTo(HaveOccurred())
+	Expect(resp.StatusCode()).To(Equal(http.StatusOK))
+	list := resp.JSON200
+	Expect(list).NotTo(BeNil())
+	Expect(list.Total).To(BeNumerically(">=", 1))
+
+	// Should contain lowGenCluster but NOT highGenCluster
+	foundLow := false
+	for _, item := range list.Items {
+		if *item.Id == lowGenCluster.ID {
+			foundLow = true
+		}
+		Expect(*item.Id).NotTo(Equal(highGenCluster.ID))
+	}
+	Expect(foundLow).To(BeTrue(), "Expected to find the low-generation cluster")
+}
+
+// TestSearchConditionSubfieldInvalidSubfield verifies that invalid subfield names
+// are rejected with 400 Bad Request
+func TestSearchConditionSubfieldInvalidSubfield(t *testing.T) {
+	RegisterTestingT(t)
+	h, client := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+
+	// Query with an unsupported subfield
+	searchStr := "status.conditions.Ready.invalid_field < '2026-03-06T00:00:00Z'"
+	search := openapi.SearchParams(searchStr)
+	params := &openapi.GetClustersParams{
+		Search: &search,
+	}
+	resp, err := client.GetClustersWithResponse(ctx, params, test.WithAuthToken(ctx))
+
+	Expect(err).NotTo(HaveOccurred())
+	Expect(resp.StatusCode()).To(Equal(http.StatusBadRequest))
+}
+
+// TestSearchNodePoolConditionSubfieldLastUpdatedTime verifies that condition subfield queries
+// work for NodePools — same code path as Clusters but validates the full end-to-end for NodePools.
+func TestSearchNodePoolConditionSubfieldLastUpdatedTime(t *testing.T) {
+	RegisterTestingT(t)
+	h, client := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+
+	now := time.Now().UTC()
+	staleTime := now.Add(-2 * time.Hour)
+	freshTime := now
+	cutoff := now.Add(-1 * time.Hour).Format(time.RFC3339)
+
+	// Create a "stale" node pool (updated 2h ago)
+	staleNP, err := factories.NewNodePoolWithStatusAtTime(
+		&h.Factories, h.DBFactory, h.NewID(),
+		true, true,
+		staleTime,
+	)
+	Expect(err).NotTo(HaveOccurred())
+
+	// Create a "fresh" node pool (updated now)
+	freshNP, err := factories.NewNodePoolWithStatusAtTime(
+		&h.Factories, h.DBFactory, h.NewID(),
+		true, true,
+		freshTime,
+	)
+	Expect(err).NotTo(HaveOccurred())
+
+	// Search for node pools where Ready.last_updated_time is older than 1 hour ago
+	searchStr := fmt.Sprintf("status.conditions.Ready.last_updated_time < '%s'", cutoff)
+	search := openapi.SearchParams(searchStr)
+	params := &openapi.GetNodePoolsParams{
+		Search: &search,
+	}
+	resp, err := client.GetNodePoolsWithResponse(ctx, params, test.WithAuthToken(ctx))
+
+	Expect(err).NotTo(HaveOccurred())
+	Expect(resp.StatusCode()).To(Equal(http.StatusOK))
+	list := resp.JSON200
+	Expect(list).NotTo(BeNil())
+	Expect(list.Total).To(BeNumerically(">=", 1))
+
+	foundStale := false
+	for _, item := range list.Items {
+		if *item.Id == staleNP.ID {
+			foundStale = true
+		}
+		Expect(*item.Id).NotTo(Equal(freshNP.ID))
+	}
+	Expect(foundStale).To(BeTrue(), "Expected to find the stale node pool")
 }

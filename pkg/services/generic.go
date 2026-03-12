@@ -168,8 +168,19 @@ func (s *sqlGenericService) buildSearchValues(
 		return "", nil, nil
 	}
 
+	const maxSearchLength = 4096
+	if len(listCtx.args.Search) > maxSearchLength {
+		return "", nil, errors.BadRequest(
+			"search query exceeds maximum length of %d characters", maxSearchLength,
+		)
+	}
+
+	// Pre-process condition subfield paths (4-part -> 3-part encoding) before TSL parsing.
+	// The TSL parser only supports up to 3-part identifiers (database.table.column).
+	preprocessedSearch := db.PreprocessConditionSubfields(listCtx.args.Search)
+
 	// create the TSL tree
-	tslTree, err := tsl.ParseTSL(listCtx.args.Search)
+	tslTree, err := tsl.ParseTSL(preprocessedSearch)
 	if err != nil {
 		return "", nil, errors.BadRequest("Failed to parse search query: %s", listCtx.args.Search)
 	}

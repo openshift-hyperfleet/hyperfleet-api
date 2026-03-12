@@ -3,6 +3,7 @@ package dao
 import (
 	"bytes"
 	"context"
+	"time"
 
 	"gorm.io/gorm/clause"
 
@@ -23,10 +24,11 @@ var _ ClusterDao = &sqlClusterDao{}
 
 type sqlClusterDao struct {
 	sessionFactory *db.SessionFactory
+	nowFunc        func() time.Time
 }
 
 func NewClusterDao(sessionFactory *db.SessionFactory) ClusterDao {
-	return &sqlClusterDao{sessionFactory: sessionFactory}
+	return &sqlClusterDao{sessionFactory: sessionFactory, nowFunc: time.Now}
 }
 
 func (d *sqlClusterDao) Get(ctx context.Context, id string) (*api.Cluster, error) {
@@ -57,9 +59,15 @@ func (d *sqlClusterDao) Replace(ctx context.Context, cluster *api.Cluster) (*api
 		return nil, err
 	}
 
-	// Compare spec: if changed, increment generation
+	// Compare spec: if changed, increment generation and reset Ready=False
 	if !bytes.Equal(existing.Spec, cluster.Spec) {
 		cluster.Generation = existing.Generation + 1
+		updatedConditions, err := resetReadyConditionOnSpecChange(existing.StatusConditions, d.nowFunc())
+		if err != nil {
+			db.MarkForRollback(ctx, err)
+			return nil, err
+		}
+		cluster.StatusConditions = updatedConditions
 	} else {
 		// Spec unchanged, preserve generation
 		cluster.Generation = existing.Generation
