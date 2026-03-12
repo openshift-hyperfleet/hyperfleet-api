@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math/rand"
 	"strings"
 	"sync"
 	"testing"
@@ -93,37 +92,60 @@ func TestAdvisoryLocksWithTransactions(t *testing.T) {
 	Expect(err).NotTo(HaveOccurred(), "Failed to initialize counter")
 	defer g2.Exec("DROP TABLE IF EXISTS lock_test_counter_tx")
 
-	total := 10
-	var waiter sync.WaitGroup
-	waiter.Add(total)
-
-	for i := 0; i < total; i++ {
-		go acquireLockWithTransaction(h, &waiter)
+	// Test all three transaction ordering scenarios deterministically
+	testCases := []struct {
+		name         string
+		txBeforeLock bool
+		txAfterLock  bool
+	}{
+		{
+			name:         "tx_before_lock",
+			txBeforeLock: true,
+			txAfterLock:  false,
+		},
+		{
+			name:         "tx_after_lock",
+			txBeforeLock: false,
+			txAfterLock:  true,
+		},
+		{
+			name:         "no_tx",
+			txBeforeLock: false,
+			txAfterLock:  false,
+		},
 	}
 
-	waiter.Wait()
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Run multiple goroutines for each scenario to test concurrency
+			goroutines := 3
+			var waiter sync.WaitGroup
+			waiter.Add(goroutines)
 
-	// All goroutines should have incremented the counter by 1, resulting in 10
+			for i := 0; i < goroutines; i++ {
+				go acquireLockWithTransaction(h, &waiter, tc.txBeforeLock, tc.txAfterLock)
+			}
+
+			waiter.Wait()
+		})
+	}
+
+	// All test cases combined should have incremented the counter by 9 (3 scenarios × 3 goroutines)
+	expectedTotal := 9
 	var finalValue int
 	err = g2.Raw("SELECT value FROM lock_test_counter_tx WHERE id = 1").Scan(&finalValue).Error
 	Expect(err).NotTo(HaveOccurred(), "Failed to read final counter value")
-	Expect(finalValue).To(Equal(total), "Counter should equal total")
+	Expect(finalValue).To(Equal(expectedTotal), "Counter should equal total")
 }
 
-func acquireLockWithTransaction(h *test.Helper, waiter *sync.WaitGroup) {
+func acquireLockWithTransaction(h *test.Helper, waiter *sync.WaitGroup, txBeforeLock bool, txAfterLock bool) {
 	defer waiter.Done()
 
 	ctx := context.Background()
 
-	// Lock and Tx can be stored within the same context. They should be independent of each other.
-	// It doesn't matter if a Tx coexists or not, nor does it matter if it occurs before or after the lock
-	r := rand.Intn(3) // no Tx if r == 2
-	txBeforeLock := r == 0
-	txAfterLock := r == 1
-
 	var dberr error
 
-	// Randomly add Tx before lock to demonstrate it works
+	// Add Tx before lock if requested
 	if txBeforeLock {
 		ctx, dberr = db.NewContext(ctx, h.DBFactory)
 		Expect(dberr).NotTo(HaveOccurred(), "Failed to create transaction context")
@@ -135,7 +157,7 @@ func acquireLockWithTransaction(h *test.Helper, waiter *sync.WaitGroup) {
 	Expect(dberr).NotTo(HaveOccurred(), "Failed to acquire lock")
 	defer db.Unlock(ctx, lockOwnerID)
 
-	// Randomly add Tx after lock to demonstrate it works
+	// Add Tx after lock if requested
 	if txAfterLock {
 		ctx, dberr = db.NewContext(ctx, h.DBFactory)
 		Expect(dberr).NotTo(HaveOccurred(), "Failed to create transaction context")
@@ -174,7 +196,7 @@ func TestLocksAndExpectedWaits(t *testing.T) {
 	// It should have 1 lock
 	g2 := h.DBFactory.New(ctx)
 	var pgLocks []struct{ Granted bool }
-	g2.Raw("select granted from pg_locks WHERE locktype = 'advisory' and granted = true").Scan(&pgLocks)
+	err = g2.Raw("select granted from pg_locks WHERE locktype = 'advisory' and granted = true").Scan(&pgLocks).Error
 	Expect(len(pgLocks)).To(Equal(1), "Expected 1 lock")
 
 	// Successive locking should have no effect (nested lock with same id/type)
@@ -185,7 +207,7 @@ func TestLocksAndExpectedWaits(t *testing.T) {
 
 	// It should still have 1 lock
 	pgLocks = nil
-	g2.Raw("select granted from pg_locks WHERE locktype = 'advisory' and granted = true").Scan(&pgLocks)
+	err = g2.Raw("select granted from pg_locks WHERE locktype = 'advisory' and granted = true").Scan(&pgLocks).Error
 	Expect(len(pgLocks)).To(Equal(1), "Expected 1 lock after nested acquire")
 
 	// Unlock should have no effect either (unlocking nested lock)
@@ -193,7 +215,7 @@ func TestLocksAndExpectedWaits(t *testing.T) {
 	db.Unlock(ctx, lockOwnerID2)
 	// It should still have 1 lock
 	pgLocks = nil
-	g2.Raw("select granted from pg_locks WHERE locktype = 'advisory' and granted = true").Scan(&pgLocks)
+	err = g2.Raw("select granted from pg_locks WHERE locktype = 'advisory' and granted = true").Scan(&pgLocks).Error
 	Expect(len(pgLocks)).To(Equal(1), "Expected 1 lock after nested unlock")
 
 	// Lock on a different (id, lockType) should work
@@ -204,14 +226,14 @@ func TestLocksAndExpectedWaits(t *testing.T) {
 
 	// It should have 2 locks
 	pgLocks = nil
-	g2.Raw("select granted from pg_locks WHERE locktype = 'advisory' and granted = true").Scan(&pgLocks)
+	err = g2.Raw("select granted from pg_locks WHERE locktype = 'advisory' and granted = true").Scan(&pgLocks).Error
 	Expect(len(pgLocks)).To(Equal(2), "Expected 2 locks")
 
 	// Pretend it releases the new lock in the nested func
 	db.Unlock(ctx, lockOwnerID3)
 	// It should have 1 lock
 	pgLocks = nil
-	g2.Raw("select granted from pg_locks WHERE locktype = 'advisory' and granted = true").Scan(&pgLocks)
+	err = g2.Raw("select granted from pg_locks WHERE locktype = 'advisory' and granted = true").Scan(&pgLocks).Error
 	Expect(len(pgLocks)).To(Equal(1), "Expected 1 lock after releasing different lock")
 
 	// Unlock the topmost lock
@@ -219,7 +241,7 @@ func TestLocksAndExpectedWaits(t *testing.T) {
 	db.Unlock(ctx, lockOwnerID)
 	// The lock should be gone
 	pgLocks = nil
-	g2.Raw("select granted from pg_locks WHERE locktype = 'advisory' and granted = true").Scan(&pgLocks)
+	err = g2.Raw("select granted from pg_locks WHERE locktype = 'advisory' and granted = true").Scan(&pgLocks).Error
 	Expect(len(pgLocks)).To(Equal(0), "Expected 0 locks after final unlock")
 }
 
@@ -356,8 +378,13 @@ func TestAdvisoryLockContextCancellation(t *testing.T) {
 	// Create a cancellable context for the second goroutine
 	ctx2, cancel := context.WithCancel(context.Background())
 
+	// Use WaitGroup to ensure goroutine exits before test cleanup
+	var wg sync.WaitGroup
+	wg.Add(1)
+
 	// Second goroutine tries to acquire the same lock with cancellable context
 	go func() {
+		defer wg.Done()
 		_, _, err := db.NewAdvisoryLockContext(ctx2, h.DBFactory, "cancel-test", db.Migrations)
 		if err != nil {
 			// Check if this is a cancellation-type error
@@ -401,11 +428,33 @@ func TestAdvisoryLockContextCancellation(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Error("Second goroutine did not exit after context cancellation within timeout")
 	}
+
+	// Ensure goroutine exits before test cleanup
+	wg.Wait()
+}
+
+// migrateWithLockAndCustomMigration mimics db.MigrateWithLock but accepts a custom migration function
+// This allows testing the lock acquisition/release pattern with controlled success/failure
+func migrateWithLockAndCustomMigration(ctx context.Context, factory db.SessionFactory, migrationFunc func(*gorm.DB) error) error {
+	// Acquire advisory lock for migrations (same pattern as production MigrateWithLock)
+	ctx, lockOwnerID, err := db.NewAdvisoryLockContext(ctx, factory, db.MigrationsLockID, db.Migrations)
+	if err != nil {
+		return err
+	}
+	defer db.Unlock(ctx, lockOwnerID)
+
+	// Run custom migration with the locked context
+	g2 := factory.New(ctx)
+	if err := migrationFunc(g2); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // TestMigrationFailureUnderLock validates that when a migration fails while holding
 // the advisory lock, the lock is properly released via defer, allowing other waiters
-// to proceed. This tests the error path and cleanup behavior.
+// to proceed. This tests the error path and cleanup behavior of the MigrateWithLock pattern.
 func TestMigrationFailureUnderLock(t *testing.T) {
 	h, _ := test.RegisterIntegration(t)
 
@@ -413,58 +462,82 @@ func TestMigrationFailureUnderLock(t *testing.T) {
 	err := h.ResetDB()
 	Expect(err).NotTo(HaveOccurred(), "Failed to reset database")
 
+	// Channels to coordinate goroutines
+	firstLockAcquired := make(chan bool, 1)
+	firstMigrationFailed := make(chan bool, 1)
+	secondCanProceed := make(chan bool, 1)
+
 	// Track results
 	var mu sync.Mutex
 	successCount := 0
 	failureCount := 0
 	var wg sync.WaitGroup
 
-	// Create a failing migration function
+	// Create a failing migration function that signals when it acquires lock and fails
 	failingMigration := func(g2 *gorm.DB) error {
+		firstLockAcquired <- true
+		// Wait a bit to ensure second goroutine tries to acquire
+		time.Sleep(50 * time.Millisecond)
 		return fmt.Errorf("simulated migration failure")
 	}
 
-	// First goroutine: acquire lock and fail migration
+	// Create a successful migration function
+	successfulMigration := func(g2 *gorm.DB) error {
+		return nil
+	}
+
+	// First goroutine: acquire lock and fail migration using production code path
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 
 		ctx := context.Background()
-		ctx, lockOwnerID, err := db.NewAdvisoryLockContext(ctx, h.DBFactory, "migration-fail-test", db.Migrations)
-		Expect(err).NotTo(HaveOccurred(), "Failed to acquire lock")
-		defer db.Unlock(ctx, lockOwnerID)
+		err := migrateWithLockAndCustomMigration(ctx, h.DBFactory, failingMigration)
 
-		// Simulate migration failure
-		if err := failingMigration(h.DBFactory.New(ctx)); err != nil {
-			mu.Lock()
+		mu.Lock()
+		if err != nil {
 			failureCount++
-			mu.Unlock()
 		}
+		mu.Unlock()
+
+		firstMigrationFailed <- true
 		// Lock should be released via defer even though migration failed
 	}()
 
-	// Give first goroutine time to acquire lock and fail
-	time.Sleep(100 * time.Millisecond)
+	// Wait for first goroutine to acquire lock
+	<-firstLockAcquired
 
-	// Second goroutine: should be able to acquire lock after first fails
+	// Second goroutine: should block until first releases lock, then succeed
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 
 		ctx := context.Background()
-		ctx, lockOwnerID, err := db.NewAdvisoryLockContext(ctx, h.DBFactory, "migration-fail-test", db.Migrations)
-		Expect(err).NotTo(HaveOccurred(), "Failed to acquire lock after failure")
-		defer db.Unlock(ctx, lockOwnerID)
+		err := migrateWithLockAndCustomMigration(ctx, h.DBFactory, successfulMigration)
 
-		// This one succeeds
 		mu.Lock()
-		successCount++
+		if err == nil {
+			successCount++
+		}
 		mu.Unlock()
+
+		secondCanProceed <- true
 	}()
+
+	// Wait for first migration to fail and release lock
+	<-firstMigrationFailed
+
+	// Wait for second migration to complete
+	select {
+	case <-secondCanProceed:
+		// Expected: second goroutine acquired lock after first released it
+	case <-time.After(3 * time.Second):
+		t.Error("Second goroutine did not acquire lock after first failed")
+	}
 
 	wg.Wait()
 
-	// Verify both completed
+	// Verify both completed as expected
 	Expect(failureCount).To(Equal(1), "Expected 1 failure")
 	Expect(successCount).To(Equal(1), "Expected 1 success")
 }

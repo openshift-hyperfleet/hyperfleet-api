@@ -79,5 +79,5 @@ func (m *MockSessionFactory) NewListener(ctx context.Context, channel string, ca
 }
 
 func (m *MockSessionFactory) GetAdvisoryLockTimeout() int {
-	return 300 // 5 minutes default
+	return config.NewDatabaseConfig().AdvisoryLockTimeoutSeconds
 }
