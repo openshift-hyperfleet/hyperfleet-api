@@ -196,7 +196,7 @@ func TestLocksAndExpectedWaits(t *testing.T) {
 	// It should have 1 lock
 	g2 := h.DBFactory.New(ctx)
 	var pgLocks []struct{ Granted bool }
-	err = g2.Raw("select granted from pg_locks WHERE locktype = 'advisory' and granted = true").Scan(&pgLocks).Error
+	_ = g2.Raw("select granted from pg_locks WHERE locktype = 'advisory' and granted = true").Scan(&pgLocks).Error
 	Expect(len(pgLocks)).To(Equal(1), "Expected 1 lock")
 
 	// Successive locking should have no effect (nested lock with same id/type)
@@ -207,7 +207,7 @@ func TestLocksAndExpectedWaits(t *testing.T) {
 
 	// It should still have 1 lock
 	pgLocks = nil
-	err = g2.Raw("select granted from pg_locks WHERE locktype = 'advisory' and granted = true").Scan(&pgLocks).Error
+	_ = g2.Raw("select granted from pg_locks WHERE locktype = 'advisory' and granted = true").Scan(&pgLocks).Error
 	Expect(len(pgLocks)).To(Equal(1), "Expected 1 lock after nested acquire")
 
 	// Unlock should have no effect either (unlocking nested lock)
@@ -215,7 +215,7 @@ func TestLocksAndExpectedWaits(t *testing.T) {
 	db.Unlock(ctx, lockOwnerID2)
 	// It should still have 1 lock
 	pgLocks = nil
-	err = g2.Raw("select granted from pg_locks WHERE locktype = 'advisory' and granted = true").Scan(&pgLocks).Error
+	_ = g2.Raw("select granted from pg_locks WHERE locktype = 'advisory' and granted = true").Scan(&pgLocks).Error
 	Expect(len(pgLocks)).To(Equal(1), "Expected 1 lock after nested unlock")
 
 	// Lock on a different (id, lockType) should work
@@ -226,14 +226,14 @@ func TestLocksAndExpectedWaits(t *testing.T) {
 
 	// It should have 2 locks
 	pgLocks = nil
-	err = g2.Raw("select granted from pg_locks WHERE locktype = 'advisory' and granted = true").Scan(&pgLocks).Error
+	_ = g2.Raw("select granted from pg_locks WHERE locktype = 'advisory' and granted = true").Scan(&pgLocks).Error
 	Expect(len(pgLocks)).To(Equal(2), "Expected 2 locks")
 
 	// Pretend it releases the new lock in the nested func
 	db.Unlock(ctx, lockOwnerID3)
 	// It should have 1 lock
 	pgLocks = nil
-	err = g2.Raw("select granted from pg_locks WHERE locktype = 'advisory' and granted = true").Scan(&pgLocks).Error
+	_ = g2.Raw("select granted from pg_locks WHERE locktype = 'advisory' and granted = true").Scan(&pgLocks).Error
 	Expect(len(pgLocks)).To(Equal(1), "Expected 1 lock after releasing different lock")
 
 	// Unlock the topmost lock
@@ -241,7 +241,7 @@ func TestLocksAndExpectedWaits(t *testing.T) {
 	db.Unlock(ctx, lockOwnerID)
 	// The lock should be gone
 	pgLocks = nil
-	err = g2.Raw("select granted from pg_locks WHERE locktype = 'advisory' and granted = true").Scan(&pgLocks).Error
+	_ = g2.Raw("select granted from pg_locks WHERE locktype = 'advisory' and granted = true").Scan(&pgLocks).Error
 	Expect(len(pgLocks)).To(Equal(0), "Expected 0 locks after final unlock")
 }
 
@@ -266,7 +266,7 @@ func TestConcurrentMigrations(t *testing.T) {
 
 	// Simulate multiple pods trying to run migrations concurrently
 	for i := 0; i < total; i++ {
-		go func(id int) {
+		go func() {
 			defer waiter.Done()
 
 			ctx := context.Background()
@@ -280,7 +280,7 @@ func TestConcurrentMigrations(t *testing.T) {
 			} else {
 				successCount++
 			}
-		}(i)
+		}()
 	}
 
 	waiter.Wait()
@@ -311,7 +311,8 @@ func TestAdvisoryLockBlocking(t *testing.T) {
 
 	// Second goroutine tries to acquire the same lock
 	go func() {
-		ctx2, lockOwnerID2, err := db.NewAdvisoryLockContext(context.Background(), h.DBFactory, "blocking-test", db.Migrations)
+		ctx2, lockOwnerID2, err := db.NewAdvisoryLockContext(
+			context.Background(), h.DBFactory, "blocking-test", db.Migrations)
 		Expect(err).NotTo(HaveOccurred(), "Failed to acquire second lock")
 		defer db.Unlock(ctx2, lockOwnerID2)
 
@@ -326,7 +327,8 @@ func TestAdvisoryLockBlocking(t *testing.T) {
 	waitingForLock := false
 	for i := 0; i < 50; i++ { // Poll for up to 5 seconds (50 * 100ms)
 		var waitingLocks []struct{ Granted bool }
-		err := g2.Raw("SELECT granted FROM pg_locks WHERE locktype = 'advisory' AND granted = false").Scan(&waitingLocks).Error
+		query := "SELECT granted FROM pg_locks WHERE locktype = 'advisory' AND granted = false"
+		err := g2.Raw(query).Scan(&waitingLocks).Error
 		Expect(err).NotTo(HaveOccurred(), "Failed to query pg_locks")
 
 		if len(waitingLocks) > 0 {
@@ -406,7 +408,8 @@ func TestAdvisoryLockContextCancellation(t *testing.T) {
 	waitingForLock := false
 	for i := 0; i < 50; i++ {
 		var waitingLocks []struct{ Granted bool }
-		err := g2.Raw("SELECT granted FROM pg_locks WHERE locktype = 'advisory' AND granted = false").Scan(&waitingLocks).Error
+		query := "SELECT granted FROM pg_locks WHERE locktype = 'advisory' AND granted = false"
+		err := g2.Raw(query).Scan(&waitingLocks).Error
 		Expect(err).NotTo(HaveOccurred(), "Failed to query pg_locks")
 
 		if len(waitingLocks) > 0 {
@@ -435,7 +438,11 @@ func TestAdvisoryLockContextCancellation(t *testing.T) {
 
 // migrateWithLockAndCustomMigration mimics db.MigrateWithLock but accepts a custom migration function
 // This allows testing the lock acquisition/release pattern with controlled success/failure
-func migrateWithLockAndCustomMigration(ctx context.Context, factory db.SessionFactory, migrationFunc func(*gorm.DB) error) error {
+func migrateWithLockAndCustomMigration(
+	ctx context.Context,
+	factory db.SessionFactory,
+	migrationFunc func(*gorm.DB) error,
+) error {
 	// Acquire advisory lock for migrations (same pattern as production MigrateWithLock)
 	ctx, lockOwnerID, err := db.NewAdvisoryLockContext(ctx, factory, db.MigrationsLockID, db.Migrations)
 	if err != nil {
@@ -474,7 +481,7 @@ func TestMigrationFailureUnderLock(t *testing.T) {
 	var wg sync.WaitGroup
 
 	// Create a failing migration function that signals when it acquires lock and fails
-	failingMigration := func(g2 *gorm.DB) error {
+	failingMigration := func(_ *gorm.DB) error {
 		firstLockAcquired <- true
 		// Wait a bit to ensure second goroutine tries to acquire
 		time.Sleep(50 * time.Millisecond)
@@ -482,7 +489,7 @@ func TestMigrationFailureUnderLock(t *testing.T) {
 	}
 
 	// Create a successful migration function
-	successfulMigration := func(g2 *gorm.DB) error {
+	successfulMigration := func(_ *gorm.DB) error {
 		return nil
 	}
 

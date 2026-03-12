@@ -143,14 +143,14 @@ func Unlock(ctx context.Context, callerUUID string) {
 			}
 
 			if err := lock.unlock(ctx); err != nil {
-				logger.With(ctx, logger.FieldLockID, lockID, logger.FieldLockType, lockType).WithError(err).Error("Could not unlock lock")
+				logger.With(ctx, logger.FieldLockID, lockID, logger.FieldLockType, lockType).
+				WithError(err).Error("Could not unlock lock")
 				continue
 			}
 			logger.With(ctx, logger.FieldLockID, lockID, logger.FieldLockType, lockType).Info("Unlocked lock")
 			delete(locks, k)
-		} else {
-			// the resolving UUID belongs to a service call that did *not* initiate the lock.
-			// it is ignored.
 		}
+		// Note: if ownerUUID doesn't match callerUUID, the lock belongs to a different
+		// service call and is intentionally not unlocked here
 	}
 }

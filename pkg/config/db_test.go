@@ -7,10 +7,6 @@ import (
 	"github.com/spf13/pflag"
 )
 
-const (
-	testAdvisoryLockTimeout = 600
-)
-
 // TestNewDatabaseConfig_Defaults tests default configuration values
 func TestNewDatabaseConfig_Defaults(t *testing.T) {
 	cfg := NewDatabaseConfig()
@@ -417,12 +413,15 @@ func TestDatabaseConfig_InvalidEnvHandling(t *testing.T) {
 			cfg.BindEnv(nil)
 
 			// Document the behavior: invalid values are silently ignored
-			if tt.envVar == "DB_ADVISORY_LOCK_TIMEOUT" {
+			switch tt.envVar {
+			case "DB_ADVISORY_LOCK_TIMEOUT":
 				if cfg.AdvisoryLockTimeoutSeconds != 300 {
-					t.Errorf("expected default AdvisoryLockTimeoutSeconds (300) after invalid env, got %d", cfg.AdvisoryLockTimeoutSeconds)
+					t.Errorf(
+						"expected default AdvisoryLockTimeoutSeconds (300) after invalid env, got %d",
+						cfg.AdvisoryLockTimeoutSeconds)
 				}
 				t.Logf("INFO: %s - invalid value silently ignored, kept default 300", tt.description)
-			} else if tt.envVar == "DB_DEBUG" {
+			case "DB_DEBUG":
 				if cfg.Debug != false {
 					t.Errorf("expected default Debug (false) after invalid env, got %t", cfg.Debug)
 				}
