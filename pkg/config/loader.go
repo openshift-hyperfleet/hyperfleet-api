@@ -53,15 +53,7 @@ func (l *ConfigLoader) Load(ctx context.Context, cmd *cobra.Command) (*Applicati
 	l.viper.AutomaticEnv()
 	l.viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_", "-", "_"))
 
-	// Step 2.5: Handle file-based secrets (env vars ending with _FILE)
-	// Process *_FILE before binding env vars so they become regular env vars
-	// This ensures correct priority: Flags > Env (including *_FILE) > Config > Defaults
-	if err := l.handleFileSecrets(ctx); err != nil {
-		return nil, fmt.Errorf("failed to handle file secrets: %w", err)
-	}
-
 	// Step 3: Bind all environment variables explicitly (required for Unmarshal to work)
-	// This includes the env vars set by handleFileSecrets
 	l.bindAllEnvVars()
 
 	// Step 4: Bind command-line flags to Viper (maps flag names to nested config keys)
@@ -162,65 +154,6 @@ func (l *ConfigLoader) resolveAndReadConfigFile(ctx context.Context, cmd *cobra.
 	}
 
 	logger.With(ctx, "config_path", configPath).Info("Successfully loaded config file")
-	return nil
-}
-
-// handleFileSecrets processes environment variables ending with _FILE suffix
-// Reads the file content and sets it as a regular environment variable
-// This is called BEFORE binding env vars, so the file content becomes a normal env var
-// and Viper's native priority applies: Flags > Env > Config > Defaults
-//
-// Note: Fields that already store file paths (e.g., cert_file, key_file, acl.file) are excluded
-// because they should be set directly via environment variables, not loaded from files.
-func (l *ConfigLoader) handleFileSecrets(ctx context.Context) error {
-	// List of *_FILE environment variables to process
-	fileSecretEnvVars := []string{
-		EnvPrefix + "_DATABASE_HOST_FILE",
-		EnvPrefix + "_DATABASE_PORT_FILE",
-		EnvPrefix + "_DATABASE_USERNAME_FILE",
-		EnvPrefix + "_DATABASE_PASSWORD_FILE",
-		EnvPrefix + "_DATABASE_NAME_FILE",
-		EnvPrefix + "_OCM_CLIENT_ID_FILE",
-		EnvPrefix + "_OCM_CLIENT_SECRET_FILE",
-		EnvPrefix + "_OCM_SELF_TOKEN_FILE",
-	}
-
-	for _, envVar := range fileSecretEnvVars {
-		filePath := os.Getenv(envVar)
-		if filePath == "" {
-			continue
-		}
-
-		// Check if plain env var is set (e.g., HYPERFLEET_DATABASE_PASSWORD)
-		// Plain env vars have higher priority than *_FILE env vars
-		// Use LookupEnv to distinguish between unset and explicitly set to empty string
-		plainEnvVar := strings.TrimSuffix(envVar, "_FILE")
-		if plainValue, exists := os.LookupEnv(plainEnvVar); exists && plainValue != "" {
-			logger.With(ctx, "plain_env", plainEnvVar, "file_env", envVar).
-				Debug("Plain env var already set with non-empty value, skipping file secret")
-			continue
-		}
-
-		// Read file content
-		content, err := os.ReadFile(filePath) //nolint:gosec // File path from env var is expected pattern for secrets
-		if err != nil {
-			return fmt.Errorf("failed to read file secret %s (from %s): %w", filePath, envVar, err)
-		}
-
-		// Trim whitespace and newlines
-		value := strings.TrimSpace(string(content))
-
-		// Set as regular environment variable (without _FILE suffix)
-		// This will be picked up by Viper's AutomaticEnv in the next step
-		// Priority: Flags > Plain Env (including *_FILE content) > Config Files > Defaults
-		if err := os.Setenv(plainEnvVar, value); err != nil {
-			return fmt.Errorf("failed to set env var %s from file %s: %w", plainEnvVar, filePath, err)
-		}
-
-		logger.With(ctx, "file_env", envVar, "plain_env", plainEnvVar).
-			Debug("Loaded secret from file and set as env var")
-	}
-
 	return nil
 }
 
@@ -356,6 +289,7 @@ func (l *ConfigLoader) bindAllEnvVars() {
 	l.bindEnv("server.hostname")
 	l.bindEnv("server.host")
 	l.bindEnv("server.port")
+	l.bindEnv("server.openapi_schema_path")
 	l.bindEnv("server.timeouts.read")
 	l.bindEnv("server.timeouts.write")
 	l.bindEnv("server.tls.enabled")
@@ -435,6 +369,7 @@ func (l *ConfigLoader) bindFlags(cmd *cobra.Command) {
 	l.bindPFlag("server.hostname", cmd.Flags().Lookup("server-hostname"))
 	l.bindPFlag("server.host", cmd.Flags().Lookup("server-host"))
 	l.bindPFlag("server.port", cmd.Flags().Lookup("server-port"))
+	l.bindPFlag("server.openapi_schema_path", cmd.Flags().Lookup("server-openapi-schema-path"))
 	l.bindPFlag("server.timeouts.read", cmd.Flags().Lookup("server-read-timeout"))
 	l.bindPFlag("server.timeouts.write", cmd.Flags().Lookup("server-write-timeout"))
 	l.bindPFlag("server.tls.cert_file", cmd.Flags().Lookup("server-https-cert-file"))
@@ -584,4 +519,3 @@ func collectValidConfigKeys(t reflect.Type, prefix string) []string {
 
 	return keys
 }
-

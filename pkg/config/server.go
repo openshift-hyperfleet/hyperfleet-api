@@ -10,15 +10,16 @@ import (
 // ServerConfig holds HTTP/HTTPS server configuration
 // Follows HyperFleet Configuration Standard
 type ServerConfig struct {
-	Hostname string         `mapstructure:"hostname" json:"hostname" validate:"omitempty,hostname|ip"`
-	Host     string         `mapstructure:"host" json:"host" validate:"required,hostname|ip"`
-	Port     int            `mapstructure:"port" json:"port" validate:"required,min=1,max=65535"`
-	Timeouts TimeoutsConfig `mapstructure:"timeouts" json:"timeouts" validate:"required"`
-	TLS      TLSConfig      `mapstructure:"tls" json:"tls" validate:"required"`
-	JWT      JWTConfig      `mapstructure:"jwt" json:"jwt" validate:"required"`
-	JWK      JWKConfig      `mapstructure:"jwk" json:"jwk" validate:"required"`
-	Authz    AuthzConfig    `mapstructure:"authz" json:"authz" validate:"required"`
-	ACL      ACLConfig      `mapstructure:"acl" json:"acl" validate:"required"`
+	Hostname          string         `mapstructure:"hostname" json:"hostname" validate:"omitempty,hostname|ip"`
+	Host              string         `mapstructure:"host" json:"host" validate:"required,hostname|ip"`
+	Port              int            `mapstructure:"port" json:"port" validate:"required,min=1,max=65535"`
+	OpenAPISchemaPath string         `mapstructure:"openapi_schema_path" json:"openapi_schema_path"`
+	Timeouts          TimeoutsConfig `mapstructure:"timeouts" json:"timeouts" validate:"required"`
+	TLS               TLSConfig      `mapstructure:"tls" json:"tls" validate:"required"`
+	JWT               JWTConfig      `mapstructure:"jwt" json:"jwt" validate:"required"`
+	JWK               JWKConfig      `mapstructure:"jwk" json:"jwk" validate:"required"`
+	Authz             AuthzConfig    `mapstructure:"authz" json:"authz" validate:"required"`
+	ACL               ACLConfig      `mapstructure:"acl" json:"acl" validate:"required"`
 }
 
 // TimeoutsConfig holds HTTP timeout configuration
@@ -85,9 +86,10 @@ type ACLConfig struct {
 // These defaults can be overridden by config file, env vars, or CLI flags
 func NewServerConfig() *ServerConfig {
 	return &ServerConfig{
-		Hostname: "",
-		Host:     "localhost",
-		Port:     8000,
+		Hostname:          "",
+		Host:              "localhost",
+		Port:              8000,
+		OpenAPISchemaPath: "openapi/openapi.yaml",
 		Timeouts: TimeoutsConfig{
 			Read:  5 * time.Second,
 			Write: 30 * time.Second,
@@ -121,54 +123,4 @@ func NewServerConfig() *ServerConfig {
 // Uses net.JoinHostPort to correctly handle IPv6 addresses
 func (s *ServerConfig) BindAddress() string {
 	return net.JoinHostPort(s.Host, strconv.Itoa(s.Port))
-}
-
-// ReadTimeout returns read timeout
-func (s *ServerConfig) ReadTimeout() time.Duration {
-	return s.Timeouts.Read
-}
-
-// WriteTimeout returns write timeout
-func (s *ServerConfig) WriteTimeout() time.Duration {
-	return s.Timeouts.Write
-}
-
-// EnableHTTPS returns TLS enabled flag
-func (s *ServerConfig) EnableHTTPS() bool {
-	return s.TLS.Enabled
-}
-
-// HTTPSCertFile returns TLS cert file
-func (s *ServerConfig) HTTPSCertFile() string {
-	return s.TLS.CertFile
-}
-
-// HTTPSKeyFile returns TLS key file
-func (s *ServerConfig) HTTPSKeyFile() string {
-	return s.TLS.KeyFile
-}
-
-// EnableJWT returns JWT enabled flag
-func (s *ServerConfig) EnableJWT() bool {
-	return s.JWT.Enabled
-}
-
-// EnableAuthz returns authz enabled flag
-func (s *ServerConfig) EnableAuthz() bool {
-	return s.Authz.Enabled
-}
-
-// JwkCertFile returns JWK cert file
-func (s *ServerConfig) JwkCertFile() string {
-	return s.JWK.CertFile
-}
-
-// JwkCertURL returns JWK cert URL
-func (s *ServerConfig) JwkCertURL() string {
-	return s.JWK.CertURL
-}
-
-// ACLFile returns ACL file
-func (s *ServerConfig) ACLFile() string {
-	return s.ACL.File
 }

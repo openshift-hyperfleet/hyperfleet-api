@@ -40,61 +40,26 @@ Handler (business logic)
 
 ## Configuration
 
-### Environment Variables
+Logging is configured through environment variables or configuration files.
 
+**Development:**
 ```bash
-# Logging level (debug, info, warn, error)
-export HYPERFLEET_LOGGING_LEVEL=info
+# Human-readable text format with debug level
+export HYPERFLEET_LOGGING_FORMAT=text
+export HYPERFLEET_LOGGING_LEVEL=debug
+```
 
-# Logging format (json, text)
+**Production:**
+```bash
+# Structured JSON format with info level
 export HYPERFLEET_LOGGING_FORMAT=json
-
-# Log output destination (stdout, stderr)
-export HYPERFLEET_LOGGING_OUTPUT=stdout
-
-# Enable OpenTelemetry (true/false)
+export HYPERFLEET_LOGGING_LEVEL=info
 export HYPERFLEET_LOGGING_OTEL_ENABLED=true
-
-# OpenTelemetry sampling rate (0.0 to 1.0)
-# 0.0 = no traces, 1.0 = all traces
 export HYPERFLEET_LOGGING_OTEL_SAMPLING_RATE=0.1
-
-# Data masking (true/false)
-export HYPERFLEET_LOGGING_MASKING_ENABLED=true
-
-# Headers to mask (comma-separated)
-export HYPERFLEET_LOGGING_MASKING_HEADERS="Authorization,Cookie,X-API-Key"
-
-# JSON body fields to mask (comma-separated)
-export HYPERFLEET_LOGGING_MASKING_FIELDS="password,token,secret,api_key"
-
-# Database debug mode (true/false)
-# When true, logs all SQL queries regardless of HYPERFLEET_LOGGING_LEVEL
-export HYPERFLEET_DATABASE_DEBUG=false
 ```
 
-### Configuration Struct
-
-```go
-type LoggingConfig struct {
-    Level   string         // HYPERFLEET_LOGGING_LEVEL
-    Format  string         // HYPERFLEET_LOGGING_FORMAT
-    Output  string         // HYPERFLEET_LOGGING_OUTPUT
-    OTel    OTelConfig     // HYPERFLEET_LOGGING_OTEL_*
-    Masking MaskingConfig  // HYPERFLEET_LOGGING_MASKING_*
-}
-
-type OTelConfig struct {
-    Enabled      bool    // HYPERFLEET_LOGGING_OTEL_ENABLED
-    SamplingRate float64 // HYPERFLEET_LOGGING_OTEL_SAMPLING_RATE
-}
-
-type MaskingConfig struct {
-    Enabled bool     // HYPERFLEET_LOGGING_MASKING_ENABLED
-    Headers []string // HYPERFLEET_LOGGING_MASKING_HEADERS (comma-separated)
-    Fields  []string // HYPERFLEET_LOGGING_MASKING_FIELDS (comma-separated)
-}
-```
+**For complete configuration reference**, including all logging settings (levels, formats, OpenTelemetry, masking), see:
+- **[Configuration Guide](config.md)** - All logging environment variables and defaults
 
 ## Usage
 
@@ -241,19 +206,9 @@ logger.With(ctx, "cluster_id", "cluster-abc123", "region", "us-east-1").Info("Pr
 
 ### Switching Between Formats
 
-Toggle between formats using the `LOG_FORMAT` environment variable:
+Toggle between formats using the `HYPERFLEET_LOGGING_FORMAT` environment variable (`json` or `text`). No code changes required - the logger automatically adapts output format based on configuration.
 
-```bash
-# Development: human-readable text
-export HYPERFLEET_LOGGING_FORMAT=text
-export HYPERFLEET_LOGGING_LEVEL=debug
-
-# Production: structured JSON
-export HYPERFLEET_LOGGING_FORMAT=json
-export HYPERFLEET_LOGGING_LEVEL=info
-```
-
-No code changes required - the logger automatically adapts output format based on configuration.
+See the [Configuration](#configuration) section above for examples.
 
 ## Database Logging
 

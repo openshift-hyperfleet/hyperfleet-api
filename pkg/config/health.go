@@ -51,8 +51,3 @@ func NewHealthConfig() *HealthConfig {
 func (h *HealthConfig) BindAddress() string {
 	return net.JoinHostPort(h.Host, strconv.Itoa(h.Port))
 }
-
-// EnableHTTPS returns TLS enabled flag
-func (h *HealthConfig) EnableHTTPS() bool {
-	return h.TLS.Enabled
-}

@@ -103,25 +103,6 @@ func NewDatabaseConfig() *DatabaseConfig {
 }
 
 // ============================================================
-// Convenience Accessor Methods
-// ============================================================
-
-// SSLMode returns SSL mode
-func (c *DatabaseConfig) SSLMode() string {
-	return c.SSL.Mode
-}
-
-// MaxOpenConnections returns max open connections
-func (c *DatabaseConfig) MaxOpenConnections() int {
-	return c.Pool.MaxConnections
-}
-
-// RootCertFile returns root cert file
-func (c *DatabaseConfig) RootCertFile() string {
-	return c.SSL.RootCertFile
-}
-
-// ============================================================
 // Connection String Generation
 // ============================================================
 

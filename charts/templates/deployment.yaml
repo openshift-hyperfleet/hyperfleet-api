@@ -50,13 +50,12 @@ spec:
         # Config file from ConfigMap
         - name: HYPERFLEET_CONFIG
           value: /etc/hyperfleet/config.yaml
-        # Database credentials from Secret
+        # Database credentials from Secret (using secretKeyRef)
         {{- include "hyperfleet-api.databaseEnvVars" . | nindent 8 }}
         volumeMounts:
         - name: config
           mountPath: /etc/hyperfleet
           readOnly: true
-        {{- include "hyperfleet-api.secretVolumeMounts" . | nindent 8 }}
       {{- end }}
       containers:
       - name: {{ .Chart.Name }}
@@ -70,20 +69,20 @@ spec:
         - serve
         ports:
         - name: http
-          containerPort: {{ .Values.ports.api }}
+          containerPort: {{ .Values.ports.api | default 8000 }}
           protocol: TCP
         - name: health
-          containerPort: {{ .Values.ports.health }}
+          containerPort: {{ .Values.ports.health | default 8080 }}
           protocol: TCP
         - name: metrics
-          containerPort: {{ .Values.ports.metrics }}
+          containerPort: {{ .Values.ports.metrics | default 9090 }}
           protocol: TCP
         env:
         # Config file from ConfigMap (generated from values)
         - name: HYPERFLEET_CONFIG
           value: /etc/hyperfleet/config.yaml
 
-        # Database credentials from Secret (using *_FILE pattern)
+        # Database credentials from Secret (using secretKeyRef)
         {{- include "hyperfleet-api.databaseEnvVars" . | nindent 8 }}
 
         # Extra environment variables (escape hatch for overrides)
@@ -114,9 +113,6 @@ spec:
         - name: config
           mountPath: /etc/hyperfleet
           readOnly: true
-
-        # Secret mounts (database)
-        {{- include "hyperfleet-api.secretVolumeMounts" . | nindent 8 }}
 
         # Temp directory for writable filesystem
         - name: tmp
@@ -197,9 +193,6 @@ spec:
           {{- else }}
           name: {{ include "hyperfleet-api.fullname" . }}-config
           {{- end }}
-
-      # Secret volumes (database)
-      {{- include "hyperfleet-api.secretVolumes" . | nindent 6 }}
 
       - name: tmp
         emptyDir: {}

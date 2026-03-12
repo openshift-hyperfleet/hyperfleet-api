@@ -5,17 +5,17 @@ metadata:
   labels:
     {{- include "hyperfleet-api.labels" . | nindent 4 }}
 spec:
-  type: {{ .Values.service.type }}
+  type: {{ .Values.service.type | default "ClusterIP" }}
   ports:
-  - port: {{ .Values.ports.api }}
+  - port: {{ .Values.ports.api | default 8000 }}
     targetPort: http
     protocol: TCP
     name: http
-  - port: {{ .Values.ports.health }}
+  - port: {{ .Values.ports.health | default 8080 }}
     targetPort: health
     protocol: TCP
     name: health
-  - port: {{ .Values.ports.metrics }}
+  - port: {{ .Values.ports.metrics | default 9090 }}
     targetPort: metrics
     protocol: TCP
     name: metrics

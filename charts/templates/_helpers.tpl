@@ -63,62 +63,43 @@ Create the name of the service account to use
 {{- end }}
 
 {{/*
-Database environment variables (using *_FILE pattern for Viper)
+Database environment variables (using secretKeyRef - Kubernetes best practice)
 */}}
 {{- define "hyperfleet-api.databaseEnvVars" -}}
-{{- if .Values.database.external.enabled }}
-- name: HYPERFLEET_DATABASE_HOST_FILE
-  value: /app/secrets/database/db.host
-- name: HYPERFLEET_DATABASE_PORT_FILE
-  value: /app/secrets/database/db.port
-- name: HYPERFLEET_DATABASE_NAME_FILE
-  value: /app/secrets/database/db.name
-- name: HYPERFLEET_DATABASE_USERNAME_FILE
-  value: /app/secrets/database/db.user
-- name: HYPERFLEET_DATABASE_PASSWORD_FILE
-  value: /app/secrets/database/db.password
+{{- $secretName := "" }}
+{{- if .Values.database.pgbouncer.enabled }}
+{{- $secretName = printf "%s-db-secrets-pgbouncer" (include "hyperfleet-api.fullname" .) }}
+{{- else if .Values.database.external.enabled }}
+{{- $secretName = .Values.database.external.secretName }}
 {{- else if .Values.database.postgresql.enabled }}
-- name: HYPERFLEET_DATABASE_HOST_FILE
-  value: /app/secrets/database/db.host
-- name: HYPERFLEET_DATABASE_PORT_FILE
-  value: /app/secrets/database/db.port
-- name: HYPERFLEET_DATABASE_NAME_FILE
-  value: /app/secrets/database/db.name
-- name: HYPERFLEET_DATABASE_USERNAME_FILE
-  value: /app/secrets/database/db.user
-- name: HYPERFLEET_DATABASE_PASSWORD_FILE
-  value: /app/secrets/database/db.password
+{{- $secretName = printf "%s-db-secrets" (include "hyperfleet-api.fullname" .) }}
+{{- end }}
+{{- if $secretName }}
+- name: HYPERFLEET_DATABASE_HOST
+  valueFrom:
+    secretKeyRef:
+      name: {{ $secretName }}
+      key: db.host
+- name: HYPERFLEET_DATABASE_PORT
+  valueFrom:
+    secretKeyRef:
+      name: {{ $secretName }}
+      key: db.port
+- name: HYPERFLEET_DATABASE_NAME
+  valueFrom:
+    secretKeyRef:
+      name: {{ $secretName }}
+      key: db.name
+- name: HYPERFLEET_DATABASE_USERNAME
+  valueFrom:
+    secretKeyRef:
+      name: {{ $secretName }}
+      key: db.user
+- name: HYPERFLEET_DATABASE_PASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: {{ $secretName }}
+      key: db.password
 {{- end }}
 {{- end }}
 
-{{/*
-Database secret volume mounts
-With pgbouncer: app connects to pgbouncer at localhost (using pgbouncer secret)
-Without pgbouncer: app connects directly to DB (using real DB or external secret)
-*/}}
-{{- define "hyperfleet-api.secretVolumeMounts" -}}
-{{- if or .Values.database.external.enabled .Values.database.postgresql.enabled }}
-- name: database-secrets
-  mountPath: /app/secrets/database
-  readOnly: true
-{{- end }}
-{{- end }}
-
-{{/*
-Database secret volumes
-With pgbouncer: use pgbouncer secret (db.host=localhost, db.port=6432)
-Without pgbouncer: use external secret or postgresql secret (real DB connection)
-*/}}
-{{- define "hyperfleet-api.secretVolumes" -}}
-{{- if or .Values.database.external.enabled .Values.database.postgresql.enabled }}
-- name: database-secrets
-  secret:
-    {{- if .Values.database.pgbouncer.enabled }}
-    secretName: {{ include "hyperfleet-api.fullname" . }}-db-secrets-pgbouncer
-    {{- else if .Values.database.external.enabled }}
-    secretName: {{ .Values.database.external.secretName }}
-    {{- else }}
-    secretName: {{ include "hyperfleet-api.fullname" . }}-db-secrets
-    {{- end }}
-{{- end }}
-{{- end }}

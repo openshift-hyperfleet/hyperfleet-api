@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/spf13/pflag"
+
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
 )
 
 func BenchmarkGetDynos(b *testing.B) {
@@ -26,11 +28,14 @@ func TestLoadServices(t *testing.T) {
 	// Set environment to unit_testing to use mocks
 	t.Setenv("OCM_ENV", "unit_testing")
 
-	// Set required adapter configuration for tests (always use fixed values for deterministic tests)
-	t.Setenv("HYPERFLEET_ADAPTERS_REQUIRED_CLUSTER", `["validation","dns","pullsecret","hypershift"]`)
-	t.Setenv("HYPERFLEET_ADAPTERS_REQUIRED_NODEPOOL", `["validation","hypershift"]`)
+	// Create minimal configuration for unit test
+	cfg := config.NewApplicationConfig()
+	cfg.Adapters.Required.Cluster = []string{"validation", "dns", "pullsecret", "hypershift"}
+	cfg.Adapters.Required.Nodepool = []string{"validation", "hypershift"}
 
 	env := Environment()
+	env.Config = cfg
+
 	err := env.SetEnvironmentDefaults(pflag.CommandLine)
 	if err != nil {
 		t.Errorf("Unable to add flags for testing environment: %s", err.Error())

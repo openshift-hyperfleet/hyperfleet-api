@@ -38,11 +38,6 @@ func (m *MetricsConfig) BindAddress() string {
 	return net.JoinHostPort(m.Host, strconv.Itoa(m.Port))
 }
 
-// EnableHTTPS returns TLS enabled flag
-func (m *MetricsConfig) EnableHTTPS() bool {
-	return m.TLS.Enabled
-}
-
 // GetLabelMetricsInclusionDuration returns label metrics inclusion duration
 func (m *MetricsConfig) GetLabelMetricsInclusionDuration() time.Duration {
 	return m.LabelMetricsInclusionDuration

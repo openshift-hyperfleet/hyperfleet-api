@@ -30,8 +30,7 @@ HyperFleet API supports multiple configuration sources:
 | Method | Use Case | Example |
 |--------|----------|---------|
 | **Configuration File** | Local development, complex configs | `config.yaml` with all settings |
-| **Environment Variables** | Kubernetes, CI/CD | `HYPERFLEET_DATABASE_HOST=localhost` |
-| **File-based Secrets** | Kubernetes Secrets | `HYPERFLEET_DATABASE_PASSWORD_FILE=/secrets/db-password` |
+| **Environment Variables** | Kubernetes (secretKeyRef), CI/CD | `HYPERFLEET_DATABASE_HOST=localhost` |
 | **CLI Flags** | Quick overrides, testing | `--server-port=9000` |
 
 All configuration follows these conventions:
@@ -48,10 +47,7 @@ Configuration sources are applied in the following order (highest to lowest prio
 ```text
 1. Command-line flags (highest)
    ↓
-2. Environment variables
-   ├─ Plain (e.g., HYPERFLEET_DATABASE_PASSWORD)
-   └─ File-based (e.g., HYPERFLEET_DATABASE_PASSWORD_FILE)
-      Note: Plain environment variables take precedence over file-based
+2. Environment variables (e.g., HYPERFLEET_DATABASE_PASSWORD)
    ↓
 3. Configuration file (config.yaml or ConfigMap)
    ↓
@@ -67,20 +63,11 @@ hyperfleet-api serve --server-port=9000
 # Result: Uses 9000 (flag wins)
 ```
 
-*Plain environment variable overrides file-based:*
-```bash
-export HYPERFLEET_DATABASE_PASSWORD=direct-password
-export HYPERFLEET_DATABASE_PASSWORD_FILE=/secrets/db-password
-# Result: Uses "direct-password" (plain env wins)
-# Use case: Quick override for testing without changing Secret
-```
-
-*File-based environment variable overrides config file:*
+*Environment variable overrides config file:*
 ```bash
 # config.yaml has: database.password: "config-password"
-export HYPERFLEET_DATABASE_PASSWORD_FILE=/secrets/db-password
-# Result: Uses content from /secrets/db-password (file env wins)
-# Use case: Kubernetes Secret pattern
+export HYPERFLEET_DATABASE_PASSWORD=secret-password
+# Result: Uses "secret-password" (env var wins)
 ```
 
 ---
@@ -122,7 +109,7 @@ PostgreSQL database connection settings.
 | `database.port` | int | `5432` | Database server port |
 | `database.name` | string | `hyperfleet` | Database name |
 | `database.username` | string | `hyperfleet` | Database username |
-| `database.password` | string | `""` | Database password (**use `*_FILE` for production**) |
+| `database.password` | string | `""` | Database password (**use env var with secretKeyRef for Kubernetes**) |
 | `database.ssl.mode` | string | `disable` | SSL mode: `disable`, `require`, `verify-ca`, `verify-full` |
 | `database.ssl.root_cert_file` | string | `""` | Root CA certificate for SSL verification |
 | `database.pool.max_connections` | int | `50` | Maximum open database connections |
@@ -141,7 +128,7 @@ database:
   port: 5432
   name: hyperfleet
   username: hyperfleet
-  # Password via environment variable or *_FILE (recommended)
+  # Password via environment variable (recommended for Kubernetes: secretKeyRef)
   ssl:
     mode: verify-full
     root_cert_file: /etc/certs/ca.crt
@@ -311,9 +298,9 @@ OpenShift Cluster Manager integration settings.
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
 | `ocm.base_url` | string | `https://api.integration.openshift.com` | OCM API base URL |
-| `ocm.client_id` | string | `""` | OCM client ID (use `*_FILE` for production) |
-| `ocm.client_secret` | string | `""` | OCM client secret (use `*_FILE` for production) |
-| `ocm.self_token` | string | `""` | OCM self token (use `*_FILE` for production) |
+| `ocm.client_id` | string | `""` | OCM client ID (use env var with secretKeyRef for Kubernetes) |
+| `ocm.client_secret` | string | `""` | OCM client secret (use env var with secretKeyRef for Kubernetes) |
+| `ocm.self_token` | string | `""` | OCM self token (use env var with secretKeyRef for Kubernetes) |
 | `ocm.mock.enabled` | bool | `false` | Enable mock OCM client for testing |
 | `ocm.insecure` | bool | `false` | Skip TLS verification (development only) |
 
@@ -321,7 +308,7 @@ OpenShift Cluster Manager integration settings.
 ```yaml
 ocm:
   base_url: https://api.openshift.com
-  # Credentials via *_FILE environment variables
+  # Credentials via environment variables (recommended for Kubernetes: secretKeyRef)
   mock:
     enabled: false
 ```
@@ -426,7 +413,7 @@ All CLI flags and their corresponding configuration paths.
 | `--db-host` | `database.host` | string |
 | `--db-port` | `database.port` | int |
 | `--db-name` | `database.name` | string |
-| `--db-user` | `database.username` | string |
+| `--db-username` | `database.username` | string |
 | `--db-password` | `database.password` | string |
 | `--db-debug` | `database.debug` | bool |
 | `--db-max-open-connections` | `database.pool.max_connections` | int |
@@ -450,49 +437,6 @@ All CLI flags and their corresponding configuration paths.
 | **Health** | | |
 | `--health-host` | `health.host` | string |
 | `--health-port` | `health.port` | int |
-
----
-
-## File-based Secrets
-
-For enhanced security in Kubernetes environments, sensitive values can be loaded from files using `*_FILE` environment variables.
-
-### How it works
-
-Set a `*_FILE` environment variable pointing to a file path:
-```bash
-export HYPERFLEET_DATABASE_PASSWORD_FILE=/secrets/db-password
-```
-
-The application reads the file content and uses it as the configuration value.
-
-### Supported Variables
-
-| Configuration | File Environment Variable |
-|---------------|---------------------------|
-| `database.host` | `HYPERFLEET_DATABASE_HOST_FILE` |
-| `database.port` | `HYPERFLEET_DATABASE_PORT_FILE` |
-| `database.name` | `HYPERFLEET_DATABASE_NAME_FILE` |
-| `database.username` | `HYPERFLEET_DATABASE_USERNAME_FILE` |
-| `database.password` | `HYPERFLEET_DATABASE_PASSWORD_FILE` |
-| `ocm.client_id` | `HYPERFLEET_OCM_CLIENT_ID_FILE` |
-| `ocm.client_secret` | `HYPERFLEET_OCM_CLIENT_SECRET_FILE` |
-| `ocm.self_token` | `HYPERFLEET_OCM_SELF_TOKEN_FILE` |
-
-### Priority
-
-Flags > Plain env vars > `*_FILE` env vars > ConfigMap > Defaults
-
-**Emergency override example:**
-```bash
-# Override Secret file temporarily
-kubectl set env deployment/hyperfleet-api HYPERFLEET_DATABASE_PASSWORD=temp-password
-
-# Revert by removing the override
-kubectl set env deployment/hyperfleet-api HYPERFLEET_DATABASE_PASSWORD-
-```
-
-See [Configuration Examples](#configuration-examples) for complete Kubernetes Secret setup.
 
 ---
 
@@ -663,8 +607,7 @@ hyperfleet-api serve
 
 Before deploying to production, verify:
 
-- ✅ Environment variables (HYPERFLEET_*)
+- ✅ Environment variables (HYPERFLEET_*) with secretKeyRef for Kubernetes
 - ✅ CLI flags (--kebab-case)
 - ✅ Configuration files (YAML snake_case)
-- ✅ File-based secrets (*_FILE)
 - ✅ Default values

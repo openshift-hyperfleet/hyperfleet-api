@@ -18,6 +18,7 @@ import (
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/google/uuid"
 	"github.com/segmentio/ksuid"
+	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"gorm.io/gorm"
 
@@ -80,7 +81,18 @@ func NewHelper(t *testing.T) *Helper {
 			fmt.Println("Unable to read JWT keys - this may affect tests that make authenticated server requests")
 		}
 
+		// Load configuration using ConfigLoader (same path as production)
+		emptyCmd := &cobra.Command{}
+		loader := config.NewConfigLoader()
+		cfg, err := loader.Load(ctx, emptyCmd)
+		if err != nil {
+			logger.WithError(ctx, err).Error("Failed to load test configuration")
+			os.Exit(1)
+		}
+
 		env := environments.Environment()
+		env.Config = cfg
+
 		err = env.SetEnvironmentDefaults(pflag.CommandLine)
 		if err != nil {
 			logger.WithError(ctx, err).Error("Unable to set environment defaults")
@@ -261,7 +273,7 @@ func (helper *Helper) NewUUID() string {
 
 func (helper *Helper) RestURL(path string) string {
 	protocol := "http" //nolint:goconst // Protocol strings used across URL builders
-	if helper.AppConfig.Server.EnableHTTPS() {
+	if helper.AppConfig.Server.TLS.Enabled {
 		protocol = "https" //nolint:goconst // Protocol strings used across URL builders
 	}
 	return fmt.Sprintf("%s://%s/api/hyperfleet/v1%s", protocol, helper.AppConfig.Server.BindAddress(), path)
@@ -269,7 +281,7 @@ func (helper *Helper) RestURL(path string) string {
 
 func (helper *Helper) MetricsURL(path string) string {
 	protocol := "http" //nolint:goconst // Protocol strings used across URL builders
-	if helper.AppConfig.Metrics.EnableHTTPS() {
+	if helper.AppConfig.Metrics.TLS.Enabled {
 		protocol = "https" //nolint:goconst // Protocol strings used across URL builders
 	}
 	return fmt.Sprintf("%s://%s%s", protocol, helper.AppConfig.Metrics.BindAddress(), path)
@@ -277,7 +289,7 @@ func (helper *Helper) MetricsURL(path string) string {
 
 func (helper *Helper) HealthURL(path string) string {
 	protocol := "http" //nolint:goconst // Protocol strings used across URL builders
-	if helper.AppConfig.Health.EnableHTTPS() {
+	if helper.AppConfig.Health.TLS.Enabled {
 		protocol = "https" //nolint:goconst // Protocol strings used across URL builders
 	}
 	return fmt.Sprintf("%s://%s%s", protocol, helper.AppConfig.Health.BindAddress(), path)
@@ -286,7 +298,7 @@ func (helper *Helper) HealthURL(path string) string {
 func (helper *Helper) NewApiClient() *openapi.ClientWithResponses {
 	// Build the server URL
 	protocol := "http" //nolint:goconst // Protocol strings used across URL builders
-	if helper.AppConfig.Server.EnableHTTPS() {
+	if helper.AppConfig.Server.TLS.Enabled {
 		protocol = "https" //nolint:goconst // Protocol strings used across URL builders
 	}
 	serverURL := fmt.Sprintf("%s://%s", protocol, helper.AppConfig.Server.BindAddress())

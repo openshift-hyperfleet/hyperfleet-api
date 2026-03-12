@@ -18,8 +18,7 @@ func init() {
 	once.Do(func() {
 		environment = &Env{}
 
-		// Create the configuration
-		environment.Config = config.NewApplicationConfig()
+		// Config must be set by caller using ConfigLoader before Initialize()
 		environment.Name = GetEnvironmentStrFromEnv()
 
 		environments = map[string]EnvironmentImpl{
@@ -158,7 +157,7 @@ func (e *Env) LoadClients() error {
 	}
 
 	// Create OCM Authz client
-	if e.Config.OCM.EnableMock() {
+	if e.Config.OCM.Mock.Enabled {
 		logger.Info(ctx, "Using Mock OCM Authz Client")
 		e.Clients.OCM, err = ocm.NewClientMock(ocmConfig)
 	} else {

@@ -53,11 +53,3 @@ func NewOCMConfig() *OCMConfig {
 	}
 }
 
-// ============================================================
-// Convenience Accessor Methods
-// ============================================================
-
-// EnableMock returns mock enabled flag
-func (c *OCMConfig) EnableMock() bool {
-	return c.Mock.Enabled
-}

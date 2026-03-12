@@ -33,7 +33,7 @@ func NewAPIServer() Server {
 	// referring to the router as type http.Handler allows us to add middleware via more handlers
 	var mainHandler http.Handler = mainRouter
 
-	if env().Config.Server.EnableJWT() {
+	if env().Config.Server.JWT.Enabled {
 		// Create the logger for the authentication handler using slog bridge
 		authnLogger := logger.NewOCMLoggerBridge()
 
@@ -41,9 +41,9 @@ func NewAPIServer() Server {
 		var err error
 		mainHandler, err = authentication.NewHandler().
 			Logger(authnLogger).
-			KeysFile(env().Config.Server.JwkCertFile()).
-			KeysURL(env().Config.Server.JwkCertURL()).
-			ACLFile(env().Config.Server.ACLFile()).
+			KeysFile(env().Config.Server.JWK.CertFile).
+			KeysURL(env().Config.Server.JWK.CertURL).
+			ACLFile(env().Config.Server.ACL.File).
 			Public("^/api/hyperfleet/?$").
 			Public("^/api/hyperfleet/v1/?$").
 			Public("^/api/hyperfleet/v1/openapi/?$").
@@ -93,8 +93,8 @@ func NewAPIServer() Server {
 	s.httpServer = &http.Server{
 		Addr:              env().Config.Server.BindAddress(),
 		Handler:           mainHandler,
-		ReadTimeout:       env().Config.Server.ReadTimeout(),
-		WriteTimeout:      env().Config.Server.WriteTimeout(),
+		ReadTimeout:       env().Config.Server.Timeouts.Read,
+		WriteTimeout:      env().Config.Server.Timeouts.Write,
 		ReadHeaderTimeout: 10 * time.Second, // Hardcoded to prevent Slowloris attacks (not user-configurable)
 	}
 
@@ -106,9 +106,9 @@ func NewAPIServer() Server {
 func (s apiServer) Serve(listener net.Listener) {
 	ctx := context.Background()
 	var err error
-	if env().Config.Server.EnableHTTPS() {
+	if env().Config.Server.TLS.Enabled {
 		// Check https cert and key path
-		if env().Config.Server.HTTPSCertFile() == "" || env().Config.Server.HTTPSKeyFile() == "" {
+		if env().Config.Server.TLS.CertFile == "" || env().Config.Server.TLS.KeyFile == "" {
 			check(
 				fmt.Errorf(
 					"HTTPS certificate or key not configured; "+
@@ -120,7 +120,7 @@ func (s apiServer) Serve(listener net.Listener) {
 
 		// Serve with TLS
 		logger.With(ctx, logger.FieldBindAddress, env().Config.Server.BindAddress()).Info("Serving with TLS")
-		err = s.httpServer.ServeTLS(listener, env().Config.Server.HTTPSCertFile(), env().Config.Server.HTTPSKeyFile())
+		err = s.httpServer.ServeTLS(listener, env().Config.Server.TLS.CertFile, env().Config.Server.TLS.KeyFile)
 	} else {
 		logger.With(ctx, logger.FieldBindAddress, env().Config.Server.BindAddress()).Info("Serving without TLS")
 		err = s.httpServer.Serve(listener)

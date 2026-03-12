@@ -565,11 +565,13 @@ Production should use `LOG_LEVEL=info` and `LOG_FORMAT=json` for structured logg
 
 ### 3.6 Schema Validation
 
-```bash
-OPENAPI_SCHEMA_PATH=/etc/hyperfleet/schemas/openapi.yaml
-```
+The API validates resource `spec` fields (e.g., cluster, nodepool) against an OpenAPI schema when configured. This allows different providers (GCP, AWS, Azure) to enforce different spec structures.
 
-The API validates resource `spec` fields (e.g., cluster, nodepool) against this OpenAPI schema when configured. This allows different providers (GCP, AWS, Azure) to enforce different spec structures.
+**Configuration:** `server.openapi_schema_path`
+
+- **Environment variable:** `HYPERFLEET_SERVER_OPENAPI_SCHEMA_PATH=/etc/hyperfleet/schemas/openapi.yaml`
+- **Config file:** `server.openapi_schema_path: /etc/hyperfleet/schemas/openapi.yaml`
+- **Default:** `openapi/openapi.yaml` (provider-agnostic base schema)
 
 **How validation works:**
 
@@ -593,11 +595,6 @@ The API uses a two-step process to validate specs:
 
 - **Schema configured and valid**: Specs are validated against the OpenAPI schema. Invalid specs return `400 Bad Request`.
 - **Schema missing or invalid**: API logs a warning and starts without validation. Specs are stored without schema validation.
-
-**Configuration:**
-
-- Default: Uses `openapi/openapi.yaml` from the repository
-- Custom: Set `OPENAPI_SCHEMA_PATH` for provider-specific schemas
 - Startup is **non-blocking** — missing or invalid schema files do not prevent API startup
 
 ---
