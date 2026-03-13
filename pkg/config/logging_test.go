@@ -1,251 +1,71 @@
 package config
 
 import (
+	"context"
 	"os"
 	"testing"
 
-	"github.com/spf13/pflag"
-)
-
-const (
-	testLogLevelDebug = "debug"
+	. "github.com/onsi/gomega"
+	"github.com/spf13/cobra"
 )
 
 // TestNewLoggingConfig_Defaults tests default configuration values
 func TestNewLoggingConfig_Defaults(t *testing.T) {
+	RegisterTestingT(t)
+
 	cfg := NewLoggingConfig()
 
-	tests := []struct {
-		name     string
-		got      interface{}
-		expected interface{}
-	}{
-		{"Level", cfg.Level, "info"},
-		{"Format", cfg.Format, "json"},
-		{"Output", cfg.Output, "stdout"},
-		{"OTel.Enabled", cfg.OTel.Enabled, false},
-		{"OTel.SamplingRate", cfg.OTel.SamplingRate, 1.0},
-		{"Masking.Enabled", cfg.Masking.Enabled, true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if tt.got != tt.expected {
-				t.Errorf("expected %v, got %v", tt.expected, tt.got)
-			}
-		})
-	}
-
-	// Check non-empty string fields
-	if cfg.Masking.SensitiveHeaders == "" {
-		t.Error("expected default SensitiveHeaders to be non-empty")
-	}
-	if cfg.Masking.SensitiveFields == "" {
-		t.Error("expected default SensitiveFields to be non-empty")
-	}
+	Expect(cfg.Level).To(Equal("info"))
+	Expect(cfg.Format).To(Equal("json"))
+	Expect(cfg.Output).To(Equal("stdout"))
+	Expect(cfg.OTel.Enabled).To(BeFalse())
+	Expect(cfg.OTel.SamplingRate).To(Equal(1.0))
+	Expect(cfg.Masking.Enabled).To(BeTrue())
+	Expect(cfg.Masking.Headers).NotTo(BeEmpty())
+	Expect(cfg.Masking.Fields).NotTo(BeEmpty())
 }
 
-// TestLoggingConfig_AddFlags tests CLI flag registration
-func TestLoggingConfig_AddFlags(t *testing.T) {
-	cfg := NewLoggingConfig()
-	fs := pflag.NewFlagSet("test", pflag.ContinueOnError)
+// TestConfigLoader_LoggingFromEnv tests loading logging config from environment
+func TestConfigLoader_LoggingFromEnv(t *testing.T) {
+	RegisterTestingT(t)
 
-	cfg.AddFlags(fs)
+	SetMinimalTestEnv(t)
 
-	// Verify flags are registered
-	flags := []string{"log-level", "log-format", "log-output"}
-	for _, flagName := range flags {
-		t.Run("flag_"+flagName, func(t *testing.T) {
-			if fs.Lookup(flagName) == nil {
-				t.Errorf("expected %s flag to be registered", flagName)
-			}
-		})
-	}
+	t.Setenv("HYPERFLEET_LOGGING_LEVEL", "debug")
+	t.Setenv("HYPERFLEET_LOGGING_FORMAT", "text")
+	t.Setenv("HYPERFLEET_LOGGING_OTEL_ENABLED", "true")
+	t.Setenv("HYPERFLEET_LOGGING_OTEL_SAMPLING_RATE", "0.5")
 
-	// Test flag parsing
-	tests := []struct {
-		name     string
-		args     []string
-		expected map[string]string
-	}{
-		{
-			name: "custom values",
-			args: []string{"--log-level=" + testLogLevelDebug, "--log-format=text", "--log-output=stderr"},
-			expected: map[string]string{
-				"level":  testLogLevelDebug,
-				"format": "text",
-				"output": "stderr",
-			},
-		},
-	}
+	loader := NewConfigLoader()
+	cmd := &cobra.Command{}
+	ctx := context.Background()
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			cfg := NewLoggingConfig()
-			fs := pflag.NewFlagSet("test", pflag.ContinueOnError)
-			cfg.AddFlags(fs)
+	appConfig, err := loader.Load(ctx, cmd)
 
-			if err := fs.Parse(tt.args); err != nil {
-				t.Fatalf("failed to parse flags: %v", err)
-			}
-
-			if cfg.Level != tt.expected["level"] {
-				t.Errorf("expected Level '%s', got '%s'", tt.expected["level"], cfg.Level)
-			}
-			if cfg.Format != tt.expected["format"] {
-				t.Errorf("expected Format '%s', got '%s'", tt.expected["format"], cfg.Format)
-			}
-			if cfg.Output != tt.expected["output"] {
-				t.Errorf("expected Output '%s', got '%s'", tt.expected["output"], cfg.Output)
-			}
-		})
-	}
+	Expect(err).NotTo(HaveOccurred())
+	Expect(appConfig.Logging.Level).To(Equal("debug"))
+	Expect(appConfig.Logging.Format).To(Equal("text"))
+	Expect(appConfig.Logging.OTel.Enabled).To(BeTrue())
+	Expect(appConfig.Logging.OTel.SamplingRate).To(Equal(0.5))
 }
 
-// TestLoggingConfig_ReadFiles tests that ReadFiles returns nil (no file-based config)
-func TestLoggingConfig_ReadFiles(t *testing.T) {
-	cfg := NewLoggingConfig()
-	if err := cfg.ReadFiles(); err != nil {
-		t.Errorf("expected ReadFiles to return nil, got %v", err)
-	}
-}
-
-// TestLoggingConfig_BindEnv tests environment variable binding
-func TestLoggingConfig_BindEnv(t *testing.T) {
-	tests := []struct {
-		name     string
-		envVars  map[string]string
-		validate func(*testing.T, *LoggingConfig)
-	}{
-		{
-			name: "basic logging env vars",
-			envVars: map[string]string{
-				"LOG_LEVEL":  testLogLevelDebug,
-				"LOG_FORMAT": "text",
-				"LOG_OUTPUT": "stderr",
-			},
-			validate: func(t *testing.T, cfg *LoggingConfig) {
-				if cfg.Level != testLogLevelDebug {
-					t.Errorf("expected Level %q, got '%s'", testLogLevelDebug, cfg.Level)
-				}
-				if cfg.Format != "text" {
-					t.Errorf("expected Format 'text', got '%s'", cfg.Format)
-				}
-				if cfg.Output != "stderr" {
-					t.Errorf("expected Output 'stderr', got '%s'", cfg.Output)
-				}
-			},
-		},
-		{
-			name: "otel env vars",
-			envVars: map[string]string{
-				"OTEL_ENABLED":       "true",
-				"OTEL_SAMPLING_RATE": "0.5",
-			},
-			validate: func(t *testing.T, cfg *LoggingConfig) {
-				if cfg.OTel.Enabled != true {
-					t.Errorf("expected OTel.Enabled true, got %t", cfg.OTel.Enabled)
-				}
-				if cfg.OTel.SamplingRate != 0.5 {
-					t.Errorf("expected OTel.SamplingRate 0.5, got %f", cfg.OTel.SamplingRate)
-				}
-			},
-		},
-		{
-			name: "masking env vars",
-			envVars: map[string]string{
-				"MASKING_ENABLED": "false",
-				"MASKING_HEADERS": "Custom-Header,Another-Header",
-				"MASKING_FIELDS":  "custom_field,another_field",
-			},
-			validate: func(t *testing.T, cfg *LoggingConfig) {
-				if cfg.Masking.Enabled != false {
-					t.Errorf("expected Masking.Enabled false, got %t", cfg.Masking.Enabled)
-				}
-				if cfg.Masking.SensitiveHeaders != "Custom-Header,Another-Header" {
-					t.Errorf("expected custom SensitiveHeaders, got '%s'", cfg.Masking.SensitiveHeaders)
-				}
-				if cfg.Masking.SensitiveFields != "custom_field,another_field" {
-					t.Errorf("expected custom SensitiveFields, got '%s'", cfg.Masking.SensitiveFields)
-				}
-			},
-		},
-		{
-			name: "invalid bool value keeps default",
-			envVars: map[string]string{
-				"OTEL_ENABLED": "not-a-bool",
-			},
-			validate: func(t *testing.T, cfg *LoggingConfig) {
-				if cfg.OTel.Enabled != false {
-					t.Errorf("expected OTel.Enabled to keep default (false), got %t", cfg.OTel.Enabled)
-				}
-			},
-		},
-		{
-			name: "invalid float value keeps default",
-			envVars: map[string]string{
-				"OTEL_SAMPLING_RATE": "not-a-float",
-			},
-			validate: func(t *testing.T, cfg *LoggingConfig) {
-				if cfg.OTel.SamplingRate != 1.0 {
-					t.Errorf("expected OTel.SamplingRate to keep default (1.0), got %f", cfg.OTel.SamplingRate)
-				}
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Save and restore env vars
-			oldEnvs := make(map[string]string)
-			for key := range tt.envVars {
-				oldEnvs[key] = os.Getenv(key)
-			}
-			defer func() {
-				for key, val := range oldEnvs {
-					if val == "" {
-						_ = os.Unsetenv(key)
-					} else {
-						_ = os.Setenv(key, val)
-					}
-				}
-			}()
-
-			// Set env vars
-			for key, val := range tt.envVars {
-				if err := os.Setenv(key, val); err != nil {
-					t.Fatalf("failed to set env var %s: %v", key, err)
-				}
-			}
-
-			cfg := NewLoggingConfig()
-			cfg.BindEnv(nil)
-
-			tt.validate(t, cfg)
-		})
-	}
-}
-
-// TestLoggingConfig_GetSensitiveHeadersList tests parsing of comma-separated headers
+// TestLoggingConfig_GetSensitiveHeadersList tests the headers array accessor
 func TestLoggingConfig_GetSensitiveHeadersList(t *testing.T) {
+	RegisterTestingT(t)
+
 	tests := []struct {
 		name     string
-		input    string
+		input    []string
 		expected []string
 	}{
 		{
 			name:     "standard list",
-			input:    "Authorization,X-API-Key,Cookie",
+			input:    []string{"Authorization", "X-API-Key", "Cookie"},
 			expected: []string{"Authorization", "X-API-Key", "Cookie"},
 		},
 		{
-			name:     "with whitespace",
-			input:    "  Authorization  ,  X-API-Key  ,  Cookie  ",
-			expected: []string{"Authorization", "X-API-Key", "Cookie"},
-		},
-		{
-			name:     "empty string",
-			input:    "",
+			name:     "empty array",
+			input:    []string{},
 			expected: []string{},
 		},
 	}
@@ -253,42 +73,32 @@ func TestLoggingConfig_GetSensitiveHeadersList(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := NewLoggingConfig()
-			cfg.Masking.SensitiveHeaders = tt.input
+			cfg.Masking.Headers = tt.input
 
 			headers := cfg.GetSensitiveHeadersList()
 
-			if len(headers) != len(tt.expected) {
-				t.Fatalf("expected %d headers, got %d", len(tt.expected), len(headers))
-			}
-			for i, h := range tt.expected {
-				if headers[i] != h {
-					t.Errorf("expected header[%d] '%s', got '%s'", i, h, headers[i])
-				}
-			}
+			Expect(headers).To(Equal(tt.expected))
 		})
 	}
 }
 
-// TestLoggingConfig_GetSensitiveFieldsList tests parsing of comma-separated fields
+// TestLoggingConfig_GetSensitiveFieldsList tests the fields array accessor
 func TestLoggingConfig_GetSensitiveFieldsList(t *testing.T) {
+	RegisterTestingT(t)
+
 	tests := []struct {
 		name     string
-		input    string
+		input    []string
 		expected []string
 	}{
 		{
 			name:     "standard list",
-			input:    "password,secret,token",
+			input:    []string{"password", "secret", "token"},
 			expected: []string{"password", "secret", "token"},
 		},
 		{
-			name:     "with whitespace",
-			input:    "  password  ,  secret  ,  token  ",
-			expected: []string{"password", "secret", "token"},
-		},
-		{
-			name:     "empty string",
-			input:    "",
+			name:     "empty array",
+			input:    []string{},
 			expected: []string{},
 		},
 	}
@@ -296,189 +106,235 @@ func TestLoggingConfig_GetSensitiveFieldsList(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := NewLoggingConfig()
-			cfg.Masking.SensitiveFields = tt.input
+			cfg.Masking.Fields = tt.input
 
 			fields := cfg.GetSensitiveFieldsList()
 
-			if len(fields) != len(tt.expected) {
-				t.Fatalf("expected %d fields, got %d", len(tt.expected), len(fields))
-			}
-			for i, f := range tt.expected {
-				if fields[i] != f {
-					t.Errorf("expected field[%d] '%s', got '%s'", i, f, fields[i])
-				}
-			}
+			Expect(fields).To(Equal(tt.expected))
 		})
 	}
 }
 
-// TestLoggingConfig_FlagsOverrideEnv tests that CLI flags override environment variables
-func TestLoggingConfig_FlagsOverrideEnv(t *testing.T) {
-	// Save and restore env var
-	oldLevel := os.Getenv("LOG_LEVEL")
-	defer func() {
-		if oldLevel == "" {
-			_ = os.Unsetenv("LOG_LEVEL")
-		} else {
-			_ = os.Setenv("LOG_LEVEL", oldLevel)
-		}
-	}()
+// ==============================================================
+// Comprehensive Config Loader Tests
+// ==============================================================
 
-	// Set env var to "error"
-	if err := os.Setenv("LOG_LEVEL", "error"); err != nil {
-		t.Fatalf("failed to set LOG_LEVEL: %v", err)
+// TestConfigPrecedence tests the core config loader precedence contract:
+// CLI flags > environment variables > config file > defaults
+func TestConfigPrecedence(t *testing.T) {
+	RegisterTestingT(t)
+
+	tests := []struct {
+		name           string
+		configFile     string
+		envVars        map[string]string
+		cliFlags       map[string]string
+		expectedLevel  string
+		expectedFormat string
+	}{
+		{
+			name:           "defaults only",
+			expectedLevel:  "info",
+			expectedFormat: "json",
+		},
+		{
+			name: "file overrides defaults",
+			configFile: `
+logging:
+  level: "debug"
+  format: "text"
+`,
+			expectedLevel:  "debug",
+			expectedFormat: "text",
+		},
+		{
+			name: "env overrides file",
+			configFile: `
+logging:
+  level: "debug"
+  format: "text"
+`,
+			envVars: map[string]string{
+				"HYPERFLEET_LOGGING_LEVEL":  "warn",
+				"HYPERFLEET_LOGGING_FORMAT": "json",
+			},
+			expectedLevel:  "warn",
+			expectedFormat: "json",
+		},
+		{
+			name: "flags override env and file",
+			configFile: `
+logging:
+  level: "debug"
+  format: "text"
+`,
+			envVars: map[string]string{
+				"HYPERFLEET_LOGGING_LEVEL": "warn",
+			},
+			cliFlags: map[string]string{
+				"log-level": "error",
+			},
+			expectedLevel:  "error",
+			expectedFormat: "text", // From file, no env or flag override
+		},
 	}
 
-	cfg := NewLoggingConfig()
-	fs := pflag.NewFlagSet("test", pflag.ContinueOnError)
-	cfg.AddFlags(fs)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			RegisterTestingT(t)
 
-	// Parse flags with different value
-	args := []string{"--log-level=" + testLogLevelDebug}
-	if err := fs.Parse(args); err != nil {
-		t.Fatalf("failed to parse flags: %v", err)
-	}
+			// Setup minimal test environment
+			SetMinimalTestEnv(t)
 
-	// Before BindEnv, should have flag value
-	if cfg.Level != testLogLevelDebug {
-		t.Errorf("expected Level %q from flag, got '%s'", testLogLevelDebug, cfg.Level)
-	}
+			ctx := context.Background()
+			var configPath string
 
-	// After BindEnv, flag should take priority over env var
-	cfg.BindEnv(fs)
-	if cfg.Level != testLogLevelDebug {
-		t.Errorf("expected Level %q (flag > env), got '%s'", testLogLevelDebug, cfg.Level)
-	}
-}
+			// Create config file if provided
+			if tt.configFile != "" {
+				tmpDir := t.TempDir()
+				configPath = tmpDir + "/config.yaml"
+				err := os.WriteFile(configPath, []byte(tt.configFile), 0600)
+				Expect(err).NotTo(HaveOccurred())
+				t.Setenv("HYPERFLEET_CONFIG", configPath)
 
-// TestLoggingConfig_EnvOverridesDefaults tests that env vars override defaults when no flag is set
-func TestLoggingConfig_EnvOverridesDefaults(t *testing.T) {
-	// Save and restore env var
-	oldLevel := os.Getenv("LOG_LEVEL")
-	defer func() {
-		if oldLevel == "" {
-			_ = os.Unsetenv("LOG_LEVEL")
-		} else {
-			_ = os.Setenv("LOG_LEVEL", oldLevel)
-		}
-	}()
-
-	// Set env var
-	if err := os.Setenv("LOG_LEVEL", "error"); err != nil {
-		t.Fatalf("failed to set LOG_LEVEL: %v", err)
-	}
-
-	cfg := NewLoggingConfig()
-	fs := pflag.NewFlagSet("test", pflag.ContinueOnError)
-	cfg.AddFlags(fs)
-
-	// Parse empty args (no flags set)
-	if err := fs.Parse([]string{}); err != nil {
-		t.Fatalf("failed to parse flags: %v", err)
-	}
-
-	// Before BindEnv, should have default value
-	if cfg.Level != "info" {
-		t.Errorf("expected Level 'info' (default), got '%s'", cfg.Level)
-	}
-
-	// After BindEnv, env var should override default
-	cfg.BindEnv(fs)
-	if cfg.Level != "error" {
-		t.Errorf("expected Level 'error' (env > default), got '%s'", cfg.Level)
-	}
-}
-
-// TestLoggingConfig_PriorityMixed tests priority with multiple fields and mixed sources
-func TestLoggingConfig_PriorityMixed(t *testing.T) {
-	// Save and restore env vars
-	envVars := map[string]string{
-		"LOG_LEVEL":  os.Getenv("LOG_LEVEL"),
-		"LOG_FORMAT": os.Getenv("LOG_FORMAT"),
-		"LOG_OUTPUT": os.Getenv("LOG_OUTPUT"),
-	}
-	defer func() {
-		for key, val := range envVars {
-			if val == "" {
-				_ = os.Unsetenv(key)
-			} else {
-				_ = os.Setenv(key, val)
+				// Unset env vars that would override config file for logging tests
+				t.Setenv("HYPERFLEET_LOGGING_LEVEL", "")
+				t.Setenv("HYPERFLEET_LOGGING_FORMAT", "")
 			}
-		}
-	}()
 
-	// Set env vars for all three fields
-	_ = os.Setenv("LOG_LEVEL", "error")
-	_ = os.Setenv("LOG_FORMAT", "text")
-	_ = os.Setenv("LOG_OUTPUT", "stderr")
-
-	cfg := NewLoggingConfig()
-	fs := pflag.NewFlagSet("test", pflag.ContinueOnError)
-	cfg.AddFlags(fs)
-
-	// Only set flag for log-level
-	if err := fs.Parse([]string{"--log-level=" + testLogLevelDebug}); err != nil {
-		t.Fatalf("failed to parse flags: %v", err)
-	}
-
-	cfg.BindEnv(fs)
-
-	// log-level: flag wins over env
-	if cfg.Level != testLogLevelDebug {
-		t.Errorf("expected Level %q (flag > env), got '%s'", testLogLevelDebug, cfg.Level)
-	}
-	// log-format: env wins over default
-	if cfg.Format != "text" {
-		t.Errorf("expected Format 'text' (env > default), got '%s'", cfg.Format)
-	}
-	// log-output: env wins over default
-	if cfg.Output != "stderr" {
-		t.Errorf("expected Output 'stderr' (env > default), got '%s'", cfg.Output)
-	}
-}
-
-// TestLoggingConfig_OTelMaskingAlwaysApply tests that OTel/Masking configs always use env vars
-func TestLoggingConfig_OTelMaskingAlwaysApply(t *testing.T) {
-	// Save and restore env vars
-	envVars := map[string]string{
-		"OTEL_ENABLED":       os.Getenv("OTEL_ENABLED"),
-		"OTEL_SAMPLING_RATE": os.Getenv("OTEL_SAMPLING_RATE"),
-	}
-	defer func() {
-		for key, val := range envVars {
-			if val == "" {
-				_ = os.Unsetenv(key)
-			} else {
-				_ = os.Setenv(key, val)
+			// Set environment variables
+			for key, value := range tt.envVars {
+				t.Setenv(key, value)
 			}
-		}
-	}()
 
-	// Set OTel env vars
-	_ = os.Setenv("OTEL_ENABLED", "true")
-	_ = os.Setenv("OTEL_SAMPLING_RATE", "0.5")
+			// Create command with flags
+			cmd := &cobra.Command{}
+			AddLoggingFlags(cmd)
+			for flag, value := range tt.cliFlags {
+				_ = cmd.Flags().Set(flag, value)
+			}
 
-	cfg := NewLoggingConfig()
-	fs := pflag.NewFlagSet("test", pflag.ContinueOnError)
-	cfg.AddFlags(fs)
+			// Load config
+			loader := NewConfigLoader()
+			appConfig, err := loader.Load(ctx, cmd)
 
-	// Parse with some other flag
-	if err := fs.Parse([]string{"--log-level=" + testLogLevelDebug}); err != nil {
-		t.Fatalf("failed to parse flags: %v", err)
-	}
-
-	// Before BindEnv, OTel should have defaults
-	if cfg.OTel.Enabled != false {
-		t.Errorf("expected OTel.Enabled false (default), got %t", cfg.OTel.Enabled)
-	}
-
-	cfg.BindEnv(fs)
-
-	// After BindEnv, OTel should be set from env (no flags exist)
-	if cfg.OTel.Enabled != true {
-		t.Errorf("expected OTel.Enabled true (env), got %t", cfg.OTel.Enabled)
-	}
-	if cfg.OTel.SamplingRate != 0.5 {
-		t.Errorf("expected OTel.SamplingRate 0.5 (env), got %f", cfg.OTel.SamplingRate)
+			// Assert
+			Expect(err).NotTo(HaveOccurred())
+			Expect(appConfig.Logging.Level).To(Equal(tt.expectedLevel),
+				"logging level should match expected precedence")
+			Expect(appConfig.Logging.Format).To(Equal(tt.expectedFormat),
+				"logging format should match expected precedence")
+		})
 	}
 }
+
+// TestValidationFailures tests that the loader properly validates configuration
+// and returns helpful error messages
+func TestValidationFailures(t *testing.T) {
+	RegisterTestingT(t)
+
+	tests := []struct {
+		name          string
+		envVars       map[string]string
+		expectedError string
+	}{
+		{
+			name: "invalid server port (too low)",
+			envVars: map[string]string{
+				"HYPERFLEET_SERVER_PORT": "0",
+			},
+			expectedError: "Configuration validation failed",
+		},
+		{
+			name: "invalid server port (too high)",
+			envVars: map[string]string{
+				"HYPERFLEET_SERVER_PORT": "99999",
+			},
+			expectedError: "Configuration validation failed",
+		},
+		{
+			name: "invalid database host",
+			envVars: map[string]string{
+				"HYPERFLEET_DATABASE_HOST": "invalid!@#$%",
+			},
+			expectedError: "Configuration validation failed",
+		},
+		{
+			name: "invalid database dialect",
+			envVars: map[string]string{
+				"HYPERFLEET_DATABASE_DIALECT": "invalid",
+			},
+			expectedError: "Configuration validation failed",
+		},
+		{
+			name: "invalid server read timeout (too short)",
+			envVars: map[string]string{
+				"HYPERFLEET_SERVER_TIMEOUTS_READ": "500ms",
+			},
+			expectedError: "server timeouts validation failed",
+		},
+		{
+			name: "invalid health shutdown timeout (too long)",
+			envVars: map[string]string{
+				"HYPERFLEET_HEALTH_SHUTDOWN_TIMEOUT": "200s",
+			},
+			expectedError: "health config validation failed",
+		},
+		{
+			name: "server TLS enabled without cert file",
+			envVars: map[string]string{
+				"HYPERFLEET_SERVER_TLS_ENABLED":  "true",
+				"HYPERFLEET_SERVER_TLS_KEY_FILE": "/path/to/key.pem",
+			},
+			expectedError: "server TLS validation failed",
+		},
+		{
+			name: "server TLS enabled without key file",
+			envVars: map[string]string{
+				"HYPERFLEET_SERVER_TLS_ENABLED":   "true",
+				"HYPERFLEET_SERVER_TLS_CERT_FILE": "/path/to/cert.pem",
+			},
+			expectedError: "server TLS validation failed",
+		},
+		{
+			name: "health TLS enabled without cert file",
+			envVars: map[string]string{
+				"HYPERFLEET_HEALTH_TLS_ENABLED":  "true",
+				"HYPERFLEET_HEALTH_TLS_KEY_FILE": "/path/to/key.pem",
+			},
+			expectedError: "health TLS validation failed",
+		},
+		{
+			name: "metrics TLS enabled without key file",
+			envVars: map[string]string{
+				"HYPERFLEET_METRICS_TLS_ENABLED":   "true",
+				"HYPERFLEET_METRICS_TLS_CERT_FILE": "/path/to/cert.pem",
+			},
+			expectedError: "metrics TLS validation failed",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			RegisterTestingT(t)
+
+			SetMinimalTestEnv(t)
+
+			// Set invalid environment variables
+			for key, value := range tt.envVars {
+				t.Setenv(key, value)
+			}
+
+			loader := NewConfigLoader()
+			cmd := &cobra.Command{}
+			ctx := context.Background()
+
+			// Load should fail validation
+			_, err := loader.Load(ctx, cmd)
+
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring(tt.expectedError))
+		})
+	}
+}
+

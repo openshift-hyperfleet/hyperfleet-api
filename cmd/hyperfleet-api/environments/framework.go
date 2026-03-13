@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/spf13/pflag"
 
@@ -19,8 +18,7 @@ func init() {
 	once.Do(func() {
 		environment = &Env{}
 
-		// Create the configuration
-		environment.Config = config.NewApplicationConfig()
+		// Config must be set by caller using ConfigLoader before Initialize()
 		environment.Name = GetEnvironmentStrFromEnv()
 
 		environments = map[string]EnvironmentImpl{
@@ -36,7 +34,7 @@ func init() {
 // Each environment provides a set of flags for basic set/override of the environment
 // and configuration functions for each component type.
 type EnvironmentImpl interface {
-	Flags() map[string]string
+	EnvironmentDefaults() map[string]string
 	OverrideConfig(c *config.ApplicationConfig) error
 	OverrideServices(s *Services) error
 	OverrideDatabase(s *Database) error
@@ -56,10 +54,24 @@ func Environment() *Env {
 	return environment
 }
 
-// AddFlags Adds environment flags, using the environment's config struct, to the flagset 'flags'
-func (e *Env) AddFlags(flags *pflag.FlagSet) error {
-	e.Config.AddFlags(flags)
-	return setConfigDefaults(flags, environments[e.Name].Flags())
+// ApplyEnvironmentOverrides applies environment-specific configuration overrides
+// This is used by the new config system to apply environment-specific settings
+// (e.g., development environment disables JWT and TLS)
+func ApplyEnvironmentOverrides(cfg *config.ApplicationConfig) error {
+	// Read current environment from env var instead of using cached environment.Name
+	// to ensure we use the most up-to-date value
+	envName := GetEnvironmentStrFromEnv()
+	envImpl, found := environments[envName]
+	if !found {
+		return fmt.Errorf("unknown runtime environment: %s", envName)
+	}
+	return envImpl.OverrideConfig(cfg)
+}
+
+// SetEnvironmentDefaults sets environment-specific flag defaults
+// This is used for environment-specific behavior flags (e.g., verbose mode, OCM debug)
+func (e *Env) SetEnvironmentDefaults(flags *pflag.FlagSet) error {
+	return setFlagDefaults(flags, environments[e.Name].EnvironmentDefaults())
 }
 
 // Initialize loads the environment's resources
@@ -67,6 +79,11 @@ func (e *Env) AddFlags(flags *pflag.FlagSet) error {
 // The environment does NOT handle flag parsing
 func (e *Env) Initialize() error {
 	ctx := context.Background()
+
+	// Re-read environment name from env var to support tests that set OCM_ENV after init()
+	envName := GetEnvironmentStrFromEnv()
+	e.Name = envName
+
 	logger.With(ctx, logger.FieldEnvironment, e.Name).Info("Initializing environment")
 
 	envImpl, found := environments[e.Name]
@@ -77,19 +94,6 @@ func (e *Env) Initialize() error {
 
 	if err := envImpl.OverrideConfig(e.Config); err != nil {
 		logger.WithError(ctx, err).Error("Failed to configure ApplicationConfig")
-		os.Exit(1)
-	}
-
-	messages := environment.Config.ReadFiles()
-	if len(messages) != 0 {
-		err := fmt.Errorf("%s", strings.Join(messages, "\n"))
-		logger.WithError(ctx, err).Error("Unable to read configuration files")
-		os.Exit(1)
-	}
-
-	// Load adapter configuration from environment variables
-	if err := e.Config.LoadAdapters(); err != nil {
-		logger.WithError(ctx, err).Error("Failed to load adapter configuration")
 		os.Exit(1)
 	}
 
@@ -153,7 +157,7 @@ func (e *Env) LoadClients() error {
 	}
 
 	// Create OCM Authz client
-	if e.Config.OCM.EnableMock {
+	if e.Config.OCM.Mock.Enabled {
 		logger.Info(ctx, "Using Mock OCM Authz Client")
 		e.Clients.OCM, err = ocm.NewClientMock(ocmConfig)
 	} else {
@@ -181,7 +185,7 @@ func (e *Env) Teardown() {
 	}
 }
 
-func setConfigDefaults(flags *pflag.FlagSet, defaults map[string]string) error {
+func setFlagDefaults(flags *pflag.FlagSet, defaults map[string]string) error {
 	ctx := context.Background()
 	for name, value := range defaults {
 		if err := flags.Set(name, value); err != nil {

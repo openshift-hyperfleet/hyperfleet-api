@@ -13,10 +13,18 @@ spec:
       {{- include "hyperfleet-api.selectorLabels" . | nindent 6 }}
   template:
     metadata:
-      {{- with .Values.podAnnotations }}
       annotations:
+        # Force pod restart when ConfigMap changes
+        {{- if .Values.config.existingConfigMap }}
+        # Checksum of external ConfigMap (via lookup)
+        checksum/config: {{ (lookup "v1" "ConfigMap" .Release.Namespace .Values.config.existingConfigMap).data | toYaml | sha256sum }}
+        {{- else }}
+        # Checksum of generated ConfigMap
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- end }}
+        {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
-      {{- end }}
+        {{- end }}
       labels:
         {{- include "hyperfleet-api.selectorLabels" . | nindent 8 }}
     spec:
@@ -38,13 +46,15 @@ spec:
         image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
         imagePullPolicy: {{ .Values.image.pullPolicy }}
         command: ["/app/hyperfleet-api", "migrate"]
+        env:
+        # Config file from ConfigMap
+        - name: HYPERFLEET_CONFIG
+          value: /etc/hyperfleet/config.yaml
+        # Database credentials from Secret (using secretKeyRef)
+        {{- include "hyperfleet-api.databaseEnvVars" . | nindent 8 }}
         volumeMounts:
-        {{- if .Values.database.pgbouncer.enabled }}
-        - name: secrets-direct
-        {{- else }}
-        - name: secrets
-        {{- end }}
-          mountPath: /app/secrets
+        - name: config
+          mountPath: /etc/hyperfleet
           readOnly: true
       {{- end }}
       containers:
@@ -54,46 +64,32 @@ spec:
         image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
         imagePullPolicy: {{ .Values.image.pullPolicy }}
         workingDir: /app
+        # Simple command - configuration via ConfigMap and environment variables
         args:
         - serve
-        - --api-server-bindaddress={{ .Values.server.bindAddress | default ":8000" }}
-        - --health-server-bindaddress={{ .Values.server.healthBindAddress | default ":8080" }}
-        - --metrics-server-bindaddress={{ .Values.server.metricsBindAddress | default ":9090" }}
         ports:
         - name: http
-          containerPort: 8000
+          containerPort: {{ .Values.ports.api | default 8000 }}
           protocol: TCP
         - name: health
-          containerPort: 8080
+          containerPort: {{ .Values.ports.health | default 8080 }}
           protocol: TCP
         - name: metrics
-          containerPort: 9090
+          containerPort: {{ .Values.ports.metrics | default 9090 }}
           protocol: TCP
         env:
-        {{- if .Values.auth.jwksUrl }}
-        - name: JWKS_URL
-          value: {{ .Values.auth.jwksUrl | quote }}
+        # Config file from ConfigMap (generated from values)
+        - name: HYPERFLEET_CONFIG
+          value: /etc/hyperfleet/config.yaml
+
+        # Database credentials from Secret (using secretKeyRef)
+        {{- include "hyperfleet-api.databaseEnvVars" . | nindent 8 }}
+
+        # Extra environment variables (escape hatch for overrides)
+        {{- with .Values.extraEnv }}
+        {{- toYaml . | nindent 8 }}
         {{- end }}
-        - name: ENABLE_JWT
-          value: {{ .Values.auth.enableJwt | quote }}
-        - name: ENABLE_AUTHZ
-          value: {{ .Values.auth.enableAuthz | quote }}
-        {{- if not (and .Values.adapters (hasKey .Values.adapters "cluster")) }}
-        {{- fail "adapters.cluster is required - specify which adapters must be ready for clusters (e.g., [\"validation\",\"dns\",\"pullsecret\",\"hypershift\"])" }}
-        {{- end }}
-        {{- if not (and .Values.adapters (hasKey .Values.adapters "nodepool")) }}
-        {{- fail "adapters.nodepool is required - specify which adapters must be ready for nodepools (e.g., [\"validation\",\"hypershift\"])" }}
-        {{- end }}
-        - name: HYPERFLEET_CLUSTER_ADAPTERS
-          value: {{ .Values.adapters.cluster | default list | toJson | quote }}
-        - name: HYPERFLEET_NODEPOOL_ADAPTERS
-          value: {{ .Values.adapters.nodepool | default list | toJson | quote }}
-        {{- if .Values.env }}
-        {{- range .Values.env }}
-        - name: {{ .name }}
-          value: {{ .value | quote }}
-        {{- end }}
-        {{- end }}
+
         livenessProbe:
           httpGet:
             path: /healthz
@@ -113,15 +109,17 @@ spec:
         resources:
           {{- toYaml .Values.resources | nindent 10 }}
         volumeMounts:
+        # ConfigMap mount - generated from values or existingConfigMap
+        - name: config
+          mountPath: /etc/hyperfleet
+          readOnly: true
+
+        # Temp directory for writable filesystem
         - name: tmp
           mountPath: /tmp
-        {{- if or .Values.database.external.enabled .Values.database.postgresql.enabled }}
-        - name: secrets
-          mountPath: /app/secrets
-          readOnly: true
-        {{- end }}
-        {{- if .Values.extraVolumeMounts }}
-        {{- toYaml .Values.extraVolumeMounts | nindent 8 }}
+
+        {{- with .Values.extraVolumeMounts }}
+        {{- toYaml . | nindent 8 }}
         {{- end }}
       {{- if .Values.database.pgbouncer.enabled }}
       - name: pgbouncer
@@ -187,8 +185,18 @@ spec:
           mountPath: /opt/bitnami/pgbouncer/tmp
       {{- end }}
       volumes:
+      # ConfigMap volume - use existing or generated from values
+      - name: config
+        configMap:
+          {{- if .Values.config.existingConfigMap }}
+          name: {{ .Values.config.existingConfigMap }}
+          {{- else }}
+          name: {{ include "hyperfleet-api.fullname" . }}-config
+          {{- end }}
+
       - name: tmp
         emptyDir: {}
+
       {{- if .Values.database.pgbouncer.enabled }}
       - name: pgbouncer-tmp
         emptyDir:
@@ -203,26 +211,9 @@ spec:
         emptyDir:
           sizeLimit: 1Mi
       {{- end }}
-      {{- if or .Values.database.external.enabled .Values.database.postgresql.enabled }}
-      {{- if .Values.database.pgbouncer.enabled }}
-      - name: secrets-direct
-        secret:
-          secretName: {{ include "hyperfleet-api.fullname" . }}-db-secrets
-      - name: secrets
-        secret:
-          secretName: {{ include "hyperfleet-api.fullname" . }}-db-secrets-pgbouncer
-      {{- else }}
-      - name: secrets
-        secret:
-          {{- if .Values.database.external.enabled }}
-          secretName: {{ .Values.database.external.secretName }}
-          {{- else }}
-          secretName: {{ include "hyperfleet-api.fullname" . }}-db-secrets
-          {{- end }}
-      {{- end }}
-      {{- end }}
-      {{- if .Values.extraVolumes }}
-      {{- toYaml .Values.extraVolumes | nindent 6 }}
+
+      {{- with .Values.extraVolumes }}
+      {{- toYaml . | nindent 6 }}
       {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:

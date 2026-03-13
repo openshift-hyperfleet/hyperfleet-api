@@ -2,7 +2,6 @@ package migrate
 
 import (
 	"context"
-	"flag"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -13,8 +12,6 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
-var dbConfig = config.NewDatabaseConfig()
-
 // NewMigrateCommand migrate sub-command handles running migrations
 func NewMigrateCommand() *cobra.Command {
 	cmd := &cobra.Command{
@@ -24,28 +21,36 @@ func NewMigrateCommand() *cobra.Command {
 		Run:   runMigrate,
 	}
 
-	dbConfig.AddFlags(cmd.PersistentFlags())
-	cmd.PersistentFlags().AddGoFlagSet(flag.CommandLine)
+	// Add new configuration system flags (for migration)
+	// Database flags are the primary concern for migrate command
+	config.AddConfigFlag(cmd)
+	config.AddDatabaseFlags(cmd)
+	config.AddLoggingFlags(cmd) // For logging during migration
+
 	return cmd
 }
 
 func runMigrate(cmd *cobra.Command, _ []string) {
-	// Bind environment variables
-	dbConfig.BindEnv(cmd.PersistentFlags())
+	ctx := context.Background()
 
-	if err := runMigrateWithError(); err != nil {
+	// ============================================================
+	// CONFIGURATION LOADING
+	// ============================================================
+	// Load full application config using Viper-based system
+	loader := config.NewConfigLoader()
+	appConfig, err := loader.Load(ctx, cmd)
+	if err != nil {
+		logger.WithError(ctx, err).Error("Failed to load configuration")
+		os.Exit(1)
+	}
+
+	// Run migration with the loaded configuration
+	if err := runMigrateWithError(ctx, appConfig.Database); err != nil {
 		os.Exit(1)
 	}
 }
 
-func runMigrateWithError() error {
-	ctx := context.Background()
-	err := dbConfig.ReadFiles()
-	if err != nil {
-		logger.WithError(ctx, err).Error("Fatal error")
-		return err
-	}
-
+func runMigrateWithError(ctx context.Context, dbConfig *config.DatabaseConfig) error {
 	connection := db_session.NewProdFactory(dbConfig)
 	defer func() {
 		if closeErr := connection.Close(); closeErr != nil {

@@ -21,17 +21,20 @@ func (e *unitTestingEnvImpl) OverrideDatabase(c *Database) error {
 
 func (e *unitTestingEnvImpl) OverrideConfig(c *config.ApplicationConfig) error {
 	// Support a one-off env to allow enabling db debug in testing
-	if os.Getenv("DB_DEBUG") == "true" {
+	//nolint:goconst // "true" is not extracted to constant (standard env var idiom)
+	if os.Getenv("HYPERFLEET_DATABASE_DEBUG") == "true" {
 		c.Database.Debug = true
 	}
 
-	// Clear secret file paths — unit tests use a mock DB and don't need real credentials
-	c.Database.HostFile = ""
-	c.Database.PortFile = ""
-	c.Database.NameFile = ""
-	c.Database.UsernameFile = ""
-	c.Database.PasswordFile = ""
+	// Ensure SSL mode is set to disable for testing
+	if c.Database.SSL.Mode == "" {
+		c.Database.SSL.Mode = SSLModeDisable
+	}
 
+	// Enable OCM mocks for unit testing (no real OCM connection needed)
+	c.OCM.Mock.Enabled = true
+
+	// Unit tests use a mock DB and don't need real credentials
 	return nil
 }
 
@@ -47,15 +50,8 @@ func (e *unitTestingEnvImpl) OverrideClients(c *Clients) error {
 	return nil
 }
 
-func (e *unitTestingEnvImpl) Flags() map[string]string {
-	return map[string]string{
-		"v":                    "0",
-		"logtostderr":          "true",
-		"ocm-base-url":         "https://api.integration.openshift.com",
-		"enable-https":         "false",
-		"enable-metrics-https": "false",
-		"enable-authz":         "true",
-		"ocm-debug":            "false",
-		"enable-ocm-mock":      "true",
-	}
+func (e *unitTestingEnvImpl) EnvironmentDefaults() map[string]string {
+	// Return empty map - new config system has appropriate defaults
+	// and OverrideConfig() sets test-specific values programmatically
+	return map[string]string{}
 }

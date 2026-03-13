@@ -61,3 +61,45 @@ Create the name of the service account to use
 {{- default "default" .Values.serviceAccount.name }}
 {{- end }}
 {{- end }}
+
+{{/*
+Database environment variables (using secretKeyRef - Kubernetes best practice)
+*/}}
+{{- define "hyperfleet-api.databaseEnvVars" -}}
+{{- $secretName := "" }}
+{{- if .Values.database.pgbouncer.enabled }}
+{{- $secretName = printf "%s-db-secrets-pgbouncer" (include "hyperfleet-api.fullname" .) }}
+{{- else if .Values.database.external.enabled }}
+{{- $secretName = .Values.database.external.secretName }}
+{{- else if .Values.database.postgresql.enabled }}
+{{- $secretName = printf "%s-db-secrets" (include "hyperfleet-api.fullname" .) }}
+{{- end }}
+{{- if $secretName }}
+- name: HYPERFLEET_DATABASE_HOST
+  valueFrom:
+    secretKeyRef:
+      name: {{ $secretName }}
+      key: db.host
+- name: HYPERFLEET_DATABASE_PORT
+  valueFrom:
+    secretKeyRef:
+      name: {{ $secretName }}
+      key: db.port
+- name: HYPERFLEET_DATABASE_NAME
+  valueFrom:
+    secretKeyRef:
+      name: {{ $secretName }}
+      key: db.name
+- name: HYPERFLEET_DATABASE_USERNAME
+  valueFrom:
+    secretKeyRef:
+      name: {{ $secretName }}
+      key: db.user
+- name: HYPERFLEET_DATABASE_PASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: {{ $secretName }}
+      key: db.password
+{{- end }}
+{{- end }}
+

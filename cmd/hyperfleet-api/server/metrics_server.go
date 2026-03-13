@@ -26,7 +26,7 @@ func NewMetricsServer() Server {
 
 	s := &metricsServer{}
 	s.httpServer = &http.Server{
-		Addr:              env().Config.Metrics.BindAddress,
+		Addr:              env().Config.Metrics.BindAddress(),
 		Handler:           mainHandler,
 		ReadHeaderTimeout: 10 * time.Second,
 	}
@@ -49,18 +49,18 @@ func (s metricsServer) Serve(listener net.Listener) {
 func (s metricsServer) Start() {
 	ctx := context.Background()
 	var err error
-	if env().Config.Metrics.EnableHTTPS {
-		if env().Config.Server.HTTPSCertFile == "" || env().Config.Server.HTTPSKeyFile == "" {
+	if env().Config.Metrics.TLS.Enabled {
+		if env().Config.Server.TLS.CertFile == "" || env().Config.Server.TLS.KeyFile == "" {
 			check(
 				fmt.Errorf("unspecified required --https-cert-file, --https-key-file"),
 				"Can't start https server",
 			)
 		}
 
-		logger.With(ctx, logger.FieldBindAddress, env().Config.Metrics.BindAddress).Info("Serving Metrics with TLS")
-		err = s.httpServer.ListenAndServeTLS(env().Config.Server.HTTPSCertFile, env().Config.Server.HTTPSKeyFile)
+		logger.With(ctx, logger.FieldBindAddress, env().Config.Metrics.BindAddress()).Info("Serving Metrics with TLS")
+		err = s.httpServer.ListenAndServeTLS(env().Config.Server.TLS.CertFile, env().Config.Server.TLS.KeyFile)
 	} else {
-		logger.With(ctx, logger.FieldBindAddress, env().Config.Metrics.BindAddress).Info("Serving Metrics without TLS")
+		logger.With(ctx, logger.FieldBindAddress, env().Config.Metrics.BindAddress()).Info("Serving Metrics without TLS")
 		err = s.httpServer.ListenAndServe()
 	}
 	if err != nil && err != http.ErrServerClosed {

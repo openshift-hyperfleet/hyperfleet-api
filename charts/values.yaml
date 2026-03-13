@@ -4,8 +4,8 @@
 replicaCount: 1
 
 image:
-  registry: quay.io/openshift-hyperfleet
-  repository: hyperfleet-api
+  registry: quay.io
+  repository: openshift-hyperfleet/hyperfleet-api
   pullPolicy: Always
   tag: "latest"
 
@@ -13,20 +13,142 @@ imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
 
-# Server bind addresses
-# Use ":PORT" format to bind to all interfaces (required for Kubernetes)
-server:
-  bindAddress: ":8000"
-  healthBindAddress: ":8080"
-  metricsBindAddress: ":9090"
+# ============================================================
+# Container Ports
+# ============================================================
+# These ports must match the application configuration
+ports:
+  api: 8000      # Must match config.server.port
+  health: 8080   # Must match config.health.port
+  metrics: 9090  # Must match config.metrics.port
 
+# ============================================================
+# Application Configuration
+# ============================================================
+# All application settings are configurable via this section.
+# These values generate the ConfigMap used by the application.
+# ============================================================
+config:
+  # Use existing ConfigMap instead of generating one
+  # If set, all config.* values below are ignored
+  existingConfigMap: ""
+
+  # Server configuration
+  server:
+    hostname: ""
+    host: "0.0.0.0"
+    port: 8000
+
+    timeouts:
+      read: 5s
+      write: 30s
+
+    tls:
+      enabled: false
+      cert_file: ""
+      key_file: ""
+
+    jwt:
+      enabled: true
+
+    authz:
+      enabled: false
+
+    jwk:
+      cert_file: ""
+      cert_url: "https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/certs"
+
+    acl:
+      file: ""
+
+  # Database configuration
+  database:
+    dialect: postgres
+
+    # Connection settings
+    # Note: username/password MUST be provided via Secret (not ConfigMap)
+    # See database.external.secretName or database.postgresql.enabled for credentials
+    host: ""  # Auto-set for built-in DB, or specify external host
+    port: 5432
+    name: hyperfleet
+
+    # Application behavior settings
+    debug: false
+
+    ssl:
+      mode: disable
+      root_cert_file: ""
+
+    pool:
+      max_connections: 50
+      max_idle_connections: 10
+      conn_max_lifetime: 5m
+      conn_max_idle_time: 1m
+      request_timeout: 30s
+      conn_retry_attempts: 10
+      conn_retry_interval: 3s
+
+  # Logging configuration
+  logging:
+    level: info
+    format: json
+    output: stdout
+
+    otel:
+      enabled: false
+      sampling_rate: 1.0
+
+    masking:
+      enabled: true
+      headers:
+        - Authorization
+        - X-API-Key
+        - Cookie
+        - X-Auth-Token
+        - X-Forwarded-Authorization
+      fields:
+        - password
+        - secret
+        - token
+        - api_key
+        - access_token
+        - refresh_token
+        - client_secret
+
+  # Metrics configuration
+  metrics:
+    host: 0.0.0.0  # Must be 0.0.0.0 in Kubernetes for Service to access
+    port: 9090
+
+    tls:
+      enabled: false
+
+    label_metrics_inclusion_duration: 168h
+
+  # Health check configuration
+  health:
+    host: 0.0.0.0  # Must be 0.0.0.0 in Kubernetes for liveness/readiness probes
+    port: 8080
+
+    tls:
+      enabled: false
+
+    shutdown_timeout: 20s
+    db_ping_timeout: 2s
+
+  # Adapters required for resources to reach "Ready" state
+  # Production deployments should specify adapters
+  adapters:
+    required:
+      cluster: []  # Example: [validation, dns, pullsecret, hypershift]
+      nodepool: []  # Example: [validation, hypershift]
+
+# ============================================================
+# Kubernetes Resources
+# ============================================================
 serviceAccount:
-  # Specifies whether a service account should be created
   create: true
-  # Annotations to add to the service account
   annotations: {}
-  # The name of the service account to use.
-  # If not set and create is true, a name is generated using the fullname template
   name: ""
 
 podAnnotations: {}
@@ -47,7 +169,7 @@ securityContext:
 
 service:
   type: ClusterIP
-  port: 8000
+  # Service ports are set to match container ports (ports.api, ports.health, ports.metrics)
 
 resources:
   limits:
@@ -71,16 +193,20 @@ autoscaling:
   targetMemoryUtilizationPercentage: 80
 
 # Pod Disruption Budget configuration
-# Ensures availability during node maintenance and cluster upgrades
 podDisruptionBudget:
   enabled: false
-  # Minimum number of pods that must be available during disruption
-  # Use either minAvailable OR maxUnavailable, not both
   minAvailable: 1
   # Maximum number of pods that can be unavailable during disruption
   # maxUnavailable: 1
 
-# Database configuration
+# ============================================================
+# Infrastructure Configuration
+# ============================================================
+# These settings control Kubernetes infrastructure components
+# (PostgreSQL pod, secrets, pgbouncer sidecar)
+# ============================================================
+
+# Database infrastructure
 database:
   # For PRODUCTION: Use external database (GCP Cloud SQL, etc.)
   # Set external.enabled=true and provide connection details
@@ -134,49 +260,21 @@ database:
       size: 1Gi
       storageClass: ""
 
-# Authentication configuration
-auth:
-  # Enable JWT authentication
-  enableJwt: true
-  # Enable authorization (not required for MVP)
-  enableAuthz: false
-  # JWKS URL for token verification
-  # Override with: --set auth.jwksUrl="https://your-idp/.../.well-known/jwks.json"
-  jwksUrl: "https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/certs"
-
-# Adapter configuration (REQUIRED)
-# Configure which adapters must be ready for resources to be marked as "Ready"
-# Both cluster and nodepool adapters MUST be specified - the application will not start without them
-# Empty arrays [] are valid if you want no adapters required for the Ready state
-adapters:
-  # Required adapters for cluster "Ready" state (REQUIRED)
-  # Example: ["validation", "dns", "pullsecret", "hypershift"]
-  # cluster: []
-  # Required adapters for nodepool "Ready" state (REQUIRED)
-  # Example: ["validation", "hypershift"]
-  # nodepool: []
-
 # ServiceMonitor for Prometheus Operator
-# Enables automatic metrics discovery in clusters with Prometheus Operator
 serviceMonitor:
-  # Enable ServiceMonitor creation
   enabled: false
-  # Scrape interval
   interval: 30s
-  # Scrape timeout (must be less than interval)
   scrapeTimeout: 10s
-  # Additional labels for ServiceMonitor to match Prometheus selector
-  # Example: release: prometheus
   labels: {}
-  # Override the namespace where ServiceMonitor is created
-  # If empty, uses the release namespace
   namespace: ""
 
-# Additional environment variables
-# You can override adapters by setting HYPERFLEET_*_ADAPTERS here
-env: []
-  # - name: GLOG_V
-  #   value: "10"
+# ============================================================
+# Advanced Overrides (Escape Hatch)
+# ============================================================
+# Additional environment variables to override ConfigMap values.
+# Use sparingly - prefer modifying config.* values above.
+# See docs/deployment.md#environment-variables for examples.
+extraEnv: []
 
 # Volume mounts for additional configs
 extraVolumeMounts: []

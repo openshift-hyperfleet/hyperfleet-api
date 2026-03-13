@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"os"
 
 	gorillahandlers "github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
@@ -55,7 +54,7 @@ func (s *apiServer) routes() *mux.Router {
 
 	var authMiddleware auth.JWTMiddleware
 	authMiddleware = &auth.MiddlewareMock{}
-	if env().Config.Server.EnableJWT {
+	if env().Config.Server.JWT.Enabled {
 		var err error
 		authMiddleware, err = auth.NewAuthMiddleware()
 		check(err, "Unable to create auth middleware")
@@ -115,13 +114,8 @@ func registerApiMiddleware(router *mux.Router) {
 	router.Use(MetricsMiddleware)
 
 	// Schema validation middleware (validates cluster/nodepool spec fields)
-	// Load schema from environment variable, default to repo base schema
-	schemaPath := os.Getenv("OPENAPI_SCHEMA_PATH")
-	if schemaPath == "" {
-		// Default: use base schema in repo (provider-agnostic)
-		// Production: Helm sets OPENAPI_SCHEMA_PATH=/etc/hyperfleet/schemas/openapi.yaml
-		schemaPath = "openapi/openapi.yaml"
-	}
+	// Load schema path from config (follows Flag > Env > Config File > Default priority)
+	schemaPath := env().Config.Server.OpenAPISchemaPath
 
 	// Initialize schema validator (non-blocking - will warn if schema not found)
 	// Use background context for initialization logging
@@ -133,8 +127,9 @@ func registerApiMiddleware(router *mux.Router) {
 		logger.With(ctx, logger.FieldSchemaPath, schemaPath).WithError(err).Warn("Failed to load schema validator")
 		logger.Warn(ctx, "Schema validation is disabled. Spec fields will not be validated.")
 		logger.Info(ctx, "To enable schema validation:")
-		logger.Info(ctx, "  - Local: Run from repo root, or set OPENAPI_SCHEMA_PATH=openapi/openapi.yaml")
-		logger.Info(ctx, "  - Production: Helm sets OPENAPI_SCHEMA_PATH=/etc/hyperfleet/schemas/openapi.yaml")
+		logger.Info(ctx, "  - Local: Run from repo root, or use --server-openapi-schema-path=openapi/openapi.yaml")
+		logger.Info(ctx, "  - Config file: server.openapi_schema_path")
+		logger.Info(ctx, "  - Environment: HYPERFLEET_SERVER_OPENAPI_SCHEMA_PATH")
 	} else {
 		// Apply schema validation middleware
 		logger.With(ctx, logger.FieldSchemaPath, schemaPath).Info("Schema validation enabled")
@@ -143,7 +138,7 @@ func registerApiMiddleware(router *mux.Router) {
 
 	router.Use(
 		func(next http.Handler) http.Handler {
-			return db.TransactionMiddleware(next, env().Database.SessionFactory, env().Config.Database.RequestTimeout)
+			return db.TransactionMiddleware(next, env().Database.SessionFactory, env().Config.Database.Pool.RequestTimeout)
 		},
 	)
 

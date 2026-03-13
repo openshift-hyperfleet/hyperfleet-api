@@ -1,12 +1,13 @@
 package environments
 
 import (
-	"os"
 	"os/exec"
 	"reflect"
 	"testing"
 
 	"github.com/spf13/pflag"
+
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
 )
 
 func BenchmarkGetDynos(b *testing.B) {
@@ -24,16 +25,18 @@ func BenchmarkGetDynos(b *testing.B) {
 }
 
 func TestLoadServices(t *testing.T) {
-	// Set required adapter configuration for tests
-	if os.Getenv("HYPERFLEET_CLUSTER_ADAPTERS") == "" {
-		t.Setenv("HYPERFLEET_CLUSTER_ADAPTERS", `["validation","dns","pullsecret","hypershift"]`)
-	}
-	if os.Getenv("HYPERFLEET_NODEPOOL_ADAPTERS") == "" {
-		t.Setenv("HYPERFLEET_NODEPOOL_ADAPTERS", `["validation","hypershift"]`)
-	}
+	// Set environment to unit_testing to use mocks
+	t.Setenv("OCM_ENV", "unit_testing")
+
+	// Create minimal configuration for unit test
+	cfg := config.NewApplicationConfig()
+	cfg.Adapters.Required.Cluster = []string{"validation", "dns", "pullsecret", "hypershift"}
+	cfg.Adapters.Required.Nodepool = []string{"validation", "hypershift"}
 
 	env := Environment()
-	err := env.AddFlags(pflag.CommandLine)
+	env.Config = cfg
+
+	err := env.SetEnvironmentDefaults(pflag.CommandLine)
 	if err != nil {
 		t.Errorf("Unable to add flags for testing environment: %s", err.Error())
 		return
