@@ -1,13 +1,16 @@
 package services
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"math"
 	"strings"
 	"time"
 	"unicode"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
 // Mandatory condition types that must be present in all adapter status updates
@@ -18,6 +21,9 @@ const (
 	ConditionValidationErrorDuplicate = "duplicate"
 	ConditionValidationErrorMissing   = "missing"
 )
+
+// adapterConditionStatusTrue is the string value for a True adapter condition status.
+const adapterConditionStatusTrue = "True"
 
 // Required adapter lists configured via pkg/config/adapter.go (see AdapterRequirementsConfig)
 
@@ -118,18 +124,21 @@ func ComputeAvailableCondition(adapterStatuses api.AdapterStatusList, requiredAd
 			Status string `json:"status"`
 		}
 		if len(adapterStatus.Conditions) > 0 {
-			if err := json.Unmarshal(adapterStatus.Conditions, &conditions); err == nil {
-				for _, cond := range conditions {
-					if cond.Type == api.ConditionTypeAvailable {
-						adapterMap[adapterStatus.Adapter] = struct {
-							available          string
-							observedGeneration int32
-						}{
-							available:          cond.Status,
-							observedGeneration: adapterStatus.ObservedGeneration,
-						}
-						break
+			if err := json.Unmarshal(adapterStatus.Conditions, &conditions); err != nil {
+				logger.WithError(context.Background(), err).Warn(
+					fmt.Sprintf("failed to parse adapter conditions for adapter %s", adapterStatus.Adapter))
+				continue
+			}
+			for _, cond := range conditions {
+				if cond.Type == api.ConditionTypeAvailable {
+					adapterMap[adapterStatus.Adapter] = struct {
+						available          string
+						observedGeneration int32
+					}{
+						available:          cond.Status,
+						observedGeneration: adapterStatus.ObservedGeneration,
 					}
+					break
 				}
 			}
 		}
@@ -149,7 +158,7 @@ func ComputeAvailableCondition(adapterStatuses api.AdapterStatusList, requiredAd
 
 		// For Available condition, we don't check generation matching
 		// We just need Available=True at ANY generation
-		if adapterInfo.available == "True" {
+		if adapterInfo.available == adapterConditionStatusTrue {
 			numAvailable++
 			if adapterInfo.observedGeneration < minObservedGeneration {
 				minObservedGeneration = adapterInfo.observedGeneration
@@ -189,18 +198,21 @@ func ComputeReadyCondition(
 			Status string `json:"status"`
 		}
 		if len(adapterStatus.Conditions) > 0 {
-			if err := json.Unmarshal(adapterStatus.Conditions, &conditions); err == nil {
-				for _, cond := range conditions {
-					if cond.Type == api.ConditionTypeAvailable {
-						adapterMap[adapterStatus.Adapter] = struct {
-							available          string
-							observedGeneration int32
-						}{
-							available:          cond.Status,
-							observedGeneration: adapterStatus.ObservedGeneration,
-						}
-						break
+			if err := json.Unmarshal(adapterStatus.Conditions, &conditions); err != nil {
+				logger.WithError(context.Background(), err).Warn(
+					fmt.Sprintf("failed to parse adapter conditions for adapter %s", adapterStatus.Adapter))
+				continue
+			}
+			for _, cond := range conditions {
+				if cond.Type == api.ConditionTypeAvailable {
+					adapterMap[adapterStatus.Adapter] = struct {
+						available          string
+						observedGeneration int32
+					}{
+						available:          cond.Status,
+						observedGeneration: adapterStatus.ObservedGeneration,
 					}
+					break
 				}
 			}
 		}
@@ -224,7 +236,7 @@ func ComputeReadyCondition(
 		}
 
 		// Check available status
-		if adapterInfo.available == "True" {
+		if adapterInfo.available == adapterConditionStatusTrue {
 			numReady++
 		}
 	}
@@ -232,6 +244,79 @@ func ComputeReadyCondition(
 	// Ready when all required adapters have Available=True at current generation
 	numRequired := len(requiredAdapters)
 	return numReady == numRequired
+}
+
+// findAdapterStatus returns the first adapter status in the list with the given adapter name, or (nil, false).
+func findAdapterStatus(adapterStatuses api.AdapterStatusList, adapterName string) (*api.AdapterStatus, bool) {
+	for _, s := range adapterStatuses {
+		if s.Adapter == adapterName {
+			return s, true
+		}
+	}
+	return nil, false
+}
+
+// adapterConditionsHasAvailableTrue returns true if the adapter conditions JSON
+// contains a condition with type Available and status True.
+func adapterConditionsHasAvailableTrue(conditions []byte) bool {
+	if len(conditions) == 0 {
+		return false
+	}
+	var conds []struct {
+		Type   string `json:"type"`
+		Status string `json:"status"`
+	}
+	if err := json.Unmarshal(conditions, &conds); err != nil {
+		return false
+	}
+	for _, c := range conds {
+		if c.Type == api.ConditionTypeAvailable && c.Status == adapterConditionStatusTrue {
+			return true
+		}
+	}
+	return false
+}
+
+// computeReadyLastUpdated returns the timestamp to use for the Ready condition's LastUpdatedTime.
+// When isReady is false, it returns now (Ready=False changes frequently; 10s threshold applies).
+// When isReady is true, it returns the minimum LastReportTime across all required adapters
+// that have Available=True at the current generation. Falls back to now if no timestamps found.
+func computeReadyLastUpdated(
+	adapterStatuses api.AdapterStatusList,
+	requiredAdapters []string,
+	resourceGeneration int32,
+	now time.Time,
+	isReady bool,
+) time.Time {
+	if !isReady {
+		return now
+	}
+
+	var minTime *time.Time
+	for _, adapterName := range requiredAdapters {
+		status, ok := findAdapterStatus(adapterStatuses, adapterName)
+		if !ok {
+			return now // safety: required adapter missing
+		}
+		if status.LastReportTime == nil {
+			return now // safety: no timestamp
+		}
+		if status.ObservedGeneration != resourceGeneration {
+			continue // not at current gen, skip
+		}
+		if !adapterConditionsHasAvailableTrue(status.Conditions) {
+			continue
+		}
+		if minTime == nil || status.LastReportTime.Before(*minTime) {
+			t := *status.LastReportTime
+			minTime = &t
+		}
+	}
+
+	if minTime == nil {
+		return now // safety fallback
+	}
+	return *minTime
 }
 
 func BuildSyntheticConditions(
@@ -271,7 +356,14 @@ func BuildSyntheticConditions(
 		CreatedTime:        now,
 		LastUpdatedTime:    now,
 	}
-	preserveSyntheticCondition(&availableCondition, existingAvailable, now)
+	availableLastUpdated := now
+	if existingAvailable != nil &&
+		existingAvailable.Status == availableStatus &&
+		existingAvailable.ObservedGeneration == minObservedGeneration &&
+		!existingAvailable.LastUpdatedTime.IsZero() {
+		availableLastUpdated = existingAvailable.LastUpdatedTime
+	}
+	applyConditionHistory(&availableCondition, existingAvailable, now, availableLastUpdated)
 
 	isReady := ComputeReadyCondition(adapterStatuses, requiredAdapters, resourceGeneration)
 	readyStatus := api.ConditionFalse
@@ -286,13 +378,25 @@ func BuildSyntheticConditions(
 		CreatedTime:        now,
 		LastUpdatedTime:    now,
 	}
-	preserveSyntheticCondition(&readyCondition, existingReady, now)
+	readyLastUpdated := computeReadyLastUpdated(
+		adapterStatuses, requiredAdapters, resourceGeneration, now, isReady,
+	)
+	applyConditionHistory(&readyCondition, existingReady, now, readyLastUpdated)
 
 	return availableCondition, readyCondition
 }
 
-func preserveSyntheticCondition(target *api.ResourceCondition, existing *api.ResourceCondition, now time.Time) {
+// applyConditionHistory copies stable timestamps and metadata from an existing condition.
+// lastUpdatedTime is used unconditionally for LastUpdatedTime — the caller is responsible
+// for computing the correct value (e.g. now, computeReadyLastUpdated(...)).
+func applyConditionHistory(
+	target *api.ResourceCondition,
+	existing *api.ResourceCondition,
+	now time.Time,
+	lastUpdatedTime time.Time,
+) {
 	if existing == nil {
+		target.LastUpdatedTime = lastUpdatedTime
 		return
 	}
 
@@ -303,9 +407,7 @@ func preserveSyntheticCondition(target *api.ResourceCondition, existing *api.Res
 		if !existing.LastTransitionTime.IsZero() {
 			target.LastTransitionTime = existing.LastTransitionTime
 		}
-		if !existing.LastUpdatedTime.IsZero() {
-			target.LastUpdatedTime = existing.LastUpdatedTime
-		}
+		target.LastUpdatedTime = lastUpdatedTime
 		if target.Reason == nil && existing.Reason != nil {
 			target.Reason = existing.Reason
 		}
@@ -319,5 +421,5 @@ func preserveSyntheticCondition(target *api.ResourceCondition, existing *api.Res
 		target.CreatedTime = existing.CreatedTime
 	}
 	target.LastTransitionTime = now
-	target.LastUpdatedTime = now
+	target.LastUpdatedTime = lastUpdatedTime
 }

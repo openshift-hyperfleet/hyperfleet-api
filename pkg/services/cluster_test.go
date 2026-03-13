@@ -769,7 +769,9 @@ func TestClusterSyntheticTimestampsStableWithoutAdapterStatus(t *testing.T) {
 		StatusConditions: initialConditionsJSON,
 	}
 	cluster.ID = clusterID
+	beforeCreate := time.Now()
 	created, svcErr := service.Create(ctx, cluster)
+	afterCreate := time.Now()
 	Expect(svcErr).To(BeNil())
 
 	var createdConds []api.ResourceCondition
@@ -789,12 +791,17 @@ func TestClusterSyntheticTimestampsStableWithoutAdapterStatus(t *testing.T) {
 	Expect(createdReady).ToNot(BeNil())
 	Expect(createdAvailable.CreatedTime).To(Equal(fixedNow))
 	Expect(createdAvailable.LastTransitionTime).To(Equal(fixedNow))
+	// Available.LastUpdatedTime is preserved from the initial conditions when status and generation are unchanged.
 	Expect(createdAvailable.LastUpdatedTime).To(Equal(fixedNow))
 	Expect(createdReady.CreatedTime).To(Equal(fixedNow))
 	Expect(createdReady.LastTransitionTime).To(Equal(fixedNow))
-	Expect(createdReady.LastUpdatedTime).To(Equal(fixedNow))
+	// Ready.LastUpdatedTime is refreshed to the evaluation time when isReady=false; assert it lies in the Create() window.
+	Expect(createdReady.LastUpdatedTime).To(BeTemporally(">=", beforeCreate))
+	Expect(createdReady.LastUpdatedTime).To(BeTemporally("<=", afterCreate))
 
+	beforeUpdate := time.Now()
 	updated, err := service.UpdateClusterStatusFromAdapters(ctx, clusterID)
+	afterUpdate := time.Now()
 	Expect(err).To(BeNil())
 
 	var updatedConds []api.ResourceCondition
@@ -814,10 +821,14 @@ func TestClusterSyntheticTimestampsStableWithoutAdapterStatus(t *testing.T) {
 	Expect(updatedReady).ToNot(BeNil())
 	Expect(updatedAvailable.CreatedTime).To(Equal(fixedNow))
 	Expect(updatedAvailable.LastTransitionTime).To(Equal(fixedNow))
+	// Available.LastUpdatedTime is stable when status and generation are unchanged.
 	Expect(updatedAvailable.LastUpdatedTime).To(Equal(fixedNow))
 	Expect(updatedReady.CreatedTime).To(Equal(fixedNow))
 	Expect(updatedReady.LastTransitionTime).To(Equal(fixedNow))
-	Expect(updatedReady.LastUpdatedTime).To(Equal(fixedNow))
+	// Ready.LastUpdatedTime is refreshed to the evaluation time when isReady=false;
+	// assert it lies in the UpdateClusterStatusFromAdapters() window.
+	Expect(updatedReady.LastUpdatedTime).To(BeTemporally(">=", beforeUpdate))
+	Expect(updatedReady.LastUpdatedTime).To(BeTemporally("<=", afterUpdate))
 }
 
 // TestProcessAdapterStatus_MissingMandatoryCondition_Available tests that updates missing Available are rejected

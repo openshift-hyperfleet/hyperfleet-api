@@ -1,11 +1,241 @@
 package services
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
+	"gorm.io/datatypes"
+
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 )
+
+// makeConditionsJSON marshals a slice of {Type, Status} pairs into datatypes.JSON.
+func makeConditionsJSON(t *testing.T, conditions []struct{ Type, Status string }) datatypes.JSON {
+	t.Helper()
+	b, err := json.Marshal(conditions)
+	if err != nil {
+		t.Fatalf("failed to marshal conditions: %v", err)
+	}
+	return datatypes.JSON(b)
+}
+
+// makeAdapterStatus builds an AdapterStatus with the given fields.
+func makeAdapterStatus(
+	adapter string, gen int32, lastReportTime *time.Time, conditionsJSON datatypes.JSON,
+) *api.AdapterStatus {
+	return &api.AdapterStatus{
+		Adapter:            adapter,
+		ObservedGeneration: gen,
+		LastReportTime:     lastReportTime,
+		Conditions:         conditionsJSON,
+	}
+}
+
+func ptr(t time.Time) *time.Time { return &t }
+
+func TestComputeReadyLastUpdated_NotReady(t *testing.T) {
+	now := time.Now()
+	// When isReady=false the function must return now regardless of adapter state.
+	result := computeReadyLastUpdated(nil, []string{"dns"}, 1, now, false)
+	if !result.Equal(now) {
+		t.Errorf("expected now, got %v", result)
+	}
+}
+
+func TestComputeReadyLastUpdated_MissingAdapter(t *testing.T) {
+	now := time.Now()
+	statuses := api.AdapterStatusList{
+		makeAdapterStatus("validator", 1, ptr(now.Add(-5*time.Second)), makeConditionsJSON(t, []struct{ Type, Status string }{
+			{api.ConditionTypeAvailable, "True"},
+		})),
+	}
+	// "dns" is required but not in the list → safety fallback to now.
+	result := computeReadyLastUpdated(statuses, []string{"validator", "dns"}, 1, now, true)
+	if !result.Equal(now) {
+		t.Errorf("expected now (missing adapter), got %v", result)
+	}
+}
+
+func TestComputeReadyLastUpdated_NilLastReportTime(t *testing.T) {
+	now := time.Now()
+	statuses := api.AdapterStatusList{
+		makeAdapterStatus("dns", 1, nil, makeConditionsJSON(t, []struct{ Type, Status string }{
+			{api.ConditionTypeAvailable, "True"},
+		})),
+	}
+	result := computeReadyLastUpdated(statuses, []string{"dns"}, 1, now, true)
+	if !result.Equal(now) {
+		t.Errorf("expected now (nil LastReportTime), got %v", result)
+	}
+}
+
+func TestComputeReadyLastUpdated_WrongGeneration(t *testing.T) {
+	now := time.Now()
+	reportTime := now.Add(-10 * time.Second)
+	statuses := api.AdapterStatusList{
+		// ObservedGeneration=1 but resourceGeneration=2 — skipped.
+		makeAdapterStatus("dns", 1, ptr(reportTime), makeConditionsJSON(t, []struct{ Type, Status string }{
+			{api.ConditionTypeAvailable, "True"},
+		})),
+	}
+	// All adapters skipped → minTime is nil → fallback to now.
+	result := computeReadyLastUpdated(statuses, []string{"dns"}, 2, now, true)
+	if !result.Equal(now) {
+		t.Errorf("expected now (wrong generation), got %v", result)
+	}
+}
+
+func TestComputeReadyLastUpdated_AvailableFalse(t *testing.T) {
+	now := time.Now()
+	reportTime := now.Add(-10 * time.Second)
+	statuses := api.AdapterStatusList{
+		makeAdapterStatus("dns", 1, ptr(reportTime), makeConditionsJSON(t, []struct{ Type, Status string }{
+			{api.ConditionTypeAvailable, "False"},
+		})),
+	}
+	// Available=False → skipped → fallback to now.
+	result := computeReadyLastUpdated(statuses, []string{"dns"}, 1, now, true)
+	if !result.Equal(now) {
+		t.Errorf("expected now (Available=False), got %v", result)
+	}
+}
+
+func TestComputeReadyLastUpdated_SingleQualifyingAdapter(t *testing.T) {
+	now := time.Now()
+	reportTime := now.Add(-30 * time.Second)
+	statuses := api.AdapterStatusList{
+		makeAdapterStatus("dns", 1, ptr(reportTime), makeConditionsJSON(t, []struct{ Type, Status string }{
+			{api.ConditionTypeAvailable, "True"},
+		})),
+	}
+	result := computeReadyLastUpdated(statuses, []string{"dns"}, 1, now, true)
+	if !result.Equal(reportTime) {
+		t.Errorf("expected %v, got %v", reportTime, result)
+	}
+}
+
+func TestComputeReadyLastUpdated_MultipleAdapters_ReturnsMinimum(t *testing.T) {
+	now := time.Now()
+	older := now.Add(-60 * time.Second)
+	newer := now.Add(-10 * time.Second)
+
+	statuses := api.AdapterStatusList{
+		makeAdapterStatus("validator", 2, ptr(newer), makeConditionsJSON(t, []struct{ Type, Status string }{
+			{api.ConditionTypeAvailable, "True"},
+		})),
+		makeAdapterStatus("dns", 2, ptr(older), makeConditionsJSON(t, []struct{ Type, Status string }{
+			{api.ConditionTypeAvailable, "True"},
+		})),
+	}
+	result := computeReadyLastUpdated(statuses, []string{"validator", "dns"}, 2, now, true)
+	if !result.Equal(older) {
+		t.Errorf("expected minimum timestamp %v, got %v", older, result)
+	}
+}
+
+// TestBuildSyntheticConditions_ReadyLastUpdatedThreaded verifies the full chain:
+// when Ready=True, Ready.LastUpdatedTime equals the adapter's LastReportTime,
+// not the evaluation time.
+func TestBuildSyntheticConditions_ReadyLastUpdatedThreaded(t *testing.T) {
+	now := time.Now()
+	reportTime := now.Add(-30 * time.Second)
+	adapterStatuses := api.AdapterStatusList{
+		makeAdapterStatus("dns", 1, ptr(reportTime), makeConditionsJSON(t, []struct{ Type, Status string }{
+			{api.ConditionTypeAvailable, "True"},
+		})),
+	}
+	requiredAdapters := []string{"dns"}
+	resourceGeneration := int32(1)
+
+	_, readyCondition := BuildSyntheticConditions(
+		[]byte("[]"), adapterStatuses, requiredAdapters, resourceGeneration, now,
+	)
+
+	if !readyCondition.LastUpdatedTime.Equal(reportTime) {
+		t.Errorf("Ready.LastUpdatedTime = %v, want reportTime %v",
+			readyCondition.LastUpdatedTime, reportTime)
+	}
+}
+
+// TestBuildSyntheticConditions_AvailableLastUpdatedTime_Stable verifies that
+// Available's LastUpdatedTime is NOT refreshed on every evaluation cycle when
+// the status and observed generation are unchanged.
+func TestBuildSyntheticConditions_AvailableLastUpdatedTime_Stable(t *testing.T) {
+	originalLastUpdated := time.Now().Add(-5 * time.Minute)
+	now := time.Now()
+
+	adapterStatuses := api.AdapterStatusList{
+		makeAdapterStatus("dns", 1, ptr(now.Add(-10*time.Second)), makeConditionsJSON(t, []struct{ Type, Status string }{
+			{api.ConditionTypeAvailable, "True"},
+		})),
+	}
+	requiredAdapters := []string{"dns"}
+	resourceGeneration := int32(1)
+
+	// Simulate an existing Available condition with a stable LastUpdatedTime.
+	existingConditions := []api.ResourceCondition{
+		{
+			Type:               api.ConditionTypeAvailable,
+			Status:             api.ConditionTrue,
+			ObservedGeneration: 1,
+			LastUpdatedTime:    originalLastUpdated,
+			LastTransitionTime: originalLastUpdated,
+			CreatedTime:        originalLastUpdated,
+		},
+	}
+	existingJSON, err := json.Marshal(existingConditions)
+	if err != nil {
+		t.Fatalf("failed to marshal existing conditions: %v", err)
+	}
+
+	availableCondition, _ := BuildSyntheticConditions(
+		existingJSON, adapterStatuses, requiredAdapters, resourceGeneration, now)
+
+	if !availableCondition.LastUpdatedTime.Equal(originalLastUpdated) {
+		t.Errorf("Available.LastUpdatedTime = %v, want %v (must not refresh when status is unchanged)",
+			availableCondition.LastUpdatedTime, originalLastUpdated)
+	}
+}
+
+// TestBuildSyntheticConditions_AvailableLastUpdatedTime_UpdatesOnChange verifies that
+// Available's LastUpdatedTime is refreshed when the status changes.
+func TestBuildSyntheticConditions_AvailableLastUpdatedTime_UpdatesOnChange(t *testing.T) {
+	originalLastUpdated := time.Now().Add(-5 * time.Minute)
+	now := time.Now()
+
+	// Adapter now reports Available=False (changed from True).
+	adapterStatuses := api.AdapterStatusList{
+		makeAdapterStatus("dns", 1, ptr(now.Add(-10*time.Second)), makeConditionsJSON(t, []struct{ Type, Status string }{
+			{api.ConditionTypeAvailable, "False"},
+		})),
+	}
+	requiredAdapters := []string{"dns"}
+	resourceGeneration := int32(1)
+
+	existingConditions := []api.ResourceCondition{
+		{
+			Type:               api.ConditionTypeAvailable,
+			Status:             api.ConditionTrue, // was True, now False
+			ObservedGeneration: 1,
+			LastUpdatedTime:    originalLastUpdated,
+			LastTransitionTime: originalLastUpdated,
+			CreatedTime:        originalLastUpdated,
+		},
+	}
+	existingJSON, err := json.Marshal(existingConditions)
+	if err != nil {
+		t.Fatalf("failed to marshal existing conditions: %v", err)
+	}
+
+	availableCondition, _ := BuildSyntheticConditions(
+		existingJSON, adapterStatuses, requiredAdapters, resourceGeneration, now)
+
+	if !availableCondition.LastUpdatedTime.Equal(now) {
+		t.Errorf("Available.LastUpdatedTime = %v, want %v (must refresh when status changes)",
+			availableCondition.LastUpdatedTime, now)
+	}
+}
 
 func TestMapAdapterToConditionType(t *testing.T) {
 	tests := []struct {
