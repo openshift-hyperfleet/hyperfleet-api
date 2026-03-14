@@ -83,7 +83,9 @@ func MarkForRollback(ctx context.Context, err error) {
 // CONCURRENCY: The returned context must not be shared across goroutines that call
 // NewAdvisoryLockContext or Unlock concurrently, as the internal lock map is not
 // protected by a mutex. Each goroutine should derive its own context chain.
-func NewAdvisoryLockContext(ctx context.Context, connection SessionFactory, id string, lockType LockType) (context.Context, string, error) {
+func NewAdvisoryLockContext(
+	ctx context.Context, connection SessionFactory, id string, lockType LockType,
+) (context.Context, string, error) {
 	// lockOwnerID will be different for every service function that attempts to start a lock.
 	// only the initial call in the stack must unlock.
 	// Unlock() will compare UUIDs and ensure only the top level call succeeds.

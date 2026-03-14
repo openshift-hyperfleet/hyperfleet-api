@@ -41,7 +41,9 @@ type AdvisoryLock struct {
 }
 
 // newAdvisoryLock constructs a new AdvisoryLock object.
-func newAdvisoryLock(ctx context.Context, connection SessionFactory, ownerUUID *string, id *string, locktype *LockType) (*AdvisoryLock, error) {
+func newAdvisoryLock(
+	ctx context.Context, connection SessionFactory, ownerUUID *string, id *string, locktype *LockType,
+) (*AdvisoryLock, error) {
 	if connection == nil {
 		return nil, errors.New("AdvisoryLock: connection factory is missing")
 	}
@@ -116,7 +118,7 @@ func (l *AdvisoryLock) unlock(ctx context.Context) error {
 // https://www.postgresql.org/docs/12/datatype-numeric.html
 func hash(s string) int32 {
 	h := fnv.New32a()
-	h.Write([]byte(s))
+	_, _ = h.Write([]byte(s)) // hash.Write never returns error
 	// Sum32() returns uint32. needs conversion.
 	return int32(h.Sum32())
 }
