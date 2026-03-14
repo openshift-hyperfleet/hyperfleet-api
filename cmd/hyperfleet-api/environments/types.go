@@ -17,6 +17,9 @@ const (
 
 	EnvironmentStringKey string = "OCM_ENV"
 	EnvironmentDefault          = DevelopmentEnv
+
+	// Database SSL modes
+	SSLModeDisable string = "disable"
 )
 
 type Env struct {

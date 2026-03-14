@@ -21,8 +21,10 @@ const (
 // testNodePoolAdapterConfig creates a test adapter config with default values
 func testNodePoolAdapterConfig() *config.AdapterRequirementsConfig {
 	return &config.AdapterRequirementsConfig{
-		RequiredClusterAdapters:  []string{"validation", "dns", "pullsecret", "hypershift"},
-		RequiredNodePoolAdapters: []string{"validation", "hypershift"},
+		Required: config.RequiredAdapters{
+			Cluster:  []string{"validation", "dns", "pullsecret", "hypershift"},
+			Nodepool: []string{"validation", "hypershift"},
+		},
 	}
 }
 
@@ -360,7 +362,7 @@ func TestNodePoolAvailableReadyTransitions(t *testing.T) {
 	adapterStatusDao := newMockAdapterStatusDao()
 
 	adapterConfig := testNodePoolAdapterConfig()
-	adapterConfig.RequiredNodePoolAdapters = []string{"validation", "hypershift"}
+	adapterConfig.Required.Nodepool = []string{"validation", "hypershift"}
 
 	service := NewNodePoolService(nodePoolDao, adapterStatusDao, adapterConfig)
 
@@ -517,7 +519,7 @@ func TestNodePoolStaleAdapterStatusUpdatePolicy(t *testing.T) {
 	adapterStatusDao := newMockAdapterStatusDao()
 
 	adapterConfig := testNodePoolAdapterConfig()
-	adapterConfig.RequiredNodePoolAdapters = []string{"validation", "hypershift"}
+	adapterConfig.Required.Nodepool = []string{"validation", "hypershift"}
 
 	service := NewNodePoolService(nodePoolDao, adapterStatusDao, adapterConfig)
 
@@ -594,7 +596,7 @@ func TestNodePoolSyntheticTimestampsStableWithoutAdapterStatus(t *testing.T) {
 	adapterStatusDao := newMockAdapterStatusDao()
 
 	adapterConfig := testNodePoolAdapterConfig()
-	adapterConfig.RequiredNodePoolAdapters = []string{"validation"}
+	adapterConfig.Required.Nodepool = []string{"validation"}
 
 	service := NewNodePoolService(nodePoolDao, adapterStatusDao, adapterConfig)
 

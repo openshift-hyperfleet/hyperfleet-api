@@ -13,6 +13,7 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/environments"
 	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/server"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db/db_session"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/health"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
@@ -20,18 +21,15 @@ import (
 )
 
 func NewServeCommand() *cobra.Command {
-	ctx := context.Background()
 	cmd := &cobra.Command{
 		Use:   "serve",
 		Short: "Serve the hyperfleet",
 		Long:  "Serve the hyperfleet.",
 		Run:   runServe,
 	}
-	err := environments.Environment().AddFlags(cmd.PersistentFlags())
-	if err != nil {
-		logger.WithError(ctx, err).Error("Unable to add environment flags to serve command")
-		os.Exit(1)
-	}
+
+	// Add configuration system flags
+	config.AddAllConfigFlags(cmd)
 
 	return cmd
 }
@@ -39,19 +37,36 @@ func NewServeCommand() *cobra.Command {
 func runServe(cmd *cobra.Command, args []string) {
 	ctx := context.Background()
 
-	// Bind database environment variables BEFORE Initialize (database is initialized inside)
-	environments.Environment().Config.Database.BindEnv(cmd.PersistentFlags())
+	// ============================================================
+	// CONFIGURATION LOADING
+	// ============================================================
+	// Load configuration using Viper-based system
+	loader := config.NewConfigLoader()
+	cfg, err := loader.Load(ctx, cmd)
+	if err != nil {
+		logger.WithError(ctx, err).Error("Failed to load configuration")
+		os.Exit(1)
+	}
 
-	err := environments.Environment().Initialize()
+	// IMPORTANT: Set config BEFORE calling Initialize()
+	// Initialize() will apply environment-specific overrides (e.g., development disables JWT/TLS)
+	// and ensure SessionFactory, clients, services, handlers all use the correct config
+	environments.Environment().Config = cfg
+
+	// Initialize environment (applies overrides, creates SessionFactory, loads clients, services, handlers)
+	err = environments.Environment().Initialize()
 	if err != nil {
 		logger.WithError(ctx, err).Error("Unable to initialize environment")
 		os.Exit(1)
 	}
 
-	// Bind logging environment variables AFTER Initialize (logger is reconfigured later in initLogger)
-	environments.Environment().Config.Logging.BindEnv(cmd.PersistentFlags())
-
+	// Initialize logger with configured settings
 	initLogger()
+
+	// Log effective configuration (with sensitive values redacted)
+	// This happens AFTER initLogger() so it uses the configured logger settings
+	logger.Info(ctx, "Starting HyperFleet API with configuration (sensitive values redacted):")
+	logger.Info(ctx, config.DumpConfig(environments.Environment().Config))
 
 	var tp *trace.TracerProvider
 	if environments.Environment().Config.Logging.OTel.Enabled {
@@ -151,7 +166,11 @@ func initLogger() {
 		output = os.Stdout
 	}
 
-	hostname, _ := os.Hostname()
+	// Use configured hostname with fallback to os.Hostname()
+	hostname := environments.Environment().Config.Server.Hostname
+	if hostname == "" {
+		hostname, _ = os.Hostname()
+	}
 
 	logConfig := &logger.LogConfig{
 		Level:     level,
@@ -166,10 +185,10 @@ func initLogger() {
 	// InitGlobalLogger was already called in main() with default config
 	logger.ReconfigureGlobalLogger(logConfig)
 
-	// Reconfigure database logger to follow LOG_LEVEL
+	// Reconfigure database logger to follow global logging level
 	dbSessionFactory := environments.Environment().Database.SessionFactory
 	if dbSessionFactory != nil {
-		gormLevel := environments.Environment().Config.Database.GetGormLogLevel(
+		gormLevel := environments.Environment().Config.Database.SetLogLevel(
 			environments.Environment().Config.Logging.Level,
 		)
 		if reconfigurable, ok := dbSessionFactory.(db_session.LoggerReconfigurable); ok {

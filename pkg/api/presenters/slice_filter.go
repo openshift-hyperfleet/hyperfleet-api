@@ -99,12 +99,9 @@ func validate(model interface{}, in map[string]bool, prefix string) *errors.Serv
 				delete(in, prefixedName)
 			} else {
 				star := prefixedName + ".*"
-				if _, ok := in[star]; ok {
-					in = removeStar(in, prefixedName)
-				} else {
-					if err := validate(field, in, prefixedName); err != nil {
-						return err
-					}
+				delete(in, star)
+				if err := validate(field, in, prefixedName); err != nil {
+					return err
 				}
 			}
 		case reflect.Slice:
@@ -113,10 +110,7 @@ func validate(model interface{}, in map[string]bool, prefix string) *errors.Serv
 				prefixedName = fmt.Sprintf("%s.%s", prefix, name)
 			}
 			delete(in, prefixedName)
-			if _, ok := in[prefixedName+".*"]; ok {
-				in = removeStar(in, prefixedName)
-				continue
-			}
+			delete(in, prefixedName+".*")
 			sliceType := ttype.Type()
 			if sliceType.Kind() == reflect.Pointer {
 				sliceType = sliceType.Elem()
@@ -138,6 +132,8 @@ func validate(model interface{}, in map[string]bool, prefix string) *errors.Serv
 					for k := range subIn {
 						subKeys = append(subKeys, k)
 					}
+					// Note: nil pointer fields in zero-value structs produce reflect.Invalid Kind,
+					// handled by default case
 					elemValue := reflect.New(elemType).Elem().Interface()
 					if err := validate(elemValue, subIn, prefixedName); err != nil {
 						return err
@@ -147,7 +143,7 @@ func validate(model interface{}, in map[string]bool, prefix string) *errors.Serv
 					}
 				}
 			} else {
-				in = removeStar(in, prefixedName)
+				in = removeByPrefix(in, prefixedName)
 			}
 		default:
 			prefixedName := name
@@ -172,7 +168,7 @@ func validate(model interface{}, in map[string]bool, prefix string) *errors.Serv
 	return errors.Validation("%s", message)
 }
 
-func removeStar(in map[string]bool, name string) map[string]bool {
+func removeByPrefix(in map[string]bool, name string) map[string]bool {
 	prefix := name + "."
 	for k := range in {
 		if strings.HasPrefix(k, prefix) {
@@ -217,7 +213,7 @@ func structToMap(item interface{}, in map[string]bool, prefix string) map[string
 					prefixedName = fmt.Sprintf("%s.%s", prefix, name)
 				}
 				prefixedStar := fmt.Sprintf("%s.*", prefix)
-				if _, ok := in[prefixedName]; ok || in[prefixedStar] {
+				if in[prefixedName] || in[prefixedStar] {
 					if timePtr, ok := field.(*time.Time); ok && timePtr != nil {
 						res[name] = timePtr.Format(time.RFC3339)
 					} else if timeVal, ok := field.(time.Time); ok && !timeVal.IsZero() {
@@ -241,7 +237,8 @@ func structToMap(item interface{}, in map[string]bool, prefix string) map[string
 				nextPrefix = prefix + "." + name
 			}
 			starSelectorKey := nextPrefix + ".*"
-			requested := in[nextPrefix] || in[starSelectorKey]
+			parentStar := prefix + ".*"
+			requested := in[nextPrefix] || in[starSelectorKey] || in[parentStar]
 			if !requested {
 				subPrefix := nextPrefix + "."
 				for k := range in {
@@ -256,9 +253,9 @@ func structToMap(item interface{}, in map[string]bool, prefix string) map[string
 					res[name] = []interface{}{}
 				}
 			} else {
-				// Bare slice request acts as a star selector, returning all element fields.
+				// Bare slice request or parent star selector acts as a star selector, returning all element fields
 				elemIn := in
-				if _, ok := in[nextPrefix]; ok && !in[starSelectorKey] {
+				if (in[nextPrefix] || in[parentStar]) && !in[starSelectorKey] {
 					elemIn = make(map[string]bool, len(in)+1)
 					for k, v := range in {
 						elemIn[k] = v

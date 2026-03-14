@@ -59,11 +59,74 @@ func reloadCluster(dbSession *gorm.DB, cluster *api.Cluster) error {
 	return dbSession.First(cluster, "id = ?", cluster.ID).Error
 }
 
-// NewClusterWithStatus creates a cluster with specific status conditions
-// dbFactory parameter is needed to update database fields
-// The isAvailable and isReady parameters control which synthetic conditions are set
+// NewClusterWithStatus creates a cluster with specific status conditions using the current time.
 func NewClusterWithStatus(
 	f *Factories, dbFactory db.SessionFactory, id string, isAvailable, isReady bool,
+) (*api.Cluster, error) {
+	return NewClusterWithStatusAtTime(f, dbFactory, id, isAvailable, isReady, time.Now())
+}
+
+// NewClusterWithStatusAtTime creates a cluster with specific status conditions and custom timestamps.
+// This is useful for testing time-based condition queries (e.g., last_updated_time < '...')
+func NewClusterWithStatusAtTime(
+	f *Factories, dbFactory db.SessionFactory, id string,
+	isAvailable, isReady bool, conditionTime time.Time,
+) (*api.Cluster, error) {
+	cluster, err := f.NewCluster(id)
+	if err != nil {
+		return nil, err
+	}
+
+	availableStatus := api.ConditionFalse
+	if isAvailable {
+		availableStatus = api.ConditionTrue
+	}
+	readyStatus := api.ConditionFalse
+	if isReady {
+		readyStatus = api.ConditionTrue
+	}
+
+	conditions := []api.ResourceCondition{
+		{
+			Type:               "Available",
+			Status:             availableStatus,
+			ObservedGeneration: cluster.Generation,
+			LastTransitionTime: conditionTime,
+			CreatedTime:        conditionTime,
+			LastUpdatedTime:    conditionTime,
+		},
+		{
+			Type:               "Ready",
+			Status:             readyStatus,
+			ObservedGeneration: cluster.Generation,
+			LastTransitionTime: conditionTime,
+			CreatedTime:        conditionTime,
+			LastUpdatedTime:    conditionTime,
+		},
+	}
+
+	conditionsJSON, err := json.Marshal(conditions)
+	if err != nil {
+		return nil, err
+	}
+
+	dbSession := dbFactory.New(context.Background())
+	err = dbSession.Model(cluster).Update("status_conditions", conditionsJSON).Error
+	if err != nil {
+		return nil, err
+	}
+
+	if err := reloadCluster(dbSession, cluster); err != nil {
+		return nil, err
+	}
+	return cluster, nil
+}
+
+// NewClusterWithObservedGeneration creates a cluster with a specific observed_generation on its conditions.
+// This is useful for testing observed_generation-based queries.
+func NewClusterWithObservedGeneration(
+	f *Factories, dbFactory db.SessionFactory, id string,
+	isAvailable, isReady bool, observedGeneration int32,
 ) (*api.Cluster, error) {
 	cluster, err := f.NewCluster(id)
 	if err != nil {
@@ -84,7 +147,7 @@ func NewClusterWithStatus(
 		{
 			Type:               "Available",
 			Status:             availableStatus,
-			ObservedGeneration: cluster.Generation,
+			ObservedGeneration: observedGeneration,
 			LastTransitionTime: now,
 			CreatedTime:        now,
 			LastUpdatedTime:    now,
@@ -92,7 +155,7 @@ func NewClusterWithStatus(
 		{
 			Type:               "Ready",
 			Status:             readyStatus,
-			ObservedGeneration: cluster.Generation,
+			ObservedGeneration: observedGeneration,
 			LastTransitionTime: now,
 			CreatedTime:        now,
 			LastUpdatedTime:    now,
@@ -104,14 +167,12 @@ func NewClusterWithStatus(
 		return nil, err
 	}
 
-	// Update database record with status conditions
 	dbSession := dbFactory.New(context.Background())
 	err = dbSession.Model(cluster).Update("status_conditions", conditionsJSON).Error
 	if err != nil {
 		return nil, err
 	}
 
-	// Reload to get updated values
 	if err := reloadCluster(dbSession, cluster); err != nil {
 		return nil, err
 	}

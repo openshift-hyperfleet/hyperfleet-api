@@ -112,7 +112,7 @@ func connect(name string, config *config.DatabaseConfig) (*sql.DB, *gorm.DB, fun
 		err error
 	)
 
-	dbx, err = sql.Open(config.Dialect, config.ConnectionStringWithName(name, config.SSLMode != disable))
+	dbx, err = sql.Open(config.Dialect, config.ConnectionStringWithName(name, config.SSL.Mode != disable))
 	if err != nil {
 		dbx, err = sql.Open(config.Dialect, config.ConnectionStringWithName(name, false))
 		if err != nil {
@@ -120,7 +120,7 @@ func connect(name string, config *config.DatabaseConfig) (*sql.DB, *gorm.DB, fun
 				"SQL failed to connect to %s database %s with connection string: %s\nError: %s",
 				config.Dialect,
 				name,
-				config.LogSafeConnectionStringWithName(name, config.SSLMode != disable),
+				config.LogSafeConnectionStringWithName(name, config.SSL.Mode != disable),
 				err.Error(),
 			))
 		}
@@ -152,7 +152,7 @@ func connect(name string, config *config.DatabaseConfig) (*sql.DB, *gorm.DB, fun
 			"GORM failed to connect to %s database %s with connection string: %s\nError: %s",
 			config.Dialect,
 			config.Name,
-			config.LogSafeConnectionString(config.SSLMode != disable),
+			config.LogSafeConnectionString(config.SSL.Mode != disable),
 			err.Error(),
 		))
 	}
@@ -183,7 +183,7 @@ func connectFactory(config *config.DatabaseConfig) (*sql.DB, *gorm.DB) {
 		g2  *gorm.DB
 	)
 	dbx, g2, _ = connect(config.Name, config)
-	dbx.SetMaxOpenConns(config.MaxOpenConnections)
+	dbx.SetMaxOpenConns(config.Pool.MaxConnections)
 
 	return dbx, g2
 }
@@ -234,5 +234,5 @@ func (f *Test) ReconfigureLogger(level gormlogger.LogLevel) {
 }
 
 func (f *Test) GetAdvisoryLockTimeout() int {
-	return f.config.AdvisoryLockTimeoutSeconds
+	return int(f.config.Pool.AdvisoryLockTimeout.Seconds())
 }

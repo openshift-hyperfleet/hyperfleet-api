@@ -1,26 +1,19 @@
 package config
 
-import (
-	"flag"
-	"fmt"
-	"os"
-	"path/filepath"
-	"strconv"
-	"strings"
-
-	"github.com/spf13/pflag"
-)
-
+// ApplicationConfig holds all application configuration
+// Follows HyperFleet Configuration Standard with validation and structured marshaling
 type ApplicationConfig struct {
-	Server   *ServerConfig             `json:"server"`
-	Metrics  *MetricsConfig            `json:"metrics"`
-	Health   *HealthConfig             `json:"health"`
-	Database *DatabaseConfig           `json:"database"`
-	OCM      *OCMConfig                `json:"ocm"`
-	Logging  *LoggingConfig            `json:"logging"`
-	Adapters *AdapterRequirementsConfig `json:"adapters"`
+	Server   *ServerConfig              `mapstructure:"server" json:"server" validate:"required"`
+	Metrics  *MetricsConfig             `mapstructure:"metrics" json:"metrics" validate:"required"`
+	Health   *HealthConfig              `mapstructure:"health" json:"health" validate:"required"`
+	Database *DatabaseConfig            `mapstructure:"database" json:"database" validate:"required"`
+	OCM      *OCMConfig                 `mapstructure:"ocm" json:"ocm" validate:"required"`
+	Logging  *LoggingConfig             `mapstructure:"logging" json:"logging" validate:"required"`
+	Adapters *AdapterRequirementsConfig `mapstructure:"adapters" json:"adapters" validate:"required"`
 }
 
+// NewApplicationConfig returns default ApplicationConfig with all sub-configs initialized
+// These defaults can be overridden by config file, env vars, or CLI flags
 func NewApplicationConfig() *ApplicationConfig {
 	return &ApplicationConfig{
 		Server:   NewServerConfig(),
@@ -29,112 +22,6 @@ func NewApplicationConfig() *ApplicationConfig {
 		Database: NewDatabaseConfig(),
 		OCM:      NewOCMConfig(),
 		Logging:  NewLoggingConfig(),
+		Adapters: NewAdapterRequirementsConfig(),
 	}
-}
-
-func (c *ApplicationConfig) AddFlags(flagset *pflag.FlagSet) {
-	flagset.AddGoFlagSet(flag.CommandLine)
-	c.Server.AddFlags(flagset)
-	c.Metrics.AddFlags(flagset)
-	c.Health.AddFlags(flagset)
-	c.Database.AddFlags(flagset)
-	c.OCM.AddFlags(flagset)
-	c.Logging.AddFlags(flagset)
-}
-
-// LoadAdapters initializes the adapter configuration from environment variables.
-// This should be called once during application startup.
-func (c *ApplicationConfig) LoadAdapters() error {
-	adapters, err := NewAdapterRequirementsConfig()
-	if err != nil {
-		return err
-	}
-	c.Adapters = adapters
-	return nil
-}
-
-func (c *ApplicationConfig) ReadFiles() []string {
-	readFiles := []struct {
-		f    func() error
-		name string
-	}{
-		{c.Server.ReadFiles, "Server"},
-		{c.Database.ReadFiles, "Database"},
-		{c.OCM.ReadFiles, "OCM"},
-		{c.Metrics.ReadFiles, "Metrics"},
-		{c.Health.ReadFiles, "Health"},
-		{c.Logging.ReadFiles, "Logging"},
-	}
-	var messages []string
-	for _, rf := range readFiles {
-		if err := rf.f(); err != nil {
-			msg := fmt.Sprintf("%s %s", rf.name, err.Error())
-			messages = append(messages, msg)
-		}
-	}
-	return messages
-}
-
-// Read the contents of file into integer value
-func readFileValueInt(file string, val *int) error {
-	fileContents, err := ReadFile(file)
-	if err != nil || fileContents == "" {
-		return err
-	}
-
-	*val, err = strconv.Atoi(fileContents)
-	return err
-}
-
-// Read the contents of file into string value
-func readFileValueString(file string, val *string) error {
-	fileContents, err := ReadFile(file)
-	if err != nil || fileContents == "" {
-		return err
-	}
-
-	*val = strings.TrimSuffix(fileContents, "\n")
-	return err
-}
-
-// Read the contents of file into boolean value
-func readFileValueBool(file string, val *bool) error {
-	fileContents, err := ReadFile(file)
-	if err != nil || fileContents == "" {
-		return err
-	}
-
-	*val, err = strconv.ParseBool(fileContents)
-	return err
-}
-
-func ReadFile(file string) (string, error) {
-	// If the value is in quotes, unquote it
-	unquotedFile, err := strconv.Unquote(file)
-	if err != nil {
-		// values without quotes will raise an error, ignore it.
-		unquotedFile = file
-	}
-
-	// If no file is provided, leave val unchanged.
-	if unquotedFile == "" {
-		return "", nil
-	}
-
-	// Resolve relative paths from the current working directory
-	absFilePath := unquotedFile
-	if !filepath.IsAbs(unquotedFile) {
-		wd, wdErr := os.Getwd()
-		if wdErr != nil {
-			return "", fmt.Errorf("failed to get working directory: %w", wdErr)
-		}
-		absFilePath = filepath.Join(wd, unquotedFile)
-	}
-
-	// Read the file
-	buf, err := os.ReadFile(absFilePath) //nolint:gosec // File path is controlled by config file settings
-	if err != nil {
-		return "", err
-	}
-	return string(buf), nil
 }

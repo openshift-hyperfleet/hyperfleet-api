@@ -33,7 +33,7 @@ func (e *productionEnvImpl) OverrideClients(c *Clients) error {
 	return nil
 }
 
-func (e *productionEnvImpl) Flags() map[string]string {
+func (e *productionEnvImpl) EnvironmentDefaults() map[string]string {
 	return map[string]string{
 		"v":               "1",
 		"ocm-debug":       "false",

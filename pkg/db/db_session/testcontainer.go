@@ -97,7 +97,7 @@ func (f *Testcontainer) Init(config *config.DatabaseConfig) {
 	}
 
 	// Configure connection pool
-	f.sqlDB.SetMaxOpenConns(config.MaxOpenConnections)
+	f.sqlDB.SetMaxOpenConns(config.Pool.MaxConnections)
 
 	var gormLog gormlogger.Interface
 	if config.Debug {
@@ -226,5 +226,5 @@ func (f *Testcontainer) ReconfigureLogger(level gormlogger.LogLevel) {
 }
 
 func (f *Testcontainer) GetAdvisoryLockTimeout() int {
-	return f.config.AdvisoryLockTimeoutSeconds
+	return int(f.config.Pool.AdvisoryLockTimeout.Seconds())
 }

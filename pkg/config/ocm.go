@@ -1,68 +1,55 @@
 package config
 
 import (
-	"github.com/spf13/pflag"
+	"encoding/json"
 )
 
+// OCMConfig holds OpenShift Cluster Manager configuration
+// Follows HyperFleet Configuration Standard
 type OCMConfig struct {
-	BaseURL          string `json:"base_url"`
-	ClientID         string `json:"client-id"`
-	ClientIDFile     string `json:"client-id_file"`
-	ClientSecret     string `json:"client-secret"`
-	ClientSecretFile string `json:"client-secret_file"`
-	SelfToken        string `json:"self_token"`
-	SelfTokenFile    string `json:"self_token_file"`
-	TokenURL         string `json:"token_url"`
-	Debug            bool   `json:"debug"`
-	EnableMock       bool   `json:"enable_mock"`
+	BaseURL      string     `mapstructure:"base_url" json:"base_url" validate:"required,url"`
+	ClientID     string     `mapstructure:"client_id" json:"-"` // Excluded from JSON marshaling (sensitive)
+	ClientSecret string     `mapstructure:"client_secret" json:"-"` // Excluded from JSON marshaling (sensitive)
+	SelfToken    string     `mapstructure:"self_token" json:"-"` // Excluded from JSON marshaling (sensitive)
+	TokenURL     string     `mapstructure:"token_url" json:"token_url" validate:"required,url"`
+	Debug        bool       `mapstructure:"debug" json:"debug"`
+	Mock         MockConfig `mapstructure:"mock" json:"mock" validate:"required"`
 }
 
+// MockConfig holds mock configuration for testing
+type MockConfig struct {
+	Enabled bool `mapstructure:"enabled" json:"enabled"`
+}
+
+// MarshalJSON implements custom JSON marshaling to redact sensitive fields
+func (c OCMConfig) MarshalJSON() ([]byte, error) {
+	type Alias OCMConfig
+	return json.Marshal(&struct {
+		ClientID     string `json:"client_id"`
+		ClientSecret string `json:"client_secret"`
+		SelfToken    string `json:"self_token"`
+		*Alias
+	}{
+		ClientID:     redactIfSet(c.ClientID),
+		ClientSecret: redactIfSet(c.ClientSecret),
+		SelfToken:    redactIfSet(c.SelfToken),
+		Alias:        (*Alias)(&c),
+	})
+}
+
+// NewOCMConfig returns default OCMConfig values
+// These defaults can be overridden by config file, env vars, or CLI flags
 func NewOCMConfig() *OCMConfig {
 	return &OCMConfig{
-		BaseURL:          "https://api.integration.openshift.com",
-		TokenURL:         "https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token",
-		ClientIDFile:     "secrets/ocm-service.clientId",
-		ClientSecretFile: "secrets/ocm-service.clientSecret",
-		SelfTokenFile:    "",
-		Debug:            false,
-		EnableMock:       true,
+		BaseURL:      "https://api.integration.openshift.com",
+		ClientID:     "",
+		ClientSecret: "",
+		SelfToken:    "",
+		TokenURL:     "https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token",
+		Debug:        false,
+		Mock: MockConfig{
+			Enabled: false, // Default to real OCM clients; tests can opt in to mocks
+		},
 	}
 }
 
-func (c *OCMConfig) AddFlags(fs *pflag.FlagSet) {
-	fs.StringVar(
-		&c.ClientIDFile, "ocm-client-id-file", c.ClientIDFile,
-		"File containing OCM API privileged account client-id",
-	)
-	fs.StringVar(
-		&c.ClientSecretFile, "ocm-client-secret-file", c.ClientSecretFile,
-		"File containing OCM API privileged account client-secret",
-	)
-	fs.StringVar(
-		&c.SelfTokenFile, "self-token-file", c.SelfTokenFile,
-		"File containing OCM API privileged offline SSO token",
-	)
-	fs.StringVar(&c.BaseURL, "ocm-base-url", c.BaseURL, "The base URL of the OCM API, integration by default")
-	fs.StringVar(
-		&c.TokenURL, "ocm-token-url", c.TokenURL,
-		"The base URL that OCM uses to request tokens, stage by default",
-	)
-	fs.BoolVar(&c.Debug, "ocm-debug", c.Debug, "Debug flag for OCM API")
-	fs.BoolVar(&c.EnableMock, "enable-ocm-mock", c.EnableMock, "Enable mock ocm clients")
-}
-
-func (c *OCMConfig) ReadFiles() error {
-	if c.EnableMock {
-		return nil
-	}
-	err := readFileValueString(c.ClientIDFile, &c.ClientID)
-	if err != nil {
-		return err
-	}
-	err = readFileValueString(c.ClientSecretFile, &c.ClientSecret)
-	if err != nil {
-		return err
-	}
-	err = readFileValueString(c.SelfTokenFile, &c.SelfToken)
-	return err
-}

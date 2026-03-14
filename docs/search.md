@@ -44,6 +44,7 @@ The HyperFleet API uses the [Tree Search Language (TSL)](https://github.com/yaac
 | `updated_by` | string | Last updater email | `updated_by='user@example.com'` |
 | `labels.<key>` | string | Label value | `labels.environment='production'` |
 | `status.conditions.<Type>` | string | Condition status | `status.conditions.Ready='True'` |
+| `status.conditions.<Type>.<Subfield>` | varies | Condition subfield | `status.conditions.Ready.last_updated_time < '...'` |
 
 ```bash
 # Find cluster by name
@@ -99,7 +100,7 @@ Query resources by status conditions: `status.conditions.<Type>='<Status>'`
 
 Condition types must be PascalCase (`Ready`, `Available`) and status must be `True` or `False` for resource conditions.
 
-**Note:** Only the `=` operator is supported for condition queries. Other  operators (`!=`, `<`, `>`, `in`, etc.) will return an error. Use `not` with  conditions cautiously — `not status.conditions.Ready='True'` does not work as expected.
+**Note:** Only the `=` operator is supported for condition queries. Other operators (`!=`, `<`, `>`, `in`, etc.) will return an error. The `NOT` operator is not supported with condition queries (`status.conditions.<Type>` or `status.conditions.<Type>.<Subfield>`) and will return a `400 Bad Request` error. Use the inverse condition value instead (e.g., `status.conditions.Ready='False'` rather than `NOT status.conditions.Ready='True'`).
 
 ```bash
 # Find available clusters
@@ -110,6 +111,45 @@ curl -G "http://localhost:8000/api/hyperfleet/v1/clusters" \
 curl -G "http://localhost:8000/api/hyperfleet/v1/clusters" \
   --data-urlencode "search=status.conditions.Ready='False'"
 ```
+
+## Condition Subfield Queries
+
+Query resources by condition subfields such as timestamps and observed generation:
+
+```text
+status.conditions.<Type>.<Subfield> <op> '<Value>'
+```
+
+### Supported Subfields
+
+| Subfield | Type | Description |
+|----------|------|-------------|
+| `last_updated_time` | TIMESTAMPTZ | When the condition was last updated |
+| `last_transition_time` | TIMESTAMPTZ | When the condition status last changed |
+| `observed_generation` | INTEGER | Last generation processed by the condition |
+
+### Supported Operators
+
+Condition subfields support comparison operators: `=`, `!=`, `<`, `<=`, `>`, `>=`.
+
+> **Note**: `status.conditions.<Type>` (without subfield) only supports the `=` operator.
+> The `NOT` operator is not supported with any condition expression — neither `status.conditions.<Type>` nor `status.conditions.<Type>.<Subfield>` (e.g., `status.conditions.Ready.last_updated_time`). Using `NOT` with these expressions returns a `400 Bad Request` error. Restructure queries using `AND`/`OR` or the inverse condition value instead.
+
+```bash
+# Find clusters where Ready condition hasn't been updated in the last hour
+curl -G "http://localhost:8000/api/hyperfleet/v1/clusters" \
+  --data-urlencode "search=status.conditions.Ready.last_updated_time < '2026-03-06T14:00:00Z'"
+
+# Find stale-ready resources (Sentinel selective polling use case)
+curl -G "http://localhost:8000/api/hyperfleet/v1/clusters" \
+  --data-urlencode "search=status.conditions.Ready='True' AND status.conditions.Ready.last_updated_time < '2026-03-06T14:00:00Z'"
+
+# Find clusters with observed_generation below a threshold (uses unquoted integer)
+curl -G "http://localhost:8000/api/hyperfleet/v1/clusters" \
+  --data-urlencode "search=status.conditions.Ready.observed_generation < 5"
+```
+
+Time subfields require RFC3339 format (e.g., `2026-01-01T00:00:00Z`). Integer subfields use unquoted numeric values.
 
 ## Complex Queries
 

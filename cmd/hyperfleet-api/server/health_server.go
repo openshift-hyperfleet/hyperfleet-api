@@ -30,7 +30,7 @@ func NewHealthServer() Server {
 		listening:       make(chan struct{}),
 	}
 	s.httpServer = &http.Server{
-		Addr:              env().Config.Health.BindAddress,
+		Addr:              env().Config.Health.BindAddress(),
 		Handler:           mainHandler,
 		ReadHeaderTimeout: 10 * time.Second,
 	}
@@ -53,18 +53,18 @@ func (s *healthServer) Serve(listener net.Listener) {
 	ctx := context.Background()
 	var err error
 
-	if env().Config.Health.EnableHTTPS {
-		if env().Config.Server.HTTPSCertFile == "" || env().Config.Server.HTTPSKeyFile == "" {
+	if env().Config.Health.TLS.Enabled {
+		if env().Config.Server.TLS.CertFile == "" || env().Config.Server.TLS.KeyFile == "" {
 			check(
 				fmt.Errorf("unspecified required --https-cert-file, --https-key-file"),
 				"Can't start https server",
 			)
 		}
 
-		logger.With(ctx, logger.FieldBindAddress, env().Config.Health.BindAddress).Info("Serving Health with TLS")
-		err = s.httpServer.ServeTLS(listener, env().Config.Server.HTTPSCertFile, env().Config.Server.HTTPSKeyFile)
+		logger.With(ctx, logger.FieldBindAddress, env().Config.Health.BindAddress()).Info("Serving Health with TLS")
+		err = s.httpServer.ServeTLS(listener, env().Config.Server.TLS.CertFile, env().Config.Server.TLS.KeyFile)
 	} else {
-		logger.With(ctx, logger.FieldBindAddress, env().Config.Health.BindAddress).Info("Serving Health without TLS")
+		logger.With(ctx, logger.FieldBindAddress, env().Config.Health.BindAddress()).Info("Serving Health without TLS")
 		err = s.httpServer.Serve(listener)
 	}
 	if err != nil && err != http.ErrServerClosed {

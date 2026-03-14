@@ -1,432 +1,480 @@
 package config
 
 import (
-	"os"
 	"testing"
 
-	"github.com/spf13/pflag"
+	"github.com/stretchr/testify/assert"
+	"gorm.io/gorm/logger"
 )
 
-// TestNewDatabaseConfig_Defaults tests default configuration values
-func TestNewDatabaseConfig_Defaults(t *testing.T) {
-	cfg := NewDatabaseConfig()
-
+func TestEscapeDSNValue(t *testing.T) {
 	tests := []struct {
 		name     string
-		got      interface{}
-		expected interface{}
+		input    string
+		expected string
 	}{
-		{"Dialect", cfg.Dialect, "postgres"},
-		{"SSLMode", cfg.SSLMode, "disable"},
-		{"Debug", cfg.Debug, false},
-		{"MaxOpenConnections", cfg.MaxOpenConnections, 50},
-		{"AdvisoryLockTimeoutSeconds", cfg.AdvisoryLockTimeoutSeconds, 300},
-		{"MaxIdleConnections", cfg.MaxIdleConnections, 10},
-		{"ConnRetryAttempts", cfg.ConnRetryAttempts, 10},
+		{
+			name:     "simple alphabetic value doesn't need quotes",
+			input:    "simple",
+			expected: "simple",
+		},
+		{
+			name:     "value with spaces is quoted",
+			input:    "pass word",
+			expected: "'pass word'",
+		},
+		{
+			name:     "single quotes are escaped and quoted",
+			input:    "it's",
+			expected: "'it\\'s'",
+		},
+		{
+			name:     "backslashes are escaped and quoted",
+			input:    "back\\slash",
+			expected: "'back\\\\slash'",
+		},
+		{
+			name:     "value with tab is quoted",
+			input:    "has\ttab",
+			expected: "'has\ttab'",
+		},
+		{
+			name:     "value with newline is quoted",
+			input:    "has\nnewline",
+			expected: "'has\nnewline'",
+		},
+		{
+			name:     "value with carriage return is quoted",
+			input:    "has\rcarriage",
+			expected: "'has\rcarriage'",
+		},
+		{
+			name:     "empty string stays empty",
+			input:    "",
+			expected: "",
+		},
+		{
+			name:     "value with both backslash and quote is escaped and quoted",
+			input:    "path\\to\\'file",
+			expected: "'path\\\\to\\\\\\'file'",
+		},
+		{
+			name:     "value with multiple spaces is quoted",
+			input:    "multiple  spaces  here",
+			expected: "'multiple  spaces  here'",
+		},
+		{
+			name:     "numeric value doesn't need quotes",
+			input:    "12345",
+			expected: "12345",
+		},
+		{
+			name:     "hostname with dots doesn't need quotes",
+			input:    "db.example.com",
+			expected: "db.example.com",
+		},
+		{
+			name:     "path with spaces is quoted",
+			input:    "/path/to/my file.pem",
+			expected: "'/path/to/my file.pem'",
+		},
+		{
+			name:     "password with special characters is quoted",
+			input:    "p@ss!word#123",
+			expected: "'p@ss!word#123'",
+		},
+		{
+			name:     "password with equals sign is quoted",
+			input:    "pass=word",
+			expected: "'pass=word'",
+		},
+		{
+			name:     "password with multiple special chars",
+			input:    "p@ss'w=rd\\123",
+			expected: "'p@ss\\'w=rd\\\\123'",
+		},
+		{
+			name:     "hyphen is allowed without quotes",
+			input:    "my-database",
+			expected: "my-database",
+		},
+		{
+			name:     "underscore requires quotes",
+			input:    "my_database",
+			expected: "'my_database'",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if tt.got != tt.expected {
-				t.Errorf("expected %v, got %v", tt.expected, tt.got)
-			}
+			result := escapeDSNValue(tt.input)
+			assert.Equal(t, tt.expected, result)
 		})
 	}
 }
 
-// TestDatabaseConfig_AddFlags tests CLI flag registration
-func TestDatabaseConfig_AddFlags(t *testing.T) {
-	cfg := NewDatabaseConfig()
-	fs := pflag.NewFlagSet("test", pflag.ContinueOnError)
-
-	cfg.AddFlags(fs)
-
-	// Verify flags are registered
-	flags := []string{
-		"db-host-file",
-		"db-port-file",
-		"db-user-file",
-		"db-password-file",
-		"db-name-file",
-		"db-sslmode",
-		"enable-db-debug",
-		"db-max-open-connections",
-		"db-advisory-lock-timeout",
-	}
-	for _, flagName := range flags {
-		t.Run("flag_"+flagName, func(t *testing.T) {
-			if fs.Lookup(flagName) == nil {
-				t.Errorf("expected %s flag to be registered", flagName)
-			}
-		})
-	}
-
-	// Test flag parsing for advisory lock timeout
+// TestConnectionString verifies DSN string assembly and integration between components.
+// Character escaping is thoroughly tested in TestEscapeDSNValue - this test focuses on:
+// - Correct DSN format and parameter ordering
+// - SSL configuration integration
+// - Integration validation with one representative special character test case
+func TestConnectionString(t *testing.T) {
 	tests := []struct {
 		name     string
-		args     []string
-		expected int
+		config   *DatabaseConfig
+		ssl      bool
+		expected string
 	}{
 		{
-			name:     "default advisory lock timeout",
-			args:     []string{},
-			expected: 300,
+			name: "basic connection without SSL",
+			config: &DatabaseConfig{
+				Host:     "localhost",
+				Port:     5432,
+				Name:     "testdb",
+				Username: "testuser",
+				Password: "testpass",
+				SSL: SSLConfig{
+					Mode: "disable",
+				},
+			},
+			ssl:      false,
+			expected: "host=localhost port=5432 dbname=testdb user=testuser password=testpass sslmode=disable",
 		},
 		{
-			name:     "custom advisory lock timeout",
-			args:     []string{"--db-advisory-lock-timeout=600"},
-			expected: 600,
+			name: "connection with SSL enabled",
+			config: &DatabaseConfig{
+				Host:     "db.example.com",
+				Port:     5432,
+				Name:     "proddb",
+				Username: "admin",
+				Password: "secret",
+				SSL: SSLConfig{
+					Mode: "require",
+				},
+			},
+			ssl:      true,
+			expected: "host=db.example.com port=5432 dbname=proddb user=admin password=secret sslmode=require",
+		},
+		{
+			name: "connection with SSL cert file",
+			config: &DatabaseConfig{
+				Host:     "secure.db.com",
+				Port:     5432,
+				Name:     "securedb",
+				Username: "secureuser",
+				Password: "securepass",
+				SSL: SSLConfig{
+					Mode:         "verify-full",
+					RootCertFile: "/etc/ssl/certs/ca.pem",
+				},
+			},
+			ssl: true,
+			expected: "host=secure.db.com port=5432 dbname=securedb user=secureuser password=securepass " +
+				"sslmode=verify-full sslrootcert='/etc/ssl/certs/ca.pem'",
+		},
+		{
+			name: "SSL mode disable even when ssl=true",
+			config: &DatabaseConfig{
+				Host:     "localhost",
+				Port:     5432,
+				Name:     "testdb",
+				Username: "user",
+				Password: "pass",
+				SSL: SSLConfig{
+					Mode: "disable",
+				},
+			},
+			ssl:      true,
+			expected: "host=localhost port=5432 dbname=testdb user=user password=pass sslmode=disable",
+		},
+		{
+			name: "SSL cert file with spaces requires quoting",
+			config: &DatabaseConfig{
+				Host:     "localhost",
+				Port:     5432,
+				Name:     "testdb",
+				Username: "user",
+				Password: "pass",
+				SSL: SSLConfig{
+					Mode:         "verify-full",
+					RootCertFile: "/path/to/my cert.pem",
+				},
+			},
+			ssl: true,
+			expected: "host=localhost port=5432 dbname=testdb user=user password=pass " +
+				"sslmode=verify-full sslrootcert='/path/to/my cert.pem'",
+		},
+		{
+			name: "hostname with hyphens and dots (simple values, no quotes)",
+			config: &DatabaseConfig{
+				Host:     "db-host.example.com",
+				Port:     5432,
+				Name:     "my-database",
+				Username: "my-user",
+				Password: "my-pass",
+			},
+			ssl:      false,
+			expected: "host=db-host.example.com port=5432 dbname=my-database user=my-user password=my-pass sslmode=disable",
+		},
+		{
+			// Integration test: verifies that escapeDSNValue integrates correctly with ConnectionString
+			// for all special characters mentioned in code review (', \, =, spaces, #, @)
+			// Detailed character escaping is tested in TestEscapeDSNValue
+			name: "integration test with special characters in username and password",
+			config: &DatabaseConfig{
+				Host:     "localhost",
+				Port:     5432,
+				Name:     "testdb",
+				Username: "admin@example.com",
+				Password: "p@ss w'rd=test\\path#123",
+			},
+			ssl: false,
+			expected: "host=localhost port=5432 dbname=testdb user='admin@example.com' " +
+				"password='p@ss w\\'rd=test\\\\path#123' sslmode=disable",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := NewDatabaseConfig()
-			fs := pflag.NewFlagSet("test", pflag.ContinueOnError)
-			cfg.AddFlags(fs)
-
-			if err := fs.Parse(tt.args); err != nil {
-				t.Fatalf("failed to parse flags: %v", err)
-			}
-
-			if cfg.AdvisoryLockTimeoutSeconds != tt.expected {
-				t.Errorf("expected AdvisoryLockTimeoutSeconds %d, got %d", tt.expected, cfg.AdvisoryLockTimeoutSeconds)
-			}
+			result := tt.config.ConnectionString(tt.ssl)
+			assert.Equal(t, tt.expected, result)
 		})
 	}
 }
 
-// TestDatabaseConfig_BindEnv tests environment variable binding
-func TestDatabaseConfig_BindEnv(t *testing.T) {
+func TestLogSafeConnectionString(t *testing.T) {
 	tests := []struct {
 		name     string
-		envVars  map[string]string
-		validate func(*testing.T, *DatabaseConfig)
+		config   *DatabaseConfig
+		ssl      bool
+		expected string
 	}{
 		{
-			name: "valid advisory lock timeout",
-			envVars: map[string]string{
-				"DB_ADVISORY_LOCK_TIMEOUT": "600",
+			name: "credentials are redacted",
+			config: &DatabaseConfig{
+				Host:     "localhost",
+				Port:     5432,
+				Name:     "testdb",
+				Username: "testuser",
+				Password: "secretpassword",
+				SSL: SSLConfig{
+					Mode: "disable",
+				},
 			},
-			validate: func(t *testing.T, cfg *DatabaseConfig) {
-				if cfg.AdvisoryLockTimeoutSeconds != 600 {
-					t.Errorf("expected AdvisoryLockTimeoutSeconds 600, got %d", cfg.AdvisoryLockTimeoutSeconds)
-				}
-			},
+			ssl: false,
+			expected: "host=localhost port=5432 dbname=testdb user='" + RedactedValue +
+				"' password='" + RedactedValue + "' sslmode=disable",
 		},
 		{
-			name: "valid db debug true",
-			envVars: map[string]string{
-				"DB_DEBUG": "true",
+			name: "credentials with special characters are redacted",
+			config: &DatabaseConfig{
+				Host:     "localhost",
+				Port:     5432,
+				Name:     "testdb",
+				Username: "user with space",
+				Password: "pass'word",
 			},
-			validate: func(t *testing.T, cfg *DatabaseConfig) {
-				if cfg.Debug != true {
-					t.Errorf("expected Debug true, got %t", cfg.Debug)
-				}
-			},
+			ssl: false,
+			expected: "host=localhost port=5432 dbname=testdb user='" + RedactedValue +
+				"' password='" + RedactedValue + "' sslmode=disable",
 		},
 		{
-			name: "valid db debug false",
-			envVars: map[string]string{
-				"DB_DEBUG": "false",
+			name: "empty credentials are redacted",
+			config: &DatabaseConfig{
+				Host:     "localhost",
+				Port:     5432,
+				Name:     "testdb",
+				Username: "",
+				Password: "",
 			},
-			validate: func(t *testing.T, cfg *DatabaseConfig) {
-				if cfg.Debug != false {
-					t.Errorf("expected Debug false, got %t", cfg.Debug)
-				}
-			},
+			ssl: false,
+			expected: "host=localhost port=5432 dbname=testdb user='" + RedactedValue +
+				"' password='" + RedactedValue + "' sslmode=disable",
 		},
 		{
-			name: "zero timeout keeps default",
-			envVars: map[string]string{
-				"DB_ADVISORY_LOCK_TIMEOUT": "0",
+			name: "with SSL and cert file",
+			config: &DatabaseConfig{
+				Host:     "secure.db.com",
+				Port:     5432,
+				Name:     "securedb",
+				Username: "admin",
+				Password: "topsecret",
+				SSL: SSLConfig{
+					Mode:         "verify-full",
+					RootCertFile: "/etc/ssl/certs/ca.pem",
+				},
 			},
-			validate: func(t *testing.T, cfg *DatabaseConfig) {
-				if cfg.AdvisoryLockTimeoutSeconds != 300 {
-					t.Errorf("expected AdvisoryLockTimeoutSeconds to keep default (300), got %d", cfg.AdvisoryLockTimeoutSeconds)
-				}
-			},
-		},
-		{
-			name: "negative timeout keeps default",
-			envVars: map[string]string{
-				"DB_ADVISORY_LOCK_TIMEOUT": "-1",
-			},
-			validate: func(t *testing.T, cfg *DatabaseConfig) {
-				if cfg.AdvisoryLockTimeoutSeconds != 300 {
-					t.Errorf("expected AdvisoryLockTimeoutSeconds to keep default (300), got %d", cfg.AdvisoryLockTimeoutSeconds)
-				}
-			},
-		},
-		{
-			name: "invalid timeout string keeps default",
-			envVars: map[string]string{
-				"DB_ADVISORY_LOCK_TIMEOUT": "abc",
-			},
-			validate: func(t *testing.T, cfg *DatabaseConfig) {
-				if cfg.AdvisoryLockTimeoutSeconds != 300 {
-					t.Errorf("expected AdvisoryLockTimeoutSeconds to keep default (300), got %d", cfg.AdvisoryLockTimeoutSeconds)
-				}
-			},
-		},
-		{
-			name: "invalid bool value keeps default",
-			envVars: map[string]string{
-				"DB_DEBUG": "not-a-bool",
-			},
-			validate: func(t *testing.T, cfg *DatabaseConfig) {
-				if cfg.Debug != false {
-					t.Errorf("expected Debug to keep default (false), got %t", cfg.Debug)
-				}
-			},
-		},
-		{
-			name: "empty timeout keeps default",
-			envVars: map[string]string{
-				"DB_ADVISORY_LOCK_TIMEOUT": "",
-			},
-			validate: func(t *testing.T, cfg *DatabaseConfig) {
-				if cfg.AdvisoryLockTimeoutSeconds != 300 {
-					t.Errorf("expected AdvisoryLockTimeoutSeconds to keep default (300), got %d", cfg.AdvisoryLockTimeoutSeconds)
-				}
-			},
-		},
-		{
-			name: "empty debug keeps default",
-			envVars: map[string]string{
-				"DB_DEBUG": "",
-			},
-			validate: func(t *testing.T, cfg *DatabaseConfig) {
-				if cfg.Debug != false {
-					t.Errorf("expected Debug to keep default (false), got %t", cfg.Debug)
-				}
-			},
+			ssl: true,
+			expected: "host=secure.db.com port=5432 dbname=securedb user='" + RedactedValue +
+				"' password='" + RedactedValue + "' sslmode=verify-full sslrootcert='/etc/ssl/certs/ca.pem'",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Save and restore env vars
-			oldEnvs := make(map[string]string)
-			for key := range tt.envVars {
-				oldEnvs[key] = os.Getenv(key)
-			}
-			defer func() {
-				for key, val := range oldEnvs {
-					if val == "" {
-						_ = os.Unsetenv(key)
-					} else {
-						_ = os.Setenv(key, val)
-					}
-				}
-			}()
-
-			// Set env vars
-			for key, val := range tt.envVars {
-				if val != "" {
-					if err := os.Setenv(key, val); err != nil {
-						t.Fatalf("failed to set env var %s: %v", key, err)
-					}
-				} else {
-					_ = os.Unsetenv(key)
-				}
-			}
-
-			cfg := NewDatabaseConfig()
-			cfg.BindEnv(nil)
-
-			tt.validate(t, cfg)
+			result := tt.config.LogSafeConnectionString(tt.ssl)
+			assert.Equal(t, tt.expected, result)
 		})
 	}
 }
 
-// TestDatabaseConfig_FlagsOverrideEnv tests that CLI flags override environment variables
-func TestDatabaseConfig_FlagsOverrideEnv(t *testing.T) {
-	// Save and restore env var
-	oldTimeout := os.Getenv("DB_ADVISORY_LOCK_TIMEOUT")
-	defer func() {
-		if oldTimeout == "" {
-			_ = os.Unsetenv("DB_ADVISORY_LOCK_TIMEOUT")
-		} else {
-			_ = os.Setenv("DB_ADVISORY_LOCK_TIMEOUT", oldTimeout)
-		}
-	}()
-
-	// Set env var to "600"
-	if err := os.Setenv("DB_ADVISORY_LOCK_TIMEOUT", "600"); err != nil {
-		t.Fatalf("failed to set DB_ADVISORY_LOCK_TIMEOUT: %v", err)
+func TestConnectionStringWithName(t *testing.T) {
+	config := &DatabaseConfig{
+		Host:     "localhost",
+		Port:     5432,
+		Name:     "originaldb",
+		Username: "user",
+		Password: "pass",
+		SSL: SSLConfig{
+			Mode: "disable",
+		},
 	}
 
-	cfg := NewDatabaseConfig()
-	fs := pflag.NewFlagSet("test", pflag.ContinueOnError)
-	cfg.AddFlags(fs)
+	result := config.ConnectionStringWithName("customdb", false)
+	expected := "host=localhost port=5432 dbname=customdb user=user password=pass sslmode=disable"
 
-	// Parse flags with different value
-	args := []string{"--db-advisory-lock-timeout=120"}
-	if err := fs.Parse(args); err != nil {
-		t.Fatalf("failed to parse flags: %v", err)
-	}
-
-	// Before BindEnv, should have flag value
-	if cfg.AdvisoryLockTimeoutSeconds != 120 {
-		t.Errorf("expected AdvisoryLockTimeoutSeconds 120 from flag, got %d", cfg.AdvisoryLockTimeoutSeconds)
-	}
-
-	// After BindEnv, flag should take priority over env var
-	cfg.BindEnv(fs)
-	if cfg.AdvisoryLockTimeoutSeconds != 120 {
-		t.Errorf("expected AdvisoryLockTimeoutSeconds 120 (flag > env), got %d", cfg.AdvisoryLockTimeoutSeconds)
-	}
+	assert.Equal(t, expected, result)
+	// Verify original config is unchanged
+	assert.Equal(t, "originaldb", config.Name)
 }
 
-// TestDatabaseConfig_EnvOverridesDefaults tests that env vars override defaults when no flag is set
-func TestDatabaseConfig_EnvOverridesDefaults(t *testing.T) {
-	// Save and restore env var
-	oldTimeout := os.Getenv("DB_ADVISORY_LOCK_TIMEOUT")
-	defer func() {
-		if oldTimeout == "" {
-			_ = os.Unsetenv("DB_ADVISORY_LOCK_TIMEOUT")
-		} else {
-			_ = os.Setenv("DB_ADVISORY_LOCK_TIMEOUT", oldTimeout)
-		}
-	}()
-
-	// Set env var
-	if err := os.Setenv("DB_ADVISORY_LOCK_TIMEOUT", "450"); err != nil {
-		t.Fatalf("failed to set DB_ADVISORY_LOCK_TIMEOUT: %v", err)
+func TestLogSafeConnectionStringWithName(t *testing.T) {
+	config := &DatabaseConfig{
+		Host:     "localhost",
+		Port:     5432,
+		Name:     "originaldb",
+		Username: "user",
+		Password: "secret",
+		SSL: SSLConfig{
+			Mode: "disable",
+		},
 	}
 
-	cfg := NewDatabaseConfig()
-	fs := pflag.NewFlagSet("test", pflag.ContinueOnError)
-	cfg.AddFlags(fs)
+	result := config.LogSafeConnectionStringWithName("testdb", false)
+	expected := "host=localhost port=5432 dbname=testdb user='" + RedactedValue +
+		"' password='" + RedactedValue + "' sslmode=disable"
 
-	// Parse empty args (no flags set)
-	if err := fs.Parse([]string{}); err != nil {
-		t.Fatalf("failed to parse flags: %v", err)
-	}
-
-	// Before BindEnv, should have default value
-	if cfg.AdvisoryLockTimeoutSeconds != 300 {
-		t.Errorf("expected AdvisoryLockTimeoutSeconds 300 (default), got %d", cfg.AdvisoryLockTimeoutSeconds)
-	}
-
-	// After BindEnv, env var should override default
-	cfg.BindEnv(fs)
-	if cfg.AdvisoryLockTimeoutSeconds != 450 {
-		t.Errorf("expected AdvisoryLockTimeoutSeconds 450 (env > default), got %d", cfg.AdvisoryLockTimeoutSeconds)
-	}
+	assert.Equal(t, expected, result)
+	// Verify original config is unchanged
+	assert.Equal(t, "originaldb", config.Name)
 }
 
-// TestDatabaseConfig_PriorityMixed tests priority with multiple fields and mixed sources
-func TestDatabaseConfig_PriorityMixed(t *testing.T) {
-	// Save and restore env vars
-	envVars := map[string]string{
-		"DB_ADVISORY_LOCK_TIMEOUT": os.Getenv("DB_ADVISORY_LOCK_TIMEOUT"),
-		"DB_DEBUG":                 os.Getenv("DB_DEBUG"),
-	}
-	defer func() {
-		for key, val := range envVars {
-			if val == "" {
-				_ = os.Unsetenv(key)
-			} else {
-				_ = os.Setenv(key, val)
-			}
-		}
-	}()
-
-	// Set env vars for both fields
-	_ = os.Setenv("DB_ADVISORY_LOCK_TIMEOUT", "600")
-	_ = os.Setenv("DB_DEBUG", "true")
-
-	cfg := NewDatabaseConfig()
-	fs := pflag.NewFlagSet("test", pflag.ContinueOnError)
-	cfg.AddFlags(fs)
-
-	// Only set flag for advisory lock timeout
-	if err := fs.Parse([]string{"--db-advisory-lock-timeout=240"}); err != nil {
-		t.Fatalf("failed to parse flags: %v", err)
+func TestDatabaseConfigMarshalJSON(t *testing.T) {
+	config := &DatabaseConfig{
+		Dialect:  "postgres",
+		Host:     "localhost",
+		Port:     5432,
+		Name:     "testdb",
+		Username: "testuser",
+		Password: "secretpassword",
+		Debug:    true,
+		SSL: SSLConfig{
+			Mode:         "verify-full",
+			RootCertFile: "/etc/ssl/ca.pem",
+		},
+		Pool: PoolConfig{
+			MaxConnections: 50,
+		},
 	}
 
-	cfg.BindEnv(fs)
+	jsonBytes, err := config.MarshalJSON()
+	assert.NoError(t, err)
 
-	// advisory lock timeout: flag wins over env
-	if cfg.AdvisoryLockTimeoutSeconds != 240 {
-		t.Errorf("expected AdvisoryLockTimeoutSeconds 240 (flag > env), got %d", cfg.AdvisoryLockTimeoutSeconds)
-	}
-	// db debug: env wins over default
-	if cfg.Debug != true {
-		t.Errorf("expected Debug true (env > default), got %t", cfg.Debug)
-	}
+	jsonStr := string(jsonBytes)
+
+	// Verify username and password are redacted
+	assert.Contains(t, jsonStr, `"username":"`+RedactedValue+`"`)
+	assert.Contains(t, jsonStr, `"password":"`+RedactedValue+`"`)
+
+	// Verify non-sensitive fields are present
+	assert.Contains(t, jsonStr, `"dialect":"postgres"`)
+	assert.Contains(t, jsonStr, `"host":"localhost"`)
+	assert.Contains(t, jsonStr, `"port":5432`)
+	assert.Contains(t, jsonStr, `"name":"testdb"`)
+	assert.Contains(t, jsonStr, `"debug":true`)
+
+	// Verify password is not in plain text
+	assert.NotContains(t, jsonStr, "secretpassword")
 }
 
-// TestDatabaseConfig_InvalidEnvHandling documents that invalid env values are silently ignored
-func TestDatabaseConfig_InvalidEnvHandling(t *testing.T) {
+func TestDatabaseConfigMarshalJSON_EmptyCredentials(t *testing.T) {
+	config := &DatabaseConfig{
+		Dialect:  "postgres",
+		Host:     "localhost",
+		Port:     5432,
+		Name:     "testdb",
+		Username: "",
+		Password: "",
+	}
+
+	jsonBytes, err := config.MarshalJSON()
+	assert.NoError(t, err)
+
+	jsonStr := string(jsonBytes)
+
+	// Verify empty credentials show as empty strings, not redacted
+	assert.Contains(t, jsonStr, `"username":""`)
+	assert.Contains(t, jsonStr, `"password":""`)
+}
+
+func TestSetLogLevel(t *testing.T) {
 	tests := []struct {
-		name        string
-		envVar      string
-		envValue    string
-		description string
+		name           string
+		debug          bool
+		globalLogLevel string
+		expected       logger.LogLevel
 	}{
 		{
-			name:        "zero timeout",
-			envVar:      "DB_ADVISORY_LOCK_TIMEOUT",
-			envValue:    "0",
-			description: "Zero timeout is rejected by validation (timeout > 0), keeps default",
+			name:           "database.debug=true takes precedence over global log level (info)",
+			debug:          true,
+			globalLogLevel: "info",
+			expected:       logger.Info,
 		},
 		{
-			name:        "negative timeout",
-			envVar:      "DB_ADVISORY_LOCK_TIMEOUT",
-			envValue:    "-1",
-			description: "Negative timeout is rejected by validation (timeout > 0), keeps default",
+			name:           "database.debug=true takes precedence over global log level (error)",
+			debug:          true,
+			globalLogLevel: "error",
+			expected:       logger.Info,
 		},
 		{
-			name:        "non-numeric timeout",
-			envVar:      "DB_ADVISORY_LOCK_TIMEOUT",
-			envValue:    "abc",
-			description: "Non-numeric value fails strconv.Atoi, keeps default",
+			name:           "global log level debug enables SQL query logging",
+			debug:          false,
+			globalLogLevel: "debug",
+			expected:       logger.Info,
 		},
 		{
-			name:        "invalid bool",
-			envVar:      "DB_DEBUG",
-			envValue:    "not-a-bool",
-			description: "Invalid bool fails strconv.ParseBool, keeps default",
+			name:           "global log level error suppresses SQL logs",
+			debug:          false,
+			globalLogLevel: "error",
+			expected:       logger.Silent,
+		},
+		{
+			name:           "global log level info defaults to Warn",
+			debug:          false,
+			globalLogLevel: "info",
+			expected:       logger.Warn,
+		},
+		{
+			name:           "global log level warn defaults to Warn",
+			debug:          false,
+			globalLogLevel: "warn",
+			expected:       logger.Warn,
+		},
+		{
+			name:           "empty global log level defaults to Warn",
+			debug:          false,
+			globalLogLevel: "",
+			expected:       logger.Warn,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Save and restore env var
-			oldVal := os.Getenv(tt.envVar)
-			defer func() {
-				if oldVal == "" {
-					_ = os.Unsetenv(tt.envVar)
-				} else {
-					_ = os.Setenv(tt.envVar, oldVal)
-				}
-			}()
-
-			if err := os.Setenv(tt.envVar, tt.envValue); err != nil {
-				t.Fatalf("failed to set %s: %v", tt.envVar, err)
+			config := &DatabaseConfig{
+				Debug: tt.debug,
 			}
-
-			cfg := NewDatabaseConfig()
-			cfg.BindEnv(nil)
-
-			// Document the behavior: invalid values are silently ignored
-			switch tt.envVar {
-			case "DB_ADVISORY_LOCK_TIMEOUT":
-				if cfg.AdvisoryLockTimeoutSeconds != 300 {
-					t.Errorf(
-						"expected default AdvisoryLockTimeoutSeconds (300) after invalid env, got %d",
-						cfg.AdvisoryLockTimeoutSeconds)
-				}
-				t.Logf("INFO: %s - invalid value silently ignored, kept default 300", tt.description)
-			case "DB_DEBUG":
-				if cfg.Debug != false {
-					t.Errorf("expected default Debug (false) after invalid env, got %t", cfg.Debug)
-				}
-				t.Logf("INFO: %s - invalid value silently ignored, kept default false", tt.description)
-			}
+			result := config.SetLogLevel(tt.globalLogLevel)
+			assert.Equal(t, tt.expected, result)
 		})
 	}
 }

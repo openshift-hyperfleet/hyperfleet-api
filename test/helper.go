@@ -18,6 +18,7 @@ import (
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/google/uuid"
 	"github.com/segmentio/ksuid"
+	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"gorm.io/gorm"
 
@@ -80,10 +81,21 @@ func NewHelper(t *testing.T) *Helper {
 			fmt.Println("Unable to read JWT keys - this may affect tests that make authenticated server requests")
 		}
 
-		env := environments.Environment()
-		err = env.AddFlags(pflag.CommandLine)
+		// Load configuration using ConfigLoader (same path as production)
+		emptyCmd := &cobra.Command{}
+		loader := config.NewConfigLoader()
+		cfg, err := loader.Load(ctx, emptyCmd)
 		if err != nil {
-			logger.WithError(ctx, err).Error("Unable to add environment flags")
+			logger.WithError(ctx, err).Error("Failed to load test configuration")
+			os.Exit(1)
+		}
+
+		env := environments.Environment()
+		env.Config = cfg
+
+		err = env.SetEnvironmentDefaults(pflag.CommandLine)
+		if err != nil {
+			logger.WithError(ctx, err).Error("Unable to set environment defaults")
 			os.Exit(1)
 		}
 		if logLevel := os.Getenv("LOGLEVEL"); logLevel != "" {
@@ -149,7 +161,7 @@ func (helper *Helper) Teardown() {
 func (helper *Helper) startAPIServer() {
 	ctx := context.Background()
 	// Configure JWK certificate URL for API server
-	helper.Env().Config.Server.JwkCertURL = jwkURL
+	helper.Env().Config.Server.JWK.CertURL = jwkURL
 	helper.APIServer = server.NewAPIServer()
 	listener, err := helper.APIServer.Listen()
 	if err != nil {
@@ -233,8 +245,8 @@ func (helper *Helper) Reset() {
 	// This new flag set ensures we don't hit conflicts defining the same flag twice
 	// Also on reset, we don't care to be re-defining 'v' and other glog flags
 	flagset := pflag.NewFlagSet(helper.NewID(), pflag.ContinueOnError)
-	if err := env.AddFlags(flagset); err != nil {
-		logger.WithError(ctx, err).Error("Unable to add environment flags on Reset")
+	if err := env.SetEnvironmentDefaults(flagset); err != nil {
+		logger.WithError(ctx, err).Error("Unable to set environment defaults on Reset")
 		os.Exit(1)
 	}
 	pflag.Parse()
@@ -260,28 +272,36 @@ func (helper *Helper) NewUUID() string {
 }
 
 func (helper *Helper) RestURL(path string) string {
-	protocol := "http"
-	if helper.AppConfig.Server.EnableHTTPS {
-		protocol = "https"
+	protocol := "http" //nolint:goconst // Protocol strings used across URL builders
+	if helper.AppConfig.Server.TLS.Enabled {
+		protocol = "https" //nolint:goconst // Protocol strings used across URL builders
 	}
-	return fmt.Sprintf("%s://%s/api/hyperfleet/v1%s", protocol, helper.AppConfig.Server.BindAddress, path)
+	return fmt.Sprintf("%s://%s/api/hyperfleet/v1%s", protocol, helper.AppConfig.Server.BindAddress(), path)
 }
 
 func (helper *Helper) MetricsURL(path string) string {
-	return fmt.Sprintf("http://%s%s", helper.AppConfig.Metrics.BindAddress, path)
+	protocol := "http" //nolint:goconst // Protocol strings used across URL builders
+	if helper.AppConfig.Metrics.TLS.Enabled {
+		protocol = "https" //nolint:goconst // Protocol strings used across URL builders
+	}
+	return fmt.Sprintf("%s://%s%s", protocol, helper.AppConfig.Metrics.BindAddress(), path)
 }
 
 func (helper *Helper) HealthURL(path string) string {
-	return fmt.Sprintf("http://%s%s", helper.AppConfig.Health.BindAddress, path)
+	protocol := "http" //nolint:goconst // Protocol strings used across URL builders
+	if helper.AppConfig.Health.TLS.Enabled {
+		protocol = "https" //nolint:goconst // Protocol strings used across URL builders
+	}
+	return fmt.Sprintf("%s://%s%s", protocol, helper.AppConfig.Health.BindAddress(), path)
 }
 
 func (helper *Helper) NewApiClient() *openapi.ClientWithResponses {
 	// Build the server URL
-	protocol := "http"
-	if helper.AppConfig.Server.EnableHTTPS {
-		protocol = "https"
+	protocol := "http" //nolint:goconst // Protocol strings used across URL builders
+	if helper.AppConfig.Server.TLS.Enabled {
+		protocol = "https" //nolint:goconst // Protocol strings used across URL builders
 	}
-	serverURL := fmt.Sprintf("%s://%s", protocol, helper.AppConfig.Server.BindAddress)
+	serverURL := fmt.Sprintf("%s://%s", protocol, helper.AppConfig.Server.BindAddress())
 	client, err := openapi.NewClientWithResponses(serverURL)
 	if err != nil {
 		helper.T.Fatalf("Failed to create API client: %v", err)
@@ -350,7 +370,7 @@ func WithAuthToken(ctx context.Context) openapi.RequestEditorFn {
 
 func (helper *Helper) StartJWKCertServerMock() (teardown func() error) {
 	jwkURL, teardown = mocks.NewJWKCertServerMock(helper.T, helper.JWTCA, jwkKID, jwkAlg)
-	helper.Env().Config.Server.JwkCertURL = jwkURL
+	helper.Env().Config.Server.JWK.CertURL = jwkURL
 	return teardown
 }
 

@@ -39,10 +39,10 @@ func TestMetadataGet(t *testing.T) {
 
 	// Build the metadata URL (metadata endpoint is at /api/hyperfleet, not /api/hyperfleet/v1)
 	protocol := protocolHTTP
-	if h.AppConfig.Server.EnableHTTPS {
+	if h.AppConfig.Server.TLS.Enabled {
 		protocol = protocolHTTPS
 	}
-	metadataURL := fmt.Sprintf("%s://%s/api/hyperfleet", protocol, h.AppConfig.Server.BindAddress)
+	metadataURL := fmt.Sprintf("%s://%s/api/hyperfleet", protocol, h.AppConfig.Server.BindAddress())
 
 	// Test GET /api/hyperfleet - metadata endpoint doesn't require authentication
 	resp, err := resty.R().

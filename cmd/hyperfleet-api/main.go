@@ -47,11 +47,11 @@ func main() {
 
 // initDefaultLogger initializes a default logger with INFO level
 // This ensures logging works before environment/config is loaded
-// Reads LOG_LEVEL and LOG_FORMAT from environment variables if set
+// Reads HYPERFLEET_LOGGING_* from environment variables if set
 func initDefaultLogger() {
 	// Read log level from environment with default fallback
 	level := slog.LevelInfo
-	if levelStr := os.Getenv("LOG_LEVEL"); levelStr != "" {
+	if levelStr := os.Getenv("HYPERFLEET_LOGGING_LEVEL"); levelStr != "" {
 		if parsed, err := logger.ParseLogLevel(levelStr); err == nil {
 			level = parsed
 		}
@@ -59,7 +59,7 @@ func initDefaultLogger() {
 
 	// Read log format from environment with default fallback
 	format := logger.FormatJSON
-	if formatStr := os.Getenv("LOG_FORMAT"); formatStr != "" {
+	if formatStr := os.Getenv("HYPERFLEET_LOGGING_FORMAT"); formatStr != "" {
 		if parsed, err := logger.ParseLogFormat(formatStr); err == nil {
 			format = parsed
 		}
@@ -67,7 +67,7 @@ func initDefaultLogger() {
 
 	// Read log output from environment with default fallback
 	var output io.Writer = os.Stdout
-	if outputStr := os.Getenv("LOG_OUTPUT"); outputStr != "" {
+	if outputStr := os.Getenv("HYPERFLEET_LOGGING_OUTPUT"); outputStr != "" {
 		if parsed, err := logger.ParseLogOutput(outputStr); err == nil {
 			output = parsed
 		}

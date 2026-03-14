@@ -32,10 +32,10 @@ func TestOpenAPIGet(t *testing.T) {
 	h, _ := test.RegisterIntegration(t)
 
 	protocol := "http"
-	if h.AppConfig.Server.EnableHTTPS {
+	if h.AppConfig.Server.TLS.Enabled {
 		protocol = "https"
 	}
-	openAPIURL := fmt.Sprintf("%s://%s/api/hyperfleet/v1/openapi", protocol, h.AppConfig.Server.BindAddress)
+	openAPIURL := fmt.Sprintf("%s://%s/api/hyperfleet/v1/openapi", protocol, h.AppConfig.Server.BindAddress())
 
 	resp, err := resty.R().
 		SetHeader("Content-Type", "application/json").
@@ -72,10 +72,10 @@ func TestOpenAPIUIGet(t *testing.T) {
 	h, _ := test.RegisterIntegration(t)
 
 	protocol := "http"
-	if h.AppConfig.Server.EnableHTTPS {
+	if h.AppConfig.Server.TLS.Enabled {
 		protocol = "https"
 	}
-	openAPIUIURL := fmt.Sprintf("%s://%s/api/hyperfleet/v1/openapi.html", protocol, h.AppConfig.Server.BindAddress)
+	openAPIUIURL := fmt.Sprintf("%s://%s/api/hyperfleet/v1/openapi.html", protocol, h.AppConfig.Server.BindAddress())
 
 	t.Logf("OpenAPI UI URL: %s", openAPIUIURL)
 

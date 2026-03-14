@@ -1,196 +1,215 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
-	"os"
-	"strconv"
+	"regexp"
 	"strings"
 	"time"
 
-	"github.com/spf13/pflag"
 	"gorm.io/gorm/logger"
 )
 
+const (
+	// RedactedValue is used to mask sensitive data in logs and JSON output
+	// Must match pkg/middleware/masking.go RedactedValue for consistency
+	RedactedValue = "***REDACTED***"
+)
+
+// simpleDSNValuePattern matches PostgreSQL DSN simple values that don't need quoting.
+// Per libpq spec, simple values contain only: letters (a-z, A-Z), digits (0-9), hyphens (-), and dots (.)
+var simpleDSNValuePattern = regexp.MustCompile(`^[a-zA-Z0-9.-]+$`)
+
+// DatabaseConfig holds database connection configuration
+// Follows HyperFleet Configuration Standard
 type DatabaseConfig struct {
-	Dialect                    string `json:"dialect"`
-	SSLMode                    string `json:"sslmode"`
-	Debug                      bool   `json:"debug"`
-	MaxOpenConnections         int    `json:"max_connections"`
-	AdvisoryLockTimeoutSeconds int    `json:"advisory_lock_timeout_seconds"`
-
-	ConnMaxLifetime    time.Duration `json:"conn_max_lifetime"`
-	ConnMaxIdleTime    time.Duration `json:"conn_max_idle_time"`
-	MaxIdleConnections int           `json:"max_idle_connections"`
-	RequestTimeout     time.Duration `json:"request_timeout"`
-	ConnRetryAttempts  int           `json:"conn_retry_attempts"`
-	ConnRetryInterval  time.Duration `json:"conn_retry_interval"`
-
-	Host     string `json:"host"`
-	Port     int    `json:"port"`
-	Name     string `json:"name"`
-	Username string `json:"username"`
-	Password string `json:"password"`
-
-	HostFile     string `json:"host_file"`
-	PortFile     string `json:"port_file"`
-	NameFile     string `json:"name_file"`
-	UsernameFile string `json:"username_file"`
-	PasswordFile string `json:"password_file"`
-	RootCertFile string `json:"certificate_file"`
+	Dialect  string     `mapstructure:"dialect" json:"dialect" validate:"required,oneof=postgres"`
+	Host     string     `mapstructure:"host" json:"host" validate:"required,hostname|ip"`
+	Port     int        `mapstructure:"port" json:"port" validate:"required,min=1,max=65535"`
+	Name     string     `mapstructure:"name" json:"name" validate:"required"`
+	Username string     `mapstructure:"username" json:"-"` // Excluded from JSON marshaling (sensitive)
+	Password string     `mapstructure:"password" json:"-"` // Excluded from JSON marshaling (sensitive)
+	Debug    bool       `mapstructure:"debug" json:"debug"`
+	SSL      SSLConfig  `mapstructure:"ssl" json:"ssl" validate:"required"`
+	Pool     PoolConfig `mapstructure:"pool" json:"pool" validate:"required"`
 }
 
+// SSLConfig holds SSL/TLS configuration
+type SSLConfig struct {
+	Mode         string `mapstructure:"mode" json:"mode" validate:"required,oneof=disable require verify-ca verify-full"`
+	RootCertFile string `mapstructure:"root_cert_file" json:"root_cert_file"`
+}
+
+// PoolConfig holds connection pool configuration
+// Includes fields from HYPERFLEET-694 for connection lifecycle management
+type PoolConfig struct {
+	MaxConnections      int           `mapstructure:"max_connections" json:"max_connections" validate:"required,min=1,max=200"`
+	MaxIdleConnections  int           `mapstructure:"max_idle_connections" json:"max_idle_connections" validate:"min=0"`
+	ConnMaxLifetime     time.Duration `mapstructure:"conn_max_lifetime" json:"conn_max_lifetime"`
+	ConnMaxIdleTime     time.Duration `mapstructure:"conn_max_idle_time" json:"conn_max_idle_time"`
+	RequestTimeout      time.Duration `mapstructure:"request_timeout" json:"request_timeout"`
+	ConnRetryAttempts   int           `mapstructure:"conn_retry_attempts" json:"conn_retry_attempts" validate:"min=1"`
+	ConnRetryInterval   time.Duration `mapstructure:"conn_retry_interval" json:"conn_retry_interval"`
+	AdvisoryLockTimeout time.Duration `mapstructure:"advisory_lock_timeout" json:"advisory_lock_timeout"` // HYPERFLEET-618: prevents indefinite blocking during migrations
+}
+
+// MarshalJSON implements custom JSON marshaling to redact sensitive fields
+func (c DatabaseConfig) MarshalJSON() ([]byte, error) {
+	type Alias DatabaseConfig
+	return json.Marshal(&struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+		*Alias
+	}{
+		Username: redactIfSet(c.Username),
+		Password: redactIfSet(c.Password),
+		Alias:    (*Alias)(&c),
+	})
+}
+
+// redactIfSet returns "**REDACTED**" if value is non-empty, otherwise empty string
+func redactIfSet(value string) string {
+	if value == "" {
+		return ""
+	}
+	return RedactedValue
+}
+
+// NewDatabaseConfig returns default DatabaseConfig values
+// These defaults can be overridden by config file, env vars, or CLI flags
+// Includes defaults from HYPERFLEET-694 for connection pool management
 func NewDatabaseConfig() *DatabaseConfig {
 	return &DatabaseConfig{
-		Dialect:                    "postgres",
-		SSLMode:                    "disable",
-		Debug:                      false,
-		MaxOpenConnections:         50,
-		AdvisoryLockTimeoutSeconds: 300, // 5 minutes - prevents indefinite blocking on migrations
-
-		ConnMaxLifetime:    5 * time.Minute,
-		ConnMaxIdleTime:    1 * time.Minute,
-		MaxIdleConnections: 10,
-		RequestTimeout:     30 * time.Second,
-		ConnRetryAttempts:  10,
-		ConnRetryInterval:  3 * time.Second,
-
-		HostFile:     "secrets/db.host",
-		PortFile:     "secrets/db.port",
-		NameFile:     "secrets/db.name",
-		UsernameFile: "secrets/db.user",
-		PasswordFile: "secrets/db.password",
-		RootCertFile: "secrets/db.rootcert",
+		Dialect:  "postgres",
+		Host:     "localhost",
+		Port:     5432,
+		Name:     "hyperfleet",
+		Username: "hyperfleet",
+		Password: "",
+		Debug:    false,
+		SSL: SSLConfig{
+			Mode:         "disable",
+			RootCertFile: "",
+		},
+		Pool: PoolConfig{
+			MaxConnections:      50,
+			MaxIdleConnections:  10,
+			ConnMaxLifetime:     5 * time.Minute,
+			ConnMaxIdleTime:     1 * time.Minute,
+			RequestTimeout:      30 * time.Second,
+			ConnRetryAttempts:   10,
+			ConnRetryInterval:   3 * time.Second,
+			AdvisoryLockTimeout: 5 * time.Minute, // HYPERFLEET-618: prevents indefinite blocking during migrations
+		},
 	}
 }
 
-func (c *DatabaseConfig) AddFlags(fs *pflag.FlagSet) {
-	fs.StringVar(&c.HostFile, "db-host-file", c.HostFile, "Database host string file")
-	fs.StringVar(&c.PortFile, "db-port-file", c.PortFile, "Database port file")
-	fs.StringVar(&c.UsernameFile, "db-user-file", c.UsernameFile, "Database username file")
-	fs.StringVar(&c.PasswordFile, "db-password-file", c.PasswordFile, "Database password file")
-	fs.StringVar(&c.NameFile, "db-name-file", c.NameFile, "Database name file")
-	fs.StringVar(&c.RootCertFile, "db-rootcert", c.RootCertFile, "Database root certificate file")
-	fs.StringVar(&c.SSLMode, "db-sslmode", c.SSLMode, "Database ssl mode (disable | require | verify-ca | verify-full)")
-	fs.BoolVar(&c.Debug, "enable-db-debug", c.Debug, " framework's debug mode")
-	fs.IntVar(
-		&c.MaxOpenConnections, "db-max-open-connections", c.MaxOpenConnections,
-		"Maximum open DB connections for this instance",
-	)
+// ============================================================
+// Connection String Generation
+// ============================================================
 
-	fs.IntVar(
-		&c.AdvisoryLockTimeoutSeconds, "db-advisory-lock-timeout", c.AdvisoryLockTimeoutSeconds,
-		"Advisory lock timeout in seconds (prevents indefinite blocking during migrations)",
-	)
-	fs.DurationVar(&c.ConnMaxLifetime, "db-conn-max-lifetime", c.ConnMaxLifetime, "Maximum lifetime of a DB connection")
-	fs.DurationVar(&c.ConnMaxIdleTime, "db-conn-max-idle-time", c.ConnMaxIdleTime, "Maximum idle time of a DB connection")
-	fs.IntVar(&c.MaxIdleConnections, "db-max-idle-connections", c.MaxIdleConnections, "Maximum idle DB connections")
-	fs.DurationVar(&c.RequestTimeout, "db-request-timeout", c.RequestTimeout,
-		"Maximum time for a database request context")
-	fs.IntVar(&c.ConnRetryAttempts, "db-conn-retry-attempts", c.ConnRetryAttempts,
-		"Number of retry attempts for initial DB connection")
-	fs.DurationVar(&c.ConnRetryInterval, "db-conn-retry-interval", c.ConnRetryInterval,
-		"Interval between DB connection retry attempts")
+// escapeDSNValue escapes a PostgreSQL DSN parameter value according to libpq rules.
+//
+// According to PostgreSQL libpq documentation:
+//   - Simple values (containing only letters, digits, hyphens, dots) don't need quoting
+//   - Values with special characters (spaces, =, ', \, etc.) must be quoted
+//   - '\': escape character (must be escaped as \\)
+//   - "'": quote character (must be escaped as \')
+//
+// This function follows the libpq specification: only quote when necessary.
+func escapeDSNValue(value string) string {
+	if value == "" {
+		return value
+	}
+
+	// Escape backslashes first (must be done before escaping quotes)
+	escaped := strings.ReplaceAll(value, `\`, `\\`)
+	// Escape single quotes
+	escaped = strings.ReplaceAll(escaped, `'`, `\'`)
+
+	// Quote if the value contains any non-simple characters
+	// Per libpq spec, simple values match: ^[a-zA-Z0-9.-]+$
+	if !simpleDSNValuePattern.MatchString(escaped) {
+		return fmt.Sprintf("'%s'", escaped)
+	}
+	return escaped
 }
 
-// BindEnv reads configuration from environment variables
-// Priority: flags > env vars > defaults
-func (c *DatabaseConfig) BindEnv(fs *pflag.FlagSet) {
-	if val := os.Getenv("DB_DEBUG"); val != "" {
-		if fs == nil || !fs.Changed("enable-db-debug") {
-			debug, err := strconv.ParseBool(val)
-			if err == nil {
-				c.Debug = debug
-			}
+// ConnectionString generates database connection string
+// ssl parameter controls whether to include SSL settings
+func (c *DatabaseConfig) ConnectionString(ssl bool) string {
+	var params []string
+
+	if ssl && c.SSL.Mode != disable {
+		params = append(params, fmt.Sprintf("sslmode=%s", c.SSL.Mode))
+
+		if c.SSL.RootCertFile != "" {
+			params = append(params, fmt.Sprintf("sslrootcert=%s", escapeDSNValue(c.SSL.RootCertFile)))
 		}
-	}
-
-	if val := os.Getenv("DB_ADVISORY_LOCK_TIMEOUT"); val != "" {
-		if fs == nil || !fs.Changed("db-advisory-lock-timeout") {
-			timeout, err := strconv.Atoi(val)
-			if err == nil && timeout > 0 {
-				c.AdvisoryLockTimeoutSeconds = timeout
-			}
-		}
-	}
-}
-
-func (c *DatabaseConfig) ReadFiles() error {
-	err := readFileValueString(c.HostFile, &c.Host)
-	if err != nil {
-		return err
-	}
-
-	err = readFileValueInt(c.PortFile, &c.Port)
-	if err != nil {
-		return err
-	}
-
-	err = readFileValueString(c.UsernameFile, &c.Username)
-	if err != nil {
-		return err
-	}
-
-	err = readFileValueString(c.PasswordFile, &c.Password)
-	if err != nil {
-		return err
-	}
-
-	err = readFileValueString(c.NameFile, &c.Name)
-	return err
-}
-
-func (c *DatabaseConfig) ConnectionString(withSSL bool) string {
-	return c.ConnectionStringWithName(c.Name, withSSL)
-}
-
-func (c *DatabaseConfig) ConnectionStringWithName(name string, withSSL bool) string {
-	var cmd string
-	if withSSL {
-		cmd = fmt.Sprintf(
-			"host=%s port=%d user=%s password='%s' dbname=%s sslmode=%s sslrootcert=%s",
-			c.Host, c.Port, c.Username, c.Password, name, c.SSLMode, c.RootCertFile,
-		)
 	} else {
-		cmd = fmt.Sprintf(
-			"host=%s port=%d user=%s password='%s' dbname=%s sslmode=disable",
-			c.Host, c.Port, c.Username, c.Password, name,
-		)
+		params = append(params, "sslmode=disable")
 	}
 
-	return cmd
+	return fmt.Sprintf(
+		"host=%s port=%d dbname=%s user=%s password=%s %s",
+		escapeDSNValue(c.Host),
+		c.Port,
+		escapeDSNValue(c.Name),
+		escapeDSNValue(c.Username),
+		escapeDSNValue(c.Password),
+		strings.Join(params, " "),
+	)
 }
 
-func (c *DatabaseConfig) LogSafeConnectionString(withSSL bool) string {
-	return c.LogSafeConnectionStringWithName(c.Name, withSSL)
+// LogSafeConnectionString returns connection string with username and password redacted
+func (c *DatabaseConfig) LogSafeConnectionString(ssl bool) string {
+	tempConfig := *c
+	tempConfig.Username = RedactedValue
+	tempConfig.Password = RedactedValue
+	return tempConfig.ConnectionString(ssl)
 }
 
-func (c *DatabaseConfig) LogSafeConnectionStringWithName(name string, withSSL bool) string {
-	if withSSL {
-		return fmt.Sprintf(
-			"host=%s port=%d user=%s password='<REDACTED>' dbname=%s sslmode=%s sslrootcert='<REDACTED>'",
-			c.Host, c.Port, c.Username, name, c.SSLMode,
-		)
-	} else {
-		return fmt.Sprintf(
-			"host=%s port=%d user=%s password='<REDACTED>' dbname=%s",
-			c.Host, c.Port, c.Username, name,
-		)
-	}
+// ConnectionStringWithName generates database connection string with custom database name
+// This is useful for test databases. ssl parameter controls whether to include SSL settings.
+func (c *DatabaseConfig) ConnectionStringWithName(name string, ssl bool) string {
+	tempConfig := *c
+	tempConfig.Name = name
+	return tempConfig.ConnectionString(ssl)
 }
 
-// GetGormLogLevel returns the appropriate GORM log level based on DB_DEBUG and LOG_LEVEL.
-// DB_DEBUG=true always returns Info level, otherwise follows LOG_LEVEL mapping.
-func (c *DatabaseConfig) GetGormLogLevel(logLevel string) logger.LogLevel {
+// LogSafeConnectionStringWithName returns connection string with custom name and username/password redacted
+// This is useful for test databases.
+func (c *DatabaseConfig) LogSafeConnectionStringWithName(name string, ssl bool) string {
+	tempConfig := *c
+	tempConfig.Name = name
+	tempConfig.Username = RedactedValue
+	tempConfig.Password = RedactedValue
+	return tempConfig.ConnectionString(ssl)
+}
+
+const disable = "disable"
+
+// SetLogLevel determines the GORM logger level based on database.debug flag and global logging level.
+// Priority: database.debug > global logging level > default
+//
+// Behavior:
+//   - database.debug=true → logger.Info (show all SQL queries)
+//   - logging.level=debug → logger.Info (show all SQL queries)
+//   - logging.level=error → logger.Silent (suppress all SQL logs)
+//   - default → logger.Warn (show only slow queries and errors)
+func (c *DatabaseConfig) SetLogLevel(globalLogLevel string) logger.LogLevel {
+	// database.debug takes precedence for explicit database debugging
 	if c.Debug {
 		return logger.Info
 	}
 
-	switch strings.ToLower(strings.TrimSpace(logLevel)) {
+	// Fall back to global log level for production debugging
+	switch globalLogLevel {
 	case "debug":
-		return logger.Info
+		return logger.Info // Enable SQL query logging when global debug is on
 	case "error":
-		return logger.Silent
+		return logger.Silent // Suppress SQL logs in error-only mode
 	default:
-		return logger.Warn
+		return logger.Warn // Default: log slow queries and errors
 	}
 }

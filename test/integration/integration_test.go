@@ -20,21 +20,22 @@ func TestMain(m *testing.M) {
 
 	// Set adapter configuration for integration tests if not already set
 	// These are required by the NodePool plugin
-	if os.Getenv("HYPERFLEET_CLUSTER_ADAPTERS") == "" {
-		_ = os.Setenv("HYPERFLEET_CLUSTER_ADAPTERS", `["validation","dns","pullsecret","hypershift"]`)
+	if os.Getenv("HYPERFLEET_ADAPTERS_REQUIRED_CLUSTER") == "" {
+		_ = os.Setenv("HYPERFLEET_ADAPTERS_REQUIRED_CLUSTER", `["validation","dns","pullsecret","hypershift"]`)
 	}
-	if os.Getenv("HYPERFLEET_NODEPOOL_ADAPTERS") == "" {
-		_ = os.Setenv("HYPERFLEET_NODEPOOL_ADAPTERS", `["validation","hypershift"]`)
+	if os.Getenv("HYPERFLEET_ADAPTERS_REQUIRED_NODEPOOL") == "" {
+		_ = os.Setenv("HYPERFLEET_ADAPTERS_REQUIRED_NODEPOOL", `["validation","hypershift"]`)
 	}
 
-	// Set OPENAPI_SCHEMA_PATH for integration tests if not already set
+	// Set OpenAPI schema path for integration tests if not already set
 	// This enables schema validation middleware during tests
-	if os.Getenv("OPENAPI_SCHEMA_PATH") == "" {
+	// Uses HYPERFLEET_SERVER_OPENAPI_SCHEMA_PATH (config system standard)
+	if os.Getenv("HYPERFLEET_SERVER_OPENAPI_SCHEMA_PATH") == "" {
 		// Get the repo root directory (2 levels up from test/integration)
 		// Use runtime.Caller to find this file's path
 		_, filename, _, ok := runtime.Caller(0)
 		if !ok {
-			logger.Warn(ctx, "Failed to determine current file path via runtime.Caller, skipping OPENAPI_SCHEMA_PATH setup")
+			logger.Warn(ctx, "Failed to determine current file path via runtime.Caller, skipping schema path setup")
 		} else {
 			// filename is like: /path/to/repo/test/integration/integration_test.go
 			// Navigate up: integration_test.go -> integration -> test -> repo
@@ -48,10 +49,11 @@ func TestMain(m *testing.M) {
 			// Verify the schema file exists before setting the env var
 			if _, err := os.Stat(schemaPath); err != nil {
 				logger.With(ctx, logger.FieldSchemaPath, schemaPath).WithError(err).
-				Warn("Schema file not found, skipping OPENAPI_SCHEMA_PATH setup")
+					Warn("Schema file not found, skipping schema path setup")
 			} else {
-				_ = os.Setenv("OPENAPI_SCHEMA_PATH", schemaPath)
-				logger.With(ctx, logger.FieldSchemaPath, schemaPath).Info("Set OPENAPI_SCHEMA_PATH for integration tests")
+				_ = os.Setenv("HYPERFLEET_SERVER_OPENAPI_SCHEMA_PATH", schemaPath)
+				logger.With(ctx, logger.FieldSchemaPath, schemaPath).
+					Info("Set HYPERFLEET_SERVER_OPENAPI_SCHEMA_PATH for integration tests")
 			}
 		}
 	}
