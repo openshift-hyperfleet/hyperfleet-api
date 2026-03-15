@@ -234,5 +234,9 @@ func (f *Test) ReconfigureLogger(level gormlogger.LogLevel) {
 }
 
 func (f *Test) GetAdvisoryLockTimeout() int {
-	return int(f.config.Pool.AdvisoryLockTimeout.Seconds())
+	timeout := int(f.config.Pool.AdvisoryLockTimeout.Seconds())
+	if timeout == 0 {
+		return 300 // Default: 5 minutes if not configured
+	}
+	return timeout
 }
