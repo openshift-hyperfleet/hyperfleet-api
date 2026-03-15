@@ -58,11 +58,11 @@ func runMigrateWithError(ctx context.Context, dbConfig *config.DatabaseConfig) e
 		}
 	}()
 
-	if err := db.Migrate(connection.New(ctx)); err != nil {
+	// Use MigrateWithLock to prevent concurrent migrations from multiple pods
+	if err := db.MigrateWithLock(ctx, connection); err != nil {
 		logger.WithError(ctx, err).Error("Migration failed")
 		return err
 	}
 
-	logger.Info(ctx, "Migration completed successfully")
 	return nil
 }

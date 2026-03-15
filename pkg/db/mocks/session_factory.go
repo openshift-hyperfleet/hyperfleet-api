@@ -77,3 +77,11 @@ func (m *MockSessionFactory) ResetDB() {
 func (m *MockSessionFactory) NewListener(ctx context.Context, channel string, callback func(id string)) {
 	// Mock implementation - does nothing
 }
+
+func (m *MockSessionFactory) GetAdvisoryLockTimeout() int {
+	timeout := int(config.NewDatabaseConfig().Pool.AdvisoryLockTimeout.Seconds())
+	if timeout == 0 {
+		return 300 // Default: 5 minutes if not configured
+	}
+	return timeout
+}
