@@ -24,6 +24,27 @@ func Migrate(g2 *gorm.DB) error {
 	return nil
 }
 
+// MigrateWithLock runs migrations with an advisory lock to prevent concurrent migrations
+func MigrateWithLock(ctx context.Context, factory SessionFactory) error {
+	// Acquire advisory lock for migrations
+	ctx, lockOwnerID, err := NewAdvisoryLockContext(ctx, factory, MigrationsLockID, Migrations)
+	if err != nil {
+		logger.WithError(ctx, err).Error("Could not lock migrations")
+		return err
+	}
+	defer Unlock(ctx, lockOwnerID)
+
+	// Run migrations with the locked context
+	g2 := factory.New(ctx)
+	if err := Migrate(g2); err != nil {
+		logger.WithError(ctx, err).Error("Could not migrate")
+		return err
+	}
+
+	logger.Info(ctx, "Migration completed successfully")
+	return nil
+}
+
 // MigrateTo a specific migration will not seed the database, seeds are up to date with the latest
 // schema based on the most recent migration
 // This should be for testing purposes mainly

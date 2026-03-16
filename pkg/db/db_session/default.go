@@ -229,3 +229,11 @@ func (f *Default) ReconfigureLogger(level gormlogger.LogLevel) {
 	newLogger := logger.NewGormLogger(level, slowQueryThreshold)
 	f.g2.Logger = newLogger
 }
+
+func (f *Default) GetAdvisoryLockTimeout() int {
+	timeout := int(f.config.Pool.AdvisoryLockTimeout.Seconds())
+	if timeout == 0 {
+		return 300 // Default: 5 minutes if not configured
+	}
+	return timeout
+}

@@ -44,12 +44,14 @@ type SSLConfig struct {
 // Includes fields from HYPERFLEET-694 for connection lifecycle management
 type PoolConfig struct {
 	MaxConnections int `mapstructure:"max_connections" json:"max_connections" validate:"required,min=1,max=200"`
-	MaxIdleConnections int `mapstructure:"max_idle_connections" json:"max_idle_connections" validate:"min=0"`
-	ConnMaxLifetime time.Duration `mapstructure:"conn_max_lifetime" json:"conn_max_lifetime"`
-	ConnMaxIdleTime time.Duration `mapstructure:"conn_max_idle_time" json:"conn_max_idle_time"`
-	RequestTimeout time.Duration `mapstructure:"request_timeout" json:"request_timeout"`
-	ConnRetryAttempts int `mapstructure:"conn_retry_attempts" json:"conn_retry_attempts" validate:"min=1"`
-	ConnRetryInterval time.Duration `mapstructure:"conn_retry_interval" json:"conn_retry_interval"`
+	MaxIdleConnections  int           `mapstructure:"max_idle_connections" json:"max_idle_connections" validate:"min=0"`
+	ConnMaxLifetime     time.Duration `mapstructure:"conn_max_lifetime" json:"conn_max_lifetime"`
+	ConnMaxIdleTime     time.Duration `mapstructure:"conn_max_idle_time" json:"conn_max_idle_time"`
+	RequestTimeout      time.Duration `mapstructure:"request_timeout" json:"request_timeout"`
+	ConnRetryAttempts   int           `mapstructure:"conn_retry_attempts" json:"conn_retry_attempts" validate:"min=1"`
+	ConnRetryInterval   time.Duration `mapstructure:"conn_retry_interval" json:"conn_retry_interval"`
+	// HYPERFLEET-618: prevents indefinite blocking during migrations
+	AdvisoryLockTimeout time.Duration `mapstructure:"advisory_lock_timeout" json:"advisory_lock_timeout"`
 }
 
 // MarshalJSON implements custom JSON marshaling to redact sensitive fields
@@ -91,13 +93,14 @@ func NewDatabaseConfig() *DatabaseConfig {
 			RootCertFile: "",
 		},
 		Pool: PoolConfig{
-			MaxConnections:     50,
-			MaxIdleConnections: 10,
-			ConnMaxLifetime:    5 * time.Minute,
-			ConnMaxIdleTime:    1 * time.Minute,
-			RequestTimeout:     30 * time.Second,
-			ConnRetryAttempts:  10,
-			ConnRetryInterval:  3 * time.Second,
+			MaxConnections:      50,
+			MaxIdleConnections:  10,
+			ConnMaxLifetime:     5 * time.Minute,
+			ConnMaxIdleTime:     1 * time.Minute,
+			RequestTimeout:      30 * time.Second,
+			ConnRetryAttempts:   10,
+			ConnRetryInterval:   3 * time.Second,
+			AdvisoryLockTimeout: 5 * time.Minute, // HYPERFLEET-618: prevents indefinite blocking during migrations
 		},
 	}
 }

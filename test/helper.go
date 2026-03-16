@@ -441,6 +441,14 @@ func (helper *Helper) CleanDB() error {
 			}
 		}
 	}
+
+	// Truncate migrations table so MigrateDB() will re-run all migrations
+	// This ensures tables are recreated after CleanDB() drops them
+	if err := g2.Exec("TRUNCATE TABLE migrations").Error; err != nil {
+		helper.T.Errorf("error truncating migrations table: %v", err)
+		return err
+	}
+
 	return nil
 }
 
