@@ -22,11 +22,34 @@ make image-push
 QUAY_USER=myuser make image-dev
 ```
 
-### Default Image
+### Image Registry Configuration
 
-The default container image is:
-```text
-quay.io/openshift-hyperfleet/hyperfleet-api:latest
+The `image.registry` value defaults to `CHANGE_ME` - a placeholder that intentionally prevents accidental deployments with an incorrect registry. You **must** set this to your actual container registry before deploying.
+
+#### Image Locations by Environment
+
+| Environment | Image |
+|-------------|-------|
+| Development | `quay.io/<your-username>/hyperfleet-api:dev-<sha>` |
+| Staging | `quay.io/openshift-hyperfleet/hyperfleet-api:v<version>` |
+| Production | `quay.io/openshift-hyperfleet/hyperfleet-api:v<version>` |
+
+#### Example values.yaml
+
+Personal development image:
+```yaml
+image:
+  registry: quay.io
+  repository: user/hyperfleet-api
+  tag: dev-abc1234
+```
+
+Production/Staging (official image):
+```yaml
+image:
+  registry: quay.io
+  repository: openshift-hyperfleet/hyperfleet-api
+  tag: v1.2.3
 ```
 
 ### Custom Registry
@@ -167,6 +190,7 @@ Deploy with built-in PostgreSQL for development and testing:
 helm install hyperfleet-api ./charts/ \
   --namespace hyperfleet-system \
   --create-namespace \
+  --set image.registry=quay.io \
   --set 'config.adapters.required.cluster={validation,dns,pullsecret,hypershift}' \
   --set 'config.adapters.required.nodepool={validation,hypershift}'
 ```
@@ -198,6 +222,7 @@ kubectl create secret generic hyperfleet-db-external \
 ```bash
 helm install hyperfleet-api ./charts/ \
   --namespace hyperfleet-system \
+  --set image.registry=quay.io \
   --set database.postgresql.enabled=false \
   --set database.external.enabled=true \
   --set database.external.secretName=hyperfleet-db-external \
@@ -254,7 +279,7 @@ helm uninstall hyperfleet-api --namespace hyperfleet-system
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `image.registry` | Container registry | `quay.io` |
+| `image.registry` | Container registry | `CHANGE_ME` (must be set explicitly) |
 | `image.repository` | Image repository | `openshift-hyperfleet/hyperfleet-api` |
 | `image.tag` | Image tag | `latest` |
 | `image.pullPolicy` | Image pull policy | `Always` |
@@ -411,6 +436,7 @@ For clusters with Prometheus Operator, enable the ServiceMonitor to automaticall
 ```bash
 helm install hyperfleet-api ./charts/ \
   --namespace hyperfleet-system \
+  --set image.registry=quay.io \
   --set serviceMonitor.enabled=true
 ```
 
@@ -419,6 +445,7 @@ If your Prometheus requires specific labels for service discovery, add them:
 ```bash
 helm install hyperfleet-api ./charts/ \
   --namespace hyperfleet-system \
+  --set image.registry=quay.io \
   --set serviceMonitor.enabled=true \
   --set serviceMonitor.labels.release=prometheus
 ```
@@ -428,6 +455,7 @@ To create the ServiceMonitor in a different namespace (e.g., `monitoring`):
 ```bash
 helm install hyperfleet-api ./charts/ \
   --namespace hyperfleet-system \
+  --set image.registry=quay.io \
   --set serviceMonitor.enabled=true \
   --set serviceMonitor.namespace=monitoring
 ```

@@ -257,17 +257,20 @@ test-helm: ## Test Helm charts (lint, template, validate)
 	fi
 	@echo "Linting Helm chart..."
 	helm lint charts/ \
+		--set image.registry=quay.io \
 		--set 'adapters.cluster=["validation"]' \
 		--set 'adapters.nodepool=["validation"]'
 	@echo ""
 	@echo "Testing template rendering with default values..."
 	helm template test-release charts/ \
+		--set image.registry=quay.io \
 		--set 'adapters.cluster=["validation"]' \
 		--set 'adapters.nodepool=["validation"]' > /dev/null
 	@echo "Default values template OK"
 	@echo ""
 	@echo "Testing template with external database..."
 	helm template test-release charts/ \
+		--set image.registry=quay.io \
 		--set 'adapters.cluster=["validation"]' \
 		--set 'adapters.nodepool=["validation"]' \
 		--set database.postgresql.enabled=false \
@@ -277,6 +280,7 @@ test-helm: ## Test Helm charts (lint, template, validate)
 	@echo ""
 	@echo "Testing template with autoscaling..."
 	helm template test-release charts/ \
+		--set image.registry=quay.io \
 		--set 'adapters.cluster=["validation"]' \
 		--set 'adapters.nodepool=["validation"]' \
 		--set autoscaling.enabled=true \
@@ -286,6 +290,7 @@ test-helm: ## Test Helm charts (lint, template, validate)
 	@echo ""
 	@echo "Testing template with PDB enabled..."
 	helm template test-release charts/ \
+		--set image.registry=quay.io \
 		--set 'adapters.cluster=["validation"]' \
 		--set 'adapters.nodepool=["validation"]' \
 		--set podDisruptionBudget.enabled=true \
@@ -294,6 +299,7 @@ test-helm: ## Test Helm charts (lint, template, validate)
 	@echo ""
 	@echo "Testing template with ServiceMonitor enabled..."
 	helm template test-release charts/ \
+		--set image.registry=quay.io \
 		--set 'adapters.cluster=["validation"]' \
 		--set 'adapters.nodepool=["validation"]' \
 		--set serviceMonitor.enabled=true \
@@ -302,6 +308,7 @@ test-helm: ## Test Helm charts (lint, template, validate)
 	@echo ""
 	@echo "Testing template with auth disabled..."
 	helm template test-release charts/ \
+		--set image.registry=quay.io \
 		--set 'adapters.cluster=["validation"]' \
 		--set 'adapters.nodepool=["validation"]' \
 		--set auth.enableJwt=false \
@@ -312,13 +319,14 @@ test-helm: ## Test Helm charts (lint, template, validate)
 	helm template test-release charts/ \
 		--set 'adapters.cluster=["validation"]' \
 		--set 'adapters.nodepool=["validation"]' \
-		--set image.registry=quay.io/myorg \
-		--set image.repository=hyperfleet-api \
+		--set image.registry=quay.io \
+		--set image.repository=myorg/hyperfleet-api \
 		--set image.tag=v1.0.0 > /dev/null
 	@echo "Custom image config template OK"
 	@echo ""
 	@echo "Testing template with pgbouncer enabled..."
 	helm template test-release charts/ \
+		--set image.registry=quay.io \
 		--set 'adapters.cluster=["validation"]' \
 		--set 'adapters.nodepool=["validation"]' \
 		--set database.pgbouncer.enabled=true > /dev/null
@@ -326,6 +334,7 @@ test-helm: ## Test Helm charts (lint, template, validate)
 	@echo ""
 	@echo "Testing template with full adapter config..."
 	helm template test-release charts/ \
+		--set image.registry=quay.io \
 		--set-json 'adapters.cluster=["validation","dns","pullsecret","hypershift"]' \
 		--set-json 'adapters.nodepool=["validation","hypershift"]' > /dev/null
 	@echo "Full adapter config template OK"

@@ -63,6 +63,15 @@ Create the name of the service account to use
 {{- end }}
 
 {{/*
+Validate required values that must not remain as placeholders.
+*/}}
+{{- define "hyperfleet-api.validateValues" -}}
+{{- if eq .Values.image.registry "CHANGE_ME" -}}
+{{- fail "image.registry must be set to actual container registry via --set image.registry=XXX. See docs/deployment.md for examples" -}}
+{{- end -}}
+{{- end }}
+
+{{/*
 Database environment variables (using secretKeyRef - Kubernetes best practice)
 */}}
 {{- define "hyperfleet-api.databaseEnvVars" -}}
