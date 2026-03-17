@@ -149,6 +149,14 @@ make image               # Build container image
 
 See [docs/development.md](docs/development.md) for detailed workflows.
 
+### CLI Subcommands
+
+```bash
+./bin/hyperfleet-api serve     # Start the HTTP server
+./bin/hyperfleet-api migrate   # Run database migrations
+./bin/hyperfleet-api version   # Print version, commit, and build date
+```
+
 ### Pre-commit Hooks
 
 This project uses [pre-commit](https://pre-commit.io/) for code quality checks. See [docs/development.md](docs/development.md#pre-commit-hooks-optional) for setup instructions.

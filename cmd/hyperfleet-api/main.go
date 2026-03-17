@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/migrate"
 	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/servecmd"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 
 	// Import plugins to trigger their init() functions
@@ -35,9 +37,10 @@ func main() {
 	// All subcommands under root
 	migrateCmd := migrate.NewMigrateCommand()
 	serveCmd := servecmd.NewServeCommand()
+	versionCmd := newVersionCommand()
 
 	// Add subcommand(s)
-	rootCmd.AddCommand(migrateCmd, serveCmd)
+	rootCmd.AddCommand(migrateCmd, serveCmd, versionCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		logger.WithError(ctx, err).Error("Error running command")
@@ -78,7 +81,7 @@ func initDefaultLogger() {
 		Format:    format,
 		Output:    output,
 		Component: "hyperfleet-api",
-		Version:   "unknown",
+		Version:   api.Version,
 		Hostname:  getHostname(),
 	}
 	logger.InitGlobalLogger(cfg)
@@ -90,4 +93,16 @@ func getHostname() string {
 		return "unknown"
 	}
 	return hostname
+}
+
+func newVersionCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "version",
+		Short: "Print version information",
+		Run: func(cmd *cobra.Command, args []string) {
+			fmt.Printf("Version:    %s\n", api.Version)
+			fmt.Printf("Commit:     %s\n", api.Commit)
+			fmt.Printf("Build Date: %s\n", api.BuildTime)
+		},
+	}
 }
