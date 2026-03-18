@@ -11,7 +11,7 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/services"
 )
 
-type clusterStatusHandler struct {
+type ClusterStatusHandler struct {
 	adapterStatusService services.AdapterStatusService
 	clusterService       services.ClusterService
 }
@@ -19,15 +19,15 @@ type clusterStatusHandler struct {
 func NewClusterStatusHandler(
 	adapterStatusService services.AdapterStatusService,
 	clusterService services.ClusterService,
-) *clusterStatusHandler {
-	return &clusterStatusHandler{
+) *ClusterStatusHandler {
+	return &ClusterStatusHandler{
 		adapterStatusService: adapterStatusService,
 		clusterService:       clusterService,
 	}
 }
 
 // List returns all adapter statuses for a cluster with pagination
-func (h clusterStatusHandler) List(w http.ResponseWriter, r *http.Request) {
+func (h ClusterStatusHandler) List(w http.ResponseWriter, r *http.Request) {
 	cfg := &handlerConfig{
 		Action: func() (interface{}, *errors.ServiceError) {
 			ctx := r.Context()
@@ -73,15 +73,15 @@ func (h clusterStatusHandler) List(w http.ResponseWriter, r *http.Request) {
 }
 
 // Create creates or updates an adapter status for a cluster
-func (h clusterStatusHandler) Create(w http.ResponseWriter, r *http.Request) {
+func (h ClusterStatusHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var req openapi.AdapterStatusCreateRequest
 
 	cfg := &handlerConfig{
-		&req,
-		[]validate{
+		MarshalInto: &req,
+		Validate: []validate{
 			validateNotEmpty(&req, "Adapter", "adapter"),
 		},
-		func() (interface{}, *errors.ServiceError) {
+		Action: func() (interface{}, *errors.ServiceError) {
 			ctx := r.Context()
 			clusterID := mux.Vars(r)["id"]
 
@@ -114,7 +114,7 @@ func (h clusterStatusHandler) Create(w http.ResponseWriter, r *http.Request) {
 			}
 			return &status, nil
 		},
-		handleError,
+		ErrorHandler: handleError,
 	}
 
 	handleCreateWithNoContent(w, r, cfg)

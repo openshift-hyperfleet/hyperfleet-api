@@ -82,7 +82,7 @@ func init() {
 		clustersRouter.HandleFunc("/{id}/nodepools/{nodepool_id}/statuses", nodepoolStatusHandler.Create).Methods(http.MethodPost)
 
 		clustersRouter.Use(authMiddleware.AuthenticateAccountJWT)
-		clustersRouter.Use(authzMiddleware.AuthorizeApi)
+		clustersRouter.Use(authzMiddleware.AuthorizeAPI)
 	})
 
 	// REMOVED: Controller registration - Sentinel handles orchestration

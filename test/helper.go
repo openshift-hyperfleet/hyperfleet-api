@@ -56,18 +56,18 @@ var jwkURL string
 type TimeFunc func() time.Time
 
 type Helper struct {
-	Ctx               context.Context
-	DBFactory         db.SessionFactory
-	AppConfig         *config.ApplicationConfig
-	APIServer         server.Server
-	MetricsServer     server.Server
-	HealthServer server.Server
-	TimeFunc          TimeFunc
-	JWTPrivateKey     *rsa.PrivateKey
-	JWTCA             *rsa.PublicKey
-	T                 *testing.T
-	teardowns         []func() error
-	Factories         factories.Factories
+	Factories     factories.Factories
+	Ctx           context.Context
+	DBFactory     db.SessionFactory
+	APIServer     server.Server
+	MetricsServer server.Server
+	HealthServer  server.Server
+	AppConfig     *config.ApplicationConfig
+	TimeFunc      TimeFunc
+	JWTPrivateKey *rsa.PrivateKey
+	JWTCA         *rsa.PublicKey
+	T             *testing.T
+	teardowns     []func() error
 }
 
 func NewHelper(t *testing.T) *Helper {
@@ -100,8 +100,7 @@ func NewHelper(t *testing.T) *Helper {
 		}
 		if logLevel := os.Getenv("LOGLEVEL"); logLevel != "" {
 			logger.With(ctx, logger.FieldLogLevel, logLevel).Info("Using custom loglevel")
-			// Intentionally ignore error from Set — acceptable for tests
-			_ = pflag.CommandLine.Set("-v", logLevel)
+			pflag.CommandLine.Set("-v", logLevel) //nolint:errcheck // best-effort log level override for tests
 		}
 		pflag.Parse()
 
@@ -295,7 +294,7 @@ func (helper *Helper) HealthURL(path string) string {
 	return fmt.Sprintf("%s://%s%s", protocol, helper.AppConfig.Health.BindAddress(), path)
 }
 
-func (helper *Helper) NewApiClient() *openapi.ClientWithResponses {
+func (helper *Helper) NewAPIClient() *openapi.ClientWithResponses {
 	// Build the server URL
 	protocol := "http" //nolint:goconst // Protocol strings used across URL builders
 	if helper.AppConfig.Server.TLS.Enabled {

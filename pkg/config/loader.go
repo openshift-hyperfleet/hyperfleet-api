@@ -95,7 +95,11 @@ func (l *ConfigLoader) resolveAndReadConfigFile(ctx context.Context, cmd *cobra.
 
 	// Priority 1: --config flag
 	if cmd.Flags().Changed("config") {
-		configPath, _ = cmd.Flags().GetString("config")
+		var err error
+		configPath, err = cmd.Flags().GetString("config")
+		if err != nil {
+			return err
+		}
 		explicitPath = true
 		logger.With(ctx, "config_path", configPath, "source", "flag").Info("Config file specified via --config flag")
 	}
@@ -166,20 +170,20 @@ func (l *ConfigLoader) validateConfig(config *ApplicationConfig) error {
 		// Struct tag validation passed, now run custom validations
 		// Note: validator treats time.Duration as int64, so min/max tags don't work correctly
 		// Also, omitempty doesn't enforce required_if logic for conditional fields
-		if err := config.Server.Timeouts.Validate(); err != nil {
-			return fmt.Errorf("server timeouts validation failed: %w", err)
+		if valErr := config.Server.Timeouts.Validate(); valErr != nil {
+			return fmt.Errorf("server timeouts validation failed: %w", valErr)
 		}
-		if err := config.Server.TLS.Validate(); err != nil {
-			return fmt.Errorf("server TLS validation failed: %w", err)
+		if valErr := config.Server.TLS.Validate(); valErr != nil {
+			return fmt.Errorf("server TLS validation failed: %w", valErr)
 		}
-		if err := config.Health.Validate(); err != nil {
-			return fmt.Errorf("health config validation failed: %w", err)
+		if valErr := config.Health.Validate(); valErr != nil {
+			return fmt.Errorf("health config validation failed: %w", valErr)
 		}
-		if err := config.Health.TLS.Validate(); err != nil {
-			return fmt.Errorf("health TLS validation failed: %w", err)
+		if valErr := config.Health.TLS.Validate(); valErr != nil {
+			return fmt.Errorf("health TLS validation failed: %w", valErr)
 		}
-		if err := config.Metrics.TLS.Validate(); err != nil {
-			return fmt.Errorf("metrics TLS validation failed: %w", err)
+		if valErr := config.Metrics.TLS.Validate(); valErr != nil {
+			return fmt.Errorf("metrics TLS validation failed: %w", valErr)
 		}
 		return nil
 	}

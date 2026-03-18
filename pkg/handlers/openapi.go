@@ -14,12 +14,12 @@ import (
 //go:embed openapi-ui.html
 var openapiui embed.FS
 
-type openAPIHandler struct {
+type OpenAPIHandler struct {
 	openAPIDefinitions []byte
 	uiContent          []byte
 }
 
-func NewOpenAPIHandler() (*openAPIHandler, error) {
+func NewOpenAPIHandler() (*OpenAPIHandler, error) {
 	ctx := context.Background()
 	// Load the OpenAPI spec from the generated code's embedded swagger
 	swagger, err := openapi.GetSwagger()
@@ -50,13 +50,13 @@ func NewOpenAPIHandler() (*openAPIHandler, error) {
 	}
 	logger.Info(ctx, "Loaded OpenAPI UI HTML from embedded file")
 
-	return &openAPIHandler{
+	return &OpenAPIHandler{
 		openAPIDefinitions: data,
 		uiContent:          uiContent,
 	}, nil
 }
 
-func (h *openAPIHandler) GetOpenAPI(w http.ResponseWriter, r *http.Request) {
+func (h *OpenAPIHandler) GetOpenAPI(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	if _, err := w.Write(h.openAPIDefinitions); err != nil {
@@ -70,7 +70,7 @@ func (h *openAPIHandler) GetOpenAPI(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *openAPIHandler) GetOpenAPIUI(w http.ResponseWriter, r *http.Request) {
+func (h *OpenAPIHandler) GetOpenAPIUI(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html")
 	w.WriteHeader(http.StatusOK)
 	if _, err := w.Write(h.uiContent); err != nil {

@@ -6,31 +6,31 @@ import (
 )
 
 func PresentReference(id, obj interface{}) openapi.ObjectReference {
-	refId, ok := makeReferenceId(id)
+	refID, ok := makeReferenceID(id)
 
 	if !ok {
 		return openapi.ObjectReference{}
 	}
 
 	return openapi.ObjectReference{
-		Id:   util.PtrString(refId),
+		Id:   util.PtrString(refID),
 		Kind: ObjectKind(obj),
-		Href: ObjectPath(refId, obj),
+		Href: ObjectPath(refID, obj),
 	}
 }
 
-func makeReferenceId(id interface{}) (string, bool) {
-	var refId string
+func makeReferenceID(id interface{}) (string, bool) {
+	var refID string
 
 	if i, ok := id.(string); ok {
-		refId = i
+		refID = i
 	}
 
 	if i, ok := id.(*string); ok {
 		if i != nil {
-			refId = *i
+			refID = *i
 		}
 	}
 
-	return refId, refId != ""
+	return refID, refID != ""
 }

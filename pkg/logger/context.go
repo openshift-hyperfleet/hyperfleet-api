@@ -100,9 +100,9 @@ func GetResourceID(ctx context.Context) (string, bool) {
 
 // ContextField defines metadata for a string-type context log field
 type ContextField struct {
+	Getter func(context.Context) (string, bool)
 	Key    contextKey
 	Name   string
-	Getter func(context.Context) (string, bool)
 }
 
 // ContextFieldsRegistry defines all string-type context fields for logging
@@ -110,12 +110,12 @@ type ContextField struct {
 // Fields are ordered as per HyperFleet Logging Specification (docs/logging.md:384)
 // Note: transaction_id (int64) is handled separately in logger.go
 var ContextFieldsRegistry = []ContextField{
-	{ReqIDKey, "request_id", GetRequestID},
-	{TraceIDCtxKey, "trace_id", GetTraceID},
-	{SpanIDCtxKey, "span_id", GetSpanID},
-	{ClusterIDCtxKey, "cluster_id", GetClusterID},
-	{ResourceTypeCtxKey, "resource_type", GetResourceType},
-	{ResourceIDCtxKey, "resource_id", GetResourceID},
+	{GetRequestID, ReqIDKey, "request_id"},
+	{GetTraceID, TraceIDCtxKey, "trace_id"},
+	{GetSpanID, SpanIDCtxKey, "span_id"},
+	{GetClusterID, ClusterIDCtxKey, "cluster_id"},
+	{GetResourceType, ResourceTypeCtxKey, "resource_type"},
+	{GetResourceID, ResourceIDCtxKey, "resource_id"},
 }
 
 // WithTransactionID adds transaction ID to context

@@ -26,12 +26,12 @@ func handleValidationError(w http.ResponseWriter, r *http.Request, err *errors.S
 
 	// Write RFC 9457 Problem Details error response
 	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(err.HttpCode)
+	w.WriteHeader(err.HTTPCode)
 	if encodeErr := json.NewEncoder(w).Encode(err.AsProblemDetails(r.URL.Path, traceID)); encodeErr != nil {
 		logger.With(r.Context(),
 			logger.HTTPPath(r.URL.Path),
 			logger.HTTPMethod(r.Method),
-			logger.HTTPStatusCode(err.HttpCode),
+			logger.HTTPStatusCode(err.HTTPCode),
 		).WithError(encodeErr).Error("Failed to encode validation error response")
 	}
 }

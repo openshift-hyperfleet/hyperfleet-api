@@ -23,15 +23,15 @@ var simpleDSNValuePattern = regexp.MustCompile(`^[a-zA-Z0-9.-]+$`)
 // DatabaseConfig holds database connection configuration
 // Follows HyperFleet Configuration Standard
 type DatabaseConfig struct {
+	SSL      SSLConfig  `mapstructure:"ssl" json:"ssl" validate:"required"`
 	Dialect  string     `mapstructure:"dialect" json:"dialect" validate:"required,oneof=postgres"`
 	Host     string     `mapstructure:"host" json:"host" validate:"required,hostname|ip"`
-	Port     int        `mapstructure:"port" json:"port" validate:"required,min=1,max=65535"`
 	Name     string     `mapstructure:"name" json:"name" validate:"required"`
-	Username string     `mapstructure:"username" json:"-"` // Excluded from JSON marshaling (sensitive)
-	Password string     `mapstructure:"password" json:"-"` // Excluded from JSON marshaling (sensitive)
-	Debug    bool       `mapstructure:"debug" json:"debug"`
-	SSL      SSLConfig  `mapstructure:"ssl" json:"ssl" validate:"required"`
+	Username string     `mapstructure:"username" json:"-"`
+	Password string     `mapstructure:"password" json:"-"`
 	Pool     PoolConfig `mapstructure:"pool" json:"pool" validate:"required"`
+	Port     int        `mapstructure:"port" json:"port" validate:"required,min=1,max=65535"`
+	Debug    bool       `mapstructure:"debug" json:"debug"`
 }
 
 // SSLConfig holds SSL/TLS configuration
@@ -43,13 +43,13 @@ type SSLConfig struct {
 // PoolConfig holds connection pool configuration
 // Includes fields from HYPERFLEET-694 for connection lifecycle management
 type PoolConfig struct {
-	MaxConnections int `mapstructure:"max_connections" json:"max_connections" validate:"required,min=1,max=200"`
-	MaxIdleConnections  int           `mapstructure:"max_idle_connections" json:"max_idle_connections" validate:"min=0"`
-	ConnMaxLifetime     time.Duration `mapstructure:"conn_max_lifetime" json:"conn_max_lifetime"`
-	ConnMaxIdleTime     time.Duration `mapstructure:"conn_max_idle_time" json:"conn_max_idle_time"`
-	RequestTimeout      time.Duration `mapstructure:"request_timeout" json:"request_timeout"`
-	ConnRetryAttempts   int           `mapstructure:"conn_retry_attempts" json:"conn_retry_attempts" validate:"min=1"`
-	ConnRetryInterval   time.Duration `mapstructure:"conn_retry_interval" json:"conn_retry_interval"`
+	MaxConnections     int           `mapstructure:"max_connections" json:"max_connections" validate:"required,min=1,max=200"` //nolint:lll // gofmt alignment
+	MaxIdleConnections int           `mapstructure:"max_idle_connections" json:"max_idle_connections" validate:"min=0"`
+	ConnMaxLifetime    time.Duration `mapstructure:"conn_max_lifetime" json:"conn_max_lifetime"`
+	ConnMaxIdleTime    time.Duration `mapstructure:"conn_max_idle_time" json:"conn_max_idle_time"`
+	RequestTimeout     time.Duration `mapstructure:"request_timeout" json:"request_timeout"`
+	ConnRetryAttempts  int           `mapstructure:"conn_retry_attempts" json:"conn_retry_attempts" validate:"min=1"`
+	ConnRetryInterval  time.Duration `mapstructure:"conn_retry_interval" json:"conn_retry_interval"`
 	// HYPERFLEET-618: prevents indefinite blocking during migrations
 	AdvisoryLockTimeout time.Duration `mapstructure:"advisory_lock_timeout" json:"advisory_lock_timeout"`
 }
@@ -58,9 +58,9 @@ type PoolConfig struct {
 func (c DatabaseConfig) MarshalJSON() ([]byte, error) {
 	type Alias DatabaseConfig
 	return json.Marshal(&struct {
+		*Alias
 		Username string `json:"username"`
 		Password string `json:"password"`
-		*Alias
 	}{
 		Username: redactIfSet(c.Username),
 		Password: redactIfSet(c.Password),

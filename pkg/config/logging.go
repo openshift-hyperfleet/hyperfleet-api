@@ -10,8 +10,8 @@ type LoggingConfig struct {
 	Level   string        `mapstructure:"level" json:"level" validate:"required,oneof=debug info warn error"`
 	Format  string        `mapstructure:"format" json:"format" validate:"required,oneof=json text"`
 	Output  string        `mapstructure:"output" json:"output" validate:"required,oneof=stdout stderr"`
-	OTel    OTelConfig    `mapstructure:"otel" json:"otel" validate:"required"`
 	Masking MaskingConfig `mapstructure:"masking" json:"masking" validate:"required"`
+	OTel    OTelConfig    `mapstructure:"otel" json:"otel" validate:"required"`
 }
 
 // OTelConfig holds OpenTelemetry configuration
@@ -22,9 +22,9 @@ type OTelConfig struct {
 
 // MaskingConfig holds log masking configuration
 type MaskingConfig struct {
-	Enabled bool     `mapstructure:"enabled" json:"enabled"`
 	Headers []string `mapstructure:"headers" json:"headers"`
 	Fields  []string `mapstructure:"fields" json:"fields"`
+	Enabled bool     `mapstructure:"enabled" json:"enabled"`
 }
 
 // NewLoggingConfig returns default LoggingConfig values

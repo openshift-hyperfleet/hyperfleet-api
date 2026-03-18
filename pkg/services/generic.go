@@ -54,15 +54,15 @@ var (
 // wrap all needed pieces for the LIST function
 type listContext struct {
 	ctx              context.Context
-	args             *ListArguments
-	username         string
-	pagingMeta       *api.PagingMeta
 	resourceList     interface{}
+	args             *ListArguments
+	pagingMeta       *api.PagingMeta
 	disallowedFields *map[string]string
-	resourceType     string
 	joins            map[string]dao.TableRelation
-	groupBy          []string
 	set              map[string]bool
+	username         string
+	resourceType     string
+	groupBy          []string
 }
 
 func (s *sqlGenericService) newListContext(

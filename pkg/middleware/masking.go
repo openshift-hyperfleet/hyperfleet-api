@@ -20,9 +20,9 @@ const (
 // MaskingMiddleware handles sensitive data masking for logging
 // Masks sensitive HTTP headers and JSON body fields to prevent PII/secrets leakage
 type MaskingMiddleware struct {
-	enabled          bool
 	sensitiveHeaders []string
 	sensitiveFields  []string
+	enabled          bool
 }
 
 var (

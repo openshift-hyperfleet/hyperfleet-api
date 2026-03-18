@@ -16,10 +16,6 @@ type clusterDaoMock struct {
 	clusters api.ClusterList
 }
 
-func NewClusterDao() *clusterDaoMock {
-	return &clusterDaoMock{}
-}
-
 func (d *clusterDaoMock) Get(ctx context.Context, id string) (*api.Cluster, error) {
 	for _, cluster := range d.clusters {
 		if cluster.ID == id {

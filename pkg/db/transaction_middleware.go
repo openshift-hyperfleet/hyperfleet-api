@@ -28,7 +28,7 @@ func TransactionMiddleware(next http.Handler, connection SessionFactory, request
 			// use default error to avoid exposing internals to users
 			serviceErr := errors.GeneralError("")
 			traceID, _ := logger.GetRequestID(r.Context())
-			response.WriteProblemDetailsResponse(w, r, serviceErr.HttpCode, serviceErr.AsProblemDetails(r.URL.Path, traceID))
+			response.WriteProblemDetailsResponse(w, r, serviceErr.HTTPCode, serviceErr.AsProblemDetails(r.URL.Path, traceID))
 			return
 		}
 

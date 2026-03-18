@@ -30,7 +30,7 @@ func NewHandler(sessionFactory db.SessionFactory, dbPingTimeout time.Duration) *
 func (h *Handler) LivenessHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"}) //nolint:errcheck // best-effort response
 }
 
 // ReadinessHandler handles the /readyz endpoint
@@ -43,7 +43,7 @@ func (h *Handler) ReadinessHandler(w http.ResponseWriter, r *http.Request) {
 
 	if state.IsShuttingDown() {
 		w.WriteHeader(http.StatusServiceUnavailable)
-		_ = json.NewEncoder(w).Encode(map[string]string{
+		json.NewEncoder(w).Encode(map[string]string{ //nolint:errcheck // best-effort response after header is written
 			"status": "shutting_down",
 			"reason": "Application is shutting down",
 		})
@@ -52,7 +52,7 @@ func (h *Handler) ReadinessHandler(w http.ResponseWriter, r *http.Request) {
 
 	if !state.IsReady() {
 		w.WriteHeader(http.StatusServiceUnavailable)
-		_ = json.NewEncoder(w).Encode(map[string]string{
+		json.NewEncoder(w).Encode(map[string]string{ //nolint:errcheck // best-effort response after header is written
 			"status": "not_ready",
 			"reason": "Application is not ready",
 		})
@@ -64,7 +64,7 @@ func (h *Handler) ReadinessHandler(w http.ResponseWriter, r *http.Request) {
 		sqlDB := h.sessionFactory.DirectDB()
 		if sqlDB == nil {
 			w.WriteHeader(http.StatusServiceUnavailable)
-			_ = json.NewEncoder(w).Encode(map[string]string{
+			json.NewEncoder(w).Encode(map[string]string{ //nolint:errcheck // best-effort response after header is written
 				"status": "not_ready",
 				"reason": "Database connection not available",
 			})
@@ -81,7 +81,7 @@ func (h *Handler) ReadinessHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			logger.WithError(r.Context(), err).Warn("Readiness check: database ping failed")
 			w.WriteHeader(http.StatusServiceUnavailable)
-			_ = json.NewEncoder(w).Encode(map[string]string{
+			json.NewEncoder(w).Encode(map[string]string{ //nolint:errcheck // best-effort response after header is written
 				"status": "not_ready",
 				"reason": reason,
 			})
@@ -90,5 +90,5 @@ func (h *Handler) ReadinessHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"}) //nolint:errcheck // best-effort response
 }

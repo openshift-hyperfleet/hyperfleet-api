@@ -16,10 +16,6 @@ type nodePoolDaoMock struct {
 	nodePools api.NodePoolList
 }
 
-func NewNodePoolDao() *nodePoolDaoMock {
-	return &nodePoolDaoMock{}
-}
-
 func (d *nodePoolDaoMock) Get(ctx context.Context, id string) (*api.NodePool, error) {
 	for _, nodePool := range d.nodePools {
 		if nodePool.ID == id {

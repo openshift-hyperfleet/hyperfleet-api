@@ -23,12 +23,12 @@ const (
 
 // LogConfig holds the configuration for the logger
 type LogConfig struct {
-	Level     slog.Level
-	Format    LogFormat
 	Output    io.Writer
 	Component string
 	Version   string
 	Hostname  string
+	Level     slog.Level
+	Format    LogFormat
 }
 
 // HyperFleetHandler implements slog.Handler interface

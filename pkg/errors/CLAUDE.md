@@ -10,7 +10,7 @@ type ServiceError struct {
     Type        string           // RFC 9457 type URI
     Title       string           // Short human-readable summary
     Reason      string           // Context-specific detail (supports fmt.Sprintf)
-    HttpCode    int              // HTTP status code
+    HTTPCode    int              // HTTP status code
     Details     []ValidationDetail  // Field-level validation errors
 }
 ```

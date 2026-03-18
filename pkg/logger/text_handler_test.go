@@ -105,31 +105,31 @@ func TestHyperFleetTextHandler_SpecialCharacters(t *testing.T) {
 // TestHyperFleetTextHandler_LogLevels tests different log levels
 func TestHyperFleetTextHandler_LogLevels(t *testing.T) {
 	tests := []struct {
-		name          string
-		level         slog.Level
 		logFunc       func(*slog.Logger, context.Context, string)
+		name          string
 		expectedLevel string
+		level         slog.Level
 		shouldLog     bool
 	}{
 		{
-			"DEBUG enabled", slog.LevelDebug,
-			func(l *slog.Logger, ctx context.Context, msg string) { l.DebugContext(ctx, msg) },
-			"DEBUG", true,
+			name: "DEBUG enabled", level: slog.LevelDebug,
+			logFunc:       func(l *slog.Logger, ctx context.Context, msg string) { l.DebugContext(ctx, msg) },
+			expectedLevel: "DEBUG", shouldLog: true,
 		},
 		{
-			"INFO enabled", slog.LevelInfo,
-			func(l *slog.Logger, ctx context.Context, msg string) { l.InfoContext(ctx, msg) },
-			"INFO", true,
+			name: "INFO enabled", level: slog.LevelInfo,
+			logFunc:       func(l *slog.Logger, ctx context.Context, msg string) { l.InfoContext(ctx, msg) },
+			expectedLevel: "INFO", shouldLog: true,
 		},
 		{
-			"WARN enabled", slog.LevelWarn,
-			func(l *slog.Logger, ctx context.Context, msg string) { l.WarnContext(ctx, msg) },
-			"WARN", true,
+			name: "WARN enabled", level: slog.LevelWarn,
+			logFunc:       func(l *slog.Logger, ctx context.Context, msg string) { l.WarnContext(ctx, msg) },
+			expectedLevel: "WARN", shouldLog: true,
 		},
 		{
-			"ERROR enabled", slog.LevelError,
-			func(l *slog.Logger, ctx context.Context, msg string) { l.ErrorContext(ctx, msg) },
-			"ERROR", true,
+			name: "ERROR enabled", level: slog.LevelError,
+			logFunc:       func(l *slog.Logger, ctx context.Context, msg string) { l.ErrorContext(ctx, msg) },
+			expectedLevel: "ERROR", shouldLog: true,
 		},
 	}
 

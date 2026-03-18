@@ -12,18 +12,18 @@ import (
 
 // Error type URIs for RFC 9457
 const (
-	ErrorTypeBase        = "https://api.hyperfleet.io/errors/"
-	ErrorTypeValidation  = ErrorTypeBase + "validation-error"
-	ErrorTypeAuth        = ErrorTypeBase + "authentication-error"
-	ErrorTypeAuthz       = ErrorTypeBase + "authorization-error"
-	ErrorTypeNotFound    = ErrorTypeBase + "not-found"
-	ErrorTypeConflict    = ErrorTypeBase + "conflict"
-	ErrorTypeRateLimit   = ErrorTypeBase + "rate-limit"
-	ErrorTypeInternal    = ErrorTypeBase + "internal-error"
-	ErrorTypeService     = ErrorTypeBase + "service-unavailable"
-	ErrorTypeBadRequest  = ErrorTypeBase + "bad-request"
-	ErrorTypeMalformed   = ErrorTypeBase + "malformed-request"
-	ErrorTypeNotImpl     = ErrorTypeBase + "not-implemented"
+	ErrorTypeBase       = "https://api.hyperfleet.io/errors/"
+	ErrorTypeValidation = ErrorTypeBase + "validation-error"
+	ErrorTypeAuth       = ErrorTypeBase + "authentication-error"
+	ErrorTypeAuthz      = ErrorTypeBase + "authorization-error"
+	ErrorTypeNotFound   = ErrorTypeBase + "not-found"
+	ErrorTypeConflict   = ErrorTypeBase + "conflict"
+	ErrorTypeRateLimit  = ErrorTypeBase + "rate-limit"
+	ErrorTypeInternal   = ErrorTypeBase + "internal-error"
+	ErrorTypeService    = ErrorTypeBase + "service-unavailable"
+	ErrorTypeBadRequest = ErrorTypeBase + "bad-request"
+	ErrorTypeMalformed  = ErrorTypeBase + "malformed-request"
+	ErrorTypeNotImpl    = ErrorTypeBase + "not-implemented"
 )
 
 // Error codes in HYPERFLEET-CAT-NUM format
@@ -83,18 +83,12 @@ type ValidationDetail struct {
 
 // ServiceError represents an API error with RFC 9457 Problem Details support
 type ServiceError struct {
-	// RFC9457Code is the HYPERFLEET-CAT-NUM format code
 	RFC9457Code string
-	// Type is the RFC 9457 type URI
-	Type string
-	// Title is a short human-readable summary
-	Title string
-	// Reason is the context-specific reason (maps to detail in RFC 9457)
-	Reason string
-	// HttpCode is the HTTP status code
-	HttpCode int
-	// Details contains field-level validation errors
-	Details []ValidationDetail
+	Type        string
+	Title       string
+	Reason      string
+	Details     []ValidationDetail
+	HTTPCode    int
 }
 
 // errorDefinition holds the default values for each error type
@@ -102,7 +96,7 @@ type errorDefinition struct {
 	Type     string
 	Title    string
 	Reason   string
-	HttpCode int
+	HTTPCode int
 }
 
 var errorDefinitions = map[string]errorDefinition{
@@ -211,7 +205,7 @@ func Find(code string) (bool, *ServiceError) {
 		Type:        def.Type,
 		Title:       def.Title,
 		Reason:      def.Reason,
-		HttpCode:    def.HttpCode,
+		HTTPCode:    def.HTTPCode,
 	}
 }
 
@@ -224,7 +218,7 @@ func Errors() ServiceErrors {
 			Type:        def.Type,
 			Title:       def.Title,
 			Reason:      def.Reason,
-			HttpCode:    def.HttpCode,
+			HTTPCode:    def.HTTPCode,
 		})
 	}
 	return errors
@@ -241,7 +235,7 @@ func New(code string, reason string, values ...interface{}) *ServiceError {
 			Type:        ErrorTypeInternal,
 			Title:       "Internal Server Error",
 			Reason:      "Unspecified error",
-			HttpCode:    http.StatusInternalServerError,
+			HTTPCode:    http.StatusInternalServerError,
 		}
 	}
 
@@ -304,7 +298,7 @@ func (e *ServiceError) AsProblemDetails(instance string, traceID string) openapi
 	problemDetails := openapi.Error{
 		Type:      e.Type,
 		Title:     e.Title,
-		Status:    e.HttpCode,
+		Status:    e.HTTPCode,
 		Detail:    &e.Reason,
 		Code:      &e.RFC9457Code,
 		Timestamp: &now,

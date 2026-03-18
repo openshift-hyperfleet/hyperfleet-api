@@ -21,8 +21,8 @@ type HyperFleetTextHandler struct {
 	component string
 	version   string
 	hostname  string
-	level     slog.Level
 	attrs     []slog.Attr
+	level     slog.Level
 	mu        sync.Mutex
 }
 

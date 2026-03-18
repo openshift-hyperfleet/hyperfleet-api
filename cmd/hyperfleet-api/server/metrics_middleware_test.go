@@ -31,14 +31,14 @@ import (
 )
 
 const (
-	testRequestsTotalMetric  = "hyperfleet_api_requests_total"
-	testDurationMetric       = "hyperfleet_api_request_duration_seconds"
-	testBuildInfoMetric      = "hyperfleet_api_build_info"
-	testClustersPath         = "/api/hyperfleet/v1/clusters"
-	testClustersPathWithID   = "/api/hyperfleet/v1/clusters/{id}"
-	testClustersPathWithSub  = "/api/hyperfleet/v1/clusters/-"
-	testClustersURLWithID    = "/api/hyperfleet/v1/clusters/abc123"
-	testMethodGet            = "GET"
+	testRequestsTotalMetric = "hyperfleet_api_requests_total"
+	testDurationMetric      = "hyperfleet_api_request_duration_seconds"
+	testBuildInfoMetric     = "hyperfleet_api_build_info"
+	testClustersPath        = "/api/hyperfleet/v1/clusters"
+	testClustersPathWithID  = "/api/hyperfleet/v1/clusters/{id}"
+	testClustersPathWithSub = "/api/hyperfleet/v1/clusters/-"
+	testClustersURLWithID   = "/api/hyperfleet/v1/clusters/abc123"
+	testMethodGet           = "GET"
 )
 
 func TestMetricsSubsystem(t *testing.T) {
@@ -89,7 +89,7 @@ func TestBuildInfoMetricIsRegistered(t *testing.T) {
 			break
 		}
 	}
-	Expect(found).To(BeTrue(), testBuildInfoMetric + " metric should be registered")
+	Expect(found).To(BeTrue(), testBuildInfoMetric+" metric should be registered")
 }
 
 func TestMetricsMiddleware_IncrementsRequestCount(t *testing.T) {
@@ -130,7 +130,7 @@ func TestMetricsMiddleware_IncrementsRequestCount(t *testing.T) {
 			break
 		}
 	}
-	Expect(found).To(BeTrue(), testRequestsTotalMetric + " metric should exist")
+	Expect(found).To(BeTrue(), testRequestsTotalMetric+" metric should exist")
 }
 
 func TestMetricsMiddleware_RecordsDuration(t *testing.T) {
@@ -169,7 +169,7 @@ func TestMetricsMiddleware_RecordsDuration(t *testing.T) {
 			break
 		}
 	}
-	Expect(found).To(BeTrue(), testDurationMetric + " metric should exist")
+	Expect(found).To(BeTrue(), testDurationMetric+" metric should exist")
 }
 
 func TestMetricsMiddleware_PathVariableSubstitution(t *testing.T) {

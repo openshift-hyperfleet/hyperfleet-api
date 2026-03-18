@@ -11,7 +11,7 @@ import (
 // This allows tests to focus on specific configuration aspects without
 // needing to provide all required fields
 //
-// Uses t.Setenv which automatically restores prior values when test completes
+// # Uses t.Setenv which automatically restores prior values when test completes
 //
 // IMPORTANT: Uses new configuration structure (host+port separated, not bind_address)
 func SetMinimalTestEnv(t *testing.T) {

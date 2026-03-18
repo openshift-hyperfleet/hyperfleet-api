@@ -10,21 +10,20 @@ package auth
 */
 
 import (
-	"fmt"
 	"net/http"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/client/ocm"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
 type AuthorizationMiddleware interface {
-	AuthorizeApi(next http.Handler) http.Handler
+	AuthorizeAPI(next http.Handler) http.Handler
 }
 
 type authzMiddleware struct {
+	ocmClient    *ocm.Client
 	action       string
 	resourceType string
-
-	ocmClient *ocm.Client
 }
 
 var _ AuthorizationMiddleware = &authzMiddleware{}
@@ -37,14 +36,14 @@ func NewAuthzMiddleware(ocmClient *ocm.Client, action, resourceType string) Auth
 	}
 }
 
-func (a authzMiddleware) AuthorizeApi(next http.Handler) http.Handler {
+func (a authzMiddleware) AuthorizeAPI(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 
 		// Get username from context
 		username := GetUsernameFromContext(ctx)
 		if username == "" {
-			_ = fmt.Errorf("authenticated username not present in request context")
+			logger.Error(ctx, "authenticated username not present in request context")
 			// TODO
 			// body := api.E500.Format(r, "Authentication details not present in context")
 			// api.SendError(w, r, &body)
@@ -54,7 +53,7 @@ func (a authzMiddleware) AuthorizeApi(next http.Handler) http.Handler {
 		allowed, err := a.ocmClient.Authorization.AccessReview(
 			ctx, username, a.action, a.resourceType, "", "", "")
 		if err != nil {
-			_ = fmt.Errorf("unable to make authorization request: %s", err)
+			logger.WithError(ctx, err).Error("unable to make authorization request")
 			// TODO
 			// body := api.E500.Format(r, "Unable to make authorization request")
 			// api.SendError(w, r, &body)

@@ -83,8 +83,8 @@ func TestNewListArguments_PageSize(t *testing.T) {
 	RegisterTestingT(t)
 
 	tests := []struct {
-		name         string
 		queryParams  url.Values
+		name         string
 		expectedPage int
 		expectedSize int64
 	}{

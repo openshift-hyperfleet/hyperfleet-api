@@ -93,10 +93,10 @@ func createTestClusterList() openapi.ClusterList {
 
 func TestSliceFilter(t *testing.T) {
 	tests := []struct {
-		name     string
-		fields   []string
 		model    interface{}
 		validate func(result *ProjectionList, err *errors.ServiceError)
+		name     string
+		fields   []string
 	}{
 		{
 			name:   "include and exclude fields with different types",

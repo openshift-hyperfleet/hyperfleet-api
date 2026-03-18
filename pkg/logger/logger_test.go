@@ -93,15 +93,15 @@ func TestParseLogFormat(t *testing.T) {
 // TestParseLogOutput tests log output parsing with various inputs
 func TestParseLogOutput(t *testing.T) {
 	tests := []struct {
+		expected  *os.File
 		name      string
 		input     string
-		expected  *os.File
 		expectErr bool
 	}{
-		{"stdout", "stdout", os.Stdout, false},
-		{"stderr", "stderr", os.Stderr, false},
-		{"empty defaults to stdout", "", os.Stdout, false},
-		{"invalid", "invalid", nil, true},
+		{name: "stdout", input: "stdout", expected: os.Stdout, expectErr: false},
+		{name: "stderr", input: "stderr", expected: os.Stderr, expectErr: false},
+		{name: "empty defaults to stdout", input: "", expected: os.Stdout, expectErr: false},
+		{name: "invalid", input: "invalid", expected: nil, expectErr: true},
 	}
 
 	for _, tt := range tests {
@@ -160,7 +160,7 @@ func TestBasicLogFormat(t *testing.T) {
 
 			if tt.format == FormatJSON {
 				// Parse the last JSON line (handles multi-line output like stack traces)
-				output := strings.TrimSpace(buf.String())
+				output = strings.TrimSpace(buf.String())
 				lines := strings.Split(output, "\n")
 				lastLine := lines[len(lines)-1]
 
@@ -329,13 +329,13 @@ func TestContextFields_Multiple(t *testing.T) {
 // TestStackTrace tests stack trace capture for different log levels
 func TestStackTrace(t *testing.T) {
 	tests := []struct {
+		logFunc          func(context.Context, string)
 		name             string
 		level            slog.Level
-		logFunc          func(context.Context, string)
 		expectStackTrace bool
 	}{
-		{"error level has stack trace", slog.LevelError, Error, true},
-		{"info level no stack trace", slog.LevelInfo, Info, false},
+		{name: "error level has stack trace", level: slog.LevelError, logFunc: Error, expectStackTrace: true},
+		{name: "info level no stack trace", level: slog.LevelInfo, logFunc: Info, expectStackTrace: false},
 	}
 
 	for _, tt := range tests {
@@ -387,13 +387,13 @@ func TestStackTrace(t *testing.T) {
 // TestLogLevelFiltering tests log level filtering
 func TestLogLevelFiltering(t *testing.T) {
 	tests := []struct {
+		logFunc     func(context.Context, string)
 		name        string
 		configLevel slog.Level
-		logFunc     func(context.Context, string)
 		shouldLog   bool
 	}{
-		{"debug filtered at info level", slog.LevelInfo, Debug, false},
-		{"info enabled at info level", slog.LevelInfo, Info, true},
+		{name: "debug filtered at info level", configLevel: slog.LevelInfo, logFunc: Debug, shouldLog: false},
+		{name: "info enabled at info level", configLevel: slog.LevelInfo, logFunc: Info, shouldLog: true},
 	}
 
 	for _, tt := range tests {
@@ -445,15 +445,15 @@ func TestGetLogger_Uninitialized(t *testing.T) {
 // TestConvenienceFunctions tests all convenience functions (Debug, Info, Warn, Error)
 func TestConvenienceFunctions(t *testing.T) {
 	tests := []struct {
-		name        string
-		level       slog.Level
 		logFunc     func(context.Context, string)
+		name        string
 		expectedLvl string
+		level       slog.Level
 	}{
-		{"Debug", slog.LevelDebug, Debug, "debug"},
-		{"Info", slog.LevelInfo, Info, "info"},
-		{"Warn", slog.LevelWarn, Warn, "warn"},
-		{"Error", slog.LevelError, Error, "error"},
+		{name: "Debug", level: slog.LevelDebug, logFunc: Debug, expectedLvl: "debug"},
+		{name: "Info", level: slog.LevelInfo, logFunc: Info, expectedLvl: "info"},
+		{name: "Warn", level: slog.LevelWarn, logFunc: Warn, expectedLvl: "warn"},
+		{name: "Error", level: slog.LevelError, logFunc: Error, expectedLvl: "error"},
 	}
 
 	for _, tt := range tests {
@@ -496,10 +496,10 @@ func TestConvenienceFunctions(t *testing.T) {
 // TestWithError tests the WithError convenience function
 func TestWithError(t *testing.T) {
 	tests := []struct {
-		name          string
 		err           error
-		expectError   bool
+		name          string
 		expectedValue string
+		expectError   bool
 	}{
 		{
 			name:          "non-nil error",

@@ -11,10 +11,10 @@ import (
 
 type ProjectionList struct {
 	Kind  string                   `json:"kind"`
+	Items []map[string]interface{} `json:"items"`
 	Page  int32                    `json:"page"`
 	Size  int32                    `json:"size"`
 	Total int32                    `json:"total"`
-	Items []map[string]interface{} `json:"items"`
 }
 
 // SliceFilter returns a projected list containing requested fields from each item

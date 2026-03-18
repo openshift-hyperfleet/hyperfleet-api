@@ -25,12 +25,12 @@ func TestClusterNodePoolsHandler_Get(t *testing.T) {
 	nodePoolID := "test-nodepool-456"
 
 	tests := []struct {
+		setupMocks func(ctrl *gomock.Controller) ( //nolint:lll
+			*services.MockClusterService, *services.MockNodePoolService, *services.MockGenericService,
+		)
 		name               string
 		clusterID          string
 		nodePoolID         string
-		setupMocks func(ctrl *gomock.Controller) (
-			*services.MockClusterService, *services.MockNodePoolService, *services.MockGenericService,
-		)
 		expectedStatusCode int
 		expectedError      bool
 	}{

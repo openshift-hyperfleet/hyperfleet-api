@@ -11,9 +11,9 @@ const defaultRollbackPolicy = false
 
 // Transaction represents an sql transaction
 type Transaction struct {
-	rollbackFlag bool
 	tx           *sql.Tx
 	txid         int64
+	rollbackFlag bool
 }
 
 // Build Creates a new transaction object

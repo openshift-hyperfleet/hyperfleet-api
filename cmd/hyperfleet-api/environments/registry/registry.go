@@ -9,8 +9,8 @@ type ServiceLocatorFunc func(env interface{}) interface{}
 
 // ServiceRegistry holds registered services
 type ServiceRegistry struct {
-	mu       sync.RWMutex
 	services map[string]ServiceLocatorFunc
+	mu       sync.RWMutex
 }
 
 var globalRegistry = &ServiceRegistry{

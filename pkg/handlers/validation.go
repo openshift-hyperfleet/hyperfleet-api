@@ -115,7 +115,7 @@ func validateKind(i interface{}, fieldName string, field string, expectedKind st
 }
 
 // validateSpec validates that the spec field is not nil
-func validateSpec(i interface{}, fieldName string, field string) validate {
+func validateSpec(i interface{}, fieldName string, field string) validate { //nolint:unparam
 	return func() *errors.ServiceError {
 		value := reflect.ValueOf(i).Elem().FieldByName(fieldName)
 

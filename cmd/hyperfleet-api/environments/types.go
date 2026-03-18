@@ -23,13 +23,12 @@ const (
 )
 
 type Env struct {
+	Handlers Handlers
+	Database Database
+	Clients  Clients
+	Config   *config.ApplicationConfig
 	Name     string
 	Services Services
-	Handlers Handlers
-	Clients  Clients
-	Database Database
-	// most code relies on env.Config
-	Config *config.ApplicationConfig
 }
 
 type ApplicationConfig struct {
