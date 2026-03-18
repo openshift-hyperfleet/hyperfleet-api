@@ -8,9 +8,9 @@ import (
 // Follows HyperFleet Configuration Standard
 type OCMConfig struct {
 	BaseURL      string     `mapstructure:"base_url" json:"base_url" validate:"required,url"`
-	ClientID     string     `mapstructure:"client_id" json:"-"` // Excluded from JSON marshaling (sensitive)
+	ClientID     string     `mapstructure:"client_id" json:"-"`     // Excluded from JSON marshaling (sensitive)
 	ClientSecret string     `mapstructure:"client_secret" json:"-"` // Excluded from JSON marshaling (sensitive)
-	SelfToken    string     `mapstructure:"self_token" json:"-"` // Excluded from JSON marshaling (sensitive)
+	SelfToken    string     `mapstructure:"self_token" json:"-"`    // Excluded from JSON marshaling (sensitive)
 	TokenURL     string     `mapstructure:"token_url" json:"token_url" validate:"required,url"`
 	Debug        bool       `mapstructure:"debug" json:"debug"`
 	Mock         MockConfig `mapstructure:"mock" json:"mock" validate:"required"`
@@ -25,10 +25,10 @@ type MockConfig struct {
 func (c OCMConfig) MarshalJSON() ([]byte, error) {
 	type Alias OCMConfig
 	return json.Marshal(&struct {
+		*Alias
 		ClientID     string `json:"client_id"`
 		ClientSecret string `json:"client_secret"`
 		SelfToken    string `json:"self_token"`
-		*Alias
 	}{
 		ClientID:     redactIfSet(c.ClientID),
 		ClientSecret: redactIfSet(c.ClientSecret),
@@ -52,4 +52,3 @@ func NewOCMConfig() *OCMConfig {
 		},
 	}
 }
-

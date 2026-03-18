@@ -13,9 +13,9 @@ func TestConditionsNodeConverterStatus(t *testing.T) {
 		field         string
 		value         string
 		expectedSQL   string
+		errorContains string
 		expectedArgs  []interface{}
 		expectError   bool
-		errorContains string
 	}{
 		{
 			name:         "Ready condition True",
@@ -119,14 +119,14 @@ func TestConditionsNodeConverterStatus(t *testing.T) {
 
 func TestConditionsNodeConverterSubfields(t *testing.T) {
 	tests := []struct {
+		value         interface{}
 		name          string
 		field         string
 		op            string
-		value         interface{} // string for time fields, float64 for integer fields
 		expectedSQL   string
+		errorContains string
 		expectedArgs  []interface{}
 		expectError   bool
-		errorContains string
 	}{
 		// Time subfield: last_updated_time (encoded with __ after preprocessing)
 		{
@@ -451,8 +451,8 @@ func TestExtractConditionQueriesWithSubfields(t *testing.T) {
 	tests := []struct {
 		name                 string
 		searchQuery          string
-		expectedConditions   int
 		expectedConditionSQL string
+		expectedConditions   int
 		expectError          bool
 	}{
 		{
@@ -521,8 +521,8 @@ func TestExtractConditionQueries(t *testing.T) {
 	tests := []struct {
 		name                 string
 		searchQuery          string
-		expectedConditions   int
 		expectedConditionSQL string
+		expectedConditions   int
 		expectError          bool
 	}{
 		{

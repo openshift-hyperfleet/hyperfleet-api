@@ -35,13 +35,13 @@ func ConvertCluster(req *openapi.ClusterCreateRequest, createdBy string) (*api.C
 	}
 
 	return &api.Cluster{
-		Kind:             kind,
-		Name:             req.Name,
-		Spec:             specJSON,
-		Labels:           labelsJSON,
-		Generation:       1,
-		CreatedBy:        createdBy,
-		UpdatedBy:        createdBy,
+		Kind:       kind,
+		Name:       req.Name,
+		Spec:       specJSON,
+		Labels:     labelsJSON,
+		Generation: 1,
+		CreatedBy:  createdBy,
+		UpdatedBy:  createdBy,
 	}, nil
 }
 

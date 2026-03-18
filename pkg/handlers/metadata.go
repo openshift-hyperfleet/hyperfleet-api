@@ -24,14 +24,14 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
-type metadataHandler struct{}
+type MetadataHandler struct{}
 
-func NewMetadataHandler() *metadataHandler {
-	return &metadataHandler{}
+func NewMetadataHandler() *MetadataHandler {
+	return &MetadataHandler{}
 }
 
 // Get sends API documentation response.
-func (h metadataHandler) Get(w http.ResponseWriter, r *http.Request) {
+func (h MetadataHandler) Get(w http.ResponseWriter, r *http.Request) {
 	// Set the content type:
 	w.Header().Set("Content-Type", "application/json")
 

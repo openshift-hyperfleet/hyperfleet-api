@@ -39,8 +39,8 @@ func NewHealthServer() Server {
 
 type healthServer struct {
 	httpServer      *http.Server
-	shutdownTimeout time.Duration
 	listening       chan struct{}
+	shutdownTimeout time.Duration
 }
 
 var _ Server = &healthServer{}

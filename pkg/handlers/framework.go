@@ -20,9 +20,9 @@ import (
 //	ErrorHandler is the way errors are returned to the client
 type handlerConfig struct {
 	MarshalInto  interface{}
-	Validate     []validate
 	Action       httpAction
 	ErrorHandler errorHandlerFunc
+	Validate     []validate
 }
 
 type validate func() *errors.ServiceError
@@ -34,19 +34,19 @@ func handleError(r *http.Request, w http.ResponseWriter, err *errors.ServiceErro
 	instance := r.URL.Path
 
 	// Log with RFC 9457 code format
-	if err.HttpCode >= 400 && err.HttpCode <= 499 {
+	if err.HTTPCode >= 400 && err.HTTPCode <= 499 {
 		logger.With(r.Context(),
 			"code", err.RFC9457Code,
-			"http_code", err.HttpCode,
+			"http_code", err.HTTPCode,
 			"reason", err.Reason).Info("Client error response")
 	} else {
 		logger.With(r.Context(),
 			"code", err.RFC9457Code,
-			"http_code", err.HttpCode,
+			"http_code", err.HTTPCode,
 			"reason", err.Reason).Error("Server error response")
 	}
 
-	response.WriteProblemDetailsResponse(w, r, err.HttpCode, err.AsProblemDetails(instance, traceID))
+	response.WriteProblemDetailsResponse(w, r, err.HTTPCode, err.AsProblemDetails(instance, traceID))
 }
 
 func handle(w http.ResponseWriter, r *http.Request, cfg *handlerConfig, httpStatus int) {

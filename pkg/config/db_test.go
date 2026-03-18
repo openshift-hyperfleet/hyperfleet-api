@@ -120,10 +120,10 @@ func TestEscapeDSNValue(t *testing.T) {
 // - Integration validation with one representative special character test case
 func TestConnectionString(t *testing.T) {
 	tests := []struct {
-		name     string
 		config   *DatabaseConfig
-		ssl      bool
+		name     string
 		expected string
+		ssl      bool
 	}{
 		{
 			name: "basic connection without SSL",
@@ -244,10 +244,10 @@ func TestConnectionString(t *testing.T) {
 
 func TestLogSafeConnectionString(t *testing.T) {
 	tests := []struct {
-		name     string
 		config   *DatabaseConfig
-		ssl      bool
+		name     string
 		expected string
+		ssl      bool
 	}{
 		{
 			name: "credentials are redacted",
@@ -420,9 +420,9 @@ func TestDatabaseConfigMarshalJSON_EmptyCredentials(t *testing.T) {
 func TestSetLogLevel(t *testing.T) {
 	tests := []struct {
 		name           string
-		debug          bool
 		globalLogLevel string
 		expected       logger.LogLevel
+		debug          bool
 	}{
 		{
 			name:           "database.debug=true takes precedence over global log level (info)",

@@ -19,11 +19,11 @@ func handleError(ctx context.Context, w http.ResponseWriter, r *http.Request, co
 	if r != nil {
 		instance = r.URL.Path
 	}
-	if err.HttpCode >= 400 && err.HttpCode <= 499 {
+	if err.HTTPCode >= 400 && err.HTTPCode <= 499 {
 		logger.WithError(ctx, err).Warn("Client error occurred")
 	} else {
 		logger.WithError(ctx, err).Error("Server error occurred")
 	}
 
-	response.WriteProblemDetailsResponse(w, r, err.HttpCode, err.AsProblemDetails(instance, traceID))
+	response.WriteProblemDetailsResponse(w, r, err.HTTPCode, err.AsProblemDetails(instance, traceID))
 }

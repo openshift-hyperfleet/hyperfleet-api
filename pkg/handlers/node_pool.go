@@ -13,30 +13,30 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/services"
 )
 
-var _ RestHandler = nodePoolHandler{}
+var _ RestHandler = NodePoolHandler{}
 
-type nodePoolHandler struct {
+type NodePoolHandler struct {
 	nodePool services.NodePoolService
 	generic  services.GenericService
 }
 
-func NewNodePoolHandler(nodePool services.NodePoolService, generic services.GenericService) *nodePoolHandler {
-	return &nodePoolHandler{
+func NewNodePoolHandler(nodePool services.NodePoolService, generic services.GenericService) *NodePoolHandler {
+	return &NodePoolHandler{
 		nodePool: nodePool,
 		generic:  generic,
 	}
 }
 
-func (h nodePoolHandler) Create(w http.ResponseWriter, r *http.Request) {
+func (h NodePoolHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var req openapi.NodePoolCreateRequest
 	cfg := &handlerConfig{
-		&req,
-		[]validate{
+		MarshalInto: &req,
+		Validate: []validate{
 			validateEmpty(&req, "Id", "id"),
 			validateName(&req, "Name", "name", 3, 15),
 			validateKind(&req, "Kind", "kind", "NodePool"),
 		},
-		func() (interface{}, *errors.ServiceError) {
+		Action: func() (interface{}, *errors.ServiceError) {
 			ctx := r.Context()
 			// For standalone nodepools, owner_id would need to come from somewhere
 			// This is likely not a supported use case, but using empty string for now
@@ -54,19 +54,19 @@ func (h nodePoolHandler) Create(w http.ResponseWriter, r *http.Request) {
 			}
 			return presented, nil
 		},
-		handleError,
+		ErrorHandler: handleError,
 	}
 
 	handle(w, r, cfg, http.StatusCreated)
 }
 
-func (h nodePoolHandler) Patch(w http.ResponseWriter, r *http.Request) {
+func (h NodePoolHandler) Patch(w http.ResponseWriter, r *http.Request) {
 	var patch api.NodePoolPatchRequest
 
 	cfg := &handlerConfig{
-		&patch,
-		[]validate{},
-		func() (interface{}, *errors.ServiceError) {
+		MarshalInto: &patch,
+		Validate:    []validate{},
+		Action: func() (interface{}, *errors.ServiceError) {
 			ctx := r.Context()
 			id := mux.Vars(r)["id"]
 			found, err := h.nodePool.Get(ctx, id)
@@ -96,13 +96,13 @@ func (h nodePoolHandler) Patch(w http.ResponseWriter, r *http.Request) {
 			}
 			return presented, nil
 		},
-		handleError,
+		ErrorHandler: handleError,
 	}
 
 	handle(w, r, cfg, http.StatusOK)
 }
 
-func (h nodePoolHandler) List(w http.ResponseWriter, r *http.Request) {
+func (h NodePoolHandler) List(w http.ResponseWriter, r *http.Request) {
 	cfg := &handlerConfig{
 		Action: func() (interface{}, *errors.ServiceError) {
 			ctx := r.Context()
@@ -126,10 +126,10 @@ func (h nodePoolHandler) List(w http.ResponseWriter, r *http.Request) {
 
 			nodePoolList := struct {
 				Kind  string             `json:"kind"`
+				Items []openapi.NodePool `json:"items"`
 				Page  int32              `json:"page"`
 				Size  int32              `json:"size"`
 				Total int32              `json:"total"`
-				Items []openapi.NodePool `json:"items"`
 			}{
 				Kind:  "NodePoolList",
 				Page:  int32(paging.Page),
@@ -151,7 +151,7 @@ func (h nodePoolHandler) List(w http.ResponseWriter, r *http.Request) {
 	handleList(w, r, cfg)
 }
 
-func (h nodePoolHandler) Get(w http.ResponseWriter, r *http.Request) {
+func (h NodePoolHandler) Get(w http.ResponseWriter, r *http.Request) {
 	cfg := &handlerConfig{
 		Action: func() (interface{}, *errors.ServiceError) {
 			id := mux.Vars(r)["id"]
@@ -172,7 +172,7 @@ func (h nodePoolHandler) Get(w http.ResponseWriter, r *http.Request) {
 	handleGet(w, r, cfg)
 }
 
-func (h nodePoolHandler) Delete(w http.ResponseWriter, r *http.Request) {
+func (h NodePoolHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	cfg := &handlerConfig{
 		Action: func() (interface{}, *errors.ServiceError) {
 			return nil, errors.NotImplemented("delete")

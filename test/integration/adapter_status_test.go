@@ -118,7 +118,7 @@ func TestClusterStatusGet(t *testing.T) {
 			},
 			nil,
 		)
-		_, err := client.PostClusterStatusesWithResponse(
+		_, err = client.PostClusterStatusesWithResponse(
 			ctx, cluster.ID,
 			openapi.PostClusterStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
 		)
@@ -244,7 +244,7 @@ func TestNodePoolStatusGet(t *testing.T) {
 			nil,
 		)
 		// Use nodePool.OwnerID as the cluster_id parameter
-		_, err := client.PostNodePoolStatusesWithResponse(
+		_, err = client.PostNodePoolStatusesWithResponse(
 			ctx, nodePool.OwnerID, nodePool.ID,
 			openapi.PostNodePoolStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
 		)
@@ -295,7 +295,7 @@ func TestAdapterStatusPaging(t *testing.T) {
 			},
 			nil,
 		)
-		_, err := client.PostClusterStatusesWithResponse(
+		_, err = client.PostClusterStatusesWithResponse(
 			ctx, cluster.ID,
 			openapi.PostClusterStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
 		)
@@ -671,7 +671,7 @@ func TestAdapterStatusPagingEdgeCases(t *testing.T) {
 			},
 			nil,
 		)
-		_, err := client.PostClusterStatusesWithResponse(
+		_, err = client.PostClusterStatusesWithResponse(
 			ctx, cluster.ID,
 			openapi.PostClusterStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
 		)

@@ -12,7 +12,7 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/services"
 )
 
-type clusterNodePoolsHandler struct {
+type ClusterNodePoolsHandler struct {
 	clusterService  services.ClusterService
 	nodePoolService services.NodePoolService
 	generic         services.GenericService
@@ -22,8 +22,8 @@ func NewClusterNodePoolsHandler(
 	clusterService services.ClusterService,
 	nodePoolService services.NodePoolService,
 	generic services.GenericService,
-) *clusterNodePoolsHandler {
-	return &clusterNodePoolsHandler{
+) *ClusterNodePoolsHandler {
+	return &ClusterNodePoolsHandler{
 		clusterService:  clusterService,
 		nodePoolService: nodePoolService,
 		generic:         generic,
@@ -31,7 +31,7 @@ func NewClusterNodePoolsHandler(
 }
 
 // List returns all nodepools for a cluster
-func (h clusterNodePoolsHandler) List(w http.ResponseWriter, r *http.Request) {
+func (h ClusterNodePoolsHandler) List(w http.ResponseWriter, r *http.Request) {
 	cfg := &handlerConfig{
 		Action: func() (interface{}, *errors.ServiceError) {
 			ctx := r.Context()
@@ -70,10 +70,10 @@ func (h clusterNodePoolsHandler) List(w http.ResponseWriter, r *http.Request) {
 
 			nodePoolList := struct {
 				Kind  string             `json:"kind"`
+				Items []openapi.NodePool `json:"items"`
 				Page  int32              `json:"page"`
 				Size  int32              `json:"size"`
 				Total int32              `json:"total"`
-				Items []openapi.NodePool `json:"items"`
 			}{
 				Kind:  "NodePoolList",
 				Page:  int32(paging.Page),
@@ -97,7 +97,7 @@ func (h clusterNodePoolsHandler) List(w http.ResponseWriter, r *http.Request) {
 }
 
 // Get returns a specific nodepool for a cluster
-func (h clusterNodePoolsHandler) Get(w http.ResponseWriter, r *http.Request) {
+func (h ClusterNodePoolsHandler) Get(w http.ResponseWriter, r *http.Request) {
 	cfg := &handlerConfig{
 		Action: func() (interface{}, *errors.ServiceError) {
 			ctx := r.Context()
@@ -133,17 +133,17 @@ func (h clusterNodePoolsHandler) Get(w http.ResponseWriter, r *http.Request) {
 }
 
 // Create creates a new nodepool for a cluster
-func (h clusterNodePoolsHandler) Create(w http.ResponseWriter, r *http.Request) {
+func (h ClusterNodePoolsHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var req openapi.NodePoolCreateRequest
 	cfg := &handlerConfig{
-		&req,
-		[]validate{
+		MarshalInto: &req,
+		Validate: []validate{
 			validateEmpty(&req, "Id", "id"),
 			validateName(&req, "Name", "name", 3, 15),
 			validateKind(&req, "Kind", "kind", "NodePool"),
 			validateSpec(&req, "Spec", "spec"),
 		},
-		func() (interface{}, *errors.ServiceError) {
+		Action: func() (interface{}, *errors.ServiceError) {
 			ctx := r.Context()
 			clusterID := mux.Vars(r)["id"]
 
@@ -171,7 +171,7 @@ func (h clusterNodePoolsHandler) Create(w http.ResponseWriter, r *http.Request) 
 			}
 			return presented, nil
 		},
-		handleError,
+		ErrorHandler: handleError,
 	}
 
 	handle(w, r, cfg, http.StatusCreated)

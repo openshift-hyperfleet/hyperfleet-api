@@ -168,7 +168,7 @@ func (s *sqlNodePoolService) UpdateNodePoolStatusFromAdapters(
 	for _, adapterStatus := range adapterStatuses {
 		// Unmarshal Conditions from JSONB
 		var conditions []api.AdapterCondition
-		if err := json.Unmarshal(adapterStatus.Conditions, &conditions); err != nil {
+		if unmarshalErr := json.Unmarshal(adapterStatus.Conditions, &conditions); unmarshalErr != nil {
 			continue // Skip if can't unmarshal
 		}
 

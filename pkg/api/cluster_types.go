@@ -9,24 +9,16 @@ import (
 
 // Cluster database model
 type Cluster struct {
-	Meta // Contains ID, CreatedTime, UpdatedTime, DeletedTime
-
-	// Core fields
-	Kind   string         `json:"kind" gorm:"default:'Cluster'"`
-	Name   string         `json:"name" gorm:"uniqueIndex;size:53;not null"`
-	Spec   datatypes.JSON `json:"spec" gorm:"type:jsonb;not null"`
-	Labels datatypes.JSON `json:"labels,omitempty" gorm:"type:jsonb"`
-	Href   string         `json:"href,omitempty" gorm:"size:500"`
-
-	// Version control
-	Generation int32 `json:"generation" gorm:"default:1;not null"`
-
-	// Status (conditions-only model with synthetic Available/Ready conditions)
+	Meta
+	Kind             string         `json:"kind" gorm:"default:'Cluster'"`
+	Name             string         `json:"name" gorm:"uniqueIndex;size:53;not null"`
+	Href             string         `json:"href,omitempty" gorm:"size:500"`
+	CreatedBy        string         `json:"created_by" gorm:"size:255;not null"`
+	UpdatedBy        string         `json:"updated_by" gorm:"size:255;not null"`
+	Spec             datatypes.JSON `json:"spec" gorm:"type:jsonb;not null"`
+	Labels           datatypes.JSON `json:"labels,omitempty" gorm:"type:jsonb"`
 	StatusConditions datatypes.JSON `json:"status_conditions" gorm:"type:jsonb"`
-
-	// Audit fields
-	CreatedBy string `json:"created_by" gorm:"size:255;not null"`
-	UpdatedBy string `json:"updated_by" gorm:"size:255;not null"`
+	Generation       int32          `json:"generation" gorm:"default:1;not null"`
 }
 
 type ClusterList []*Cluster

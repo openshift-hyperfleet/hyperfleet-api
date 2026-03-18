@@ -11,8 +11,8 @@ import (
 
 // ResourceSchema represents a validation schema for a specific resource type
 type ResourceSchema struct {
-	TypeName string
 	Schema   *openapi3.SchemaRef
+	TypeName string
 }
 
 // SchemaValidator validates JSON objects against OpenAPI schemas

@@ -169,7 +169,7 @@ func initLogger() {
 	// Use configured hostname with fallback to os.Hostname()
 	hostname := environments.Environment().Config.Server.Hostname
 	if hostname == "" {
-		hostname, _ = os.Hostname()
+		hostname, _ = os.Hostname() //nolint:errcheck // empty string is acceptable fallback
 	}
 
 	logConfig := &logger.LogConfig{

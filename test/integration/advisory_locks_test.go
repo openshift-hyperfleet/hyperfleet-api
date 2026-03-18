@@ -374,10 +374,10 @@ func TestAdvisoryLockContextCancellation(t *testing.T) {
 	Expect(err).NotTo(HaveOccurred(), "Failed to acquire first lock")
 	defer db.Unlock(ctx1, lockOwnerID1)
 
-	// Track when the second goroutine gets cancelled
+	// Track when the second goroutine gets canceled
 	gotCancelError := make(chan bool, 1)
 
-	// Create a cancellable context for the second goroutine
+	// Create a cancelable context for the second goroutine
 	ctx2, cancel := context.WithCancel(context.Background())
 
 	// Use WaitGroup to ensure goroutine exits before test cleanup

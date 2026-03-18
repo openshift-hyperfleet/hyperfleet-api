@@ -10,10 +10,10 @@ import (
 
 func TestMaskHeaders(t *testing.T) {
 	tests := []struct {
-		name     string
-		enabled  bool
 		headers  http.Header
 		expected http.Header
+		name     string
+		enabled  bool
 	}{
 		{
 			name:    "mask authorization header",
@@ -69,14 +69,14 @@ func TestMaskHeaders(t *testing.T) {
 			name:    "mask multi-value headers",
 			enabled: true,
 			headers: http.Header{
-				"Cookie":      []string{"session=abc123", "tracking=xyz789", "preferences=dark"},
-				"X-Api-Key":   []string{"key1", "key2"},
-				"User-Agent":  []string{"browser/1.0"},
+				"Cookie":     []string{"session=abc123", "tracking=xyz789", "preferences=dark"},
+				"X-Api-Key":  []string{"key1", "key2"},
+				"User-Agent": []string{"browser/1.0"},
 			},
 			expected: http.Header{
-				"Cookie":      []string{RedactedValue, RedactedValue, RedactedValue},
-				"X-Api-Key":   []string{RedactedValue, RedactedValue},
-				"User-Agent":  []string{"browser/1.0"},
+				"Cookie":     []string{RedactedValue, RedactedValue, RedactedValue},
+				"X-Api-Key":  []string{RedactedValue, RedactedValue},
+				"User-Agent": []string{"browser/1.0"},
 			},
 		},
 	}
@@ -117,44 +117,44 @@ func TestMaskHeaders(t *testing.T) {
 func TestMaskBody(t *testing.T) {
 	tests := []struct {
 		name     string
-		enabled  bool
 		body     string
 		expected string
+		enabled  bool
 	}{
 		{
-			name:    "mask password field",
-			enabled: true,
-			body:    `{"username":"alice","password":"secret123"}`,
+			name:     "mask password field",
+			enabled:  true,
+			body:     `{"username":"alice","password":"secret123"}`,
 			expected: `{"password":"***REDACTED***","username":"alice"}`,
 		},
 		{
-			name:    "mask nested sensitive fields",
-			enabled: true,
-			body:    `{"user":{"name":"alice","password":"secret"},"api_key":"key123"}`,
+			name:     "mask nested sensitive fields",
+			enabled:  true,
+			body:     `{"user":{"name":"alice","password":"secret"},"api_key":"key123"}`,
 			expected: `{"api_key":"***REDACTED***","user":{"name":"alice","password":"***REDACTED***"}}`,
 		},
 		{
-			name:    "mask array of objects",
-			enabled: true,
-			body:    `{"users":[{"name":"alice","password":"pass1"},{"name":"bob","secret":"pass2"}]}`,
+			name:     "mask array of objects",
+			enabled:  true,
+			body:     `{"users":[{"name":"alice","password":"pass1"},{"name":"bob","secret":"pass2"}]}`,
 			expected: `{"users":[{"name":"alice","password":"***REDACTED***"},{"name":"bob","secret":"***REDACTED***"}]}`,
 		},
 		{
-			name:    "mask top-level array with sensitive fields",
-			enabled: true,
-			body:    `[{"name":"alice","password":"secret1"},{"name":"bob","token":"secret2"}]`,
+			name:     "mask top-level array with sensitive fields",
+			enabled:  true,
+			body:     `[{"name":"alice","password":"secret1"},{"name":"bob","token":"secret2"}]`,
 			expected: `[{"name":"alice","password":"***REDACTED***"},{"name":"bob","token":"***REDACTED***"}]`,
 		},
 		{
-			name:    "mask nested arrays with sensitive fields",
-			enabled: true,
-			body:    `[[{"password":"secret1"}],[{"api_key":"secret2"}]]`,
+			name:     "mask nested arrays with sensitive fields",
+			enabled:  true,
+			body:     `[[{"password":"secret1"}],[{"api_key":"secret2"}]]`,
 			expected: `[[{"password":"***REDACTED***"}],[{"api_key":"***REDACTED***"}]]`,
 		},
 		{
-			name:    "mask nested arrays inside map values",
-			enabled: true,
-			body:    `{"users":[[{"password":"secret1"}]],"data":[[{"token":"secret2"}]]}`,
+			name:     "mask nested arrays inside map values",
+			enabled:  true,
+			body:     `{"users":[[{"password":"secret1"}]],"data":[[{"token":"secret2"}]]}`,
 			expected: `{"data":[[{"token":"***REDACTED***"}]],"users":[[{"password":"***REDACTED***"}]]}`,
 		},
 		{
@@ -165,70 +165,70 @@ func TestMaskBody(t *testing.T) {
 				`"password":"***REDACTED***","secret":"***REDACTED***","token":"***REDACTED***"}`,
 		},
 		{
-			name:    "case insensitive field matching",
-			enabled: true,
-			body:    `{"Password":"pass","SECRET":"sec","AccessToken":"tok"}`,
+			name:     "case insensitive field matching",
+			enabled:  true,
+			body:     `{"Password":"pass","SECRET":"sec","AccessToken":"tok"}`,
 			expected: `{"AccessToken":"***REDACTED***","Password":"***REDACTED***","SECRET":"***REDACTED***"}`,
 		},
 		{
-			name:    "non-JSON body without sensitive data unchanged",
-			enabled: true,
-			body:    `not json content`,
+			name:     "non-JSON body without sensitive data unchanged",
+			enabled:  true,
+			body:     `not json content`,
 			expected: `not json content`,
 		},
 		{
-			name:    "empty body",
-			enabled: true,
-			body:    ``,
+			name:     "empty body",
+			enabled:  true,
+			body:     ``,
 			expected: ``,
 		},
 		{
-			name:    "masking disabled",
-			enabled: false,
-			body:    `{"password":"secret"}`,
+			name:     "masking disabled",
+			enabled:  false,
+			body:     `{"password":"secret"}`,
 			expected: `{"password":"secret"}`,
 		},
 		// Fallback masking tests (non-JSON content with sensitive data)
 		{
-			name:    "fallback: redact email addresses",
-			enabled: true,
-			body:    `User email: alice@example.com, contact bob.smith@company.co.uk`,
+			name:     "fallback: redact email addresses",
+			enabled:  true,
+			body:     `User email: alice@example.com, contact bob.smith@company.co.uk`,
 			expected: `User email: ***REDACTED***, contact ***REDACTED***`,
 		},
 		{
-			name:    "fallback: redact credit card numbers",
-			enabled: true,
-			body:    `Card: 4532-1234-5678-9010 and 5425233430109903`,
+			name:     "fallback: redact credit card numbers",
+			enabled:  true,
+			body:     `Card: 4532-1234-5678-9010 and 5425233430109903`,
 			expected: `Card: ***REDACTED*** and ***REDACTED***`,
 		},
 		{
-			name:    "fallback: redact Bearer tokens",
-			enabled: true,
-			body:    `Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9`,
+			name:     "fallback: redact Bearer tokens",
+			enabled:  true,
+			body:     `Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9`,
 			expected: `Authorization: Bearer ***REDACTED***`,
 		},
 		{
-			name:    "fallback: redact API keys",
-			enabled: true,
-			body:    `API_KEY=sk_test_123456789abcdef and api-key: prod_key_xyz`,
+			name:     "fallback: redact API keys",
+			enabled:  true,
+			body:     `API_KEY=sk_test_123456789abcdef and api-key: prod_key_xyz`,
 			expected: `API_KEY=***REDACTED*** and api-key: ***REDACTED***`,
 		},
 		{
-			name:    "fallback: redact form-encoded passwords",
-			enabled: true,
-			body:    `username=alice&password=secret123&email=test@example.com`,
+			name:     "fallback: redact form-encoded passwords",
+			enabled:  true,
+			body:     `username=alice&password=secret123&email=test@example.com`,
 			expected: `username=alice&password=***REDACTED***&email=***REDACTED***`,
 		},
 		{
-			name:    "fallback: redact multiple sensitive patterns",
-			enabled: true,
-			body:    `User: alice@example.com, Token: secret_abc123, CC: 4532123456789010`,
+			name:     "fallback: redact multiple sensitive patterns",
+			enabled:  true,
+			body:     `User: alice@example.com, Token: secret_abc123, CC: 4532123456789010`,
 			expected: `User: ***REDACTED***, Token: ***REDACTED***, CC: ***REDACTED***`,
 		},
 		{
-			name:    "fallback: disabled masking returns original",
-			enabled: false,
-			body:    `password=secret123&api_key=test_key&user@example.com`,
+			name:     "fallback: disabled masking returns original",
+			enabled:  false,
+			body:     `password=secret123&api_key=test_key&user@example.com`,
 			expected: `password=secret123&api_key=test_key&user@example.com`,
 		},
 	}

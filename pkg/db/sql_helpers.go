@@ -484,7 +484,11 @@ func extractConditionsWalk(n tsl.Node, conditions *[]sq.Sqlizer) (tsl.Node, *err
 		if err != nil {
 			return n, err
 		}
-		*conditions = append(*conditions, expr.(sq.Sqlizer))
+		sqlizer, ok := expr.(sq.Sqlizer)
+		if !ok {
+			return n, errors.GeneralError("unexpected type %T in condition expression", expr)
+		}
+		*conditions = append(*conditions, sqlizer)
 
 		// Replace with a placeholder that always evaluates to true
 		// This allows the rest of the tree to be processed normally
@@ -497,7 +501,6 @@ func extractConditionsWalk(n tsl.Node, conditions *[]sq.Sqlizer) (tsl.Node, *err
 
 	// For non-condition nodes, recursively process children
 	var newLeft, newRight interface{}
-	var serviceErr *errors.ServiceError
 
 	if n.Left != nil {
 		switch v := n.Left.(type) {
@@ -533,10 +536,6 @@ func extractConditionsWalk(n tsl.Node, conditions *[]sq.Sqlizer) (tsl.Node, *err
 		default:
 			newRight = n.Right
 		}
-	}
-
-	if serviceErr != nil {
-		return n, serviceErr
 	}
 
 	return tsl.Node{

@@ -32,12 +32,12 @@ const (
 // service call that owns the lock will have the correct ownerUUID. This is necessary
 // to allow functions to call other service functions as part of the same lock (id, lockType).
 type AdvisoryLock struct {
+	startTime      time.Time
 	g2             *gorm.DB
 	ownerUUID      *string
 	id             *string
 	lockType       *LockType
 	timeoutSeconds int
-	startTime      time.Time
 }
 
 // newAdvisoryLock constructs a new AdvisoryLock object.

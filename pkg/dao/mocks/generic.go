@@ -9,18 +9,12 @@ import (
 var _ dao.GenericDao = &genericDaoMock{}
 
 type genericDaoMock struct {
+	model   interface{}
 	preload string
 	orderBy string
 	joins   string
 	group   string
 	wheres  []dao.Where
-	model   interface{}
-}
-
-func NewGenericDao() *genericDaoMock {
-	return &genericDaoMock{
-		wheres: []dao.Where{},
-	}
 }
 
 func (g *genericDaoMock) Fetch(offset int, limit int, resourceList interface{}) error {

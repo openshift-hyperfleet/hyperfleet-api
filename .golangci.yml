@@ -1,11 +1,5 @@
-# HyperFleet Standard golangci-lint Configuration
-# Reference: https://golangci-lint.run/usage/configuration
-#
-# This is the baseline configuration for all HyperFleet Go repositories.
-# Copy this file to your repository root as .golangci.yml
-#
-# golangci-lint should be installed and versioned via bingo in each repository.
-# See linting.md for full documentation of this standard.
+# HyperFleet API - golangci-lint configuration
+# Aligned with: https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/standards/golangci.yml
 
 version: "2"
 
@@ -13,49 +7,6 @@ run:
   timeout: 5m
   tests: true
   modules-download-mode: readonly
-
-linters-settings:
-  errcheck:
-    check-type-assertions: true
-    check-blank: true
-
-  govet:
-    enable-all: true
-
-  goconst:
-    min-len: 3
-    min-occurrences: 3
-
-  misspell:
-    locale: US
-
-  lll:
-    line-length: 120
-
-  gofmt:
-    simplify: true
-
-  revive:
-    rules:
-      - name: exported
-        severity: warning
-        disabled: true
-      - name: unexported-return
-        severity: warning
-        disabled: false
-      - name: var-naming
-        severity: warning
-        disabled: false
-
-  unused:
-    check-exported: false
-
-  unparam:
-    check-exported: false
-
-  exhaustive:
-    check-generated: false
-    default-signifies-exhaustive: true
 
 linters:
   enable:
@@ -73,36 +24,116 @@ linters:
     # Code Style
     - misspell
     - lll
-    # - revive
+    - revive
     - gocritic
 
     # Security
     - gosec
 
+  settings:
+    errcheck:
+      check-type-assertions: true
+      check-blank: true
+
+    govet:
+      enable-all: true
+
+    goconst:
+      min-len: 3
+      min-occurrences: 3
+
+    misspell:
+      locale: US
+
+    lll:
+      line-length: 120
+
+    revive:
+      rules:
+        - name: exported
+          severity: warning
+          disabled: true
+        - name: unexported-return
+          severity: warning
+          disabled: false
+        - name: var-naming
+          severity: warning
+          disabled: false
+
+    unparam:
+      check-exported: false
+
+    exhaustive:
+      default-signifies-exhaustive: true
+
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      # Relaxed rules for test files
+      - linters:
+          - gosec
+          - errcheck
+          - unparam
+        path: _test\.go
+
+      # Exclude generated code (backup pattern if exclusion paths don't catch all)
+      - linters:
+          - all
+        path: pkg/api/openapi/
+
+      # OVERRIDE: Package naming - underscore packages are structural and renaming is out of scope
+      - linters:
+          - revive
+        path: pkg/db/(db_context|db_metrics|db_session)/
+        text: "don't use an underscore in package name"
+
+      # OVERRIDE: Package naming - allow existing package names
+      - linters:
+          - revive
+        path: pkg/(util|errors)/
+        text: "avoid meaningless package names"
+      - linters:
+          - revive
+        path: pkg/errors/
+        text: "avoid package names that conflict with"
+      - linters:
+          - revive
+        path: pkg/api/
+        text: "avoid meaningless package names"
+
+    # Standard exclusion paths
+    paths:
+      - pkg/api/openapi      # OpenAPI generated code
+      - data/generated        # Other generated files
+      - third_party(/|$)
+      - builtin(/|$)
+      - examples(/|$)
+
 issues:
-  # Add repository-specific generated code directories here
-  exclude-dirs:
-    - pkg/api/openapi  # Generated code
-    - data/generated/openapi # Generated file
-
-  exclude-rules:
-    # Relaxed rules for test files
-    - path: _test\.go
-      linters:
-        - gosec
-        - errcheck
-        - unparam
-
-    # Exclude generated code (backup pattern if exclude-dirs doesn't catch all)
-    - path: pkg/api/openapi/
-      linters:
-        - all
-
   max-issues-per-linter: 0
   max-same-issues: 0
   new: false
 
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    gofmt:
+      simplify: true
+  exclusions:
+    generated: lax
+    paths:
+      - third_party(/|$)
+      - builtin(/|$)
+      - examples(/|$)
+
 output:
-  format: colored-line-number
-  print-issued-lines: true
-  print-linter-name: true
+  formats:
+    text:
+      path: stdout

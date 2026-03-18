@@ -295,7 +295,7 @@ adapters:
 	Expect(err).NotTo(HaveOccurred())
 
 	t.Setenv("HYPERFLEET_CONFIG", configPath)
-	t.Setenv("HYPERFLEET_SERVER_PORT", "8000")      // Env overrides file for port
+	t.Setenv("HYPERFLEET_SERVER_PORT", "8000")     // Env overrides file for port
 	t.Setenv("HYPERFLEET_DATABASE_NAME", "env-db") // Env overrides file for db name
 	t.Setenv("HYPERFLEET_LOGGING_FORMAT", "text")  // Env overrides file for log format (must be "json" or "text")
 
@@ -395,11 +395,11 @@ func TestConfigLoader_FlagParsing(t *testing.T) {
 	AddAllConfigFlags(cmd)
 
 	// Test different types
-	cmd.Flags().Set("server-port", "9999")                    //nolint:errcheck,gosec // int
-	cmd.Flags().Set("server-read-timeout", "10s")             //nolint:errcheck,gosec // duration
-	cmd.Flags().Set("server-jwt-enabled", "false")            //nolint:errcheck,gosec // bool
-	cmd.Flags().Set("db-max-open-connections", "50")          //nolint:errcheck,gosec // int
-	cmd.Flags().Set("log-otel-sampling-rate", "0.5")          //nolint:errcheck,gosec // float64
+	cmd.Flags().Set("server-port", "9999")           //nolint:errcheck,gosec // int
+	cmd.Flags().Set("server-read-timeout", "10s")    //nolint:errcheck,gosec // duration
+	cmd.Flags().Set("server-jwt-enabled", "false")   //nolint:errcheck,gosec // bool
+	cmd.Flags().Set("db-max-open-connections", "50") //nolint:errcheck,gosec // int
+	cmd.Flags().Set("log-otel-sampling-rate", "0.5") //nolint:errcheck,gosec // float64
 
 	ctx := context.Background()
 	cfg, err := loader.Load(ctx, cmd)

@@ -33,23 +33,23 @@ const (
 // Domain equivalent of openapi.ResourceCondition
 // JSON tags match database JSONB structure
 type ResourceCondition struct {
-	ObservedGeneration int32                   `json:"observed_generation"`
 	CreatedTime        time.Time               `json:"created_time"`
 	LastUpdatedTime    time.Time               `json:"last_updated_time"`
-	Type               string                  `json:"type"`
-	Status             ResourceConditionStatus `json:"status"`
+	LastTransitionTime time.Time               `json:"last_transition_time"`
 	Reason             *string                 `json:"reason,omitempty"`
 	Message            *string                 `json:"message,omitempty"`
-	LastTransitionTime time.Time               `json:"last_transition_time"`
+	Type               string                  `json:"type"`
+	Status             ResourceConditionStatus `json:"status"`
+	ObservedGeneration int32                   `json:"observed_generation"`
 }
 
 // AdapterCondition represents a condition of an adapter
 // Domain equivalent of openapi.AdapterCondition
 // JSON tags match database JSONB structure
 type AdapterCondition struct {
-	Type               string                 `json:"type"`
-	Status             AdapterConditionStatus `json:"status"`
+	LastTransitionTime time.Time              `json:"last_transition_time"`
 	Reason             *string                `json:"reason,omitempty"`
 	Message            *string                `json:"message,omitempty"`
-	LastTransitionTime time.Time              `json:"last_transition_time"`
+	Type               string                 `json:"type"`
+	Status             AdapterConditionStatus `json:"status"`
 }

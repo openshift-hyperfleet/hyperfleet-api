@@ -11,10 +11,10 @@ import (
 // Follows HyperFleet Configuration Standard
 type HealthConfig struct {
 	Host            string        `mapstructure:"host" json:"host" validate:"required"`
-	Port            int           `mapstructure:"port" json:"port" validate:"required,min=1,max=65535"`
 	TLS             TLSConfig     `mapstructure:"tls" json:"tls" validate:"required"`
+	Port            int           `mapstructure:"port" json:"port" validate:"required,min=1,max=65535"`
 	ShutdownTimeout time.Duration `mapstructure:"shutdown_timeout" json:"shutdown_timeout" validate:"required"`
-	DBPingTimeout   time.Duration `mapstructure:"db_ping_timeout" json:"db_ping_timeout"` // From HYPERFLEET-694
+	DBPingTimeout   time.Duration `mapstructure:"db_ping_timeout" json:"db_ping_timeout"`
 }
 
 // Validate validates health config durations

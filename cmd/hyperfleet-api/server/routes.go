@@ -102,7 +102,7 @@ func (s *apiServer) routes() *mux.Router {
 	apiV1Router.HandleFunc("/openapi.html", openapiHandler.GetOpenAPIUI).Methods(http.MethodGet)
 	apiV1Router.HandleFunc("/openapi", openapiHandler.GetOpenAPI).Methods(http.MethodGet)
 
-	registerApiMiddleware(apiV1Router)
+	registerAPIMiddleware(apiV1Router)
 
 	// Auto-discovered routes (no manual editing needed)
 	LoadDiscoveredRoutes(apiV1Router, services, authMiddleware, authzMiddleware)
@@ -110,7 +110,7 @@ func (s *apiServer) routes() *mux.Router {
 	return mainRouter
 }
 
-func registerApiMiddleware(router *mux.Router) {
+func registerAPIMiddleware(router *mux.Router) {
 	router.Use(MetricsMiddleware)
 
 	// Schema validation middleware (validates cluster/nodepool spec fields)

@@ -9,10 +9,10 @@ import (
 // MetricsConfig holds Prometheus metrics server configuration
 // Follows HyperFleet Configuration Standard
 type MetricsConfig struct {
-	Host                             string        `mapstructure:"host" json:"host" validate:"required"`
-	Port                             int           `mapstructure:"port" json:"port" validate:"required,min=1,max=65535"`
-	TLS                              TLSConfig     `mapstructure:"tls" json:"tls" validate:"required"`
-	LabelMetricsInclusionDuration    time.Duration `mapstructure:"label_metrics_inclusion_duration" json:"label_metrics_inclusion_duration" validate:"required"` //nolint:lll
+	Host                          string        `mapstructure:"host" json:"host" validate:"required"`
+	TLS                           TLSConfig     `mapstructure:"tls" json:"tls" validate:"required"`
+	Port                          int           `mapstructure:"port" json:"port" validate:"required,min=1,max=65535"`
+	LabelMetricsInclusionDuration time.Duration `mapstructure:"label_metrics_inclusion_duration" json:"label_metrics_inclusion_duration" validate:"required"` //nolint:lll
 }
 
 // NewMetricsConfig returns default MetricsConfig values

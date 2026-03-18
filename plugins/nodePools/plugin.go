@@ -58,7 +58,7 @@ func init() {
 		nodePoolsRouter.HandleFunc("", nodePoolHandler.List).Methods(http.MethodGet)
 
 		nodePoolsRouter.Use(authMiddleware.AuthenticateAccountJWT)
-		nodePoolsRouter.Use(authzMiddleware.AuthorizeApi)
+		nodePoolsRouter.Use(authzMiddleware.AuthorizeAPI)
 	})
 
 	// REMOVED: Controller registration - Sentinel handles orchestration

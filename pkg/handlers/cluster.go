@@ -13,31 +13,31 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/services"
 )
 
-var _ RestHandler = clusterHandler{}
+var _ RestHandler = ClusterHandler{}
 
-type clusterHandler struct {
+type ClusterHandler struct {
 	cluster services.ClusterService
 	generic services.GenericService
 }
 
-func NewClusterHandler(cluster services.ClusterService, generic services.GenericService) *clusterHandler {
-	return &clusterHandler{
+func NewClusterHandler(cluster services.ClusterService, generic services.GenericService) *ClusterHandler {
+	return &ClusterHandler{
 		cluster: cluster,
 		generic: generic,
 	}
 }
 
-func (h clusterHandler) Create(w http.ResponseWriter, r *http.Request) {
+func (h ClusterHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var req openapi.ClusterCreateRequest
 	cfg := &handlerConfig{
-		&req,
-		[]validate{
+		MarshalInto: &req,
+		Validate: []validate{
 			validateEmpty(&req, "Id", "id"),
 			validateName(&req, "Name", "name", 3, 53),
 			validateKind(&req, "Kind", "kind", "Cluster"),
 			validateSpec(&req, "Spec", "spec"),
 		},
-		func() (interface{}, *errors.ServiceError) {
+		Action: func() (interface{}, *errors.ServiceError) {
 			ctx := r.Context()
 			// Use the presenters.ConvertCluster helper to convert the request
 			clusterModel, err := presenters.ConvertCluster(&req, "system@hyperfleet.local")
@@ -54,19 +54,19 @@ func (h clusterHandler) Create(w http.ResponseWriter, r *http.Request) {
 			}
 			return presented, nil
 		},
-		handleError,
+		ErrorHandler: handleError,
 	}
 
 	handle(w, r, cfg, http.StatusCreated)
 }
 
-func (h clusterHandler) Patch(w http.ResponseWriter, r *http.Request) {
+func (h ClusterHandler) Patch(w http.ResponseWriter, r *http.Request) {
 	var patch api.ClusterPatchRequest
 
 	cfg := &handlerConfig{
-		&patch,
-		[]validate{},
-		func() (interface{}, *errors.ServiceError) {
+		MarshalInto: &patch,
+		Validate:    []validate{},
+		Action: func() (interface{}, *errors.ServiceError) {
 			ctx := r.Context()
 			id := mux.Vars(r)["id"]
 			found, err := h.cluster.Get(ctx, id)
@@ -92,13 +92,13 @@ func (h clusterHandler) Patch(w http.ResponseWriter, r *http.Request) {
 			}
 			return presented, nil
 		},
-		handleError,
+		ErrorHandler: handleError,
 	}
 
 	handle(w, r, cfg, http.StatusOK)
 }
 
-func (h clusterHandler) List(w http.ResponseWriter, r *http.Request) {
+func (h ClusterHandler) List(w http.ResponseWriter, r *http.Request) {
 	cfg := &handlerConfig{
 		Action: func() (interface{}, *errors.ServiceError) {
 			ctx := r.Context()
@@ -138,7 +138,7 @@ func (h clusterHandler) List(w http.ResponseWriter, r *http.Request) {
 	handleList(w, r, cfg)
 }
 
-func (h clusterHandler) Get(w http.ResponseWriter, r *http.Request) {
+func (h ClusterHandler) Get(w http.ResponseWriter, r *http.Request) {
 	cfg := &handlerConfig{
 		Action: func() (interface{}, *errors.ServiceError) {
 			id := mux.Vars(r)["id"]
@@ -159,7 +159,7 @@ func (h clusterHandler) Get(w http.ResponseWriter, r *http.Request) {
 	handleGet(w, r, cfg)
 }
 
-func (h clusterHandler) Delete(w http.ResponseWriter, r *http.Request) {
+func (h ClusterHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	cfg := &handlerConfig{
 		Action: func() (interface{}, *errors.ServiceError) {
 			return nil, errors.NotImplemented("delete")

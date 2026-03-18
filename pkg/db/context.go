@@ -146,7 +146,7 @@ func Unlock(ctx context.Context, callerUUID string) {
 
 			if err := lock.unlock(ctx); err != nil {
 				logger.With(ctx, logger.FieldLockID, lockID, logger.FieldLockType, lockType).
-				WithError(err).Error("Could not unlock lock")
+					WithError(err).Error("Could not unlock lock")
 				continue
 			}
 			logger.With(ctx, logger.FieldLockID, lockID, logger.FieldLockType, lockType).Info("Unlocked lock")

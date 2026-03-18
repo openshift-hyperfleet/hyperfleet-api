@@ -12,7 +12,7 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/services"
 )
 
-type nodePoolStatusHandler struct {
+type NodePoolStatusHandler struct {
 	adapterStatusService services.AdapterStatusService
 	nodePoolService      services.NodePoolService
 }
@@ -20,15 +20,15 @@ type nodePoolStatusHandler struct {
 func NewNodePoolStatusHandler(
 	adapterStatusService services.AdapterStatusService,
 	nodePoolService services.NodePoolService,
-) *nodePoolStatusHandler {
-	return &nodePoolStatusHandler{
+) *NodePoolStatusHandler {
+	return &NodePoolStatusHandler{
 		adapterStatusService: adapterStatusService,
 		nodePoolService:      nodePoolService,
 	}
 }
 
 // List returns all adapter statuses for a nodepool with pagination
-func (h nodePoolStatusHandler) List(w http.ResponseWriter, r *http.Request) {
+func (h NodePoolStatusHandler) List(w http.ResponseWriter, r *http.Request) {
 	cfg := &handlerConfig{
 		Action: func() (interface{}, *errors.ServiceError) {
 			ctx := r.Context()
@@ -68,15 +68,15 @@ func (h nodePoolStatusHandler) List(w http.ResponseWriter, r *http.Request) {
 }
 
 // Create creates or updates an adapter status for a nodepool
-func (h nodePoolStatusHandler) Create(w http.ResponseWriter, r *http.Request) {
+func (h NodePoolStatusHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var req openapi.AdapterStatusCreateRequest
 
 	cfg := &handlerConfig{
-		&req,
-		[]validate{
+		MarshalInto: &req,
+		Validate: []validate{
 			validateNotEmpty(&req, "Adapter", "adapter"),
 		},
-		func() (interface{}, *errors.ServiceError) {
+		Action: func() (interface{}, *errors.ServiceError) {
 			ctx := r.Context()
 			nodePoolID := mux.Vars(r)[logger.FieldNodePoolID]
 
@@ -109,7 +109,7 @@ func (h nodePoolStatusHandler) Create(w http.ResponseWriter, r *http.Request) {
 			}
 			return &status, nil
 		},
-		handleError,
+		ErrorHandler: handleError,
 	}
 
 	handleCreateWithNoContent(w, r, cfg)
