@@ -269,12 +269,12 @@ func (s *sqlClusterService) ProcessAdapterStatus(
 		}
 	}
 
-	// Validate mandatory conditions and check for duplicates
+	// Validate mandatory conditions
 	if errorType, conditionName := ValidateMandatoryConditions(conditions); errorType != "" {
-		ctx = logger.WithClusterID(ctx, clusterID)
-		logger.Info(ctx, fmt.Sprintf("Discarding adapter status update from %s: %s condition %s",
-			adapterStatus.Adapter, errorType, conditionName))
-		return nil, nil
+		return nil, errors.Validation(
+			"missing mandatory condition '%s': all adapters must report Available, Applied, and Health",
+			conditionName,
+		)
 	}
 
 	// Check Available condition for Unknown status

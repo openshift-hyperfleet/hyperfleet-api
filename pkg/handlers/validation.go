@@ -4,6 +4,7 @@ import (
 	"reflect"
 	"regexp"
 
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 )
 
@@ -131,5 +132,58 @@ func validateSpec(i interface{}, fieldName string, field string) validate { //no
 		}
 
 		return nil
+	}
+}
+
+// validateConditions validates condition type and status fields
+// - Type must not be empty
+// - Type must not be duplicated
+// - Status must be one of: "True", "False", "Unknown"
+//
+//nolint:unparam // fieldName is kept as parameter for consistency with other validation functions
+func validateConditions(i interface{}, fieldName string) validate {
+	return func() *errors.ServiceError {
+		value := reflect.ValueOf(i).Elem().FieldByName(fieldName)
+		if value.Kind() != reflect.Slice {
+			return nil
+		}
+
+		conditions, ok := value.Interface().([]openapi.ConditionRequest)
+		if !ok {
+			return nil
+		}
+
+		seen := make(map[string]bool)
+
+		for idx, cond := range conditions {
+			if cond.Type == "" {
+				return errors.Validation("condition type cannot be empty at index %d", idx)
+			}
+
+			if seen[cond.Type] {
+				return errors.Validation("duplicate condition type '%s' at index %d", cond.Type, idx)
+			}
+			seen[cond.Type] = true
+
+			if !isValidAdapterConditionStatus(cond.Status) {
+				return errors.Validation(
+					"invalid status value '%s' for condition at index %d (type: %s): must be 'True', 'False', or 'Unknown'",
+					cond.Status, idx, cond.Type,
+				)
+			}
+		}
+		return nil
+	}
+}
+
+// isValidAdapterConditionStatus checks if a status value is one of the allowed enum values
+func isValidAdapterConditionStatus(status openapi.AdapterConditionStatus) bool {
+	switch status {
+	case openapi.AdapterConditionStatusTrue,
+		openapi.AdapterConditionStatusFalse,
+		openapi.AdapterConditionStatusUnknown:
+		return true
+	default:
+		return false
 	}
 }

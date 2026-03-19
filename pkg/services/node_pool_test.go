@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 	"testing"
 	"time"
 
@@ -487,7 +488,9 @@ func TestNodePoolAvailableReadyTransitions(t *testing.T) {
 		Conditions:         nonAvailableJSON,
 	}
 	result, svcErr := service.ProcessAdapterStatus(ctx, nodePoolID, nonAvailableStatus)
-	Expect(svcErr).To(BeNil())
+	Expect(svcErr).ToNot(BeNil())
+	Expect(svcErr.HTTPCode).To(Equal(http.StatusBadRequest))
+	Expect(svcErr.Reason).To(ContainSubstring("missing mandatory condition"))
 	Expect(result).To(BeNil(), "Update missing mandatory conditions should be rejected")
 	Expect(nodePoolDao.nodePools[nodePoolID].StatusConditions).To(Equal(prevStatus))
 
