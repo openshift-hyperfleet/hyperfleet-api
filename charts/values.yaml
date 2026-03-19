@@ -5,7 +5,7 @@ replicaCount: 1
 
 image:
   registry: CHANGE_ME  # Set to your actual container registry (e.g. quay.io)
-  repository: openshift-hyperfleet/hyperfleet-api
+  repository: hyperfleet-api
   pullPolicy: Always
   tag: "latest"
 
