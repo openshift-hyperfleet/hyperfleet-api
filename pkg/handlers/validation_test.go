@@ -265,3 +265,143 @@ func TestValidateSpec_Nil(t *testing.T) {
 	Expect(err).ToNot(BeNil(), "Expected nil spec to be invalid")
 	Expect(err.Reason).To(ContainSubstring("spec is required"))
 }
+
+func TestValidateConditions_Valid(t *testing.T) {
+	RegisterTestingT(t)
+
+	validStatuses := []openapi.AdapterConditionStatus{
+		openapi.AdapterConditionStatusTrue,
+		openapi.AdapterConditionStatusFalse,
+		openapi.AdapterConditionStatusUnknown,
+	}
+
+	for _, status := range validStatuses {
+		req := openapi.AdapterStatusCreateRequest{
+			Conditions: []openapi.ConditionRequest{
+				{
+					Type:   "Ready",
+					Status: status,
+				},
+			},
+		}
+		validator := validateConditions(&req, "Conditions")
+		err := validator()
+		Expect(err).To(BeNil(), "Expected status '%s' to be valid", status)
+	}
+}
+
+func TestValidateConditions_InvalidStatusValues(t *testing.T) {
+	RegisterTestingT(t)
+
+	testCases := []struct {
+		name          string
+		invalidStatus openapi.AdapterConditionStatus
+	}{
+		{"empty string", ""},
+		{"lowercase true", "true"},
+		{"lowercase false", "false"},
+		{"lowercase unknown", "unknown"},
+		{"random string", "InvalidValue"},
+		{"mixed case", "TrUe"},
+	}
+
+	for _, tc := range testCases {
+		req := openapi.AdapterStatusCreateRequest{
+			Conditions: []openapi.ConditionRequest{
+				{
+					Type:   "Available",
+					Status: tc.invalidStatus,
+				},
+			},
+		}
+		validator := validateConditions(&req, "Conditions")
+		err := validator()
+		Expect(err).ToNot(BeNil(), "Expected error for: "+tc.name)
+		Expect(err.Reason).To(ContainSubstring("invalid status value"), "Expected validation error for: "+tc.name)
+		Expect(err.Reason).To(ContainSubstring(string(tc.invalidStatus)),
+			"Expected error to mention the invalid value for: "+tc.name)
+	}
+}
+
+func TestValidateConditions_EmptyType(t *testing.T) {
+	RegisterTestingT(t)
+
+	req := openapi.AdapterStatusCreateRequest{
+		Conditions: []openapi.ConditionRequest{
+			{
+				Type:   "",
+				Status: openapi.AdapterConditionStatusTrue,
+			},
+		},
+	}
+	validator := validateConditions(&req, "Conditions")
+	err := validator()
+	Expect(err).ToNot(BeNil())
+	Expect(err.Reason).To(ContainSubstring("condition type cannot be empty"))
+	Expect(err.Reason).To(ContainSubstring("index 0"))
+}
+
+func TestValidateConditions_DuplicateType(t *testing.T) {
+	RegisterTestingT(t)
+
+	req := openapi.AdapterStatusCreateRequest{
+		Conditions: []openapi.ConditionRequest{
+			{
+				Type:   "Available",
+				Status: openapi.AdapterConditionStatusTrue,
+			},
+			{
+				Type:   "Applied",
+				Status: openapi.AdapterConditionStatusTrue,
+			},
+			{
+				Type:   "Available", // Duplicate
+				Status: openapi.AdapterConditionStatusFalse,
+			},
+		},
+	}
+	validator := validateConditions(&req, "Conditions")
+	err := validator()
+	Expect(err).ToNot(BeNil())
+	Expect(err.Reason).To(ContainSubstring("duplicate condition type"))
+	Expect(err.Reason).To(ContainSubstring("Available"))
+	Expect(err.Reason).To(ContainSubstring("index 2"))
+}
+
+func TestValidateConditions_MultipleIssues(t *testing.T) {
+	RegisterTestingT(t)
+
+	req := openapi.AdapterStatusCreateRequest{
+		Conditions: []openapi.ConditionRequest{
+			{
+				Type:   "Ready",
+				Status: openapi.AdapterConditionStatusTrue,
+			},
+			{
+				Type:   "Available",
+				Status: "", // Invalid status - should be caught first at this index
+			},
+			{
+				Type:   "Degraded",
+				Status: "invalid", // Also invalid but should report the first one
+			},
+		},
+	}
+
+	validator := validateConditions(&req, "Conditions")
+	err := validator()
+	Expect(err).ToNot(BeNil())
+	Expect(err.Reason).To(ContainSubstring("index 1"))   // Second condition (index 1)
+	Expect(err.Reason).To(ContainSubstring("Available")) // Type of the invalid condition
+}
+
+func TestValidateConditions_EmptyConditions(t *testing.T) {
+	RegisterTestingT(t)
+
+	req := openapi.AdapterStatusCreateRequest{
+		Conditions: []openapi.ConditionRequest{},
+	}
+	validator := validateConditions(&req, "Conditions")
+	err := validator()
+	Expect(err).To(BeNil(), "Expected empty conditions to be valid")
+}

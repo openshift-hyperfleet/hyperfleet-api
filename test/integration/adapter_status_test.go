@@ -861,8 +861,10 @@ func TestClusterStatusPost_MissingMandatoryConditionsRejected(t *testing.T) {
 		openapi.PostClusterStatusesJSONRequestBody(incompleteStatus), test.WithAuthToken(ctx),
 	)
 	Expect(err).NotTo(HaveOccurred())
-	// Should return 204 No Content (update was discarded)
-	Expect(resp2.StatusCode()).To(Equal(http.StatusNoContent))
+	// Should return 400 Bad Request (missing mandatory conditions)
+	Expect(resp2.StatusCode()).To(Equal(http.StatusBadRequest))
+	Expect(string(resp2.Body)).To(ContainSubstring("missing mandatory condition"))
+	Expect(string(resp2.Body)).To(ContainSubstring("HYPERFLEET-VAL-000"))
 
 	// Verify that the original conditions are preserved
 	respGet, err := client.GetClusterStatusesWithResponse(ctx, cluster.ID, nil, test.WithAuthToken(ctx))
@@ -948,7 +950,7 @@ func TestClusterStatusPost_FirstUnknownAcceptedSubsequentRejected(t *testing.T) 
 }
 
 // TestClusterStatusPost_DuplicateConditionsRejected tests that adapter status updates
-// with duplicate condition types are rejected and return HTTP 204
+// with duplicate condition types are rejected and return HTTP 400
 func TestClusterStatusPost_DuplicateConditionsRejected(t *testing.T) {
 	h, client := test.RegisterIntegration(t)
 
@@ -997,21 +999,15 @@ func TestClusterStatusPost_DuplicateConditionsRejected(t *testing.T) {
 		openapi.PostClusterStatusesJSONRequestBody(duplicateStatus), test.WithAuthToken(ctx),
 	)
 	Expect(err).NotTo(HaveOccurred())
-	// Should return 204 No Content (update was discarded)
-	Expect(resp.StatusCode()).To(Equal(http.StatusNoContent),
+	// Should return 400 Bad Request (format validation failure)
+	Expect(resp.StatusCode()).To(Equal(http.StatusBadRequest),
 		"Status with duplicate condition types should be rejected")
-
-	// Verify that no status was stored
-	respGet, err := client.GetClusterStatusesWithResponse(ctx, cluster.ID, nil, test.WithAuthToken(ctx))
-	Expect(err).NotTo(HaveOccurred())
-	Expect(respGet.StatusCode()).To(Equal(http.StatusOK))
-	Expect(respGet.JSON200).ToNot(BeNil())
-	Expect(len(respGet.JSON200.Items)).To(Equal(0),
-		"No status should be stored when duplicate conditions are rejected")
+	Expect(string(resp.Body)).To(ContainSubstring("duplicate condition type"))
+	Expect(string(resp.Body)).To(ContainSubstring("Available"))
 }
 
 // TestClusterStatusPost_EmptyConditionTypeRejected tests that adapter status updates
-// with empty condition types are rejected and return HTTP 204
+// with empty condition types are rejected and return HTTP 400
 func TestClusterStatusPost_EmptyConditionTypeRejected(t *testing.T) {
 	h, client := test.RegisterIntegration(t)
 
@@ -1060,15 +1056,154 @@ func TestClusterStatusPost_EmptyConditionTypeRejected(t *testing.T) {
 		openapi.PostClusterStatusesJSONRequestBody(emptyTypeStatus), test.WithAuthToken(ctx),
 	)
 	Expect(err).NotTo(HaveOccurred())
-	// Should return 204 No Content (update was discarded)
-	Expect(resp.StatusCode()).To(Equal(http.StatusNoContent),
+	// Should return 400 Bad Request (format validation failure)
+	Expect(resp.StatusCode()).To(Equal(http.StatusBadRequest),
 		"Status with empty condition type should be rejected")
+	Expect(string(resp.Body)).To(ContainSubstring("condition type cannot be empty"))
+}
 
-	// Verify that no status was stored
-	respGet, err := client.GetClusterStatusesWithResponse(ctx, cluster.ID, nil, test.WithAuthToken(ctx))
+// TestClusterStatusPost_InvalidStatusRejected tests that invalid status values return 400 Bad Request
+func TestClusterStatusPost_InvalidStatusRejected(t *testing.T) {
+	h, client := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+
+	// Create a cluster first
+	cluster, err := h.Factories.NewClusters(h.NewID())
 	Expect(err).NotTo(HaveOccurred())
-	Expect(respGet.StatusCode()).To(Equal(http.StatusOK))
-	Expect(respGet.JSON200).ToNot(BeNil())
-	Expect(len(respGet.JSON200.Items)).To(Equal(0),
-		"No status should be stored when empty condition type is rejected")
+
+	testCases := []struct {
+		name          string
+		invalidStatus openapi.AdapterConditionStatus
+	}{
+		{"empty string", ""},
+		{"lowercase true", "true"},
+		{"lowercase false", "false"},
+		{"lowercase unknown", "unknown"},
+		{"random string", "InvalidValue"},
+	}
+
+	for _, tc := range testCases {
+		statusInput := newAdapterStatusRequest(
+			"test-adapter",
+			cluster.Generation,
+			[]openapi.ConditionRequest{
+				{
+					Type:   api.ConditionTypeAvailable,
+					Status: tc.invalidStatus,
+				},
+			},
+			nil,
+		)
+
+		resp, err := client.PostClusterStatusesWithResponse(
+			ctx, cluster.ID,
+			openapi.PostClusterStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
+		)
+		Expect(err).NotTo(HaveOccurred(), "Test case: "+tc.name)
+		Expect(resp.StatusCode()).To(Equal(http.StatusBadRequest),
+			"Expected 400 Bad Request for invalid status: "+tc.name)
+		Expect(string(resp.Body)).To(ContainSubstring("invalid status value"),
+			"Expected error message to mention invalid status for: "+tc.name)
+	}
+}
+
+// TestNodePoolStatusPost_InvalidStatusRejected tests that nodepool endpoint also rejects invalid status values
+func TestNodePoolStatusPost_InvalidStatusRejected(t *testing.T) {
+	h, client := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+
+	// Create a nodepool (which also creates its parent cluster)
+	nodePool, err := h.Factories.NewNodePools(h.NewID())
+	Expect(err).NotTo(HaveOccurred())
+
+	testCases := []struct {
+		name          string
+		invalidStatus openapi.AdapterConditionStatus
+	}{
+		{"empty string", ""},
+		{"lowercase true", "true"},
+		{"invalid value", "NotAValidStatus"},
+	}
+
+	for _, tc := range testCases {
+		statusInput := newAdapterStatusRequest(
+			"test-nodepool-adapter",
+			1,
+			[]openapi.ConditionRequest{
+				{
+					Type:   api.ConditionTypeAvailable,
+					Status: tc.invalidStatus,
+				},
+			},
+			nil,
+		)
+
+		resp, err := client.PostNodePoolStatusesWithResponse(
+			ctx, nodePool.OwnerID, nodePool.ID,
+			openapi.PostNodePoolStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
+		)
+		Expect(err).NotTo(HaveOccurred(), "Test case: "+tc.name)
+		Expect(resp.StatusCode()).To(Equal(http.StatusBadRequest),
+			"Expected 400 Bad Request for invalid status: "+tc.name)
+		Expect(string(resp.Body)).To(ContainSubstring("invalid status value"),
+			"Expected error message to mention invalid status for: "+tc.name)
+	}
+}
+
+// TestClusterStatusPost_ValidStatusesStillWork tests that valid status values continue to work
+func TestClusterStatusPost_ValidStatusesStillWork(t *testing.T) {
+	h, client := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+
+	// Create a cluster first
+	cluster, err := h.Factories.NewClusters(h.NewID())
+	Expect(err).NotTo(HaveOccurred())
+
+	validStatuses := []openapi.AdapterConditionStatus{
+		openapi.AdapterConditionStatusTrue,
+		openapi.AdapterConditionStatusFalse,
+		openapi.AdapterConditionStatusUnknown,
+	}
+
+	for i, status := range validStatuses {
+		statusInput := newAdapterStatusRequest(
+			fmt.Sprintf("valid-adapter-%d", i),
+			cluster.Generation,
+			[]openapi.ConditionRequest{
+				{
+					Type:   api.ConditionTypeAvailable,
+					Status: status,
+				},
+				{
+					Type:   api.ConditionTypeApplied,
+					Status: openapi.AdapterConditionStatusTrue,
+				},
+				{
+					Type:   api.ConditionTypeHealth,
+					Status: openapi.AdapterConditionStatusTrue,
+				},
+				{
+					Type:   api.ConditionTypeReady,
+					Status: openapi.AdapterConditionStatusTrue,
+				},
+			},
+			nil,
+		)
+
+		resp, err := client.PostClusterStatusesWithResponse(
+			ctx, cluster.ID,
+			openapi.PostClusterStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
+		)
+		Expect(err).NotTo(HaveOccurred(), "Valid status should work: "+string(status))
+		Expect(resp.StatusCode()).To(Equal(http.StatusCreated),
+			"Expected 201 Created for valid status: "+string(status))
+		Expect(resp.JSON201).ToNot(BeNil())
+		Expect(resp.JSON201.Adapter).To(Equal(fmt.Sprintf("valid-adapter-%d", i)))
+	}
 }

@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 	"testing"
 	"time"
 
@@ -876,8 +877,10 @@ func TestProcessAdapterStatus_MissingMandatoryCondition_Available(t *testing.T) 
 
 	result, err = service.ProcessAdapterStatus(ctx, clusterID, invalidStatus)
 
-	// Should be rejected (nil, nil)
-	Expect(err).To(BeNil())
+	// Should be rejected with validation error
+	Expect(err).ToNot(BeNil())
+	Expect(err.HTTPCode).To(Equal(http.StatusBadRequest))
+	Expect(err.Reason).To(ContainSubstring("missing mandatory condition"))
 	Expect(result).To(BeNil(), "Update missing Available condition should be rejected")
 
 	// Verify old status is preserved
@@ -1037,92 +1040,4 @@ func TestProcessAdapterStatus_CustomConditionRemoval(t *testing.T) {
 	Expect(conditionTypes[api.ConditionTypeApplied]).To(BeTrue())
 	Expect(conditionTypes[api.ConditionTypeHealth]).To(BeTrue())
 	Expect(conditionTypes["CustomCondition"]).To(BeFalse(), "CustomCondition should not be present")
-}
-
-// TestProcessAdapterStatus_DuplicateCondition tests that updates with duplicate
-// condition types are rejected
-func TestProcessAdapterStatus_DuplicateCondition(t *testing.T) {
-	RegisterTestingT(t)
-
-	clusterDao := newMockClusterDao()
-	adapterStatusDao := newMockAdapterStatusDao()
-	config := testAdapterConfig()
-	service := NewClusterService(clusterDao, adapterStatusDao, config)
-
-	ctx := context.Background()
-	clusterID := testClusterID
-
-	// Create cluster first
-	cluster := &api.Cluster{Generation: 1}
-	cluster.ID = clusterID
-	_, svcErr := service.Create(ctx, cluster)
-	Expect(svcErr).To(BeNil())
-
-	// Send status with duplicate Available condition
-	duplicateConditions := []api.AdapterCondition{
-		{Type: api.ConditionTypeAvailable, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
-		{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
-		{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
-		{Type: api.ConditionTypeAvailable, Status: api.AdapterConditionFalse, LastTransitionTime: time.Now()}, // Duplicate!
-	}
-	duplicateConditionsJSON, _ := json.Marshal(duplicateConditions)
-	now := time.Now()
-	duplicateStatus := &api.AdapterStatus{
-		ResourceType:       "Cluster",
-		ResourceID:         clusterID,
-		Adapter:            "test-adapter",
-		Conditions:         duplicateConditionsJSON,
-		ObservedGeneration: 1,
-		CreatedTime:        &now,
-	}
-
-	result, err := service.ProcessAdapterStatus(ctx, clusterID, duplicateStatus)
-
-	// Should be rejected (nil, nil)
-	Expect(err).To(BeNil())
-	Expect(result).To(BeNil(), "Status with duplicate condition types should be rejected")
-}
-
-// TestProcessAdapterStatus_EmptyConditionType tests that updates with empty
-// condition types are rejected
-func TestProcessAdapterStatus_EmptyConditionType(t *testing.T) {
-	RegisterTestingT(t)
-
-	clusterDao := newMockClusterDao()
-	adapterStatusDao := newMockAdapterStatusDao()
-	config := testAdapterConfig()
-	service := NewClusterService(clusterDao, adapterStatusDao, config)
-
-	ctx := context.Background()
-	clusterID := testClusterID
-
-	// Create cluster first
-	cluster := &api.Cluster{Generation: 1}
-	cluster.ID = clusterID
-	_, svcErr := service.Create(ctx, cluster)
-	Expect(svcErr).To(BeNil())
-
-	// Send status with empty condition type
-	emptyTypeConditions := []api.AdapterCondition{
-		{Type: api.ConditionTypeAvailable, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
-		{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
-		{Type: "", Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()}, // Empty type!
-		{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
-	}
-	emptyTypeConditionsJSON, _ := json.Marshal(emptyTypeConditions)
-	now := time.Now()
-	emptyTypeStatus := &api.AdapterStatus{
-		ResourceType:       "Cluster",
-		ResourceID:         clusterID,
-		Adapter:            "test-adapter",
-		Conditions:         emptyTypeConditionsJSON,
-		ObservedGeneration: 1,
-		CreatedTime:        &now,
-	}
-
-	result, err := service.ProcessAdapterStatus(ctx, clusterID, emptyTypeStatus)
-
-	// Should be rejected (nil, nil)
-	Expect(err).To(BeNil())
-	Expect(result).To(BeNil(), "Status with empty condition type should be rejected")
 }

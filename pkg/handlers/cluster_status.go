@@ -80,6 +80,7 @@ func (h ClusterStatusHandler) Create(w http.ResponseWriter, r *http.Request) {
 		MarshalInto: &req,
 		Validate: []validate{
 			validateNotEmpty(&req, "Adapter", "adapter"),
+			validateConditions(&req, "Conditions"),
 		},
 		Action: func() (interface{}, *errors.ServiceError) {
 			ctx := r.Context()

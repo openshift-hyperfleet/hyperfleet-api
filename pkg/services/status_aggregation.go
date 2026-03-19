@@ -13,10 +13,9 @@ import (
 // Mandatory condition types that must be present in all adapter status updates
 var mandatoryConditionTypes = []string{api.ConditionTypeAvailable, api.ConditionTypeApplied, api.ConditionTypeHealth}
 
-// Condition validation error types
+// Condition validation error type
 const (
-	ConditionValidationErrorDuplicate = "duplicate"
-	ConditionValidationErrorMissing   = "missing"
+	ConditionValidationErrorMissing = "missing"
 )
 
 // Required adapter lists configured via pkg/config/adapter.go (see AdapterRequirementsConfig)
@@ -30,22 +29,16 @@ var adapterConditionSuffixMap = map[string]string{
 	// Add custom mappings here when needed
 }
 
-// ValidateMandatoryConditions checks if all mandatory conditions are present and rejects duplicate condition types.
+// ValidateMandatoryConditions checks if all mandatory conditions are present.
+// NOTE: Format validation (empty type, duplicates, invalid status) is done in the Handler layer.
+// This function only validates business rules: required conditions must exist.
 // Returns (errorType, conditionName) where:
-// - If duplicate found: (ConditionValidationErrorDuplicate, duplicateConditionType)
 // - If missing condition: (ConditionValidationErrorMissing, missingConditionType)
 // - If all valid: ("", "")
 func ValidateMandatoryConditions(conditions []api.AdapterCondition) (errorType, conditionName string) {
-	// Check for duplicate condition types
+	// Build a set of present condition types
 	seen := make(map[string]bool)
 	for _, cond := range conditions {
-		// Reject empty condition types
-		if cond.Type == "" {
-			return ConditionValidationErrorMissing, "<empty type>"
-		}
-		if seen[cond.Type] {
-			return ConditionValidationErrorDuplicate, cond.Type
-		}
 		seen[cond.Type] = true
 	}
 
