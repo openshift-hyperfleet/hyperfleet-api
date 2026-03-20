@@ -28,6 +28,9 @@ spec:
         {{- end }}
       labels:
         {{- include "hyperfleet-api.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
     spec:
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
