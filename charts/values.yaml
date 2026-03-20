@@ -5,9 +5,9 @@ replicaCount: 1
 
 image:
   registry: CHANGE_ME  # Set to your actual container registry (e.g. quay.io)
-  repository: hyperfleet-api
+  repository: CHANGE_ME # e.g. openshift-hyperfleet/hyperfleet-api
   pullPolicy: Always
-  tag: "latest"
+  tag: ""
 
 imagePullSecrets: []
 nameOverride: ""
@@ -152,6 +152,7 @@ serviceAccount:
   name: ""
 
 podAnnotations: {}
+podLabels: {}
 
 podSecurityContext:
   fsGroup: 65532

@@ -69,6 +69,9 @@ Validate required values that must not remain as placeholders.
 {{- if eq .Values.image.registry "CHANGE_ME" -}}
 {{- fail "image.registry must be set to actual container registry via --set image.registry=XXX. See docs/deployment.md for examples" -}}
 {{- end -}}
+{{- if eq .Values.image.repository "CHANGE_ME" -}}
+{{- fail "image.repository must be set (e.g. --set image.repository=openshift-hyperfleet/hyperfleet-api). See docs/deployment.md for examples" -}}
+{{- end -}}
 {{- end }}
 
 {{/*
