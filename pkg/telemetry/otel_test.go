@@ -2,7 +2,6 @@ package telemetry
 
 import (
 	"context"
-	"os"
 	"testing"
 
 	"go.opentelemetry.io/otel"
@@ -39,16 +38,7 @@ func TestInitTraceProvider_OTLPExporter(t *testing.T) {
 	ctx := context.Background()
 
 	// Set OTLP endpoint (can be fake - we're just testing initialization)
-	err := os.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://fake-otel-collector:4317")
-	if err != nil {
-		t.Fatalf("Failed to set OTEL_EXPORTER_OTLP_ENDPOINT: %v", err)
-	}
-	defer func() {
-		unsetErr := os.Unsetenv("OTEL_EXPORTER_OTLP_ENDPOINT")
-		if unsetErr != nil {
-			t.Errorf("Failed to unset OTEL_EXPORTER_OTLP_ENDPOINT: %v", unsetErr)
-		}
-	}()
+	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://fake-otel-collector:4317")
 
 	// Test that trace provider initializes correctly with OTLP exporter
 	tp, err := InitTraceProvider(ctx, "test-service", "v1.0.0")
@@ -125,28 +115,10 @@ func TestInitTraceProvider_SamplerEnvironmentVariables(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Set environment variables
 			if tt.samplerType != "" {
-				err := os.Setenv("OTEL_TRACES_SAMPLER", tt.samplerType)
-				if err != nil {
-					t.Fatalf("Failed to set OTEL_TRACES_SAMPLER: %v", err)
-				}
-				defer func() {
-					err := os.Unsetenv("OTEL_TRACES_SAMPLER")
-					if err != nil {
-						t.Errorf("Failed to unset OTEL_TRACES_SAMPLER: %v", err)
-					}
-				}()
+				t.Setenv("OTEL_TRACES_SAMPLER", tt.samplerType)
 			}
 			if tt.samplerArg != "" {
-				err := os.Setenv("OTEL_TRACES_SAMPLER_ARG", tt.samplerArg)
-				if err != nil {
-					t.Fatalf("Failed to set OTEL_TRACES_SAMPLER_ARG: %v", err)
-				}
-				defer func() {
-					err := os.Unsetenv("OTEL_TRACES_SAMPLER_ARG")
-					if err != nil {
-						t.Errorf("Failed to unset OTEL_TRACES_SAMPLER_ARG: %v", err)
-					}
-				}()
+				t.Setenv("OTEL_TRACES_SAMPLER_ARG", tt.samplerArg)
 			}
 
 			tp, err := InitTraceProvider(ctx, "test-service", "v1.0.0")
@@ -212,28 +184,10 @@ func TestInitTraceProvider_InvalidSamplerArg(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Use parentbased_traceidratio to test the sampling rate parsing
-			err := os.Setenv("OTEL_TRACES_SAMPLER", "parentbased_traceidratio")
-			if err != nil {
-				t.Fatalf("Failed to set OTEL_TRACES_SAMPLER: %v", err)
-			}
-			defer func() {
-				err := os.Unsetenv("OTEL_TRACES_SAMPLER")
-				if err != nil {
-					t.Errorf("Failed to unset OTEL_TRACES_SAMPLER: %v", err)
-				}
-			}()
+			t.Setenv("OTEL_TRACES_SAMPLER", "parentbased_traceidratio")
 
 			if tt.samplerArg != "" {
-				err := os.Setenv("OTEL_TRACES_SAMPLER_ARG", tt.samplerArg)
-				if err != nil {
-					t.Fatalf("Failed to set OTEL_TRACES_SAMPLER_ARG: %v", err)
-				}
-				defer func() {
-					err := os.Unsetenv("OTEL_TRACES_SAMPLER_ARG")
-					if err != nil {
-						t.Errorf("Failed to unset OTEL_TRACES_SAMPLER_ARG: %v", err)
-					}
-				}()
+				t.Setenv("OTEL_TRACES_SAMPLER_ARG", tt.samplerArg)
 			}
 
 			tp, err := InitTraceProvider(ctx, "test-service", "v1.0.0")
@@ -310,28 +264,10 @@ func TestInitTraceProvider_ParentBasedSampling(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := os.Setenv("OTEL_TRACES_SAMPLER", tt.samplerType)
-			if err != nil {
-				t.Fatalf("Failed to set OTEL_TRACES_SAMPLER: %v", err)
-			}
-			defer func() {
-				err := os.Unsetenv("OTEL_TRACES_SAMPLER")
-				if err != nil {
-					t.Errorf("Failed to unset OTEL_TRACES_SAMPLER: %v", err)
-				}
-			}()
+			t.Setenv("OTEL_TRACES_SAMPLER", tt.samplerType)
 
 			if tt.samplerArg != "" {
-				err := os.Setenv("OTEL_TRACES_SAMPLER_ARG", tt.samplerArg)
-				if err != nil {
-					t.Fatalf("Failed to set OTEL_TRACES_SAMPLER_ARG: %v", err)
-				}
-				defer func() {
-					err := os.Unsetenv("OTEL_TRACES_SAMPLER_ARG")
-					if err != nil {
-						t.Errorf("Failed to unset OTEL_TRACES_SAMPLER_ARG: %v", err)
-					}
-				}()
+				t.Setenv("OTEL_TRACES_SAMPLER_ARG", tt.samplerArg)
 			}
 
 			tp, err := InitTraceProvider(ctx, "test-service", "v1.0.0")
