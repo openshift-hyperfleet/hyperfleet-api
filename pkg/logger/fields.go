@@ -42,7 +42,7 @@ const (
 	FieldOTelEnabled      = "otel_enabled"
 	FieldSamplingRate     = "sampling_rate"
 	FieldExporterEndpoint = "exporter_endpoint"
-	FieldTracingEnabled   = "TRACING_ENABLED"
+	FieldTracingEnabled   = "tracing_enabled"
 	FieldServiceName      = "service_name"
 	FieldProtocol         = "protocol"
 	FieldSampler          = "sampler"

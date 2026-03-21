@@ -260,6 +260,7 @@ export OTEL_TRACES_SAMPLER=parentbased_traceidratio
 export OTEL_TRACES_SAMPLER_ARG=0.1  # Sample 10% of requests
 export OTEL_RESOURCE_ATTRIBUTES=environment=production,region=us-east-1
 ```
+**Note**: Sample 10% of requests (OTEL_TRACES_SAMPLER_ARG=0.1) provides sufficient observability while minimizing performance impact for high-traffic systems
 
 **Example - Development with stdout:**
 ```bash
@@ -688,7 +689,7 @@ Before deploying to production, verify:
 - ✅ Database credentials set via `HYPERFLEET_DATABASE_*` environment variables
 - ✅ Database SSL/TLS configured (`HYPERFLEET_DATABASE_SSL_MODE=require`)
 - ✅ Server authentication enabled (`HYPERFLEET_SERVER_JWT_ENABLED=true`)
-- ✅ Required adapters configured (`HYPERFLEET_CLUSTER_ADAPTERS`, `HYPERFLEET_NODEPOOL_ADAPTERS`)
+- ✅ Required adapters configured (`HYPERFLEET_ADAPTERS_REQUIRED_CLUSTER`, `HYPERFLEET_ADAPTERS_REQUIRED_NODEPOOL`)
 
 **OpenTelemetry Tracing (if enabled):**
 - ✅ Tracing enabled via `TRACING_ENABLED=true` or `HYPERFLEET_LOGGING_OTEL_ENABLED=true`

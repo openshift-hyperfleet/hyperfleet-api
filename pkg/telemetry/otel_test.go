@@ -103,6 +103,22 @@ func TestInitTraceProvider_SamplerEnvironmentVariables(t *testing.T) {
 			samplerArg:     "0.0",
 			expectedSample: false,
 		},
+		{
+			name:           "parentbased_traceidratio_default",
+			samplerType:    "parentbased_traceidratio",
+			samplerArg:     "1.0",
+			expectedSample: true,
+		},
+		{
+			name:           "parentbased_always_on",
+			samplerType:    "parentbased_always_on",
+			expectedSample: true,
+		},
+		{
+			name:           "parentbased_always_off",
+			samplerType:    "parentbased_always_off",
+			expectedSample: false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -140,7 +156,7 @@ func TestInitTraceProvider_SamplerEnvironmentVariables(t *testing.T) {
 			defer func(ctx context.Context, tp *trace.TracerProvider) {
 				err := Shutdown(ctx, tp)
 				if err != nil {
-					t.Errorf("Failed to shutdown trace provider")
+					t.Errorf("Failed to shutdown trace provider: %v", err)
 				}
 			}(ctx, tp)
 
@@ -149,11 +165,11 @@ func TestInitTraceProvider_SamplerEnvironmentVariables(t *testing.T) {
 			_, span := tracer.Start(ctx, "test-span")
 
 			if tt.expectedSample {
-				if !span.SpanContext().IsValid() {
-					t.Error("Expected valid span context for sampling=true")
+				if !span.SpanContext().IsValid() || !span.SpanContext().TraceFlags().IsSampled() {
+					t.Error("Expected valid and sampled span context for sampling=true")
 				}
 			} else {
-				// Add missing validation for expectedSample=false
+				// Verify span is NOT sampled for expectedSample=false
 				if span.SpanContext().IsValid() && span.SpanContext().TraceFlags().IsSampled() {
 					t.Error("Expected span to NOT be sampled for sampling=false")
 				}
@@ -163,3 +179,198 @@ func TestInitTraceProvider_SamplerEnvironmentVariables(t *testing.T) {
 	}
 }
 
+func TestInitTraceProvider_InvalidSamplerArg(t *testing.T) {
+	ctx := context.Background()
+
+	tests := []struct {
+		name           string
+		samplerArg     string
+		expectedSample bool // Should fall back to default (1.0 = always sample)
+	}{
+		{
+			name:           "negative_value",
+			samplerArg:     "-1.0",
+			expectedSample: true, // Falls back to default 1.0
+		},
+		{
+			name:           "above_one",
+			samplerArg:     "2.0",
+			expectedSample: true, // Falls back to default 1.0
+		},
+		{
+			name:           "non_numeric",
+			samplerArg:     "invalid",
+			expectedSample: true, // Falls back to default 1.0
+		},
+		{
+			name:           "empty_string",
+			samplerArg:     "",
+			expectedSample: true, // Falls back to default 1.0
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Use parentbased_traceidratio to test the sampling rate parsing
+			err := os.Setenv("OTEL_TRACES_SAMPLER", "parentbased_traceidratio")
+			if err != nil {
+				t.Fatalf("Failed to set OTEL_TRACES_SAMPLER: %v", err)
+			}
+			defer func() {
+				err := os.Unsetenv("OTEL_TRACES_SAMPLER")
+				if err != nil {
+					t.Errorf("Failed to unset OTEL_TRACES_SAMPLER: %v", err)
+				}
+			}()
+
+			if tt.samplerArg != "" {
+				err := os.Setenv("OTEL_TRACES_SAMPLER_ARG", tt.samplerArg)
+				if err != nil {
+					t.Fatalf("Failed to set OTEL_TRACES_SAMPLER_ARG: %v", err)
+				}
+				defer func() {
+					err := os.Unsetenv("OTEL_TRACES_SAMPLER_ARG")
+					if err != nil {
+						t.Errorf("Failed to unset OTEL_TRACES_SAMPLER_ARG: %v", err)
+					}
+				}()
+			}
+
+			tp, err := InitTraceProvider(ctx, "test-service", "v1.0.0")
+			if err != nil {
+				t.Fatalf("Failed to initialize trace provider: %v", err)
+			}
+			defer func(ctx context.Context, tp *trace.TracerProvider) {
+				err := Shutdown(ctx, tp)
+				if err != nil {
+					t.Errorf("Failed to shutdown trace provider: %v", err)
+				}
+			}(ctx, tp)
+
+			// Test that invalid values fall back to default (1.0 = always sample)
+			tracer := otel.Tracer("test")
+			_, span := tracer.Start(ctx, "test-span")
+
+			if tt.expectedSample {
+				if !span.SpanContext().IsValid() || !span.SpanContext().TraceFlags().IsSampled() {
+					t.Errorf("Expected span to be sampled (fallback to default 1.0) for invalid arg %q", tt.samplerArg)
+				}
+			}
+			span.End()
+		})
+	}
+}
+
+func TestInitTraceProvider_ParentBasedSampling(t *testing.T) {
+	ctx := context.Background()
+
+	tests := []struct {
+		name           string
+		samplerType    string
+		samplerArg     string
+		withParent     bool
+		expectedSample bool
+	}{
+		{
+			name:           "root_span_with_ratio_high",
+			samplerType:    "parentbased_traceidratio",
+			samplerArg:     "1.0",
+			withParent:     false,
+			expectedSample: true, // Root span uses ratio (1.0 = sample)
+		},
+		{
+			name:           "child_span_inherits_parent_sampling",
+			samplerType:    "parentbased_traceidratio",
+			samplerArg:     "1.0",
+			withParent:     true,
+			expectedSample: true, // Parent sampled, child follows
+		},
+		{
+			name:           "root_span_with_ratio_zero",
+			samplerType:    "parentbased_traceidratio",
+			samplerArg:     "0.0",
+			withParent:     false,
+			expectedSample: false, // Root span uses ratio (0.0 = don't sample)
+		},
+		{
+			name:           "root_span_always_on",
+			samplerType:    "parentbased_always_on",
+			samplerArg:     "",
+			withParent:     false,
+			expectedSample: true, // Root span always sampled
+		},
+		{
+			name:           "root_span_always_off",
+			samplerType:    "parentbased_always_off",
+			samplerArg:     "",
+			withParent:     false,
+			expectedSample: false, // Root span never sampled
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := os.Setenv("OTEL_TRACES_SAMPLER", tt.samplerType)
+			if err != nil {
+				t.Fatalf("Failed to set OTEL_TRACES_SAMPLER: %v", err)
+			}
+			defer func() {
+				err := os.Unsetenv("OTEL_TRACES_SAMPLER")
+				if err != nil {
+					t.Errorf("Failed to unset OTEL_TRACES_SAMPLER: %v", err)
+				}
+			}()
+
+			if tt.samplerArg != "" {
+				err := os.Setenv("OTEL_TRACES_SAMPLER_ARG", tt.samplerArg)
+				if err != nil {
+					t.Fatalf("Failed to set OTEL_TRACES_SAMPLER_ARG: %v", err)
+				}
+				defer func() {
+					err := os.Unsetenv("OTEL_TRACES_SAMPLER_ARG")
+					if err != nil {
+						t.Errorf("Failed to unset OTEL_TRACES_SAMPLER_ARG: %v", err)
+					}
+				}()
+			}
+
+			tp, err := InitTraceProvider(ctx, "test-service", "v1.0.0")
+			if err != nil {
+				t.Fatalf("Failed to initialize trace provider: %v", err)
+			}
+			defer func(ctx context.Context, tp *trace.TracerProvider) {
+				err := Shutdown(ctx, tp)
+				if err != nil {
+					t.Errorf("Failed to shutdown trace provider: %v", err)
+				}
+			}(ctx, tp)
+
+			tracer := otel.Tracer("test")
+
+			var testCtx context.Context
+			if tt.withParent {
+				// Create parent span and use its context
+				parentCtx, parentSpan := tracer.Start(ctx, "parent-span")
+				testCtx = parentCtx
+				defer parentSpan.End()
+			} else {
+				// Root span (no parent)
+				testCtx = ctx
+			}
+
+			// Create test span (root or child depending on withParent)
+			_, span := tracer.Start(testCtx, "test-span")
+
+			if tt.expectedSample {
+				if !span.SpanContext().IsValid() || !span.SpanContext().TraceFlags().IsSampled() {
+					t.Errorf("Expected span to be sampled for %s", tt.name)
+				}
+			} else {
+				if span.SpanContext().IsValid() && span.SpanContext().TraceFlags().IsSampled() {
+					t.Errorf("Expected span to NOT be sampled for %s", tt.name)
+				}
+			}
+			span.End()
+		})
+	}
+}

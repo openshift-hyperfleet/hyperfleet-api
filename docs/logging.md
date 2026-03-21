@@ -398,6 +398,14 @@ if tracingEnabled {
 }
 ```
 
+**Note:** This is a simplified example. The actual implementation differs in two key ways:
+
+1. **Error handling for `strconv.ParseBool`:** The real code logs parsing errors via `logger.WithError` and falls back to `environments.Environment().Config.Logging.OTel.Enabled` instead of silently ignoring errors. This ensures invalid `TRACING_ENABLED` values (e.g., `"yes"`, `"1.5"`) are logged with context and the application continues with the config default.
+
+2. **Shutdown with timeout:** The real code calls `telemetry.Shutdown(shutdownCtx, tp)` with a timeout context (from `environments.Environment().Config.Health.ShutdownTimeout`) during graceful shutdown, rather than deferring `tp.Shutdown(...)` directly after `telemetry.InitTraceProvider`. This ensures trace export completes within a bounded time during shutdown and logs any shutdown errors via `logger.WithError`.
+
+See the actual implementation in `cmd/hyperfleet-api/servecmd/cmd.go` for the complete error handling and shutdown logic.
+
 ### Trace Propagation
 
 The OTel middleware automatically:

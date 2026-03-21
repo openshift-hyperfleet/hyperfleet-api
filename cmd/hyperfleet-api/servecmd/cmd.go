@@ -79,8 +79,10 @@ func runServe(cmd *cobra.Command, args []string) {
 		if enabled, err := strconv.ParseBool(tracingEnv); err == nil {
 			tracingEnabled = enabled
 		} else {
-			logger.With(ctx, logger.FieldTracingEnabled, tracingEnv).WithError(err).
-				Warn("Invalid TRACING_ENABLED value, using config default")
+			logger.With(ctx,
+				logger.FieldTracingEnabled, tracingEnv,
+				"falling_back_to", environments.Environment().Config.Logging.OTel.Enabled).
+				WithError(err).Warn("Invalid TRACING_ENABLED value, falling back to config")
 			tracingEnabled = environments.Environment().Config.Logging.OTel.Enabled
 		}
 	} else {
