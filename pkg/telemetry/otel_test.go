@@ -48,6 +48,11 @@ func TestInitTraceProvider_OTLPExporter(t *testing.T) {
 	if tp == nil {
 		t.Fatal("Expected trace provider, got nil")
 	}
+	defer func() {
+		if err := Shutdown(ctx, tp); err != nil {
+			t.Errorf("Failed to shutdown trace provider: %v", err)
+		}
+	}()
 
 	// Verify tracer is available
 	tracer := otel.Tracer("test")
@@ -55,11 +60,6 @@ func TestInitTraceProvider_OTLPExporter(t *testing.T) {
 		t.Error("Expected tracer to be available")
 	}
 
-	// Test shutdown
-	err = Shutdown(ctx, tp)
-	if err != nil {
-		t.Errorf("Failed to shutdown trace provider: %v", err)
-	}
 }
 
 func TestInitTraceProvider_SamplerEnvironmentVariables(t *testing.T) {
