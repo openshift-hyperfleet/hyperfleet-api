@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 
 	"github.com/spf13/cobra"
@@ -69,14 +70,40 @@ func runServe(cmd *cobra.Command, args []string) {
 	logger.Info(ctx, config.DumpConfig(environments.Environment().Config))
 
 	var tp *trace.TracerProvider
-	if environments.Environment().Config.Logging.OTel.Enabled {
-		samplingRate := environments.Environment().Config.Logging.OTel.SamplingRate
-		traceProvider, err := telemetry.InitTraceProvider(ctx, "hyperfleet-api", api.Version, samplingRate)
+
+	// Determine if tracing is enabled
+	// Precedence: TRACING_ENABLED (tracing standard) > config (env/flags) > default
+	var tracingEnabled bool
+	if tracingEnv := os.Getenv("TRACING_ENABLED"); tracingEnv != "" {
+		// TRACING_ENABLED takes precedence for cross-component consistency
+		if enabled, err := strconv.ParseBool(tracingEnv); err == nil {
+			tracingEnabled = enabled
+		} else {
+			logger.With(ctx, logger.FieldTracingEnabled, tracingEnv).WithError(err).
+				Warn("Invalid TRACING_ENABLED value, using config default")
+			tracingEnabled = environments.Environment().Config.Logging.OTel.Enabled
+		}
+	} else {
+		// Use config value (already resolved by Viper from env vars, config file, flags, or default)
+		tracingEnabled = environments.Environment().Config.Logging.OTel.Enabled
+	}
+
+	// Update config to ensure middleware registration sees the final value
+	environments.Environment().Config.Logging.OTel.Enabled = tracingEnabled
+
+	if tracingEnabled {
+		// OpenTelemetry configuration is driven entirely by standard environment variables:
+		serviceName := "hyperfleet-api"
+		if svcName := os.Getenv("OTEL_SERVICE_NAME"); svcName != "" {
+			serviceName = svcName
+		}
+
+		traceProvider, err := telemetry.InitTraceProvider(ctx, serviceName, api.Version)
 		if err != nil {
 			logger.WithError(ctx, err).Warn("Failed to initialize OpenTelemetry")
 		} else {
 			tp = traceProvider
-			logger.With(ctx, logger.FieldSamplingRate, samplingRate).Info("OpenTelemetry initialized")
+			logger.With(ctx, logger.FieldServiceName, serviceName).Info("OpenTelemetry initialized")
 		}
 	} else {
 		logger.With(ctx, logger.FieldOTelEnabled, false).Info("OpenTelemetry disabled")

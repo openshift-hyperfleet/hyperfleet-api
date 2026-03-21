@@ -94,9 +94,18 @@ config:
     format: json
     output: stdout
 
+    # OpenTelemetry tracing (HyperFleet standard)
+    # Configuration via standard environment variables:
+    #   TRACING_ENABLED - enable/disable tracing (tracing standard, overrides this setting)
+    #   OTEL_SERVICE_NAME - service name (default: hyperfleet-api)
+    #   OTEL_EXPORTER_OTLP_ENDPOINT - OTLP collector (if not set, uses stdout)
+    #   OTEL_EXPORTER_OTLP_PROTOCOL - "grpc" (default) or "http/protobuf"
+    #   OTEL_TRACES_SAMPLER - sampler type (default: parentbased_traceidratio)
+    #   OTEL_TRACES_SAMPLER_ARG - sampling rate 0.0-1.0 (default: 1.0)
+    #   OTEL_RESOURCE_ATTRIBUTES - k=v,k2=v2 format
+    #   K8S_NAMESPACE - k8s namespace (added as k8s.namespace.name)
     otel:
       enabled: false
-      sampling_rate: 1.0
 
     masking:
       enabled: true

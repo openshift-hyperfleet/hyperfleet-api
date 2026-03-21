@@ -399,7 +399,6 @@ func TestConfigLoader_FlagParsing(t *testing.T) {
 	cmd.Flags().Set("server-read-timeout", "10s")    //nolint:errcheck,gosec // duration
 	cmd.Flags().Set("server-jwt-enabled", "false")   //nolint:errcheck,gosec // bool
 	cmd.Flags().Set("db-max-open-connections", "50") //nolint:errcheck,gosec // int
-	cmd.Flags().Set("log-otel-sampling-rate", "0.5") //nolint:errcheck,gosec // float64
 
 	ctx := context.Background()
 	cfg, err := loader.Load(ctx, cmd)
@@ -411,5 +410,4 @@ func TestConfigLoader_FlagParsing(t *testing.T) {
 	Expect(cfg.Server.Timeouts.Read.Seconds()).To(Equal(float64(10)), "duration parsing")
 	Expect(cfg.Server.JWT.Enabled).To(BeFalse(), "bool parsing")
 	Expect(cfg.Database.Pool.MaxConnections).To(Equal(50), "int parsing")
-	Expect(cfg.Logging.OTel.SamplingRate).To(Equal(0.5), "float64 parsing")
 }
