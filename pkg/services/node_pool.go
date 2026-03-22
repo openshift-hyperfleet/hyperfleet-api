@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	stderrors "errors"
-	"fmt"
 	"strings"
 	"time"
 
@@ -27,18 +26,12 @@ type NodePoolService interface {
 
 	FindByIDs(ctx context.Context, ids []string) (api.NodePoolList, *errors.ServiceError)
 
-	// Status aggregation
 	UpdateNodePoolStatusFromAdapters(ctx context.Context, nodePoolID string) (*api.NodePool, *errors.ServiceError)
 
-	// ProcessAdapterStatus handles the business logic for adapter status:
-	// - First report: accepts Unknown Available condition, skips aggregation
-	// - Subsequent reports: rejects Unknown Available condition
-	// - Otherwise: upserts the status and triggers aggregation
 	ProcessAdapterStatus(
 		ctx context.Context, nodePoolID string, adapterStatus *api.AdapterStatus,
 	) (*api.AdapterStatus, *errors.ServiceError)
 
-	// idempotent functions for the control plane, but can also be called synchronously by any actor
 	OnUpsert(ctx context.Context, id string) error
 	OnDelete(ctx context.Context, id string) error
 }
@@ -86,7 +79,6 @@ func (s *sqlNodePoolService) Create(ctx context.Context, nodePool *api.NodePool)
 		return nil, svcErr
 	}
 
-	// REMOVED: Event creation - no event-driven components
 	return updatedNodePool, nil
 }
 
@@ -98,8 +90,11 @@ func (s *sqlNodePoolService) Replace(
 		return nil, handleUpdateError("NodePool", err)
 	}
 
-	// REMOVED: Event creation - no event-driven components
-	return nodePool, nil
+	updated, svcErr := s.UpdateNodePoolStatusFromAdapters(ctx, nodePool.ID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	return updated, nil
 }
 
 func (s *sqlNodePoolService) Delete(ctx context.Context, id string) *errors.ServiceError {
@@ -107,7 +102,6 @@ func (s *sqlNodePoolService) Delete(ctx context.Context, id string) *errors.Serv
 		return handleDeleteError("NodePool", errors.GeneralError("Unable to delete nodePool: %s", err))
 	}
 
-	// REMOVED: Event creation - no event-driven components
 	return nil
 }
 
@@ -144,93 +138,48 @@ func (s *sqlNodePoolService) OnDelete(ctx context.Context, id string) error {
 	return nil
 }
 
-// UpdateNodePoolStatusFromAdapters aggregates adapter statuses into nodepool status
+func nodePoolRefTime(np *api.NodePool) time.Time {
+	if np == nil {
+		return time.Time{}
+	}
+	if !np.UpdatedTime.IsZero() {
+		return np.UpdatedTime
+	}
+	return np.CreatedTime
+}
+
 func (s *sqlNodePoolService) UpdateNodePoolStatusFromAdapters(
 	ctx context.Context, nodePoolID string,
 ) (*api.NodePool, *errors.ServiceError) {
-	// Get the nodepool
 	nodePool, err := s.nodePoolDao.Get(ctx, nodePoolID)
 	if err != nil {
 		return nil, handleGetError("NodePool", "id", nodePoolID, err)
 	}
 
-	// Get all adapter statuses for this nodepool
 	adapterStatuses, err := s.adapterStatusDao.FindByResource(ctx, "NodePool", nodePoolID)
 	if err != nil {
 		return nil, errors.GeneralError("Failed to get adapter statuses: %s", err)
 	}
 
-	now := time.Now()
+	refTime := nodePoolRefTime(nodePool)
+	ready, available, adapterConditions := AggregateResourceStatus(AggregateResourceStatusInput{
+		ResourceGeneration: nodePool.Generation,
+		RefTime:            refTime,
+		PrevConditionsJSON: nodePool.StatusConditions,
+		RequiredAdapters:   s.adapterConfig.RequiredNodePoolAdapters(),
+		AdapterStatuses:    adapterStatuses,
+	})
 
-	// Build the list of adapter ResourceConditions
-	adapterConditions := []api.ResourceCondition{}
-
-	for _, adapterStatus := range adapterStatuses {
-		// Unmarshal Conditions from JSONB
-		var conditions []api.AdapterCondition
-		if unmarshalErr := json.Unmarshal(adapterStatus.Conditions, &conditions); unmarshalErr != nil {
-			continue // Skip if can't unmarshal
-		}
-
-		// Find the "Available" condition
-		var availableCondition *api.AdapterCondition
-		for i := range conditions {
-			if conditions[i].Type == api.ConditionTypeAvailable {
-				availableCondition = &conditions[i]
-				break
-			}
-		}
-
-		if availableCondition == nil {
-			// No Available condition, skip this adapter
-			continue
-		}
-
-		// Convert to ResourceCondition
-		condResource := api.ResourceCondition{
-			Type:               MapAdapterToConditionType(adapterStatus.Adapter),
-			Status:             api.ResourceConditionStatus(availableCondition.Status),
-			Reason:             availableCondition.Reason,
-			Message:            availableCondition.Message,
-			ObservedGeneration: adapterStatus.ObservedGeneration,
-			LastTransitionTime: availableCondition.LastTransitionTime,
-		}
-
-		// Set CreatedTime with nil check
-		if adapterStatus.CreatedTime != nil {
-			condResource.CreatedTime = *adapterStatus.CreatedTime
-		}
-
-		// Set LastUpdatedTime with nil check
-		if adapterStatus.LastReportTime != nil {
-			condResource.LastUpdatedTime = *adapterStatus.LastReportTime
-		}
-
-		adapterConditions = append(adapterConditions, condResource)
-	}
-
-	// Compute synthetic Available and Ready conditions
-	availableCondition, readyCondition := BuildSyntheticConditions(
-		nodePool.StatusConditions,
-		adapterStatuses,
-		s.adapterConfig.RequiredNodePoolAdapters(),
-		nodePool.Generation,
-		now,
-	)
-
-	// Combine synthetic conditions with adapter conditions
-	// Put Available and Ready first
-	allConditions := []api.ResourceCondition{availableCondition, readyCondition}
+	allConditions := make([]api.ResourceCondition, 0, 2+len(adapterConditions))
+	allConditions = append(allConditions, ready, available)
 	allConditions = append(allConditions, adapterConditions...)
 
-	// Marshal conditions to JSON
 	conditionsJSON, err := json.Marshal(allConditions)
 	if err != nil {
 		return nil, errors.GeneralError("Failed to marshal conditions: %s", err)
 	}
 	nodePool.StatusConditions = conditionsJSON
 
-	// Save the updated nodepool
 	nodePool, err = s.nodePoolDao.Replace(ctx, nodePool)
 	if err != nil {
 		return nil, handleUpdateError("NodePool", err)
@@ -239,16 +188,14 @@ func (s *sqlNodePoolService) UpdateNodePoolStatusFromAdapters(
 	return nodePool, nil
 }
 
-// ProcessAdapterStatus handles the business logic for adapter status:
-// - Validates that all mandatory conditions (Available, Applied, Health) are present
-// - Rejects duplicate condition types
-// - For first status report: accepts Unknown Available condition to avoid data loss
-// - For subsequent reports: rejects Unknown Available condition to preserve existing valid state
-// - Uses complete replacement semantics: each update replaces all conditions for this adapter
-// - Returns (nil, nil) for discarded updates
 func (s *sqlNodePoolService) ProcessAdapterStatus(
 	ctx context.Context, nodePoolID string, adapterStatus *api.AdapterStatus,
 ) (*api.AdapterStatus, *errors.ServiceError) {
+	nodePool, err := s.nodePoolDao.Get(ctx, nodePoolID)
+	if err != nil {
+		return nil, handleGetError("NodePool", "id", nodePoolID, err)
+	}
+
 	existingStatus, findErr := s.adapterStatusDao.FindByResourceAndAdapter(
 		ctx, "NodePool", nodePoolID, adapterStatus.Adapter,
 	)
@@ -257,20 +204,46 @@ func (s *sqlNodePoolService) ProcessAdapterStatus(
 			return nil, errors.GeneralError("Failed to get adapter status: %s", findErr)
 		}
 	}
-	if existingStatus != nil && adapterStatus.ObservedGeneration < existingStatus.ObservedGeneration {
-		// Discard stale status updates (older observed_generation).
+
+	if adapterStatus.ObservedGeneration > nodePool.Generation {
+		logger.With(ctx, logger.FieldNodePoolID, nodePoolID).
+			With(logger.FieldAdapter, adapterStatus.Adapter).
+			Debug("Discarding adapter status update: future generation")
 		return nil, nil
 	}
 
-	// Parse conditions from the adapter status
-	var conditions []api.AdapterCondition
-	if len(adapterStatus.Conditions) > 0 {
-		if err := json.Unmarshal(adapterStatus.Conditions, &conditions); err != nil {
-			return nil, errors.GeneralError("Failed to unmarshal adapter status conditions: %s", err)
+	if existingStatus != nil && adapterStatus.ObservedGeneration < existingStatus.ObservedGeneration {
+		logger.With(ctx, logger.FieldNodePoolID, nodePoolID).
+			With(logger.FieldAdapter, adapterStatus.Adapter).
+			Debug("Discarding adapter status update: stale generation")
+		return nil, nil
+	}
+
+	incomingObs := AdapterObservedTime(adapterStatus)
+	if incomingObs.IsZero() {
+		logger.With(ctx, logger.FieldNodePoolID, nodePoolID).
+			With(logger.FieldAdapter, adapterStatus.Adapter).
+			Debug("Discarding adapter status update: zero observed time")
+		return nil, nil
+	}
+
+	if existingStatus != nil && adapterStatus.ObservedGeneration == existingStatus.ObservedGeneration {
+		prevObs := AdapterObservedTime(existingStatus)
+		if !prevObs.IsZero() && incomingObs.Before(prevObs) {
+			logger.With(ctx, logger.FieldNodePoolID, nodePoolID).
+				With(logger.FieldAdapter, adapterStatus.Adapter).
+				Debug("Discarding adapter status update: stale observed time")
+			return nil, nil
 		}
 	}
 
-	// Validate mandatory conditions
+	var conditions []api.AdapterCondition
+	if len(adapterStatus.Conditions) > 0 {
+		if errUnmarshal := json.Unmarshal(adapterStatus.Conditions, &conditions); errUnmarshal != nil {
+			return nil, errors.GeneralError("Failed to unmarshal adapter status conditions: %s", errUnmarshal)
+		}
+	}
+
 	if errorType, conditionName := ValidateMandatoryConditions(conditions); errorType != "" {
 		return nil, errors.Validation(
 			"missing mandatory condition '%s': all adapters must report Available, Applied, and Health",
@@ -278,43 +251,49 @@ func (s *sqlNodePoolService) ProcessAdapterStatus(
 		)
 	}
 
-	// Check Available condition for Unknown status
 	triggerAggregation := false
 	for _, cond := range conditions {
 		if cond.Type != api.ConditionTypeAvailable {
 			continue
 		}
 
-		triggerAggregation = true
-		if cond.Status == api.AdapterConditionUnknown {
+		isValidStatus := cond.Status == api.AdapterConditionTrue ||
+			cond.Status == api.AdapterConditionFalse ||
+			cond.Status == api.AdapterConditionUnknown
+		if !isValidStatus {
+			return nil, errors.Validation(
+				"condition '%s' has invalid status '%s': must be True, False, or Unknown",
+				cond.Type, cond.Status,
+			)
+		}
+
+		if cond.Status != api.AdapterConditionTrue && cond.Status != api.AdapterConditionFalse {
+			// Status is Unknown — only valid on first report; discard subsequent reports.
 			if existingStatus != nil {
-				// Non-first report && Available=Unknown → reject
 				logger.With(ctx, logger.FieldNodePoolID, nodePoolID).
-					Info(fmt.Sprintf("Discarding adapter status update from %s: subsequent Unknown Available",
-						adapterStatus.Adapter))
+					With(logger.FieldAdapter, adapterStatus.Adapter).
+					Debug("Discarding adapter status update: subsequent Unknown Available")
 				return nil, nil
 			}
-			// First report from this adapter: allow storing even with Available=Unknown
-			// but skip aggregation since Unknown should not affect nodepool-level conditions
 			triggerAggregation = false
+			break
 		}
+
+		triggerAggregation = true
 		break
 	}
 
-	// Upsert the adapter status (complete replacement)
+	adapterStatus.ResourceType = "NodePool"
+	adapterStatus.ResourceID = nodePoolID
+
 	upsertedStatus, err := s.adapterStatusDao.Upsert(ctx, adapterStatus)
 	if err != nil {
 		return nil, handleCreateError("AdapterStatus", err)
 	}
 
-	// Only trigger aggregation when triggerAggregation is true
 	if triggerAggregation {
-		if _, aggregateErr := s.UpdateNodePoolStatusFromAdapters(
-			ctx, nodePoolID,
-		); aggregateErr != nil {
-			// Log error but don't fail the request - the status will be computed on next update
-			logger.With(ctx, logger.FieldNodePoolID, nodePoolID).
-				WithError(aggregateErr).Warn("Failed to aggregate nodepool status")
+		if _, aggregateErr := s.UpdateNodePoolStatusFromAdapters(ctx, nodePoolID); aggregateErr != nil {
+			return nil, aggregateErr
 		}
 	}
 

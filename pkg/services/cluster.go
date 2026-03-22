@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	stderrors "errors"
-	"fmt"
 	"strings"
 	"time"
 
@@ -27,13 +26,11 @@ type ClusterService interface {
 
 	FindByIDs(ctx context.Context, ids []string) (api.ClusterList, *errors.ServiceError)
 
-	// Status aggregation
+	// UpdateClusterStatusFromAdapters recomputes aggregated Ready and Available from stored adapter rows.
 	UpdateClusterStatusFromAdapters(ctx context.Context, clusterID string) (*api.Cluster, *errors.ServiceError)
 
-	// ProcessAdapterStatus handles the business logic for adapter status:
-	// - First report: accepts Unknown Available condition, skips aggregation
-	// - Subsequent reports: rejects Unknown Available condition
-	// - Otherwise: upserts the status and triggers aggregation
+	// ProcessAdapterStatus validates mandatory conditions, applies discard rules, upserts adapter status,
+	// and triggers aggregation when appropriate.
 	ProcessAdapterStatus(
 		ctx context.Context, clusterID string, adapterStatus *api.AdapterStatus,
 	) (*api.AdapterStatus, *errors.ServiceError)
@@ -86,7 +83,6 @@ func (s *sqlClusterService) Create(ctx context.Context, cluster *api.Cluster) (*
 		return nil, svcErr
 	}
 
-	// REMOVED: Event creation - no event-driven components
 	return updatedCluster, nil
 }
 
@@ -96,8 +92,11 @@ func (s *sqlClusterService) Replace(ctx context.Context, cluster *api.Cluster) (
 		return nil, handleUpdateError("Cluster", err)
 	}
 
-	// REMOVED: Event creation - no event-driven components
-	return cluster, nil
+	updated, svcErr := s.UpdateClusterStatusFromAdapters(ctx, cluster.ID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	return updated, nil
 }
 
 func (s *sqlClusterService) Delete(ctx context.Context, id string) *errors.ServiceError {
@@ -105,7 +104,6 @@ func (s *sqlClusterService) Delete(ctx context.Context, id string) *errors.Servi
 		return handleDeleteError("Cluster", errors.GeneralError("Unable to delete cluster: %s", err))
 	}
 
-	// REMOVED: Event creation - no event-driven components
 	return nil
 }
 
@@ -143,93 +141,50 @@ func (s *sqlClusterService) OnDelete(ctx context.Context, id string) error {
 	return nil
 }
 
-// UpdateClusterStatusFromAdapters aggregates adapter statuses into cluster status
+func clusterRefTime(c *api.Cluster) time.Time {
+	if c == nil {
+		return time.Time{}
+	}
+	if !c.UpdatedTime.IsZero() {
+		return c.UpdatedTime
+	}
+	return c.CreatedTime
+}
+
+// UpdateClusterStatusFromAdapters recomputes aggregated Ready, Available, and per-adapter conditions
+// from stored adapter rows and persists them to the cluster's status.
 func (s *sqlClusterService) UpdateClusterStatusFromAdapters(
 	ctx context.Context, clusterID string,
 ) (*api.Cluster, *errors.ServiceError) {
-	// Get the cluster
 	cluster, err := s.clusterDao.Get(ctx, clusterID)
 	if err != nil {
 		return nil, handleGetError("Cluster", "id", clusterID, err)
 	}
 
-	// Get all adapter statuses for this cluster
 	adapterStatuses, err := s.adapterStatusDao.FindByResource(ctx, "Cluster", clusterID)
 	if err != nil {
 		return nil, errors.GeneralError("Failed to get adapter statuses: %s", err)
 	}
 
-	now := time.Now()
+	refTime := clusterRefTime(cluster)
+	ready, available, adapterConditions := AggregateResourceStatus(AggregateResourceStatusInput{
+		ResourceGeneration: cluster.Generation,
+		RefTime:            refTime,
+		PrevConditionsJSON: cluster.StatusConditions,
+		RequiredAdapters:   s.adapterConfig.RequiredClusterAdapters(),
+		AdapterStatuses:    adapterStatuses,
+	})
 
-	// Build the list of adapter ResourceConditions
-	adapterConditions := []api.ResourceCondition{}
-
-	for _, adapterStatus := range adapterStatuses {
-		// Unmarshal Conditions from JSONB
-		var conditions []api.AdapterCondition
-		if unmarshalErr := json.Unmarshal(adapterStatus.Conditions, &conditions); unmarshalErr != nil {
-			continue // Skip if can't unmarshal
-		}
-
-		// Find the "Available" condition
-		var availableCondition *api.AdapterCondition
-		for i := range conditions {
-			if conditions[i].Type == "Available" {
-				availableCondition = &conditions[i]
-				break
-			}
-		}
-
-		if availableCondition == nil {
-			// No Available condition, skip this adapter
-			continue
-		}
-
-		// Convert to ResourceCondition
-		condResource := api.ResourceCondition{
-			Type:               MapAdapterToConditionType(adapterStatus.Adapter),
-			Status:             api.ResourceConditionStatus(availableCondition.Status),
-			Reason:             availableCondition.Reason,
-			Message:            availableCondition.Message,
-			ObservedGeneration: adapterStatus.ObservedGeneration,
-			LastTransitionTime: availableCondition.LastTransitionTime,
-		}
-
-		// Set CreatedTime with nil check
-		if adapterStatus.CreatedTime != nil {
-			condResource.CreatedTime = *adapterStatus.CreatedTime
-		}
-
-		// Set LastUpdatedTime with nil check
-		if adapterStatus.LastReportTime != nil {
-			condResource.LastUpdatedTime = *adapterStatus.LastReportTime
-		}
-
-		adapterConditions = append(adapterConditions, condResource)
-	}
-
-	// Compute synthetic Available and Ready conditions
-	availableCondition, readyCondition := BuildSyntheticConditions(
-		cluster.StatusConditions,
-		adapterStatuses,
-		s.adapterConfig.RequiredClusterAdapters(),
-		cluster.Generation,
-		now,
-	)
-
-	// Combine synthetic conditions with adapter conditions
-	// Put Available and Ready first
-	allConditions := []api.ResourceCondition{availableCondition, readyCondition}
+	allConditions := make([]api.ResourceCondition, 0, 2+len(adapterConditions))
+	allConditions = append(allConditions, ready, available)
 	allConditions = append(allConditions, adapterConditions...)
 
-	// Marshal conditions to JSON
 	conditionsJSON, err := json.Marshal(allConditions)
 	if err != nil {
 		return nil, errors.GeneralError("Failed to marshal conditions: %s", err)
 	}
 	cluster.StatusConditions = conditionsJSON
 
-	// Save the updated cluster
 	cluster, err = s.clusterDao.Replace(ctx, cluster)
 	if err != nil {
 		return nil, handleUpdateError("Cluster", err)
@@ -238,16 +193,15 @@ func (s *sqlClusterService) UpdateClusterStatusFromAdapters(
 	return cluster, nil
 }
 
-// ProcessAdapterStatus handles the business logic for adapter status:
-// - Validates that all mandatory conditions (Available, Applied, Health) are present
-// - Rejects duplicate condition types
-// - For first status report: accepts Unknown Available condition to avoid data loss
-// - For subsequent reports: rejects Unknown Available condition to preserve existing valid state
-// - Uses complete replacement semantics: each update replaces all conditions for this adapter
-// - Returns (nil, nil) for discarded updates
+// ProcessAdapterStatus applies discard rules, then mandatory validation and upsert.
 func (s *sqlClusterService) ProcessAdapterStatus(
 	ctx context.Context, clusterID string, adapterStatus *api.AdapterStatus,
 ) (*api.AdapterStatus, *errors.ServiceError) {
+	cluster, err := s.clusterDao.Get(ctx, clusterID)
+	if err != nil {
+		return nil, handleGetError("Cluster", "id", clusterID, err)
+	}
+
 	existingStatus, findErr := s.adapterStatusDao.FindByResourceAndAdapter(
 		ctx, "Cluster", clusterID, adapterStatus.Adapter,
 	)
@@ -256,20 +210,42 @@ func (s *sqlClusterService) ProcessAdapterStatus(
 			return nil, errors.GeneralError("Failed to get adapter status: %s", findErr)
 		}
 	}
-	if existingStatus != nil && adapterStatus.ObservedGeneration < existingStatus.ObservedGeneration {
-		// Discard stale status updates (older observed_generation).
+
+	if adapterStatus.ObservedGeneration > cluster.Generation {
+		logger.With(logger.WithClusterID(ctx, clusterID), logger.FieldAdapter, adapterStatus.Adapter).
+			Debug("Discarding adapter status update: future generation")
 		return nil, nil
 	}
 
-	// Parse conditions from the adapter status
-	var conditions []api.AdapterCondition
-	if len(adapterStatus.Conditions) > 0 {
-		if err := json.Unmarshal(adapterStatus.Conditions, &conditions); err != nil {
-			return nil, errors.GeneralError("Failed to unmarshal adapter status conditions: %s", err)
+	if existingStatus != nil && adapterStatus.ObservedGeneration < existingStatus.ObservedGeneration {
+		logger.With(logger.WithClusterID(ctx, clusterID), logger.FieldAdapter, adapterStatus.Adapter).
+			Debug("Discarding adapter status update: stale generation")
+		return nil, nil
+	}
+
+	incomingObs := AdapterObservedTime(adapterStatus)
+	if incomingObs.IsZero() {
+		logger.With(logger.WithClusterID(ctx, clusterID), logger.FieldAdapter, adapterStatus.Adapter).
+			Debug("Discarding adapter status update: zero observed time")
+		return nil, nil
+	}
+
+	if existingStatus != nil && adapterStatus.ObservedGeneration == existingStatus.ObservedGeneration {
+		prevObs := AdapterObservedTime(existingStatus)
+		if !prevObs.IsZero() && incomingObs.Before(prevObs) {
+			logger.With(logger.WithClusterID(ctx, clusterID), logger.FieldAdapter, adapterStatus.Adapter).
+				Debug("Discarding adapter status update: stale observed time")
+			return nil, nil
 		}
 	}
 
-	// Validate mandatory conditions
+	var conditions []api.AdapterCondition
+	if len(adapterStatus.Conditions) > 0 {
+		if errUnmarshal := json.Unmarshal(adapterStatus.Conditions, &conditions); errUnmarshal != nil {
+			return nil, errors.GeneralError("Failed to unmarshal adapter status conditions: %s", errUnmarshal)
+		}
+	}
+
 	if errorType, conditionName := ValidateMandatoryConditions(conditions); errorType != "" {
 		return nil, errors.Validation(
 			"missing mandatory condition '%s': all adapters must report Available, Applied, and Health",
@@ -277,43 +253,49 @@ func (s *sqlClusterService) ProcessAdapterStatus(
 		)
 	}
 
-	// Check Available condition for Unknown status
 	triggerAggregation := false
 	for _, cond := range conditions {
 		if cond.Type != api.ConditionTypeAvailable {
 			continue
 		}
 
-		triggerAggregation = true
-		if cond.Status == api.AdapterConditionUnknown {
+		isValidStatus := cond.Status == api.AdapterConditionTrue ||
+			cond.Status == api.AdapterConditionFalse ||
+			cond.Status == api.AdapterConditionUnknown
+		if !isValidStatus {
+			return nil, errors.Validation(
+				"condition '%s' has invalid status '%s': must be True, False, or Unknown",
+				cond.Type, cond.Status,
+			)
+		}
+
+		if cond.Status != api.AdapterConditionTrue && cond.Status != api.AdapterConditionFalse {
+			// Status is Unknown — only valid on first report; discard subsequent reports.
 			if existingStatus != nil {
-				// Non-first report && Available=Unknown → reject
-				ctx = logger.WithClusterID(ctx, clusterID)
-				logger.Info(ctx, fmt.Sprintf("Discarding adapter status update from %s: subsequent Unknown Available",
-					adapterStatus.Adapter))
+				logger.With(logger.WithClusterID(ctx, clusterID), logger.FieldAdapter, adapterStatus.Adapter).
+					Debug("Discarding adapter status update: subsequent Unknown Available")
 				return nil, nil
 			}
-			// First report from this adapter: allow storing even with Available=Unknown
-			// but skip aggregation since Unknown should not affect cluster-level conditions
+			// First report may carry Unknown; store it but do not aggregate from it.
 			triggerAggregation = false
+			break
 		}
+
+		triggerAggregation = true
 		break
 	}
 
-	// Upsert the adapter status (complete replacement)
+	adapterStatus.ResourceType = "Cluster"
+	adapterStatus.ResourceID = clusterID
+
 	upsertedStatus, err := s.adapterStatusDao.Upsert(ctx, adapterStatus)
 	if err != nil {
 		return nil, handleCreateError("AdapterStatus", err)
 	}
 
-	// Only trigger aggregation when triggerAggregation is true
 	if triggerAggregation {
-		if _, aggregateErr := s.UpdateClusterStatusFromAdapters(
-			ctx, clusterID,
-		); aggregateErr != nil {
-			// Log error but don't fail the request - the status will be computed on next update
-			ctx = logger.WithClusterID(ctx, clusterID)
-			logger.WithError(ctx, aggregateErr).Warn("Failed to aggregate cluster status")
+		if _, aggregateErr := s.UpdateClusterStatusFromAdapters(ctx, clusterID); aggregateErr != nil {
+			return nil, aggregateErr
 		}
 	}
 
