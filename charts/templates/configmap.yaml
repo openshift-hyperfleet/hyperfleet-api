@@ -87,7 +87,6 @@ data:
 
       otel:
         enabled: {{ .Values.config.logging.otel.enabled }}
-        sampling_rate: {{ .Values.config.logging.otel.sampling_rate }}
 
       masking:
         enabled: {{ .Values.config.logging.masking.enabled }}
