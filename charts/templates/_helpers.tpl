@@ -36,9 +36,7 @@ Common labels
 {{- define "hyperfleet-api.labels" -}}
 helm.sh/chart: {{ include "hyperfleet-api.chart" . }}
 {{ include "hyperfleet-api.selectorLabels" . }}
-{{- if .Chart.AppVersion }}
-app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
-{{- end }}
+app.kubernetes.io/version: {{ .Values.image.tag | default .Chart.AppVersion | quote }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
 
@@ -66,11 +64,16 @@ Create the name of the service account to use
 Validate required values that must not remain as placeholders.
 */}}
 {{- define "hyperfleet-api.validateValues" -}}
-{{- if eq .Values.image.registry "CHANGE_ME" -}}
+{{- $registry := trim (toString .Values.image.registry) -}}
+{{- if or (not $registry) (eq $registry "CHANGE_ME") -}}
 {{- fail "image.registry must be set to actual container registry via --set image.registry=XXX. See docs/deployment.md for examples" -}}
 {{- end -}}
-{{- if eq .Values.image.repository "CHANGE_ME" -}}
+{{- $repository := trim (toString .Values.image.repository) -}}
+{{- if or (not $repository) (eq $repository "CHANGE_ME") -}}
 {{- fail "image.repository must be set (e.g. --set image.repository=openshift-hyperfleet/hyperfleet-api). See docs/deployment.md for examples" -}}
+{{- end -}}
+{{- if not (trim (toString .Values.image.tag)) -}}
+{{- fail "image.tag must be set (e.g. --set image.tag=abc1234)" -}}
 {{- end -}}
 {{- end }}
 

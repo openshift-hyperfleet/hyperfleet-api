@@ -47,7 +47,7 @@ spec:
         command: ['sh', '-c', 'until nc -z {{ include "hyperfleet-api.fullname" . }}-postgresql {{ .Values.database.postgresql.port }}; do echo waiting for postgresql; sleep 2; done']
       {{- end }}
       - name: db-migrate
-        image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+        image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}"
         imagePullPolicy: {{ .Values.image.pullPolicy }}
         command: ["/app/hyperfleet-api", "migrate"]
         env:
@@ -65,7 +65,7 @@ spec:
       - name: {{ .Chart.Name }}
         securityContext:
           {{- toYaml .Values.securityContext | nindent 10 }}
-        image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+        image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}"
         imagePullPolicy: {{ .Values.image.pullPolicy }}
         workingDir: /app
         # Simple command - configuration via ConfigMap and environment variables
