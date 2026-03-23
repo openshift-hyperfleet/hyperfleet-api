@@ -79,42 +79,63 @@ func (d *sqlAdapterStatusDao) Upsert(
 ) (*api.AdapterStatus, error) {
 	g2 := (*d.sessionFactory).New(ctx)
 
-	// Try to find existing adapter status
+	// Keep deterministic observed time from the incoming report when provided (observed_time).
+	if adapterStatus.LastReportTime.IsZero() {
+		adapterStatus.LastReportTime = time.Now()
+	}
+
 	existing, err := d.FindByResourceAndAdapter(
 		ctx, adapterStatus.ResourceType, adapterStatus.ResourceID, adapterStatus.Adapter,
 	)
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		db.MarkForRollback(ctx, err)
+		return nil, err
+	}
 
-	if err != nil {
-		// If not found, create new
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return d.Create(ctx, adapterStatus)
+	if err == nil && existing != nil {
+		// Preserve LastTransitionTime for conditions whose status hasn't changed.
+		adapterStatus.Conditions = preserveLastTransitionTime(existing.Conditions, adapterStatus.Conditions)
+
+		updateResult := g2.Model(&api.AdapterStatus{}).
+			Where("resource_type = ? AND resource_id = ? AND adapter = ?",
+				adapterStatus.ResourceType, adapterStatus.ResourceID, adapterStatus.Adapter).
+			Where(
+				"observed_generation < ? OR (observed_generation = ? AND last_report_time < ?)",
+				adapterStatus.ObservedGeneration,
+				adapterStatus.ObservedGeneration,
+				adapterStatus.LastReportTime,
+			).
+			Updates(map[string]interface{}{
+				"conditions":          adapterStatus.Conditions,
+				"data":                adapterStatus.Data,
+				"metadata":            adapterStatus.Metadata,
+				"observed_generation": adapterStatus.ObservedGeneration,
+				"last_report_time":    adapterStatus.LastReportTime,
+			})
+		if updateResult.Error != nil {
+			db.MarkForRollback(ctx, updateResult.Error)
+			return nil, updateResult.Error
 		}
-		// Other errors
-		db.MarkForRollback(ctx, err)
-		return nil, err
+
+		// No-op when the stored row is fresher or equal.
+		if updateResult.RowsAffected == 0 {
+			return d.FindByResourceAndAdapter(ctx, adapterStatus.ResourceType, adapterStatus.ResourceID, adapterStatus.Adapter)
+		}
+
+		return d.FindByResourceAndAdapter(ctx, adapterStatus.ResourceType, adapterStatus.ResourceID, adapterStatus.Adapter)
 	}
 
-	// Update existing record
-	// Keep the original ID and CreatedTime
-	adapterStatus.ID = existing.ID
-	if existing.CreatedTime != nil {
-		adapterStatus.CreatedTime = existing.CreatedTime
+	createResult := g2.Omit(clause.Associations).Clauses(clause.OnConflict{DoNothing: true}).Create(adapterStatus)
+	if createResult.Error != nil {
+		db.MarkForRollback(ctx, createResult.Error)
+		return nil, createResult.Error
+	}
+	if createResult.RowsAffected > 0 {
+		return adapterStatus, nil
 	}
 
-	// Update LastReportTime to now
-	now := time.Now()
-	adapterStatus.LastReportTime = &now
-
-	// Preserve LastTransitionTime for conditions whose status hasn't changed
-	adapterStatus.Conditions = preserveLastTransitionTime(existing.Conditions, adapterStatus.Conditions)
-
-	// Save (update) the record
-	if err := g2.Omit(clause.Associations).Save(adapterStatus).Error; err != nil {
-		db.MarkForRollback(ctx, err)
-		return nil, err
-	}
-
-	return adapterStatus, nil
+	// A row was inserted concurrently; return the latest stored row without overwriting it.
+	return d.FindByResourceAndAdapter(ctx, adapterStatus.ResourceType, adapterStatus.ResourceID, adapterStatus.Adapter)
 }
 
 func (d *sqlAdapterStatusDao) Delete(ctx context.Context, id string) error {

@@ -49,6 +49,13 @@ func (d *mockNodePoolDao) Get(ctx context.Context, id string) (*api.NodePool, er
 }
 
 func (d *mockNodePoolDao) Create(ctx context.Context, nodePool *api.NodePool) (*api.NodePool, error) {
+	if nodePool.CreatedTime.IsZero() {
+		now := time.Now()
+		nodePool.CreatedTime = now
+	}
+	if nodePool.UpdatedTime.IsZero() {
+		nodePool.UpdatedTime = nodePool.CreatedTime
+	}
 	d.nodePools[nodePool.ID] = nodePool
 	return nodePool, nil
 }
@@ -85,7 +92,8 @@ var _ dao.NodePoolDao = &mockNodePoolDao{}
 
 // TestNodePoolProcessAdapterStatus_FirstUnknownCondition tests that the first Unknown Available condition is stored
 func TestNodePoolProcessAdapterStatus_FirstUnknownCondition(t *testing.T) {
-	RegisterTestingT(t)
+	t.Parallel()
+	g := NewWithT(t)
 
 	nodePoolDao := newMockNodePoolDao()
 	adapterStatusDao := newMockAdapterStatusDao()
@@ -95,6 +103,12 @@ func TestNodePoolProcessAdapterStatus_FirstUnknownCondition(t *testing.T) {
 
 	ctx := context.Background()
 	nodePoolID := testNodePoolID
+
+	now := time.Now()
+	nodePoolDao.nodePools[nodePoolID] = &api.NodePool{
+		Meta:       api.Meta{ID: nodePoolID, CreatedTime: now, UpdatedTime: now},
+		Generation: 1,
+	}
 
 	// Create first adapter status with all mandatory conditions but Available=Unknown
 	conditions := []api.AdapterCondition{
@@ -116,29 +130,31 @@ func TestNodePoolProcessAdapterStatus_FirstUnknownCondition(t *testing.T) {
 	}
 	conditionsJSON, _ := json.Marshal(conditions)
 
-	now := time.Now()
 	adapterStatus := &api.AdapterStatus{
-		ResourceType: "NodePool",
-		ResourceID:   nodePoolID,
-		Adapter:      "test-adapter",
-		Conditions:   conditionsJSON,
-		CreatedTime:  &now,
+		ResourceType:       "NodePool",
+		ResourceID:         nodePoolID,
+		Adapter:            "test-adapter",
+		Conditions:         conditionsJSON,
+		ObservedGeneration: 1,
+		CreatedTime:        now,
+		LastReportTime:     now,
 	}
 
 	result, err := service.ProcessAdapterStatus(ctx, nodePoolID, adapterStatus)
 
-	Expect(err).To(BeNil())
-	Expect(result).ToNot(BeNil(), "First report with Available=Unknown should be accepted")
-	Expect(result.Adapter).To(Equal("test-adapter"))
+	g.Expect(err).To(BeNil())
+	g.Expect(result).ToNot(BeNil(), "First report with Available=Unknown should be accepted")
+	g.Expect(result.Adapter).To(Equal("test-adapter"))
 
 	// Verify the status was stored
 	storedStatuses, _ := adapterStatusDao.FindByResource(ctx, "NodePool", nodePoolID)
-	Expect(len(storedStatuses)).To(Equal(1), "First Unknown status should be stored")
+	g.Expect(len(storedStatuses)).To(Equal(1), "First Unknown status should be stored")
 }
 
 // TestNodePoolProcessAdapterStatus_SubsequentUnknownCondition tests that subsequent Unknown conditions are discarded
 func TestNodePoolProcessAdapterStatus_SubsequentUnknownCondition(t *testing.T) {
-	RegisterTestingT(t)
+	t.Parallel()
+	g := NewWithT(t)
 
 	nodePoolDao := newMockNodePoolDao()
 	adapterStatusDao := newMockAdapterStatusDao()
@@ -149,6 +165,12 @@ func TestNodePoolProcessAdapterStatus_SubsequentUnknownCondition(t *testing.T) {
 	ctx := context.Background()
 	nodePoolID := testNodePoolID
 
+	now := time.Now()
+	nodePoolDao.nodePools[nodePoolID] = &api.NodePool{
+		Meta:       api.Meta{ID: nodePoolID, CreatedTime: now, UpdatedTime: now},
+		Generation: 1,
+	}
+
 	// Pre-populate an existing adapter status
 	conditions := []api.AdapterCondition{
 		{Type: api.ConditionTypeAvailable, Status: api.AdapterConditionUnknown, LastTransitionTime: time.Now()},
@@ -157,34 +179,124 @@ func TestNodePoolProcessAdapterStatus_SubsequentUnknownCondition(t *testing.T) {
 	}
 	conditionsJSON, _ := json.Marshal(conditions)
 
-	now := time.Now()
 	existingStatus := &api.AdapterStatus{
-		ResourceType: "NodePool",
-		ResourceID:   nodePoolID,
-		Adapter:      "test-adapter",
-		Conditions:   conditionsJSON,
-		CreatedTime:  &now,
+		ResourceType:       "NodePool",
+		ResourceID:         nodePoolID,
+		Adapter:            "test-adapter",
+		Conditions:         conditionsJSON,
+		ObservedGeneration: 1,
+		CreatedTime:        now,
+		LastReportTime:     now,
 	}
 	_, _ = adapterStatusDao.Upsert(ctx, existingStatus)
 
 	// Now send another Unknown status report
 	newAdapterStatus := &api.AdapterStatus{
-		ResourceType: "NodePool",
-		ResourceID:   nodePoolID,
-		Adapter:      "test-adapter",
-		Conditions:   conditionsJSON,
-		CreatedTime:  &now,
+		ResourceType:       "NodePool",
+		ResourceID:         nodePoolID,
+		Adapter:            "test-adapter",
+		Conditions:         conditionsJSON,
+		ObservedGeneration: 1,
+		CreatedTime:        now,
+		LastReportTime:     now,
 	}
 
 	result, err := service.ProcessAdapterStatus(ctx, nodePoolID, newAdapterStatus)
 
-	Expect(err).To(BeNil())
-	Expect(result).To(BeNil(), "Subsequent Unknown status should be discarded")
+	g.Expect(err).To(BeNil())
+	g.Expect(result).To(BeNil(), "Subsequent Unknown status should be discarded")
+}
+
+// TestNodePoolProcessAdapterStatus_InvalidStatusReturnsValidationError tests that a non-True/False/Unknown
+// Available status is rejected with a validation error.
+func TestNodePoolProcessAdapterStatus_InvalidStatusReturnsValidationError(t *testing.T) {
+	t.Parallel()
+	g := NewWithT(t)
+
+	nodePoolDao := newMockNodePoolDao()
+	adapterStatusDao := newMockAdapterStatusDao()
+	config := testNodePoolAdapterConfig()
+	service := NewNodePoolService(nodePoolDao, adapterStatusDao, config)
+
+	ctx := context.Background()
+	nodePoolID := testNodePoolID
+
+	now := time.Now()
+	nodePoolDao.nodePools[nodePoolID] = &api.NodePool{
+		Meta:       api.Meta{ID: nodePoolID, CreatedTime: now, UpdatedTime: now},
+		Generation: 1,
+	}
+
+	conditions := []api.AdapterCondition{
+		{Type: api.ConditionTypeAvailable, Status: "Pending", LastTransitionTime: time.Now()},
+		{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+	}
+	conditionsJSON, _ := json.Marshal(conditions)
+	adapterStatus := &api.AdapterStatus{
+		ResourceType:       "NodePool",
+		ResourceID:         nodePoolID,
+		Adapter:            "test-adapter",
+		Conditions:         conditionsJSON,
+		ObservedGeneration: 1,
+		CreatedTime:        now,
+		LastReportTime:     now,
+	}
+
+	result, err := service.ProcessAdapterStatus(ctx, nodePoolID, adapterStatus)
+
+	g.Expect(err).ToNot(BeNil(), "Invalid status should return a validation error")
+	g.Expect(err.HTTPCode).To(Equal(http.StatusBadRequest))
+	g.Expect(result).To(BeNil())
+}
+
+// TestNodePoolProcessAdapterStatus_EmptyStatusReturnsValidationError tests that an empty Available
+// status is rejected with a validation error.
+func TestNodePoolProcessAdapterStatus_EmptyStatusReturnsValidationError(t *testing.T) {
+	t.Parallel()
+	g := NewWithT(t)
+
+	nodePoolDao := newMockNodePoolDao()
+	adapterStatusDao := newMockAdapterStatusDao()
+	config := testNodePoolAdapterConfig()
+	service := NewNodePoolService(nodePoolDao, adapterStatusDao, config)
+
+	ctx := context.Background()
+	nodePoolID := testNodePoolID
+
+	now := time.Now()
+	nodePoolDao.nodePools[nodePoolID] = &api.NodePool{
+		Meta:       api.Meta{ID: nodePoolID, CreatedTime: now, UpdatedTime: now},
+		Generation: 1,
+	}
+
+	conditions := []api.AdapterCondition{
+		{Type: api.ConditionTypeAvailable, Status: "", LastTransitionTime: time.Now()},
+		{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+	}
+	conditionsJSON, _ := json.Marshal(conditions)
+	adapterStatus := &api.AdapterStatus{
+		ResourceType:       "NodePool",
+		ResourceID:         nodePoolID,
+		Adapter:            "test-adapter",
+		Conditions:         conditionsJSON,
+		ObservedGeneration: 1,
+		CreatedTime:        now,
+		LastReportTime:     now,
+	}
+
+	result, err := service.ProcessAdapterStatus(ctx, nodePoolID, adapterStatus)
+
+	g.Expect(err).ToNot(BeNil(), "Empty status should return a validation error")
+	g.Expect(err.HTTPCode).To(Equal(http.StatusBadRequest))
+	g.Expect(result).To(BeNil())
 }
 
 // TestNodePoolProcessAdapterStatus_TrueCondition tests that True Available condition upserts and aggregates
 func TestNodePoolProcessAdapterStatus_TrueCondition(t *testing.T) {
-	RegisterTestingT(t)
+	t.Parallel()
+	g := NewWithT(t)
 
 	nodePoolDao := newMockNodePoolDao()
 	adapterStatusDao := newMockAdapterStatusDao()
@@ -201,7 +313,7 @@ func TestNodePoolProcessAdapterStatus_TrueCondition(t *testing.T) {
 	}
 	nodePool.ID = nodePoolID
 	_, svcErr := service.Create(ctx, nodePool)
-	Expect(svcErr).To(BeNil())
+	g.Expect(svcErr).To(BeNil())
 
 	// Create adapter status with all mandatory conditions
 	conditions := []api.AdapterCondition{
@@ -225,28 +337,30 @@ func TestNodePoolProcessAdapterStatus_TrueCondition(t *testing.T) {
 
 	now := time.Now()
 	adapterStatus := &api.AdapterStatus{
-		ResourceType: "NodePool",
-		ResourceID:   nodePoolID,
-		Adapter:      "test-adapter",
-		Conditions:   conditionsJSON,
-		CreatedTime:  &now,
+		ResourceType:   "NodePool",
+		ResourceID:     nodePoolID,
+		Adapter:        "test-adapter",
+		Conditions:     conditionsJSON,
+		CreatedTime:    now,
+		LastReportTime: now,
 	}
 
 	result, err := service.ProcessAdapterStatus(ctx, nodePoolID, adapterStatus)
 
-	Expect(err).To(BeNil())
-	Expect(result).ToNot(BeNil(), "ProcessAdapterStatus should return the upserted status")
-	Expect(result.Adapter).To(Equal("test-adapter"))
+	g.Expect(err).To(BeNil())
+	g.Expect(result).ToNot(BeNil(), "ProcessAdapterStatus should return the upserted status")
+	g.Expect(result.Adapter).To(Equal("test-adapter"))
 
 	// Verify the status was stored
 	storedStatuses, _ := adapterStatusDao.FindByResource(ctx, "NodePool", nodePoolID)
-	Expect(len(storedStatuses)).To(Equal(1), "Status should be stored for True condition")
+	g.Expect(len(storedStatuses)).To(Equal(1), "Status should be stored for True condition")
 }
 
 // TestNodePoolProcessAdapterStatus_FirstMultipleConditions_AvailableUnknown tests that first reports
 // with Available=Unknown are accepted even when other conditions are present
 func TestNodePoolProcessAdapterStatus_FirstMultipleConditions_AvailableUnknown(t *testing.T) {
-	RegisterTestingT(t)
+	t.Parallel()
+	g := NewWithT(t)
 
 	nodePoolDao := newMockNodePoolDao()
 	adapterStatusDao := newMockAdapterStatusDao()
@@ -256,6 +370,12 @@ func TestNodePoolProcessAdapterStatus_FirstMultipleConditions_AvailableUnknown(t
 
 	ctx := context.Background()
 	nodePoolID := testNodePoolID
+
+	now := time.Now()
+	nodePoolDao.nodePools[nodePoolID] = &api.NodePool{
+		Meta:       api.Meta{ID: nodePoolID, CreatedTime: now, UpdatedTime: now},
+		Generation: 1,
+	}
 
 	// Create first adapter status with all mandatory conditions but Available=Unknown
 	conditions := []api.AdapterCondition{
@@ -282,29 +402,31 @@ func TestNodePoolProcessAdapterStatus_FirstMultipleConditions_AvailableUnknown(t
 	}
 	conditionsJSON, _ := json.Marshal(conditions)
 
-	now := time.Now()
 	adapterStatus := &api.AdapterStatus{
-		ResourceType: "NodePool",
-		ResourceID:   nodePoolID,
-		Adapter:      "test-adapter",
-		Conditions:   conditionsJSON,
-		CreatedTime:  &now,
+		ResourceType:       "NodePool",
+		ResourceID:         nodePoolID,
+		Adapter:            "test-adapter",
+		Conditions:         conditionsJSON,
+		ObservedGeneration: 1,
+		CreatedTime:        now,
+		LastReportTime:     now,
 	}
 
 	result, err := service.ProcessAdapterStatus(ctx, nodePoolID, adapterStatus)
 
-	Expect(err).To(BeNil())
-	Expect(result).ToNot(BeNil(), "First report with Available=Unknown should be accepted")
+	g.Expect(err).To(BeNil())
+	g.Expect(result).ToNot(BeNil(), "First report with Available=Unknown should be accepted")
 
 	// Verify the status was stored
 	storedStatuses, _ := adapterStatusDao.FindByResource(ctx, "NodePool", nodePoolID)
-	Expect(len(storedStatuses)).To(Equal(1), "First status with Available=Unknown should be stored")
+	g.Expect(len(storedStatuses)).To(Equal(1), "First status with Available=Unknown should be stored")
 }
 
 // TestNodePoolProcessAdapterStatus_SubsequentMultipleConditions_AvailableUnknown tests that subsequent
 // reports with multiple conditions including Available=Unknown are discarded
 func TestNodePoolProcessAdapterStatus_SubsequentMultipleConditions_AvailableUnknown(t *testing.T) {
-	RegisterTestingT(t)
+	t.Parallel()
+	g := NewWithT(t)
 
 	nodePoolDao := newMockNodePoolDao()
 	adapterStatusDao := newMockAdapterStatusDao()
@@ -315,6 +437,12 @@ func TestNodePoolProcessAdapterStatus_SubsequentMultipleConditions_AvailableUnkn
 	ctx := context.Background()
 	nodePoolID := testNodePoolID
 
+	now := time.Now()
+	nodePoolDao.nodePools[nodePoolID] = &api.NodePool{
+		Meta:       api.Meta{ID: nodePoolID, CreatedTime: now, UpdatedTime: now},
+		Generation: 1,
+	}
+
 	// Pre-populate an existing adapter status
 	existingConditions := []api.AdapterCondition{
 		{Type: api.ConditionTypeAvailable, Status: api.AdapterConditionUnknown, LastTransitionTime: time.Now()},
@@ -323,13 +451,14 @@ func TestNodePoolProcessAdapterStatus_SubsequentMultipleConditions_AvailableUnkn
 	}
 	existingConditionsJSON, _ := json.Marshal(existingConditions)
 
-	now := time.Now()
 	existingStatus := &api.AdapterStatus{
-		ResourceType: "NodePool",
-		ResourceID:   nodePoolID,
-		Adapter:      "test-adapter",
-		Conditions:   existingConditionsJSON,
-		CreatedTime:  &now,
+		ResourceType:       "NodePool",
+		ResourceID:         nodePoolID,
+		Adapter:            "test-adapter",
+		Conditions:         existingConditionsJSON,
+		ObservedGeneration: 1,
+		CreatedTime:        now,
+		LastReportTime:     now,
 	}
 	_, _ = adapterStatusDao.Upsert(ctx, existingStatus)
 
@@ -344,20 +473,24 @@ func TestNodePoolProcessAdapterStatus_SubsequentMultipleConditions_AvailableUnkn
 	conditionsJSON, _ := json.Marshal(conditions)
 
 	adapterStatus := &api.AdapterStatus{
-		ResourceType: "NodePool",
-		ResourceID:   nodePoolID,
-		Adapter:      "test-adapter",
-		Conditions:   conditionsJSON,
+		ResourceType:       "NodePool",
+		ResourceID:         nodePoolID,
+		Adapter:            "test-adapter",
+		Conditions:         conditionsJSON,
+		ObservedGeneration: 1,
+		CreatedTime:        now,
+		LastReportTime:     now,
 	}
 
 	result, err := service.ProcessAdapterStatus(ctx, nodePoolID, adapterStatus)
 
-	Expect(err).To(BeNil())
-	Expect(result).To(BeNil(), "Subsequent Available=Unknown should be discarded")
+	g.Expect(err).To(BeNil())
+	g.Expect(result).To(BeNil(), "Subsequent Available=Unknown should be discarded")
 }
 
 func TestNodePoolAvailableReadyTransitions(t *testing.T) {
-	RegisterTestingT(t)
+	t.Parallel()
+	g := NewWithT(t)
 
 	nodePoolDao := newMockNodePoolDao()
 	adapterStatusDao := newMockAdapterStatusDao()
@@ -373,15 +506,15 @@ func TestNodePoolAvailableReadyTransitions(t *testing.T) {
 	nodePool := &api.NodePool{Generation: 1}
 	nodePool.ID = nodePoolID
 	_, svcErr := service.Create(ctx, nodePool)
-	Expect(svcErr).To(BeNil())
+	g.Expect(svcErr).To(BeNil())
 
 	getSynth := func() (api.ResourceCondition, api.ResourceCondition) {
 		stored, getErr := nodePoolDao.Get(ctx, nodePoolID)
-		Expect(getErr).To(BeNil())
+		g.Expect(getErr).To(BeNil())
 
 		var conds []api.ResourceCondition
-		Expect(json.Unmarshal(stored.StatusConditions, &conds)).To(Succeed())
-		Expect(len(conds)).To(BeNumerically(">=", 2))
+		g.Expect(json.Unmarshal(stored.StatusConditions, &conds)).To(Succeed())
+		g.Expect(len(conds)).To(BeNumerically(">=", 2))
 
 		var available, ready *api.ResourceCondition
 		for i := range conds {
@@ -392,8 +525,8 @@ func TestNodePoolAvailableReadyTransitions(t *testing.T) {
 				ready = &conds[i]
 			}
 		}
-		Expect(available).ToNot(BeNil())
-		Expect(ready).ToNot(BeNil())
+		g.Expect(available).ToNot(BeNil())
+		g.Expect(ready).ToNot(BeNil())
 		return *available, *ready
 	}
 
@@ -412,66 +545,66 @@ func TestNodePoolAvailableReadyTransitions(t *testing.T) {
 			Adapter:            adapter,
 			ObservedGeneration: observedGen,
 			Conditions:         conditionsJSON,
-			CreatedTime:        &now,
-			LastReportTime:     &now,
+			CreatedTime:        now,
+			LastReportTime:     now,
 		}
 
 		_, err := service.ProcessAdapterStatus(ctx, nodePoolID, adapterStatus)
-		Expect(err).To(BeNil())
+		g.Expect(err).To(BeNil())
 	}
 
 	// No adapter statuses yet.
 	_, err := service.UpdateNodePoolStatusFromAdapters(ctx, nodePoolID)
-	Expect(err).To(BeNil())
+	g.Expect(err).To(BeNil())
 	avail, ready := getSynth()
-	Expect(avail.Status).To(Equal(api.ConditionFalse))
-	Expect(avail.ObservedGeneration).To(Equal(int32(1)))
-	Expect(ready.Status).To(Equal(api.ConditionFalse))
-	Expect(ready.ObservedGeneration).To(Equal(int32(1)))
+	g.Expect(avail.Status).To(Equal(api.ConditionFalse))
+	g.Expect(avail.ObservedGeneration).To(Equal(int32(1)))
+	g.Expect(ready.Status).To(Equal(api.ConditionFalse))
+	g.Expect(ready.ObservedGeneration).To(Equal(int32(1)))
 
 	// Partial adapters: still not Available/Ready.
 	upsert("validation", api.AdapterConditionTrue, 1)
 	avail, ready = getSynth()
-	Expect(avail.Status).To(Equal(api.ConditionFalse))
-	Expect(ready.Status).To(Equal(api.ConditionFalse))
+	g.Expect(avail.Status).To(Equal(api.ConditionFalse))
+	g.Expect(ready.Status).To(Equal(api.ConditionFalse))
 
 	// All required adapters available at gen=1 => Available=True, Ready=True.
 	upsert("hypershift", api.AdapterConditionTrue, 1)
 	avail, ready = getSynth()
-	Expect(avail.Status).To(Equal(api.ConditionTrue))
-	Expect(avail.ObservedGeneration).To(Equal(int32(1)))
-	Expect(ready.Status).To(Equal(api.ConditionTrue))
+	g.Expect(avail.Status).To(Equal(api.ConditionTrue))
+	g.Expect(avail.ObservedGeneration).To(Equal(int32(1)))
+	g.Expect(ready.Status).To(Equal(api.ConditionTrue))
 
 	// Bump resource generation => Ready flips to False; Available remains True.
 	nodePoolDao.nodePools[nodePoolID].Generation = 2
 	_, err = service.UpdateNodePoolStatusFromAdapters(ctx, nodePoolID)
-	Expect(err).To(BeNil())
+	g.Expect(err).To(BeNil())
 	avail, ready = getSynth()
-	Expect(avail.Status).To(Equal(api.ConditionTrue))
-	Expect(avail.ObservedGeneration).To(Equal(int32(1)))
-	Expect(ready.Status).To(Equal(api.ConditionFalse))
-	Expect(ready.ObservedGeneration).To(Equal(int32(2)))
+	g.Expect(avail.Status).To(Equal(api.ConditionTrue))
+	g.Expect(avail.ObservedGeneration).To(Equal(int32(1)))
+	g.Expect(ready.Status).To(Equal(api.ConditionFalse))
+	g.Expect(ready.ObservedGeneration).To(Equal(int32(2)))
 
 	// One adapter updates to gen=2 => Ready still False; Available still True (minObservedGeneration still 1).
 	upsert("validation", api.AdapterConditionTrue, 2)
 	avail, ready = getSynth()
-	Expect(avail.Status).To(Equal(api.ConditionTrue))
-	Expect(avail.ObservedGeneration).To(Equal(int32(1)))
-	Expect(ready.Status).To(Equal(api.ConditionFalse))
+	g.Expect(avail.Status).To(Equal(api.ConditionTrue))
+	g.Expect(avail.ObservedGeneration).To(Equal(int32(1)))
+	g.Expect(ready.Status).To(Equal(api.ConditionFalse))
 
 	// All required adapters at gen=2 => Ready becomes True, Available minObservedGeneration becomes 2.
 	upsert("hypershift", api.AdapterConditionTrue, 2)
 	avail, ready = getSynth()
-	Expect(avail.Status).To(Equal(api.ConditionTrue))
-	Expect(avail.ObservedGeneration).To(Equal(int32(2)))
-	Expect(ready.Status).To(Equal(api.ConditionTrue))
+	g.Expect(avail.Status).To(Equal(api.ConditionTrue))
+	g.Expect(avail.ObservedGeneration).To(Equal(int32(2)))
+	g.Expect(ready.Status).To(Equal(api.ConditionTrue))
 
 	// One required adapter goes False => both Available and Ready become False.
 	upsert("hypershift", api.AdapterConditionFalse, 2)
 	avail, ready = getSynth()
-	Expect(avail.Status).To(Equal(api.ConditionFalse))
-	Expect(avail.ObservedGeneration).To(Equal(int32(0)))
-	Expect(ready.Status).To(Equal(api.ConditionFalse))
+	g.Expect(avail.Status).To(Equal(api.ConditionFalse))
+	g.Expect(avail.ObservedGeneration).To(Equal(int32(2)))
+	g.Expect(ready.Status).To(Equal(api.ConditionFalse))
 
 	// Adapter status missing mandatory conditions should be rejected and not overwrite synthetic conditions.
 	prevStatus := api.NodePool{}.StatusConditions
@@ -480,19 +613,22 @@ func TestNodePoolAvailableReadyTransitions(t *testing.T) {
 		{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
 	}
 	nonAvailableJSON, _ := json.Marshal(nonAvailableConds)
+	naNow := time.Now()
 	nonAvailableStatus := &api.AdapterStatus{
 		ResourceType:       "NodePool",
 		ResourceID:         nodePoolID,
 		Adapter:            "hypershift",
 		ObservedGeneration: 2,
 		Conditions:         nonAvailableJSON,
+		CreatedTime:        naNow,
+		LastReportTime:     naNow,
 	}
 	result, svcErr := service.ProcessAdapterStatus(ctx, nodePoolID, nonAvailableStatus)
-	Expect(svcErr).ToNot(BeNil())
-	Expect(svcErr.HTTPCode).To(Equal(http.StatusBadRequest))
-	Expect(svcErr.Reason).To(ContainSubstring("missing mandatory condition"))
-	Expect(result).To(BeNil(), "Update missing mandatory conditions should be rejected")
-	Expect(nodePoolDao.nodePools[nodePoolID].StatusConditions).To(Equal(prevStatus))
+	g.Expect(svcErr).ToNot(BeNil())
+	g.Expect(svcErr.HTTPCode).To(Equal(http.StatusBadRequest))
+	g.Expect(svcErr.Reason).To(ContainSubstring("missing mandatory condition"))
+	g.Expect(result).To(BeNil(), "Update missing mandatory conditions should be rejected")
+	g.Expect(nodePoolDao.nodePools[nodePoolID].StatusConditions).To(Equal(prevStatus))
 
 	// Available=Unknown is a no-op (does not store, does not overwrite nodepool conditions).
 	prevStatus = api.NodePool{}.StatusConditions
@@ -503,20 +639,25 @@ func TestNodePoolAvailableReadyTransitions(t *testing.T) {
 		{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
 	}
 	unknownJSON, _ := json.Marshal(unknownConds)
+	unknownNow := time.Now()
 	unknownStatus := &api.AdapterStatus{
-		ResourceType: "NodePool",
-		ResourceID:   nodePoolID,
-		Adapter:      "hypershift",
-		Conditions:   unknownJSON,
+		ResourceType:       "NodePool",
+		ResourceID:         nodePoolID,
+		Adapter:            "hypershift",
+		Conditions:         unknownJSON,
+		ObservedGeneration: 2,
+		CreatedTime:        unknownNow,
+		LastReportTime:     unknownNow,
 	}
 	result, svcErr = service.ProcessAdapterStatus(ctx, nodePoolID, unknownStatus)
-	Expect(svcErr).To(BeNil())
-	Expect(result).To(BeNil())
-	Expect(nodePoolDao.nodePools[nodePoolID].StatusConditions).To(Equal(prevStatus))
+	g.Expect(svcErr).To(BeNil())
+	g.Expect(result).To(BeNil())
+	g.Expect(nodePoolDao.nodePools[nodePoolID].StatusConditions).To(Equal(prevStatus))
 }
 
 func TestNodePoolStaleAdapterStatusUpdatePolicy(t *testing.T) {
-	RegisterTestingT(t)
+	t.Parallel()
+	g := NewWithT(t)
 
 	nodePoolDao := newMockNodePoolDao()
 	adapterStatusDao := newMockAdapterStatusDao()
@@ -532,20 +673,20 @@ func TestNodePoolStaleAdapterStatusUpdatePolicy(t *testing.T) {
 	nodePool := &api.NodePool{Generation: 2}
 	nodePool.ID = nodePoolID
 	_, svcErr := service.Create(ctx, nodePool)
-	Expect(svcErr).To(BeNil())
+	g.Expect(svcErr).To(BeNil())
 
 	getAvailable := func() api.ResourceCondition {
 		stored, getErr := nodePoolDao.Get(ctx, nodePoolID)
-		Expect(getErr).To(BeNil())
+		g.Expect(getErr).To(BeNil())
 
 		var conds []api.ResourceCondition
-		Expect(json.Unmarshal(stored.StatusConditions, &conds)).To(Succeed())
+		g.Expect(json.Unmarshal(stored.StatusConditions, &conds)).To(Succeed())
 		for i := range conds {
 			if conds[i].Type == api.ConditionTypeAvailable {
 				return conds[i]
 			}
 		}
-		Expect(true).To(BeFalse(), "Available condition not found")
+		g.Expect(true).To(BeFalse(), "Available condition not found")
 		return api.ResourceCondition{}
 	}
 
@@ -564,36 +705,37 @@ func TestNodePoolStaleAdapterStatusUpdatePolicy(t *testing.T) {
 			Adapter:            adapter,
 			ObservedGeneration: observedGen,
 			Conditions:         conditionsJSON,
-			CreatedTime:        &now,
-			LastReportTime:     &now,
+			CreatedTime:        now,
+			LastReportTime:     now,
 		}
 
 		_, err := service.ProcessAdapterStatus(ctx, nodePoolID, adapterStatus)
-		Expect(err).To(BeNil())
+		g.Expect(err).To(BeNil())
 	}
 
 	// Current generation statuses => Available=True at observed_generation=2.
 	upsert("validation", api.AdapterConditionTrue, 2)
 	upsert("hypershift", api.AdapterConditionTrue, 2)
 	available := getAvailable()
-	Expect(available.Status).To(Equal(api.ConditionTrue))
-	Expect(available.ObservedGeneration).To(Equal(int32(2)))
+	g.Expect(available.Status).To(Equal(api.ConditionTrue))
+	g.Expect(available.ObservedGeneration).To(Equal(int32(2)))
 
 	// Stale True should not override newer True.
 	upsert("validation", api.AdapterConditionTrue, 1)
 	available = getAvailable()
-	Expect(available.Status).To(Equal(api.ConditionTrue))
-	Expect(available.ObservedGeneration).To(Equal(int32(2)))
+	g.Expect(available.Status).To(Equal(api.ConditionTrue))
+	g.Expect(available.ObservedGeneration).To(Equal(int32(2)))
 
 	// Stale False is more restrictive and should override but we do not override newer generation responses
 	upsert("validation", api.AdapterConditionFalse, 1)
 	available = getAvailable()
-	Expect(available.Status).To(Equal(api.ConditionTrue))
-	Expect(available.ObservedGeneration).To(Equal(int32(2)))
+	g.Expect(available.Status).To(Equal(api.ConditionTrue))
+	g.Expect(available.ObservedGeneration).To(Equal(int32(2)))
 }
 
 func TestNodePoolSyntheticTimestampsStableWithoutAdapterStatus(t *testing.T) {
-	RegisterTestingT(t)
+	t.Parallel()
+	g := NewWithT(t)
 
 	nodePoolDao := newMockNodePoolDao()
 	adapterStatusDao := newMockAdapterStatusDao()
@@ -632,12 +774,14 @@ func TestNodePoolSyntheticTimestampsStableWithoutAdapterStatus(t *testing.T) {
 		StatusConditions: initialConditionsJSON,
 	}
 	nodePool.ID = nodePoolID
+	nodePool.CreatedTime = fixedNow
+	nodePool.UpdatedTime = fixedNow
 	created, svcErr := service.Create(ctx, nodePool)
-	Expect(svcErr).To(BeNil())
+	g.Expect(svcErr).To(BeNil())
 
 	var createdConds []api.ResourceCondition
-	Expect(json.Unmarshal(created.StatusConditions, &createdConds)).To(Succeed())
-	Expect(len(createdConds)).To(BeNumerically(">=", 2))
+	g.Expect(json.Unmarshal(created.StatusConditions, &createdConds)).To(Succeed())
+	g.Expect(len(createdConds)).To(BeNumerically(">=", 2))
 
 	var createdAvailable, createdReady *api.ResourceCondition
 	for i := range createdConds {
@@ -648,21 +792,21 @@ func TestNodePoolSyntheticTimestampsStableWithoutAdapterStatus(t *testing.T) {
 			createdReady = &createdConds[i]
 		}
 	}
-	Expect(createdAvailable).ToNot(BeNil())
-	Expect(createdReady).ToNot(BeNil())
-	Expect(createdAvailable.CreatedTime).To(Equal(fixedNow))
-	Expect(createdAvailable.LastTransitionTime).To(Equal(fixedNow))
-	Expect(createdAvailable.LastUpdatedTime).To(Equal(fixedNow))
-	Expect(createdReady.CreatedTime).To(Equal(fixedNow))
-	Expect(createdReady.LastTransitionTime).To(Equal(fixedNow))
-	Expect(createdReady.LastUpdatedTime).To(Equal(fixedNow))
+	g.Expect(createdAvailable).ToNot(BeNil())
+	g.Expect(createdReady).ToNot(BeNil())
+	g.Expect(createdAvailable.CreatedTime).To(Equal(fixedNow))
+	g.Expect(createdAvailable.LastTransitionTime).To(Equal(fixedNow))
+	g.Expect(createdAvailable.LastUpdatedTime).To(Equal(fixedNow))
+	g.Expect(createdReady.CreatedTime).To(Equal(fixedNow))
+	g.Expect(createdReady.LastTransitionTime).To(Equal(fixedNow))
+	g.Expect(createdReady.LastUpdatedTime).To(Equal(fixedNow))
 
 	updated, err := service.UpdateNodePoolStatusFromAdapters(ctx, nodePoolID)
-	Expect(err).To(BeNil())
+	g.Expect(err).To(BeNil())
 
 	var updatedConds []api.ResourceCondition
-	Expect(json.Unmarshal(updated.StatusConditions, &updatedConds)).To(Succeed())
-	Expect(len(updatedConds)).To(BeNumerically(">=", 2))
+	g.Expect(json.Unmarshal(updated.StatusConditions, &updatedConds)).To(Succeed())
+	g.Expect(len(updatedConds)).To(BeNumerically(">=", 2))
 
 	var updatedAvailable, updatedReady *api.ResourceCondition
 	for i := range updatedConds {
@@ -673,12 +817,12 @@ func TestNodePoolSyntheticTimestampsStableWithoutAdapterStatus(t *testing.T) {
 			updatedReady = &updatedConds[i]
 		}
 	}
-	Expect(updatedAvailable).ToNot(BeNil())
-	Expect(updatedReady).ToNot(BeNil())
-	Expect(updatedAvailable.CreatedTime).To(Equal(fixedNow))
-	Expect(updatedAvailable.LastTransitionTime).To(Equal(fixedNow))
-	Expect(updatedAvailable.LastUpdatedTime).To(Equal(fixedNow))
-	Expect(updatedReady.CreatedTime).To(Equal(fixedNow))
-	Expect(updatedReady.LastTransitionTime).To(Equal(fixedNow))
-	Expect(updatedReady.LastUpdatedTime).To(Equal(fixedNow))
+	g.Expect(updatedAvailable).ToNot(BeNil())
+	g.Expect(updatedReady).ToNot(BeNil())
+	g.Expect(updatedAvailable.CreatedTime).To(Equal(fixedNow))
+	g.Expect(updatedAvailable.LastTransitionTime).To(Equal(fixedNow))
+	g.Expect(updatedAvailable.LastUpdatedTime).To(Equal(fixedNow))
+	g.Expect(updatedReady.CreatedTime).To(Equal(fixedNow))
+	g.Expect(updatedReady.LastTransitionTime).To(Equal(fixedNow))
+	g.Expect(updatedReady.LastUpdatedTime).To(Equal(fixedNow))
 }

@@ -67,8 +67,8 @@ func ConvertAdapterStatus(
 		Conditions:         conditionsJSON,
 		Data:               dataJSON,
 		Metadata:           metadataJSON,
-		CreatedTime:        &now,
-		LastReportTime:     &now,
+		CreatedTime:        now,
+		LastReportTime:     now,
 	}, nil
 }
 
@@ -138,23 +138,12 @@ func PresentAdapterStatus(adapterStatus *api.AdapterStatus) (openapi.AdapterStat
 		}
 	}
 
-	// Set default times if nil (shouldn't happen in normal operation)
-	createdTime := time.Time{}
-	if adapterStatus.CreatedTime != nil {
-		createdTime = *adapterStatus.CreatedTime
-	}
-
-	lastReportTime := time.Time{}
-	if adapterStatus.LastReportTime != nil {
-		lastReportTime = *adapterStatus.LastReportTime
-	}
-
 	return openapi.AdapterStatus{
 		Adapter:            adapterStatus.Adapter,
 		Conditions:         openapiConditions,
-		CreatedTime:        createdTime,
+		CreatedTime:        adapterStatus.CreatedTime,
 		Data:               &data,
-		LastReportTime:     lastReportTime,
+		LastReportTime:     adapterStatus.LastReportTime,
 		Metadata:           openapiMetadata,
 		ObservedGeneration: adapterStatus.ObservedGeneration,
 	}, nil
