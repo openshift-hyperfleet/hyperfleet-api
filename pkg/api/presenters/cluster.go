@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
@@ -97,6 +98,16 @@ func PresentCluster(cluster *api.Cluster) (openapi.Cluster, error) {
 		}
 	}
 
+	// Parse UUID from string to openapi_types.UUID
+	var uuidPtr *openapi_types.UUID
+	if cluster.UUID != "" {
+		parsedUUID, err := uuid.Parse(cluster.UUID)
+		if err != nil {
+			return openapi.Cluster{}, fmt.Errorf("invalid UUID format in database: %w", err)
+		}
+		uuidPtr = &parsedUUID
+	}
+
 	result := openapi.Cluster{
 		CreatedBy:   toEmail(cluster.CreatedBy),
 		CreatedTime: cluster.CreatedTime,
@@ -112,6 +123,7 @@ func PresentCluster(cluster *api.Cluster) (openapi.Cluster, error) {
 		},
 		UpdatedBy:   toEmail(cluster.UpdatedBy),
 		UpdatedTime: cluster.UpdatedTime,
+		Uuid:        uuidPtr,
 	}
 
 	return result, nil

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 )
@@ -13,6 +14,7 @@ type NodePool struct {
 	Cluster *Cluster `gorm:"foreignKey:OwnerID;references:ID"`
 	Meta
 	Kind             string         `json:"kind" gorm:"default:'NodePool'"`
+	UUID             string         `json:"uuid" gorm:"uniqueIndex;size:36;not null"`
 	Name             string         `json:"name" gorm:"size:15;not null"`
 	UpdatedBy        string         `json:"updated_by" gorm:"size:255;not null"`
 	Href             string         `json:"href,omitempty" gorm:"size:500"`
@@ -39,7 +41,13 @@ func (l NodePoolList) Index() NodePoolIndex {
 
 func (np *NodePool) BeforeCreate(tx *gorm.DB) error {
 	now := time.Now()
-	np.ID = NewID()
+	// Only generate if not already set (idempotent)
+	if np.ID == "" {
+		np.ID = NewID()
+	}
+	if np.UUID == "" {
+		np.UUID = uuid.New().String()
+	}
 	np.CreatedTime = now
 	np.UpdatedTime = now
 	if np.Generation == 0 {
@@ -54,7 +62,7 @@ func (np *NodePool) BeforeCreate(tx *gorm.DB) error {
 	}
 	// Set OwnerHref if not already set
 	if np.OwnerHref == "" {
-		np.OwnerHref = "/api/hyperfleet/v1/clusters/" + np.OwnerID
+		np.OwnerHref = fmt.Sprintf("/api/hyperfleet/v1/clusters/%s", np.OwnerID)
 	}
 	return nil
 }

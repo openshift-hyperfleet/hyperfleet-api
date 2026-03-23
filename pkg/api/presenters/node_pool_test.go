@@ -458,3 +458,24 @@ func TestPresentNodePool_MalformedStatusConditions(t *testing.T) {
 	Expect(err).ToNot(BeNil())
 	Expect(err.Error()).To(ContainSubstring("failed to unmarshal nodepool status conditions"))
 }
+
+// TestPresentNodePool_MalformedUUID tests error handling for malformed UUID in database
+func TestPresentNodePool_MalformedUUID(t *testing.T) {
+	RegisterTestingT(t)
+
+	nodePool := &api.NodePool{
+		Kind:             "NodePool",
+		Name:             "malformed-uuid-nodepool",
+		UUID:             "not-a-valid-uuid", // Invalid UUID format
+		Spec:             []byte("{}"),
+		Labels:           []byte("{}"),
+		OwnerID:          "cluster-123",
+		StatusConditions: []byte("[]"),
+	}
+	nodePool.ID = "nodepool-malformed-uuid"
+
+	_, err := PresentNodePool(nodePool)
+
+	Expect(err).ToNot(BeNil())
+	Expect(err.Error()).To(ContainSubstring("invalid UUID format in database"))
+}

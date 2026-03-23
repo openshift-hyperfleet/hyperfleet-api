@@ -745,6 +745,14 @@ components:
         updated_by:
           type: string
           format: email
+        uuid:
+          type: string
+          format: uuid
+          description: |-
+            RFC4122 UUID identifier for the cluster (immutable, assigned at creation).
+            This provides a stable, standards-compliant identifier for platform integrations
+            that require UUID format (e.g., Hypershift spec.clusterID).
+          example: 550e8400-e29b-41d4-a716-446655440000
         generation:
           type: integer
           format: int32
@@ -756,6 +764,7 @@ components:
         kind: Cluster
         id: cluster-123
         href: https://api.hyperfleet.com/v1/clusters/cluster-123
+        uuid: 550e8400-e29b-41d4-a716-446655440000
         name: cluster-123
         labels:
           environment: production
@@ -1002,6 +1011,14 @@ components:
         updated_by:
           type: string
           format: email
+        uuid:
+          type: string
+          format: uuid
+          description: |-
+            RFC4122 UUID identifier for the nodepool (immutable, assigned at creation).
+            This provides a stable, standards-compliant identifier for platform integrations
+            that require UUID format.
+          example: 7c9e6679-7425-40de-944b-e07fc1f90ae7
         generation:
           type: integer
           format: int32
@@ -1015,6 +1032,7 @@ components:
         kind: NodePool
         id: nodepool-123
         href: https://api.hyperfleet.com/v1/nodepools/nodepool-123
+        uuid: 7c9e6679-7425-40de-944b-e07fc1f90ae7
         name: worker-pool-1
         labels:
           environment: production
@@ -1144,6 +1162,14 @@ components:
         updated_by:
           type: string
           format: email
+        uuid:
+          type: string
+          format: uuid
+          description: |-
+            RFC4122 UUID identifier for the nodepool (immutable, assigned at creation).
+            This provides a stable, standards-compliant identifier for platform integrations
+            that require UUID format.
+          example: 7c9e6679-7425-40de-944b-e07fc1f90ae7
         generation:
           type: integer
           format: int32

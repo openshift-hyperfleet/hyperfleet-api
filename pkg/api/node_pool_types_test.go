@@ -3,6 +3,7 @@ package api
 import (
 	"testing"
 
+	"github.com/google/uuid"
 	. "github.com/onsi/gomega"
 )
 
@@ -212,4 +213,98 @@ func TestNodePool_BeforeCreate_Complete(t *testing.T) {
 	Expect(nodepool.OwnerKind).To(Equal("Cluster"))
 	Expect(nodepool.Href).To(Equal("/api/hyperfleet/v1/clusters/cluster-complete/nodepools/" + nodepool.ID))
 	Expect(nodepool.OwnerHref).To(Equal("/api/hyperfleet/v1/clusters/cluster-complete"))
+}
+
+// TestNodePool_BeforeCreate_UUIDGeneration tests UUID auto-generation
+func TestNodePool_BeforeCreate_UUIDGeneration(t *testing.T) {
+	RegisterTestingT(t)
+
+	nodepool := &NodePool{
+		Name:    "test-nodepool",
+		OwnerID: "cluster-123",
+	}
+
+	err := nodepool.BeforeCreate(nil)
+	Expect(err).To(BeNil())
+	Expect(nodepool.UUID).ToNot(BeEmpty())
+
+	// Verify UUID format (RFC4122 v4)
+	parsedUUID, err := uuid.Parse(nodepool.UUID)
+	Expect(err).To(BeNil())
+	Expect(parsedUUID.String()).To(Equal(nodepool.UUID))
+}
+
+// TestNodePool_BeforeCreate_UUIDUniqueness tests that each nodepool gets a unique UUID
+func TestNodePool_BeforeCreate_UUIDUniqueness(t *testing.T) {
+	RegisterTestingT(t)
+
+	nodepool1 := &NodePool{Name: "nodepool-1", OwnerID: "cluster-123"}
+	nodepool2 := &NodePool{Name: "nodepool-2", OwnerID: "cluster-123"}
+	nodepool3 := &NodePool{Name: "nodepool-3", OwnerID: "cluster-123"}
+
+	_ = nodepool1.BeforeCreate(nil)
+	_ = nodepool2.BeforeCreate(nil)
+	_ = nodepool3.BeforeCreate(nil)
+
+	// All UUIDs should be different
+	Expect(nodepool1.UUID).ToNot(Equal(nodepool2.UUID))
+	Expect(nodepool1.UUID).ToNot(Equal(nodepool3.UUID))
+	Expect(nodepool2.UUID).ToNot(Equal(nodepool3.UUID))
+
+	// All should be valid UUIDs
+	_, err1 := uuid.Parse(nodepool1.UUID)
+	_, err2 := uuid.Parse(nodepool2.UUID)
+	_, err3 := uuid.Parse(nodepool3.UUID)
+	Expect(err1).To(BeNil())
+	Expect(err2).To(BeNil())
+	Expect(err3).To(BeNil())
+}
+
+// TestNodePool_BeforeCreate_UUIDAndIDDifferent tests that UUID and ID are independent
+func TestNodePool_BeforeCreate_UUIDAndIDDifferent(t *testing.T) {
+	RegisterTestingT(t)
+
+	nodepool := &NodePool{Name: "test-nodepool", OwnerID: "cluster-123"}
+
+	err := nodepool.BeforeCreate(nil)
+	Expect(err).To(BeNil())
+
+	// UUID and ID should both be set
+	Expect(nodepool.UUID).ToNot(BeEmpty())
+	Expect(nodepool.ID).ToNot(BeEmpty())
+
+	// UUID and ID should be different (UUID is hyphenated, ID is KSUID)
+	Expect(nodepool.UUID).ToNot(Equal(nodepool.ID))
+
+	// UUID should contain hyphens (RFC4122 format)
+	Expect(nodepool.UUID).To(ContainSubstring("-"))
+
+	// ID should not contain hyphens (KSUID format)
+	Expect(nodepool.ID).ToNot(ContainSubstring("-"))
+}
+
+// TestNodePool_BeforeCreate_UUIDImmutable tests UUID is set once and preserved on subsequent calls
+func TestNodePool_BeforeCreate_UUIDImmutable(t *testing.T) {
+	RegisterTestingT(t)
+
+	nodepool := &NodePool{Name: "test-nodepool", OwnerID: "cluster-123"}
+
+	// First BeforeCreate call
+	err := nodepool.BeforeCreate(nil)
+	Expect(err).To(BeNil())
+	firstUUID := nodepool.UUID
+	firstID := nodepool.ID
+
+	// Second BeforeCreate call (simulating accidental double-call)
+	err = nodepool.BeforeCreate(nil)
+	Expect(err).To(BeNil())
+
+	// UUID and ID should be preserved (idempotent behavior)
+	// This prevents data corruption if BeforeCreate is accidentally called multiple times
+	Expect(nodepool.UUID).To(Equal(firstUUID))
+	Expect(nodepool.ID).To(Equal(firstID))
+
+	// UUID should still be valid
+	_, err1 := uuid.Parse(nodepool.UUID)
+	Expect(err1).To(BeNil())
 }
