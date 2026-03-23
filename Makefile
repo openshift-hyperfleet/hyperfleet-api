@@ -259,6 +259,7 @@ test-helm: ## Test Helm charts (lint, template, validate)
 	helm lint charts/ \
 		--set image.registry=quay.io \
 		--set image.repository=openshift-hyperfleet/hyperfleet-api \
+		--set image.tag=test \
 		--set 'adapters.cluster=["validation"]' \
 		--set 'adapters.nodepool=["validation"]'
 	@echo ""
@@ -266,6 +267,7 @@ test-helm: ## Test Helm charts (lint, template, validate)
 	helm template test-release charts/ \
 		--set image.registry=quay.io \
 		--set image.repository=openshift-hyperfleet/hyperfleet-api \
+		--set image.tag=test \
 		--set 'adapters.cluster=["validation"]' \
 		--set 'adapters.nodepool=["validation"]' > /dev/null
 	@echo "Default values template OK"
@@ -274,6 +276,7 @@ test-helm: ## Test Helm charts (lint, template, validate)
 	helm template test-release charts/ \
 		--set image.registry=quay.io \
 		--set image.repository=openshift-hyperfleet/hyperfleet-api \
+		--set image.tag=test \
 		--set 'adapters.cluster=["validation"]' \
 		--set 'adapters.nodepool=["validation"]' \
 		--set database.postgresql.enabled=false \
@@ -285,6 +288,7 @@ test-helm: ## Test Helm charts (lint, template, validate)
 	helm template test-release charts/ \
 		--set image.registry=quay.io \
 		--set image.repository=openshift-hyperfleet/hyperfleet-api \
+		--set image.tag=test \
 		--set 'adapters.cluster=["validation"]' \
 		--set 'adapters.nodepool=["validation"]' \
 		--set autoscaling.enabled=true \
@@ -296,6 +300,7 @@ test-helm: ## Test Helm charts (lint, template, validate)
 	helm template test-release charts/ \
 		--set image.registry=quay.io \
 		--set image.repository=openshift-hyperfleet/hyperfleet-api \
+		--set image.tag=test \
 		--set 'adapters.cluster=["validation"]' \
 		--set 'adapters.nodepool=["validation"]' \
 		--set podDisruptionBudget.enabled=true \
@@ -306,6 +311,7 @@ test-helm: ## Test Helm charts (lint, template, validate)
 	helm template test-release charts/ \
 		--set image.registry=quay.io \
 		--set image.repository=openshift-hyperfleet/hyperfleet-api \
+		--set image.tag=test \
 		--set 'adapters.cluster=["validation"]' \
 		--set 'adapters.nodepool=["validation"]' \
 		--set serviceMonitor.enabled=true \
@@ -316,6 +322,7 @@ test-helm: ## Test Helm charts (lint, template, validate)
 	helm template test-release charts/ \
 		--set image.registry=quay.io \
 		--set image.repository=openshift-hyperfleet/hyperfleet-api \
+		--set image.tag=test \
 		--set 'adapters.cluster=["validation"]' \
 		--set 'adapters.nodepool=["validation"]' \
 		--set auth.enableJwt=false \
@@ -335,6 +342,7 @@ test-helm: ## Test Helm charts (lint, template, validate)
 	helm template test-release charts/ \
 		--set image.registry=quay.io \
 		--set image.repository=openshift-hyperfleet/hyperfleet-api \
+		--set image.tag=test \
 		--set 'adapters.cluster=["validation"]' \
 		--set 'adapters.nodepool=["validation"]' \
 		--set database.pgbouncer.enabled=true > /dev/null
@@ -344,6 +352,7 @@ test-helm: ## Test Helm charts (lint, template, validate)
 	helm template test-release charts/ \
 		--set image.registry=quay.io \
 		--set image.repository=openshift-hyperfleet/hyperfleet-api \
+		--set image.tag=test \
 		--set-json 'adapters.cluster=["validation","dns","pullsecret","hypershift"]' \
 		--set-json 'adapters.nodepool=["validation","hypershift"]' > /dev/null
 	@echo "Full adapter config template OK"
