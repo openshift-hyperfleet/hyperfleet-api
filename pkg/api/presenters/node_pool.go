@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/google/uuid"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
 )
@@ -96,6 +98,16 @@ func PresentNodePool(nodePool *api.NodePool) (openapi.NodePool, error) {
 		}
 	}
 
+	// Parse UUID from string to openapi_types.UUID
+	var uuidPtr *openapi_types.UUID
+	if nodePool.UUID != "" {
+		parsedUUID, err := uuid.Parse(nodePool.UUID)
+		if err != nil {
+			return openapi.NodePool{}, fmt.Errorf("invalid UUID format in database: %w", err)
+		}
+		uuidPtr = &parsedUUID
+	}
+
 	kind := nodePool.Kind
 	result := openapi.NodePool{
 		CreatedBy:   toEmail(nodePool.CreatedBy),
@@ -117,6 +129,7 @@ func PresentNodePool(nodePool *api.NodePool) (openapi.NodePool, error) {
 		},
 		UpdatedBy:   toEmail(nodePool.UpdatedBy),
 		UpdatedTime: nodePool.UpdatedTime,
+		Uuid:        uuidPtr,
 	}
 
 	return result, nil

@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	. "github.com/onsi/gomega"
 	"gopkg.in/resty.v1"
 
@@ -850,4 +851,81 @@ func TestClusterPost_MissingSpec(t *testing.T) {
 	detail, ok := errorResponse["detail"].(string)
 	Expect(ok).To(BeTrue())
 	Expect(detail).To(ContainSubstring("spec is required"))
+}
+
+// TestClusterUUID tests that Cluster UUID is generated and returned in API responses
+func TestClusterUUID(t *testing.T) {
+	h, client := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+
+	// Test 1: POST creates cluster with UUID
+	clusterInput := openapi.ClusterCreateRequest{
+		Kind: util.PtrString("Cluster"),
+		Name: "test-uuid-cluster",
+		Spec: map[string]interface{}{"test": "spec"},
+	}
+
+	postResp, err := client.PostClusterWithResponse(
+		ctx, openapi.PostClusterJSONRequestBody(clusterInput), test.WithAuthToken(ctx),
+	)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(postResp.StatusCode()).To(Equal(http.StatusCreated))
+
+	clusterOutput := postResp.JSON201
+	Expect(clusterOutput).NotTo(BeNil())
+	Expect(clusterOutput.Uuid).NotTo(BeNil(), "UUID should be set on POST response")
+
+	// Convert openapi_types.UUID to string
+	uuidStr := clusterOutput.Uuid.String()
+	Expect(uuidStr).NotTo(BeEmpty(), "UUID should not be empty")
+
+	// Test 2: Verify UUID is valid RFC4122 format
+	parsedUUID, err := uuid.Parse(uuidStr)
+	Expect(err).To(BeNil(), "UUID should be valid RFC4122 format")
+	Expect(parsedUUID.String()).To(Equal(uuidStr), "UUID should match parsed value")
+
+	// Test 3: Verify UUID contains hyphens (RFC4122 format)
+	Expect(uuidStr).To(ContainSubstring("-"), "UUID should contain hyphens")
+
+	// Test 4: Verify UUID is different from ID (KSUID)
+	Expect(uuidStr).NotTo(Equal(*clusterOutput.Id), "UUID should differ from ID")
+	Expect(*clusterOutput.Id).NotTo(ContainSubstring("-"), "ID (KSUID) should not contain hyphens")
+
+	// Test 5: GET returns the same UUID
+	getResp, err := client.GetClusterByIdWithResponse(ctx, *clusterOutput.Id, nil, test.WithAuthToken(ctx))
+	Expect(err).NotTo(HaveOccurred())
+	Expect(getResp.StatusCode()).To(Equal(http.StatusOK))
+
+	getCluster := getResp.JSON200
+	Expect(getCluster).NotTo(BeNil())
+	Expect(getCluster.Uuid).NotTo(BeNil(), "UUID should be present in GET response")
+
+	getUUIDStr := getCluster.Uuid.String()
+	Expect(getUUIDStr).To(Equal(uuidStr), "UUID should be consistent between POST and GET")
+
+	// Test 6: Create another cluster and verify UUID is unique
+	clusterInput2 := openapi.ClusterCreateRequest{
+		Kind: util.PtrString("Cluster"),
+		Name: "test-uuid-cluster-2",
+		Spec: map[string]interface{}{"test": "spec"},
+	}
+
+	postResp2, err := client.PostClusterWithResponse(
+		ctx, openapi.PostClusterJSONRequestBody(clusterInput2), test.WithAuthToken(ctx),
+	)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(postResp2.StatusCode()).To(Equal(http.StatusCreated))
+
+	clusterOutput2 := postResp2.JSON201
+	Expect(clusterOutput2.Uuid).NotTo(BeNil())
+
+	uuid2Str := clusterOutput2.Uuid.String()
+	Expect(uuid2Str).NotTo(Equal(uuidStr), "Each cluster should have a unique UUID")
+
+	// Test 7: Verify second UUID is also valid RFC4122
+	parsedUUID2, err := uuid.Parse(uuid2Str)
+	Expect(err).To(BeNil(), "Second UUID should also be valid RFC4122 format")
+	Expect(parsedUUID2.String()).To(Equal(uuid2Str))
 }

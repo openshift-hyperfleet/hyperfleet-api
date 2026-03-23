@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/google/uuid"
 	. "github.com/onsi/gomega"
 	"gopkg.in/resty.v1"
 
@@ -446,4 +447,74 @@ func TestNodePoolPost_MissingSpec(t *testing.T) {
 	detail, ok := errorResponse["detail"].(string)
 	Expect(ok).To(BeTrue())
 	Expect(detail).To(ContainSubstring("spec is required"))
+}
+
+// TestNodePoolUUID tests that NodePool UUID is generated and returned in API responses
+func TestNodePoolUUID(t *testing.T) {
+	h, client := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+
+	// Create a parent cluster first
+	cluster, err := h.Factories.NewClusters(h.NewID())
+	Expect(err).NotTo(HaveOccurred())
+
+	// Test 1: POST creates nodepool with UUID
+	kind := kindNodePool
+	nodePoolInput := openapi.NodePoolCreateRequest{
+		Kind: &kind,
+		Name: "test-uuid-np",
+		Spec: map[string]interface{}{"test": "spec"},
+	}
+
+	postResp, err := client.CreateNodePoolWithResponse(
+		ctx, cluster.ID, openapi.CreateNodePoolJSONRequestBody(nodePoolInput), test.WithAuthToken(ctx),
+	)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(postResp.StatusCode()).To(Equal(http.StatusCreated))
+
+	nodePoolOutput := postResp.JSON201
+	Expect(nodePoolOutput).NotTo(BeNil())
+	Expect(nodePoolOutput.Uuid).NotTo(BeNil(), "UUID should be set on POST response")
+
+	// Convert openapi_types.UUID to string
+	uuidStr := nodePoolOutput.Uuid.String()
+	Expect(uuidStr).NotTo(BeEmpty(), "UUID should not be empty")
+
+	// Test 2: Verify UUID is valid RFC4122 format
+	parsedUUID, err := uuid.Parse(uuidStr)
+	Expect(err).To(BeNil(), "UUID should be valid RFC4122 format")
+	Expect(parsedUUID.String()).To(Equal(uuidStr), "UUID should match parsed value")
+
+	// Test 3: Verify UUID contains hyphens (RFC4122 format)
+	Expect(uuidStr).To(ContainSubstring("-"), "UUID should contain hyphens")
+
+	// Test 4: Verify UUID is different from ID (KSUID)
+	Expect(uuidStr).NotTo(Equal(*nodePoolOutput.Id), "UUID should differ from ID")
+	Expect(*nodePoolOutput.Id).NotTo(ContainSubstring("-"), "ID (KSUID) should not contain hyphens")
+
+	// Test 5: Create another nodepool and verify UUID is unique
+	nodePoolInput2 := openapi.NodePoolCreateRequest{
+		Kind: &kind,
+		Name: "test-uuid-np-2",
+		Spec: map[string]interface{}{"test": "spec"},
+	}
+
+	postResp2, err := client.CreateNodePoolWithResponse(
+		ctx, cluster.ID, openapi.CreateNodePoolJSONRequestBody(nodePoolInput2), test.WithAuthToken(ctx),
+	)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(postResp2.StatusCode()).To(Equal(http.StatusCreated))
+
+	nodePoolOutput2 := postResp2.JSON201
+	Expect(nodePoolOutput2.Uuid).NotTo(BeNil())
+
+	uuid2Str := nodePoolOutput2.Uuid.String()
+	Expect(uuid2Str).NotTo(Equal(uuidStr), "Each nodepool should have a unique UUID")
+
+	// Test 6: Verify second UUID is also valid RFC4122
+	parsedUUID2, err := uuid.Parse(uuid2Str)
+	Expect(err).To(BeNil(), "Second UUID should also be valid RFC4122 format")
+	Expect(parsedUUID2.String()).To(Equal(uuid2Str))
 }

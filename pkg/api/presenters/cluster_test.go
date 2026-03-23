@@ -409,3 +409,23 @@ func TestPresentCluster_MalformedStatusConditions(t *testing.T) {
 	Expect(err).ToNot(BeNil())
 	Expect(err.Error()).To(ContainSubstring("failed to unmarshal cluster status conditions"))
 }
+
+// TestPresentCluster_MalformedUUID tests error handling for malformed UUID in database
+func TestPresentCluster_MalformedUUID(t *testing.T) {
+	RegisterTestingT(t)
+
+	cluster := &api.Cluster{
+		Kind:             "Cluster",
+		Name:             "malformed-uuid-cluster",
+		UUID:             "not-a-valid-uuid", // Invalid UUID format
+		Spec:             []byte("{}"),
+		Labels:           []byte("{}"),
+		StatusConditions: []byte("[]"),
+	}
+	cluster.ID = "cluster-malformed-uuid"
+
+	_, err := PresentCluster(cluster)
+
+	Expect(err).ToNot(BeNil())
+	Expect(err.Error()).To(ContainSubstring("invalid UUID format in database"))
+}

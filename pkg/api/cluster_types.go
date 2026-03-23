@@ -1,8 +1,10 @@
 package api
 
 import (
+	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 )
@@ -11,6 +13,7 @@ import (
 type Cluster struct {
 	Meta
 	Kind             string         `json:"kind" gorm:"default:'Cluster'"`
+	UUID             string         `json:"uuid" gorm:"uniqueIndex;size:36;not null"`
 	Name             string         `json:"name" gorm:"uniqueIndex;size:53;not null"`
 	Href             string         `json:"href,omitempty" gorm:"size:500"`
 	CreatedBy        string         `json:"created_by" gorm:"size:255;not null"`
@@ -34,7 +37,13 @@ func (l ClusterList) Index() ClusterIndex {
 
 func (c *Cluster) BeforeCreate(tx *gorm.DB) error {
 	now := time.Now()
-	c.ID = NewID()
+	// Only generate if not already set (idempotent)
+	if c.ID == "" {
+		c.ID = NewID()
+	}
+	if c.UUID == "" {
+		c.UUID = uuid.New().String()
+	}
 	c.CreatedTime = now
 	c.UpdatedTime = now
 	if c.Generation == 0 {
@@ -42,7 +51,7 @@ func (c *Cluster) BeforeCreate(tx *gorm.DB) error {
 	}
 	// Set Href if not already set
 	if c.Href == "" {
-		c.Href = "/api/hyperfleet/v1/clusters/" + c.ID
+		c.Href = fmt.Sprintf("/api/hyperfleet/v1/clusters/%s", c.ID)
 	}
 	return nil
 }

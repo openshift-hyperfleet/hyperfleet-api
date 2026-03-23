@@ -71,7 +71,8 @@ Every resource (cluster, nodepool) has these key fields:
 
 ```
 Resource (e.g., Cluster)
-├── id                    (32-character unique identifier, auto-generated)
+├── id                    (32-character KSUID identifier, auto-generated)
+├── uuid                  (RFC4122 UUID identifier, auto-generated)
 ├── kind                  (Resource "Cluster" or "NodePool")
 ├── name                  (Unique identifier)
 ├── spec                  (JSONB - desired state, provider-specific)
@@ -89,10 +90,22 @@ Resource (e.g., Cluster)
 
 | Field | Type | Purpose | Managed By |
 |-------|------|---------|------------|
+| **id** | string | Primary identifier (KSUID format: 27-character Base32, time-sortable, DNS-safe) | API (auto-generated at creation) |
+| **uuid** | string | RFC4122 UUID identifier (36-character hyphenated format) for platform integrations requiring standard UUID format | API (auto-generated at creation) |
 | **spec** | JSONB | Desired state - what you want the resource to look like | User (via API) |
 | **status** | JSONB | Observed state - what adapters report about the resource | API (aggregated from adapter reports) |
 | **generation** | int32 | Version counter that increments when spec changes | API (automatic) |
 | **labels** | JSONB | Key-value pairs for filtering and organization | User (via API) |
+
+**Dual Identifier System:**
+
+HyperFleet resources use two auto-generated identifiers:
+
+- **id** (KSUID): The primary identifier used in API paths and internal references. KSUID (K-Sortable Unique ID) is a 27-character time-sortable identifier that's DNS-safe and compatible with Kubernetes resource naming. Format example: `2p5dtahuv0svfdsc28i309rn3rq6ucqi` (no hyphens).
+
+- **uuid** (RFC4122 UUID): A standards-compliant UUID for platform integrations that require UUID format (e.g., Hypershift spec.clusterID). Format example: `550e8400-e29b-41d4-a716-446655440000` (hyphenated).
+
+Both identifiers are immutable (assigned at creation and never change), but serve different purposes. Use `id` for HyperFleet API operations and `uuid` for external platform integrations requiring RFC4122 UUIDs.
 
 **How the Resource Model Works:**
 
@@ -126,6 +139,7 @@ POST /api/hyperfleet/v1/clusters
 GET /api/hyperfleet/v1/clusters/{id}
 {
   "id": "2opdkciuv7itslp5guihuhckhp8da0uo",
+  "uuid": "550e8400-e29b-41d4-a716-446655440000",
   "kind": "Cluster",
   "name": "my-cluster",
   "generation": 1,
