@@ -60,8 +60,7 @@ func AddLoggingFlags(cmd *cobra.Command) {
 	cmd.Flags().StringP("log-level", "l", defaults.Level, "Log level (debug, info, warn, error)")
 	cmd.Flags().StringP("log-format", "f", defaults.Format, "Log format (json, text)")
 	cmd.Flags().String("log-output", defaults.Output, "Log output (stdout, stderr)")
-	cmd.Flags().Bool("log-otel-enabled", defaults.OTel.Enabled, "Enable OpenTelemetry tracing")
-	cmd.Flags().Float64("log-otel-sampling-rate", defaults.OTel.SamplingRate, "OpenTelemetry sampling rate (0.0-1.0)")
+	cmd.Flags().Bool("log-otel-enabled", defaults.OTel.Enabled, "Enable OpenTelemetry tracing (configure via OTEL_* env vars)")
 	cmd.Flags().Bool("log-masking-enabled", defaults.Masking.Enabled, "Enable log masking for sensitive data")
 	cmd.Flags().String("log-masking-sensitive-headers", defaults.GetSensitiveHeadersString(),
 		"Comma-separated list of sensitive HTTP headers to mask")
