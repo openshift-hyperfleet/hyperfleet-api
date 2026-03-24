@@ -32,6 +32,8 @@ POST   /api/hyperfleet/v1/clusters/{cluster_id}/statuses
 ```
 
 **Response (201 Created):**
+<details>
+<summary>JSON response 201 created</summary>
 
 ```json
 {
@@ -55,7 +57,7 @@ POST   /api/hyperfleet/v1/clusters/{cluster_id}/statuses
         "status": "False",
         "reason": "AwaitingAdapters",
         "message": "Waiting for adapters to report status",
-        "observed_generation": 0,
+        "observed_generation": 1,
         "created_time": "2025-01-01T00:00:00Z",
         "last_updated_time": "2025-01-01T00:00:00Z",
         "last_transition_time": "2025-01-01T00:00:00Z"
@@ -65,7 +67,7 @@ POST   /api/hyperfleet/v1/clusters/{cluster_id}/statuses
         "status": "False",
         "reason": "AwaitingAdapters",
         "message": "Waiting for adapters to report status",
-        "observed_generation": 0,
+        "observed_generation": 1,
         "created_time": "2025-01-01T00:00:00Z",
         "last_updated_time": "2025-01-01T00:00:00Z",
         "last_transition_time": "2025-01-01T00:00:00Z"
@@ -75,6 +77,8 @@ POST   /api/hyperfleet/v1/clusters/{cluster_id}/statuses
 }
 ```
 
+</details>
+
 **Note**: Status initially has `Available=False` and `Ready=False` conditions until adapters report status.
 
 ### Get Cluster
@@ -82,6 +86,9 @@ POST   /api/hyperfleet/v1/clusters/{cluster_id}/statuses
 **GET** `/api/hyperfleet/v1/clusters/{cluster_id}`
 
 **Response (200 OK):**
+
+<details>
+<summary>JSON response</summary>
 
 ```json
 {
@@ -125,6 +132,8 @@ POST   /api/hyperfleet/v1/clusters/{cluster_id}/statuses
 }
 ```
 
+</details>
+
 ### List Clusters
 
 **GET** `/api/hyperfleet/v1/clusters?page=1&pageSize=10`
@@ -155,6 +164,9 @@ POST   /api/hyperfleet/v1/clusters/{cluster_id}/statuses
 Adapters use this endpoint to report their status.
 
 **Request Body:**
+
+<details>
+<summary>JSON response</summary>
 
 ```json
 {
@@ -188,7 +200,12 @@ Adapters use this endpoint to report their status.
 }
 ```
 
+</details>
+
 **Response (201 Created):**
+
+<details>
+<summary>JSON response</summary>
 
 ```json
 {
@@ -226,28 +243,9 @@ Adapters use this endpoint to report their status.
 }
 ```
 
+</details>
+
 **Note**: The API automatically sets `created_time`, `last_report_time`, and `last_transition_time` fields.
-
-### Status Conditions
-
-The status uses Kubernetes-style conditions instead of a single phase field:
-
-- **Ready** - Whether all adapters report successfully at the current generation
-  - `True`: All required adapters report `Available=True` at current spec generation
-  - `False`: One or more adapters report Available=False at current generation
-    - After every spec change, `Ready` becomes `False` since adapters take some time to report at current spec generation
-    - Default value when creating the cluster, when no adapters have reported yet any value
-
-- **Available** - Aggregated adapter result for a common `observed_generation`
-  - `True`: All required adapters report Available=True for the same observed_generation
-  - `False`: At least one adapter reports Available=False when all adapters report the same observed_generation
-    - Default value when creating the cluster, when no adapters have reported yet any value
-
-`Available` keeps its value unchanged in case adapters report from a different `observed_generation` or there is already a mix of `observed_generation` statuses
-
-- e.g. `Available=True` for `observed_generation==1`
-  - One adapter reports `Available=False` for `observed_generation=1` `Available` transitions to `False`
-  - One adapter reports `Available=False` for `observed_generation=2` `Available` keeps its `True` status
 
 ## NodePool Management
 
@@ -281,6 +279,9 @@ POST   /api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepool_id}/statuses
 
 **Response (201 Created):**
 
+<details>
+<summary>JSON response</summary>
+
 ```json
 {
   "kind": "NodePool",
@@ -307,7 +308,7 @@ POST   /api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepool_id}/statuses
         "status": "False",
         "reason": "AwaitingAdapters",
         "message": "Waiting for adapters to report status",
-        "observed_generation": 0,
+        "observed_generation": 1,
         "created_time": "2025-01-01T00:00:00Z",
         "last_updated_time": "2025-01-01T00:00:00Z",
         "last_transition_time": "2025-01-01T00:00:00Z"
@@ -317,7 +318,7 @@ POST   /api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepool_id}/statuses
         "status": "False",
         "reason": "AwaitingAdapters",
         "message": "Waiting for adapters to report status",
-        "observed_generation": 0,
+        "observed_generation": 1,
         "created_time": "2025-01-01T00:00:00Z",
         "last_updated_time": "2025-01-01T00:00:00Z",
         "last_transition_time": "2025-01-01T00:00:00Z"
@@ -327,11 +328,16 @@ POST   /api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepool_id}/statuses
 }
 ```
 
+</details>
+
 ### Get NodePool
 
 **GET** `/api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepool_id}`
 
 **Response (200 OK):**
+
+<details>
+<summary>JSON response</summary>
 
 ```json
 {
@@ -372,6 +378,8 @@ POST   /api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepool_id}/statuses
   }
 }
 ```
+
+</details>
 
 ### Report NodePool Status
 

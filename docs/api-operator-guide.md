@@ -13,11 +13,12 @@ A practical guide for deploying, configuring, and operating the HyperFleet API c
       - [Resource Hierarchy](#212-resource-hierarchy)
    - [Adapter Registration](#22-adapter-registration)
    - [Status Aggregation](#23-status-aggregation)
-      - [Resource conditions](#231-resource-conditions)
-      - [Adapter condition types](#232-adapter-condition-types)
-      - [Resource-level condition aggregation](#233-resource-level-condition-aggregation)
-      - [Special handling for `Available=Unknown`](#234-special-handling-for-availableunknown)
-   - [Generation](#24-generation)
+      - [Resource status conditions](#resource-status-conditions)
+      - [Rules to accept/discard adapter reports](#rules-to-acceptdiscard-adapter-reports)
+      - [Computing `observed_generation`](#computing-observed_generation)
+      - [Computing `status.conditions[type==Ready].last_updated_time`](#computing-statusconditionstypereadylast_updated_time)
+      - [Computing `status.conditions[type==Available].last_updated_time`](#computing-statusconditionstypeavailablelast_updated_time)
+      - [Computing `last_transition_time` for both `Ready` and `Available`](#computing-last_transition_time-for-both-ready-and-available)
 3. [Configuration Reference](#3-configuration-reference)
    - [Adapter Requirements (REQUIRED)](#31-adapter-requirements-required)
    - [Database Configuration](#32-database-configuration)
@@ -26,10 +27,17 @@ A practical guide for deploying, configuring, and operating the HyperFleet API c
    - [Logging Configuration](#35-logging-configuration)
    - [Schema Validation](#36-schema-validation)
 4. [Deployment Checklist](#4-deployment-checklist)
+   - [Phase 1: Database Preparation](#phase-1-database-preparation)
+   - [Phase 2: Configuration Planning](#phase-2-configuration-planning)
+   - [Phase 3: Deployment](#phase-3-deployment)
+   - [Phase 4: Post-Deployment Validation](#phase-4-post-deployment-validation)
 5. [Additional Resources](#additional-resources)
 
 **Appendices:**
+
 - [Appendix A: API Integration](#appendix-a-api-integration)
+  - [For API Consumers](#for-api-consumers)
+  - [For Adapter Developers](#for-adapter-developers)
 - [Appendix B: Troubleshooting](#appendix-b-troubleshooting)
 
 ---
@@ -277,6 +285,7 @@ The nodepool resource structure and status aggregation work identically to clust
 **How registration works:** You define which adapters are required for each resource type to be marked as `Ready`. Adapters are registered at API startup via environment variables or Helm configuration, and the API will not start if this configuration is missing.
 
 Only **registered adapters** participate in status aggregation:
+
 - The `Ready` condition checks if all registered adapters report `Available=True` at the current `resource.spec.generation`
 - Unregistered adapters can report status, but don't affect resource readiness
 - Changing registered adapters requires an API restart (configuration is read at startup)
@@ -309,107 +318,226 @@ adapters:
 
 ### 2.3 Status Aggregation
 
-**What is status aggregation?** Instead of checking each adapter individually, the API combines (aggregates) their status reports into a single resource-level status. This gives you a simple "Ready" or "Not Ready" answer that considers all registered adapters together.
-
-The API aggregates individual adapter reports into resource-level conditions.
-
-#### 2.3.1 Resource conditions
-
-Every resource has these synthesized conditions:
+HyperFleet API aggregates the condition values reported by adapters associated with a resource and adds two synthetic aggregated conditions.
 
 | Condition | Meaning | When True |
 |-----------|---------|-----------|
-| **Available** | Resource is operational at any known good configuration | All registered adapters report `Available=True` (at any generation) |
 | **Ready** | Resource is fully reconciled at current spec | All registered adapters report `Available=True` at the **current** `resource.spec.generation` |
+| **Available** | Resource is operational at any known good configuration | All registered adapters report `Available=True` (at any generation) |
 
-#### 2.3.2 Adapter condition types
+**Note**: The meaning of the field `last_updated_time` for the aggregated conditions has special meaning. It doesn't reflect the last time it was updated from adapters but the OLDEST time it can be considered to be valid.
 
-Adapters report three mandatory condition types:
+This is used by other components (Sentinel) to determine how "fresh" the status really is. By using the oldest aggregation signal, the validity of the aggregated condition is as good as the oldest received report from adapters.
 
-| Type | Meaning |
-|------|---------|
-| **Available** | Adapter's work is complete and operational |
-| **Applied** | Kubernetes/Maestro resources were created/applied |
-| **Health** | Adapter framework executed without errors |
+##### Resource status conditions
 
-**Validation rules** (enforced by API):
+The resource `status.conditions` array contains:
 
-- All three condition types must be present
-- No duplicate condition types allowed
-- `status` must be `True`, `False`, or `Unknown`
-- `observed_generation` must be a valid integer
+- **Ready** - The resource is reconciled to the latest resource spec
+  - `True`: All required adapters `conditions[type=Available].status==True` at current spec generation
+  - `False`: Any other combination of conditions
 
-#### 2.3.3 Resource-level condition aggregation
+- **Available** - The resource is reconciled at a generation of the spec, current or past
+  - This condition is stateful meaning that is computed taking into account its previous values of `status` and `observed_generation`
+  - This condition is "best effort", since there are cases that can not be covered correctly.
+  - `True`:
+    - All required adapters `conditions[type=Available].status==True` for the same `observed_generation`
+    - Current value `status==True` and required adapters `conditions[type=Available]` at mixed `observed_generation`
+  - `False`: Any other combination of conditions
+  - e.g. `Available=True` for `observed_generation==1`
+    - One adapter reports `Available=False` for `observed_generation=1` `Available` transitions to `False`
+    - One adapter reports `Available=False` for `observed_generation=2` `Available` keeps its `True` status
 
-The API synthesizes two resource-level conditions (`Available` and `Ready`) from adapter reports. Each condition is a complete state with both `status` and `observed_generation` working together:
+- One **per-adapter** condition for each required adapter that has reported, mirroring the adapter's `conditions[type=Available]`:
+  - `type`: Derived from the adapter name — PascalCase with `Successful` suffix (e.g., `adapter1` → `Adapter1Successful`, `my-adapter` → `MyAdapterSuccessful`)
+  - `status`: `True` or `False` mirroring the adapter's `Available.status`
+  - `reason` / `message`: Copied from the adapter's `Available` condition
+  - `observed_generation`: The adapter's `observed_generation`
+  - `last_updated_time`: The adapter's `last_report_time`
+  - `last_transition_time`: Updated only when the per-adapter status (True/False) changes
 
-**Available condition states:**
+- Aggregation is always computed from resource statuses array
+- It can be computed at any time, is deterministic
+  - This means wall clock should not be involved when assigning time values
 
-| Status | observed_generation | Meaning |
-|--------|-------------------|---------|
-| `True` | Min across all adapters with `Available=True` | All required adapters are operational, resource is running at generation N (last known good generation). N may be less than `resource.spec.generation` during reconciliation of new spec changes. |
-| `False` | `0` | At least one required adapter has `Available!=True` or hasn't reported. Resource is not operational. |
-| `False` | `1` | Initial state: no adapters have reported OR no adapters are required. |
+These are API examples for a resource and resource statuses:
 
-**Why Available tracks minimum generation:** When a spec is updated (e.g., `generation=5` → `generation=6`), adapters reconcile at different speeds. If all adapters continue reporting `Available=True` (even at different generations), the resource-level Available remains `True` with `observed_generation=5` (the minimum generation across all Available=True adapters). This preserves the "last known good configuration" while adapters work through the new spec. If any adapter reports `Available=False` during reconciliation, the resource becomes `Available=False, observed_generation=0`.
+<details>
+<summary>Resource JSON example</summary>
 
-**Ready condition states:**
-
-| Status | observed_generation | Meaning |
-|--------|-------------------|---------|
-| `True` | Current `resource.spec.generation` | All required adapters report `Available=True` at the current generation. Resource is fully reconciled. |
-| `False` | Current `resource.spec.generation` | At least one adapter hasn't caught up to the current generation OR has `Available!=True`. |
-
-**Why Ready always uses current generation:** Ready always sets `observed_generation = resource.spec.generation`, regardless of status. This indicates whether adapters have finished reconciling the current spec.
-
-#### 2.3.4 Special handling for `Available=Unknown`
-
-The API handles `Available=Unknown` status reports differently based on whether the adapter has reported before:
-
-**When `Available=Unknown` is reported for the first time** (no prior status from this adapter):
-- ✅ Accepts and stores the adapter status with `Available=Unknown`
-- Returns `201 Created` with the stored status object
-- Resource-level conditions (`Available`, `Ready`) remain unchanged
-
-**When `Available=Unknown` is reported again** (adapter has reported before):
-- ❌ Discards the status (not stored)
-- Returns `204 No Content` (no action taken)
-
-**When `Available=True` or `Available=False` is reported** (any time):
-- ✅ If the reported generation is newer than or equal to the existing stored generation:
-  - Stored and triggers status aggregation
-  - Updates resource-level `Available` and `Ready` conditions
-  - Returns `201 Created` with the stored status object
-- ❌ If the reported generation is older than the existing stored generation:
-  - Discarded (stale update, not stored)
-  - Returns `204 No Content`
-
-This pattern allows adapters to signal initial progress without affecting resource readiness, while ensuring eventual convergence to a definitive state (`True` or `False`).
-
-### 2.4 Generation
-
-Generation is a version number that the API automatically increments every time a resource's desired state (`spec`) changes. It provides a way to track which version of the spec is being processed.
-
-**IMPORTANT - No optimistic locking:** Unlike Kubernetes-style APIs, HyperFleet API does **not** implement optimistic locking with generation. You cannot provide generation in update requests, and the API does not verify generation matches before applying updates. The API uses a "last write wins" model where concurrent updates to the same resource may overwrite each other. Generation is purely a tracking mechanism for adapters to detect spec changes.
-
-**How the API manages generation:**
-
-- **Initial creation**: Sets `generation=1`
-- **Spec updates**: Automatically increments `generation++` when comparing old vs. new spec
-- **Non-spec updates**: Labels or status changes do **not** increment generation
-- **Read-only for users**: Generation is managed entirely by the API, you cannot set it manually
-
-**How generation is used in status aggregation:**
-
-The API uses generation to determine if a resource is `Ready`:
-
+```json
+{
+  "kind": "Cluster",
+  "id": "cluster-123",
+  "href": "https://api.hyperfleet.com/v1/clusters/cluster-123",
+  "name": "cluster-123",
+  "labels": {
+    "environment": "production",
+    "team": "platform"
+  },
+  "spec": {},
+  "created_time": "2021-01-01T00:00:00Z",
+  "updated_time": "2021-01-01T00:00:00Z",
+  "generation": 1,
+  "status": {
+    "conditions": [
+      {
+        "type": "Ready",
+        "status": "True",
+        "reason": "All adapters reported Ready True for the current generation",
+        "message": "All adapters reported Ready True for the current generation",
+        "observed_generation": 1,
+        "created_time": "2021-01-01T10:00:00Z",
+        "last_updated_time": "2021-01-01T10:00:00Z",
+        "last_transition_time": "2021-01-01T10:00:00Z"
+      },
+      {
+        "type": "Available",
+        "status": "True",
+        "reason": "All adapters reported Available True for the same generation",
+        "message": "All adapters reported Available True for the same generation",
+        "observed_generation": 1,
+        "created_time": "2021-01-01T10:00:00Z",
+        "last_updated_time": "2021-01-01T10:00:00Z",
+        "last_transition_time": "2021-01-01T10:00:00Z"
+      },
+      {
+        "type": "Adapter1Successful",
+        "status": "True",
+        "reason": "This adapter1 is available",
+        "message": "This adapter1 is available",
+        "observed_generation": 1,
+        "created_time": "2021-01-01T10:00:00Z",
+        "last_updated_time": "2021-01-01T10:00:00Z",
+        "last_transition_time": "2021-01-01T10:00:00Z"
+      },
+      {
+        "type": "Adapter2Successful",
+        "status": "True",
+        "reason": "This adapter2 is available",
+        "message": "This adapter2 is available",
+        "observed_generation": 1,
+        "created_time": "2021-01-01T10:01:00Z",
+        "last_updated_time": "2021-01-01T10:01:00Z",
+        "last_transition_time": "2021-01-01T10:01:00Z"
+      }
+    ]
+  },
+  "created_by": "user-123@example.com",
+  "updated_by": "user-123@example.com"
+}
 ```
-Ready = True  when:  resource.generation == adapter.observed_generation
-                     AND all registered adapters report Available=True
 
-Ready = False when:  resource.generation > adapter.observed_generation
-                     (spec changed but not all adapters have processed it yet)
+</details>
+
+<details>
+<summary>Resource statuses example</summary>
+
+```json
+{
+  "kind": "AdapterStatusList",
+  "page": 1,
+  "size": 2,
+  "total": 2,
+  "items": [
+    {
+      "adapter": "adapter1",
+      "observed_generation": 1,
+      "conditions": [
+        {
+          "type": "Available",
+          "status": "True",
+          "reason": "This adapter1 is available",
+          "message": "This adapter1 is available",
+          "last_transition_time": "2021-01-01T10:00:00Z"
+        }
+      ],
+      "metadata": {
+        "job_name": "validator-job-abc123",
+        "duration": "2m"
+      },
+      "created_time": "2021-01-01T10:00:00Z",
+      "last_report_time": "2021-01-01T10:02:00Z"
+    },
+    {
+      "adapter": "adapter2",
+      "observed_generation": 1,
+      "conditions": [
+        {
+          "type": "Available",
+          "status": "True",
+          "reason": "This adapter2 is available",
+          "message": "This adapter2 is available",
+          "last_transition_time": "2021-01-01T10:01:00Z"
+        }
+      ],
+      "created_time": "2021-01-01T10:01:00Z",
+      "last_report_time": "2021-01-01T10:01:30Z"
+    }
+  ]
+}
 ```
+
+</details>
+
+##### Rules to accept/discard adapter reports
+
+- Useless value
+  - Discard if condition Available has status different from True/False/Unknown
+  - Discard reports with status Unknown if there is an existing report for the adapter with status True/False
+  - Conditions with Unknown status are not used to compute aggregated conditions
+  - Discard if condition comes with an invalid `observed_time`
+- Generation not yet reached
+  - Discard if an adapter report has `observed_generation > resource.generation`
+- Older generation than existing for adapter
+  - Discard if an adapter report has `observed_generation < statuses[].observed_generation`
+- Older observation than existing for adapter at same generation
+  - Discard if an adapter report has `observed_time < statuses[].observed_time` (same adapter, same `observed_generation`)
+
+When a resource is created:
+
+- Initial `generation` is 1 and aggregated conditions are evaluated
+- `observed_generation` for `Ready` and `Available` aggregated conditions is 1
+- `last_updated_time` and `last_transition_time` for `Ready` and `Available` aggregated conditions is `resource.last_updated_time`
+
+When a resource is changed:
+
+- `resource.generation` gets incremented and aggregated conditions are re-evaluated
+- `status.conditions[type==Ready].observed_generation` always follows `resource.generation`
+- `status.conditions[type==Available].observed_generation` changes when all required adapters `condition[type==Available].observed_generation==resource.generation` otherwise remains unchanged.
+
+##### Computing `observed_generation`
+
+- For `Ready` it always matches `resource.generation`
+- For `Available`:
+  - If all required adapters have a common `observed_generation` it will match the common value
+  - If required adapters have mixed `observed_generation`
+    - If `Available` is `True`, `observed_generation` remains at its current value
+    - If `Available` is `False`, `observed_generation` will get the value of the `max(condition[type==Available].observed_generation)`
+
+##### Computing `status.conditions[type==Ready].last_updated_time`
+
+The meaning of `last_updated_time` in the aggregated conditions refers to the newest time we can consider the status to be in the current state. This is not the time of the latest report, but the oldest time of the reports.
+
+- If there are no required adapter conditions at `observed_generation==resource.generation` then `last_updated_time=resource.last_updated_time`
+  - This means that when no adapters have reported at current `resource.generation`, the API change is the last change
+- If all required adapters have `condition[type==Available].observed_generation==resource.generation` then `last_updated_time=min(statuses[].conditions[type==Available].observed_time)`
+  - This means that the oldest report from adapters at current generation is considered the oldest time we can consider the `Ready` value to be valid
+  - Why do we want to keep the "oldest" value? because if it is too old, we need to trigger a reconciliation
+- When some required adapter conditions `condition[type==Available].observed_generation==resource.generation` then `last_updated_time=min(statuses[].conditions[type==Available && observed_generation==resource.generation].observed_time)`
+
+##### Computing `status.conditions[type==Available].last_updated_time`
+
+- If all required adapters have `condition[type==Available].observed_generation` at the same value then `last_updated_time=min(statuses[].conditions[type==Available].observed_time)`
+- If not all required adapters have `condition[type==Available].observed_generation` at the same value:
+  - If any adapter at current `observed_generation==X` has `conditions[type==Available].status==False` then `last_updated_time=min(adapters[type==Available && observed_generation==X].observed_time`
+- In any other case `last_updated_time` is kept unchanged
+
+##### Computing `last_transition_time` for both `Ready` and `Available`
+
+- Meaning is last time this condition’s status (True / False) changed, regardless of the existing and new `observed_generation`
+- This property is stateful since it relies on the existing value to determine if there has been a transition
+- For `Ready` when a `resource.generation` changes, the `last_transition_time` becomes `resource.last_updated_time` if status was `True`
 
 ---
 
@@ -418,6 +546,7 @@ Ready = False when:  resource.generation > adapter.observed_generation
 This section highlights the **critical configuration** needed to operate the API.
 
 For comprehensive guides on specific topics:
+
 - **Environment variables**: See [Deployment Guide - Environment Variables](deployment.md#environment-variables)
 - **Database setup**: See [Database Guide](database.md)
 - **Authentication**: See [Authentication Guide](authentication.md)
@@ -525,6 +654,7 @@ See [Authentication Guide](authentication.md) for detailed JWT setup.
 ### 3.4 Server Binding
 
 The API runs three independent servers on different ports:
+
 - **API server** (built-in default: `localhost:8000`) - REST endpoints
 - **Health server** (built-in default: `localhost:8080`) - Liveness/readiness probes
 - **Metrics server** (built-in default: `localhost:9090`) - Prometheus metrics
@@ -551,7 +681,7 @@ The built-in defaults (`localhost:*`) bind to loopback only. For production depl
   --metrics-server-bindaddress=:9090
 ```
 
-**Note:** Use `:PORT` format to bind to all interfaces (0.0.0.0), or `localhost:PORT` for local-only binding (127.0.0.1). 
+**Note:** Use `:PORT` format to bind to all interfaces (0.0.0.0), or `localhost:PORT` for local-only binding (127.0.0.1).
 
 ### 3.5 Logging Configuration
 
@@ -618,6 +748,7 @@ Choose your database deployment strategy based on your environment:
 
 - [ ] Ensure PostgreSQL 13+ database server is running and accessible from Kubernetes cluster
 - [ ] Create database and user with appropriate permissions:
+
   ```sql
   CREATE DATABASE hyperfleet;
   CREATE USER hyperfleet WITH PASSWORD '<strong-password>';
@@ -626,6 +757,7 @@ Choose your database deployment strategy based on your environment:
   ```
 
 - [ ] Create Kubernetes secret with database credentials:
+
   ```bash
   kubectl create secret generic hyperfleet-db \
     --namespace hyperfleet-system \
@@ -637,17 +769,21 @@ Choose your database deployment strategy based on your environment:
   ```
 
 - [ ] Verify secret was created correctly:
+
   ```bash
   kubectl get secret hyperfleet-db -n hyperfleet-system -o json | jq '.data | keys'
   ```
+
   Expected output: `["db.host", "db.name", "db.password", "db.port", "db.user"]`
 
 - [ ] Test database connectivity:
+
   ```bash
   kubectl run pg-debug --rm -it --image=postgres:15-alpine \
     --restart=Never -n hyperfleet-system -- \
     psql -h <db-host> -U hyperfleet -d hyperfleet -c "SELECT 1"
   ```
+
   Expected output: `?column? | 1`
 
 ### Phase 2: Configuration Planning
@@ -674,6 +810,7 @@ Choose your database deployment strategy based on your environment:
 **Install HyperFleet API**
 
 - [ ] Deploy using Helm:
+
   ```bash
   helm install hyperfleet-api ./charts/ \
     --namespace hyperfleet-system \
@@ -682,11 +819,13 @@ Choose your database deployment strategy based on your environment:
   ```
 
 - [ ] Verify deployment was created:
+
   ```bash
   kubectl get deployment -n hyperfleet-system hyperfleet-api
   ```
 
 - [ ] Wait for pods to be ready:
+
   ```bash
   kubectl wait --for=condition=Ready pod -l app=hyperfleet-api -n hyperfleet-system --timeout=300s
   ```
@@ -694,17 +833,21 @@ Choose your database deployment strategy based on your environment:
 **Verify Database Migration**
 
 - [ ] Check init container logs to confirm migration completed:
+
   ```bash
   kubectl logs -n hyperfleet-system <pod-name> -c db-migrate
   ```
+
   Expected output: `Migration completed successfully`
 
 - [ ] Verify database tables were created:
+
   ```bash
   kubectl run pg-debug --rm -it --image=postgres:15-alpine \
     --restart=Never -n hyperfleet-system -- \
     psql -h <db-host> -U hyperfleet -d hyperfleet -c "\dt"
   ```
+
   Expected tables: `adapter_statuses`, `clusters`, `labels`, `node_pools`
 
 ### Phase 4: Post-Deployment Validation
@@ -715,6 +858,7 @@ Choose your database deployment strategy based on your environment:
 - [ ] Check readiness endpoint: `curl http://<hyperfleet-api-service>:8080/readyz`
   - Expected: `{"status": "ok"}` for both endpoints
 - [ ] Review pod logs for startup errors:
+
   ```bash
   kubectl logs -n hyperfleet-system -l app=hyperfleet-api
   ```
@@ -723,6 +867,7 @@ Choose your database deployment strategy based on your environment:
 <summary><b>Run Smoke Tests (Optional)</b></summary>
 
 - [ ] Create a test cluster:
+
   ```bash
   curl -X POST http://<hyperfleet-api-service>:8000/api/hyperfleet/v1/clusters \
     -H "Content-Type: application/json" \
@@ -733,13 +878,16 @@ Choose your database deployment strategy based on your environment:
       "labels": {"environment": "test"}
     }'
   ```
+
   Expected: `201 Created` with cluster object including `id` and `generation: 1`
 
 - [ ] Save cluster ID and retrieve the cluster:
+
   ```bash
   CLUSTER_ID=<id-from-response>
   curl http://<hyperfleet-api-service>:8000/api/hyperfleet/v1/clusters/$CLUSTER_ID
   ```
+
   Expected: `200 OK` with cluster object
 
 </details>
@@ -765,6 +913,7 @@ Choose your database deployment strategy based on your environment:
 This section covers how to integrate with the HyperFleet API, both as a **consumer** (creating/managing clusters) and as an **adapter developer** (reporting status).
 
 For detailed documentation on specific integration topics:
+
 - **API endpoints and request/response formats**: See [API Resources](api-resources.md)
 - **Authentication setup**: See [Authentication Guide](authentication.md)
 - **Metrics and monitoring**: See [Metrics Documentation](metrics.md)
@@ -812,16 +961,16 @@ Every adapter status report must include:
 - **observed_generation** (integer) — The generation the adapter processed
 - **observed_time** (RFC3339 timestamp) — When the adapter completed its work
 - **conditions** (array) — Exactly three condition types:
-   - `Available` — Is the work complete and operational?
-   - `Applied` — Were Kubernetes resources created/configured?
-   - `Health` — Did the adapter execute without errors?
+  - `Available` — Is the work complete and operational?
+  - `Applied` — Were Kubernetes resources created/configured?
+  - `Health` — Did the adapter execute without errors?
 
 **Optional field:**
 
 - **data** (JSONB) — Optional adapter-specific information for debugging or operational dashboards:
-   - Not used in status aggregation (API only reads `conditions`)
-   - Can contain any valid JSON structure
-   - Persisted in `adapter_statuses.data` column
+  - Not used in status aggregation (API only reads `conditions`)
+  - Can contain any valid JSON structure
+  - Persisted in `adapter_statuses.data` column
 
 <details>
 <summary><b>Status Report Example</b></summary>

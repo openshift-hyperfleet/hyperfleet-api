@@ -9,8 +9,8 @@ import (
 
 // AdapterStatus database model
 type AdapterStatus struct {
-	LastReportTime *time.Time `json:"last_report_time" gorm:"not null"`
-	CreatedTime    *time.Time `json:"created_time" gorm:"not null"`
+	LastReportTime time.Time `json:"last_report_time" gorm:"not null"`
+	CreatedTime    time.Time `json:"created_time" gorm:"not null"`
 	Meta
 	ResourceType       string         `json:"resource_type" gorm:"size:20;index:idx_resource;not null"`
 	ResourceID         string         `json:"resource_id" gorm:"size:255;index:idx_resource;not null"`

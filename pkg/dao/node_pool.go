@@ -3,7 +3,6 @@ package dao
 import (
 	"bytes"
 	"context"
-	"time"
 
 	"gorm.io/gorm/clause"
 
@@ -24,11 +23,10 @@ var _ NodePoolDao = &sqlNodePoolDao{}
 
 type sqlNodePoolDao struct {
 	sessionFactory *db.SessionFactory
-	nowFunc        func() time.Time
 }
 
 func NewNodePoolDao(sessionFactory *db.SessionFactory) NodePoolDao {
-	return &sqlNodePoolDao{sessionFactory: sessionFactory, nowFunc: time.Now}
+	return &sqlNodePoolDao{sessionFactory: sessionFactory}
 }
 
 func (d *sqlNodePoolDao) Get(ctx context.Context, id string) (*api.NodePool, error) {
@@ -59,15 +57,9 @@ func (d *sqlNodePoolDao) Replace(ctx context.Context, nodePool *api.NodePool) (*
 		return nil, err
 	}
 
-	// Compare spec: if changed, increment generation and reset Ready=False
+	// Compare spec: if changed, increment generation. Aggregated conditions are recomputed in the service layer.
 	if !bytes.Equal(existing.Spec, nodePool.Spec) {
 		nodePool.Generation = existing.Generation + 1
-		updatedConditions, err := resetReadyConditionOnSpecChange(existing.StatusConditions, d.nowFunc())
-		if err != nil {
-			db.MarkForRollback(ctx, err)
-			return nil, err
-		}
-		nodePool.StatusConditions = updatedConditions
 	} else {
 		// Spec unchanged, preserve generation
 		nodePool.Generation = existing.Generation

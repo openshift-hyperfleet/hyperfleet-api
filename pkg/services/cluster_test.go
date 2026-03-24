@@ -49,6 +49,13 @@ func (d *mockClusterDao) Get(ctx context.Context, id string) (*api.Cluster, erro
 }
 
 func (d *mockClusterDao) Create(ctx context.Context, cluster *api.Cluster) (*api.Cluster, error) {
+	if cluster.CreatedTime.IsZero() {
+		now := time.Now()
+		cluster.CreatedTime = now
+	}
+	if cluster.UpdatedTime.IsZero() {
+		cluster.UpdatedTime = cluster.CreatedTime
+	}
 	d.clusters[cluster.ID] = cluster
 	return cluster, nil
 }
@@ -112,7 +119,22 @@ func (d *mockAdapterStatusDao) Replace(ctx context.Context, status *api.AdapterS
 
 func (d *mockAdapterStatusDao) Upsert(ctx context.Context, status *api.AdapterStatus) (*api.AdapterStatus, error) {
 	key := status.ResourceType + ":" + status.ResourceID + ":" + status.Adapter
-	status.ID = key
+	if existing, ok := d.statuses[key]; ok {
+		isStoredFresherOrEqual := existing.ObservedGeneration > status.ObservedGeneration ||
+			(existing.ObservedGeneration == status.ObservedGeneration &&
+				!existing.LastReportTime.Before(status.LastReportTime))
+		if isStoredFresherOrEqual {
+			return existing, nil
+		}
+
+		status.ID = existing.ID
+		if !existing.CreatedTime.IsZero() {
+			status.CreatedTime = existing.CreatedTime
+		}
+	} else {
+		status.ID = key
+	}
+
 	d.statuses[key] = status
 	return status, nil
 }
@@ -168,7 +190,8 @@ var _ dao.AdapterStatusDao = &mockAdapterStatusDao{}
 
 // TestProcessAdapterStatus_FirstUnknownCondition tests that the first Unknown Available condition is stored
 func TestProcessAdapterStatus_FirstUnknownCondition(t *testing.T) {
-	RegisterTestingT(t)
+	t.Parallel()
+	g := NewWithT(t)
 
 	clusterDao := newMockClusterDao()
 	adapterStatusDao := newMockAdapterStatusDao()
@@ -182,7 +205,7 @@ func TestProcessAdapterStatus_FirstUnknownCondition(t *testing.T) {
 	cluster := &api.Cluster{Generation: 1}
 	cluster.ID = clusterID
 	_, svcErr := service.Create(ctx, cluster)
-	Expect(svcErr).To(BeNil())
+	g.Expect(svcErr).To(BeNil())
 
 	// Send first status with Available=Unknown
 	conditions := []api.AdapterCondition{
@@ -198,24 +221,26 @@ func TestProcessAdapterStatus_FirstUnknownCondition(t *testing.T) {
 		Adapter:            "test-adapter",
 		Conditions:         conditionsJSON,
 		ObservedGeneration: 1,
-		CreatedTime:        &now,
+		CreatedTime:        now,
+		LastReportTime:     now,
 	}
 
 	result, err := service.ProcessAdapterStatus(ctx, clusterID, adapterStatus)
 
 	// First report with Unknown should be accepted
-	Expect(err).To(BeNil())
-	Expect(result).ToNot(BeNil(), "First report with Available=Unknown should be stored")
-	Expect(result.Adapter).To(Equal("test-adapter"))
+	g.Expect(err).To(BeNil())
+	g.Expect(result).ToNot(BeNil(), "First report with Available=Unknown should be stored")
+	g.Expect(result.Adapter).To(Equal("test-adapter"))
 
 	// Verify the status was stored
 	storedStatuses, _ := adapterStatusDao.FindByResource(ctx, "Cluster", clusterID)
-	Expect(len(storedStatuses)).To(Equal(1), "First Unknown status should be stored")
+	g.Expect(len(storedStatuses)).To(Equal(1), "First Unknown status should be stored")
 }
 
 // TestProcessAdapterStatus_SubsequentUnknownCondition tests that subsequent Unknown Available conditions are discarded
 func TestProcessAdapterStatus_SubsequentUnknownCondition(t *testing.T) {
-	RegisterTestingT(t)
+	t.Parallel()
+	g := NewWithT(t)
 
 	clusterDao := newMockClusterDao()
 	adapterStatusDao := newMockAdapterStatusDao()
@@ -225,6 +250,12 @@ func TestProcessAdapterStatus_SubsequentUnknownCondition(t *testing.T) {
 
 	ctx := context.Background()
 	clusterID := testClusterID
+
+	now := time.Now()
+	clusterDao.clusters[clusterID] = &api.Cluster{
+		Meta:       api.Meta{ID: clusterID, CreatedTime: now, UpdatedTime: now},
+		Generation: 1,
+	}
 
 	// Pre-populate an existing adapter status to simulate a previously stored report
 	conditions := []api.AdapterCondition{
@@ -234,34 +265,124 @@ func TestProcessAdapterStatus_SubsequentUnknownCondition(t *testing.T) {
 	}
 	conditionsJSON, _ := json.Marshal(conditions)
 
-	now := time.Now()
 	existingStatus := &api.AdapterStatus{
-		ResourceType: "Cluster",
-		ResourceID:   clusterID,
-		Adapter:      "test-adapter",
-		Conditions:   conditionsJSON,
-		CreatedTime:  &now,
+		ResourceType:       "Cluster",
+		ResourceID:         clusterID,
+		Adapter:            "test-adapter",
+		Conditions:         conditionsJSON,
+		ObservedGeneration: 1,
+		CreatedTime:        now,
+		LastReportTime:     now,
 	}
 	_, _ = adapterStatusDao.Upsert(ctx, existingStatus)
 
 	// Now send another Unknown status report
 	newAdapterStatus := &api.AdapterStatus{
-		ResourceType: "Cluster",
-		ResourceID:   clusterID,
-		Adapter:      "test-adapter",
-		Conditions:   conditionsJSON,
-		CreatedTime:  &now,
+		ResourceType:       "Cluster",
+		ResourceID:         clusterID,
+		Adapter:            "test-adapter",
+		Conditions:         conditionsJSON,
+		ObservedGeneration: 1,
+		CreatedTime:        now,
+		LastReportTime:     now,
 	}
 
 	result, err := service.ProcessAdapterStatus(ctx, clusterID, newAdapterStatus)
 
-	Expect(err).To(BeNil())
-	Expect(result).To(BeNil(), "Subsequent Unknown status should be discarded")
+	g.Expect(err).To(BeNil())
+	g.Expect(result).To(BeNil(), "Subsequent Unknown status should be discarded")
+}
+
+// TestProcessAdapterStatus_InvalidStatusReturnsValidationError tests that a non-True/False/Unknown
+// Available status is rejected with a validation error.
+func TestProcessAdapterStatus_InvalidStatusReturnsValidationError(t *testing.T) {
+	t.Parallel()
+	g := NewWithT(t)
+
+	clusterDao := newMockClusterDao()
+	adapterStatusDao := newMockAdapterStatusDao()
+	config := testAdapterConfig()
+	service := NewClusterService(clusterDao, adapterStatusDao, config)
+
+	ctx := context.Background()
+	clusterID := testClusterID
+
+	cluster := &api.Cluster{Generation: 1}
+	cluster.ID = clusterID
+	_, svcErr := service.Create(ctx, cluster)
+	g.Expect(svcErr).To(BeNil())
+
+	conditions := []api.AdapterCondition{
+		{Type: api.ConditionTypeAvailable, Status: "Pending", LastTransitionTime: time.Now()},
+		{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+	}
+	conditionsJSON, _ := json.Marshal(conditions)
+	now := time.Now()
+	adapterStatus := &api.AdapterStatus{
+		ResourceType:       "Cluster",
+		ResourceID:         clusterID,
+		Adapter:            "test-adapter",
+		Conditions:         conditionsJSON,
+		ObservedGeneration: 1,
+		CreatedTime:        now,
+		LastReportTime:     now,
+	}
+
+	result, err := service.ProcessAdapterStatus(ctx, clusterID, adapterStatus)
+
+	g.Expect(err).ToNot(BeNil(), "Invalid status should return a validation error")
+	g.Expect(err.HTTPCode).To(Equal(http.StatusBadRequest))
+	g.Expect(result).To(BeNil())
+}
+
+// TestProcessAdapterStatus_EmptyStatusReturnsValidationError tests that an empty Available status
+// is rejected with a validation error.
+func TestProcessAdapterStatus_EmptyStatusReturnsValidationError(t *testing.T) {
+	t.Parallel()
+	g := NewWithT(t)
+
+	clusterDao := newMockClusterDao()
+	adapterStatusDao := newMockAdapterStatusDao()
+	config := testAdapterConfig()
+	service := NewClusterService(clusterDao, adapterStatusDao, config)
+
+	ctx := context.Background()
+	clusterID := testClusterID
+
+	cluster := &api.Cluster{Generation: 1}
+	cluster.ID = clusterID
+	_, svcErr := service.Create(ctx, cluster)
+	g.Expect(svcErr).To(BeNil())
+
+	conditions := []api.AdapterCondition{
+		{Type: api.ConditionTypeAvailable, Status: "", LastTransitionTime: time.Now()},
+		{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+	}
+	conditionsJSON, _ := json.Marshal(conditions)
+	now := time.Now()
+	adapterStatus := &api.AdapterStatus{
+		ResourceType:       "Cluster",
+		ResourceID:         clusterID,
+		Adapter:            "test-adapter",
+		Conditions:         conditionsJSON,
+		ObservedGeneration: 1,
+		CreatedTime:        now,
+		LastReportTime:     now,
+	}
+
+	result, err := service.ProcessAdapterStatus(ctx, clusterID, adapterStatus)
+
+	g.Expect(err).ToNot(BeNil(), "Empty status should return a validation error")
+	g.Expect(err.HTTPCode).To(Equal(http.StatusBadRequest))
+	g.Expect(result).To(BeNil())
 }
 
 // TestProcessAdapterStatus_TrueCondition tests that True Available condition upserts and aggregates
 func TestProcessAdapterStatus_TrueCondition(t *testing.T) {
-	RegisterTestingT(t)
+	t.Parallel()
+	g := NewWithT(t)
 
 	clusterDao := newMockClusterDao()
 	adapterStatusDao := newMockAdapterStatusDao()
@@ -278,7 +399,7 @@ func TestProcessAdapterStatus_TrueCondition(t *testing.T) {
 	}
 	cluster.ID = clusterID
 	_, svcErr := service.Create(ctx, cluster)
-	Expect(svcErr).To(BeNil())
+	g.Expect(svcErr).To(BeNil())
 
 	// Create adapter status with all mandatory conditions
 	conditions := []api.AdapterCondition{
@@ -302,27 +423,29 @@ func TestProcessAdapterStatus_TrueCondition(t *testing.T) {
 
 	now := time.Now()
 	adapterStatus := &api.AdapterStatus{
-		ResourceType: "Cluster",
-		ResourceID:   clusterID,
-		Adapter:      "test-adapter",
-		Conditions:   conditionsJSON,
-		CreatedTime:  &now,
+		ResourceType:   "Cluster",
+		ResourceID:     clusterID,
+		Adapter:        "test-adapter",
+		Conditions:     conditionsJSON,
+		CreatedTime:    now,
+		LastReportTime: now,
 	}
 
 	result, err := service.ProcessAdapterStatus(ctx, clusterID, adapterStatus)
 
-	Expect(err).To(BeNil())
-	Expect(result).ToNot(BeNil(), "ProcessAdapterStatus should return the upserted status")
-	Expect(result.Adapter).To(Equal("test-adapter"))
+	g.Expect(err).To(BeNil())
+	g.Expect(result).ToNot(BeNil(), "ProcessAdapterStatus should return the upserted status")
+	g.Expect(result.Adapter).To(Equal("test-adapter"))
 
 	// Verify the status was stored
 	storedStatuses, _ := adapterStatusDao.FindByResource(ctx, "Cluster", clusterID)
-	Expect(len(storedStatuses)).To(Equal(1), "Status should be stored for True condition")
+	g.Expect(len(storedStatuses)).To(Equal(1), "Status should be stored for True condition")
 }
 
 // TestProcessAdapterStatus_FalseCondition tests that False Available condition upserts and aggregates
 func TestProcessAdapterStatus_FalseCondition(t *testing.T) {
-	RegisterTestingT(t)
+	t.Parallel()
+	g := NewWithT(t)
 
 	clusterDao := newMockClusterDao()
 	adapterStatusDao := newMockAdapterStatusDao()
@@ -339,7 +462,7 @@ func TestProcessAdapterStatus_FalseCondition(t *testing.T) {
 	}
 	cluster.ID = clusterID
 	_, svcErr := service.Create(ctx, cluster)
-	Expect(svcErr).To(BeNil())
+	g.Expect(svcErr).To(BeNil())
 
 	// Create adapter status with all mandatory conditions
 	conditions := []api.AdapterCondition{
@@ -363,27 +486,29 @@ func TestProcessAdapterStatus_FalseCondition(t *testing.T) {
 
 	now := time.Now()
 	adapterStatus := &api.AdapterStatus{
-		ResourceType: "Cluster",
-		ResourceID:   clusterID,
-		Adapter:      "test-adapter",
-		Conditions:   conditionsJSON,
-		CreatedTime:  &now,
+		ResourceType:   "Cluster",
+		ResourceID:     clusterID,
+		Adapter:        "test-adapter",
+		Conditions:     conditionsJSON,
+		CreatedTime:    now,
+		LastReportTime: now,
 	}
 
 	result, err := service.ProcessAdapterStatus(ctx, clusterID, adapterStatus)
 
-	Expect(err).To(BeNil())
-	Expect(result).ToNot(BeNil(), "ProcessAdapterStatus should return the upserted status")
+	g.Expect(err).To(BeNil())
+	g.Expect(result).ToNot(BeNil(), "ProcessAdapterStatus should return the upserted status")
 
 	// Verify the status was stored
 	storedStatuses, _ := adapterStatusDao.FindByResource(ctx, "Cluster", clusterID)
-	Expect(len(storedStatuses)).To(Equal(1), "Status should be stored for False condition")
+	g.Expect(len(storedStatuses)).To(Equal(1), "Status should be stored for False condition")
 }
 
 // TestProcessAdapterStatus_FirstMultipleConditions_AvailableUnknown tests that first reports with
 // Available=Unknown are accepted even when other conditions are present
 func TestProcessAdapterStatus_FirstMultipleConditions_AvailableUnknown(t *testing.T) {
-	RegisterTestingT(t)
+	t.Parallel()
+	g := NewWithT(t)
 
 	clusterDao := newMockClusterDao()
 	adapterStatusDao := newMockAdapterStatusDao()
@@ -398,7 +523,7 @@ func TestProcessAdapterStatus_FirstMultipleConditions_AvailableUnknown(t *testin
 	cluster := &api.Cluster{Generation: 1}
 	cluster.ID = clusterID
 	_, svcErr := service.Create(ctx, cluster)
-	Expect(svcErr).To(BeNil())
+	g.Expect(svcErr).To(BeNil())
 
 	// Create first adapter status with all mandatory conditions but Available=Unknown
 	conditions := []api.AdapterCondition{
@@ -427,27 +552,29 @@ func TestProcessAdapterStatus_FirstMultipleConditions_AvailableUnknown(t *testin
 
 	now := time.Now()
 	adapterStatus := &api.AdapterStatus{
-		ResourceType: "Cluster",
-		ResourceID:   clusterID,
-		Adapter:      "test-adapter",
-		Conditions:   conditionsJSON,
-		CreatedTime:  &now,
+		ResourceType:   "Cluster",
+		ResourceID:     clusterID,
+		Adapter:        "test-adapter",
+		Conditions:     conditionsJSON,
+		CreatedTime:    now,
+		LastReportTime: now,
 	}
 
 	result, err := service.ProcessAdapterStatus(ctx, clusterID, adapterStatus)
 
-	Expect(err).To(BeNil())
-	Expect(result).ToNot(BeNil(), "First report with Available=Unknown should be accepted")
+	g.Expect(err).To(BeNil())
+	g.Expect(result).ToNot(BeNil(), "First report with Available=Unknown should be accepted")
 
 	// Verify the status was stored
 	storedStatuses, _ := adapterStatusDao.FindByResource(ctx, "Cluster", clusterID)
-	Expect(len(storedStatuses)).To(Equal(1), "First status with Available=Unknown should be stored")
+	g.Expect(len(storedStatuses)).To(Equal(1), "First status with Available=Unknown should be stored")
 }
 
 // TestProcessAdapterStatus_SubsequentMultipleConditions_AvailableUnknown tests that subsequent reports
 // with multiple conditions including Available=Unknown are discarded
 func TestProcessAdapterStatus_SubsequentMultipleConditions_AvailableUnknown(t *testing.T) {
-	RegisterTestingT(t)
+	t.Parallel()
+	g := NewWithT(t)
 
 	clusterDao := newMockClusterDao()
 	adapterStatusDao := newMockAdapterStatusDao()
@@ -458,6 +585,12 @@ func TestProcessAdapterStatus_SubsequentMultipleConditions_AvailableUnknown(t *t
 	ctx := context.Background()
 	clusterID := testClusterID
 
+	now := time.Now()
+	clusterDao.clusters[clusterID] = &api.Cluster{
+		Meta:       api.Meta{ID: clusterID, CreatedTime: now, UpdatedTime: now},
+		Generation: 1,
+	}
+
 	// Pre-populate an existing adapter status
 	existingConditions := []api.AdapterCondition{
 		{Type: api.ConditionTypeAvailable, Status: api.AdapterConditionUnknown, LastTransitionTime: time.Now()},
@@ -466,13 +599,14 @@ func TestProcessAdapterStatus_SubsequentMultipleConditions_AvailableUnknown(t *t
 	}
 	existingConditionsJSON, _ := json.Marshal(existingConditions)
 
-	now := time.Now()
 	existingStatus := &api.AdapterStatus{
-		ResourceType: "Cluster",
-		ResourceID:   clusterID,
-		Adapter:      "test-adapter",
-		Conditions:   existingConditionsJSON,
-		CreatedTime:  &now,
+		ResourceType:       "Cluster",
+		ResourceID:         clusterID,
+		Adapter:            "test-adapter",
+		Conditions:         existingConditionsJSON,
+		ObservedGeneration: 1,
+		CreatedTime:        now,
+		LastReportTime:     now,
 	}
 	_, _ = adapterStatusDao.Upsert(ctx, existingStatus)
 
@@ -487,20 +621,24 @@ func TestProcessAdapterStatus_SubsequentMultipleConditions_AvailableUnknown(t *t
 	conditionsJSON, _ := json.Marshal(conditions)
 
 	adapterStatus := &api.AdapterStatus{
-		ResourceType: "Cluster",
-		ResourceID:   clusterID,
-		Adapter:      "test-adapter",
-		Conditions:   conditionsJSON,
+		ResourceType:       "Cluster",
+		ResourceID:         clusterID,
+		Adapter:            "test-adapter",
+		Conditions:         conditionsJSON,
+		ObservedGeneration: 1,
+		CreatedTime:        now,
+		LastReportTime:     now,
 	}
 
 	result, err := service.ProcessAdapterStatus(ctx, clusterID, adapterStatus)
 
-	Expect(err).To(BeNil())
-	Expect(result).To(BeNil(), "Subsequent Available=Unknown should be discarded")
+	g.Expect(err).To(BeNil())
+	g.Expect(result).To(BeNil(), "Subsequent Available=Unknown should be discarded")
 }
 
 func TestClusterAvailableReadyTransitions(t *testing.T) {
-	RegisterTestingT(t)
+	t.Parallel()
+	g := NewWithT(t)
 
 	clusterDao := newMockClusterDao()
 	adapterStatusDao := newMockAdapterStatusDao()
@@ -517,15 +655,15 @@ func TestClusterAvailableReadyTransitions(t *testing.T) {
 	cluster := &api.Cluster{Generation: 1}
 	cluster.ID = clusterID
 	_, svcErr := service.Create(ctx, cluster)
-	Expect(svcErr).To(BeNil())
+	g.Expect(svcErr).To(BeNil())
 
 	getSynth := func() (api.ResourceCondition, api.ResourceCondition) {
 		stored, getErr := clusterDao.Get(ctx, clusterID)
-		Expect(getErr).To(BeNil())
+		g.Expect(getErr).To(BeNil())
 
 		var conds []api.ResourceCondition
-		Expect(json.Unmarshal(stored.StatusConditions, &conds)).To(Succeed())
-		Expect(len(conds)).To(BeNumerically(">=", 2))
+		g.Expect(json.Unmarshal(stored.StatusConditions, &conds)).To(Succeed())
+		g.Expect(len(conds)).To(BeNumerically(">=", 2))
 
 		var available, ready *api.ResourceCondition
 		for i := range conds {
@@ -536,8 +674,8 @@ func TestClusterAvailableReadyTransitions(t *testing.T) {
 				ready = &conds[i]
 			}
 		}
-		Expect(available).ToNot(BeNil())
-		Expect(ready).ToNot(BeNil())
+		g.Expect(available).ToNot(BeNil())
+		g.Expect(ready).ToNot(BeNil())
 		return *available, *ready
 	}
 
@@ -556,53 +694,53 @@ func TestClusterAvailableReadyTransitions(t *testing.T) {
 			Adapter:            adapter,
 			ObservedGeneration: observedGen,
 			Conditions:         conditionsJSON,
-			CreatedTime:        &now,
-			LastReportTime:     &now,
+			CreatedTime:        now,
+			LastReportTime:     now,
 		}
 
 		_, err := service.ProcessAdapterStatus(ctx, clusterID, adapterStatus)
-		Expect(err).To(BeNil())
+		g.Expect(err).To(BeNil())
 	}
 
 	// No adapter statuses yet.
 	_, err := service.UpdateClusterStatusFromAdapters(ctx, clusterID)
-	Expect(err).To(BeNil())
+	g.Expect(err).To(BeNil())
 	avail, ready := getSynth()
-	Expect(avail.Status).To(Equal(api.ConditionFalse))
-	Expect(avail.ObservedGeneration).To(Equal(int32(1)))
-	Expect(ready.Status).To(Equal(api.ConditionFalse))
-	Expect(ready.ObservedGeneration).To(Equal(int32(1)))
+	g.Expect(avail.Status).To(Equal(api.ConditionFalse))
+	g.Expect(avail.ObservedGeneration).To(Equal(int32(1)))
+	g.Expect(ready.Status).To(Equal(api.ConditionFalse))
+	g.Expect(ready.ObservedGeneration).To(Equal(int32(1)))
 
 	// Partial adapters: still not Available/Ready.
 	upsert("validation", api.AdapterConditionTrue, 1)
 	avail, ready = getSynth()
-	Expect(avail.Status).To(Equal(api.ConditionFalse))
-	Expect(ready.Status).To(Equal(api.ConditionFalse))
+	g.Expect(avail.Status).To(Equal(api.ConditionFalse))
+	g.Expect(ready.Status).To(Equal(api.ConditionFalse))
 
 	// All required adapters available at gen=1 => Available=True, Ready=True.
 	upsert("dns", api.AdapterConditionTrue, 1)
 	avail, ready = getSynth()
-	Expect(avail.Status).To(Equal(api.ConditionTrue))
-	Expect(avail.ObservedGeneration).To(Equal(int32(1)))
-	Expect(ready.Status).To(Equal(api.ConditionTrue))
-	Expect(ready.ObservedGeneration).To(Equal(int32(1)))
+	g.Expect(avail.Status).To(Equal(api.ConditionTrue))
+	g.Expect(avail.ObservedGeneration).To(Equal(int32(1)))
+	g.Expect(ready.Status).To(Equal(api.ConditionTrue))
+	g.Expect(ready.ObservedGeneration).To(Equal(int32(1)))
 
 	// Bump resource generation => Ready flips to False; Available remains True.
 	clusterDao.clusters[clusterID].Generation = 2
 	_, err = service.UpdateClusterStatusFromAdapters(ctx, clusterID)
-	Expect(err).To(BeNil())
+	g.Expect(err).To(BeNil())
 	avail, ready = getSynth()
-	Expect(avail.Status).To(Equal(api.ConditionTrue))
-	Expect(avail.ObservedGeneration).To(Equal(int32(1)))
-	Expect(ready.Status).To(Equal(api.ConditionFalse))
-	Expect(ready.ObservedGeneration).To(Equal(int32(2)))
+	g.Expect(avail.Status).To(Equal(api.ConditionTrue))
+	g.Expect(avail.ObservedGeneration).To(Equal(int32(1)))
+	g.Expect(ready.Status).To(Equal(api.ConditionFalse))
+	g.Expect(ready.ObservedGeneration).To(Equal(int32(2)))
 
 	// One adapter updates to gen=2 => Ready still False; Available still True (minObservedGeneration still 1).
 	upsert("validation", api.AdapterConditionTrue, 2)
 	avail, ready = getSynth()
-	Expect(avail.Status).To(Equal(api.ConditionTrue))
-	Expect(avail.ObservedGeneration).To(Equal(int32(1)))
-	Expect(ready.Status).To(Equal(api.ConditionFalse))
+	g.Expect(avail.Status).To(Equal(api.ConditionTrue))
+	g.Expect(avail.ObservedGeneration).To(Equal(int32(1)))
+	g.Expect(ready.Status).To(Equal(api.ConditionFalse))
 
 	// One adapter updates to gen=1 => Ready still False; Available still True (minObservedGeneration still 1).
 	// This is an edge case where an adapter reports a gen=1 status after a gen=2 status.
@@ -614,23 +752,23 @@ func TestClusterAvailableReadyTransitions(t *testing.T) {
 	// there should be soon an update to gen=2, which will overwrite the Available condition.
 	upsert("validation", api.AdapterConditionFalse, 1)
 	avail, ready = getSynth()
-	Expect(avail.Status).To(Equal(api.ConditionTrue)) // <-- this is the edge case
-	Expect(avail.ObservedGeneration).To(Equal(int32(1)))
-	Expect(ready.Status).To(Equal(api.ConditionFalse))
+	g.Expect(avail.Status).To(Equal(api.ConditionTrue)) // <-- this is the edge case
+	g.Expect(avail.ObservedGeneration).To(Equal(int32(1)))
+	g.Expect(ready.Status).To(Equal(api.ConditionFalse))
 
 	// All required adapters at gen=2 => Ready becomes True, Available minObservedGeneration becomes 2.
 	upsert("dns", api.AdapterConditionTrue, 2)
 	avail, ready = getSynth()
-	Expect(avail.Status).To(Equal(api.ConditionTrue))
-	Expect(avail.ObservedGeneration).To(Equal(int32(2)))
-	Expect(ready.Status).To(Equal(api.ConditionTrue))
+	g.Expect(avail.Status).To(Equal(api.ConditionTrue))
+	g.Expect(avail.ObservedGeneration).To(Equal(int32(2)))
+	g.Expect(ready.Status).To(Equal(api.ConditionTrue))
 
 	// One required adapter goes False => both Available and Ready become False.
 	upsert("dns", api.AdapterConditionFalse, 2)
 	avail, ready = getSynth()
-	Expect(avail.Status).To(Equal(api.ConditionFalse))
-	Expect(avail.ObservedGeneration).To(Equal(int32(0)))
-	Expect(ready.Status).To(Equal(api.ConditionFalse))
+	g.Expect(avail.Status).To(Equal(api.ConditionFalse))
+	g.Expect(avail.ObservedGeneration).To(Equal(int32(2)))
+	g.Expect(ready.Status).To(Equal(api.ConditionFalse))
 
 	// Available=Unknown is a no-op (does not store, does not overwrite cluster conditions).
 	prevStatus := api.Cluster{}.StatusConditions
@@ -648,13 +786,14 @@ func TestClusterAvailableReadyTransitions(t *testing.T) {
 		Conditions:   unknownJSON,
 	}
 	result, svcErr := service.ProcessAdapterStatus(ctx, clusterID, unknownStatus)
-	Expect(svcErr).To(BeNil())
-	Expect(result).To(BeNil())
-	Expect(clusterDao.clusters[clusterID].StatusConditions).To(Equal(prevStatus))
+	g.Expect(svcErr).To(BeNil())
+	g.Expect(result).To(BeNil())
+	g.Expect(clusterDao.clusters[clusterID].StatusConditions).To(Equal(prevStatus))
 }
 
 func TestClusterStaleAdapterStatusUpdatePolicy(t *testing.T) {
-	RegisterTestingT(t)
+	t.Parallel()
+	g := NewWithT(t)
 
 	clusterDao := newMockClusterDao()
 	adapterStatusDao := newMockAdapterStatusDao()
@@ -670,20 +809,20 @@ func TestClusterStaleAdapterStatusUpdatePolicy(t *testing.T) {
 	cluster := &api.Cluster{Generation: 2}
 	cluster.ID = clusterID
 	_, svcErr := service.Create(ctx, cluster)
-	Expect(svcErr).To(BeNil())
+	g.Expect(svcErr).To(BeNil())
 
 	getAvailable := func() api.ResourceCondition {
 		stored, getErr := clusterDao.Get(ctx, clusterID)
-		Expect(getErr).To(BeNil())
+		g.Expect(getErr).To(BeNil())
 
 		var conds []api.ResourceCondition
-		Expect(json.Unmarshal(stored.StatusConditions, &conds)).To(Succeed())
+		g.Expect(json.Unmarshal(stored.StatusConditions, &conds)).To(Succeed())
 		for i := range conds {
 			if conds[i].Type == api.ConditionTypeAvailable {
 				return conds[i]
 			}
 		}
-		Expect(true).To(BeFalse(), "Available condition not found")
+		g.Expect(true).To(BeFalse(), "Available condition not found")
 		return api.ResourceCondition{}
 	}
 
@@ -702,36 +841,37 @@ func TestClusterStaleAdapterStatusUpdatePolicy(t *testing.T) {
 			Adapter:            adapter,
 			ObservedGeneration: observedGen,
 			Conditions:         conditionsJSON,
-			CreatedTime:        &now,
-			LastReportTime:     &now,
+			CreatedTime:        now,
+			LastReportTime:     now,
 		}
 
 		_, err := service.ProcessAdapterStatus(ctx, clusterID, adapterStatus)
-		Expect(err).To(BeNil())
+		g.Expect(err).To(BeNil())
 	}
 
 	// Current generation statuses => Available=True at observed_generation=2.
 	upsert("validation", api.AdapterConditionTrue, 2)
 	upsert("dns", api.AdapterConditionTrue, 2)
 	available := getAvailable()
-	Expect(available.Status).To(Equal(api.ConditionTrue))
-	Expect(available.ObservedGeneration).To(Equal(int32(2)))
+	g.Expect(available.Status).To(Equal(api.ConditionTrue))
+	g.Expect(available.ObservedGeneration).To(Equal(int32(2)))
 
 	// Stale True should not override newer True.
 	upsert("validation", api.AdapterConditionTrue, 1)
 	available = getAvailable()
-	Expect(available.Status).To(Equal(api.ConditionTrue))
-	Expect(available.ObservedGeneration).To(Equal(int32(2)))
+	g.Expect(available.Status).To(Equal(api.ConditionTrue))
+	g.Expect(available.ObservedGeneration).To(Equal(int32(2)))
 
 	// Stale False is more restrictive and should override.
 	upsert("validation", api.AdapterConditionFalse, 1)
 	available = getAvailable()
-	Expect(available.Status).To(Equal(api.ConditionTrue))
-	Expect(available.ObservedGeneration).To(Equal(int32(2)))
+	g.Expect(available.Status).To(Equal(api.ConditionTrue))
+	g.Expect(available.ObservedGeneration).To(Equal(int32(2)))
 }
 
 func TestClusterSyntheticTimestampsStableWithoutAdapterStatus(t *testing.T) {
-	RegisterTestingT(t)
+	t.Parallel()
+	g := NewWithT(t)
 
 	clusterDao := newMockClusterDao()
 	adapterStatusDao := newMockAdapterStatusDao()
@@ -770,12 +910,14 @@ func TestClusterSyntheticTimestampsStableWithoutAdapterStatus(t *testing.T) {
 		StatusConditions: initialConditionsJSON,
 	}
 	cluster.ID = clusterID
+	cluster.CreatedTime = fixedNow
+	cluster.UpdatedTime = fixedNow
 	created, svcErr := service.Create(ctx, cluster)
-	Expect(svcErr).To(BeNil())
+	g.Expect(svcErr).To(BeNil())
 
 	var createdConds []api.ResourceCondition
-	Expect(json.Unmarshal(created.StatusConditions, &createdConds)).To(Succeed())
-	Expect(len(createdConds)).To(BeNumerically(">=", 2))
+	g.Expect(json.Unmarshal(created.StatusConditions, &createdConds)).To(Succeed())
+	g.Expect(len(createdConds)).To(BeNumerically(">=", 2))
 
 	var createdAvailable, createdReady *api.ResourceCondition
 	for i := range createdConds {
@@ -786,21 +928,21 @@ func TestClusterSyntheticTimestampsStableWithoutAdapterStatus(t *testing.T) {
 			createdReady = &createdConds[i]
 		}
 	}
-	Expect(createdAvailable).ToNot(BeNil())
-	Expect(createdReady).ToNot(BeNil())
-	Expect(createdAvailable.CreatedTime).To(Equal(fixedNow))
-	Expect(createdAvailable.LastTransitionTime).To(Equal(fixedNow))
-	Expect(createdAvailable.LastUpdatedTime).To(Equal(fixedNow))
-	Expect(createdReady.CreatedTime).To(Equal(fixedNow))
-	Expect(createdReady.LastTransitionTime).To(Equal(fixedNow))
-	Expect(createdReady.LastUpdatedTime).To(Equal(fixedNow))
+	g.Expect(createdAvailable).ToNot(BeNil())
+	g.Expect(createdReady).ToNot(BeNil())
+	g.Expect(createdAvailable.CreatedTime).To(Equal(fixedNow))
+	g.Expect(createdAvailable.LastTransitionTime).To(Equal(fixedNow))
+	g.Expect(createdAvailable.LastUpdatedTime).To(Equal(fixedNow))
+	g.Expect(createdReady.CreatedTime).To(Equal(fixedNow))
+	g.Expect(createdReady.LastTransitionTime).To(Equal(fixedNow))
+	g.Expect(createdReady.LastUpdatedTime).To(Equal(fixedNow))
 
 	updated, err := service.UpdateClusterStatusFromAdapters(ctx, clusterID)
-	Expect(err).To(BeNil())
+	g.Expect(err).To(BeNil())
 
 	var updatedConds []api.ResourceCondition
-	Expect(json.Unmarshal(updated.StatusConditions, &updatedConds)).To(Succeed())
-	Expect(len(updatedConds)).To(BeNumerically(">=", 2))
+	g.Expect(json.Unmarshal(updated.StatusConditions, &updatedConds)).To(Succeed())
+	g.Expect(len(updatedConds)).To(BeNumerically(">=", 2))
 
 	var updatedAvailable, updatedReady *api.ResourceCondition
 	for i := range updatedConds {
@@ -811,19 +953,20 @@ func TestClusterSyntheticTimestampsStableWithoutAdapterStatus(t *testing.T) {
 			updatedReady = &updatedConds[i]
 		}
 	}
-	Expect(updatedAvailable).ToNot(BeNil())
-	Expect(updatedReady).ToNot(BeNil())
-	Expect(updatedAvailable.CreatedTime).To(Equal(fixedNow))
-	Expect(updatedAvailable.LastTransitionTime).To(Equal(fixedNow))
-	Expect(updatedAvailable.LastUpdatedTime).To(Equal(fixedNow))
-	Expect(updatedReady.CreatedTime).To(Equal(fixedNow))
-	Expect(updatedReady.LastTransitionTime).To(Equal(fixedNow))
-	Expect(updatedReady.LastUpdatedTime).To(Equal(fixedNow))
+	g.Expect(updatedAvailable).ToNot(BeNil())
+	g.Expect(updatedReady).ToNot(BeNil())
+	g.Expect(updatedAvailable.CreatedTime).To(Equal(fixedNow))
+	g.Expect(updatedAvailable.LastTransitionTime).To(Equal(fixedNow))
+	g.Expect(updatedAvailable.LastUpdatedTime).To(Equal(fixedNow))
+	g.Expect(updatedReady.CreatedTime).To(Equal(fixedNow))
+	g.Expect(updatedReady.LastTransitionTime).To(Equal(fixedNow))
+	g.Expect(updatedReady.LastUpdatedTime).To(Equal(fixedNow))
 }
 
 // TestProcessAdapterStatus_MissingMandatoryCondition_Available tests that updates missing Available are rejected
 func TestProcessAdapterStatus_MissingMandatoryCondition_Available(t *testing.T) {
-	RegisterTestingT(t)
+	t.Parallel()
+	g := NewWithT(t)
 
 	clusterDao := newMockClusterDao()
 	adapterStatusDao := newMockAdapterStatusDao()
@@ -837,7 +980,7 @@ func TestProcessAdapterStatus_MissingMandatoryCondition_Available(t *testing.T) 
 	cluster := &api.Cluster{Generation: 1}
 	cluster.ID = clusterID
 	_, svcErr := service.Create(ctx, cluster)
-	Expect(svcErr).To(BeNil())
+	g.Expect(svcErr).To(BeNil())
 
 	// First, send a valid status
 	validConditions := []api.AdapterCondition{
@@ -853,11 +996,12 @@ func TestProcessAdapterStatus_MissingMandatoryCondition_Available(t *testing.T) 
 		Adapter:            "test-adapter",
 		Conditions:         validConditionsJSON,
 		ObservedGeneration: 1,
-		CreatedTime:        &now,
+		CreatedTime:        now,
+		LastReportTime:     now,
 	}
 	result, err := service.ProcessAdapterStatus(ctx, clusterID, validStatus)
-	Expect(err).To(BeNil())
-	Expect(result).ToNot(BeNil())
+	g.Expect(err).To(BeNil())
+	g.Expect(result).ToNot(BeNil())
 
 	// Now send an update without Available condition
 	invalidConditions := []api.AdapterCondition{
@@ -871,27 +1015,28 @@ func TestProcessAdapterStatus_MissingMandatoryCondition_Available(t *testing.T) 
 		ResourceID:         clusterID,
 		Adapter:            "test-adapter",
 		Conditions:         invalidConditionsJSON,
-		ObservedGeneration: 2,
-		CreatedTime:        &now,
+		ObservedGeneration: 1,
+		CreatedTime:        now,
+		LastReportTime:     now,
 	}
 
 	result, err = service.ProcessAdapterStatus(ctx, clusterID, invalidStatus)
 
 	// Should be rejected with validation error
-	Expect(err).ToNot(BeNil())
-	Expect(err.HTTPCode).To(Equal(http.StatusBadRequest))
-	Expect(err.Reason).To(ContainSubstring("missing mandatory condition"))
-	Expect(result).To(BeNil(), "Update missing Available condition should be rejected")
+	g.Expect(err).ToNot(BeNil())
+	g.Expect(err.HTTPCode).To(Equal(http.StatusBadRequest))
+	g.Expect(err.Reason).To(ContainSubstring("missing mandatory condition"))
+	g.Expect(result).To(BeNil(), "Update missing Available condition should be rejected")
 
 	// Verify old status is preserved
 	storedStatus, _ := adapterStatusDao.FindByResourceAndAdapter(ctx, "Cluster", clusterID, "test-adapter")
-	Expect(storedStatus).ToNot(BeNil())
-	Expect(storedStatus.ObservedGeneration).To(Equal(int32(1)), "Old status should be preserved")
+	g.Expect(storedStatus).ToNot(BeNil())
+	g.Expect(storedStatus.ObservedGeneration).To(Equal(int32(1)), "Old status should be preserved")
 
 	var storedConditions []api.AdapterCondition
 	unmarshalErr := json.Unmarshal(storedStatus.Conditions, &storedConditions)
-	Expect(unmarshalErr).To(BeNil())
-	Expect(len(storedConditions)).To(Equal(3))
+	g.Expect(unmarshalErr).To(BeNil())
+	g.Expect(len(storedConditions)).To(Equal(3))
 	// Verify Available is still there
 	hasAvailable := false
 	for _, cond := range storedConditions {
@@ -900,13 +1045,14 @@ func TestProcessAdapterStatus_MissingMandatoryCondition_Available(t *testing.T) 
 			break
 		}
 	}
-	Expect(hasAvailable).To(BeTrue(), "Available condition should be preserved")
+	g.Expect(hasAvailable).To(BeTrue(), "Available condition should be preserved")
 }
 
 // TestProcessAdapterStatus_AllMandatoryConditions_WithCustom tests that valid
 // updates with all mandatory conditions are accepted
 func TestProcessAdapterStatus_AllMandatoryConditions_WithCustom(t *testing.T) {
-	RegisterTestingT(t)
+	t.Parallel()
+	g := NewWithT(t)
 
 	clusterDao := newMockClusterDao()
 	adapterStatusDao := newMockAdapterStatusDao()
@@ -920,7 +1066,7 @@ func TestProcessAdapterStatus_AllMandatoryConditions_WithCustom(t *testing.T) {
 	cluster := &api.Cluster{Generation: 1}
 	cluster.ID = clusterID
 	_, svcErr := service.Create(ctx, cluster)
-	Expect(svcErr).To(BeNil())
+	g.Expect(svcErr).To(BeNil())
 
 	// Send status with all mandatory conditions + custom condition
 	conditions := []api.AdapterCondition{
@@ -937,35 +1083,37 @@ func TestProcessAdapterStatus_AllMandatoryConditions_WithCustom(t *testing.T) {
 		Adapter:            "test-adapter",
 		Conditions:         conditionsJSON,
 		ObservedGeneration: 1,
-		CreatedTime:        &now,
+		CreatedTime:        now,
+		LastReportTime:     now,
 	}
 
 	result, err := service.ProcessAdapterStatus(ctx, clusterID, adapterStatus)
 
 	// Should be accepted
-	Expect(err).To(BeNil())
-	Expect(result).ToNot(BeNil(), "Update with all mandatory conditions should be accepted")
+	g.Expect(err).To(BeNil())
+	g.Expect(result).ToNot(BeNil(), "Update with all mandatory conditions should be accepted")
 
 	// Verify status was stored with all 4 conditions
 	var storedConditions []api.AdapterCondition
 	unmarshalErr := json.Unmarshal(result.Conditions, &storedConditions)
-	Expect(unmarshalErr).To(BeNil())
-	Expect(len(storedConditions)).To(Equal(4), "All 4 conditions should be stored")
+	g.Expect(unmarshalErr).To(BeNil())
+	g.Expect(len(storedConditions)).To(Equal(4), "All 4 conditions should be stored")
 
 	// Verify all conditions are present
 	conditionTypes := make(map[string]bool)
 	for _, cond := range storedConditions {
 		conditionTypes[cond.Type] = true
 	}
-	Expect(conditionTypes[api.ConditionTypeAvailable]).To(BeTrue())
-	Expect(conditionTypes[api.ConditionTypeApplied]).To(BeTrue())
-	Expect(conditionTypes[api.ConditionTypeHealth]).To(BeTrue())
-	Expect(conditionTypes["CustomCondition"]).To(BeTrue())
+	g.Expect(conditionTypes[api.ConditionTypeAvailable]).To(BeTrue())
+	g.Expect(conditionTypes[api.ConditionTypeApplied]).To(BeTrue())
+	g.Expect(conditionTypes[api.ConditionTypeHealth]).To(BeTrue())
+	g.Expect(conditionTypes["CustomCondition"]).To(BeTrue())
 }
 
 // TestProcessAdapterStatus_CustomConditionRemoval tests that custom conditions can be removed
 func TestProcessAdapterStatus_CustomConditionRemoval(t *testing.T) {
-	RegisterTestingT(t)
+	t.Parallel()
+	g := NewWithT(t)
 
 	clusterDao := newMockClusterDao()
 	adapterStatusDao := newMockAdapterStatusDao()
@@ -979,7 +1127,7 @@ func TestProcessAdapterStatus_CustomConditionRemoval(t *testing.T) {
 	cluster := &api.Cluster{Generation: 1}
 	cluster.ID = clusterID
 	_, svcErr := service.Create(ctx, cluster)
-	Expect(svcErr).To(BeNil())
+	g.Expect(svcErr).To(BeNil())
 
 	// First update: send all mandatory + custom condition
 	conditions1 := []api.AdapterCondition{
@@ -996,16 +1144,20 @@ func TestProcessAdapterStatus_CustomConditionRemoval(t *testing.T) {
 		Adapter:            "test-adapter",
 		Conditions:         conditionsJSON1,
 		ObservedGeneration: 1,
-		CreatedTime:        &now,
+		CreatedTime:        now,
+		LastReportTime:     now,
 	}
 	result1, err := service.ProcessAdapterStatus(ctx, clusterID, adapterStatus1)
-	Expect(err).To(BeNil())
-	Expect(result1).ToNot(BeNil())
+	g.Expect(err).To(BeNil())
+	g.Expect(result1).ToNot(BeNil())
 
 	var storedConditions1 []api.AdapterCondition
 	unmarshalErr := json.Unmarshal(result1.Conditions, &storedConditions1)
-	Expect(unmarshalErr).To(BeNil())
-	Expect(len(storedConditions1)).To(Equal(4))
+	g.Expect(unmarshalErr).To(BeNil())
+	g.Expect(len(storedConditions1)).To(Equal(4))
+
+	// Allow observed_generation=2 on the adapter report while the cluster is still at generation 1.
+	clusterDao.clusters[clusterID].Generation = 2
 
 	// Second update: remove custom condition (only send mandatory conditions)
 	conditions2 := []api.AdapterCondition{
@@ -1020,24 +1172,25 @@ func TestProcessAdapterStatus_CustomConditionRemoval(t *testing.T) {
 		Adapter:            "test-adapter",
 		Conditions:         conditionsJSON2,
 		ObservedGeneration: 2,
-		CreatedTime:        &now,
+		CreatedTime:        now,
+		LastReportTime:     now,
 	}
 	result2, err := service.ProcessAdapterStatus(ctx, clusterID, adapterStatus2)
-	Expect(err).To(BeNil())
-	Expect(result2).ToNot(BeNil())
+	g.Expect(err).To(BeNil())
+	g.Expect(result2).ToNot(BeNil())
 
 	// Verify CustomCondition was removed
 	var storedConditions2 []api.AdapterCondition
 	unmarshalErr = json.Unmarshal(result2.Conditions, &storedConditions2)
-	Expect(unmarshalErr).To(BeNil())
-	Expect(len(storedConditions2)).To(Equal(3), "CustomCondition should be removed")
+	g.Expect(unmarshalErr).To(BeNil())
+	g.Expect(len(storedConditions2)).To(Equal(3), "CustomCondition should be removed")
 
 	conditionTypes := make(map[string]bool)
 	for _, cond := range storedConditions2 {
 		conditionTypes[cond.Type] = true
 	}
-	Expect(conditionTypes[api.ConditionTypeAvailable]).To(BeTrue())
-	Expect(conditionTypes[api.ConditionTypeApplied]).To(BeTrue())
-	Expect(conditionTypes[api.ConditionTypeHealth]).To(BeTrue())
-	Expect(conditionTypes["CustomCondition"]).To(BeFalse(), "CustomCondition should not be present")
+	g.Expect(conditionTypes[api.ConditionTypeAvailable]).To(BeTrue())
+	g.Expect(conditionTypes[api.ConditionTypeApplied]).To(BeTrue())
+	g.Expect(conditionTypes[api.ConditionTypeHealth]).To(BeTrue())
+	g.Expect(conditionTypes["CustomCondition"]).To(BeFalse(), "CustomCondition should not be present")
 }

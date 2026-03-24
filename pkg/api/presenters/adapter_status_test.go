@@ -278,8 +278,8 @@ func TestPresentAdapterStatus_Complete(t *testing.T) {
 		Conditions:         conditionsJSON,
 		Data:               dataJSON,
 		Metadata:           metadataJSON,
-		CreatedTime:        &now,
-		LastReportTime:     &now,
+		CreatedTime:        now,
+		LastReportTime:     now,
 	}
 
 	result, err := PresentAdapterStatus(adapterStatus)
@@ -310,8 +310,8 @@ func TestPresentAdapterStatus_Complete(t *testing.T) {
 	Expect(result.LastReportTime.Unix()).To(Equal(now.Unix()))
 }
 
-// TestPresentAdapterStatus_NilTimestamps tests handling of nil timestamps
-func TestPresentAdapterStatus_NilTimestamps(t *testing.T) {
+// TestPresentAdapterStatus_ZeroTimestamps tests that zero timestamps pass through as zero time.Time values.
+func TestPresentAdapterStatus_ZeroTimestamps(t *testing.T) {
 	RegisterTestingT(t)
 
 	adapterStatus := &api.AdapterStatus{
@@ -321,14 +321,12 @@ func TestPresentAdapterStatus_NilTimestamps(t *testing.T) {
 		ObservedGeneration: 5,
 		Conditions:         []byte("[]"),
 		Data:               []byte("{}"),
-		CreatedTime:        nil, // Nil timestamp
-		LastReportTime:     nil, // Nil timestamp
+		// CreatedTime and LastReportTime are zero-valued (unset)
 	}
 
 	result, err := PresentAdapterStatus(adapterStatus)
 	Expect(err).To(BeNil())
 
-	// Verify zero time.Time is returned (not nil)
 	Expect(result.CreatedTime.IsZero()).To(BeTrue())
 	Expect(result.LastReportTime.IsZero()).To(BeTrue())
 }
@@ -345,8 +343,8 @@ func TestPresentAdapterStatus_EmptyConditions(t *testing.T) {
 		ObservedGeneration: 2,
 		Conditions:         []byte("[]"), // Empty array JSON
 		Data:               []byte("{}"),
-		CreatedTime:        &now,
-		LastReportTime:     &now,
+		CreatedTime:        now,
+		LastReportTime:     now,
 	}
 
 	result, err := PresentAdapterStatus(adapterStatus)
@@ -368,8 +366,8 @@ func TestPresentAdapterStatus_EmptyData(t *testing.T) {
 		ObservedGeneration: 3,
 		Conditions:         []byte("[]"),
 		Data:               []byte("{}"), // Empty object JSON
-		CreatedTime:        &now,
-		LastReportTime:     &now,
+		CreatedTime:        now,
+		LastReportTime:     now,
 	}
 
 	result, err := PresentAdapterStatus(adapterStatus)
@@ -410,8 +408,8 @@ func TestPresentAdapterStatus_ConditionStatusConversion(t *testing.T) {
 			ObservedGeneration: 1,
 			Conditions:         conditionsJSON,
 			Data:               []byte("{}"),
-			CreatedTime:        &now,
-			LastReportTime:     &now,
+			CreatedTime:        now,
+			LastReportTime:     now,
 		}
 
 		result, err := PresentAdapterStatus(adapterStatus)
@@ -471,8 +469,8 @@ func TestPresentAdapterStatus_MalformedConditions(t *testing.T) {
 		ObservedGeneration: 5,
 		Conditions:         []byte("{invalid json}"), // Malformed JSON
 		Data:               []byte("{}"),
-		CreatedTime:        &now,
-		LastReportTime:     &now,
+		CreatedTime:        now,
+		LastReportTime:     now,
 	}
 	adapterStatus.ID = "adapter-status-malformed-conditions"
 
@@ -494,8 +492,8 @@ func TestPresentAdapterStatus_MalformedData(t *testing.T) {
 		ObservedGeneration: 5,
 		Conditions:         []byte("[]"),
 		Data:               []byte("{not valid json"), // Malformed JSON
-		CreatedTime:        &now,
-		LastReportTime:     &now,
+		CreatedTime:        now,
+		LastReportTime:     now,
 	}
 	adapterStatus.ID = "adapter-status-malformed-data"
 
@@ -518,8 +516,8 @@ func TestPresentAdapterStatus_MalformedMetadata(t *testing.T) {
 		Conditions:         []byte("[]"),
 		Data:               []byte("{}"),
 		Metadata:           []byte("[{incomplete"), // Malformed JSON
-		CreatedTime:        &now,
-		LastReportTime:     &now,
+		CreatedTime:        now,
+		LastReportTime:     now,
 	}
 	adapterStatus.ID = "adapter-status-malformed-metadata"
 
