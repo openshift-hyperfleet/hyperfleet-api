@@ -62,6 +62,55 @@ func TestInitTraceProvider_OTLPExporter(t *testing.T) {
 
 }
 
+func TestInitTraceProvider_InvalidProtocol(t *testing.T) {
+	ctx := context.Background()
+
+	tests := []struct {
+		name     string
+		protocol string
+	}{
+		{
+			name:     "bare_http_is_ambiguous",
+			protocol: "http",
+		},
+		{
+			name:     "http_json_not_yet_supported",
+			protocol: "http/json",
+		},
+		{
+			name:     "invalid_protocol",
+			protocol: "invalid",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://fake-otel-collector:4317")
+			t.Setenv("OTEL_EXPORTER_OTLP_PROTOCOL", tt.protocol)
+
+			// Should fall back to gRPC with a warning (not fail)
+			tp, err := InitTraceProvider(ctx, "test-service", "v1.0.0")
+			if err != nil {
+				t.Fatalf("Failed to initialize trace provider: %v", err)
+			}
+			if tp == nil {
+				t.Fatal("Expected trace provider, got nil")
+			}
+			defer func() {
+				if err := Shutdown(ctx, tp); err != nil {
+					t.Errorf("Failed to shutdown trace provider: %v", err)
+				}
+			}()
+
+			// Verify tracer is available (using default gRPC exporter)
+			tracer := otel.Tracer("test")
+			if tracer == nil {
+				t.Error("Expected tracer to be available")
+			}
+		})
+	}
+}
+
 func TestInitTraceProvider_SamplerEnvironmentVariables(t *testing.T) {
 	ctx := context.Background()
 

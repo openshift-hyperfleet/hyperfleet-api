@@ -211,75 +211,28 @@ logging:
 
 ### OpenTelemetry Configuration
 
-OpenTelemetry tracing is configured using standard OpenTelemetry environment variables.
+OpenTelemetry tracing is configured via standard environment variables following the [HyperFleet Tracing Standard](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/standards/tracing.md).
 
 **Enabling Tracing:**
 
-HyperFleet supports multiple ways to enable tracing (in order of precedence):
+| Property | Environment Variable | Type | Default | Description |
+|----------|---------------------|------|---------|-------------|
+| `logging.otel.enabled` | `TRACING_ENABLED` | bool | `true` | Enable OpenTelemetry tracing (HyperFleet standard) |
 
-1. **`TRACING_ENABLED`** (Tracing standard - recommended for production)
-   ```bash
-   export TRACING_ENABLED=true
-   ```
+**Standard OpenTelemetry Environment Variables:**
 
-2. **`HYPERFLEET_LOGGING_OTEL_ENABLED`** (Config via environment variable)
-   ```bash
-   export HYPERFLEET_LOGGING_OTEL_ENABLED=true
-   ```
+Once enabled, tracing is configured using standard OpenTelemetry variables:
 
-3. **Config file** (`config.yaml`)
-   ```yaml
-   logging:
-     otel:
-       enabled: true
-   ```
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `OTEL_SERVICE_NAME` | Service name in traces | `hyperfleet-api` |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP collector endpoint | stdout exporter |
+| `OTEL_EXPORTER_OTLP_PROTOCOL` | Export protocol (`grpc` or `http/protobuf`) | `grpc` |
+| `OTEL_TRACES_SAMPLER` | Sampler type | `parentbased_traceidratio` |
+| `OTEL_TRACES_SAMPLER_ARG` | Sampling rate (0.0-1.0) | `1.0` |
+| `OTEL_RESOURCE_ATTRIBUTES` | Additional resource attributes (k=v,k2=v2) | - |
 
-**OpenTelemetry Standard Environment Variables:**
-
-Once tracing is enabled, configure OpenTelemetry behavior using standard variables:
-
-| Variable | Description | Default | Example |
-|----------|-------------|---------|---------|
-| `OTEL_SERVICE_NAME` | Service name in traces | `hyperfleet-api` | `hyperfleet-api-prod` |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP collector endpoint | stdout | `http://otel-collector:4317` |
-| `OTEL_EXPORTER_OTLP_PROTOCOL` | Export protocol | `grpc` | `grpc`, `http/protobuf` |
-| `OTEL_TRACES_SAMPLER` | Sampler type | `parentbased_traceidratio` | `always_on`, `traceidratio` |
-| `OTEL_TRACES_SAMPLER_ARG` | Sampling rate (0.0-1.0) | `1.0` | `0.1` (10% sampling) |
-| `OTEL_RESOURCE_ATTRIBUTES` | Additional attributes | - | `env=prod,region=us-east` |
-
-**Example - Production with OTLP Collector:**
-```bash
-# Enable tracing (Tracing standard)
-export TRACING_ENABLED=true
-
-# Configure OpenTelemetry
-export OTEL_SERVICE_NAME=hyperfleet-api-prod
-export OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
-export OTEL_EXPORTER_OTLP_PROTOCOL=grpc
-export OTEL_TRACES_SAMPLER=parentbased_traceidratio
-export OTEL_TRACES_SAMPLER_ARG=0.1  # Sample 10% of requests
-export OTEL_RESOURCE_ATTRIBUTES=environment=production,region=us-east-1
-```
-**Note**: Sample 10% of requests (OTEL_TRACES_SAMPLER_ARG=0.1) provides sufficient observability while minimizing performance impact for high-traffic systems
-
-**Example - Development with stdout:**
-```bash
-# Enable tracing
-export TRACING_ENABLED=true
-
-# Sample all requests (no OTLP endpoint = stdout export)
-export OTEL_TRACES_SAMPLER_ARG=1.0
-```
-
-**Sampler Types:**
-- `always_on` - Sample all requests
-- `always_off` - Sample no requests
-- `traceidratio` - Sample based on trace ID ratio (use with `OTEL_TRACES_SAMPLER_ARG`)
-- `parentbased_traceidratio` - Respect parent decision, otherwise use trace ID ratio (default)
-- `parentbased_always_on` - Respect parent decision, otherwise sample all
-- `parentbased_always_off` - Respect parent decision, otherwise sample none
-
-**See also:** [Logging Documentation](logging.md#opentelemetry-integration) for detailed tracing setup.
+**See:** [Logging Documentation](logging.md#opentelemetry-integration) for tracing configuration details and [Tracing Standard](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/standards/tracing.md#configuration) for complete reference.
 
 ---
 
@@ -441,7 +394,7 @@ Complete table of all configuration properties, their environment variables, and
 | `logging.level` | `HYPERFLEET_LOGGING_LEVEL` | string | `info` |
 | `logging.format` | `HYPERFLEET_LOGGING_FORMAT` | string | `json` |
 | `logging.output` | `HYPERFLEET_LOGGING_OUTPUT` | string | `stdout` |
-| `logging.otel.enabled` | `HYPERFLEET_LOGGING_OTEL_ENABLED` | bool | `false` |
+| `logging.otel.enabled` | `TRACING_ENABLED` | bool | `false` |
 | `logging.masking.enabled` | `HYPERFLEET_LOGGING_MASKING_ENABLED` | bool | `true` |
 | `logging.masking.headers` | `HYPERFLEET_LOGGING_MASKING_HEADERS` | csv | `Authorization,Cookie` |
 | `logging.masking.fields` | `HYPERFLEET_LOGGING_MASKING_FIELDS` | csv | `password,token` |
@@ -685,28 +638,9 @@ hyperfleet-api serve
 
 Before deploying to production, verify:
 
-**Core Configuration:**
-- ✅ Database credentials set via `HYPERFLEET_DATABASE_*` environment variables
-- ✅ Database SSL/TLS configured (`HYPERFLEET_DATABASE_SSL_MODE=require`)
-- ✅ Server authentication enabled (`HYPERFLEET_SERVER_JWT_ENABLED=true`)
-- ✅ Required adapters configured (`HYPERFLEET_ADAPTERS_REQUIRED_CLUSTER`, `HYPERFLEET_ADAPTERS_REQUIRED_NODEPOOL`)
+- ✅ Environment variables (HYPERFLEET_*) with secretKeyRef for Kubernetes
+- ✅ CLI flags (--kebab-case)
+- ✅ Configuration files (YAML snake_case)
+- ✅ Default values
+- ✅ OpenTelemetry tracing variables (TRACING_ENABLED, OTEL_*) if tracing is enabled
 
-**OpenTelemetry Tracing (if enabled):**
-- ✅ Tracing enabled via `TRACING_ENABLED=true` or `HYPERFLEET_LOGGING_OTEL_ENABLED=true`
-- ✅ Service name set: `OTEL_SERVICE_NAME=hyperfleet-api-prod` (or environment-specific)
-- ✅ OTLP endpoint configured: `OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317`
-- ✅ Sampling rate appropriate for environment:
-  - Production: `OTEL_TRACES_SAMPLER_ARG=0.1` (10% sampling recommended)
-  - Development: `OTEL_TRACES_SAMPLER_ARG=1.0` (100% sampling)
-- ✅ Resource attributes set: `OTEL_RESOURCE_ATTRIBUTES=environment=prod,region=us-east-1`
-- ✅ Protocol matches collector: `OTEL_EXPORTER_OTLP_PROTOCOL=grpc` (or `http/protobuf`)
-
-**Security:**
-- ✅ Secrets stored in Kubernetes Secrets (not ConfigMaps)
-- ✅ `secretKeyRef` used for sensitive values in Deployment
-- ✅ Log masking enabled: `HYPERFLEET_LOGGING_MASKING_ENABLED=true`
-
-**Logging:**
-- ✅ Log level appropriate: `HYPERFLEET_LOGGING_LEVEL=info` (production)
-- ✅ Log format: `HYPERFLEET_LOGGING_FORMAT=json` (for log aggregation)
-- ✅ Database debug disabled in production: `HYPERFLEET_DATABASE_DEBUG=false`

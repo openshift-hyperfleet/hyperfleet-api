@@ -71,11 +71,9 @@ func runServe(cmd *cobra.Command, args []string) {
 
 	var tp *trace.TracerProvider
 
-	// Determine if tracing is enabled
-	// Precedence: TRACING_ENABLED (tracing standard) > config (env/flags) > default
+	// Determine if tracing is enabled using TRACING_ENABLED (tracing standard)
 	var tracingEnabled bool
 	if tracingEnv := os.Getenv("TRACING_ENABLED"); tracingEnv != "" {
-		// TRACING_ENABLED takes precedence for cross-component consistency
 		if enabled, err := strconv.ParseBool(tracingEnv); err == nil {
 			tracingEnabled = enabled
 		} else {
@@ -86,7 +84,7 @@ func runServe(cmd *cobra.Command, args []string) {
 			tracingEnabled = environments.Environment().Config.Logging.OTel.Enabled
 		}
 	} else {
-		// Use config value (already resolved by Viper from env vars, config file, flags, or default)
+		// Use config default if TRACING_ENABLED not set
 		tracingEnabled = environments.Environment().Config.Logging.OTel.Enabled
 	}
 

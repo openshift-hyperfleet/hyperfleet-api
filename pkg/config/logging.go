@@ -15,15 +15,8 @@ type LoggingConfig struct {
 }
 
 // OTelConfig holds OpenTelemetry configuration
-// Configuration is driven entirely by standard environment variables (HyperFleet + OpenTelemetry):
-//   - TRACING_ENABLED: enable/disable tracing
-//   - OTEL_SERVICE_NAME: service name (default: "hyperfleet-api")
-//   - OTEL_EXPORTER_OTLP_ENDPOINT: OTLP collector endpoint (if not set, uses stdout)
-//   - OTEL_EXPORTER_OTLP_PROTOCOL: "grpc" (default) or "http/protobuf"
-//   - OTEL_TRACES_SAMPLER: sampler type (default: "parentbased_traceidratio")
-//   - OTEL_TRACES_SAMPLER_ARG: sampling rate 0.0-1.0 (default: 1.0)
-//   - OTEL_RESOURCE_ATTRIBUTES: additional resource attributes (k=v,k2=v2)
-//   - K8S_NAMESPACE: kubernetes namespace (added as k8s.namespace.name)
+// Configuration is driven entirely by standard environment variables.
+// See: https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/standards/tracing.md#configuration
 type OTelConfig struct {
 	Enabled bool `mapstructure:"enabled" json:"enabled"`
 }
@@ -43,7 +36,7 @@ func NewLoggingConfig() *LoggingConfig {
 		Format: "json",
 		Output: "stdout",
 		OTel: OTelConfig{
-			Enabled: false,
+			Enabled: true,
 		},
 		Masking: MaskingConfig{
 			Enabled: true,

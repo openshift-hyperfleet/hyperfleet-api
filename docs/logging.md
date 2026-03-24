@@ -72,7 +72,6 @@ HyperFleet uses standard OpenTelemetry environment variables for tracing configu
 | Variable | Description | Default | Example |
 |----------|-------------|---------|---------|
 | `TRACING_ENABLED` | Enable/disable tracing (Tracing standard, overrides config) | - | `true`, `false` |
-| `HYPERFLEET_LOGGING_OTEL_ENABLED` | Enable tracing via config (Viper) | `false` | `true`, `false` |
 | `OTEL_SERVICE_NAME` | Service name in traces | `hyperfleet-api` | `hyperfleet-api-prod` |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP collector endpoint (if not set, uses stdout) | - | `http://otel-collector:4317` |
 | `OTEL_EXPORTER_OTLP_PROTOCOL` | OTLP protocol | `grpc` | `grpc`, `http/protobuf` |
@@ -81,10 +80,9 @@ HyperFleet uses standard OpenTelemetry environment variables for tracing configu
 | `OTEL_RESOURCE_ATTRIBUTES` | Additional resource attributes | - | `env=prod,region=us-east` |
 
 **Variable Precedence (highest to lowest):**
-1. `TRACING_ENABLED` - Tracing standard override
-2. `HYPERFLEET_LOGGING_OTEL_ENABLED` - Config via Viper (env var)
-3. `config.yaml: logging.otel.enabled` - Config file
-4. Default (`false`)
+1. `TRACING_ENABLED` - Tracing standard (env var)
+2. `config.yaml: logging.otel.enabled` - Config file
+3. Default (`true`)
 
 ## Usage
 
@@ -371,40 +369,16 @@ logger.With(ctx, "host", "postgres.svc").WithError(err).Error("Failed to connect
 
 ### Initialization
 
-OpenTelemetry is initialized in `cmd/hyperfleet-api/servecmd/cmd.go`:
+OpenTelemetry is initialized in `cmd/hyperfleet-api/servecmd/cmd.go` (see `runServe()` function, lines ~74-110).
 
-```go
-// Precedence: TRACING_ENABLED (tracing standard) > config (env/flags) > default
-var tracingEnabled bool
-if tracingEnv := os.Getenv("TRACING_ENABLED"); tracingEnv != "" {
-    tracingEnabled, _ = strconv.ParseBool(tracingEnv)
-} else {
-    tracingEnabled = environments.Environment().Config.Logging.OTel.Enabled
-}
+**Key behavior:**
+- Checks `TRACING_ENABLED` environment variable first (tracing standard)
+- Falls back to config file setting if not set
+- Uses `OTEL_SERVICE_NAME` if set, otherwise defaults to `"hyperfleet-api"`
+- Initializes trace provider via `telemetry.InitTraceProvider(ctx, serviceName, api.Version)`
+- Shuts down with timeout during graceful shutdown
 
-if tracingEnabled {
-    serviceName := "hyperfleet-api"
-    if svcName := os.Getenv("OTEL_SERVICE_NAME"); svcName != "" {
-        serviceName = svcName
-    }
-
-    tp, err := telemetry.InitTraceProvider(ctx, serviceName, api.Version)
-    if err != nil {
-        logger.WithError(ctx, err).Warn("Failed to initialize OpenTelemetry")
-    } else {
-        defer tp.Shutdown(context.Background())
-        logger.With(ctx, logger.FieldServiceName, serviceName).Info("OpenTelemetry initialized")
-    }
-}
-```
-
-**Note:** This is a simplified example. The actual implementation differs in two key ways:
-
-1. **Error handling for `strconv.ParseBool`:** The real code logs parsing errors via `logger.WithError` and falls back to `environments.Environment().Config.Logging.OTel.Enabled` instead of silently ignoring errors. This ensures invalid `TRACING_ENABLED` values (e.g., `"yes"`, `"1.5"`) are logged with context and the application continues with the config default.
-
-2. **Shutdown with timeout:** The real code calls `telemetry.Shutdown(shutdownCtx, tp)` with a timeout context (from `environments.Environment().Config.Health.ShutdownTimeout`) during graceful shutdown, rather than deferring `tp.Shutdown(...)` directly after `telemetry.InitTraceProvider`. This ensures trace export completes within a bounded time during shutdown and logs any shutdown errors via `logger.WithError`.
-
-See the actual implementation in `cmd/hyperfleet-api/servecmd/cmd.go` for the complete error handling and shutdown logic.
+See the actual implementation for complete error handling and shutdown logic.
 
 ### Trace Propagation
 

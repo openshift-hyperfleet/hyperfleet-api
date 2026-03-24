@@ -39,8 +39,7 @@ const (
 //   - OTEL_EXPORTER_OTLP_PROTOCOL: "grpc" (default) or "http/protobuf"
 //   - OTEL_TRACES_SAMPLER: sampler type (default: "parentbased_traceidratio")
 //   - OTEL_TRACES_SAMPLER_ARG: sampling rate 0.0-1.0 (default: 1.0)
-//   - OTEL_RESOURCE_ATTRIBUTES: additional resource attributes (k=v,k2=v2)
-//   - K8S_NAMESPACE: kubernetes namespace (added as k8s.namespace.name)
+//   - OTEL_RESOURCE_ATTRIBUTES: additional resource attributes (k=v,k2=v2 format)
 func InitTraceProvider(ctx context.Context, serviceName, serviceVersion string) (*trace.TracerProvider, error) {
 
 	var exporter trace.SpanExporter
@@ -49,13 +48,13 @@ func InitTraceProvider(ctx context.Context, serviceName, serviceVersion string) 
 	if otlpEndpoint := os.Getenv(envOtelExporterOtlpEndpoint); otlpEndpoint != "" {
 		protocol := os.Getenv(envOtelExporterOtlpProtocol)
 		switch strings.ToLower(protocol) {
-		case "http", "http/protobuf":
+		case "http/protobuf":
+			// Note: http/json not yet supported - use http/protobuf
 			exporter, err = otlptracehttp.New(ctx)
 		case "grpc", "": // Default to gRPC per standard
 			exporter, err = otlptracegrpc.New(ctx)
-		// Uses gRPC exporter (port 4317) following OpenTelemetry standards
-		// This is compatible with standard OTEL Collector configurations
 		default:
+			// Spec-compliant values: grpc, http/protobuf
 			logger.With(ctx, logger.FieldProtocol, protocol).Warn("Unrecognized OTEL_EXPORTER_OTLP_PROTOCOL, using default grpc")
 			exporter, err = otlptracegrpc.New(ctx)
 		}
@@ -147,7 +146,7 @@ func parseSamplingRate(ctx context.Context) float64 {
 		if parsedRate, err := strconv.ParseFloat(arg, 64); err == nil && parsedRate >= 0.0 && parsedRate <= 1.0 {
 			rate = parsedRate
 		} else {
-			logger.With(ctx, envOtelTracesSamplerArg, arg, "default", rate).
+			logger.With(ctx, logger.FieldSamplingRate, rate, "raw_value", arg).
 				Warn("Invalid OTEL_TRACES_SAMPLER_ARG value, using default")
 		}
 	}
