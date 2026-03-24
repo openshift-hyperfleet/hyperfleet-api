@@ -25,10 +25,10 @@ func env() *environments.Env {
 	return environments.Environment()
 }
 
-func NewAPIServer() Server {
+func NewAPIServer(tracingEnabled bool) Server {
 	s := &apiServer{}
 
-	mainRouter := s.routes()
+	mainRouter := s.routes(tracingEnabled)
 
 	// referring to the router as type http.Handler allows us to add middleware via more handlers
 	var mainHandler http.Handler = mainRouter

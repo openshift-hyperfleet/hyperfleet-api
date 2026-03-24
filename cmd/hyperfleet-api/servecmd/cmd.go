@@ -71,6 +71,14 @@ func runServe(cmd *cobra.Command, args []string) {
 
 	var tp *trace.TracerProvider
 
+	// Check for deprecated HYPERFLEET_LOGGING_OTEL_ENABLED variable
+	if deprecatedEnv := os.Getenv("HYPERFLEET_LOGGING_OTEL_ENABLED"); deprecatedEnv != "" {
+		logger.With(ctx,
+			"deprecated_variable", "HYPERFLEET_LOGGING_OTEL_ENABLED",
+			"replacement", "TRACING_ENABLED",
+		).Warn("HYPERFLEET_LOGGING_OTEL_ENABLED is deprecated and ignored. Please use TRACING_ENABLED instead.")
+	}
+
 	// Determine if tracing is enabled using TRACING_ENABLED (tracing standard)
 	var tracingEnabled bool
 	if tracingEnv := os.Getenv("TRACING_ENABLED"); tracingEnv != "" {
@@ -87,9 +95,6 @@ func runServe(cmd *cobra.Command, args []string) {
 		// Use config default if TRACING_ENABLED not set
 		tracingEnabled = environments.Environment().Config.Logging.OTel.Enabled
 	}
-
-	// Update config to ensure middleware registration sees the final value
-	environments.Environment().Config.Logging.OTel.Enabled = tracingEnabled
 
 	if tracingEnabled {
 		// OpenTelemetry configuration is driven entirely by standard environment variables:
@@ -116,7 +121,7 @@ func runServe(cmd *cobra.Command, args []string) {
 		"masking_enabled", environments.Environment().Config.Logging.Masking.Enabled,
 	).Info("Logger initialized")
 
-	apiServer := server.NewAPIServer()
+	apiServer := server.NewAPIServer(tracingEnabled)
 	go apiServer.Start()
 
 	metricsServer := server.NewMetricsServer()

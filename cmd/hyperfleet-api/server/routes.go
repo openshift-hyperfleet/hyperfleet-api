@@ -47,7 +47,7 @@ func LoadDiscoveredRoutes(
 	}
 }
 
-func (s *apiServer) routes() *mux.Router {
+func (s *apiServer) routes(tracingEnabled bool) *mux.Router {
 	services := &env().Services
 
 	metadataHandler := handlers.NewMetadataHandler()
@@ -79,7 +79,7 @@ func (s *apiServer) routes() *mux.Router {
 
 	// OpenTelemetry middleware (conditionally enabled)
 	// Extracts trace_id/span_id from traceparent header and adds to logger context
-	if env().Config.Logging.OTel.Enabled {
+	if tracingEnabled {
 		mainRouter.Use(middleware.OTelMiddleware)
 	}
 

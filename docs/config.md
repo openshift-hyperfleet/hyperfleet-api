@@ -190,7 +190,7 @@ Logging behavior and output settings.
 | `logging.level` | string | `info` | Log level: `debug`, `info`, `warn`, `error` |
 | `logging.format` | string | `json` | Log format: `json`, `text` |
 | `logging.output` | string | `stdout` | Log output: `stdout`, `stderr` |
-| `logging.otel.enabled` | bool | `false` | Enable OpenTelemetry tracing (see [OpenTelemetry Configuration](#opentelemetry-configuration)) |
+| `logging.otel.enabled` | bool | `true` | Enable OpenTelemetry tracing (see [OpenTelemetry Configuration](#opentelemetry-configuration)) |
 | `logging.masking.enabled` | bool | `true` | Enable sensitive data masking in logs |
 
 **Example:**
@@ -394,7 +394,7 @@ Complete table of all configuration properties, their environment variables, and
 | `logging.level` | `HYPERFLEET_LOGGING_LEVEL` | string | `info` |
 | `logging.format` | `HYPERFLEET_LOGGING_FORMAT` | string | `json` |
 | `logging.output` | `HYPERFLEET_LOGGING_OUTPUT` | string | `stdout` |
-| `logging.otel.enabled` | `TRACING_ENABLED` | bool | `false` |
+| `logging.otel.enabled` | `TRACING_ENABLED` | bool | `true` |
 | `logging.masking.enabled` | `HYPERFLEET_LOGGING_MASKING_ENABLED` | bool | `true` |
 | `logging.masking.headers` | `HYPERFLEET_LOGGING_MASKING_HEADERS` | csv | `Authorization,Cookie` |
 | `logging.masking.fields` | `HYPERFLEET_LOGGING_MASKING_FIELDS` | csv | `password,token` |
@@ -455,7 +455,6 @@ All CLI flags and their corresponding configuration paths.
 | `--log-level`, `-l` | `logging.level` | string |
 | `--log-format` | `logging.format` | string |
 | `--log-output` | `logging.output` | string |
-| `--log-otel-enabled` | `logging.otel.enabled` | bool |
 | **OCM** | | |
 | `--ocm-base-url` | `ocm.base_url` | string |
 | `--ocm-client-id` | `ocm.client_id` | string |

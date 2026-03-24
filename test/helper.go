@@ -161,7 +161,8 @@ func (helper *Helper) startAPIServer() {
 	ctx := context.Background()
 	// Configure JWK certificate URL for API server
 	helper.Env().Config.Server.JWK.CertURL = jwkURL
-	helper.APIServer = server.NewAPIServer()
+	// Disable tracing for integration tests (no OTLP collector required)
+	helper.APIServer = server.NewAPIServer(false)
 	listener, err := helper.APIServer.Listen()
 	if err != nil {
 		logger.WithError(ctx, err).Error("Unable to start Test API server")

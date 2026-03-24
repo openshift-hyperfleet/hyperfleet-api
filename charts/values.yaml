@@ -98,7 +98,7 @@ config:
     # Configuration via standard environment variables.
     # See: https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/standards/tracing.md#configuration
     otel:
-      enabled: false
+      enabled: true
 
     masking:
       enabled: true
