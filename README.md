@@ -183,3 +183,4 @@ This project uses [pre-commit](https://pre-commit.io/) for code quality checks. 
 ## License
 
 [License information to be added]
+
