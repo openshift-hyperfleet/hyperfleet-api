@@ -39,14 +39,14 @@ const (
 
 // OpenTelemetry related fields
 const (
-	FieldOTelEnabled      = "otel_enabled"
-	FieldSamplingRate     = "sampling_rate"
-	FieldExporterEndpoint = "exporter_endpoint"
-	FieldTracingEnabled   = "tracing_enabled"
-	FieldServiceName      = "service_name"
-	FieldProtocol         = "protocol"
-	FieldSampler          = "sampler"
-	FieldServiceVersion   = "service_version"
+	FieldOTelEnabled              = "otel_enabled"
+	FieldSamplingRate             = "sampling_rate"
+	FieldExporterEndpoint         = "exporter_endpoint"
+	FieldHyperfleetTracingEnabled = "hyperfleet_tracing_enabled"
+	FieldServiceName              = "service_name"
+	FieldProtocol                 = "protocol"
+	FieldSampler                  = "sampler"
+	FieldServiceVersion           = "service_version"
 )
 
 // Schema related fields

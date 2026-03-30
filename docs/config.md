@@ -72,10 +72,10 @@ export HYPERFLEET_DATABASE_PASSWORD=secret-password
 
 **Special Case - OpenTelemetry Tracing:**
 
-`TRACING_ENABLED` (Tracing standard) has special precedence for cross-component consistency:
+`HYPERFLEET_TRACING_ENABLED` (Tracing standard) has special precedence for cross-component consistency:
 
 ```text
-TRACING_ENABLED > config (env/flags) > default
+HYPERFLEET_TRACING_ENABLED > config (env/flags) > default
 ```
 
 See [OpenTelemetry Configuration](#opentelemetry-configuration) for details.
@@ -217,7 +217,7 @@ OpenTelemetry tracing is configured via standard environment variables following
 
 | Property | Environment Variable | Type | Default | Description |
 |----------|---------------------|------|---------|-------------|
-| `logging.otel.enabled` | `TRACING_ENABLED` | bool | `true` | Enable OpenTelemetry tracing (HyperFleet standard) |
+| `logging.otel.enabled` | `HYPERFLEET_TRACING_ENABLED` | bool | `true` | Enable OpenTelemetry tracing (HyperFleet standard) |
 
 **Standard OpenTelemetry Environment Variables:**
 
@@ -394,7 +394,7 @@ Complete table of all configuration properties, their environment variables, and
 | `logging.level` | `HYPERFLEET_LOGGING_LEVEL` | string | `info` |
 | `logging.format` | `HYPERFLEET_LOGGING_FORMAT` | string | `json` |
 | `logging.output` | `HYPERFLEET_LOGGING_OUTPUT` | string | `stdout` |
-| `logging.otel.enabled` | `TRACING_ENABLED` | bool | `true` |
+| `logging.otel.enabled` | `HYPERFLEET_TRACING_ENABLED` | bool | `true` |
 | `logging.masking.enabled` | `HYPERFLEET_LOGGING_MASKING_ENABLED` | bool | `true` |
 | `logging.masking.headers` | `HYPERFLEET_LOGGING_MASKING_HEADERS` | csv | `Authorization,Cookie` |
 | `logging.masking.fields` | `HYPERFLEET_LOGGING_MASKING_FIELDS` | csv | `password,token` |
@@ -641,5 +641,5 @@ Before deploying to production, verify:
 - ✅ CLI flags (--kebab-case)
 - ✅ Configuration files (YAML snake_case)
 - ✅ Default values
-- ✅ OpenTelemetry tracing variables (TRACING_ENABLED, OTEL_*) if tracing is enabled
+- ✅ OpenTelemetry tracing variables (HYPERFLEET_TRACING_ENABLED, OTEL_*) if tracing is enabled
 

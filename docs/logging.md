@@ -56,7 +56,7 @@ export HYPERFLEET_LOGGING_FORMAT=json
 export HYPERFLEET_LOGGING_LEVEL=info
 
 # OpenTelemetry tracing (Tracing standard)
-export TRACING_ENABLED=true
+export HYPERFLEET_TRACING_ENABLED=true
 export OTEL_TRACES_SAMPLER=parentbased_traceidratio
 export OTEL_TRACES_SAMPLER_ARG=0.1
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
@@ -71,7 +71,7 @@ HyperFleet uses standard OpenTelemetry environment variables for tracing configu
 
 | Variable | Description | Default | Example |
 |----------|-------------|---------|---------|
-| `TRACING_ENABLED` | Enable/disable tracing (Tracing standard, overrides config) | - | `true`, `false` |
+| `HYPERFLEET_TRACING_ENABLED` | Enable/disable tracing (Tracing standard, overrides config) | - | `true`, `false` |
 | `OTEL_SERVICE_NAME` | Service name in traces | `hyperfleet-api` | `hyperfleet-api-prod` |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP collector endpoint (if not set, uses stdout) | - | `http://otel-collector:4317` |
 | `OTEL_EXPORTER_OTLP_PROTOCOL` | OTLP protocol | `grpc` | `grpc`, `http/protobuf` |
@@ -80,7 +80,7 @@ HyperFleet uses standard OpenTelemetry environment variables for tracing configu
 | `OTEL_RESOURCE_ATTRIBUTES` | Additional resource attributes | - | `env=prod,region=us-east` |
 
 **Variable Precedence (highest to lowest):**
-1. `TRACING_ENABLED` - Tracing standard (env var)
+1. `HYPERFLEET_TRACING_ENABLED` - Tracing standard (env var)
 2. `config.yaml: logging.otel.enabled` - Config file
 3. Default (`true`)
 
@@ -372,7 +372,7 @@ logger.With(ctx, "host", "postgres.svc").WithError(err).Error("Failed to connect
 OpenTelemetry is initialized in `cmd/hyperfleet-api/servecmd/cmd.go` (see `runServe()` function, lines ~74-110).
 
 **Key behavior:**
-- Checks `TRACING_ENABLED` environment variable first (tracing standard)
+- Checks `HYPERFLEET_TRACING_ENABLED` environment variable first (tracing standard)
 - Falls back to config file setting if not set
 - Uses `OTEL_SERVICE_NAME` if set, otherwise defaults to `"hyperfleet-api"`
 - Initializes trace provider via `telemetry.InitTraceProvider(ctx, serviceName, api.Version)`
@@ -474,7 +474,7 @@ mainRouter.Use(logging.RequestLoggingMiddleware)
 
 ### Missing trace_id/span_id
 
-1. Check tracing is enabled: `export TRACING_ENABLED=true`
+1. Check tracing is enabled: `export HYPERFLEET_TRACING_ENABLED=true`
 2. Verify middleware order: `OTelMiddleware` must be after `RequestIDMiddleware`
 3. Check sampling rate: `export OTEL_TRACES_SAMPLER_ARG=1.0` (for testing - trace all requests)
 
@@ -533,7 +533,7 @@ func TestLogging(t *testing.T) {
 HYPERFLEET_LOGGING_LEVEL=debug OCM_ENV=integration_testing go test ./test/integration/...
 
 # Run tests without OTel
-TRACING_ENABLED=false OCM_ENV=integration_testing go test ./...
+HYPERFLEET_TRACING_ENABLED=false OCM_ENV=integration_testing go test ./...
 ```
 
 ## References

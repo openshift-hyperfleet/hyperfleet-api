@@ -75,24 +75,24 @@ func runServe(cmd *cobra.Command, args []string) {
 	if deprecatedEnv := os.Getenv("HYPERFLEET_LOGGING_OTEL_ENABLED"); deprecatedEnv != "" {
 		logger.With(ctx,
 			"deprecated_variable", "HYPERFLEET_LOGGING_OTEL_ENABLED",
-			"replacement", "TRACING_ENABLED",
-		).Warn("HYPERFLEET_LOGGING_OTEL_ENABLED is deprecated and ignored. Please use TRACING_ENABLED instead.")
+			"replacement", "HYPERFLEET_TRACING_ENABLED",
+		).Warn("HYPERFLEET_LOGGING_OTEL_ENABLED is deprecated and ignored. Please use HYPERFLEET_TRACING_ENABLED instead.")
 	}
 
-	// Determine if tracing is enabled using TRACING_ENABLED (tracing standard)
+	// Determine if tracing is enabled using HYPERFLEET_TRACING_ENABLED (tracing standard)
 	var tracingEnabled bool
-	if tracingEnv := os.Getenv("TRACING_ENABLED"); tracingEnv != "" {
+	if tracingEnv := os.Getenv("HYPERFLEET_TRACING_ENABLED"); tracingEnv != "" {
 		if enabled, err := strconv.ParseBool(tracingEnv); err == nil {
 			tracingEnabled = enabled
 		} else {
 			logger.With(ctx,
-				logger.FieldTracingEnabled, tracingEnv,
+				logger.FieldHyperfleetTracingEnabled, tracingEnv,
 				"falling_back_to", environments.Environment().Config.Logging.OTel.Enabled).
-				WithError(err).Warn("Invalid TRACING_ENABLED value, falling back to config")
+				WithError(err).Warn("Invalid HYPERFLEET_TRACING_ENABLED value, falling back to config")
 			tracingEnabled = environments.Environment().Config.Logging.OTel.Enabled
 		}
 	} else {
-		// Use config default if TRACING_ENABLED not set
+		// Use config default if HYPERFLEET_TRACING_ENABLED not set
 		tracingEnabled = environments.Environment().Config.Logging.OTel.Enabled
 	}
 
