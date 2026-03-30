@@ -18,6 +18,9 @@ func newTransaction(ctx context.Context, connection SessionFactory) (*transactio
 	g2 := connection.New(ctx)
 	gormTx := g2.Begin()
 	if gormTx.Error != nil {
+		// Best-effort cleanup: safe no-op if transaction wasn't started.
+		// Matches error handling pattern used later in this function (line 30).
+		_ = gormTx.Rollback()
 		return nil, gormTx.Error
 	}
 

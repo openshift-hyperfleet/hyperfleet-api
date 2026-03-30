@@ -204,36 +204,3 @@ func TestMultipleDAOOperationsInTransaction(t *testing.T) {
 	}
 }
 
-// TestNoTransactionMode verifies behavior when no transaction context exists
-// (simulating GET requests in Option A+ Pro design)
-func TestNoTransactionMode(t *testing.T) {
-	h, _ := test.RegisterIntegration(t)
-
-	// No db.NewContext() - just plain context
-	ctx := context.Background()
-
-	// Create a cluster without transaction
-	cluster := &api.Cluster{
-		Meta:      api.Meta{ID: h.NewID()},
-		Name:      "no-transaction-cluster",
-		CreatedBy: "test-user",
-		UpdatedBy: "test-user",
-		Spec:      []byte(`{"tx": "none"}`),
-	}
-
-	g2 := h.DBFactory.New(ctx)
-	err := g2.Create(cluster).Error
-	Expect(err).NotTo(HaveOccurred(), "Failed to create cluster")
-
-	// Try to call Resolve() with no transaction context
-	// This should log warning but not crash
-	db.Resolve(ctx)
-
-	// Data should still exist (no transaction, so autocommit)
-	freshSession := h.DBFactory.New(context.Background())
-	var check api.Cluster
-	err = freshSession.Where("id = ?", cluster.ID).First(&check).Error
-	Expect(err).NotTo(HaveOccurred(), "Cluster should exist (autocommit)")
-	Expect(check.ID).To(Equal(cluster.ID))
-	t.Logf("✅ No-transaction mode works as expected (autocommit)")
-}

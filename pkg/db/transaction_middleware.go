@@ -3,26 +3,17 @@ package db
 import (
 	"context"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/response"
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db/db_context"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
-// isWriteMethod returns true if the HTTP method requires a database transaction.
-// Write methods (POST, PUT, PATCH, DELETE) return true and will get transactional
-// database connections. All other methods (primarily GET) return false and bypass
-// transaction creation for improved performance.
-//
-// The method is normalized to uppercase to handle case variations, though RFC 7231
-// specifies that HTTP methods are case-sensitive and should be uppercase.
+// isWriteMethod reports whether method requires a database transaction.
+// Write methods (POST, PUT, PATCH, DELETE) return true, others return false.
+// Method must be uppercase (e.g., "POST", not "post").
 func isWriteMethod(method string) bool {
-	// Normalize to uppercase to handle case variations (defensive)
-	method = strings.ToUpper(method)
-
 	switch method {
 	case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
 		return true
@@ -63,15 +54,8 @@ func TransactionMiddleware(next http.Handler, connection SessionFactory, request
 				return
 			}
 
-			// Bridge: Get real DB transaction ID and set to logger context
-			if txID, ok := db_context.TxID(ctx); ok {
-				ctx = logger.WithTransactionID(ctx, txID)
-			}
-
 			*r = *r.WithContext(ctx)
-			// Capture context for defer to ensure we resolve the correct transaction context
-			txCtx := ctx
-			defer func() { Resolve(txCtx) }()
+			defer func() { Resolve(ctx) }()
 
 			next.ServeHTTP(w, r)
 		} else {

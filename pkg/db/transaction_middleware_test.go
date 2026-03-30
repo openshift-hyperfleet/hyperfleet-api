@@ -26,11 +26,6 @@ func TestIsWriteMethod_StandardHTTPMethods(t *testing.T) {
 		{"CONNECT is read-only (conservative)", http.MethodConnect, false},
 		{"TRACE is read-only (conservative)", http.MethodTrace, false},
 		{"Empty string is read-only", "", false},
-
-		// Case normalization (method is normalized to uppercase)
-		{"Lowercase post is write", "post", true},    // Normalized to POST
-		{"Mixed case Post is write", "Post", true},   // Normalized to POST
-		{"Lowercase get is read-only", "get", false}, // Normalized to GET
 	}
 
 	for _, tt := range tests {
