@@ -17,6 +17,7 @@ import (
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db/db_context"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db/db_metrics"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
@@ -147,6 +148,10 @@ func (f *Testcontainer) DirectDB() *sql.DB {
 }
 
 func (f *Testcontainer) New(ctx context.Context) *gorm.DB {
+	if tx, ok := db_context.Transaction(ctx); ok {
+		return tx.DB
+	}
+
 	return f.g2.Session(&gorm.Session{
 		Context: ctx,
 	})
