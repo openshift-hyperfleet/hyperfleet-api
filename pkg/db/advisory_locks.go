@@ -33,6 +33,7 @@ const (
 // to allow functions to call other service functions as part of the same lock (id, lockType).
 type AdvisoryLock struct {
 	startTime      time.Time
+	ctx            context.Context // Store original context for cancellation
 	g2             *gorm.DB
 	ownerUUID      *string
 	id             *string
@@ -48,8 +49,9 @@ func newAdvisoryLock(
 		return nil, errors.New("AdvisoryLock: connection factory is missing")
 	}
 
-	// it requires a new DB session to start the advisory lock.
-	g2 := connection.New(ctx)
+	// Advisory lock creates its own independent transaction.
+	// Use context.Background() to avoid inheriting any existing transaction from ctx.
+	g2 := connection.New(context.Background())
 
 	// start a Tx to ensure gorm will obtain/release the lock using a same connection.
 	tx := g2.Begin()
@@ -63,6 +65,7 @@ func newAdvisoryLock(
 		lockType:       locktype,
 		timeoutSeconds: connection.GetAdvisoryLockTimeout(),
 		g2:             tx,
+		ctx:            ctx,
 		startTime:      time.Now(),
 	}, nil
 }
@@ -85,13 +88,17 @@ func (l *AdvisoryLock) lock() error {
 	// This is transaction-scoped (SET LOCAL), so it only affects this lock acquisition.
 	// Note: We cannot use parameter binding (?) for SET commands in PostgreSQL
 	timeoutMs := l.timeoutSeconds * 1000
-	if err := l.g2.Exec(fmt.Sprintf("SET LOCAL statement_timeout = %d", timeoutMs)).Error; err != nil {
+
+	// Use WithContext to respect context cancellation while executing SQL
+	g2WithCtx := l.g2.WithContext(l.ctx)
+
+	if err := g2WithCtx.Exec(fmt.Sprintf("SET LOCAL statement_timeout = %d", timeoutMs)).Error; err != nil {
 		return err
 	}
 
 	idAsInt := hash(*l.id)
 	typeAsInt := hash(string(*l.lockType))
-	err := l.g2.Exec("select pg_advisory_xact_lock(?, ?)", idAsInt, typeAsInt).Error
+	err := g2WithCtx.Exec("select pg_advisory_xact_lock(?, ?)", idAsInt, typeAsInt).Error
 	return err
 }
 

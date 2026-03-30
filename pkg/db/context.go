@@ -43,11 +43,14 @@ func NewContext(ctx context.Context, connection SessionFactory) (context.Context
 	return ctx, nil
 }
 
-// Resolve resolves the current transaction according to the rollback flag.
+// Resolve commits or rolls back the transaction based on the rollback flag.
+// Should only be called by TransactionMiddleware for write operations.
 func Resolve(ctx context.Context) {
 	tx, ok := dbContext.Transaction(ctx)
 	if !ok {
-		logger.Error(ctx, "Could not retrieve transaction from context")
+		logger.With(ctx,
+			"error_type", "missing_transaction",
+		).Error("Transaction resolution failed: no active transaction in context")
 		return
 	}
 
