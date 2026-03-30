@@ -95,10 +95,6 @@ func (h *HyperFleetHandler) Handle(ctx context.Context, r slog.Record) error {
 		}
 	}
 
-	if transactionID, ok := GetTransactionID(ctx); ok {
-		r.AddAttrs(slog.Int64("transaction_id", transactionID))
-	}
-
 	if r.Level >= slog.LevelError {
 		stackTrace := captureStackTrace(4)
 		r.AddAttrs(slog.Any("stack_trace", stackTrace))

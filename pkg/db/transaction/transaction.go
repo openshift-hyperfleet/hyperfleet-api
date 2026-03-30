@@ -14,15 +14,13 @@ const defaultRollbackPolicy = false
 // Contains GORM transaction to ensure all DAO operations participate in the transaction.
 type Transaction struct {
 	DB           *gorm.DB
-	txid         int64
 	rollbackFlag bool
 }
 
 // BuildWithGORM creates a new transaction object with GORM transaction.
-func BuildWithGORM(db *gorm.DB, id int64) *Transaction {
+func BuildWithGORM(db *gorm.DB) *Transaction {
 	return &Transaction{
 		DB:           db,
-		txid:         id,
 		rollbackFlag: defaultRollbackPolicy,
 	}
 }
@@ -30,10 +28,6 @@ func BuildWithGORM(db *gorm.DB, id int64) *Transaction {
 // MarkedForRollback returns true if a transaction is flagged for rollback and false otherwise.
 func (tx *Transaction) MarkedForRollback() bool {
 	return tx.rollbackFlag
-}
-
-func (tx *Transaction) TxID() int64 {
-	return tx.txid
 }
 
 func (tx *Transaction) Commit() error {

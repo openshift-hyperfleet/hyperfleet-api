@@ -13,13 +13,12 @@ type contextKey string
 
 // Context keys for storing correlation fields
 const (
-	ReqIDKey            contextKey = "request_id"
-	TransactionIDCtxKey contextKey = "transaction_id" // Database transaction ID
-	TraceIDCtxKey       contextKey = "trace_id"
-	SpanIDCtxKey        contextKey = "span_id"
-	ClusterIDCtxKey     contextKey = "cluster_id"
-	ResourceTypeCtxKey  contextKey = "resource_type"
-	ResourceIDCtxKey    contextKey = "resource_id"
+	ReqIDKey           contextKey = "request_id"
+	TraceIDCtxKey      contextKey = "trace_id"
+	SpanIDCtxKey       contextKey = "span_id"
+	ClusterIDCtxKey    contextKey = "cluster_id"
+	ResourceTypeCtxKey contextKey = "resource_type"
+	ResourceIDCtxKey   contextKey = "resource_id"
 )
 
 // HTTP header names
@@ -115,7 +114,6 @@ type ContextField struct {
 // ContextFieldsRegistry defines all string-type context fields for logging
 // This is the single source of truth for string field management
 // Fields are ordered as per HyperFleet Logging Specification (docs/logging.md:384)
-// Note: transaction_id (int64) is handled separately in logger.go
 var ContextFieldsRegistry = []ContextField{
 	{GetRequestID, ReqIDKey, "request_id"},
 	{GetTraceID, TraceIDCtxKey, "trace_id"},
@@ -123,15 +121,4 @@ var ContextFieldsRegistry = []ContextField{
 	{GetClusterID, ClusterIDCtxKey, "cluster_id"},
 	{GetResourceType, ResourceTypeCtxKey, "resource_type"},
 	{GetResourceID, ResourceIDCtxKey, "resource_id"},
-}
-
-// WithTransactionID adds transaction ID to context
-func WithTransactionID(ctx context.Context, transactionID int64) context.Context {
-	return context.WithValue(ctx, TransactionIDCtxKey, transactionID)
-}
-
-// GetTransactionID retrieves transaction ID from context
-func GetTransactionID(ctx context.Context) (int64, bool) {
-	transactionID, ok := ctx.Value(TransactionIDCtxKey).(int64)
-	return transactionID, ok
 }

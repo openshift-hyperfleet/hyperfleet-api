@@ -18,23 +18,9 @@ func newTransaction(ctx context.Context, connection SessionFactory) (*transactio
 	g2 := connection.New(ctx)
 	gormTx := g2.Begin()
 	if gormTx.Error != nil {
-		// Best-effort cleanup: safe no-op if transaction wasn't started.
-		// Matches error handling pattern used later in this function (line 30).
-		_ = gormTx.Rollback()
+		_ = gormTx.Rollback() // Best-effort cleanup
 		return nil, gormTx.Error
 	}
 
-	// Get current transaction ID from PostgreSQL
-	// Note: txid_current() is executed within the GORM transaction
-	var txid int64
-	err := gormTx.Raw("SELECT txid_current()").Scan(&txid).Error
-	if err != nil {
-		// Rollback on error to avoid leaking the transaction
-		gormTx.Rollback()
-		return nil, err
-	}
-
-	// Create transaction object with GORM transaction
-	// The DB field is what DAOs will use via sessionFactory.New(ctx)
-	return transaction.BuildWithGORM(gormTx, txid), nil
+	return transaction.BuildWithGORM(gormTx), nil
 }
