@@ -41,36 +41,10 @@ const (
 //   - OTEL_TRACES_SAMPLER_ARG: sampling rate 0.0-1.0 (default: 1.0)
 //   - OTEL_RESOURCE_ATTRIBUTES: additional resource attributes (k=v,k2=v2 format)
 func InitTraceProvider(ctx context.Context, serviceName, serviceVersion string) (*trace.TracerProvider, error) {
-
-	var exporter trace.SpanExporter
-	var err error
-
-	if otlpEndpoint := os.Getenv(envOtelExporterOtlpEndpoint); otlpEndpoint != "" {
-		protocol := os.Getenv(envOtelExporterOtlpProtocol)
-		switch strings.ToLower(protocol) {
-		case "http/protobuf":
-			// Note: http/json not yet supported - use http/protobuf
-			exporter, err = otlptracehttp.New(ctx)
-		case "grpc", "": // Default to gRPC per standard
-			exporter, err = otlptracegrpc.New(ctx)
-		default:
-			// Spec-compliant values: grpc, http/protobuf
-			logger.With(ctx, logger.FieldProtocol, protocol).Warn("Unrecognized OTEL_EXPORTER_OTLP_PROTOCOL, using default grpc")
-			exporter, err = otlptracegrpc.New(ctx)
-		}
-		if err != nil {
-			logger.With(ctx, logger.FieldProtocol, protocol).WithError(err).Error("Failed to create OTLP exporter")
-			return nil, fmt.Errorf("failed to create OTLP exporter (protocol=%s): %w", protocol, err)
-		}
-	} else {
-		// Create stdout exporter
-		exporter, err = stdouttrace.New(
-			stdouttrace.WithPrettyPrint(), // Formatted output
-		)
-		if err != nil {
-			logger.WithError(ctx, err).Error("Failed to create OpenTelemetry stdout exporter")
-			return nil, fmt.Errorf("failed to create OpenTelemetry stdout exporter: %w", err)
-		}
+	// Create exporter (OTLP or stdout)
+	exporter, err := createExporter(ctx)
+	if err != nil {
+		return nil, err
 	}
 
 	// Create resource (service information)
@@ -92,27 +66,8 @@ func InitTraceProvider(ctx context.Context, serviceName, serviceVersion string) 
 		return nil, fmt.Errorf("failed to create OTel resource: %w", err)
 	}
 
-	var sampler trace.Sampler
-	samplerType := strings.ToLower(os.Getenv(envOtelTracesSampler))
-
-	switch samplerType {
-	case samplerAlwaysOn:
-		sampler = trace.AlwaysSample()
-	case samplerAlwaysOff:
-		sampler = trace.NeverSample()
-	case samplerTraceIDRatio:
-		sampler = trace.TraceIDRatioBased(parseSamplingRate(ctx))
-	case parentBasedTraceIDRatio, "":
-		// Default per tracing standard
-		sampler = trace.ParentBased(trace.TraceIDRatioBased(parseSamplingRate(ctx)))
-	case parentBasedAlwaysOn:
-		sampler = trace.ParentBased(trace.AlwaysSample())
-	case parentBasedAlwaysOff:
-		sampler = trace.ParentBased(trace.NeverSample())
-	default:
-		logger.With(ctx, logger.FieldSampler, samplerType).Warn("Unrecognized sampler, using default")
-		sampler = trace.ParentBased(trace.TraceIDRatioBased(parseSamplingRate(ctx)))
-	}
+	// Select sampler
+	sampler := selectSampler(ctx)
 
 	// Create trace provider
 	tp := trace.NewTracerProvider(
@@ -129,6 +84,75 @@ func InitTraceProvider(ctx context.Context, serviceName, serviceVersion string) 
 	))
 
 	return tp, nil
+}
+
+// createExporter creates the appropriate span exporter based on environment variables
+func createExporter(ctx context.Context) (trace.SpanExporter, error) {
+	otlpEndpoint := os.Getenv(envOtelExporterOtlpEndpoint)
+	if otlpEndpoint == "" {
+		// Create stdout exporter when no OTLP endpoint is configured
+		exporter, err := stdouttrace.New(
+			stdouttrace.WithPrettyPrint(), // Formatted output
+		)
+		if err != nil {
+			logger.WithError(ctx, err).Error("Failed to create OpenTelemetry stdout exporter")
+			return nil, fmt.Errorf("failed to create OpenTelemetry stdout exporter: %w", err)
+		}
+		return exporter, nil
+	}
+
+	// Create OTLP exporter
+	protocol := os.Getenv(envOtelExporterOtlpProtocol)
+	switch strings.ToLower(protocol) {
+	case "http/protobuf":
+		// Note: http/json not yet supported - use http/protobuf
+		exporter, err := otlptracehttp.New(ctx)
+		if err != nil {
+			logger.With(ctx, logger.FieldProtocol, protocol).WithError(err).Error("Failed to create OTLP exporter")
+			return nil, fmt.Errorf("failed to create OTLP exporter (protocol=%s): %w", protocol, err)
+		}
+		return exporter, nil
+	case "grpc", "": // Default to gRPC per standard
+		exporter, err := otlptracegrpc.New(ctx)
+		if err != nil {
+			logger.With(ctx, logger.FieldProtocol, protocol).WithError(err).Error("Failed to create OTLP exporter")
+			return nil, fmt.Errorf("failed to create OTLP exporter (protocol=%s): %w", protocol, err)
+		}
+		return exporter, nil
+	default:
+		// Spec-compliant values: grpc, http/protobuf
+		logger.With(ctx, logger.FieldProtocol, protocol).Warn("Unrecognized OTEL_EXPORTER_OTLP_PROTOCOL, using default grpc")
+		exporter, err := otlptracegrpc.New(ctx)
+		if err != nil {
+			logger.With(ctx, logger.FieldProtocol, protocol).WithError(err).Error("Failed to create OTLP exporter")
+			return nil, fmt.Errorf("failed to create OTLP exporter (protocol=%s): %w", protocol, err)
+		}
+		return exporter, nil
+	}
+}
+
+// selectSampler returns the appropriate sampler based on environment variables
+func selectSampler(ctx context.Context) trace.Sampler {
+	samplerType := strings.ToLower(os.Getenv(envOtelTracesSampler))
+
+	switch samplerType {
+	case samplerAlwaysOn:
+		return trace.AlwaysSample()
+	case samplerAlwaysOff:
+		return trace.NeverSample()
+	case samplerTraceIDRatio:
+		return trace.TraceIDRatioBased(parseSamplingRate(ctx))
+	case parentBasedTraceIDRatio, "":
+		// Default per tracing standard
+		return trace.ParentBased(trace.TraceIDRatioBased(parseSamplingRate(ctx)))
+	case parentBasedAlwaysOn:
+		return trace.ParentBased(trace.AlwaysSample())
+	case parentBasedAlwaysOff:
+		return trace.ParentBased(trace.NeverSample())
+	default:
+		logger.With(ctx, logger.FieldSampler, samplerType).Warn("Unrecognized sampler, using default")
+		return trace.ParentBased(trace.TraceIDRatioBased(parseSamplingRate(ctx)))
+	}
 }
 
 // Shutdown gracefully shuts down the trace provider

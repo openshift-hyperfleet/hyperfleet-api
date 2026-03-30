@@ -5,8 +5,22 @@ import (
 	"testing"
 
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/trace"
+	nooptrace "go.opentelemetry.io/otel/trace/noop"
 )
+
+// cleanupTraceProvider shuts down the trace provider and resets global OpenTelemetry state.
+// This prevents test pollution from global state modifications.
+func cleanupTraceProvider(ctx context.Context, t *testing.T, tp *trace.TracerProvider) {
+	t.Helper()
+	if err := Shutdown(ctx, tp); err != nil {
+		t.Errorf("Failed to shutdown trace provider: %v", err)
+	}
+	// Reset global state to prevent test interference
+	otel.SetTracerProvider(nooptrace.NewTracerProvider())
+	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator())
+}
 
 func TestInitTraceProvider_StdoutExporter(t *testing.T) {
 	ctx := context.Background()
@@ -19,13 +33,7 @@ func TestInitTraceProvider_StdoutExporter(t *testing.T) {
 	if tp == nil {
 		t.Fatal("Expected trace provider, got nil")
 	}
-
-	// Cleanup
-	defer func() {
-		if err := Shutdown(ctx, tp); err != nil {
-			t.Errorf("Failed to shutdown trace provider: %v", err)
-		}
-	}()
+	defer cleanupTraceProvider(ctx, t, tp)
 
 	// Verify tracer is available
 	tracer := otel.Tracer("test")
@@ -48,18 +56,35 @@ func TestInitTraceProvider_OTLPExporter(t *testing.T) {
 	if tp == nil {
 		t.Fatal("Expected trace provider, got nil")
 	}
-	defer func() {
-		if err := Shutdown(ctx, tp); err != nil {
-			t.Errorf("Failed to shutdown trace provider: %v", err)
-		}
-	}()
+	defer cleanupTraceProvider(ctx, t, tp)
 
 	// Verify tracer is available
 	tracer := otel.Tracer("test")
 	if tracer == nil {
 		t.Error("Expected tracer to be available")
 	}
+}
 
+func TestInitTraceProvider_OTLPHttpExporter(t *testing.T) {
+	ctx := context.Background()
+
+	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://fake-otel-collector:4318")
+	t.Setenv("OTEL_EXPORTER_OTLP_PROTOCOL", "http/protobuf")
+
+	tp, err := InitTraceProvider(ctx, "test-service", "v1.0.0")
+	if err != nil {
+		t.Fatalf("Failed to initialize trace provider with HTTP OTLP: %v", err)
+	}
+	if tp == nil {
+		t.Fatal("Expected trace provider, got nil")
+	}
+	defer cleanupTraceProvider(ctx, t, tp)
+
+	// Verify tracer is available
+	tracer := otel.Tracer("test")
+	if tracer == nil {
+		t.Error("Expected tracer to be available")
+	}
 }
 
 func TestInitTraceProvider_InvalidProtocol(t *testing.T) {
@@ -96,11 +121,7 @@ func TestInitTraceProvider_InvalidProtocol(t *testing.T) {
 			if tp == nil {
 				t.Fatal("Expected trace provider, got nil")
 			}
-			defer func() {
-				if err := Shutdown(ctx, tp); err != nil {
-					t.Errorf("Failed to shutdown trace provider: %v", err)
-				}
-			}()
+			defer cleanupTraceProvider(ctx, t, tp)
 
 			// Verify tracer is available (using default gRPC exporter)
 			tracer := otel.Tracer("test")
@@ -174,12 +195,7 @@ func TestInitTraceProvider_SamplerEnvironmentVariables(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Failed to initialize trace provider: %v", err)
 			}
-			defer func(ctx context.Context, tp *trace.TracerProvider) {
-				err := Shutdown(ctx, tp)
-				if err != nil {
-					t.Errorf("Failed to shutdown trace provider: %v", err)
-				}
-			}(ctx, tp)
+			defer cleanupTraceProvider(ctx, t, tp)
 
 			// Test sampling behavior by checking if spans are created
 			tracer := otel.Tracer("test")
@@ -243,12 +259,7 @@ func TestInitTraceProvider_InvalidSamplerArg(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Failed to initialize trace provider: %v", err)
 			}
-			defer func(ctx context.Context, tp *trace.TracerProvider) {
-				err := Shutdown(ctx, tp)
-				if err != nil {
-					t.Errorf("Failed to shutdown trace provider: %v", err)
-				}
-			}(ctx, tp)
+			defer cleanupTraceProvider(ctx, t, tp)
 
 			// Test that invalid values fall back to default (1.0 = always sample)
 			tracer := otel.Tracer("test")
@@ -260,6 +271,184 @@ func TestInitTraceProvider_InvalidSamplerArg(t *testing.T) {
 				}
 			}
 			span.End()
+		})
+	}
+}
+
+func TestCreateExporter_Stdout(t *testing.T) {
+	ctx := context.Background()
+
+	// Test stdout exporter when no OTLP endpoint is set
+	exporter, err := createExporter(ctx)
+	if err != nil {
+		t.Fatalf("Failed to create stdout exporter: %v", err)
+	}
+	if exporter == nil {
+		t.Fatal("Expected exporter, got nil")
+	}
+	defer func() {
+		if err := exporter.Shutdown(ctx); err != nil {
+			t.Errorf("Failed to shutdown exporter: %v", err)
+		}
+	}()
+}
+
+func TestCreateExporter_OTLP_gRPC(t *testing.T) {
+	ctx := context.Background()
+
+	tests := []struct {
+		name     string
+		protocol string
+	}{
+		{
+			name:     "explicit_grpc",
+			protocol: "grpc",
+		},
+		{
+			name:     "empty_protocol_defaults_to_grpc",
+			protocol: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://fake-otel-collector:4317")
+			if tt.protocol != "" {
+				t.Setenv("OTEL_EXPORTER_OTLP_PROTOCOL", tt.protocol)
+			}
+
+			exporter, err := createExporter(ctx)
+			if err != nil {
+				t.Fatalf("Failed to create gRPC exporter: %v", err)
+			}
+			if exporter == nil {
+				t.Fatal("Expected exporter, got nil")
+			}
+			defer func() {
+				if err := exporter.Shutdown(ctx); err != nil {
+					t.Errorf("Failed to shutdown exporter: %v", err)
+				}
+			}()
+		})
+	}
+}
+
+func TestCreateExporter_OTLP_HTTP(t *testing.T) {
+	ctx := context.Background()
+
+	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://fake-otel-collector:4318")
+	t.Setenv("OTEL_EXPORTER_OTLP_PROTOCOL", "http/protobuf")
+
+	exporter, err := createExporter(ctx)
+	if err != nil {
+		t.Fatalf("Failed to create HTTP exporter: %v", err)
+	}
+	if exporter == nil {
+		t.Fatal("Expected exporter, got nil")
+	}
+	defer func() {
+		if err := exporter.Shutdown(ctx); err != nil {
+			t.Errorf("Failed to shutdown exporter: %v", err)
+		}
+	}()
+}
+
+func TestCreateExporter_InvalidProtocol(t *testing.T) {
+	ctx := context.Background()
+
+	tests := []struct {
+		name     string
+		protocol string
+	}{
+		{
+			name:     "http_without_protobuf",
+			protocol: "http",
+		},
+		{
+			name:     "invalid_protocol",
+			protocol: "invalid",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://fake-otel-collector:4317")
+			t.Setenv("OTEL_EXPORTER_OTLP_PROTOCOL", tt.protocol)
+
+			// Should fall back to gRPC with a warning
+			exporter, err := createExporter(ctx)
+			if err != nil {
+				t.Fatalf("Failed to create exporter (should fall back to gRPC): %v", err)
+			}
+			if exporter == nil {
+				t.Fatal("Expected exporter, got nil")
+			}
+			defer func() {
+				if err := exporter.Shutdown(ctx); err != nil {
+					t.Errorf("Failed to shutdown exporter: %v", err)
+				}
+			}()
+		})
+	}
+}
+
+func TestSelectSampler(t *testing.T) {
+	ctx := context.Background()
+
+	tests := []struct {
+		name        string
+		samplerType string
+		samplerArg  string
+	}{
+		{
+			name:        "always_on",
+			samplerType: "always_on",
+		},
+		{
+			name:        "always_off",
+			samplerType: "always_off",
+		},
+		{
+			name:        "traceidratio",
+			samplerType: "traceidratio",
+			samplerArg:  "0.5",
+		},
+		{
+			name:        "parentbased_traceidratio",
+			samplerType: "parentbased_traceidratio",
+			samplerArg:  "1.0",
+		},
+		{
+			name:        "parentbased_always_on",
+			samplerType: "parentbased_always_on",
+		},
+		{
+			name:        "parentbased_always_off",
+			samplerType: "parentbased_always_off",
+		},
+		{
+			name:        "default_when_empty",
+			samplerType: "",
+		},
+		{
+			name:        "invalid_falls_back_to_default",
+			samplerType: "invalid",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.samplerType != "" {
+				t.Setenv("OTEL_TRACES_SAMPLER", tt.samplerType)
+			}
+			if tt.samplerArg != "" {
+				t.Setenv("OTEL_TRACES_SAMPLER_ARG", tt.samplerArg)
+			}
+
+			sampler := selectSampler(ctx)
+			if sampler == nil {
+				t.Fatal("Expected sampler, got nil")
+			}
 		})
 	}
 }
@@ -323,12 +512,7 @@ func TestInitTraceProvider_ParentBasedSampling(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Failed to initialize trace provider: %v", err)
 			}
-			defer func(ctx context.Context, tp *trace.TracerProvider) {
-				err := Shutdown(ctx, tp)
-				if err != nil {
-					t.Errorf("Failed to shutdown trace provider: %v", err)
-				}
-			}(ctx, tp)
+			defer cleanupTraceProvider(ctx, t, tp)
 
 			tracer := otel.Tracer("test")
 
