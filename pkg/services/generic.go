@@ -303,9 +303,12 @@ func (s *sqlGenericService) loadList(listCtx *listContext, d *dao.GenericDao) *e
 	// NOTE: Limit no longer supports '0' size and will cause issues. There is an early return, do not remove it.
 	//       https://github.com/go-gorm/gorm/blob/master/clause/limit.go#L18-L21
 	if err := (*d).Fetch((args.Page-1)*int(args.Size), int(args.Size), listCtx.resourceList); err != nil {
-		if e.Is(err, gorm.ErrRecordNotFound) {
+		switch {
+		case e.Is(err, gorm.ErrRecordNotFound):
 			listCtx.pagingMeta.Size = 0
-		} else {
+		case db.IsDBConnectionError(err):
+			return errors.ServiceUnavailable("Database connection unavailable")
+		default:
 			return errors.GeneralError("Unable to list resources: %s", err)
 		}
 	}

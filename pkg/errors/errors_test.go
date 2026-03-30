@@ -129,6 +129,14 @@ func TestConstructors(t *testing.T) {
 			expectedReason: "internal database error",
 		},
 		{
+			name:           "ServiceUnavailable",
+			build:          func() *ServiceError { return ServiceUnavailable("database unreachable") },
+			expectedCode:   CodeServiceUnavailable,
+			expectedHTTP:   http.StatusServiceUnavailable,
+			expectedType:   ErrorTypeService,
+			expectedReason: "database unreachable",
+		},
+		{
 			name:           "InvalidToken",
 			build:          func() *ServiceError { return InvalidToken("token expired") },
 			expectedCode:   CodeAuthExpiredToken,
