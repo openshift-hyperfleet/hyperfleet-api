@@ -14,7 +14,7 @@ import (
 // TestTransactionRollbackWithDAO verifies that when TransactionMiddleware creates
 // a transaction and a DAO operation calls MarkForRollback, the data is actually
 // rolled back. This test validates whether GORM operations truly participate in
-// the TransactionMiddleware's sql.Tx.
+// the TransactionMiddleware's GORM transaction.
 //
 // CRITICAL TEST: This proves/disproves whether current architecture has working transactions
 //
@@ -27,10 +27,10 @@ import (
 //
 // Actual behavior (if transactions DON'T work):
 //   - Create transaction via db.NewContext()
-//   - DAO inserts a cluster (uses connection pool, not the sql.Tx)
+//   - DAO inserts a cluster (uses connection pool, not the transaction)
 //   - Data commits immediately (autocommit mode)
 //   - MarkForRollback sets a flag
-//   - Resolve() rollback the sql.Tx (but GORM operations already committed)
+//   - Resolve() rollback the transaction (but GORM operations already committed)
 //   - Query database: cluster STILL EXISTS (rollback failed)
 func TestTransactionRollbackWithDAO(t *testing.T) {
 	h, _ := test.RegisterIntegration(t)
@@ -82,13 +82,13 @@ func TestTransactionRollbackWithDAO(t *testing.T) {
 		// Cluster still exists after rollback
 		t.Errorf("🔴 CRITICAL FAILURE: Cluster exists after Resolve() rollback")
 		t.Errorf("   Cluster ID: %s", afterRollbackCluster.ID)
-		t.Errorf("   This proves GORM operations do NOT use TransactionMiddleware's sql.Tx")
+		t.Errorf("   This proves GORM operations do NOT use TransactionMiddleware's transaction")
 		t.Errorf("   Architecture assumption is WRONG")
 		t.FailNow()
 	} else {
 		// Cluster does not exist - rollback worked
 		t.Logf("✅ SUCCESS: Cluster was rolled back")
-		t.Logf("   GORM operations DO use TransactionMiddleware's sql.Tx")
+		t.Logf("   GORM operations DO use TransactionMiddleware's transaction")
 		t.Logf("   Architecture assumption is CORRECT")
 	}
 }
@@ -203,4 +203,3 @@ func TestMultipleDAOOperationsInTransaction(t *testing.T) {
 		t.Logf("✅ ATOMICITY SUCCESS: Both clusters rolled back together")
 	}
 }
-

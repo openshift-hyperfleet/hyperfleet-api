@@ -34,7 +34,6 @@ func (m advisoryLockMap) set(id string, lockType LockType, lock *AdvisoryLock) {
 }
 
 // NewContext returns a new context with transaction stored in it.
-// Sets both the Transaction object (for DAOs) and transaction ID (for logger).
 // Upon error, the original context is still returned along with an error
 func NewContext(ctx context.Context, connection SessionFactory) (context.Context, error) {
 	tx, err := newTransaction(ctx, connection)
@@ -43,7 +42,6 @@ func NewContext(ctx context.Context, connection SessionFactory) (context.Context
 	}
 
 	ctx = dbContext.WithTransaction(ctx, tx)
-	ctx = logger.WithTransactionID(ctx, tx.TxID())
 
 	return ctx, nil
 }
@@ -53,11 +51,6 @@ func NewContext(ctx context.Context, connection SessionFactory) (context.Context
 func Resolve(ctx context.Context) {
 	tx, ok := dbContext.Transaction(ctx)
 	if !ok {
-		// CRITICAL: This should never happen in production because:
-		// 1. Resolve() is only called in TransactionMiddleware for write operations
-		// 2. Write operations always call NewContext() first to create transaction
-		// 3. If NewContext() fails, middleware returns early and never reaches Resolve()
-		// If this ERROR appears in production, it indicates a severe logic bug.
 		logger.With(ctx,
 			"error_type", "missing_transaction",
 			"error", "no active transaction found in context",
@@ -74,10 +67,7 @@ func Resolve(ctx context.Context) {
 		logger.Info(ctx, "Rolled back transaction")
 	} else {
 		if err := tx.Commit(); err != nil {
-			logger.WithError(ctx, err).
-				With("severity", "CRITICAL").
-				With("impact", "user_received_success_but_transaction_failed").
-				Error("Could not commit transaction - user saw false positive")
+			logger.WithError(ctx, err).Error("Could not commit transaction")
 			recordTransactionError("commit", "commit_failed")
 			return
 		}
@@ -175,9 +165,7 @@ func Unlock(ctx context.Context, callerUUID string) {
 	}
 }
 
-// recordTransactionError records a transaction error metric.
-// This tracks critical failures where commit/rollback operations fail,
-// which may result in data inconsistency or user receiving false positive responses.
+// recordTransactionError records transaction commit/rollback failures.
 func recordTransactionError(operation, errorType string) {
 	db_metrics.ErrorsMetric.With(prometheus.Labels{
 		"operation":  operation,
