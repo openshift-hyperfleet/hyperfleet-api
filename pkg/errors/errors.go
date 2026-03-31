@@ -395,6 +395,10 @@ func DatabaseAdvisoryLock(err error) *ServiceError {
 	return New(CodeInternalDatabase, "internal database error")
 }
 
+func ServiceUnavailable(reason string, values ...interface{}) *ServiceError {
+	return New(CodeServiceUnavailable, reason, values...)
+}
+
 func InvalidToken(reason string, values ...interface{}) *ServiceError {
 	return New(CodeAuthExpiredToken, reason, values...)
 }

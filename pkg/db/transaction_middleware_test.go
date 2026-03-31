@@ -1,9 +1,64 @@
 package db
 
 import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net"
 	"net/http"
+	"net/http/httptest"
+	"syscall"
 	"testing"
+
+	"github.com/DATA-DOG/go-sqlmock"
+	. "github.com/onsi/gomega"
+	postgres "gorm.io/driver/postgres"
+	"gorm.io/gorm"
+	gormlogger "gorm.io/gorm/logger"
+
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
 )
+
+type dbSessionFactory struct {
+	gormDB *gorm.DB
+	sqlDB  *sql.DB
+}
+
+func (f *dbSessionFactory) Init(*config.DatabaseConfig)                             {}
+func (f *dbSessionFactory) New(_ context.Context) *gorm.DB                          { return f.gormDB }
+func (f *dbSessionFactory) CheckConnection() error                                  { return nil }
+func (f *dbSessionFactory) Close() error                                            { return nil }
+func (f *dbSessionFactory) ResetDB()                                                {}
+func (f *dbSessionFactory) NewListener(_ context.Context, _ string, _ func(string)) {}
+func (f *dbSessionFactory) GetAdvisoryLockTimeout() int                             { return 300 }
+func (f *dbSessionFactory) DirectDB() *sql.DB                                       { return f.sqlDB }
+
+func newDBSessionFactory(t *testing.T, setupMock func(sqlmock.Sqlmock)) *dbSessionFactory {
+	t.Helper()
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("failed to create sqlmock: %v", err)
+	}
+	setupMock(mock)
+
+	gormDB, err := gorm.Open(postgres.New(postgres.Config{Conn: db}), &gorm.Config{
+		Logger: gormlogger.Discard,
+	})
+	if err != nil {
+		t.Fatalf("failed to open GORM: %v", err)
+	}
+
+	t.Cleanup(func() {
+		db.Close()
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Fatalf("unmet sqlmock expectations: %v", err)
+		}
+	})
+	return &dbSessionFactory{gormDB: gormDB, sqlDB: db}
+}
 
 func TestIsWriteMethod_StandardHTTPMethods(t *testing.T) {
 	tests := []struct {
@@ -60,6 +115,135 @@ func TestIsWriteMethod_NonStandardMethods(t *testing.T) {
 			if result != false {
 				t.Errorf("isWriteMethod(%q) = %v, want false (non-standard methods default to read-only)", method, result)
 			}
+		})
+	}
+}
+
+func TestTransactionMiddleware_DBUnavailable(t *testing.T) {
+	tests := []struct {
+		setupMock      func(sqlmock.Sqlmock)
+		name           string
+		expectedType   string
+		expectedCode   string
+		expectedDetail string
+		expectedStatus int
+	}{
+		{
+			name: "DB unreachable (connection refused) - returns 503",
+			setupMock: func(mock sqlmock.Sqlmock) {
+				mock.ExpectBegin().WillReturnError(
+					&net.OpError{Op: "dial", Net: "tcp", Err: syscall.ECONNREFUSED},
+				)
+			},
+			expectedStatus: http.StatusServiceUnavailable,
+			expectedType:   "https://api.hyperfleet.io/errors/service-unavailable",
+			expectedCode:   "HYPERFLEET-SVC-001",
+			expectedDetail: "Database connection unavailable",
+		},
+		{
+			name: "DB unreachable (connection dropped) - returns 503",
+			setupMock: func(mock sqlmock.Sqlmock) {
+				mock.ExpectBegin().WillReturnError(io.EOF)
+			},
+			expectedStatus: http.StatusServiceUnavailable,
+			expectedType:   "https://api.hyperfleet.io/errors/service-unavailable",
+			expectedCode:   "HYPERFLEET-SVC-001",
+			expectedDetail: "Database connection unavailable",
+		},
+		{
+			name: "internal DB error (permission denied) - returns 500",
+			setupMock: func(mock sqlmock.Sqlmock) {
+				mock.ExpectBegin().WillReturnError(errors.New("permission denied for table clusters"))
+			},
+			expectedStatus: http.StatusInternalServerError,
+			expectedType:   "https://api.hyperfleet.io/errors/internal-error",
+			expectedCode:   "HYPERFLEET-INT-001",
+			expectedDetail: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			RegisterTestingT(t)
+
+			factory := newDBSessionFactory(t, tt.setupMock)
+			next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+			})
+
+			handler := TransactionMiddleware(next, factory, 0)
+			req := httptest.NewRequest(http.MethodPost, "/api/hyperfleet/v1/clusters", nil)
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+
+			Expect(rec.Code).To(Equal(tt.expectedStatus))
+			Expect(rec.Header().Get("Content-Type")).To(Equal("application/problem+json"))
+
+			var body struct {
+				Code   *string `json:"code"`
+				Detail string  `json:"detail"`
+				Type   string  `json:"type"`
+				Status int     `json:"status"`
+			}
+			Expect(json.NewDecoder(rec.Body).Decode(&body)).To(Succeed())
+			Expect(body.Type).To(Equal(tt.expectedType))
+			Expect(body.Status).To(Equal(tt.expectedStatus))
+			Expect(body.Code).NotTo(BeNil())
+			Expect(*body.Code).To(Equal(tt.expectedCode))
+			if tt.expectedDetail != "" {
+				Expect(body.Detail).To(Equal(tt.expectedDetail))
+			}
+		})
+	}
+}
+
+func TestIsDBConnectionError(t *testing.T) {
+	tests := []struct {
+		err      error
+		name     string
+		expected bool
+	}{
+		{
+			name:     "nil",
+			err:      nil,
+			expected: false,
+		},
+		{
+			name:     "TCP connection refused",
+			err:      &net.OpError{Op: "dial", Net: "tcp", Err: syscall.ECONNREFUSED},
+			expected: true,
+		},
+		{
+			name:     "TCP connection reset",
+			err:      &net.OpError{Op: "read", Net: "tcp", Err: syscall.ECONNRESET},
+			expected: true,
+		},
+		{
+			name:     "EOF",
+			err:      io.EOF,
+			expected: true,
+		},
+		{
+			name:     "unexpected EOF",
+			err:      io.ErrUnexpectedEOF,
+			expected: true,
+		},
+		{
+			name:     "wrapped TCP connection refused",
+			err:      fmt.Errorf("driver: %w", &net.OpError{Op: "dial", Net: "tcp", Err: syscall.ECONNREFUSED}),
+			expected: true,
+		},
+		{
+			name:     "database constraint violation",
+			err:      errors.New("violates unique constraint"),
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			RegisterTestingT(t)
+			Expect(IsDBConnectionError(tt.err)).To(Equal(tt.expected))
 		})
 	}
 }

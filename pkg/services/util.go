@@ -6,6 +6,7 @@ import (
 
 	"gorm.io/gorm"
 
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 )
 
@@ -29,10 +30,16 @@ func handleGetError(resourceType, field string, value interface{}, err error) *e
 	if e.Is(err, gorm.ErrRecordNotFound) {
 		return errors.NotFound("%s with %s='%v' not found", resourceType, field, value)
 	}
+	if db.IsDBConnectionError(err) {
+		return errors.ServiceUnavailable("Database connection unavailable")
+	}
 	return errors.GeneralError("Unable to find %s with %s='%v': %s", resourceType, field, value, err)
 }
 
 func handleCreateError(resourceType string, err error) *errors.ServiceError {
+	if db.IsDBConnectionError(err) {
+		return errors.ServiceUnavailable("Database connection unavailable")
+	}
 	if strings.Contains(err.Error(), "violates unique constraint") {
 		return errors.Conflict("This %s already exists", resourceType)
 	}
@@ -40,6 +47,9 @@ func handleCreateError(resourceType string, err error) *errors.ServiceError {
 }
 
 func handleUpdateError(resourceType string, err error) *errors.ServiceError {
+	if db.IsDBConnectionError(err) {
+		return errors.ServiceUnavailable("Database connection unavailable")
+	}
 	if strings.Contains(err.Error(), "violates unique constraint") {
 		return errors.Conflict("Changes to %s conflict with existing records", resourceType)
 	}
@@ -47,5 +57,8 @@ func handleUpdateError(resourceType string, err error) *errors.ServiceError {
 }
 
 func handleDeleteError(resourceType string, err error) *errors.ServiceError {
+	if db.IsDBConnectionError(err) {
+		return errors.ServiceUnavailable("Database connection unavailable")
+	}
 	return errors.GeneralError("Unable to delete %s: %s", resourceType, err.Error())
 }
