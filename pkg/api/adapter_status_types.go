@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"time"
 
 	"gorm.io/datatypes"
@@ -44,6 +45,10 @@ func (l AdapterStatusList) Index() AdapterStatusIndex {
 }
 
 func (as *AdapterStatus) BeforeCreate(tx *gorm.DB) error {
-	as.ID = NewID()
+	id, err := NewID()
+	if err != nil {
+		return fmt.Errorf("failed to generate adapter status ID: %w", err)
+	}
+	as.ID = id
 	return nil
 }

@@ -516,7 +516,10 @@ This will only log SQL queries that take longer than 200ms.
 ```go
 func TestLogging(t *testing.T) {
     // Create context with request ID
-    ctx := logger.WithRequestID(context.Background())
+    ctx, err := logger.WithRequestID(context.Background())
+    if err != nil {
+        t.Fatalf("Failed to create request ID: %v", err)
+    }
 
     // Log with context
     logger.With(ctx, "key", "value").Info("Test message")
