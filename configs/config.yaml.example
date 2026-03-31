@@ -60,8 +60,8 @@ logging:
   output: stdout                    # Log output (stdout, stderr)
 
   otel:
-    enabled: false                  # Enable OpenTelemetry tracing
-    sampling_rate: 1.0              # Sampling rate (0.0-1.0, 1.0 = 100%)
+    enabled: true                   # Enable OpenTelemetry tracing (overridden by HYPERFLEET_TRACING_ENABLED env var)
+    sampling_rate: 1.0              # DEPRECATED: Use OTEL_TRACES_SAMPLER_ARG instead (0.0-1.0, 1.0 = 100%)
 
   masking:
     enabled: true                   # Enable masking of sensitive data
@@ -137,11 +137,13 @@ adapters:
 #
 # Environment Variable Naming Convention:
 # - All env vars use HYPERFLEET_ prefix
-# - Nested values use underscores: HYPERFLEET_LOGGING_OTEL_SAMPLING_RATE=0.5
 # - All uppercase: HYPERFLEET_SERVER_HOST=localhost
 #
-# Example: server.host → HYPERFLEET_SERVER_HOST
-# Example: logging.otel.sampling_rate → HYPERFLEET_LOGGING_OTEL_SAMPLING_RATE
+#
+# Exception - Standard OpenTelemetry Variables:
+# - OTEL_* variables follow OpenTelemetry standard naming (no HYPERFLEET_ prefix)
+# - HYPERFLEET_TRACING_ENABLED is the only HYPERFLEET-prefixed tracing variable
+# - See "OpenTelemetry Tracing Configuration" section below for details
 #
 # CLI Flag Naming Convention:
 # - All flags use kebab-case with hyphens
@@ -174,4 +176,27 @@ adapters:
 # - HYPERFLEET_OCM_CLIENT_ID_FILE=/secrets/ocm-client-id
 # - HYPERFLEET_OCM_CLIENT_SECRET_FILE=/secrets/ocm-client-secret
 # - HYPERFLEET_OCM_SELF_TOKEN_FILE=/secrets/ocm-self-token
+#
+# OpenTelemetry Tracing Configuration:
+# HyperFleet uses standard OpenTelemetry environment variables for tracing.
+# These have special precedence and override config file settings.
+#
+# Master tracing switch:
+# - HYPERFLEET_TRACING_ENABLED=true|false  # Enables/disables all tracing (overrides logging.otel.enabled)
+#
+# Standard OTEL environment variables (only used when tracing is enabled):
+# - OTEL_SERVICE_NAME=hyperfleet-api       # Service name in traces (default: hyperfleet-api)
+# - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317  # OTLP collector endpoint (if not set, uses stdout)
+# - OTEL_EXPORTER_OTLP_PROTOCOL=grpc       # Protocol: grpc (default) or http/protobuf
+# - OTEL_TRACES_SAMPLER=parentbased_traceidratio  # Sampler type (default: parentbased_traceidratio)
+# - OTEL_TRACES_SAMPLER_ARG=1.0            # Sampling rate 0.0-1.0 (default: 1.0 = 100%)
+# - OTEL_PROPAGATORS=tracecontext,baggage  # Propagators (default: tracecontext,baggage)
+# - OTEL_RESOURCE_ATTRIBUTES=env=prod,region=us-east  # Additional resource attributes
+#
+# Variable Precedence for Tracing:
+# 1. HYPERFLEET_TRACING_ENABLED (env var) - master switch
+# 2. logging.otel.enabled (config file)
+# 3. Default (true)
+#
+# See docs/logging.md for complete OpenTelemetry configuration guide.
 # ----------------------------------------------------------------------------
