@@ -35,6 +35,9 @@ func RegisterRoutes(name string, registrationFunc RouteRegistrationFunc) {
 	routeRegistry[name] = registrationFunc
 }
 
+// LoadDiscoveredRoutes invokes all registered route registration functions.
+//
+// Note: All routes must use .Methods() to restrict HTTP methods.
 func LoadDiscoveredRoutes(
 	apiV1Router *mux.Router,
 	services ServicesInterface,

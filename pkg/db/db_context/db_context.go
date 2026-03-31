@@ -24,12 +24,3 @@ func Transaction(ctx context.Context) (tx *transaction.Transaction, ok bool) {
 	tx, ok = ctx.Value(transactionKey).(*transaction.Transaction)
 	return tx, ok
 }
-
-// TxID Return the transaction ID from the context, if it exists. If there is no transaction, ok is false.
-func TxID(ctx context.Context) (id int64, ok bool) {
-	tx, ok := Transaction(ctx)
-	if !ok {
-		return 0, false
-	}
-	return tx.TxID(), true
-}

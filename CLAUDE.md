@@ -98,7 +98,8 @@ Each resource registers via `init()` function:
 
 **Request flow**: Router → Middleware (logging, auth, transaction) → Handler → Service → DAO → GORM → PostgreSQL
 
-- Transaction middleware creates a GORM session per request: `pkg/db/transaction_middleware.go`
+- Transaction middleware creates GORM transactions for **write requests only** (POST/PUT/PATCH/DELETE): `pkg/db/transaction_middleware.go`
+- Read requests (GET) skip transaction creation for performance
 - OpenAPI source spec: `openapi/openapi.yaml` (TypeSpec-generated, uses `$ref`)
 - Generated code: `pkg/api/openapi/` (models + embedded spec) — **never edit**
 - Codegen config: `openapi/oapi-codegen.yaml` — uses oapi-codegen (not openapi-generator-cli)
