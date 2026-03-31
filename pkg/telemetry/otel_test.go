@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	. "github.com/onsi/gomega"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/trace"
@@ -23,26 +24,22 @@ func cleanupTraceProvider(ctx context.Context, t *testing.T, tp *trace.TracerPro
 }
 
 func TestInitTraceProvider_StdoutExporter(t *testing.T) {
+	RegisterTestingT(t)
 	ctx := context.Background()
 
 	// Test stdout exporter (default)
 	tp, err := InitTraceProvider(ctx, "test-service", "v1.0.0")
-	if err != nil {
-		t.Fatalf("Failed to initialize trace provider: %v", err)
-	}
-	if tp == nil {
-		t.Fatal("Expected trace provider, got nil")
-	}
+	Expect(err).NotTo(HaveOccurred())
+	Expect(tp).NotTo(BeNil())
 	defer cleanupTraceProvider(ctx, t, tp)
 
 	// Verify tracer is available
 	tracer := otel.Tracer("test")
-	if tracer == nil {
-		t.Error("Expected tracer to be available")
-	}
+	Expect(tracer).NotTo(BeNil())
 }
 
 func TestInitTraceProvider_OTLPExporter(t *testing.T) {
+	RegisterTestingT(t)
 	ctx := context.Background()
 
 	// Set OTLP endpoint (can be fake - we're just testing initialization)
@@ -50,41 +47,30 @@ func TestInitTraceProvider_OTLPExporter(t *testing.T) {
 
 	// Test that trace provider initializes correctly with OTLP exporter
 	tp, err := InitTraceProvider(ctx, "test-service", "v1.0.0")
-	if err != nil {
-		t.Fatalf("Failed to initialize trace provider with OTLP: %v", err)
-	}
-	if tp == nil {
-		t.Fatal("Expected trace provider, got nil")
-	}
+	Expect(err).NotTo(HaveOccurred())
+	Expect(tp).NotTo(BeNil())
 	defer cleanupTraceProvider(ctx, t, tp)
 
 	// Verify tracer is available
 	tracer := otel.Tracer("test")
-	if tracer == nil {
-		t.Error("Expected tracer to be available")
-	}
+	Expect(tracer).NotTo(BeNil())
 }
 
 func TestInitTraceProvider_OTLPHttpExporter(t *testing.T) {
+	RegisterTestingT(t)
 	ctx := context.Background()
 
 	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://fake-otel-collector:4318")
 	t.Setenv("OTEL_EXPORTER_OTLP_PROTOCOL", "http/protobuf")
 
 	tp, err := InitTraceProvider(ctx, "test-service", "v1.0.0")
-	if err != nil {
-		t.Fatalf("Failed to initialize trace provider with HTTP OTLP: %v", err)
-	}
-	if tp == nil {
-		t.Fatal("Expected trace provider, got nil")
-	}
+	Expect(err).NotTo(HaveOccurred())
+	Expect(tp).NotTo(BeNil())
 	defer cleanupTraceProvider(ctx, t, tp)
 
 	// Verify tracer is available
 	tracer := otel.Tracer("test")
-	if tracer == nil {
-		t.Error("Expected tracer to be available")
-	}
+	Expect(tracer).NotTo(BeNil())
 }
 
 func TestInitTraceProvider_InvalidProtocol(t *testing.T) {
@@ -110,24 +96,19 @@ func TestInitTraceProvider_InvalidProtocol(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			RegisterTestingT(t)
 			t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://fake-otel-collector:4317")
 			t.Setenv("OTEL_EXPORTER_OTLP_PROTOCOL", tt.protocol)
 
 			// Should fall back to gRPC with a warning (not fail)
 			tp, err := InitTraceProvider(ctx, "test-service", "v1.0.0")
-			if err != nil {
-				t.Fatalf("Failed to initialize trace provider: %v", err)
-			}
-			if tp == nil {
-				t.Fatal("Expected trace provider, got nil")
-			}
+			Expect(err).NotTo(HaveOccurred())
+			Expect(tp).NotTo(BeNil())
 			defer cleanupTraceProvider(ctx, t, tp)
 
 			// Verify tracer is available (using default gRPC exporter)
 			tracer := otel.Tracer("test")
-			if tracer == nil {
-				t.Error("Expected tracer to be available")
-			}
+			Expect(tracer).NotTo(BeNil())
 		})
 	}
 }
@@ -183,6 +164,7 @@ func TestInitTraceProvider_SamplerEnvironmentVariables(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			RegisterTestingT(t)
 			// Set environment variables
 			if tt.samplerType != "" {
 				t.Setenv("OTEL_TRACES_SAMPLER", tt.samplerType)
@@ -192,9 +174,7 @@ func TestInitTraceProvider_SamplerEnvironmentVariables(t *testing.T) {
 			}
 
 			tp, err := InitTraceProvider(ctx, "test-service", "v1.0.0")
-			if err != nil {
-				t.Fatalf("Failed to initialize trace provider: %v", err)
-			}
+			Expect(err).NotTo(HaveOccurred())
 			defer cleanupTraceProvider(ctx, t, tp)
 
 			// Test sampling behavior by checking if spans are created
@@ -202,14 +182,11 @@ func TestInitTraceProvider_SamplerEnvironmentVariables(t *testing.T) {
 			_, span := tracer.Start(ctx, "test-span")
 
 			if tt.expectedSample {
-				if !span.SpanContext().IsValid() || !span.SpanContext().TraceFlags().IsSampled() {
-					t.Error("Expected valid and sampled span context for sampling=true")
-				}
-			} else {
+				Expect(span.SpanContext().IsValid()).To(BeTrue())
+				Expect(span.SpanContext().TraceFlags().IsSampled()).To(BeTrue())
+			} else if span.SpanContext().IsValid() {
 				// Verify span is NOT sampled for expectedSample=false
-				if span.SpanContext().IsValid() && span.SpanContext().TraceFlags().IsSampled() {
-					t.Error("Expected span to NOT be sampled for sampling=false")
-				}
+				Expect(span.SpanContext().TraceFlags().IsSampled()).To(BeFalse())
 			}
 			span.End()
 		})
@@ -248,6 +225,7 @@ func TestInitTraceProvider_InvalidSamplerArg(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			RegisterTestingT(t)
 			// Use parentbased_traceidratio to test the sampling rate parsing
 			t.Setenv("OTEL_TRACES_SAMPLER", "parentbased_traceidratio")
 
@@ -256,9 +234,7 @@ func TestInitTraceProvider_InvalidSamplerArg(t *testing.T) {
 			}
 
 			tp, err := InitTraceProvider(ctx, "test-service", "v1.0.0")
-			if err != nil {
-				t.Fatalf("Failed to initialize trace provider: %v", err)
-			}
+			Expect(err).NotTo(HaveOccurred())
 			defer cleanupTraceProvider(ctx, t, tp)
 
 			// Test that invalid values fall back to default (1.0 = always sample)
@@ -266,9 +242,8 @@ func TestInitTraceProvider_InvalidSamplerArg(t *testing.T) {
 			_, span := tracer.Start(ctx, "test-span")
 
 			if tt.expectedSample {
-				if !span.SpanContext().IsValid() || !span.SpanContext().TraceFlags().IsSampled() {
-					t.Errorf("Expected span to be sampled (fallback to default 1.0) for invalid arg %q", tt.samplerArg)
-				}
+				Expect(span.SpanContext().IsValid()).To(BeTrue())
+				Expect(span.SpanContext().TraceFlags().IsSampled()).To(BeTrue())
 			}
 			span.End()
 		})
@@ -276,20 +251,16 @@ func TestInitTraceProvider_InvalidSamplerArg(t *testing.T) {
 }
 
 func TestCreateExporter_Stdout(t *testing.T) {
+	RegisterTestingT(t)
 	ctx := context.Background()
 
 	// Test stdout exporter when no OTLP endpoint is set
 	exporter, err := createExporter(ctx)
-	if err != nil {
-		t.Fatalf("Failed to create stdout exporter: %v", err)
-	}
-	if exporter == nil {
-		t.Fatal("Expected exporter, got nil")
-	}
+	Expect(err).NotTo(HaveOccurred())
+	Expect(exporter).NotTo(BeNil())
 	defer func() {
-		if err := exporter.Shutdown(ctx); err != nil {
-			t.Errorf("Failed to shutdown exporter: %v", err)
-		}
+		err := exporter.Shutdown(ctx)
+		Expect(err).NotTo(HaveOccurred())
 	}()
 }
 
@@ -312,44 +283,36 @@ func TestCreateExporter_OTLP_gRPC(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			RegisterTestingT(t)
 			t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://fake-otel-collector:4317")
 			if tt.protocol != "" {
 				t.Setenv("OTEL_EXPORTER_OTLP_PROTOCOL", tt.protocol)
 			}
 
 			exporter, err := createExporter(ctx)
-			if err != nil {
-				t.Fatalf("Failed to create gRPC exporter: %v", err)
-			}
-			if exporter == nil {
-				t.Fatal("Expected exporter, got nil")
-			}
+			Expect(err).NotTo(HaveOccurred())
+			Expect(exporter).NotTo(BeNil())
 			defer func() {
-				if err := exporter.Shutdown(ctx); err != nil {
-					t.Errorf("Failed to shutdown exporter: %v", err)
-				}
+				err := exporter.Shutdown(ctx)
+				Expect(err).NotTo(HaveOccurred())
 			}()
 		})
 	}
 }
 
 func TestCreateExporter_OTLP_HTTP(t *testing.T) {
+	RegisterTestingT(t)
 	ctx := context.Background()
 
 	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://fake-otel-collector:4318")
 	t.Setenv("OTEL_EXPORTER_OTLP_PROTOCOL", "http/protobuf")
 
 	exporter, err := createExporter(ctx)
-	if err != nil {
-		t.Fatalf("Failed to create HTTP exporter: %v", err)
-	}
-	if exporter == nil {
-		t.Fatal("Expected exporter, got nil")
-	}
+	Expect(err).NotTo(HaveOccurred())
+	Expect(exporter).NotTo(BeNil())
 	defer func() {
-		if err := exporter.Shutdown(ctx); err != nil {
-			t.Errorf("Failed to shutdown exporter: %v", err)
-		}
+		err := exporter.Shutdown(ctx)
+		Expect(err).NotTo(HaveOccurred())
 	}()
 }
 
@@ -372,21 +335,17 @@ func TestCreateExporter_InvalidProtocol(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			RegisterTestingT(t)
 			t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://fake-otel-collector:4317")
 			t.Setenv("OTEL_EXPORTER_OTLP_PROTOCOL", tt.protocol)
 
 			// Should fall back to gRPC with a warning
 			exporter, err := createExporter(ctx)
-			if err != nil {
-				t.Fatalf("Failed to create exporter (should fall back to gRPC): %v", err)
-			}
-			if exporter == nil {
-				t.Fatal("Expected exporter, got nil")
-			}
+			Expect(err).NotTo(HaveOccurred())
+			Expect(exporter).NotTo(BeNil())
 			defer func() {
-				if err := exporter.Shutdown(ctx); err != nil {
-					t.Errorf("Failed to shutdown exporter: %v", err)
-				}
+				err := exporter.Shutdown(ctx)
+				Expect(err).NotTo(HaveOccurred())
 			}()
 		})
 	}
@@ -438,6 +397,7 @@ func TestSelectSampler(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			RegisterTestingT(t)
 			if tt.samplerType != "" {
 				t.Setenv("OTEL_TRACES_SAMPLER", tt.samplerType)
 			}
@@ -446,9 +406,7 @@ func TestSelectSampler(t *testing.T) {
 			}
 
 			sampler := selectSampler(ctx)
-			if sampler == nil {
-				t.Fatal("Expected sampler, got nil")
-			}
+			Expect(sampler).NotTo(BeNil())
 		})
 	}
 }
@@ -502,6 +460,7 @@ func TestInitTraceProvider_ParentBasedSampling(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			RegisterTestingT(t)
 			t.Setenv("OTEL_TRACES_SAMPLER", tt.samplerType)
 
 			if tt.samplerArg != "" {
@@ -509,9 +468,7 @@ func TestInitTraceProvider_ParentBasedSampling(t *testing.T) {
 			}
 
 			tp, err := InitTraceProvider(ctx, "test-service", "v1.0.0")
-			if err != nil {
-				t.Fatalf("Failed to initialize trace provider: %v", err)
-			}
+			Expect(err).NotTo(HaveOccurred())
 			defer cleanupTraceProvider(ctx, t, tp)
 
 			tracer := otel.Tracer("test")
@@ -531,13 +488,10 @@ func TestInitTraceProvider_ParentBasedSampling(t *testing.T) {
 			_, span := tracer.Start(testCtx, "test-span")
 
 			if tt.expectedSample {
-				if !span.SpanContext().IsValid() || !span.SpanContext().TraceFlags().IsSampled() {
-					t.Errorf("Expected span to be sampled for %s", tt.name)
-				}
-			} else {
-				if span.SpanContext().IsValid() && span.SpanContext().TraceFlags().IsSampled() {
-					t.Errorf("Expected span to NOT be sampled for %s", tt.name)
-				}
+				Expect(span.SpanContext().IsValid()).To(BeTrue())
+				Expect(span.SpanContext().TraceFlags().IsSampled()).To(BeTrue())
+			} else if span.SpanContext().IsValid() {
+				Expect(span.SpanContext().TraceFlags().IsSampled()).To(BeFalse())
 			}
 			span.End()
 		})
