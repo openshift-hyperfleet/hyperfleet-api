@@ -190,7 +190,6 @@ adapters:
 # - OTEL_EXPORTER_OTLP_PROTOCOL=grpc       # Protocol: grpc (default) or http/protobuf
 # - OTEL_TRACES_SAMPLER=parentbased_traceidratio  # Sampler type (default: parentbased_traceidratio)
 # - OTEL_TRACES_SAMPLER_ARG=1.0            # Sampling rate 0.0-1.0 (default: 1.0 = 100%)
-# - OTEL_PROPAGATORS=tracecontext,baggage  # Propagators (default: tracecontext,baggage)
 # - OTEL_RESOURCE_ATTRIBUTES=env=prod,region=us-east  # Additional resource attributes
 #
 # Variable Precedence for Tracing:
