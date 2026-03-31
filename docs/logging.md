@@ -71,7 +71,7 @@ HyperFleet uses standard OpenTelemetry environment variables for tracing configu
 
 | Variable | Description | Default | Example |
 |----------|-------------|---------|---------|
-| `HYPERFLEET_TRACING_ENABLED` | Enable/disable tracing (Tracing standard, overrides config) | - | `true`, `false` |
+| `HYPERFLEET_TRACING_ENABLED` | Enable/disable tracing (Tracing standard, overrides config) | `true` (config fallback) | `true`, `false` |
 | `OTEL_SERVICE_NAME` | Service name in traces | `hyperfleet-api` | `hyperfleet-api-prod` |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP collector endpoint (if not set, uses stdout) | - | `http://otel-collector:4317` |
 | `OTEL_EXPORTER_OTLP_PROTOCOL` | OTLP protocol | `grpc` | `grpc`, `http/protobuf` |
