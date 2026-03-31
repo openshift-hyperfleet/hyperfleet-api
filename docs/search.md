@@ -29,7 +29,7 @@ The HyperFleet API uses the [Tree Search Language (TSL)](https://github.com/yaac
 
 - **String values**: Must be enclosed in single quotes: `name='my-cluster'`
 - **Numeric values**: No quotes required: `generation>5`
-- **Lists**: Comma-separated values in parentheses: `id in ('2abc123', '2def456')`
+- **Lists**: Comma-separated values in parentheses: `id in ('019466a0-8f8e-7abc-9def-0123456789ab', '019466a1-2b3c-7def-8abc-456789abcdef')`
 
 ## Searchable Fields
 
@@ -37,7 +37,7 @@ The HyperFleet API uses the [Tree Search Language (TSL)](https://github.com/yaac
 
 | Field | Type | Description | Example |
 |-------|------|-------------|---------|
-| `id` | string | Cluster ID | `id='2abc123'` |
+| `id` | string | Cluster ID | `id='019466a0-8f8e-7abc-9def-0123456789ab'` |
 | `name` | string | Cluster name | `name='my-cluster'` |
 | `generation` | integer | Spec version counter | `generation>1` |
 | `created_by` | string | Creator email | `created_by='user@example.com'` |
@@ -62,12 +62,12 @@ NodePools support the same searchable fields as Clusters, plus:
 
 | Field | Type | Description | Example |
 |-------|------|-------------|---------|
-| `owner_id` | string | Parent cluster ID | `owner_id='2abc123'` |
+| `owner_id` | string | Parent cluster ID | `owner_id='019466a0-8f8e-7abc-9def-0123456789ab'` |
 
 ```bash
 # Find nodepools by parent cluster ID
 curl -G "http://localhost:8000/api/hyperfleet/v1/nodepools" \
-  --data-urlencode "search=owner_id='2abc123'"
+  --data-urlencode "search=owner_id='019466a0-8f8e-7abc-9def-0123456789ab'"
 
 # Find ready nodepools
 curl -G "http://localhost:8000/api/hyperfleet/v1/nodepools" \
@@ -188,7 +188,7 @@ curl -G "http://localhost:8000/api/hyperfleet/v1/clusters" \
 
 # Find clusters by multiple IDs
 curl -G "http://localhost:8000/api/hyperfleet/v1/clusters" \
-  --data-urlencode "search=id in ('2abc123', '2def456', '2ghi789')"
+  --data-urlencode "search=id in ('019466a0-8f8e-7abc-9def-0123456789ab', '019466a1-2b3c-7def-8abc-456789abcdef', '019466a2-4c5d-7ef0-9abc-123456789def')"
 ```
 
 ## Error Handling

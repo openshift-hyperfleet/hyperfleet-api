@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"time"
 
 	"gorm.io/datatypes"
@@ -33,8 +34,13 @@ func (l ClusterList) Index() ClusterIndex {
 }
 
 func (c *Cluster) BeforeCreate(tx *gorm.DB) error {
+	id, err := NewID()
+	if err != nil {
+		return fmt.Errorf("failed to generate cluster ID: %w", err)
+	}
+	c.ID = id
+
 	now := time.Now()
-	c.ID = NewID()
 	c.CreatedTime = now
 	c.UpdatedTime = now
 	if c.Generation == 0 {

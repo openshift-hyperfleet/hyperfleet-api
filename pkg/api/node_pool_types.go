@@ -38,8 +38,13 @@ func (l NodePoolList) Index() NodePoolIndex {
 }
 
 func (np *NodePool) BeforeCreate(tx *gorm.DB) error {
+	id, err := NewID()
+	if err != nil {
+		return fmt.Errorf("failed to generate node pool ID: %w", err)
+	}
+	np.ID = id
+
 	now := time.Now()
-	np.ID = NewID()
 	np.CreatedTime = now
 	np.UpdatedTime = now
 	if np.Generation == 0 {

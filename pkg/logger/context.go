@@ -2,8 +2,9 @@ package logger
 
 import (
 	"context"
+	"fmt"
 
-	"github.com/segmentio/ksuid"
+	"github.com/google/uuid"
 )
 
 // contextKey is an unexported type for keys defined in this package.
@@ -53,13 +54,19 @@ func WithResourceID(ctx context.Context, resourceID string) context.Context {
 
 // WithRequestID adds request ID to context
 // If request ID already exists in context, it returns the context unchanged
-// Otherwise, it generates a new KSUID and adds it to the context
-func WithRequestID(ctx context.Context) context.Context {
+// Otherwise, it generates a new UUID v7 and adds it to the context
+// Returns an error if UUID generation fails (extremely unlikely in practice)
+func WithRequestID(ctx context.Context) (context.Context, error) {
 	if ctx.Value(ReqIDKey) != nil {
-		return ctx
+		return ctx, nil
 	}
-	reqID := ksuid.New().String()
-	return context.WithValue(ctx, ReqIDKey, reqID)
+
+	reqID, err := uuid.NewV7()
+	if err != nil {
+		return ctx, fmt.Errorf("failed to generate request ID: %w", err)
+	}
+
+	return context.WithValue(ctx, ReqIDKey, reqID.String()), nil
 }
 
 // GetRequestID retrieves request ID from context

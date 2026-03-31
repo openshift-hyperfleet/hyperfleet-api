@@ -17,7 +17,6 @@ import (
 	"github.com/bxcodec/faker/v3"
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/google/uuid"
-	"github.com/segmentio/ksuid"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"gorm.io/gorm"
@@ -259,9 +258,13 @@ func (helper *Helper) Reset() {
 	helper.RestartServer()
 }
 
-// NewID creates a new unique ID used internally to CS
+// NewID creates a new unique ID used internally
 func (helper *Helper) NewID() string {
-	return ksuid.New().String()
+	id, err := uuid.NewV7()
+	if err != nil {
+		panic(fmt.Sprintf("test helper: failed to generate UUID v7: %v", err))
+	}
+	return id.String()
 }
 
 // NewUUID creates a new unique UUID, which has different formatting than ksuid
