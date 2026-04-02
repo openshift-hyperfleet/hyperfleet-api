@@ -1,22 +1,25 @@
 package api
 
 import (
-	"encoding/base32"
+	"fmt"
 
-	"github.com/segmentio/ksuid"
+	"github.com/google/uuid"
 )
 
-// NewID generates a new unique identifier using KSUID with lowercase Base32 encoding.
-// The resulting 32-character lowercase string is compatible with Kubernetes DNS-1123
-// subdomain naming requirements, making it suitable for use as Kubernetes resource names
-// and labels. The KSUID provides time-based ordering (second precision) and global
-// uniqueness without requiring a central server.
-func NewID() string {
-	return uidEncoding.EncodeToString(ksuid.New().Bytes())
+// NewID generates a new RFC4122 UUID v7 identifier in lowercase format.
+// UUID v7 embeds a Unix timestamp (millisecond precision) in the first 48 bits,
+// providing time-ordering and improved database index performance.
+// The resulting 36-character string (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)
+// is suitable for use in REST APIs, database storage, and Kubernetes resource names.
+//
+// The lowercase UUID format is DNS-1123 compliant (contains only a-f, 0-9, and hyphens;
+// starts and ends with alphanumeric; 36 chars < 253 char subdomain limit).
+//
+// Returns an error if UUID generation fails (extremely unlikely in practice).
+func NewID() (string, error) {
+	id, err := uuid.NewV7()
+	if err != nil {
+		return "", fmt.Errorf("failed to generate UUID v7: %w", err)
+	}
+	return id.String(), nil
 }
-
-// uidAlphabet is the lowercase alphabet used to encode unique identifiers.
-const uidAlphabet = "0123456789abcdefghijklmnopqrstuv"
-
-// uidEncoding is the lowercase variant of Base32 used to encode unique identifiers.
-var uidEncoding = base32.NewEncoding(uidAlphabet).WithPadding(base32.NoPadding)

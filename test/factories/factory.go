@@ -1,22 +1,19 @@
 package factories
 
 import (
-	"encoding/base32"
+	"fmt"
 
-	"github.com/segmentio/ksuid"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 )
 
 type Factories struct {
 }
 
-// NewID generates a new unique identifier using KSUID with lowercase Base32 encoding.
-// The resulting identifier is compatible with Kubernetes DNS-1123 subdomain naming requirements.
+// NewID generates a new unique identifier using RFC4122 UUID v7.
 func (f *Factories) NewID() string {
-	return uidEncoding.EncodeToString(ksuid.New().Bytes())
+	id, err := api.NewID()
+	if err != nil {
+		panic(fmt.Sprintf("test factory: failed to generate UUID v7: %v", err))
+	}
+	return id
 }
-
-// uidAlphabet is the lowercase alphabet used to encode unique identifiers.
-const uidAlphabet = "0123456789abcdefghijklmnopqrstuv"
-
-// uidEncoding is the lowercase variant of Base32 used to encode unique identifiers.
-var uidEncoding = base32.NewEncoding(uidAlphabet).WithPadding(base32.NoPadding)
