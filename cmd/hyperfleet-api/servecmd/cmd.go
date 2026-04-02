@@ -79,6 +79,14 @@ func runServe(cmd *cobra.Command, args []string) {
 		).Warn("HYPERFLEET_LOGGING_OTEL_ENABLED is deprecated and ignored. Please use HYPERFLEET_TRACING_ENABLED instead.")
 	}
 
+	// Check for deprecated HYPERFLEET_LOGGING_OTEL_SAMPLING_RATE variable
+	if deprecatedEnv := os.Getenv("HYPERFLEET_LOGGING_OTEL_SAMPLING_RATE"); deprecatedEnv != "" {
+		logger.With(ctx,
+			"deprecated_variable", "HYPERFLEET_LOGGING_OTEL_SAMPLING_RATE",
+			"replacement", "OTEL_TRACES_SAMPLER_ARG",
+		).Warn("HYPERFLEET_LOGGING_OTEL_SAMPLING_RATE is deprecated and ignored. Please use OTEL_TRACES_SAMPLER_ARG instead.")
+	}
+
 	// Determine if tracing is enabled using HYPERFLEET_TRACING_ENABLED (tracing standard)
 	var tracingEnabled bool
 	if tracingEnv := os.Getenv("HYPERFLEET_TRACING_ENABLED"); tracingEnv != "" {

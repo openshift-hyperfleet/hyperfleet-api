@@ -61,7 +61,6 @@ logging:
 
   otel:
     enabled: true                   # Enable OpenTelemetry tracing (overridden by HYPERFLEET_TRACING_ENABLED env var)
-    sampling_rate: 1.0              # DEPRECATED: Use OTEL_TRACES_SAMPLER_ARG instead (0.0-1.0, 1.0 = 100%)
 
   masking:
     enabled: true                   # Enable masking of sensitive data
@@ -151,7 +150,6 @@ adapters:
 # - All lowercase: --log-level=info
 #
 # Example: server.host → --server-host
-# Example: logging.otel.sampling_rate → --logging-otel-sampling-rate
 #
 # YAML Naming Convention:
 # - All properties use snake_case (single words with underscores for multi-word labels)
