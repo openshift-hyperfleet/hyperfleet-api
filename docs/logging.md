@@ -54,12 +54,35 @@ export HYPERFLEET_LOGGING_LEVEL=debug
 # Structured JSON format with info level
 export HYPERFLEET_LOGGING_FORMAT=json
 export HYPERFLEET_LOGGING_LEVEL=info
-export HYPERFLEET_LOGGING_OTEL_ENABLED=true
-export HYPERFLEET_LOGGING_OTEL_SAMPLING_RATE=0.1
+
+# OpenTelemetry tracing (Tracing standard)
+export HYPERFLEET_TRACING_ENABLED=true
+export OTEL_TRACES_SAMPLER=parentbased_traceidratio
+export OTEL_TRACES_SAMPLER_ARG=0.1
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
 ```
 
 **For complete configuration reference**, including all logging settings (levels, formats, OpenTelemetry, masking), see:
 - **[Configuration Guide](config.md)** - All logging environment variables and defaults
+
+### OpenTelemetry Environment Variables
+
+HyperFleet uses standard OpenTelemetry environment variables for tracing configuration:
+
+| Variable | Description | Default | Example |
+|----------|-------------|---------|---------|
+| `HYPERFLEET_TRACING_ENABLED` | Enable/disable tracing (Tracing standard, overrides config) | `true` (config fallback) | `true`, `false` |
+| `OTEL_SERVICE_NAME` | Service name in traces | `hyperfleet-api` | `hyperfleet-api-prod` |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP collector endpoint (if not set, uses stdout) | - | `http://otel-collector:4317` |
+| `OTEL_EXPORTER_OTLP_PROTOCOL` | OTLP protocol | `grpc` | `grpc`, `http/protobuf` |
+| `OTEL_TRACES_SAMPLER` | Sampler type | `parentbased_traceidratio` | `always_on`, `traceidratio` |
+| `OTEL_TRACES_SAMPLER_ARG` | Sampling rate (0.0-1.0) | `1.0` | `0.1` (10%) |
+| `OTEL_RESOURCE_ATTRIBUTES` | Additional resource attributes | - | `env=prod,region=us-east` |
+
+**Variable Precedence (highest to lowest):**
+1. `HYPERFLEET_TRACING_ENABLED` - Tracing standard (env var)
+2. `config.yaml: logging.otel.enabled` - Config file
+3. Default (`true`)
 
 ## Usage
 
@@ -346,24 +369,16 @@ logger.With(ctx, "host", "postgres.svc").WithError(err).Error("Failed to connect
 
 ### Initialization
 
-OpenTelemetry is initialized in `cmd/hyperfleet-api/servecmd/cmd.go`:
+OpenTelemetry is initialized in `cmd/hyperfleet-api/servecmd/cmd.go` (see `runServe()` function, lines ~74-110).
 
-```go
-if environments.Environment().Config.Logging.OTel.Enabled {
-    samplingRate := environments.Environment().Config.Logging.OTel.SamplingRate
-    tp, err := telemetry.InitTraceProvider(ctx, "hyperfleet-api", api.Version, samplingRate)
-    if err != nil {
-        logger.WithError(ctx, err).Warn("Failed to initialize OpenTelemetry")
-    } else {
-        defer func() {
-            if err := tp.Shutdown(context.Background()); err != nil {
-                logger.WithError(ctx, err).Error("Error shutting down tracer provider")
-            }
-        }()
-        logger.With(ctx, logger.FieldSamplingRate, samplingRate).Info("OpenTelemetry initialized")
-    }
-}
-```
+**Key behavior:**
+- Checks `HYPERFLEET_TRACING_ENABLED` environment variable first (tracing standard)
+- Falls back to config file setting if not set
+- Uses `OTEL_SERVICE_NAME` if set, otherwise defaults to `"hyperfleet-api"`
+- Initializes trace provider via `telemetry.InitTraceProvider(ctx, serviceName, api.Version)`
+- Shuts down with timeout during graceful shutdown
+
+See the actual implementation for complete error handling and shutdown logic.
 
 ### Trace Propagation
 
@@ -375,10 +390,26 @@ The OTel middleware automatically:
 
 ### Sampling
 
-Configure sampling rate to control trace volume:
+Configure sampling using standard OpenTelemetry environment variables:
+
+```bash
+# Sampler type (default: parentbased_traceidratio)
+export OTEL_TRACES_SAMPLER=parentbased_traceidratio
+
+# Sampling rate: 0.0-1.0 (default: 1.0)
+export OTEL_TRACES_SAMPLER_ARG=0.1  # 10% of requests traced
+```
+
+**Sampling rate examples:**
 - `0.0`: No traces (disabled)
-- `0.1`: 10% of requests traced
-- `1.0`: All requests traced (use in development only)
+- `0.1`: 10% of requests traced (recommended for production)
+- `1.0`: All requests traced (development only)
+
+**Sampler types:**
+- `always_on`: Sample all requests
+- `always_off`: Sample no requests
+- `traceidratio`: Sample based on trace ID ratio (use with OTEL_TRACES_SAMPLER_ARG)
+- `parentbased_traceidratio`: Respect parent decision, otherwise use trace ID ratio (default)
 
 ## Data Masking
 
@@ -443,9 +474,9 @@ mainRouter.Use(logging.RequestLoggingMiddleware)
 
 ### Missing trace_id/span_id
 
-1. Check OTel is enabled: `export HYPERFLEET_LOGGING_OTEL_ENABLED=true`
+1. Check tracing is enabled: `export HYPERFLEET_TRACING_ENABLED=true`
 2. Verify middleware order: `OTelMiddleware` must be after `RequestIDMiddleware`
-3. Check sampling rate: `export HYPERFLEET_LOGGING_OTEL_SAMPLING_RATE=1.0` (for testing)
+3. Check sampling rate: `export OTEL_TRACES_SAMPLER_ARG=1.0` (for testing - trace all requests)
 
 ### Data Not Masked
 
@@ -502,7 +533,7 @@ func TestLogging(t *testing.T) {
 HYPERFLEET_LOGGING_LEVEL=debug OCM_ENV=integration_testing go test ./test/integration/...
 
 # Run tests without OTel
-HYPERFLEET_LOGGING_OTEL_ENABLED=false OCM_ENV=integration_testing go test ./...
+HYPERFLEET_TRACING_ENABLED=false OCM_ENV=integration_testing go test ./...
 ```
 
 ## References

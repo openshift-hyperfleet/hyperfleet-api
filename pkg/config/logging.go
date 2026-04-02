@@ -15,9 +15,10 @@ type LoggingConfig struct {
 }
 
 // OTelConfig holds OpenTelemetry configuration
+// Configuration is driven entirely by standard environment variables.
+// See: https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/standards/tracing.md#configuration
 type OTelConfig struct {
-	Enabled      bool    `mapstructure:"enabled" json:"enabled"`
-	SamplingRate float64 `mapstructure:"sampling_rate" json:"sampling_rate" validate:"gte=0,lte=1"`
+	Enabled bool `mapstructure:"enabled" json:"enabled"`
 }
 
 // MaskingConfig holds log masking configuration
@@ -35,8 +36,7 @@ func NewLoggingConfig() *LoggingConfig {
 		Format: "json",
 		Output: "stdout",
 		OTel: OTelConfig{
-			Enabled:      false,
-			SamplingRate: 1.0,
+			Enabled: true,
 		},
 		Masking: MaskingConfig{
 			Enabled: true,

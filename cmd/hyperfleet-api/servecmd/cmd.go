@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 
 	"github.com/spf13/cobra"
@@ -69,14 +70,53 @@ func runServe(cmd *cobra.Command, args []string) {
 	logger.Info(ctx, config.DumpConfig(environments.Environment().Config))
 
 	var tp *trace.TracerProvider
-	if environments.Environment().Config.Logging.OTel.Enabled {
-		samplingRate := environments.Environment().Config.Logging.OTel.SamplingRate
-		traceProvider, err := telemetry.InitTraceProvider(ctx, "hyperfleet-api", api.Version, samplingRate)
+
+	// Check for deprecated HYPERFLEET_LOGGING_OTEL_ENABLED variable
+	if deprecatedEnv := os.Getenv("HYPERFLEET_LOGGING_OTEL_ENABLED"); deprecatedEnv != "" {
+		logger.With(ctx,
+			"deprecated_variable", "HYPERFLEET_LOGGING_OTEL_ENABLED",
+			"replacement", "HYPERFLEET_TRACING_ENABLED",
+		).Warn("HYPERFLEET_LOGGING_OTEL_ENABLED is deprecated and ignored. Please use HYPERFLEET_TRACING_ENABLED instead.")
+	}
+
+	// Check for deprecated HYPERFLEET_LOGGING_OTEL_SAMPLING_RATE variable
+	if deprecatedEnv := os.Getenv("HYPERFLEET_LOGGING_OTEL_SAMPLING_RATE"); deprecatedEnv != "" {
+		logger.With(ctx,
+			"deprecated_variable", "HYPERFLEET_LOGGING_OTEL_SAMPLING_RATE",
+			"replacement", "OTEL_TRACES_SAMPLER_ARG",
+		).Warn("HYPERFLEET_LOGGING_OTEL_SAMPLING_RATE is deprecated and ignored. Please use OTEL_TRACES_SAMPLER_ARG instead.")
+	}
+
+	// Determine if tracing is enabled using HYPERFLEET_TRACING_ENABLED (tracing standard)
+	var tracingEnabled bool
+	if tracingEnv := os.Getenv("HYPERFLEET_TRACING_ENABLED"); tracingEnv != "" {
+		if enabled, err := strconv.ParseBool(tracingEnv); err == nil {
+			tracingEnabled = enabled
+		} else {
+			logger.With(ctx,
+				logger.FieldHyperfleetTracingEnabled, tracingEnv,
+				"falling_back_to", environments.Environment().Config.Logging.OTel.Enabled).
+				WithError(err).Warn("Invalid HYPERFLEET_TRACING_ENABLED value, falling back to config")
+			tracingEnabled = environments.Environment().Config.Logging.OTel.Enabled
+		}
+	} else {
+		// Use config default if HYPERFLEET_TRACING_ENABLED not set
+		tracingEnabled = environments.Environment().Config.Logging.OTel.Enabled
+	}
+
+	if tracingEnabled {
+		// OpenTelemetry configuration is driven entirely by standard environment variables:
+		serviceName := "hyperfleet-api"
+		if svcName := os.Getenv("OTEL_SERVICE_NAME"); svcName != "" {
+			serviceName = svcName
+		}
+
+		traceProvider, err := telemetry.InitTraceProvider(ctx, serviceName, api.Version)
 		if err != nil {
 			logger.WithError(ctx, err).Warn("Failed to initialize OpenTelemetry")
 		} else {
 			tp = traceProvider
-			logger.With(ctx, logger.FieldSamplingRate, samplingRate).Info("OpenTelemetry initialized")
+			logger.With(ctx, logger.FieldServiceName, serviceName).Info("OpenTelemetry initialized")
 		}
 	} else {
 		logger.With(ctx, logger.FieldOTelEnabled, false).Info("OpenTelemetry disabled")
@@ -89,7 +129,7 @@ func runServe(cmd *cobra.Command, args []string) {
 		"masking_enabled", environments.Environment().Config.Logging.Masking.Enabled,
 	).Info("Logger initialized")
 
-	apiServer := server.NewAPIServer()
+	apiServer := server.NewAPIServer(tracingEnabled)
 	go apiServer.Start()
 
 	metricsServer := server.NewMetricsServer()

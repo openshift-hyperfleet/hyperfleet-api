@@ -94,9 +94,11 @@ config:
     format: json
     output: stdout
 
+    # OpenTelemetry tracing (HyperFleet standard)
+    # Configuration via standard environment variables.
+    # See: https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/standards/tracing.md#configuration
     otel:
-      enabled: false
-      sampling_rate: 1.0
+      enabled: true
 
     masking:
       enabled: true

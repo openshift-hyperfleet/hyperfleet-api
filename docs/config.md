@@ -70,6 +70,16 @@ export HYPERFLEET_DATABASE_PASSWORD=secret-password
 # Result: Uses "secret-password" (env var wins)
 ```
 
+**Special Case - OpenTelemetry Tracing:**
+
+`HYPERFLEET_TRACING_ENABLED` (Tracing standard) has special precedence for cross-component consistency:
+
+```text
+HYPERFLEET_TRACING_ENABLED > config (env/flags) > default
+```
+
+See [OpenTelemetry Configuration](#opentelemetry-configuration) for details.
+
 ---
 
 ## Configuration File Locations
@@ -180,8 +190,7 @@ Logging behavior and output settings.
 | `logging.level` | string | `info` | Log level: `debug`, `info`, `warn`, `error` |
 | `logging.format` | string | `json` | Log format: `json`, `text` |
 | `logging.output` | string | `stdout` | Log output: `stdout`, `stderr` |
-| `logging.otel.enabled` | bool | `false` | Enable OpenTelemetry tracing |
-| `logging.otel.sampling_rate` | float | `1.0` | OTEL sampling rate (0.0-1.0) |
+| `logging.otel.enabled` | bool | `true` | Enable OpenTelemetry tracing (see [OpenTelemetry Configuration](#opentelemetry-configuration)) |
 | `logging.masking.enabled` | bool | `true` | Enable sensitive data masking in logs |
 
 **Example:**
@@ -199,6 +208,31 @@ logging:
       - password
       - token
 ```
+
+### OpenTelemetry Configuration
+
+OpenTelemetry tracing is configured via standard environment variables following the [HyperFleet Tracing Standard](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/standards/tracing.md).
+
+**Enabling Tracing:**
+
+| Property | Environment Variable | Type | Default | Description |
+|----------|---------------------|------|---------|-------------|
+| `logging.otel.enabled` | `HYPERFLEET_TRACING_ENABLED` | bool | `true` | Enable OpenTelemetry tracing (HyperFleet standard) |
+
+**Standard OpenTelemetry Environment Variables:**
+
+Once enabled, tracing is configured using standard OpenTelemetry variables:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `OTEL_SERVICE_NAME` | Service name in traces | `hyperfleet-api` |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP collector endpoint | stdout exporter |
+| `OTEL_EXPORTER_OTLP_PROTOCOL` | Export protocol (`grpc` or `http/protobuf`) | `grpc` |
+| `OTEL_TRACES_SAMPLER` | Sampler type | `parentbased_traceidratio` |
+| `OTEL_TRACES_SAMPLER_ARG` | Sampling rate (0.0-1.0) | `1.0` |
+| `OTEL_RESOURCE_ATTRIBUTES` | Additional resource attributes (k=v,k2=v2) | - |
+
+**See:** [Logging Documentation](logging.md#opentelemetry-integration) for tracing configuration details and [Tracing Standard](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/standards/tracing.md#configuration) for complete reference.
 
 ---
 
@@ -360,8 +394,7 @@ Complete table of all configuration properties, their environment variables, and
 | `logging.level` | `HYPERFLEET_LOGGING_LEVEL` | string | `info` |
 | `logging.format` | `HYPERFLEET_LOGGING_FORMAT` | string | `json` |
 | `logging.output` | `HYPERFLEET_LOGGING_OUTPUT` | string | `stdout` |
-| `logging.otel.enabled` | `HYPERFLEET_LOGGING_OTEL_ENABLED` | bool | `false` |
-| `logging.otel.sampling_rate` | `HYPERFLEET_LOGGING_OTEL_SAMPLING_RATE` | float | `1.0` |
+| `logging.otel.enabled` | `HYPERFLEET_TRACING_ENABLED` | bool | `true` |
 | `logging.masking.enabled` | `HYPERFLEET_LOGGING_MASKING_ENABLED` | bool | `true` |
 | `logging.masking.headers` | `HYPERFLEET_LOGGING_MASKING_HEADERS` | csv | `Authorization,Cookie` |
 | `logging.masking.fields` | `HYPERFLEET_LOGGING_MASKING_FIELDS` | csv | `password,token` |
@@ -422,8 +455,6 @@ All CLI flags and their corresponding configuration paths.
 | `--log-level`, `-l` | `logging.level` | string |
 | `--log-format` | `logging.format` | string |
 | `--log-output` | `logging.output` | string |
-| `--log-otel-enabled` | `logging.otel.enabled` | bool |
-| `--log-otel-sampling-rate` | `logging.otel.sampling_rate` | float |
 | **OCM** | | |
 | `--ocm-base-url` | `ocm.base_url` | string |
 | `--ocm-client-id` | `ocm.client_id` | string |
@@ -507,7 +538,6 @@ The application performs comprehensive validation at startup.
 **Logging**:
 - `logging.level`: must be `debug`, `info`, `warn`, or `error`
 - `logging.format`: must be `json` or `text`
-- `logging.otel.sampling_rate`: 0.0-1.0
 
 **Adapters**:
 - `adapters.required.cluster`: must be array of strings
@@ -611,3 +641,5 @@ Before deploying to production, verify:
 - ✅ CLI flags (--kebab-case)
 - ✅ Configuration files (YAML snake_case)
 - ✅ Default values
+- ✅ OpenTelemetry tracing variables (HYPERFLEET_TRACING_ENABLED, OTEL_*) if tracing is enabled
+

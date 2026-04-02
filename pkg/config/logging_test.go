@@ -18,8 +18,7 @@ func TestNewLoggingConfig_Defaults(t *testing.T) {
 	Expect(cfg.Level).To(Equal("info"))
 	Expect(cfg.Format).To(Equal("json"))
 	Expect(cfg.Output).To(Equal("stdout"))
-	Expect(cfg.OTel.Enabled).To(BeFalse())
-	Expect(cfg.OTel.SamplingRate).To(Equal(1.0))
+	Expect(cfg.OTel.Enabled).To(BeTrue())
 	Expect(cfg.Masking.Enabled).To(BeTrue())
 	Expect(cfg.Masking.Headers).NotTo(BeEmpty())
 	Expect(cfg.Masking.Fields).NotTo(BeEmpty())
@@ -33,8 +32,6 @@ func TestConfigLoader_LoggingFromEnv(t *testing.T) {
 
 	t.Setenv("HYPERFLEET_LOGGING_LEVEL", "debug")
 	t.Setenv("HYPERFLEET_LOGGING_FORMAT", "text")
-	t.Setenv("HYPERFLEET_LOGGING_OTEL_ENABLED", "true")
-	t.Setenv("HYPERFLEET_LOGGING_OTEL_SAMPLING_RATE", "0.5")
 
 	loader := NewConfigLoader()
 	cmd := &cobra.Command{}
@@ -45,8 +42,8 @@ func TestConfigLoader_LoggingFromEnv(t *testing.T) {
 	Expect(err).NotTo(HaveOccurred())
 	Expect(appConfig.Logging.Level).To(Equal("debug"))
 	Expect(appConfig.Logging.Format).To(Equal("text"))
+	// OTel.Enabled defaults to true
 	Expect(appConfig.Logging.OTel.Enabled).To(BeTrue())
-	Expect(appConfig.Logging.OTel.SamplingRate).To(Equal(0.5))
 }
 
 // TestLoggingConfig_GetSensitiveHeadersList tests the headers array accessor
