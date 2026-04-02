@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"errors"
 
 	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
@@ -88,12 +89,26 @@ func MarkForRollback(ctx context.Context, err error) {
 // NewAdvisoryLockContext returns a new context with AdvisoryLock stored in it.
 // Upon error, the original context is still returned along with an error.
 //
+// IMPORTANT: Advisory locks are for cross-pod coordination (e.g., migrations, scheduled jobs),
+// NOT for database row-level concurrency. For row-level concurrency, use SELECT FOR UPDATE.
+//
 // CONCURRENCY: The returned context must not be shared across goroutines that call
 // NewAdvisoryLockContext or Unlock concurrently, as the internal lock map is not
 // protected by a mutex. Each goroutine should derive its own context chain.
 func NewAdvisoryLockContext(
 	ctx context.Context, connection SessionFactory, id string, lockType LockType,
 ) (context.Context, string, error) {
+	// FAIL-FAST: Detect transaction created before advisory lock
+	if _, hasTransaction := dbContext.Transaction(ctx); hasTransaction {
+		return ctx, "", errors.New(
+			"advisory lock cannot be acquired within an existing transaction.\n" +
+				"This causes a race condition where lock is released before transaction commits.\n\n" +
+				"Correct patterns:\n" +
+				"  1. For pod coordination: Acquire lock BEFORE transaction\n" +
+				"  2. For row-level concurrency: Use SELECT FOR UPDATE instead",
+		)
+	}
+
 	// lockOwnerID will be different for every service function that attempts to start a lock.
 	// only the initial call in the stack must unlock.
 	// Unlock() will compare UUIDs and ensure only the top level call succeeds.

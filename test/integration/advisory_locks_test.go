@@ -77,10 +77,10 @@ func acquireLock(h *test.Helper, waiter *sync.WaitGroup) {
 	Expect(err).NotTo(HaveOccurred(), "Failed to update counter")
 }
 
-// TestAdvisoryLocksWithTransactions validates that advisory locks work correctly
-// when combined with database transactions in various orders. Uses actual database
-// operations to prove serialization.
-func TestAdvisoryLocksWithTransactions(t *testing.T) {
+// TestRowLevelConcurrency validates the correct pattern for concurrent row updates
+// using SELECT FOR UPDATE. This is the proper way to handle row-level concurrency
+// in PostgreSQL, not advisory locks.
+func TestRowLevelConcurrency(t *testing.T) {
 	h, _ := test.RegisterIntegration(t)
 
 	// Create a counter table and initialize to 0
@@ -92,92 +92,76 @@ func TestAdvisoryLocksWithTransactions(t *testing.T) {
 	Expect(err).NotTo(HaveOccurred(), "Failed to initialize counter")
 	defer g2.Exec("DROP TABLE IF EXISTS lock_test_counter_tx")
 
-	// Test all three transaction ordering scenarios deterministically
-	testCases := []struct {
-		name         string
-		txBeforeLock bool
-		txAfterLock  bool
-	}{
-		{
-			name:         "tx_before_lock",
-			txBeforeLock: true,
-			txAfterLock:  false,
-		},
-		{
-			name:         "tx_after_lock",
-			txBeforeLock: false,
-			txAfterLock:  true,
-		},
-		{
-			name:         "no_tx",
-			txBeforeLock: false,
-			txAfterLock:  false,
-		},
+	total := 10
+	var waiter sync.WaitGroup
+	waiter.Add(total)
+
+	// Simulate concurrent updates using SELECT FOR UPDATE (correct pattern)
+	for i := 0; i < total; i++ {
+		go incrementCounterWithRowLock(h, &waiter)
 	}
 
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			// Run multiple goroutines for each scenario to test concurrency
-			goroutines := 3
-			var waiter sync.WaitGroup
-			waiter.Add(goroutines)
+	waiter.Wait()
 
-			for i := 0; i < goroutines; i++ {
-				go acquireLockWithTransaction(h, &waiter, tc.txBeforeLock, tc.txAfterLock)
-			}
-
-			waiter.Wait()
-		})
-	}
-
-	// All test cases combined should have incremented the counter by 9 (3 scenarios × 3 goroutines)
-	expectedTotal := 9
+	// All goroutines should have incremented the counter by 1, resulting in 10
 	var finalValue int
 	err = g2.Raw("SELECT value FROM lock_test_counter_tx WHERE id = 1").Scan(&finalValue).Error
 	Expect(err).NotTo(HaveOccurred(), "Failed to read final counter value")
-	Expect(finalValue).To(Equal(expectedTotal), "Counter should equal total")
+	Expect(finalValue).To(Equal(total), "Counter should equal total (no lost updates)")
 }
 
-func acquireLockWithTransaction(h *test.Helper, waiter *sync.WaitGroup, txBeforeLock bool, txAfterLock bool) {
+func incrementCounterWithRowLock(h *test.Helper, waiter *sync.WaitGroup) {
 	defer waiter.Done()
 
 	ctx := context.Background()
-
-	var dberr error
-
-	// Add Tx before lock if requested
-	if txBeforeLock {
-		ctx, dberr = db.NewContext(ctx, h.DBFactory)
-		Expect(dberr).NotTo(HaveOccurred(), "Failed to create transaction context")
-		defer db.Resolve(ctx)
-	}
-
-	// Acquire advisory lock
-	ctx, lockOwnerID, dberr := db.NewAdvisoryLockContext(ctx, h.DBFactory, "test-resource-tx", db.Migrations)
-	Expect(dberr).NotTo(HaveOccurred(), "Failed to acquire lock")
-	defer db.Unlock(ctx, lockOwnerID)
-
-	// Add Tx after lock if requested
-	if txAfterLock {
-		ctx, dberr = db.NewContext(ctx, h.DBFactory)
-		Expect(dberr).NotTo(HaveOccurred(), "Failed to create transaction context")
-		defer db.Resolve(ctx)
-	}
-
 	g2 := h.DBFactory.New(ctx)
 
-	// Read current value from database
-	var currentValue int
-	err := g2.Raw("SELECT value FROM lock_test_counter_tx WHERE id = 1").Scan(&currentValue).Error
-	Expect(err).NotTo(HaveOccurred(), "Failed to read counter")
+	// Begin transaction
+	tx := g2.Begin()
+	Expect(tx.Error).NotTo(HaveOccurred(), "Failed to begin transaction")
+	defer tx.Rollback()
 
-	// Some slow work
+	// SELECT FOR UPDATE acquires row-level lock
+	// Other transactions trying to SELECT FOR UPDATE on this row will BLOCK here
+	var currentValue int
+	err := tx.Raw("SELECT value FROM lock_test_counter_tx WHERE id = 1 FOR UPDATE").Scan(&currentValue).Error
+	Expect(err).NotTo(HaveOccurred(), "Failed to read counter with row lock")
+
+	// Some slow work to increase likelihood of contention
 	time.Sleep(20 * time.Millisecond)
 
-	// Increment and save to database
+	// Increment and update
 	newValue := currentValue + 1
-	err = g2.Exec("UPDATE lock_test_counter_tx SET value = ? WHERE id = 1", newValue).Error
+	err = tx.Exec("UPDATE lock_test_counter_tx SET value = ? WHERE id = 1", newValue).Error
 	Expect(err).NotTo(HaveOccurred(), "Failed to update counter")
+
+	// Commit releases the row lock
+	err = tx.Commit().Error
+	Expect(err).NotTo(HaveOccurred(), "Failed to commit transaction")
+}
+
+// TestAdvisoryLockFailsWithExistingTransaction validates that advisory locks
+// properly reject attempts to acquire a lock when a transaction already exists
+// in the context. This prevents the race condition where the lock is released
+// before the transaction commits.
+func TestAdvisoryLockFailsWithExistingTransaction(t *testing.T) {
+	h, _ := test.RegisterIntegration(t)
+
+	ctx := context.Background()
+
+	// Create transaction first
+	ctx, err := db.NewContext(ctx, h.DBFactory)
+	Expect(err).NotTo(HaveOccurred(), "Failed to create transaction context")
+	defer db.Resolve(ctx)
+
+	// Try to acquire advisory lock (should fail)
+	_, lockID, err := db.NewAdvisoryLockContext(ctx, h.DBFactory, "test-resource", db.Migrations)
+
+	// Should fail with clear error
+	Expect(err).To(HaveOccurred(), "Advisory lock should fail when transaction exists")
+	Expect(err.Error()).To(ContainSubstring("transaction"), "Error should mention transaction")
+	Expect(err.Error()).To(ContainSubstring("SELECT FOR UPDATE"), "Error should suggest SELECT FOR UPDATE")
+	Expect(lockID).To(BeEmpty(), "Lock ID should be empty on error")
 }
 
 // TestLocksAndExpectedWaits validates the behavior of advisory locks:
