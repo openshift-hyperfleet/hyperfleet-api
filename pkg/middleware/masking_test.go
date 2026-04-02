@@ -2,9 +2,11 @@ package middleware
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
 )
 
@@ -204,7 +206,7 @@ func TestMaskBody(t *testing.T) {
 		{
 			name:     "fallback: redact Bearer tokens",
 			enabled:  true,
-			body:     `Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9`,
+			body:     fmt.Sprintf("Authorization: Bearer %s", uuid.New().String()),
 			expected: `Authorization: Bearer ***REDACTED***`,
 		},
 		{
