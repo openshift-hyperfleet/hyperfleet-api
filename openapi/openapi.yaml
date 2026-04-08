@@ -1,7 +1,7 @@
 openapi: 3.0.0
 info:
   title: HyperFleet API
-  version: 1.0.4
+  version: 1.0.5
   contact:
     name: HyperFleet Team
   license:
@@ -754,8 +754,8 @@ components:
           $ref: '#/components/schemas/ClusterStatus'
       example:
         kind: Cluster
-        id: cluster-123
-        href: https://api.hyperfleet.com/v1/clusters/cluster-123
+        id: 019466a0-8f8e-7abc-9def-0123456789ab
+        href: https://api.hyperfleet.com/v1/clusters/019466a0-8f8e-7abc-9def-0123456789ab
         name: cluster-123
         labels:
           environment: production
@@ -1013,8 +1013,8 @@ components:
           $ref: '#/components/schemas/NodePoolStatus'
       example:
         kind: NodePool
-        id: nodepool-123
-        href: https://api.hyperfleet.com/v1/nodepools/nodepool-123
+        id: 019466a1-2b3c-7def-8abc-456789abcdef
+        href: https://api.hyperfleet.com/v1/nodepools/019466a1-2b3c-7def-8abc-456789abcdef
         name: worker-pool-1
         labels:
           environment: production
@@ -1026,9 +1026,9 @@ components:
         created_by: user-123@example.com
         updated_by: user-123@example.com
         owner_references:
-          id: cluster-123
+          id: 019466a0-8f8e-7abc-9def-0123456789ab
           kind: Cluster
-          href: https://api.hyperfleet.com/v1/clusters/cluster-123
+          href: https://api.hyperfleet.com/v1/clusters/019466a0-8f8e-7abc-9def-0123456789ab
         status:
           conditions:
             - type: Ready

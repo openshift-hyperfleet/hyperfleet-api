@@ -430,7 +430,7 @@ See **[search.md](search.md)** for complete documentation.
 ### Common Fields
 
 - `kind` - Resource type (Cluster, NodePool)
-- `id` - Unique resource identifier (auto-generated, format: `2<base62>`)
+- `id` - Unique resource identifier (auto-generated, RFC4122 UUID v7 format: 36-character lowercase with hyphens)
 - `href` - Resource URI
 - `name` - Resource name (user-defined)
 - `generation` - Spec version counter (incremented on spec updates)

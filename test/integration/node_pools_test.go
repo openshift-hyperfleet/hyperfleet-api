@@ -79,6 +79,9 @@ func TestNodePoolPost(t *testing.T) {
 	nodePoolOutput := resp.JSON201
 	Expect(nodePoolOutput).NotTo(BeNil())
 	Expect(*nodePoolOutput.Id).NotTo(BeEmpty(), "Expected ID assigned on creation")
+	Expect(len(*nodePoolOutput.Id)).To(Equal(36), "Expected UUID v7 length of 36 characters")
+	Expect(*nodePoolOutput.Id).
+		To(MatchRegexp(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`), "Expected UUID v7 format")
 	Expect(*nodePoolOutput.Kind).To(Equal("NodePool"))
 	Expect(*nodePoolOutput.Href).
 		To(Equal(fmt.Sprintf("/api/hyperfleet/v1/clusters/%s/nodepools/%s", cluster.ID, *nodePoolOutput.Id)))

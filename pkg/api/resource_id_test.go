@@ -3,22 +3,28 @@ package api
 import (
 	"regexp"
 	"testing"
+	"time"
+
+	"github.com/google/uuid"
 )
 
 func TestNewID(t *testing.T) {
 	// Generate multiple IDs to test uniqueness, format, and length
 	ids := make(map[string]bool)
 	for i := 0; i < 100; i++ {
-		id := NewID()
-
-		// Verify length is 32 characters
-		if len(id) != 32 {
-			t.Errorf("Expected ID length 32, got %d: %s", len(id), id)
+		id, err := NewID()
+		if err != nil {
+			t.Fatalf("NewID() returned error: %v", err)
 		}
 
-		// Verify only lowercase letters (a-v) and digits (0-9)
-		if !regexp.MustCompile(`^[0-9a-v]{32}$`).MatchString(id) {
-			t.Errorf("ID contains invalid characters (should be lowercase 0-9a-v): %s", id)
+		// Verify length is 36 characters (UUID format with hyphens)
+		if len(id) != 36 {
+			t.Errorf("Expected ID length 36, got %d: %s", len(id), id)
+		}
+
+		// Verify UUID v7 format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+		if !regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`).MatchString(id) {
+			t.Errorf("ID does not match UUID format: %s", id)
 		}
 
 		// Verify uniqueness
@@ -30,38 +36,49 @@ func TestNewID(t *testing.T) {
 }
 
 func TestNewID_TimeOrdering(t *testing.T) {
-	// KSUID uses second-level timestamps, so IDs generated within the same second
-	// will have the same timestamp prefix. Time ordering is only guaranteed for IDs
-	// generated in different seconds.
-	id1 := NewID()
+	// UUID v7 uses millisecond-level timestamps, providing better time-ordering
+	// than KSUID (which used second-level timestamps). IDs generated sequentially
+	// should have monotonically increasing timestamps embedded in them.
 
-	// For practical testing, we verify consistency and uniqueness within the same second
-	// rather than waiting for the next second (which would slow down tests significantly).
-	// In production, most ID generations will be more than 1 second apart.
-	id2 := NewID()
-
-	if len(id1) != 32 || len(id2) != 32 {
-		t.Errorf("IDs should have consistent length of 32")
+	id1, err := NewID()
+	if err != nil {
+		t.Fatalf("NewID() returned error: %v", err)
 	}
 
-	// Verify ID uniqueness even within the same second
+	// Sleep briefly to ensure we cross a millisecond boundary
+	time.Sleep(2 * time.Millisecond)
+
+	id2, err := NewID()
+	if err != nil {
+		t.Fatalf("NewID() returned error: %v", err)
+	}
+
+	if len(id1) != 36 || len(id2) != 36 {
+		t.Errorf("IDs should have consistent length of 36")
+	}
+
+	// Verify ID uniqueness
 	if id1 == id2 {
-		t.Errorf("IDs should be unique even within the same second: %s == %s", id1, id2)
+		t.Errorf("IDs should be unique: %s == %s", id1, id2)
 	}
-}
 
-func TestNewID_K8sCompatible(t *testing.T) {
-	id := NewID()
+	// Verify time ordering: parse UUIDs and compare timestamps
+	uuid1, err1 := uuid.Parse(id1)
+	uuid2, err2 := uuid.Parse(id2)
 
-	// Verify DNS-1123 subdomain compatibility:
-	// - Must contain only lowercase letters, digits, '-', and '.'
-	// - Must start and end with alphanumeric characters
-	// - Maximum length is 253 characters
-	//
-	// Our IDs contain only lowercase letters (a-v) and digits (0-9), with a fixed
-	// length of 32 characters, so they are fully compatible.
-	dns1123Pattern := regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)
-	if !dns1123Pattern.MatchString(id) {
-		t.Errorf("ID is not DNS-1123 subdomain compatible: %s", id)
+	if err1 != nil || err2 != nil {
+		t.Errorf("Failed to parse UUIDs: %v, %v", err1, err2)
+	}
+
+	// UUID v7 stores timestamp in first 48 bits
+	// We can compare the UUIDs as strings; due to the timestamp prefix,
+	// lexicographic ordering matches time ordering for UUID v7
+	if id1 >= id2 {
+		t.Errorf("UUID v7 time-ordering failed: id1=%s should be < id2=%s", id1, id2)
+	}
+
+	// Verify they are valid UUID v7 (version field should be 7)
+	if uuid1.Version() != 7 || uuid2.Version() != 7 {
+		t.Errorf("Expected UUID version 7, got %d and %d", uuid1.Version(), uuid2.Version())
 	}
 }

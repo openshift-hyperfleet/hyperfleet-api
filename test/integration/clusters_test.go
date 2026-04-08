@@ -74,6 +74,9 @@ func TestClusterPost(t *testing.T) {
 	clusterOutput := resp.JSON201
 	Expect(clusterOutput).NotTo(BeNil())
 	Expect(*clusterOutput.Id).NotTo(BeEmpty(), "Expected ID assigned on creation")
+	Expect(len(*clusterOutput.Id)).To(Equal(36), "Expected UUID v7 length of 36 characters")
+	Expect(*clusterOutput.Id).
+		To(MatchRegexp(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`), "Expected UUID v7 format")
 	Expect(*clusterOutput.Kind).To(Equal("Cluster"))
 	Expect(*clusterOutput.Href).To(Equal(fmt.Sprintf("/api/hyperfleet/v1/clusters/%s", *clusterOutput.Id)))
 
@@ -603,7 +606,7 @@ func TestClusterList_OrderByName(t *testing.T) {
 	ctx := h.NewAuthenticatedContext(account)
 
 	// Create clusters with names that will sort alphabetically
-	testPrefix := fmt.Sprintf("name-sort-%s", strings.ToLower(h.NewID()))
+	testPrefix := fmt.Sprintf("sort-%s", strings.ToLower(h.NewID()))
 	names := []string{
 		fmt.Sprintf("%s-charlie", testPrefix),
 		fmt.Sprintf("%s-alpha", testPrefix),
@@ -661,7 +664,7 @@ func TestClusterList_OrderByNameDesc(t *testing.T) {
 	ctx := h.NewAuthenticatedContext(account)
 
 	// Create clusters with names that will sort alphabetically
-	testPrefix := fmt.Sprintf("desc-sort-%s", strings.ToLower(h.NewID()))
+	testPrefix := fmt.Sprintf("sort-%s", strings.ToLower(h.NewID()))
 	names := []string{
 		fmt.Sprintf("%s-alpha", testPrefix),
 		fmt.Sprintf("%s-charlie", testPrefix),

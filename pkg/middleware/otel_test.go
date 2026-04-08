@@ -52,7 +52,7 @@ func TestOTelMiddleware_SpanNameUsesRouteTemplate(t *testing.T) {
 		{
 			name:             "cluster detail with UUID uses template",
 			routePattern:     "/api/hyperfleet/v1/clusters/{id}",
-			requestPath:      "/api/hyperfleet/v1/clusters/550e8400-e29b-41d4-a716-446655440000",
+			requestPath:      "/api/hyperfleet/v1/clusters/019466a0-8f8e-7abc-9def-0123456789ab",
 			expectedSpanName: "GET /api/hyperfleet/v1/clusters/{id}",
 		},
 		{
@@ -331,8 +331,8 @@ func TestOTelMiddleware_CardinalityPrevention(t *testing.T) {
 // Helper functions
 
 func generateTestUUID(i int) string {
-	// Generate unique UUID-like strings for testing
-	return "550e8400-e29b-41d4-a716-" + fmt.Sprintf("%012d", i)
+	// Generate unique UUID v7-like strings for testing
+	return "019466a0-8f8e-7abc-9def-" + fmt.Sprintf("%012d", i)
 }
 
 func getSpanNames(spans []tracetest.SpanStub) []string {

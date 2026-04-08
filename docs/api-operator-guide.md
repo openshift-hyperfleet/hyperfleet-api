@@ -79,7 +79,7 @@ Every resource (cluster, nodepool) has these key fields:
 
 ```
 Resource (e.g., Cluster)
-├── id                    (32-character unique identifier, auto-generated)
+├── id                    (36-character UUID v7 identifier, auto-generated)
 ├── kind                  (Resource "Cluster" or "NodePool")
 ├── name                  (Unique identifier)
 ├── spec                  (JSONB - desired state, provider-specific)
@@ -133,7 +133,7 @@ POST /api/hyperfleet/v1/clusters
 # 2. View cluster status
 GET /api/hyperfleet/v1/clusters/{id}
 {
-  "id": "2opdkciuv7itslp5guihuhckhp8da0uo",
+  "id": "019466a0-8f8e-7abc-9def-0123456789ab",
   "kind": "Cluster",
   "name": "my-cluster",
   "generation": 1,
