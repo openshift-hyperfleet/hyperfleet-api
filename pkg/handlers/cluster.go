@@ -162,8 +162,20 @@ func (h ClusterHandler) Get(w http.ResponseWriter, r *http.Request) {
 func (h ClusterHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	cfg := &handlerConfig{
 		Action: func() (interface{}, *errors.ServiceError) {
-			return nil, errors.NotImplemented("delete")
+			id := mux.Vars(r)["id"]
+			ctx := r.Context()
+			cluster, err := h.cluster.RequestDeletion(ctx, id)
+			if err != nil {
+				return nil, err
+			}
+
+			presented, presErr := presenters.PresentCluster(cluster)
+			if presErr != nil {
+				return nil, errors.GeneralError("Failed to present cluster: %v", presErr)
+			}
+
+			return presented, nil
 		},
 	}
-	handleDelete(w, r, cfg, http.StatusNoContent)
+	handleDelete(w, r, cfg, http.StatusAccepted)
 }

@@ -100,6 +100,7 @@ func PresentCluster(cluster *api.Cluster) (openapi.Cluster, error) {
 	result := openapi.Cluster{
 		CreatedBy:   toEmail(cluster.CreatedBy),
 		CreatedTime: cluster.CreatedTime,
+		DeletedAt:   cluster.DeletedAt,
 		Generation:  cluster.Generation,
 		Href:        &href,
 		Id:          &cluster.ID,

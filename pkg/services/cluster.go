@@ -22,7 +22,7 @@ type ClusterService interface {
 	Get(ctx context.Context, id string) (*api.Cluster, *errors.ServiceError)
 	Create(ctx context.Context, cluster *api.Cluster) (*api.Cluster, *errors.ServiceError)
 	Replace(ctx context.Context, cluster *api.Cluster) (*api.Cluster, *errors.ServiceError)
-	Delete(ctx context.Context, id string) *errors.ServiceError
+	RequestDeletion(ctx context.Context, id string) (*api.Cluster, *errors.ServiceError)
 	All(ctx context.Context) (api.ClusterList, *errors.ServiceError)
 
 	FindByIDs(ctx context.Context, ids []string) (api.ClusterList, *errors.ServiceError)
@@ -100,12 +100,15 @@ func (s *sqlClusterService) Replace(ctx context.Context, cluster *api.Cluster) (
 	return updated, nil
 }
 
-func (s *sqlClusterService) Delete(ctx context.Context, id string) *errors.ServiceError {
-	if err := s.clusterDao.Delete(ctx, id); err != nil {
-		return handleDeleteError("Cluster", errors.GeneralError("Unable to delete cluster: %s", err))
+// RequestDeletion marks a cluster for deletion by setting the DeletedAt field to the current time.
+// If the cluster is already marked for deletion, it returns the cluster without making any changes.
+// It does not actually delete the cluster from the database. Deletion is handled by adapter detecting new generation and triggering hard deletion asynchronously.
+func (s *sqlClusterService) RequestDeletion(ctx context.Context, id string) (*api.Cluster, *errors.ServiceError) {
+	cluster, err := s.clusterDao.RequestDeletion(ctx, id)
+	if err != nil {
+		return nil, handleRequestDeletionError("Cluster", err)
 	}
-
-	return nil
+	return cluster, nil
 }
 
 func (s *sqlClusterService) FindByIDs(ctx context.Context, ids []string) (api.ClusterList, *errors.ServiceError) {

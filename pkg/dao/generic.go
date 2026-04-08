@@ -61,7 +61,7 @@ func NewGenericDao(sessionFactory *db.SessionFactory) GenericDao {
 func (d *sqlGenericDao) GetInstanceDao(ctx context.Context, model interface{}) GenericDao {
 	return &sqlGenericDao{
 		sessionFactory: d.sessionFactory,
-		g2:             (*d.sessionFactory).New(ctx).Model(model),
+		g2:             (*d.sessionFactory).New(ctx).Unscoped().Model(model),
 	}
 }
 

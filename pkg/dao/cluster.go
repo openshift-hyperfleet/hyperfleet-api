@@ -3,6 +3,7 @@ package dao
 import (
 	"bytes"
 	"context"
+	"time"
 
 	"gorm.io/gorm/clause"
 
@@ -14,6 +15,7 @@ type ClusterDao interface {
 	Get(ctx context.Context, id string) (*api.Cluster, error)
 	Create(ctx context.Context, cluster *api.Cluster) (*api.Cluster, error)
 	Replace(ctx context.Context, cluster *api.Cluster) (*api.Cluster, error)
+	RequestDeletion(ctx context.Context, id string) (*api.Cluster, error)
 	Delete(ctx context.Context, id string) error
 	FindByIDs(ctx context.Context, ids []string) (api.ClusterList, error)
 	All(ctx context.Context) (api.ClusterList, error)
@@ -32,7 +34,7 @@ func NewClusterDao(sessionFactory *db.SessionFactory) ClusterDao {
 func (d *sqlClusterDao) Get(ctx context.Context, id string) (*api.Cluster, error) {
 	g2 := (*d.sessionFactory).New(ctx)
 	var cluster api.Cluster
-	if err := g2.Take(&cluster, "id = ?", id).Error; err != nil {
+	if err := g2.Unscoped().Take(&cluster, "id = ?", id).Error; err != nil {
 		return nil, err
 	}
 	return &cluster, nil
@@ -73,6 +75,31 @@ func (d *sqlClusterDao) Replace(ctx context.Context, cluster *api.Cluster) (*api
 	return cluster, nil
 }
 
+func (d *sqlClusterDao) RequestDeletion(ctx context.Context, id string) (*api.Cluster, error) {
+	g2 := (*d.sessionFactory).New(ctx)
+
+	cluster, err := d.Get(ctx, id)
+	if err != nil {
+		db.MarkForRollback(ctx, err)
+		return nil, err
+	}
+
+	// If already requested for deletion, return the cluster
+	if cluster.DeletedAt != nil {
+		return cluster, nil
+	}
+
+	// Set deleted_at and increment generation
+	t := time.Now()
+	cluster.DeletedAt = &t
+	cluster.Generation = cluster.Generation + 1
+	if err := g2.Omit(clause.Associations).Save(cluster).Error; err != nil {
+		db.MarkForRollback(ctx, err)
+		return nil, err
+	}
+	return cluster, nil
+}
+
 func (d *sqlClusterDao) Delete(ctx context.Context, id string) error {
 	g2 := (*d.sessionFactory).New(ctx)
 	if err := g2.Omit(clause.Associations).Delete(&api.Cluster{Meta: api.Meta{ID: id}}).Error; err != nil {
@@ -85,7 +112,7 @@ func (d *sqlClusterDao) Delete(ctx context.Context, id string) error {
 func (d *sqlClusterDao) FindByIDs(ctx context.Context, ids []string) (api.ClusterList, error) {
 	g2 := (*d.sessionFactory).New(ctx)
 	clusters := api.ClusterList{}
-	if err := g2.Where("id in (?)", ids).Find(&clusters).Error; err != nil {
+	if err := g2.Unscoped().Where("id in (?)", ids).Find(&clusters).Error; err != nil {
 		return nil, err
 	}
 	return clusters, nil
@@ -94,7 +121,7 @@ func (d *sqlClusterDao) FindByIDs(ctx context.Context, ids []string) (api.Cluste
 func (d *sqlClusterDao) All(ctx context.Context) (api.ClusterList, error) {
 	g2 := (*d.sessionFactory).New(ctx)
 	clusters := api.ClusterList{}
-	if err := g2.Find(&clusters).Error; err != nil {
+	if err := g2.Unscoped().Find(&clusters).Error; err != nil {
 		return nil, err
 	}
 	return clusters, nil

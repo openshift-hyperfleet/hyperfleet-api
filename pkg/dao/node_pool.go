@@ -32,7 +32,7 @@ func NewNodePoolDao(sessionFactory *db.SessionFactory) NodePoolDao {
 func (d *sqlNodePoolDao) Get(ctx context.Context, id string) (*api.NodePool, error) {
 	g2 := (*d.sessionFactory).New(ctx)
 	var nodePool api.NodePool
-	if err := g2.Take(&nodePool, "id = ?", id).Error; err != nil {
+	if err := g2.Unscoped().Take(&nodePool, "id = ?", id).Error; err != nil {
 		return nil, err
 	}
 	return &nodePool, nil
@@ -85,7 +85,7 @@ func (d *sqlNodePoolDao) Delete(ctx context.Context, id string) error {
 func (d *sqlNodePoolDao) FindByIDs(ctx context.Context, ids []string) (api.NodePoolList, error) {
 	g2 := (*d.sessionFactory).New(ctx)
 	nodePools := api.NodePoolList{}
-	if err := g2.Where("id in (?)", ids).Find(&nodePools).Error; err != nil {
+	if err := g2.Unscoped().Where("id in (?)", ids).Find(&nodePools).Error; err != nil {
 		return nil, err
 	}
 	return nodePools, nil
@@ -94,7 +94,7 @@ func (d *sqlNodePoolDao) FindByIDs(ctx context.Context, ids []string) (api.NodeP
 func (d *sqlNodePoolDao) All(ctx context.Context) (api.NodePoolList, error) {
 	g2 := (*d.sessionFactory).New(ctx)
 	nodePools := api.NodePoolList{}
-	if err := g2.Find(&nodePools).Error; err != nil {
+	if err := g2.Unscoped().Find(&nodePools).Error; err != nil {
 		return nil, err
 	}
 	return nodePools, nil

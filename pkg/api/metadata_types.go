@@ -20,8 +20,6 @@ package api
 
 import (
 	"time"
-
-	"gorm.io/gorm"
 )
 
 // Metadata api metadata.
@@ -38,7 +36,7 @@ type Meta struct {
 	ID          string
 	CreatedTime time.Time
 	UpdatedTime time.Time
-	DeletedAt   gorm.DeletedAt `gorm:"index"`
+	DeletedAt   *time.Time `gorm:"index"`
 }
 
 // PagingMeta List Paging metadata
