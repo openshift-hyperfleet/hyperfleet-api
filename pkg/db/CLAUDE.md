@@ -22,14 +22,27 @@ Always use `New(ctx)` to get a GORM session — never create direct DB connectio
 
 Reference: `transaction_middleware.go`
 
-`TransactionMiddleware(next http.Handler, connection SessionFactory) http.Handler`
+`TransactionMiddleware(next http.Handler, connection SessionFactory, requestTimeout time.Duration) http.Handler`
 
-Flow:
-1. Creates new context with `NewContext(r.Context(), connection)` — begins transaction
-2. Extracts transaction ID via `db_context.TxID(ctx)`
-3. Sets transaction ID in logger context for trace correlation
-4. Defers `Resolve(r.Context())` for automatic rollback/commit
-5. Passes modified request to next handler
+**Transaction Strategy (Optimized for Performance)**:
+- **Write operations** (POST/PUT/PATCH/DELETE): Create GORM transactions for ACID guarantees
+- **Read operations** (GET): Skip transaction creation for performance
+
+**Write Request Flow**:
+1. Applies request timeout context
+2. Creates new context with `NewContext(ctx, connection)` — begins transaction
+3. Extracts transaction ID via `db_context.TxID(ctx)`
+4. Sets transaction ID in logger context for trace correlation
+5. Defers `Resolve(txCtx)` for automatic rollback/commit
+6. Passes modified request to next handler
+
+**Read Request Flow**:
+1. Applies request timeout context
+2. Skips transaction creation (performance optimization)
+3. DAOs get non-transactional sessions via `SessionFactory.New(ctx)`
+4. No transaction overhead
+
+**Trade-off**: List operations (COUNT + SELECT) may show inconsistent pagination totals under concurrent deletes (cosmetic issue, low probability).
 
 ## MarkForRollback
 

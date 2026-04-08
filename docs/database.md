@@ -118,6 +118,42 @@ make db/login
 
 See [development.md](development.md) for detailed setup instructions.
 
+## Transaction Strategy
+
+The API uses an optimized transaction strategy to maximize connection pool efficiency and reduce latency under high adapter polling load.
+
+### Write Operations (POST/PUT/PATCH/DELETE)
+
+Write operations create full GORM transactions with ACID guarantees:
+- Transaction begins before handler execution
+- Automatic commit on success, rollback on error (via `MarkForRollback()`)
+- Transaction ID tracked in logs for debugging
+
+### Read Operations (GET)
+
+Read operations skip transaction creation entirely for performance:
+- Direct database session without BEGIN/COMMIT overhead
+- No transaction ID consumption
+- Reduced connection hold time and pool pressure
+
+### Trade-offs
+
+**List Operations**: COUNT and SELECT queries execute as separate autocommit statements (read operations don't use transactions). PostgreSQL's default READ COMMITTED isolation level means each statement gets a fresh snapshot:
+
+- Under concurrent deletes, `total` count may slightly exceed actual `items` returned
+- This is a cosmetic pagination issue, not a data integrity problem
+- Occurs only during the ~1ms window between COUNT and SELECT
+- Low probability in practice (requires delete between two consecutive queries)
+
+**Why not use transactions for reads?** Creating transactions for every GET request would:
+- Increase connection pool pressure under high adapter polling load
+- Consume transaction IDs unnecessarily
+- Add latency (BEGIN/COMMIT overhead)
+
+**Why not use REPEATABLE READ?** The current inconsistency is acceptable for pagination UX. REPEATABLE READ would add overhead and doesn't align with the read-heavy workload optimization.
+
+**Alternative**: Clients can use continuation tokens (Kubernetes pattern) instead of page/total pagination if strict consistency is required.
+
 ## Connection Pool Configuration
 
 The API manages a Go `sql.DB` connection pool with the following tunable parameters, exposed as CLI flags:

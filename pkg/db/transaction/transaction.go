@@ -1,26 +1,26 @@
 package transaction
 
 import (
-	"database/sql"
 	"errors"
+
+	"gorm.io/gorm"
 )
 
 // By default do no roll back transaction.
 // only perform rollback if explicitly set by g2.g2.MarkForRollback(ctx, err)
 const defaultRollbackPolicy = false
 
-// Transaction represents an sql transaction
+// Transaction represents a database transaction.
+// Contains GORM transaction to ensure all DAO operations participate in the transaction.
 type Transaction struct {
-	tx           *sql.Tx
-	txid         int64
+	DB           *gorm.DB
 	rollbackFlag bool
 }
 
-// Build Creates a new transaction object
-func Build(tx *sql.Tx, id int64, rollbackFlag bool) *Transaction {
+// BuildWithGORM creates a new transaction object with GORM transaction.
+func BuildWithGORM(db *gorm.DB) *Transaction {
 	return &Transaction{
-		tx:           tx,
-		txid:         id,
+		DB:           db,
 		rollbackFlag: defaultRollbackPolicy,
 	}
 }
@@ -30,35 +30,24 @@ func (tx *Transaction) MarkedForRollback() bool {
 	return tx.rollbackFlag
 }
 
-func (tx *Transaction) Tx() *sql.Tx {
-	return tx.tx
-}
-
-func (tx *Transaction) TxID() int64 {
-	return tx.txid
-}
-
 func (tx *Transaction) Commit() error {
-	// tx must exits
-	if tx.tx == nil {
+	if tx.DB == nil {
 		return errors.New("db: transaction hasn't been started yet")
 	}
 
-	// must call commit on 'g2' which is Gorm
-	// do *not* call commit on the underlying transaction itself. Gorm does that.
-	err := tx.tx.Commit()
-	tx.tx = nil
+	err := tx.DB.Commit().Error
+	tx.DB = nil
 	return err
 }
 
 // Rollback ends the transaction by rolling back
 func (tx *Transaction) Rollback() error {
-	// tx must exist
-	if tx.tx == nil {
+	if tx.DB == nil {
 		return errors.New("db: transaction hasn't been started yet")
 	}
-	err := tx.tx.Rollback()
-	tx.tx = nil
+
+	err := tx.DB.Rollback().Error
+	tx.DB = nil
 	return err
 }
 

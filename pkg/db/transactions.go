@@ -6,33 +6,21 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db/transaction"
 )
 
-// By default do no roll back transaction.
-// only perform rollback if explicitly set by g2.g2.MarkForRollback(ctx, err)
-const defaultRollbackPolicy = false
-
-// newTransaction constructs a new Transaction object.
-func newTransaction(_ context.Context, connection SessionFactory) (*transaction.Transaction, error) {
+// newTransaction constructs a new Transaction object with GORM transaction.
+// Creates GORM transaction so that DAO operations participate in the transaction.
+func newTransaction(ctx context.Context, connection SessionFactory) (*transaction.Transaction, error) {
 	if connection == nil {
 		// This happens in non-integration tests
 		return nil, nil
 	}
 
-	dbx := connection.DirectDB()
-	tx, err := dbx.Begin()
-	if err != nil {
-		return nil, err
+	// Get GORM session and start transaction
+	g2 := connection.New(ctx)
+	gormTx := g2.Begin()
+	if gormTx.Error != nil {
+		_ = gormTx.Rollback() // Best-effort cleanup
+		return nil, gormTx.Error
 	}
 
-	// current transaction ID set by postgres.  these are *not* distinct across time
-	// and do get reset after postgres performs "vacuuming" to reclaim used IDs.
-	var txid int64
-	row := tx.QueryRow("select txid_current()")
-	if row != nil {
-		err := row.Scan(&txid)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	return transaction.Build(tx, txid, defaultRollbackPolicy), nil
+	return transaction.BuildWithGORM(gormTx), nil
 }

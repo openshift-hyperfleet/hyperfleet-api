@@ -4,8 +4,11 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	dbContext "github.com/openshift-hyperfleet/hyperfleet-api/pkg/db/db_context"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db/db_metrics"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
@@ -43,24 +46,29 @@ func NewContext(ctx context.Context, connection SessionFactory) (context.Context
 	return ctx, nil
 }
 
-// Resolve resolves the current transaction according to the rollback flag.
+// Resolve commits or rolls back the transaction based on the rollback flag.
+// Should only be called by TransactionMiddleware for write operations.
 func Resolve(ctx context.Context) {
 	tx, ok := dbContext.Transaction(ctx)
 	if !ok {
-		logger.Error(ctx, "Could not retrieve transaction from context")
+		logger.With(ctx,
+			"error_type", "missing_transaction",
+			"error", "no active transaction found in context",
+		).Error("Transaction resolution failed: no active transaction in context")
 		return
 	}
 
 	if tx.MarkedForRollback() {
 		if err := tx.Rollback(); err != nil {
 			logger.WithError(ctx, err).Error("Could not rollback transaction")
+			recordTransactionError("rollback", "rollback_failed")
 			return
 		}
 		logger.Info(ctx, "Rolled back transaction")
 	} else {
 		if err := tx.Commit(); err != nil {
-			// TODO:  what does the user see when this occurs? seems like they will get a false positive
 			logger.WithError(ctx, err).Error("Could not commit transaction")
+			recordTransactionError("commit", "commit_failed")
 			return
 		}
 	}
@@ -155,4 +163,14 @@ func Unlock(ctx context.Context, callerUUID string) {
 		// Note: if ownerUUID doesn't match callerUUID, the lock belongs to a different
 		// service call and is intentionally not unlocked here
 	}
+}
+
+// recordTransactionError records transaction commit/rollback failures.
+func recordTransactionError(operation, errorType string) {
+	db_metrics.ErrorsMetric.With(prometheus.Labels{
+		"operation":  operation,
+		"error_type": errorType,
+		"component":  "api",
+		"version":    api.Version,
+	}).Inc()
 }
