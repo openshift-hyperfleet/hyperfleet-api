@@ -2,6 +2,9 @@ package db
 
 import (
 	"context"
+	stderrors "errors"
+	"io"
+	"net"
 	"net/http"
 	"time"
 
@@ -47,8 +50,13 @@ func TransactionMiddleware(next http.Handler, connection SessionFactory, request
 			ctx, err = NewContext(ctx, connection)
 			if err != nil {
 				logger.WithError(ctx, err).Error("Could not create transaction")
-				// use default error to avoid exposing internals to users
-				serviceErr := errors.GeneralError("")
+				var serviceErr *errors.ServiceError
+				if IsDBConnectionError(err) {
+					serviceErr = errors.ServiceUnavailable("Database connection unavailable")
+				} else {
+					// use default error to avoid exposing internals to users
+					serviceErr = errors.GeneralError("")
+				}
 				traceID, _ := logger.GetRequestID(ctx)
 				response.WriteProblemDetailsResponse(w, r, serviceErr.HTTPCode, serviceErr.AsProblemDetails(r.URL.Path, traceID))
 				return
@@ -64,4 +72,20 @@ func TransactionMiddleware(next http.Handler, connection SessionFactory, request
 			next.ServeHTTP(w, r)
 		}
 	})
+}
+
+// IsDBConnectionError indicates whether err is an infrastructure failure
+// (network unreachable, connection refused, connection dropped)
+func IsDBConnectionError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var netErr *net.OpError
+	if stderrors.As(err, &netErr) {
+		return true
+	}
+	if stderrors.Is(err, io.EOF) || stderrors.Is(err, io.ErrUnexpectedEOF) {
+		return true
+	}
+	return false
 }
