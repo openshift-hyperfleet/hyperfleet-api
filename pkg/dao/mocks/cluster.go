@@ -34,6 +34,10 @@ func (d *clusterDaoMock) Replace(ctx context.Context, cluster *api.Cluster) (*ap
 	return nil, errors.NotImplemented("Cluster").AsError()
 }
 
+func (d *clusterDaoMock) RequestDeletion(ctx context.Context, id string) (*api.Cluster, bool, error) {
+	return nil, false, errors.NotImplemented("Cluster").AsError()
+}
+
 func (d *clusterDaoMock) Delete(ctx context.Context, id string) error {
 	return errors.NotImplemented("Cluster").AsError()
 }

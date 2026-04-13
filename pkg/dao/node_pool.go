@@ -3,7 +3,9 @@ package dao
 import (
 	"bytes"
 	"context"
+	"time"
 
+	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
@@ -14,8 +16,11 @@ type NodePoolDao interface {
 	Get(ctx context.Context, id string) (*api.NodePool, error)
 	Create(ctx context.Context, nodePool *api.NodePool) (*api.NodePool, error)
 	Replace(ctx context.Context, nodePool *api.NodePool) (*api.NodePool, error)
+	RequestDeletion(ctx context.Context, id string) (*api.NodePool, error)
 	Delete(ctx context.Context, id string) error
 	FindByIDs(ctx context.Context, ids []string) (api.NodePoolList, error)
+	FindByOwnerID(ctx context.Context, ownerID string) (api.NodePoolList, error)
+	RequestDeletionByOwner(ctx context.Context, ownerID string, t time.Time) error
 	All(ctx context.Context) (api.NodePoolList, error)
 }
 
@@ -73,11 +78,66 @@ func (d *sqlNodePoolDao) Replace(ctx context.Context, nodePool *api.NodePool) (*
 	return nodePool, nil
 }
 
+func (d *sqlNodePoolDao) RequestDeletion(ctx context.Context, id string) (*api.NodePool, error) {
+	g2 := (*d.sessionFactory).New(ctx)
+
+	nodePool, err := d.Get(ctx, id)
+	if err != nil {
+		db.MarkForRollback(ctx, err)
+		return nil, err
+	}
+
+	if nodePool.DeletedAt != nil {
+		return nodePool, nil
+	}
+
+	t := time.Now()
+	nodePool.DeletedAt = &t
+	nodePool.Generation++
+	if err := g2.Omit(clause.Associations).Save(nodePool).Error; err != nil {
+		db.MarkForRollback(ctx, err)
+		return nil, err
+	}
+	return nodePool, nil
+}
+
+// Delete permanently removes the node pool row from the database (hard delete, phase 2).
+//
+// NOTE: Because Meta.DeletedAt is *time.Time (not gorm.DeletedAt), GORM does not apply
+// its built-in soft-delete behaviour here — this issues a real DELETE FROM node_pools statement.
+// Pending deletion (phase 1) is handled by RequestDeletion / RequestDeletionByOwner.
+//
+// TODO(HYPERFLEET-904): See ClusterDao.Delete for the broader discussion on whether to stay
+// with the explicit UPDATE approach or adopt gorm.DeletedAt for automatic soft-delete filtering.
 func (d *sqlNodePoolDao) Delete(ctx context.Context, id string) error {
 	g2 := (*d.sessionFactory).New(ctx)
 	if err := g2.Omit(clause.Associations).Delete(&api.NodePool{Meta: api.Meta{ID: id}}).Error; err != nil {
 		db.MarkForRollback(ctx, err)
 		return err
+	}
+	return nil
+}
+
+func (d *sqlNodePoolDao) FindByOwnerID(ctx context.Context, ownerID string) (api.NodePoolList, error) {
+	g2 := (*d.sessionFactory).New(ctx)
+	nodePools := api.NodePoolList{}
+	if err := g2.Unscoped().Where("owner_id = ?", ownerID).Find(&nodePools).Error; err != nil {
+		return nil, err
+	}
+	return nodePools, nil
+}
+
+func (d *sqlNodePoolDao) RequestDeletionByOwner(ctx context.Context, ownerID string, t time.Time) error {
+	g2 := (*d.sessionFactory).New(ctx)
+	result := g2.Model(&api.NodePool{}).
+		Where("owner_id = ? AND deleted_at IS NULL", ownerID).
+		Updates(map[string]interface{}{
+			"deleted_at": t,
+			"generation": gorm.Expr("generation + 1"),
+		})
+	if result.Error != nil {
+		db.MarkForRollback(ctx, result.Error)
+		return result.Error
 	}
 	return nil
 }

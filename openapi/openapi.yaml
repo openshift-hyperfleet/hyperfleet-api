@@ -547,6 +547,11 @@ components:
             When this adapter last reported its status (API-managed)
             Updated every time the adapter POSTs, even if conditions haven't changed
             Used by Sentinel to detect adapter liveness
+        deleted_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Timestamp when deletion was requested; null if not deleted
       description: |-
         AdapterStatus represents the complete status report from an adapter
         Contains multiple conditions, job metadata, and adapter-specific data
@@ -1031,6 +1036,11 @@ components:
         updated_time:
           type: string
           format: date-time
+        deleted_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Timestamp when deletion was requested; null if not marked for deletion
         created_by:
           type: string
           format: email

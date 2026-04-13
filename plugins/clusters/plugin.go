@@ -25,6 +25,7 @@ func NewServiceLocator(env *environments.Env) ServiceLocator {
 	return func() services.ClusterService {
 		return services.NewClusterService(
 			dao.NewClusterDao(&env.Database.SessionFactory),
+			dao.NewNodePoolDao(&env.Database.SessionFactory),
 			dao.NewAdapterStatusDao(&env.Database.SessionFactory),
 			env.Config.Adapters,
 		)

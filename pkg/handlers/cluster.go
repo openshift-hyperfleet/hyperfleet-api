@@ -176,6 +176,7 @@ func (h ClusterHandler) Delete(w http.ResponseWriter, r *http.Request) {
 
 			return presented, nil
 		},
+		ErrorHandler: handleError,
 	}
 	handleDelete(w, r, cfg, http.StatusAccepted)
 }

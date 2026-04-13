@@ -43,11 +43,13 @@ type ClusterService interface {
 
 func NewClusterService(
 	clusterDao dao.ClusterDao,
+	nodePoolDao dao.NodePoolDao,
 	adapterStatusDao dao.AdapterStatusDao,
 	adapterConfig *config.AdapterRequirementsConfig,
 ) ClusterService {
 	return &sqlClusterService{
 		clusterDao:       clusterDao,
+		nodePoolDao:      nodePoolDao,
 		adapterStatusDao: adapterStatusDao,
 		adapterConfig:    adapterConfig,
 	}
@@ -57,6 +59,7 @@ var _ ClusterService = &sqlClusterService{}
 
 type sqlClusterService struct {
 	clusterDao       dao.ClusterDao
+	nodePoolDao      dao.NodePoolDao
 	adapterStatusDao dao.AdapterStatusDao
 	adapterConfig    *config.AdapterRequirementsConfig
 }
@@ -100,14 +103,51 @@ func (s *sqlClusterService) Replace(ctx context.Context, cluster *api.Cluster) (
 	return updated, nil
 }
 
-// RequestDeletion marks a cluster for deletion by setting the DeletedAt field to the current time.
-// If the cluster is already marked for deletion, it returns the cluster without making any changes.
-// It does not actually delete the cluster from the database. Deletion is handled by adapter detecting new generation and triggering hard deletion asynchronously.
+// RequestDeletion marks a cluster for deletion by setting DeletedAt to the current time.
+// If already marked, it returns the cluster unchanged. Cascades the deletion timestamp
+// to all child nodepools and their adapter statuses. Actual removal is handled by
+// adapters detecting the new generation and triggering hard deletion asynchronously.
 func (s *sqlClusterService) RequestDeletion(ctx context.Context, id string) (*api.Cluster, *errors.ServiceError) {
-	cluster, err := s.clusterDao.RequestDeletion(ctx, id)
+	cluster, isNew, err := s.clusterDao.RequestDeletion(ctx, id)
 	if err != nil {
 		return nil, handleRequestDeletionError("Cluster", err)
 	}
+
+	// Already marked for deletion — skip cascade to avoid unnecessary DB roundtrips.
+	// The DAO-level cascade methods guard with WHERE deleted_at IS NULL, so a repeat call
+	// would be a safe no-op, but we short-circuit here for efficiency.
+	if !isNew {
+		return cluster, nil
+	}
+	t := *cluster.DeletedAt
+
+	// Cascade to child nodepools
+	nodePools, err := s.nodePoolDao.FindByOwnerID(ctx, id)
+	if err != nil {
+		return nil, errors.GeneralError("Unable to find nodepools for cluster %s: %s", id, err)
+	}
+
+	if err := s.nodePoolDao.RequestDeletionByOwner(ctx, id, t); err != nil {
+		return nil, errors.GeneralError("Unable to cascade deletion to nodepools for cluster %s: %s", id, err)
+	}
+
+	// Cascade to cluster's own adapter statuses
+	if err := s.adapterStatusDao.RequestDeletionByResource(ctx, "Cluster", id, t); err != nil {
+		return nil, errors.GeneralError("Unable to cascade deletion to adapter statuses for cluster %s: %s", id, err)
+	}
+
+	// Cascade to each nodepool's adapter statuses
+	for _, np := range nodePools {
+		if np.DeletedAt != nil {
+			continue
+		}
+		if err := s.adapterStatusDao.RequestDeletionByResource(ctx, "NodePool", np.ID, t); err != nil {
+			return nil, errors.GeneralError(
+				"Unable to cascade deletion to adapter statuses for nodepool %s: %s", np.ID, err,
+			)
+		}
+	}
+
 	return cluster, nil
 }
 

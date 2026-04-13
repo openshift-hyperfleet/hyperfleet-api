@@ -20,6 +20,7 @@ type AdapterStatusDao interface {
 	Create(ctx context.Context, adapterStatus *api.AdapterStatus) (*api.AdapterStatus, error)
 	Replace(ctx context.Context, adapterStatus *api.AdapterStatus) (*api.AdapterStatus, error)
 	Upsert(ctx context.Context, adapterStatus *api.AdapterStatus) (*api.AdapterStatus, error)
+	RequestDeletionByResource(ctx context.Context, resourceType, resourceID string, t time.Time) error
 	Delete(ctx context.Context, id string) error
 	FindByResource(ctx context.Context, resourceType, resourceID string) (api.AdapterStatusList, error)
 	FindByResourcePaginated(
@@ -138,6 +139,14 @@ func (d *sqlAdapterStatusDao) Upsert(
 	return d.FindByResourceAndAdapter(ctx, adapterStatus.ResourceType, adapterStatus.ResourceID, adapterStatus.Adapter)
 }
 
+// Delete permanently removes the adapter status row from the database (hard delete, phase 2).
+//
+// NOTE: Because Meta.DeletedAt is *time.Time (not gorm.DeletedAt), GORM does not apply
+// its built-in soft-delete behaviour here — this issues a real DELETE FROM adapter_statuses statement.
+// Pending deletion (phase 1) is handled by RequestDeletionByResource.
+//
+// TODO(HYPERFLEET-904): See ClusterDao.Delete for the broader discussion on whether to stay
+// with the explicit UPDATE approach or adopt gorm.DeletedAt for automatic soft-delete filtering.
 func (d *sqlAdapterStatusDao) Delete(ctx context.Context, id string) error {
 	g2 := (*d.sessionFactory).New(ctx)
 	adapterStatus := &api.AdapterStatus{Meta: api.Meta{ID: id}}
@@ -202,6 +211,20 @@ func (d *sqlAdapterStatusDao) All(ctx context.Context) (api.AdapterStatusList, e
 		return nil, err
 	}
 	return statuses, nil
+}
+
+func (d *sqlAdapterStatusDao) RequestDeletionByResource(
+	ctx context.Context, resourceType, resourceID string, t time.Time,
+) error {
+	g2 := (*d.sessionFactory).New(ctx)
+	result := g2.Model(&api.AdapterStatus{}).
+		Where("resource_type = ? AND resource_id = ? AND deleted_at IS NULL", resourceType, resourceID).
+		Update("deleted_at", t)
+	if result.Error != nil {
+		db.MarkForRollback(ctx, result.Error)
+		return result.Error
+	}
+	return nil
 }
 
 // preserveLastTransitionTime preserves LastTransitionTime for conditions whose status hasn't changed
