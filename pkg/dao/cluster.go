@@ -15,7 +15,7 @@ type ClusterDao interface {
 	Get(ctx context.Context, id string) (*api.Cluster, error)
 	Create(ctx context.Context, cluster *api.Cluster) (*api.Cluster, error)
 	Replace(ctx context.Context, cluster *api.Cluster) (*api.Cluster, error)
-	RequestDeletion(ctx context.Context, id string) (*api.Cluster, bool, error)
+	RequestDeletion(ctx context.Context, id string) (cluster *api.Cluster, alreadyDeleted bool, err error)
 	Delete(ctx context.Context, id string) error
 	FindByIDs(ctx context.Context, ids []string) (api.ClusterList, error)
 	All(ctx context.Context) (api.ClusterList, error)
@@ -86,7 +86,7 @@ func (d *sqlClusterDao) RequestDeletion(ctx context.Context, id string) (*api.Cl
 
 	// Already marked for deletion — return as-is (idempotent, no DB write).
 	if cluster.DeletedTime != nil {
-		return cluster, false, nil
+		return cluster, true, nil
 	}
 
 	// Set deleted_time, deleted_by, and increment generation to trigger Sentinel reconciliation.
@@ -99,7 +99,7 @@ func (d *sqlClusterDao) RequestDeletion(ctx context.Context, id string) (*api.Cl
 		db.MarkForRollback(ctx, err)
 		return nil, false, err
 	}
-	return cluster, true, nil
+	return cluster, false, nil
 }
 
 func (d *sqlClusterDao) Delete(ctx context.Context, id string) error {

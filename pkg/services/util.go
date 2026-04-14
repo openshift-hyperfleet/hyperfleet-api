@@ -10,7 +10,6 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 )
 
-
 // Field names suspected to contain personally identifiable information
 var piiFields = []string{
 	"username",

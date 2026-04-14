@@ -103,14 +103,6 @@ func (d *sqlNodePoolDao) RequestDeletion(ctx context.Context, id string) (*api.N
 	return nodePool, nil
 }
 
-// Delete permanently removes the node pool row from the database (hard delete, phase 2).
-//
-// NOTE: Because Meta.DeletedTime is *time.Time (not gorm.DeletedTime), GORM does not apply
-// its built-in soft-delete behaviour here — this issues a real DELETE FROM node_pools statement.
-// Pending deletion (phase 1) is handled by RequestDeletion / RequestDeletionByOwner.
-//
-// TODO(HYPERFLEET-904): See ClusterDao.Delete for the broader discussion on whether to stay
-// with the explicit UPDATE approach or adopt gorm.DeletedTime for automatic soft-delete filtering.
 func (d *sqlNodePoolDao) Delete(ctx context.Context, id string) error {
 	g2 := (*d.sessionFactory).New(ctx)
 	if err := g2.Omit(clause.Associations).Delete(&api.NodePool{Meta: api.Meta{ID: id}}).Error; err != nil {

@@ -45,16 +45,20 @@ func addAdapterStatus() *gormigrate.Migration {
 				return err
 			}
 
-		// Create composite index on resource_type and resource_id for lookups
-		if err := tx.Exec("CREATE INDEX IF NOT EXISTS idx_adapter_statuses_resource ON adapter_statuses(resource_type, resource_id);").Error; err != nil {
-			return err
-		}
+			// Create composite index on resource_type and resource_id for lookups
+			sqlResource := "CREATE INDEX IF NOT EXISTS idx_adapter_statuses_resource" +
+				" ON adapter_statuses(resource_type, resource_id);"
+			if err := tx.Exec(sqlResource).Error; err != nil {
+				return err
+			}
 
-		// Create unique index on resource_type, resource_id, and adapter
-		// This ensures one adapter status per resource per adapter
-		if err := tx.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_adapter_statuses_unique ON adapter_statuses(resource_type, resource_id, adapter);").Error; err != nil {
-			return err
-		}
+			// Create unique index on resource_type, resource_id, and adapter
+			// This ensures one adapter status per resource per adapter
+			sqlUnique := "CREATE UNIQUE INDEX IF NOT EXISTS idx_adapter_statuses_unique" +
+				" ON adapter_statuses(resource_type, resource_id, adapter);"
+			if err := tx.Exec(sqlUnique).Error; err != nil {
+				return err
+			}
 
 			return nil
 		},

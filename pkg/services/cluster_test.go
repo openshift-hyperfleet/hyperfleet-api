@@ -72,7 +72,7 @@ func (d *mockClusterDao) RequestDeletion(ctx context.Context, id string) (*api.C
 		return nil, false, gorm.ErrRecordNotFound
 	}
 	if c.DeletedTime != nil {
-		return c, false, nil
+		return c, true, nil
 	}
 	t := time.Now()
 	deletedBy := "system@hyperfleet.local"
@@ -80,7 +80,7 @@ func (d *mockClusterDao) RequestDeletion(ctx context.Context, id string) (*api.C
 	c.DeletedBy = &deletedBy
 	c.Generation++
 	d.clusters[id] = c
-	return c, true, nil
+	return c, false, nil
 }
 
 func (d *mockClusterDao) Delete(ctx context.Context, id string) error {

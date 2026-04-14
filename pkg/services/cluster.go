@@ -103,12 +103,12 @@ func (s *sqlClusterService) Replace(ctx context.Context, cluster *api.Cluster) (
 	return updated, nil
 }
 
-// RequestDeletion marks a cluster for deletion by setting DeletedTime to the current time.
-// If already marked, it returns the cluster unchanged. Cascades the deletion timestamp
-// to all child nodepools. Actual removal is handled by adapters detecting the new
-// generation and triggering hard deletion asynchronously.
+// RequestDeletion marks a cluster for deletion by setting DeletedTime and
+// DeletedBy to the current time and system@hyperfleet.local.
+// If already marked, it returns the cluster unchanged. Cascades the deletion timestamp to all child nodepools.
+// Actual removal is handled by adapters detecting the new generation and triggering hard deletion asynchronously.
 func (s *sqlClusterService) RequestDeletion(ctx context.Context, id string) (*api.Cluster, *errors.ServiceError) {
-	cluster, isNew, err := s.clusterDao.RequestDeletion(ctx, id)
+	cluster, alreadyDeleted, err := s.clusterDao.RequestDeletion(ctx, id)
 	if err != nil {
 		return nil, handleRequestDeletionError("Cluster", err)
 	}
@@ -116,7 +116,7 @@ func (s *sqlClusterService) RequestDeletion(ctx context.Context, id string) (*ap
 	// Already marked for deletion — skip cascade to avoid unnecessary DB roundtrips.
 	// The DAO-level cascade method guards with WHERE deleted_time IS NULL, so a repeat call
 	// would be a safe no-op, but we short-circuit here for efficiency.
-	if !isNew {
+	if alreadyDeleted {
 		return cluster, nil
 	}
 	t := *cluster.DeletedTime

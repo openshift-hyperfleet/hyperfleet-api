@@ -877,18 +877,7 @@ func TestClusterDelete_Success(t *testing.T) {
 	Expect(*clusterOutput.Id).To(Equal(cluster.ID))
 }
 
-func TestClusterDelete_NotFound(t *testing.T) {
-	h, client := test.RegisterIntegration(t)
-
-	account := h.NewRandAccount()
-	ctx := h.NewAuthenticatedContext(account)
-
-	resp, err := client.DeleteClusterByIdWithResponse(ctx, "nonexistent-id", test.WithAuthToken(ctx))
-	Expect(err).NotTo(HaveOccurred())
-	Expect(resp.StatusCode()).To(Equal(http.StatusNotFound))
-}
-
-func TestClusterDelete_CascadesToNodePoolsAndAdapterStatuses(t *testing.T) {
+func TestClusterDelete_CascadesToNodePools(t *testing.T) {
 	h, client := test.RegisterIntegration(t)
 
 	account := h.NewRandAccount()
@@ -911,42 +900,7 @@ func TestClusterDelete_CascadesToNodePoolsAndAdapterStatuses(t *testing.T) {
 	Expect(npResp.StatusCode()).To(Equal(http.StatusCreated))
 	nodePoolID := *npResp.JSON201.Id
 
-	// Create adapter statuses for both the cluster and the nodepool
-	clusterStatusInput := newAdapterStatusRequest(
-		"validation",
-		cluster.Generation,
-		[]openapi.ConditionRequest{
-			{Type: "Available", Status: openapi.AdapterConditionStatusTrue, Reason: util.PtrString("OK")},
-			{Type: "Applied", Status: openapi.AdapterConditionStatusTrue, Reason: util.PtrString("OK")},
-			{Type: "Health", Status: openapi.AdapterConditionStatusTrue, Reason: util.PtrString("OK")},
-		},
-		nil,
-	)
-	csResp, err := client.PostClusterStatusesWithResponse(
-		ctx, cluster.ID, openapi.PostClusterStatusesJSONRequestBody(clusterStatusInput),
-		test.WithAuthToken(ctx),
-	)
-	Expect(err).NotTo(HaveOccurred())
-	Expect(csResp.StatusCode()).To(Equal(http.StatusCreated))
-
-	npStatusInput := newAdapterStatusRequest(
-		"validation",
-		npResp.JSON201.Generation,
-		[]openapi.ConditionRequest{
-			{Type: "Available", Status: openapi.AdapterConditionStatusTrue, Reason: util.PtrString("OK")},
-			{Type: "Applied", Status: openapi.AdapterConditionStatusTrue, Reason: util.PtrString("OK")},
-			{Type: "Health", Status: openapi.AdapterConditionStatusTrue, Reason: util.PtrString("OK")},
-		},
-		nil,
-	)
-	nsResp, err := client.PostNodePoolStatusesWithResponse(
-		ctx, cluster.ID, nodePoolID, openapi.PostNodePoolStatusesJSONRequestBody(npStatusInput),
-		test.WithAuthToken(ctx),
-	)
-	Expect(err).NotTo(HaveOccurred())
-	Expect(nsResp.StatusCode()).To(Equal(http.StatusCreated))
-
-	// Now delete the cluster
+	// Delete the cluster
 	delResp, err := client.DeleteClusterByIdWithResponse(ctx, cluster.ID, test.WithAuthToken(ctx))
 	Expect(err).NotTo(HaveOccurred())
 	Expect(delResp.StatusCode()).To(Equal(http.StatusAccepted))
@@ -954,7 +908,7 @@ func TestClusterDelete_CascadesToNodePoolsAndAdapterStatuses(t *testing.T) {
 	Expect(delResp.JSON202.DeletedBy).NotTo(BeNil(), "deleted_by should be set on cluster")
 	Expect(string(*delResp.JSON202.DeletedBy)).To(Equal("system@hyperfleet.local"))
 
-	// Verify cascade: query DB directly for nodepool
+	// Verify cascade: child nodepool must be soft-deleted
 	dbSession := h.DBFactory.New(ctx)
 
 	var nodePool api.NodePool

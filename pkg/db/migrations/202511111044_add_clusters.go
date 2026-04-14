@@ -49,10 +49,10 @@ func addClusters() *gormigrate.Migration {
 				return err
 			}
 
-		// Create unique index on name
-		if err := tx.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_clusters_name ON clusters(name);").Error; err != nil {
-			return err
-		}
+			// Create unique index on name
+			if err := tx.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_clusters_name ON clusters(name);").Error; err != nil {
+				return err
+			}
 
 			return nil
 		},

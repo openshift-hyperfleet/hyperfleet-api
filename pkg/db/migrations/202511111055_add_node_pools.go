@@ -52,15 +52,16 @@ func addNodePools() *gormigrate.Migration {
 				return err
 			}
 
-		// Create index on owner_id for foreign key lookups
-		if err := tx.Exec("CREATE INDEX IF NOT EXISTS idx_node_pools_owner_id ON node_pools(owner_id);").Error; err != nil {
-			return err
-		}
+			// Create index on owner_id for foreign key lookups
+			if err := tx.Exec("CREATE INDEX IF NOT EXISTS idx_node_pools_owner_id ON node_pools(owner_id);").Error; err != nil {
+				return err
+			}
 
-		// Create unique index on (owner_id, name) to prevent duplicate nodepool names within a cluster
-		if err := tx.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_node_pools_owner_name ON node_pools(owner_id, name);").Error; err != nil {
-			return err
-		}
+			// Create unique index on (owner_id, name) to prevent duplicate nodepool names within a cluster
+			sql := "CREATE UNIQUE INDEX IF NOT EXISTS idx_node_pools_owner_name ON node_pools(owner_id, name);"
+			if err := tx.Exec(sql).Error; err != nil {
+				return err
+			}
 
 			// Add foreign key constraint to clusters
 			addFKSQL := `
