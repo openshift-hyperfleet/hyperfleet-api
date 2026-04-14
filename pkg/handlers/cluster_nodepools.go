@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"net/http"
 
 	"github.com/gorilla/mux"
@@ -173,6 +174,67 @@ func (h ClusterNodePoolsHandler) SoftDelete(w http.ResponseWriter, r *http.Reque
 	}
 
 	handleSoftDelete(w, r, cfg, http.StatusAccepted)
+}
+
+// Patch patches a specific nodepool for a cluster
+func (h ClusterNodePoolsHandler) Patch(w http.ResponseWriter, r *http.Request) {
+	var patch api.NodePoolPatchRequest
+
+	cfg := &handlerConfig{
+		MarshalInto: &patch,
+		Validate: []validate{
+			validatePatchRequest(&patch),
+		},
+		Action: func() (interface{}, *errors.ServiceError) {
+			ctx := r.Context()
+			clusterID := mux.Vars(r)["id"]
+			nodePoolID := mux.Vars(r)["nodepool_id"]
+
+			_, err := h.clusterService.Get(ctx, clusterID)
+			if err != nil {
+				return nil, err
+			}
+
+			found, err := h.nodePoolService.Get(ctx, nodePoolID)
+			if err != nil {
+				return nil, err
+			}
+
+			if found.OwnerID != clusterID {
+				return nil, errors.NotFound("NodePool '%s' not found for cluster '%s'", nodePoolID, clusterID)
+			}
+
+			if patch.Spec != nil {
+				specJSON, jsonErr := json.Marshal(*patch.Spec)
+				if jsonErr != nil {
+					return nil, errors.GeneralError("Failed to marshal spec: %v", jsonErr)
+				}
+				found.Spec = specJSON
+			}
+
+			if patch.Labels != nil {
+				labelsJSON, jsonErr := json.Marshal(*patch.Labels)
+				if jsonErr != nil {
+					return nil, errors.GeneralError("Failed to marshal labels: %v", jsonErr)
+				}
+				found.Labels = labelsJSON
+			}
+
+			found, err = h.nodePoolService.Replace(ctx, found)
+			if err != nil {
+				return nil, err
+			}
+
+			presented, presErr := presenters.PresentNodePool(found)
+			if presErr != nil {
+				return nil, errors.GeneralError("Failed to present nodepool: %v", presErr)
+			}
+			return presented, nil
+		},
+		ErrorHandler: handleError,
+	}
+
+	handle(w, r, cfg, http.StatusOK)
 }
 
 // Create creates a new nodepool for a cluster

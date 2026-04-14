@@ -65,7 +65,9 @@ func (h NodePoolHandler) Patch(w http.ResponseWriter, r *http.Request) {
 
 	cfg := &handlerConfig{
 		MarshalInto: &patch,
-		Validate:    []validate{},
+		Validate: []validate{
+			validatePatchRequest(&patch),
+		},
 		Action: func() (interface{}, *errors.ServiceError) {
 			ctx := r.Context()
 			id := mux.Vars(r)["id"]
@@ -81,10 +83,14 @@ func (h NodePoolHandler) Patch(w http.ResponseWriter, r *http.Request) {
 				}
 				found.Spec = specJSON
 			}
-			// Note: OwnerID should not be changed after creation
-			// if patch.OwnerID != nil {
-			// 	found.OwnerID = *patch.OwnerID
-			// }
+
+			if patch.Labels != nil {
+				labelsJSON, err := json.Marshal(*patch.Labels)
+				if err != nil {
+					return nil, errors.GeneralError("Failed to marshal labels: %v", err)
+				}
+				found.Labels = labelsJSON
+			}
 
 			nodePoolModel, err := h.nodePool.Replace(ctx, found)
 			if err != nil {

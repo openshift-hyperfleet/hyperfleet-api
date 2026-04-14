@@ -9,9 +9,11 @@ import (
 	. "github.com/onsi/gomega"
 	"gopkg.in/resty.v1"
 
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/util"
 	"github.com/openshift-hyperfleet/hyperfleet-api/test"
+	"github.com/openshift-hyperfleet/hyperfleet-api/test/factories"
 )
 
 const (
@@ -99,10 +101,125 @@ func TestNodePoolPost(t *testing.T) {
 	Expect(err).NotTo(HaveOccurred(), "Error posting object:  %v", err)
 }
 
-// TestNodePoolPatch is disabled because PATCH endpoints are not implemented
-// func TestNodePoolPatch(t *testing.T) {
-// 	// PATCH not implemented in current API
-// }
+func TestNodePoolPatch(t *testing.T) {
+	h, client := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+
+	// Create a parent cluster
+	cluster, err := h.Factories.NewClusters(h.NewID())
+	Expect(err).NotTo(HaveOccurred())
+
+	// Create a nodepool under that cluster
+	kind := kindNodePool
+	createResp, err := client.CreateNodePoolWithResponse(
+		ctx, cluster.ID,
+		openapi.CreateNodePoolJSONRequestBody{
+			Kind: &kind,
+			Name: "patch-test-np",
+			Spec: openapi.NodePoolSpec{"instance_type": "m5.large"},
+		},
+		test.WithAuthToken(ctx),
+	)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(createResp.StatusCode()).To(Equal(http.StatusCreated))
+	nodePoolID := *createResp.JSON201.Id
+	initialGeneration := createResp.JSON201.Generation
+
+	// 404 for non-existent cluster
+	patchBody := openapi.PatchNodePoolByIdJSONRequestBody{
+		Spec: &openapi.NodePoolSpec{"instance_type": "m5.xlarge"},
+	}
+	resp, err := client.PatchNodePoolByIdWithResponse(
+		ctx, "non-existent-cluster", nodePoolID, patchBody, test.WithAuthToken(ctx))
+	Expect(err).NotTo(HaveOccurred())
+	Expect(resp.StatusCode()).To(Equal(http.StatusNotFound))
+
+	// 404 for non-existent nodepool
+	resp, err = client.PatchNodePoolByIdWithResponse(
+		ctx, cluster.ID, "non-existent-np", patchBody, test.WithAuthToken(ctx))
+	Expect(err).NotTo(HaveOccurred())
+	Expect(resp.StatusCode()).To(Equal(http.StatusNotFound))
+
+	// 404 when nodepool belongs to a different cluster
+	cluster2, err := h.Factories.NewClusters(h.NewID())
+	Expect(err).NotTo(HaveOccurred())
+	resp, err = client.PatchNodePoolByIdWithResponse(ctx, cluster2.ID, nodePoolID, patchBody, test.WithAuthToken(ctx))
+	Expect(err).NotTo(HaveOccurred())
+	Expect(resp.StatusCode()).To(Equal(http.StatusNotFound), "Nodepool from another cluster should return 404")
+
+	// 200 success
+	newSpec := openapi.NodePoolSpec{"instance_type": "m5.xlarge", "replicas": float64(3)}
+	patchResp, err := client.PatchNodePoolByIdWithResponse(
+		ctx, cluster.ID, nodePoolID,
+		openapi.PatchNodePoolByIdJSONRequestBody{Spec: &newSpec},
+		test.WithAuthToken(ctx),
+	)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(patchResp.StatusCode()).To(Equal(http.StatusOK))
+
+	updated := patchResp.JSON200
+	Expect(updated).NotTo(BeNil())
+	Expect(*updated.Id).To(Equal(nodePoolID))
+	Expect(*updated.Kind).To(Equal("NodePool"))
+	Expect(updated.Generation).To(Equal(initialGeneration+1), "Generation should increment when spec changes")
+	Expect(updated.Spec).To(HaveKeyWithValue("instance_type", "m5.xlarge"))
+	Expect(updated.Spec).To(HaveKeyWithValue("replicas", float64(3)))
+	Expect(updated.Spec).To(HaveLen(2), "Spec should contain exactly the patched fields, not a merge")
+
+	// Patch labels only
+	newLabels := map[string]string{"env": "staging", "team": "platform"}
+	labelsPatchResp, err := client.PatchNodePoolByIdWithResponse(
+		ctx, cluster.ID, nodePoolID,
+		openapi.PatchNodePoolByIdJSONRequestBody{Labels: &newLabels},
+		test.WithAuthToken(ctx),
+	)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(labelsPatchResp.StatusCode()).To(Equal(http.StatusOK))
+
+	updatedWithLabels := labelsPatchResp.JSON200
+	Expect(updatedWithLabels).NotTo(BeNil())
+	Expect(updatedWithLabels.Labels).NotTo(BeNil())
+	Expect(*updatedWithLabels.Labels).To(HaveKeyWithValue("env", "staging"))
+	Expect(*updatedWithLabels.Labels).To(HaveKeyWithValue("team", "platform"))
+	Expect(*updatedWithLabels.Labels).To(HaveLen(2))
+	Expect(updatedWithLabels.Generation).To(Equal(updated.Generation+1), "Generation should increment when labels change")
+}
+
+func TestNodePoolPatch_SetReadyFalse(t *testing.T) {
+	h, client := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+
+	// Create a nodepool with Ready=True
+	nodePool, err := factories.NewNodePoolWithStatus(&h.Factories, h.DBFactory, h.NewID(), true, true)
+	Expect(err).NotTo(HaveOccurred())
+
+	newLabels := map[string]string{"env": "staging"}
+	patchResp, err := client.PatchNodePoolByIdWithResponse(
+		ctx, nodePool.OwnerID, nodePool.ID,
+		openapi.PatchNodePoolByIdJSONRequestBody{Labels: &newLabels},
+		test.WithAuthToken(ctx),
+	)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(patchResp.StatusCode()).To(Equal(http.StatusOK))
+
+	updated := patchResp.JSON200
+	Expect(updated.Generation).To(Equal(nodePool.Generation+1), "Generation should increment when labels change")
+
+	var readyCond *openapi.ResourceCondition
+	for i := range updated.Status.Conditions {
+		if updated.Status.Conditions[i].Type == api.ConditionTypeReady {
+			readyCond = &updated.Status.Conditions[i]
+			break
+		}
+	}
+	Expect(readyCond).NotTo(BeNil(), "Expected Ready condition in response")
+	Expect(readyCond.Status).To(Equal(openapi.ResourceConditionStatusFalse),
+		"Ready must be False after generation increment")
+}
 
 func TestNodePoolPaging(t *testing.T) {
 	h, client := test.RegisterIntegration(t)

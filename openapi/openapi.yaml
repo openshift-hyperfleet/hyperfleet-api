@@ -1,7 +1,7 @@
 openapi: 3.0.0
 info:
   title: HyperFleet API
-  version: 1.0.6
+  version: 1.0.7
   contact:
     name: HyperFleet Team
   license:
@@ -101,6 +101,42 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Error'
+      security:
+        - BearerAuth: []
+    patch:
+      operationId: patchClusterById
+      summary: Patch cluster by ID
+      description: Patch a specific cluster by ID
+      parameters:
+        - name: cluster_id
+          in: path
+          required: true
+          description: Cluster ID
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cluster'
+        '400':
+          description: The server could not understand the request due to invalid syntax.
+        '404':
+          description: The server cannot find the requested resource.
+        default:
+          description: An unexpected error response.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClusterPatchRequest'
       security:
         - BearerAuth: []
     delete:
@@ -378,6 +414,48 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Error'
+      security:
+        - BearerAuth: []
+    patch:
+      operationId: patchNodePoolById
+      summary: Patch nodepool by ID
+      description: Patch a specific nodepool within a cluster
+      parameters:
+        - name: cluster_id
+          in: path
+          required: true
+          description: Cluster ID
+          schema:
+            type: string
+        - name: nodepool_id
+          in: path
+          required: true
+          description: NodePool ID
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodePool'
+        '400':
+          description: The server could not understand the request due to invalid syntax.
+        '404':
+          description: The server cannot find the requested resource.
+        default:
+          description: An unexpected error response.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NodePoolPatchRequest'
       security:
         - BearerAuth: []
   /api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepool_id}/statuses:
@@ -1045,6 +1123,21 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Cluster'
+    ClusterPatchRequest:
+      type: object
+      properties:
+        spec:
+          $ref: '#/components/schemas/ClusterSpec'
+        labels:
+          type: object
+          additionalProperties:
+            type: string
+      example:
+        spec: {}
+        labels:
+          env: staging
+      additionalProperties: false
+      minProperties: 1
     ClusterSpec:
       type: object
       description: |-
@@ -1387,6 +1480,21 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/NodePool'
+    NodePoolPatchRequest:
+      type: object
+      properties:
+        spec:
+          $ref: '#/components/schemas/NodePoolSpec'
+        labels:
+          type: object
+          additionalProperties:
+            type: string
+      example:
+        spec: {}
+        labels:
+          env: staging
+      additionalProperties: false
+      minProperties: 1
     NodePoolSpec:
       type: object
       description: |-

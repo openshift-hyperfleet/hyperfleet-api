@@ -18,6 +18,7 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/util"
 	"github.com/openshift-hyperfleet/hyperfleet-api/test"
+	"github.com/openshift-hyperfleet/hyperfleet-api/test/factories"
 )
 
 func TestClusterGet(t *testing.T) {
@@ -92,10 +93,93 @@ func TestClusterPost(t *testing.T) {
 	Expect(restyResp.StatusCode()).To(Equal(http.StatusBadRequest))
 }
 
-// TestClusterPatch is disabled because PATCH endpoints are not implemented
-// func TestClusterPatch(t *testing.T) {
-// 	// PATCH not implemented in current API
-// }
+func TestClusterPatch(t *testing.T) {
+	h, client := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+
+	// 404 for non-existent cluster
+	patchBody := openapi.PatchClusterByIdJSONRequestBody{
+		Spec: &openapi.ClusterSpec{"region": "us-east-1"},
+	}
+	resp, err := client.PatchClusterByIdWithResponse(ctx, "non-existent-id", patchBody, test.WithAuthToken(ctx))
+	Expect(err).NotTo(HaveOccurred())
+	Expect(resp.StatusCode()).To(Equal(http.StatusNotFound))
+
+	clusterModel, err := h.Factories.NewClusters(h.NewID())
+	Expect(err).NotTo(HaveOccurred())
+	initialGeneration := clusterModel.Generation
+
+	// 200 success
+	newSpec := openapi.ClusterSpec{"region": "us-east-1", "provider": "aws"}
+	patchBody = openapi.PatchClusterByIdJSONRequestBody{Spec: &newSpec}
+
+	patchResp, err := client.PatchClusterByIdWithResponse(ctx, clusterModel.ID, patchBody, test.WithAuthToken(ctx))
+	Expect(err).NotTo(HaveOccurred())
+	Expect(patchResp.StatusCode()).To(Equal(http.StatusOK))
+
+	updated := patchResp.JSON200
+	Expect(updated).NotTo(BeNil())
+	Expect(*updated.Id).To(Equal(clusterModel.ID))
+	Expect(*updated.Kind).To(Equal("Cluster"))
+	Expect(updated.Generation).To(Equal(initialGeneration+1), "Generation should increment when spec changes")
+	Expect(updated.Spec).To(HaveKeyWithValue("region", "us-east-1"))
+	Expect(updated.Spec).To(HaveKeyWithValue("provider", "aws"))
+	Expect(updated.Spec).To(HaveLen(2), "Spec should contain exactly the patched fields, not a merge")
+
+	// Patch labels only
+	newLabels := map[string]string{"env": "staging", "team": "platform"}
+	labelsPatchResp, err := client.PatchClusterByIdWithResponse(
+		ctx, clusterModel.ID,
+		openapi.PatchClusterByIdJSONRequestBody{Labels: &newLabels},
+		test.WithAuthToken(ctx),
+	)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(labelsPatchResp.StatusCode()).To(Equal(http.StatusOK))
+
+	updatedWithLabels := labelsPatchResp.JSON200
+	Expect(updatedWithLabels).NotTo(BeNil())
+	Expect(updatedWithLabels.Labels).NotTo(BeNil())
+	Expect(*updatedWithLabels.Labels).To(HaveKeyWithValue("env", "staging"))
+	Expect(*updatedWithLabels.Labels).To(HaveKeyWithValue("team", "platform"))
+	Expect(*updatedWithLabels.Labels).To(HaveLen(2))
+	Expect(updatedWithLabels.Generation).To(Equal(updated.Generation+1), "Generation should increment when labels change")
+}
+
+func TestClusterPatch_SetReadyFalse(t *testing.T) {
+	h, client := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+
+	// Create a cluster with Ready=True
+	cluster, err := factories.NewClusterWithStatus(&h.Factories, h.DBFactory, h.NewID(), true, true)
+	Expect(err).NotTo(HaveOccurred())
+
+	newLabels := map[string]string{"env": "staging"}
+	patchResp, err := client.PatchClusterByIdWithResponse(
+		ctx, cluster.ID,
+		openapi.PatchClusterByIdJSONRequestBody{Labels: &newLabels},
+		test.WithAuthToken(ctx),
+	)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(patchResp.StatusCode()).To(Equal(http.StatusOK))
+
+	updated := patchResp.JSON200
+	Expect(updated.Generation).To(Equal(cluster.Generation+1), "Generation should increment when labels change")
+
+	var readyCond *openapi.ResourceCondition
+	for i := range updated.Status.Conditions {
+		if updated.Status.Conditions[i].Type == api.ConditionTypeReady {
+			readyCond = &updated.Status.Conditions[i]
+			break
+		}
+	}
+	Expect(readyCond).NotTo(BeNil(), "Expected Ready condition in response")
+	Expect(readyCond.Status).To(Equal(openapi.ResourceConditionStatusFalse),
+		"Ready must be False after generation increment")
+}
 
 func TestClusterPaging(t *testing.T) {
 	h, client := test.RegisterIntegration(t)
