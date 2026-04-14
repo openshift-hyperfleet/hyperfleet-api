@@ -91,7 +91,7 @@ func (d *sqlNodePoolDao) RequestDeletion(ctx context.Context, id string) (*api.N
 		return nodePool, nil
 	}
 
-	t := time.Now()
+	t := time.Now().UTC().Truncate(time.Microsecond)
 	deletedBy := "system@hyperfleet.local"
 	nodePool.DeletedTime = &t
 	nodePool.DeletedBy = &deletedBy

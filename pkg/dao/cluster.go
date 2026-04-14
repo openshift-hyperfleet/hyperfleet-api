@@ -90,7 +90,7 @@ func (d *sqlClusterDao) RequestDeletion(ctx context.Context, id string) (*api.Cl
 	}
 
 	// Set deleted_time, deleted_by, and increment generation to trigger Sentinel reconciliation.
-	t := time.Now()
+	t := time.Now().UTC().Truncate(time.Microsecond)
 	deletedBy := "system@hyperfleet.local"
 	cluster.DeletedTime = &t
 	cluster.DeletedBy = &deletedBy
