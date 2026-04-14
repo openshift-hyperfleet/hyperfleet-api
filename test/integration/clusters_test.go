@@ -958,7 +958,7 @@ func TestClusterDelete_CascadesToNodePoolsAndAdapterStatuses(t *testing.T) {
 	dbSession := h.DBFactory.New(ctx)
 
 	var nodePool api.NodePool
-	err = dbSession.Unscoped().First(&nodePool, "id = ?", nodePoolID).Error
+	err = dbSession.First(&nodePool, "id = ?", nodePoolID).Error
 	Expect(err).NotTo(HaveOccurred())
 	Expect(nodePool.DeletedTime).NotTo(BeNil(), "nodepool should be soft-deleted after cluster cascade")
 	Expect(nodePool.DeletedBy).NotTo(BeNil(), "nodepool deleted_by should be set after cluster cascade")
@@ -996,7 +996,7 @@ func TestClusterDelete_Idempotent(t *testing.T) {
 	// Capture the nodepool state after the first (real) delete.
 	dbSession := h.DBFactory.New(ctx)
 	var npAfterFirst api.NodePool
-	Expect(dbSession.Unscoped().First(&npAfterFirst, "id = ?", nodePoolID).Error).NotTo(HaveOccurred())
+	Expect(dbSession.First(&npAfterFirst, "id = ?", nodePoolID).Error).NotTo(HaveOccurred())
 	Expect(npAfterFirst.DeletedTime).NotTo(BeNil(), "nodepool should be soft-deleted after first delete")
 	npGenerationAfterFirst := npAfterFirst.Generation
 
@@ -1010,7 +1010,7 @@ func TestClusterDelete_Idempotent(t *testing.T) {
 
 	// Verify the nodepool's deleted_time and generation are unchanged after the second delete.
 	var npAfterSecond api.NodePool
-	Expect(dbSession.Unscoped().First(&npAfterSecond, "id = ?", nodePoolID).Error).NotTo(HaveOccurred())
+	Expect(dbSession.First(&npAfterSecond, "id = ?", nodePoolID).Error).NotTo(HaveOccurred())
 	Expect(npAfterSecond.DeletedTime).NotTo(BeNil())
 	Expect(npAfterSecond.DeletedTime.Equal(*npAfterFirst.DeletedTime)).To(BeTrue(),
 		"nodepool deleted_time should not change on repeated delete")

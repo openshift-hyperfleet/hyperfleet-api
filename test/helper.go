@@ -379,7 +379,7 @@ func (helper *Helper) StartJWKCertServerMock() (teardown func() error) {
 
 func (helper *Helper) DeleteAll(table interface{}) {
 	g2 := helper.DBFactory.New(context.Background())
-	err := g2.Model(table).Unscoped().Delete(table).Error
+	err := g2.Model(table).Delete(table).Error
 	if err != nil {
 		helper.T.Errorf("error deleting from table %v: %v", table, err)
 	}
@@ -387,7 +387,7 @@ func (helper *Helper) DeleteAll(table interface{}) {
 
 func (helper *Helper) Delete(obj interface{}) {
 	g2 := helper.DBFactory.New(context.Background())
-	err := g2.Unscoped().Delete(obj).Error
+	err := g2.Delete(obj).Error
 	if err != nil {
 		helper.T.Errorf("error deleting object %v: %v", obj, err)
 	}
