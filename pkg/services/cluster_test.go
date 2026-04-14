@@ -18,6 +18,7 @@ import (
 
 const (
 	testClusterID = "test-cluster-id"
+	systemActor   = "system@hyperfleet.local"
 )
 
 // testAdapterConfig creates a test adapter config with default values
@@ -75,9 +76,9 @@ func (d *mockClusterDao) RequestDeletion(ctx context.Context, id string) (*api.C
 		return c, true, nil
 	}
 	t := time.Now()
-	deletedBy := "system@hyperfleet.local"
+	actor := systemActor
 	c.DeletedTime = &t
-	c.DeletedBy = &deletedBy
+	c.DeletedBy = &actor
 	c.Generation++
 	d.clusters[id] = c
 	return c, false, nil

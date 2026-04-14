@@ -75,9 +75,9 @@ func (d *mockNodePoolDao) RequestDeletion(ctx context.Context, id string) (*api.
 		return np, nil
 	}
 	t := time.Now()
-	deletedBy := "system@hyperfleet.local"
+	actor := systemActor
 	np.DeletedTime = &t
-	np.DeletedBy = &deletedBy
+	np.DeletedBy = &actor
 	np.Generation++
 	d.nodePools[id] = np
 	return np, nil
@@ -100,11 +100,11 @@ func (d *mockNodePoolDao) FindByOwnerID(ctx context.Context, ownerID string) (ap
 }
 
 func (d *mockNodePoolDao) RequestDeletionByOwner(ctx context.Context, ownerID string, t time.Time) error {
-	deletedBy := "system@hyperfleet.local"
+	actor := systemActor
 	for id, np := range d.nodePools {
 		if np.OwnerID == ownerID && np.DeletedTime == nil {
 			np.DeletedTime = &t
-			np.DeletedBy = &deletedBy
+			np.DeletedBy = &actor
 			np.Generation++
 			d.nodePools[id] = np
 		}
