@@ -18,13 +18,12 @@ func addAdapterStatus() *gormigrate.Migration {
 			// Create adapter_statuses table
 			// This table uses polymorphic association to link to either clusters or node_pools
 			createTableSQL := `
-				CREATE TABLE IF NOT EXISTS adapter_statuses (
-					id VARCHAR(255) PRIMARY KEY,
-					created_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-					updated_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-					deleted_at TIMESTAMPTZ NULL,
+			CREATE TABLE IF NOT EXISTS adapter_statuses (
+				id VARCHAR(255) PRIMARY KEY,
+			created_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
-					-- Polymorphic association
+				-- Polymorphic association
 					resource_type VARCHAR(20) NOT NULL,
 					resource_id VARCHAR(255) NOT NULL,
 
@@ -35,58 +34,40 @@ func addAdapterStatus() *gormigrate.Migration {
 					-- API-managed timestamps
 					last_report_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
-					-- Stored as JSONB
-					conditions JSONB NOT NULL,
-					data JSONB NULL,
-					metadata JSONB NULL
-				);
-			`
+			-- Stored as JSONB
+			conditions JSONB NOT NULL,
+			data JSONB NULL,
+			metadata JSONB NULL
+		);
+		`
 
 			if err := tx.Exec(createTableSQL).Error; err != nil {
 				return err
 			}
 
-			// Create index on deleted_at for soft deletes
-			createIdxDeletedSQL := "CREATE INDEX IF NOT EXISTS idx_adapter_statuses_deleted_at " +
-				"ON adapter_statuses(deleted_at);"
-			if err := tx.Exec(createIdxDeletedSQL).Error; err != nil {
-				return err
-			}
+		// Create composite index on resource_type and resource_id for lookups
+		if err := tx.Exec("CREATE INDEX IF NOT EXISTS idx_adapter_statuses_resource ON adapter_statuses(resource_type, resource_id);").Error; err != nil {
+			return err
+		}
 
-			// Create composite index on resource_type and resource_id for lookups
-			createIdxResourceSQL := "CREATE INDEX IF NOT EXISTS idx_adapter_statuses_resource " +
-				"ON adapter_statuses(resource_type, resource_id);"
-			if err := tx.Exec(createIdxResourceSQL).Error; err != nil {
-				return err
-			}
-
-			// Create unique index on resource_type, resource_id, and adapter
-			// This ensures one adapter status per resource per adapter
-			createIdxUniqueSQL := "CREATE UNIQUE INDEX IF NOT EXISTS idx_adapter_statuses_unique " +
-				"ON adapter_statuses(resource_type, resource_id, adapter) WHERE deleted_at IS NULL;"
-			if err := tx.Exec(createIdxUniqueSQL).Error; err != nil {
-				return err
-			}
+		// Create unique index on resource_type, resource_id, and adapter
+		// This ensures one adapter status per resource per adapter
+		if err := tx.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_adapter_statuses_unique ON adapter_statuses(resource_type, resource_id, adapter);").Error; err != nil {
+			return err
+		}
 
 			return nil
 		},
 		Rollback: func(tx *gorm.DB) error {
-			// Drop indexes
 			if err := tx.Exec("DROP INDEX IF EXISTS idx_adapter_statuses_unique;").Error; err != nil {
 				return err
 			}
 			if err := tx.Exec("DROP INDEX IF EXISTS idx_adapter_statuses_resource;").Error; err != nil {
 				return err
 			}
-			if err := tx.Exec("DROP INDEX IF EXISTS idx_adapter_statuses_deleted_at;").Error; err != nil {
-				return err
-			}
-
-			// Drop table
 			if err := tx.Exec("DROP TABLE IF EXISTS adapter_statuses;").Error; err != nil {
 				return err
 			}
-
 			return nil
 		},
 	}

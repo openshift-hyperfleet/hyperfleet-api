@@ -1,14 +1,26 @@
 package services
 
 import (
+	"context"
 	e "errors"
 	"strings"
 
 	"gorm.io/gorm"
 
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/auth"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 )
+
+// actorFromContext extracts the actor identity for audit fields.
+// Prefers the email claim (which satisfies the email format declared in the OpenAPI spec)
+// and falls back to the username claim if email is absent.
+func actorFromContext(ctx context.Context) string {
+	if payload, err := auth.GetAuthPayloadFromContext(ctx); err == nil && payload.Email != "" {
+		return payload.Email
+	}
+	return auth.GetUsernameFromContext(ctx)
+}
 
 // Field names suspected to contain personally identifiable information
 var piiFields = []string{

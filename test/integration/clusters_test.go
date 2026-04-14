@@ -871,7 +871,9 @@ func TestClusterDelete_Success(t *testing.T) {
 
 	clusterOutput := resp.JSON202
 	Expect(clusterOutput).NotTo(BeNil())
-	Expect(clusterOutput.DeletedAt).NotTo(BeNil(), "deleted_at should be set")
+	Expect(clusterOutput.DeletedTime).NotTo(BeNil(), "deleted_time should be set")
+	Expect(clusterOutput.DeletedBy).NotTo(BeNil(), "deleted_by should be set")
+	Expect(string(*clusterOutput.DeletedBy)).To(Equal(account.Email()))
 	Expect(*clusterOutput.Id).To(Equal(cluster.ID))
 }
 
@@ -925,7 +927,7 @@ func TestClusterDelete_CascadesToNodePoolsAndAdapterStatuses(t *testing.T) {
 		test.WithAuthToken(ctx),
 	)
 	Expect(err).NotTo(HaveOccurred())
-	Expect(csResp.StatusCode()).To(Equal(http.StatusOK))
+	Expect(csResp.StatusCode()).To(Equal(http.StatusCreated))
 
 	npStatusInput := newAdapterStatusRequest(
 		"validation",
@@ -942,37 +944,24 @@ func TestClusterDelete_CascadesToNodePoolsAndAdapterStatuses(t *testing.T) {
 		test.WithAuthToken(ctx),
 	)
 	Expect(err).NotTo(HaveOccurred())
-	Expect(nsResp.StatusCode()).To(Equal(http.StatusOK))
+	Expect(nsResp.StatusCode()).To(Equal(http.StatusCreated))
 
 	// Now delete the cluster
 	delResp, err := client.DeleteClusterByIdWithResponse(ctx, cluster.ID, test.WithAuthToken(ctx))
 	Expect(err).NotTo(HaveOccurred())
 	Expect(delResp.StatusCode()).To(Equal(http.StatusAccepted))
-	Expect(delResp.JSON202.DeletedAt).NotTo(BeNil())
+	Expect(delResp.JSON202.DeletedTime).NotTo(BeNil())
+	Expect(delResp.JSON202.DeletedBy).NotTo(BeNil(), "deleted_by should be set on cluster")
+	Expect(string(*delResp.JSON202.DeletedBy)).To(Equal(account.Email()))
 
-	// Verify cascade: query DB directly for nodepool and adapter statuses
+	// Verify cascade: query DB directly for nodepool
 	dbSession := h.DBFactory.New(ctx)
 
 	var nodePool api.NodePool
 	err = dbSession.Unscoped().First(&nodePool, "id = ?", nodePoolID).Error
 	Expect(err).NotTo(HaveOccurred())
-	Expect(nodePool.DeletedAt).NotTo(BeNil(), "nodepool should be soft-deleted after cluster cascade")
-
-	var clusterStatuses []api.AdapterStatus
-	err = dbSession.Unscoped().Where("resource_type = ? AND resource_id = ?", "Cluster", cluster.ID).
-		Find(&clusterStatuses).Error
-	Expect(err).NotTo(HaveOccurred())
-	for _, s := range clusterStatuses {
-		Expect(s.DeletedAt).NotTo(BeNil(), "cluster adapter status should be soft-deleted")
-	}
-
-	var npStatuses []api.AdapterStatus
-	err = dbSession.Unscoped().Where("resource_type = ? AND resource_id = ?", "NodePool", nodePoolID).
-		Find(&npStatuses).Error
-	Expect(err).NotTo(HaveOccurred())
-	for _, s := range npStatuses {
-		Expect(s.DeletedAt).NotTo(BeNil(), "nodepool adapter status should be soft-deleted")
-	}
+	Expect(nodePool.DeletedTime).NotTo(BeNil(), "nodepool should be soft-deleted after cluster cascade")
+	Expect(nodePool.DeletedBy).NotTo(BeNil(), "nodepool deleted_by should be set after cluster cascade")
 }
 
 func TestClusterDelete_Idempotent(t *testing.T) {
@@ -987,7 +976,7 @@ func TestClusterDelete_Idempotent(t *testing.T) {
 	// Create a nodepool so we can verify cascade is not re-applied on repeat calls.
 	npInput := openapi.NodePoolCreateRequest{
 		Kind: util.PtrString("NodePool"),
-		Name: "idempotent-test-np",
+		Name: "idem-test-np",
 		Spec: map[string]interface{}{"test": "spec"},
 	}
 	npResp, err := client.CreateNodePoolWithResponse(
@@ -1001,30 +990,30 @@ func TestClusterDelete_Idempotent(t *testing.T) {
 	resp1, err := client.DeleteClusterByIdWithResponse(ctx, cluster.ID, test.WithAuthToken(ctx))
 	Expect(err).NotTo(HaveOccurred())
 	Expect(resp1.StatusCode()).To(Equal(http.StatusAccepted))
-	firstDeletedAt := resp1.JSON202.DeletedAt
-	Expect(firstDeletedAt).NotTo(BeNil())
+	firstDeletedTime := resp1.JSON202.DeletedTime
+	Expect(firstDeletedTime).NotTo(BeNil())
 
 	// Capture the nodepool state after the first (real) delete.
 	dbSession := h.DBFactory.New(ctx)
 	var npAfterFirst api.NodePool
 	Expect(dbSession.Unscoped().First(&npAfterFirst, "id = ?", nodePoolID).Error).NotTo(HaveOccurred())
-	Expect(npAfterFirst.DeletedAt).NotTo(BeNil(), "nodepool should be soft-deleted after first delete")
+	Expect(npAfterFirst.DeletedTime).NotTo(BeNil(), "nodepool should be soft-deleted after first delete")
 	npGenerationAfterFirst := npAfterFirst.Generation
 
 	// Second delete — must be idempotent: no state changes on the cluster or its children.
 	resp2, err := client.DeleteClusterByIdWithResponse(ctx, cluster.ID, test.WithAuthToken(ctx))
 	Expect(err).NotTo(HaveOccurred())
 	Expect(resp2.StatusCode()).To(Equal(http.StatusAccepted))
-	Expect(resp2.JSON202.DeletedAt).NotTo(BeNil())
-	Expect(resp2.JSON202.DeletedAt.Equal(*firstDeletedAt)).To(BeTrue(),
-		"cluster deleted_at should not change on repeated delete")
+	Expect(resp2.JSON202.DeletedTime).NotTo(BeNil())
+	Expect(resp2.JSON202.DeletedTime.Equal(*firstDeletedTime)).To(BeTrue(),
+		"cluster deleted_time should not change on repeated delete")
 
-	// Verify the nodepool's deleted_at and generation are unchanged after the second delete.
+	// Verify the nodepool's deleted_time and generation are unchanged after the second delete.
 	var npAfterSecond api.NodePool
 	Expect(dbSession.Unscoped().First(&npAfterSecond, "id = ?", nodePoolID).Error).NotTo(HaveOccurred())
-	Expect(npAfterSecond.DeletedAt).NotTo(BeNil())
-	Expect(npAfterSecond.DeletedAt.Equal(*npAfterFirst.DeletedAt)).To(BeTrue(),
-		"nodepool deleted_at should not change on repeated delete")
+	Expect(npAfterSecond.DeletedTime).NotTo(BeNil())
+	Expect(npAfterSecond.DeletedTime.Equal(*npAfterFirst.DeletedTime)).To(BeTrue(),
+		"nodepool deleted_time should not change on repeated delete")
 	Expect(npAfterSecond.Generation).To(Equal(npGenerationAfterFirst),
 		"nodepool generation should not be incremented on repeated delete")
 }

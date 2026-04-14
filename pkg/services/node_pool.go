@@ -100,20 +100,11 @@ func (s *sqlNodePoolService) Replace(
 }
 
 func (s *sqlNodePoolService) RequestDeletion(ctx context.Context, id string) (*api.NodePool, *errors.ServiceError) {
-	nodePool, err := s.nodePoolDao.RequestDeletion(ctx, id)
+	actor := actorFromContext(ctx)
+
+	nodePool, err := s.nodePoolDao.RequestDeletion(ctx, id, actor)
 	if err != nil {
 		return nil, handleRequestDeletionError("NodePool", err)
-	}
-
-	if nodePool.DeletedAt == nil {
-		return nodePool, nil
-	}
-	t := *nodePool.DeletedAt
-
-	if err := s.adapterStatusDao.RequestDeletionByResource(ctx, "NodePool", id, t); err != nil {
-		return nil, errors.GeneralError(
-			"Unable to cascade deletion to adapter statuses for nodepool %s: %s", id, err,
-		)
 	}
 
 	return nodePool, nil

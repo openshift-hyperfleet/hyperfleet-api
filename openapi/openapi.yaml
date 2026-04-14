@@ -1,7 +1,7 @@
 openapi: 3.0.0
 info:
   title: HyperFleet API
-  version: 1.0.5
+  version: 1.0.6
   contact:
     name: HyperFleet Team
   license:
@@ -106,10 +106,10 @@ paths:
     delete:
       operationId: deleteClusterById
       summary: Request cluster deletion
-      description: >-
-        Marks the cluster for deletion by setting deleted_at to the current
-        time. The cluster remains in the database until adapters confirm
-        cleanup. Returns the updated cluster with deleted_at set.
+      description: |-
+        Marks the cluster for deletion by setting deleted_time to the current time, cascades to its nodepools.
+        The cluster remains in the database until adapters confirm cleanup.
+        Returns the updated cluster with deleted_time set.
       parameters:
         - name: cluster_id
           in: path
@@ -118,13 +118,15 @@ paths:
             type: string
       responses:
         '202':
-          description: Deletion accepted; cluster marked for deletion.
+          description: The request has been accepted for processing, but processing has not yet completed.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Cluster'
+        '400':
+          description: The server could not understand the request due to invalid syntax.
         '404':
-          description: The specified resource was not found.
+          description: The server cannot find the requested resource.
         default:
           description: An unexpected error response.
           content:
@@ -228,6 +230,45 @@ paths:
                 $ref: '#/components/schemas/NodePool'
         '400':
           description: The server could not understand the request due to invalid syntax.
+        default:
+          description: An unexpected error response.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+        - BearerAuth: []
+    delete:
+      operationId: deleteNodePoolById
+      summary: Request nodepool deletion
+      description: |-
+        Marks the nodepool for deletion by setting deleted_time to the current time
+        and cascades to its adapter_statuses. Does not affect the parent cluster.
+        Returns the updated nodepool with deleted_time set.
+      parameters:
+        - name: cluster_id
+          in: path
+          required: true
+          description: Cluster ID
+          schema:
+            type: string
+        - name: nodepool_id
+          in: path
+          required: true
+          description: NodePool ID
+          schema:
+            type: string
+      responses:
+        '202':
+          description: The request has been accepted for processing, but processing has not yet completed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodePool'
+        '400':
+          description: The server could not understand the request due to invalid syntax.
+        '404':
+          description: The server cannot find the requested resource.
         default:
           description: An unexpected error response.
           content:
@@ -547,11 +588,6 @@ components:
             When this adapter last reported its status (API-managed)
             Updated every time the adapter POSTs, even if conditions haven't changed
             Used by Sentinel to detect adapter liveness
-        deleted_at:
-          type: string
-          format: date-time
-          nullable: true
-          description: Timestamp when deletion was requested; null if not deleted
       description: |-
         AdapterStatus represents the complete status report from an adapter
         Contains multiple conditions, job metadata, and adapter-specific data
@@ -774,11 +810,6 @@ components:
         updated_time:
           type: string
           format: date-time
-        deleted_at:
-          type: string
-          format: date-time
-          nullable: true
-          description: Timestamp when deletion was requested; null if not marked for deletion
         created_by:
           type: string
           format: email
@@ -790,6 +821,14 @@ components:
           format: int32
           minimum: 1
           description: Generation field is updated on customer updates, reflecting the version of the "intent" of the customer
+        deleted_time:
+          type: string
+          format: date-time
+          description: Timestamp when deletion was requested; null if not marked for deletion
+        deleted_by:
+          type: string
+          format: email
+          description: Identity that requested deletion
         status:
           $ref: '#/components/schemas/ClusterStatus'
       example:
@@ -801,8 +840,6 @@ components:
           environment: production
           team: platform
         spec: {}
-        created_time: '2021-01-01T00:00:00Z'
-        updated_time: '2021-01-01T00:00:00Z'
         generation: 1
         status:
           conditions:
@@ -838,8 +875,12 @@ components:
               created_time: '2021-01-01T10:01:00Z'
               last_updated_time: '2021-01-01T10:01:00Z'
               last_transition_time: '2021-01-01T10:01:00Z'
+        created_time: '2021-01-01T00:00:00Z'
+        updated_time: '2021-01-01T10:02:00Z'
+        deleted_time: '2021-01-01T10:05:00Z'
         created_by: user-123@example.com
         updated_by: user-123@example.com
+        deleted_by: user-123@example.com
     ClusterCreateRequest:
       type: object
       required:
@@ -1036,11 +1077,6 @@ components:
         updated_time:
           type: string
           format: date-time
-        deleted_at:
-          type: string
-          format: date-time
-          nullable: true
-          description: Timestamp when deletion was requested; null if not marked for deletion
         created_by:
           type: string
           format: email
@@ -1052,6 +1088,13 @@ components:
           format: int32
           minimum: 1
           description: Generation field is updated on customer updates, reflecting the version of the "intent" of the customer
+        deleted_time:
+          type: string
+          format: date-time
+          description: Timestamp when deletion was requested; null if not marked for deletion
+        deleted_by:
+          type: string
+          format: email
         owner_references:
           $ref: '#/components/schemas/ObjectReference'
         status:
@@ -1066,10 +1109,6 @@ components:
           pooltype: worker
         spec: {}
         generation: 1
-        created_time: '2021-01-01T00:00:00Z'
-        updated_time: '2021-01-01T00:00:00Z'
-        created_by: user-123@example.com
-        updated_by: user-123@example.com
         owner_references:
           id: 019466a0-8f8e-7abc-9def-0123456789ab
           kind: Cluster
@@ -1108,6 +1147,12 @@ components:
               created_time: '2021-01-01T10:01:00Z'
               last_updated_time: '2021-01-01T10:01:00Z'
               last_transition_time: '2021-01-01T10:01:00Z'
+        created_time: '2021-01-01T00:00:00Z'
+        updated_time: '2021-01-01T10:02:00Z'
+        deleted_time: '2021-01-01T10:05:00Z'
+        created_by: user-123@example.com
+        updated_by: user-123@example.com
+        deleted_by: user-123@example.com
     NodePoolCreateRequest:
       type: object
       required:
@@ -1194,6 +1239,13 @@ components:
           format: int32
           minimum: 1
           description: Generation field is updated on customer updates, reflecting the version of the "intent" of the customer
+        deleted_time:
+          type: string
+          format: date-time
+          description: Timestamp when deletion was requested; null if not marked for deletion
+        deleted_by:
+          type: string
+          format: email
         owner_references:
           $ref: '#/components/schemas/ObjectReference'
         status:

@@ -76,6 +76,7 @@ func init() {
 		clustersRouter.HandleFunc("/{id}/nodepools", clusterNodePoolsHandler.List).Methods(http.MethodGet)
 		clustersRouter.HandleFunc("/{id}/nodepools", clusterNodePoolsHandler.Create).Methods(http.MethodPost)
 		clustersRouter.HandleFunc("/{id}/nodepools/{nodepool_id}", clusterNodePoolsHandler.Get).Methods(http.MethodGet)
+		clustersRouter.HandleFunc("/{id}/nodepools/{nodepool_id}", clusterNodePoolsHandler.Delete).Methods(http.MethodDelete)
 
 		// Nested resource: nodepool statuses
 		nodepoolStatusHandler := handlers.NewNodePoolStatusHandler(adapterStatus.Service(envServices), nodePools.Service(envServices))

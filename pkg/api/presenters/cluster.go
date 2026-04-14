@@ -50,6 +50,15 @@ func toEmail(s string) openapi_types.Email {
 	return openapi_types.Email(s)
 }
 
+// Helper to convert *string to *openapi_types.Email (for optional email fields)
+func toEmailPtr(s *string) *openapi_types.Email {
+	if s == nil {
+		return nil
+	}
+	e := openapi_types.Email(*s)
+	return &e
+}
+
 // PresentCluster converts api.Cluster (GORM model) to openapi.Cluster
 func PresentCluster(cluster *api.Cluster) (openapi.Cluster, error) {
 	// Unmarshal Spec
@@ -100,7 +109,8 @@ func PresentCluster(cluster *api.Cluster) (openapi.Cluster, error) {
 	result := openapi.Cluster{
 		CreatedBy:   toEmail(cluster.CreatedBy),
 		CreatedTime: cluster.CreatedTime,
-		DeletedAt:   cluster.DeletedAt,
+		DeletedBy:   toEmailPtr(cluster.DeletedBy),
+		DeletedTime: cluster.DeletedTime,
 		Generation:  cluster.Generation,
 		Href:        &href,
 		Id:          &cluster.ID,

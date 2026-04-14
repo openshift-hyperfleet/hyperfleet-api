@@ -36,7 +36,6 @@ type Meta struct {
 	ID          string
 	CreatedTime time.Time
 	UpdatedTime time.Time
-	DeletedAt   *time.Time `gorm:"index"`
 }
 
 // PagingMeta List Paging metadata

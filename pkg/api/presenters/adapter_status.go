@@ -143,7 +143,6 @@ func PresentAdapterStatus(adapterStatus *api.AdapterStatus) (openapi.AdapterStat
 		Conditions:         openapiConditions,
 		CreatedTime:        adapterStatus.CreatedTime,
 		Data:               &data,
-		DeletedAt:          adapterStatus.DeletedAt,
 		LastReportTime:     adapterStatus.LastReportTime,
 		Metadata:           openapiMetadata,
 		ObservedGeneration: adapterStatus.ObservedGeneration,

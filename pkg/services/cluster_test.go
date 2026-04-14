@@ -66,16 +66,17 @@ func (d *mockClusterDao) Replace(ctx context.Context, cluster *api.Cluster) (*ap
 	return cluster, nil
 }
 
-func (d *mockClusterDao) RequestDeletion(ctx context.Context, id string) (*api.Cluster, bool, error) {
+func (d *mockClusterDao) RequestDeletion(ctx context.Context, id string, actor string) (*api.Cluster, bool, error) {
 	c, ok := d.clusters[id]
 	if !ok {
 		return nil, false, gorm.ErrRecordNotFound
 	}
-	if c.DeletedAt != nil {
+	if c.DeletedTime != nil {
 		return c, false, nil
 	}
 	t := time.Now()
-	c.DeletedAt = &t
+	c.DeletedTime = &t
+	c.DeletedBy = &actor
 	c.Generation++
 	d.clusters[id] = c
 	return c, true, nil
@@ -200,18 +201,6 @@ func (d *mockAdapterStatusDao) All(ctx context.Context) (api.AdapterStatusList, 
 		result = append(result, s)
 	}
 	return result, nil
-}
-
-func (d *mockAdapterStatusDao) RequestDeletionByResource(
-	ctx context.Context, resourceType, resourceID string, t time.Time,
-) error {
-	for key, s := range d.statuses {
-		if s.ResourceType == resourceType && s.ResourceID == resourceID && s.DeletedAt == nil {
-			s.DeletedAt = &t
-			d.statuses[key] = s
-		}
-	}
-	return nil
 }
 
 var _ dao.AdapterStatusDao = &mockAdapterStatusDao{}
@@ -1223,7 +1212,7 @@ func TestProcessAdapterStatus_CustomConditionRemoval(t *testing.T) {
 	g.Expect(conditionTypes["CustomCondition"]).To(BeFalse(), "CustomCondition should not be present")
 }
 
-func TestRequestDeletion_CascadesToNodePoolsAndAdapterStatuses(t *testing.T) {
+func TestRequestDeletion_CascadesToNodePools(t *testing.T) {
 	t.Parallel()
 	g := NewWithT(t)
 
@@ -1236,13 +1225,11 @@ func TestRequestDeletion_CascadesToNodePoolsAndAdapterStatuses(t *testing.T) {
 	ctx := context.Background()
 	clusterID := "cascade-cluster"
 
-	// Create cluster
 	clusterDao.clusters[clusterID] = &api.Cluster{
 		Meta:       api.Meta{ID: clusterID},
 		Generation: 1,
 	}
 
-	// Create child nodepools
 	nodePoolDao.nodePools["np-1"] = &api.NodePool{
 		Meta:       api.Meta{ID: "np-1"},
 		OwnerID:    clusterID,
@@ -1254,38 +1241,12 @@ func TestRequestDeletion_CascadesToNodePoolsAndAdapterStatuses(t *testing.T) {
 		Generation: 1,
 	}
 
-	// Create adapter statuses for cluster and nodepools
-	adapterStatusDao.statuses["as-cluster"] = &api.AdapterStatus{
-		Meta:         api.Meta{ID: "as-cluster"},
-		ResourceType: "Cluster",
-		ResourceID:   clusterID,
-		Adapter:      "validation",
-	}
-	adapterStatusDao.statuses["as-np1"] = &api.AdapterStatus{
-		Meta:         api.Meta{ID: "as-np1"},
-		ResourceType: "NodePool",
-		ResourceID:   "np-1",
-		Adapter:      "validation",
-	}
-	adapterStatusDao.statuses["as-np2"] = &api.AdapterStatus{
-		Meta:         api.Meta{ID: "as-np2"},
-		ResourceType: "NodePool",
-		ResourceID:   "np-2",
-		Adapter:      "hypershift",
-	}
-
 	cluster, svcErr := service.RequestDeletion(ctx, clusterID)
 	g.Expect(svcErr).To(BeNil())
-	g.Expect(cluster.DeletedAt).ToNot(BeNil())
+	g.Expect(cluster.DeletedTime).ToNot(BeNil())
 
-	// Verify nodepools were soft-deleted
-	g.Expect(nodePoolDao.nodePools["np-1"].DeletedAt).ToNot(BeNil())
-	g.Expect(nodePoolDao.nodePools["np-2"].DeletedAt).ToNot(BeNil())
-
-	// Verify adapter statuses were soft-deleted
-	g.Expect(adapterStatusDao.statuses["as-cluster"].DeletedAt).ToNot(BeNil())
-	g.Expect(adapterStatusDao.statuses["as-np1"].DeletedAt).ToNot(BeNil())
-	g.Expect(adapterStatusDao.statuses["as-np2"].DeletedAt).ToNot(BeNil())
+	g.Expect(nodePoolDao.nodePools["np-1"].DeletedTime).ToNot(BeNil())
+	g.Expect(nodePoolDao.nodePools["np-2"].DeletedTime).ToNot(BeNil())
 }
 
 func TestRequestDeletion_AlreadyDeleted_IdempotentCascade(t *testing.T) {
@@ -1301,34 +1262,29 @@ func TestRequestDeletion_AlreadyDeleted_IdempotentCascade(t *testing.T) {
 	ctx := context.Background()
 	clusterID := "already-deleted"
 
-	deletedAt := time.Now().Add(-time.Hour)
+	DeletedTime := time.Now().Add(-time.Hour)
 	clusterDao.clusters[clusterID] = &api.Cluster{
-		Meta:       api.Meta{ID: clusterID, DeletedAt: &deletedAt},
-		Generation: 2,
+		Meta:        api.Meta{ID: clusterID},
+		DeletedTime: &DeletedTime,
+		Generation:  2,
 	}
 
-	// Nodepool and adapter status already soft-deleted from the previous cascade
+	// Nodepool already soft-deleted from the previous cascade
 	nodePoolDao.nodePools["np-1"] = &api.NodePool{
-		Meta:       api.Meta{ID: "np-1", DeletedAt: &deletedAt},
-		OwnerID:    clusterID,
-		Generation: 2,
-	}
-	adapterStatusDao.statuses["as-1"] = &api.AdapterStatus{
-		Meta:         api.Meta{ID: "as-1", DeletedAt: &deletedAt},
-		ResourceType: "Cluster",
-		ResourceID:   clusterID,
-		Adapter:      "validation",
+		Meta:        api.Meta{ID: "np-1"},
+		DeletedTime: &DeletedTime,
+		OwnerID:     clusterID,
+		Generation:  2,
 	}
 
 	cluster, svcErr := service.RequestDeletion(ctx, clusterID)
 	g.Expect(svcErr).To(BeNil())
-	g.Expect(cluster.DeletedAt).ToNot(BeNil())
-	// Cluster's DeletedAt should be unchanged (same value as before)
-	g.Expect(cluster.DeletedAt.Equal(deletedAt)).To(BeTrue())
+	g.Expect(cluster.DeletedTime).ToNot(BeNil())
+	// Cluster's DeletedTime should be unchanged (same value as before)
+	g.Expect(cluster.DeletedTime.Equal(DeletedTime)).To(BeTrue())
 
-	// Already-deleted resources retain their original DeletedAt
-	g.Expect(nodePoolDao.nodePools["np-1"].DeletedAt.Equal(deletedAt)).To(BeTrue())
-	g.Expect(adapterStatusDao.statuses["as-1"].DeletedAt.Equal(deletedAt)).To(BeTrue())
+	// Already-deleted nodepool retains its original DeletedTime
+	g.Expect(nodePoolDao.nodePools["np-1"].DeletedTime.Equal(DeletedTime)).To(BeTrue())
 }
 
 func TestRequestDeletion_ClusterNotFound(t *testing.T) {

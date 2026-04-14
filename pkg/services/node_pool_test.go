@@ -66,16 +66,17 @@ func (d *mockNodePoolDao) Replace(ctx context.Context, nodePool *api.NodePool) (
 	return nodePool, nil
 }
 
-func (d *mockNodePoolDao) RequestDeletion(ctx context.Context, id string) (*api.NodePool, error) {
+func (d *mockNodePoolDao) RequestDeletion(ctx context.Context, id string, actor string) (*api.NodePool, error) {
 	np, ok := d.nodePools[id]
 	if !ok {
 		return nil, gorm.ErrRecordNotFound
 	}
-	if np.DeletedAt != nil {
+	if np.DeletedTime != nil {
 		return np, nil
 	}
 	t := time.Now()
-	np.DeletedAt = &t
+	np.DeletedTime = &t
+	np.DeletedBy = &actor
 	np.Generation++
 	d.nodePools[id] = np
 	return np, nil
@@ -97,10 +98,11 @@ func (d *mockNodePoolDao) FindByOwnerID(ctx context.Context, ownerID string) (ap
 	return result, nil
 }
 
-func (d *mockNodePoolDao) RequestDeletionByOwner(ctx context.Context, ownerID string, t time.Time) error {
+func (d *mockNodePoolDao) RequestDeletionByOwner(ctx context.Context, ownerID string, t time.Time, actor string) error {
 	for id, np := range d.nodePools {
-		if np.OwnerID == ownerID && np.DeletedAt == nil {
-			np.DeletedAt = &t
+		if np.OwnerID == ownerID && np.DeletedTime == nil {
+			np.DeletedTime = &t
+			np.DeletedBy = &actor
 			np.Generation++
 			d.nodePools[id] = np
 		}
@@ -863,81 +865,6 @@ func TestNodePoolSyntheticTimestampsStableWithoutAdapterStatus(t *testing.T) {
 	g.Expect(updatedReady.CreatedTime).To(Equal(fixedNow))
 	g.Expect(updatedReady.LastTransitionTime).To(Equal(fixedNow))
 	g.Expect(updatedReady.LastUpdatedTime).To(Equal(fixedNow))
-}
-
-func TestNodePool_RequestDeletion_CascadesToAdapterStatuses(t *testing.T) {
-	t.Parallel()
-	g := NewWithT(t)
-
-	nodePoolDao := newMockNodePoolDao()
-	adapterStatusDao := newMockAdapterStatusDao()
-	cfg := testNodePoolAdapterConfig()
-	service := NewNodePoolService(nodePoolDao, adapterStatusDao, cfg)
-
-	ctx := context.Background()
-	nodePoolID := "np-cascade"
-
-	nodePoolDao.nodePools[nodePoolID] = &api.NodePool{
-		Meta:       api.Meta{ID: nodePoolID},
-		Generation: 1,
-	}
-
-	adapterStatusDao.statuses["as-1"] = &api.AdapterStatus{
-		Meta:         api.Meta{ID: "as-1"},
-		ResourceType: "NodePool",
-		ResourceID:   nodePoolID,
-		Adapter:      "validation",
-	}
-	adapterStatusDao.statuses["as-2"] = &api.AdapterStatus{
-		Meta:         api.Meta{ID: "as-2"},
-		ResourceType: "NodePool",
-		ResourceID:   nodePoolID,
-		Adapter:      "hypershift",
-	}
-
-	np, svcErr := service.RequestDeletion(ctx, nodePoolID)
-	g.Expect(svcErr).To(BeNil())
-	g.Expect(np.DeletedAt).ToNot(BeNil())
-	g.Expect(np.Generation).To(Equal(int32(2)))
-
-	// Verify adapter statuses were soft-deleted
-	g.Expect(adapterStatusDao.statuses["as-1"].DeletedAt).ToNot(BeNil())
-	g.Expect(adapterStatusDao.statuses["as-2"].DeletedAt).ToNot(BeNil())
-}
-
-func TestNodePool_RequestDeletion_AlreadyDeleted_IdempotentCascade(t *testing.T) {
-	t.Parallel()
-	g := NewWithT(t)
-
-	nodePoolDao := newMockNodePoolDao()
-	adapterStatusDao := newMockAdapterStatusDao()
-	cfg := testNodePoolAdapterConfig()
-	service := NewNodePoolService(nodePoolDao, adapterStatusDao, cfg)
-
-	ctx := context.Background()
-	nodePoolID := "np-already-deleted"
-
-	deletedAt := time.Now().Add(-time.Hour)
-	nodePoolDao.nodePools[nodePoolID] = &api.NodePool{
-		Meta:       api.Meta{ID: nodePoolID, DeletedAt: &deletedAt},
-		Generation: 2,
-	}
-
-	// Adapter status already soft-deleted from the previous cascade
-	adapterStatusDao.statuses["as-1"] = &api.AdapterStatus{
-		Meta:         api.Meta{ID: "as-1", DeletedAt: &deletedAt},
-		ResourceType: "NodePool",
-		ResourceID:   nodePoolID,
-		Adapter:      "validation",
-	}
-
-	np, svcErr := service.RequestDeletion(ctx, nodePoolID)
-	g.Expect(svcErr).To(BeNil())
-	g.Expect(np.DeletedAt).ToNot(BeNil())
-	g.Expect(np.DeletedAt.Equal(deletedAt)).To(BeTrue())
-
-	// Already-deleted adapter status retains its original DeletedAt
-	g.Expect(adapterStatusDao.statuses["as-1"].DeletedAt.Equal(deletedAt)).To(BeTrue())
 }
 
 func TestNodePool_RequestDeletion_NotFound(t *testing.T) {
