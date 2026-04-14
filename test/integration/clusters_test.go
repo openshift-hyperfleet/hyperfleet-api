@@ -873,7 +873,7 @@ func TestClusterDelete_Success(t *testing.T) {
 	Expect(clusterOutput).NotTo(BeNil())
 	Expect(clusterOutput.DeletedTime).NotTo(BeNil(), "deleted_time should be set")
 	Expect(clusterOutput.DeletedBy).NotTo(BeNil(), "deleted_by should be set")
-	Expect(string(*clusterOutput.DeletedBy)).To(Equal(account.Email()))
+	Expect(string(*clusterOutput.DeletedBy)).To(Equal("system@hyperfleet.local"))
 	Expect(*clusterOutput.Id).To(Equal(cluster.ID))
 }
 
@@ -952,7 +952,7 @@ func TestClusterDelete_CascadesToNodePoolsAndAdapterStatuses(t *testing.T) {
 	Expect(delResp.StatusCode()).To(Equal(http.StatusAccepted))
 	Expect(delResp.JSON202.DeletedTime).NotTo(BeNil())
 	Expect(delResp.JSON202.DeletedBy).NotTo(BeNil(), "deleted_by should be set on cluster")
-	Expect(string(*delResp.JSON202.DeletedBy)).To(Equal(account.Email()))
+	Expect(string(*delResp.JSON202.DeletedBy)).To(Equal("system@hyperfleet.local"))
 
 	// Verify cascade: query DB directly for nodepool
 	dbSession := h.DBFactory.New(ctx)
