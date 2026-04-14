@@ -123,6 +123,56 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Cluster'
+              example:
+                kind: Cluster
+                id: 019466a0-8f8e-7abc-9def-0123456789ab
+                href: https://api.hyperfleet.com/v1/clusters/019466a0-8f8e-7abc-9def-0123456789ab
+                name: cluster-123
+                labels:
+                  environment: production
+                  team: platform
+                spec: {}
+                generation: 2
+                status:
+                  conditions:
+                    - type: Ready
+                      status: 'True'
+                      reason: All adapters reported Ready True for the current generation
+                      message: All adapters reported Ready True for the current generation
+                      observed_generation: 1
+                      created_time: '2021-01-01T10:00:00Z'
+                      last_updated_time: '2021-01-01T10:00:00Z'
+                      last_transition_time: '2021-01-01T10:00:00Z'
+                    - type: Available
+                      status: 'True'
+                      reason: All adapters reported Available True for the same generation
+                      message: All adapters reported Available True for the same generation
+                      observed_generation: 1
+                      created_time: '2021-01-01T10:00:00Z'
+                      last_updated_time: '2021-01-01T10:00:00Z'
+                      last_transition_time: '2021-01-01T10:00:00Z'
+                    - type: Adapter1Successful
+                      status: 'True'
+                      reason: This adapter1 is available
+                      message: This adapter1 is available
+                      observed_generation: 1
+                      created_time: '2021-01-01T10:00:00Z'
+                      last_updated_time: '2021-01-01T10:00:00Z'
+                      last_transition_time: '2021-01-01T10:00:00Z'
+                    - type: Adapter2Successful
+                      status: 'True'
+                      reason: This adapter2 is available
+                      message: This adapter2 is available
+                      observed_generation: 1
+                      created_time: '2021-01-01T10:01:00Z'
+                      last_updated_time: '2021-01-01T10:01:00Z'
+                      last_transition_time: '2021-01-01T10:01:00Z'
+                created_time: '2021-01-01T00:00:00Z'
+                updated_time: '2021-01-01T10:02:00Z'
+                deleted_time: '2021-01-01T10:05:00Z'
+                created_by: user-123@example.com
+                updated_by: user-123@example.com
+                deleted_by: user-123@example.com
         '400':
           description: The server could not understand the request due to invalid syntax.
         '404':
@@ -265,6 +315,60 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/NodePool'
+              example:
+                kind: NodePool
+                id: 019466a1-2b3c-7def-8abc-456789abcdef
+                href: https://api.hyperfleet.com/v1/nodepools/019466a1-2b3c-7def-8abc-456789abcdef
+                name: worker-pool-1
+                labels:
+                  environment: production
+                  pooltype: worker
+                spec: {}
+                generation: 2
+                owner_references:
+                  id: 019466a0-8f8e-7abc-9def-0123456789ab
+                  kind: Cluster
+                  href: https://api.hyperfleet.com/v1/clusters/019466a0-8f8e-7abc-9def-0123456789ab
+                status:
+                  conditions:
+                    - type: Ready
+                      status: 'True'
+                      reason: All adapters reported Ready True for the current generation
+                      message: All adapters reported Ready True for the current generation
+                      observed_generation: 1
+                      created_time: '2021-01-01T10:00:00Z'
+                      last_updated_time: '2021-01-01T10:00:00Z'
+                      last_transition_time: '2021-01-01T10:00:00Z'
+                    - type: Available
+                      status: 'True'
+                      reason: All adapters reported Available True for the same generation
+                      message: All adapters reported Available True for the same generation
+                      observed_generation: 1
+                      created_time: '2021-01-01T10:00:00Z'
+                      last_updated_time: '2021-01-01T10:00:00Z'
+                      last_transition_time: '2021-01-01T10:00:00Z'
+                    - type: Adapter1Successful
+                      status: 'True'
+                      reason: This adapter1 is available
+                      message: This adapter1 is available
+                      observed_generation: 1
+                      created_time: '2021-01-01T10:00:00Z'
+                      last_updated_time: '2021-01-01T10:00:00Z'
+                      last_transition_time: '2021-01-01T10:00:00Z'
+                    - type: Adapter2Successful
+                      status: 'True'
+                      reason: This adapter2 is available
+                      message: This adapter2 is available
+                      observed_generation: 1
+                      created_time: '2021-01-01T10:01:00Z'
+                      last_updated_time: '2021-01-01T10:01:00Z'
+                      last_transition_time: '2021-01-01T10:01:00Z'
+                created_time: '2021-01-01T00:00:00Z'
+                updated_time: '2021-01-01T10:02:00Z'
+                deleted_time: '2021-01-01T10:05:00Z'
+                created_by: user-123@example.com
+                updated_by: user-123@example.com
+                deleted_by: user-123@example.com
         '400':
           description: The server could not understand the request due to invalid syntax.
         '404':
@@ -828,7 +932,6 @@ components:
         deleted_by:
           type: string
           format: email
-          description: Identity that requested deletion
         status:
           $ref: '#/components/schemas/ClusterStatus'
       example:
@@ -877,10 +980,8 @@ components:
               last_transition_time: '2021-01-01T10:01:00Z'
         created_time: '2021-01-01T00:00:00Z'
         updated_time: '2021-01-01T10:02:00Z'
-        deleted_time: '2021-01-01T10:05:00Z'
         created_by: user-123@example.com
         updated_by: user-123@example.com
-        deleted_by: user-123@example.com
     ClusterCreateRequest:
       type: object
       required:
@@ -1149,10 +1250,8 @@ components:
               last_transition_time: '2021-01-01T10:01:00Z'
         created_time: '2021-01-01T00:00:00Z'
         updated_time: '2021-01-01T10:02:00Z'
-        deleted_time: '2021-01-01T10:05:00Z'
         created_by: user-123@example.com
         updated_by: user-123@example.com
-        deleted_by: user-123@example.com
     NodePoolCreateRequest:
       type: object
       required:

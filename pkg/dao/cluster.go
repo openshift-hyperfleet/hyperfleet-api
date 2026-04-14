@@ -15,7 +15,7 @@ type ClusterDao interface {
 	Get(ctx context.Context, id string) (*api.Cluster, error)
 	Create(ctx context.Context, cluster *api.Cluster) (*api.Cluster, error)
 	Replace(ctx context.Context, cluster *api.Cluster) (*api.Cluster, error)
-	RequestDeletion(ctx context.Context, id string, actor string) (*api.Cluster, bool, error)
+	RequestDeletion(ctx context.Context, id string) (*api.Cluster, bool, error)
 	Delete(ctx context.Context, id string) error
 	FindByIDs(ctx context.Context, ids []string) (api.ClusterList, error)
 	All(ctx context.Context) (api.ClusterList, error)
@@ -75,7 +75,7 @@ func (d *sqlClusterDao) Replace(ctx context.Context, cluster *api.Cluster) (*api
 	return cluster, nil
 }
 
-func (d *sqlClusterDao) RequestDeletion(ctx context.Context, id string, actor string) (*api.Cluster, bool, error) {
+func (d *sqlClusterDao) RequestDeletion(ctx context.Context, id string) (*api.Cluster, bool, error) {
 	g2 := (*d.sessionFactory).New(ctx)
 
 	cluster, err := d.Get(ctx, id)
@@ -91,8 +91,9 @@ func (d *sqlClusterDao) RequestDeletion(ctx context.Context, id string, actor st
 
 	// Set deleted_time, deleted_by, and increment generation to trigger Sentinel reconciliation.
 	t := time.Now()
+	deletedBy := "system@hyperfleet.local"
 	cluster.DeletedTime = &t
-	cluster.DeletedBy = &actor
+	cluster.DeletedBy = &deletedBy
 	cluster.Generation++
 	if err := g2.Omit(clause.Associations).Save(cluster).Error; err != nil {
 		db.MarkForRollback(ctx, err)

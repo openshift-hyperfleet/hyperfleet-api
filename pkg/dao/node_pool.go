@@ -16,11 +16,11 @@ type NodePoolDao interface {
 	Get(ctx context.Context, id string) (*api.NodePool, error)
 	Create(ctx context.Context, nodePool *api.NodePool) (*api.NodePool, error)
 	Replace(ctx context.Context, nodePool *api.NodePool) (*api.NodePool, error)
-	RequestDeletion(ctx context.Context, id string, actor string) (*api.NodePool, error)
+	RequestDeletion(ctx context.Context, id string) (*api.NodePool, error)
 	Delete(ctx context.Context, id string) error
 	FindByIDs(ctx context.Context, ids []string) (api.NodePoolList, error)
 	FindByOwnerID(ctx context.Context, ownerID string) (api.NodePoolList, error)
-	RequestDeletionByOwner(ctx context.Context, ownerID string, t time.Time, actor string) error
+	RequestDeletionByOwner(ctx context.Context, ownerID string, t time.Time) error
 	All(ctx context.Context) (api.NodePoolList, error)
 }
 
@@ -78,7 +78,7 @@ func (d *sqlNodePoolDao) Replace(ctx context.Context, nodePool *api.NodePool) (*
 	return nodePool, nil
 }
 
-func (d *sqlNodePoolDao) RequestDeletion(ctx context.Context, id string, actor string) (*api.NodePool, error) {
+func (d *sqlNodePoolDao) RequestDeletion(ctx context.Context, id string) (*api.NodePool, error) {
 	g2 := (*d.sessionFactory).New(ctx)
 
 	nodePool, err := d.Get(ctx, id)
@@ -92,8 +92,9 @@ func (d *sqlNodePoolDao) RequestDeletion(ctx context.Context, id string, actor s
 	}
 
 	t := time.Now()
+	deletedBy := "system@hyperfleet.local"
 	nodePool.DeletedTime = &t
-	nodePool.DeletedBy = &actor
+	nodePool.DeletedBy = &deletedBy
 	nodePool.Generation++
 	if err := g2.Omit(clause.Associations).Save(nodePool).Error; err != nil {
 		db.MarkForRollback(ctx, err)
@@ -128,13 +129,13 @@ func (d *sqlNodePoolDao) FindByOwnerID(ctx context.Context, ownerID string) (api
 	return nodePools, nil
 }
 
-func (d *sqlNodePoolDao) RequestDeletionByOwner(ctx context.Context, ownerID string, t time.Time, actor string) error {
+func (d *sqlNodePoolDao) RequestDeletionByOwner(ctx context.Context, ownerID string, t time.Time) error {
 	g2 := (*d.sessionFactory).New(ctx)
 	result := g2.Model(&api.NodePool{}).
 		Where("owner_id = ? AND deleted_time IS NULL", ownerID).
 		Updates(map[string]interface{}{
 			"deleted_time": t,
-			"deleted_by":   actor,
+			"deleted_by":   "system@hyperfleet.local",
 			"generation":   gorm.Expr("generation + 1"),
 		})
 	if result.Error != nil {

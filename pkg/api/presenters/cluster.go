@@ -52,7 +52,7 @@ func toEmail(s string) openapi_types.Email {
 
 // Helper to convert *string to *openapi_types.Email (for optional email fields)
 func toEmailPtr(s *string) *openapi_types.Email {
-	if s == nil {
+	if s == nil || *s == "" {
 		return nil
 	}
 	e := openapi_types.Email(*s)

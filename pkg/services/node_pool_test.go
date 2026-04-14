@@ -66,7 +66,7 @@ func (d *mockNodePoolDao) Replace(ctx context.Context, nodePool *api.NodePool) (
 	return nodePool, nil
 }
 
-func (d *mockNodePoolDao) RequestDeletion(ctx context.Context, id string, actor string) (*api.NodePool, error) {
+func (d *mockNodePoolDao) RequestDeletion(ctx context.Context, id string) (*api.NodePool, error) {
 	np, ok := d.nodePools[id]
 	if !ok {
 		return nil, gorm.ErrRecordNotFound
@@ -75,8 +75,9 @@ func (d *mockNodePoolDao) RequestDeletion(ctx context.Context, id string, actor 
 		return np, nil
 	}
 	t := time.Now()
+	deletedBy := "system@hyperfleet.local"
 	np.DeletedTime = &t
-	np.DeletedBy = &actor
+	np.DeletedBy = &deletedBy
 	np.Generation++
 	d.nodePools[id] = np
 	return np, nil
@@ -98,11 +99,12 @@ func (d *mockNodePoolDao) FindByOwnerID(ctx context.Context, ownerID string) (ap
 	return result, nil
 }
 
-func (d *mockNodePoolDao) RequestDeletionByOwner(ctx context.Context, ownerID string, t time.Time, actor string) error {
+func (d *mockNodePoolDao) RequestDeletionByOwner(ctx context.Context, ownerID string, t time.Time) error {
+	deletedBy := "system@hyperfleet.local"
 	for id, np := range d.nodePools {
 		if np.OwnerID == ownerID && np.DeletedTime == nil {
 			np.DeletedTime = &t
-			np.DeletedBy = &actor
+			np.DeletedBy = &deletedBy
 			np.Generation++
 			d.nodePools[id] = np
 		}

@@ -66,7 +66,7 @@ func (d *mockClusterDao) Replace(ctx context.Context, cluster *api.Cluster) (*ap
 	return cluster, nil
 }
 
-func (d *mockClusterDao) RequestDeletion(ctx context.Context, id string, actor string) (*api.Cluster, bool, error) {
+func (d *mockClusterDao) RequestDeletion(ctx context.Context, id string) (*api.Cluster, bool, error) {
 	c, ok := d.clusters[id]
 	if !ok {
 		return nil, false, gorm.ErrRecordNotFound
@@ -75,8 +75,9 @@ func (d *mockClusterDao) RequestDeletion(ctx context.Context, id string, actor s
 		return c, false, nil
 	}
 	t := time.Now()
+	deletedBy := "system@hyperfleet.local"
 	c.DeletedTime = &t
-	c.DeletedBy = &actor
+	c.DeletedBy = &deletedBy
 	c.Generation++
 	d.clusters[id] = c
 	return c, true, nil

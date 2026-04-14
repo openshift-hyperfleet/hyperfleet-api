@@ -100,9 +100,7 @@ func (s *sqlNodePoolService) Replace(
 }
 
 func (s *sqlNodePoolService) RequestDeletion(ctx context.Context, id string) (*api.NodePool, *errors.ServiceError) {
-	actor := actorFromContext(ctx)
-
-	nodePool, err := s.nodePoolDao.RequestDeletion(ctx, id, actor)
+	nodePool, err := s.nodePoolDao.RequestDeletion(ctx, id)
 	if err != nil {
 		return nil, handleRequestDeletionError("NodePool", err)
 	}

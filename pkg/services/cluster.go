@@ -108,9 +108,7 @@ func (s *sqlClusterService) Replace(ctx context.Context, cluster *api.Cluster) (
 // to all child nodepools. Actual removal is handled by adapters detecting the new
 // generation and triggering hard deletion asynchronously.
 func (s *sqlClusterService) RequestDeletion(ctx context.Context, id string) (*api.Cluster, *errors.ServiceError) {
-	actor := actorFromContext(ctx)
-
-	cluster, isNew, err := s.clusterDao.RequestDeletion(ctx, id, actor)
+	cluster, isNew, err := s.clusterDao.RequestDeletion(ctx, id)
 	if err != nil {
 		return nil, handleRequestDeletionError("Cluster", err)
 	}
@@ -123,7 +121,7 @@ func (s *sqlClusterService) RequestDeletion(ctx context.Context, id string) (*ap
 	}
 	t := *cluster.DeletedTime
 
-	if err := s.nodePoolDao.RequestDeletionByOwner(ctx, id, t, actor); err != nil {
+	if err := s.nodePoolDao.RequestDeletionByOwner(ctx, id, t); err != nil {
 		return nil, errors.GeneralError("Unable to cascade deletion to nodepools for cluster %s: %s", id, err)
 	}
 
