@@ -262,7 +262,7 @@ func TestClusterNodePoolsHandler_SoftDelete(t *testing.T) {
 			expectedError:      false,
 		},
 		{
-			name:       "given cluster exists but nodepool belongs to a different cluster, when deleted, then returns 404 (ownership guard)",
+			name:       "given cluster exists but nodepool belongs to a different cluster, when deleted, then returns 404 (ownership guard)", //nolint:lll
 			clusterID:  clusterID,
 			nodePoolID: nodePoolID,
 			setupMocks: func(ctrl *gomock.Controller) (

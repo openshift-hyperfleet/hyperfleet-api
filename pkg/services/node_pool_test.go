@@ -75,17 +75,6 @@ func (d *mockNodePoolDao) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-func (d *mockNodePoolDao) FindByOwnerID(ctx context.Context, ownerID string) (api.NodePoolList, error) {
-	var result api.NodePoolList
-	for _, np := range d.nodePools {
-		if np.OwnerID == ownerID {
-			cp := *np
-			result = append(result, &cp)
-		}
-	}
-	return result, nil
-}
-
 func (d *mockNodePoolDao) SoftDeleteByOwner(ctx context.Context, ownerID string, t time.Time) error {
 	actor := systemActor
 	for id, np := range d.nodePools {
@@ -879,7 +868,7 @@ func TestNodePoolSoftDelete(t *testing.T) {
 		g.Expect(nodePool.Generation).To(Equal(int32(2)))
 	})
 
-	t.Run("given an already-deleted nodepool, when soft-deleted again, then deleted_time and generation are unchanged", func(t *testing.T) {
+	t.Run("given an already-deleted nodepool, when soft-deleted again, then deleted_time and generation are unchanged", func(t *testing.T) { //nolint:lll
 		g := NewWithT(t)
 		// Given:
 		nodePoolDao := newMockNodePoolDao()

@@ -857,7 +857,7 @@ func TestClusterPost_MissingSpec(t *testing.T) {
 }
 
 func TestClusterSoftDelete(t *testing.T) {
-	t.Run("given a valid cluster, when deleted, then returns 202 with deleted_time and deleted_by set", func(t *testing.T) {
+	t.Run("given a valid cluster, when deleted, then returns 202 with deleted_time and deleted_by set", func(t *testing.T) { //nolint:lll
 		RegisterTestingT(t)
 		// Given:
 		h, client := test.RegisterIntegration(t)
@@ -877,7 +877,7 @@ func TestClusterSoftDelete(t *testing.T) {
 		Expect(string(*resp.JSON202.DeletedBy)).To(Equal("system@hyperfleet.local"))
 	})
 
-	t.Run("given a cluster with child nodepools, when deleted, then nodepools are cascade soft-deleted in DB", func(t *testing.T) {
+	t.Run("given a cluster with child nodepools, when deleted, then nodepools are cascade soft-deleted in DB", func(t *testing.T) { //nolint:lll
 		RegisterTestingT(t)
 		// Given:
 		h, client := test.RegisterIntegration(t)
@@ -911,7 +911,7 @@ func TestClusterSoftDelete(t *testing.T) {
 		Expect(nodePool.DeletedBy).NotTo(BeNil(), "nodepool deleted_by should be set after cluster cascade")
 	})
 
-	t.Run("given an already-deleted cluster, when deleted again, then returns 202 with unchanged deleted_time and nodepool state is unchanged", func(t *testing.T) {
+	t.Run("given an already-deleted cluster, when deleted again, then returns 202 with unchanged deleted_time and nodepool state is unchanged", func(t *testing.T) { //nolint:lll
 		RegisterTestingT(t)
 		// Given:
 		h, client := test.RegisterIntegration(t)

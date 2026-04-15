@@ -461,7 +461,7 @@ func newNodePoolInput(name string) openapi.NodePoolCreateRequest {
 }
 
 func TestNodePoolSoftDelete(t *testing.T) {
-	t.Run("given a valid nodepool owned by the cluster, when deleted, then returns 202 with deleted_time and deleted_by set", func(t *testing.T) {
+	t.Run("given a valid nodepool owned by the cluster, when deleted, then returns 202 with deleted_time and deleted_by set", func(t *testing.T) { //nolint:lll
 		RegisterTestingT(t)
 		// Given:
 		h, client := test.RegisterIntegration(t)
@@ -487,7 +487,7 @@ func TestNodePoolSoftDelete(t *testing.T) {
 		Expect(string(*resp.JSON202.DeletedBy)).To(Equal("system@hyperfleet.local"))
 	})
 
-	t.Run("given a nodepool that belongs to a different cluster, when deleted via wrong cluster ID, then returns 404", func(t *testing.T) {
+	t.Run("given a nodepool that belongs to a different cluster, when deleted via wrong cluster ID, then returns 404", func(t *testing.T) { //nolint:lll
 		RegisterTestingT(t)
 		// Given:
 		h, client := test.RegisterIntegration(t)
@@ -510,7 +510,7 @@ func TestNodePoolSoftDelete(t *testing.T) {
 		Expect(resp.StatusCode()).To(Equal(http.StatusNotFound))
 	})
 
-	t.Run("given an already-deleted nodepool, when deleted again, then returns 202 with unchanged deleted_time and generation", func(t *testing.T) {
+	t.Run("given an already-deleted nodepool, when deleted again, then returns 202 with unchanged deleted_time and generation", func(t *testing.T) { //nolint:lll
 		RegisterTestingT(t)
 		// Given:
 		h, client := test.RegisterIntegration(t)

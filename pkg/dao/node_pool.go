@@ -19,7 +19,6 @@ type NodePoolDao interface {
 	Save(ctx context.Context, nodePool *api.NodePool) error
 	Delete(ctx context.Context, id string) error
 	FindByIDs(ctx context.Context, ids []string) (api.NodePoolList, error)
-	FindByOwnerID(ctx context.Context, ownerID string) (api.NodePoolList, error)
 	SoftDeleteByOwner(ctx context.Context, ownerID string, t time.Time) error
 	All(ctx context.Context) (api.NodePoolList, error)
 }
@@ -94,15 +93,6 @@ func (d *sqlNodePoolDao) Delete(ctx context.Context, id string) error {
 		return err
 	}
 	return nil
-}
-
-func (d *sqlNodePoolDao) FindByOwnerID(ctx context.Context, ownerID string) (api.NodePoolList, error) {
-	g2 := (*d.sessionFactory).New(ctx)
-	nodePools := api.NodePoolList{}
-	if err := g2.Where("owner_id = ?", ownerID).Find(&nodePools).Error; err != nil {
-		return nil, err
-	}
-	return nodePools, nil
 }
 
 func (d *sqlNodePoolDao) SoftDeleteByOwner(ctx context.Context, ownerID string, t time.Time) error {

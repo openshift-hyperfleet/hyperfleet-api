@@ -173,4 +173,3 @@ func (h NodePoolHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 	handleGet(w, r, cfg)
 }
-

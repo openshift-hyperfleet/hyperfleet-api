@@ -129,7 +129,7 @@ func (s *sqlClusterService) SoftDelete(ctx context.Context, id string) (*api.Clu
 	}
 
 	if err := s.nodePoolDao.SoftDeleteByOwner(ctx, id, t); err != nil {
-		return nil, errors.GeneralError("Unable to cascade deletion to nodepools for cluster %s: %s", id, err)
+		return nil, handleSoftDeleteError("NodePool", err)
 	}
 
 	return cluster, nil

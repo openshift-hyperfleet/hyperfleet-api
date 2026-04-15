@@ -1226,7 +1226,7 @@ func TestClusterSoftDelete(t *testing.T) {
 		g.Expect(cluster.Generation).To(Equal(int32(2)))
 	})
 
-	t.Run("given a cluster with child nodepools, when soft-deleted, then all nodepools are also soft-deleted", func(t *testing.T) {
+	t.Run("given a cluster with child nodepools, when soft-deleted, then all nodepools are also soft-deleted", func(t *testing.T) { //nolint:lll
 		g := NewWithT(t)
 		// Given:
 		clusterDao := newMockClusterDao()
@@ -1247,7 +1247,7 @@ func TestClusterSoftDelete(t *testing.T) {
 		g.Expect(nodePoolDao.nodePools["np-2"].DeletedTime).NotTo(BeNil())
 	})
 
-	t.Run("given an already-deleted cluster, when soft-deleted again, then deleted_time and generation are unchanged", func(t *testing.T) {
+	t.Run("given an already-deleted cluster, when soft-deleted again, then deleted_time and generation are unchanged", func(t *testing.T) { //nolint:lll
 		g := NewWithT(t)
 		// Given:
 		clusterDao := newMockClusterDao()
