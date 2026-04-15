@@ -910,15 +910,19 @@ components:
         created_time:
           type: string
           format: date-time
+          description: Timestamp when the resource was created
         updated_time:
           type: string
           format: date-time
+          description: Timestamp when the resource was last updated
         created_by:
           type: string
           format: email
+          description: Identity that created the resource
         updated_by:
           type: string
           format: email
+          description: Identity that last updated the resource
         deleted_time:
           type: string
           format: date-time
@@ -1175,15 +1179,19 @@ components:
         created_time:
           type: string
           format: date-time
+          description: Timestamp when the resource was created
         updated_time:
           type: string
           format: date-time
+          description: Timestamp when the resource was last updated
         created_by:
           type: string
           format: email
+          description: Identity that created the resource
         updated_by:
           type: string
           format: email
+          description: Identity that last updated the resource
         deleted_time:
           type: string
           format: date-time
@@ -1325,15 +1333,19 @@ components:
         created_time:
           type: string
           format: date-time
+          description: Timestamp when the resource was created
         updated_time:
           type: string
           format: date-time
+          description: Timestamp when the resource was last updated
         created_by:
           type: string
           format: email
+          description: Identity that created the resource
         updated_by:
           type: string
           format: email
+          description: Identity that last updated the resource
         deleted_time:
           type: string
           format: date-time
