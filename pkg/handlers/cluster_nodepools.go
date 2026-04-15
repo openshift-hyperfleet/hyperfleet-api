@@ -91,6 +91,7 @@ func (h ClusterNodePoolsHandler) List(w http.ResponseWriter, r *http.Request) {
 			}
 			return nodePoolList, nil
 		},
+		ErrorHandler: handleError,
 	}
 
 	handleList(w, r, cfg)
@@ -127,13 +128,14 @@ func (h ClusterNodePoolsHandler) Get(w http.ResponseWriter, r *http.Request) {
 			}
 			return presented, nil
 		},
+		ErrorHandler: handleError,
 	}
 
 	handleGet(w, r, cfg)
 }
 
 // Delete soft-deletes a specific nodepool for a cluster
-func (h ClusterNodePoolsHandler) Delete(w http.ResponseWriter, r *http.Request) {
+func (h ClusterNodePoolsHandler) SoftDelete(w http.ResponseWriter, r *http.Request) {
 	cfg := &handlerConfig{
 		Action: func() (interface{}, *errors.ServiceError) {
 			ctx := r.Context()
@@ -156,7 +158,7 @@ func (h ClusterNodePoolsHandler) Delete(w http.ResponseWriter, r *http.Request) 
 				return nil, errors.NotFound("NodePool '%s' not found for cluster '%s'", nodePoolID, clusterID)
 			}
 
-			nodePool, err = h.nodePoolService.RequestDeletion(ctx, nodePoolID)
+			nodePool, err = h.nodePoolService.SoftDelete(ctx, nodePoolID)
 			if err != nil {
 				return nil, err
 			}
@@ -167,9 +169,10 @@ func (h ClusterNodePoolsHandler) Delete(w http.ResponseWriter, r *http.Request) 
 			}
 			return presented, nil
 		},
+		ErrorHandler: handleError,
 	}
 
-	handleDelete(w, r, cfg, http.StatusAccepted)
+	handleSoftDelete(w, r, cfg, http.StatusAccepted)
 }
 
 // Create creates a new nodepool for a cluster

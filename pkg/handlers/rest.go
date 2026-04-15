@@ -7,5 +7,5 @@ type RestHandler interface {
 	Get(w http.ResponseWriter, r *http.Request)
 	Create(w http.ResponseWriter, r *http.Request)
 	Patch(w http.ResponseWriter, r *http.Request)
-	Delete(w http.ResponseWriter, r *http.Request)
+	SoftDelete(w http.ResponseWriter, r *http.Request)
 }

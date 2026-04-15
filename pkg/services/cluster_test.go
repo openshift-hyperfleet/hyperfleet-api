@@ -67,7 +67,7 @@ func (d *mockClusterDao) Replace(ctx context.Context, cluster *api.Cluster) (*ap
 	return cluster, nil
 }
 
-func (d *mockClusterDao) RequestDeletion(ctx context.Context, id string) (*api.Cluster, bool, error) {
+func (d *mockClusterDao) SoftDelete(ctx context.Context, id string) (*api.Cluster, bool, error) {
 	c, ok := d.clusters[id]
 	if !ok {
 		return nil, false, gorm.ErrRecordNotFound
@@ -1214,7 +1214,7 @@ func TestProcessAdapterStatus_CustomConditionRemoval(t *testing.T) {
 	g.Expect(conditionTypes["CustomCondition"]).To(BeFalse(), "CustomCondition should not be present")
 }
 
-func TestRequestDeletion_CascadesToNodePools(t *testing.T) {
+func TestSoftDelete_CascadesToNodePools(t *testing.T) {
 	t.Parallel()
 	g := NewWithT(t)
 
@@ -1243,7 +1243,7 @@ func TestRequestDeletion_CascadesToNodePools(t *testing.T) {
 		Generation: 1,
 	}
 
-	cluster, svcErr := service.RequestDeletion(ctx, clusterID)
+	cluster, svcErr := service.SoftDelete(ctx, clusterID)
 	g.Expect(svcErr).To(BeNil())
 	g.Expect(cluster.DeletedTime).ToNot(BeNil())
 
@@ -1251,7 +1251,7 @@ func TestRequestDeletion_CascadesToNodePools(t *testing.T) {
 	g.Expect(nodePoolDao.nodePools["np-2"].DeletedTime).ToNot(BeNil())
 }
 
-func TestRequestDeletion_AlreadyDeleted_IdempotentCascade(t *testing.T) {
+func TestSoftDelete_AlreadyDeleted_IdempotentCascade(t *testing.T) {
 	t.Parallel()
 	g := NewWithT(t)
 
@@ -1279,7 +1279,7 @@ func TestRequestDeletion_AlreadyDeleted_IdempotentCascade(t *testing.T) {
 		Generation:  2,
 	}
 
-	cluster, svcErr := service.RequestDeletion(ctx, clusterID)
+	cluster, svcErr := service.SoftDelete(ctx, clusterID)
 	g.Expect(svcErr).To(BeNil())
 	g.Expect(cluster.DeletedTime).ToNot(BeNil())
 	// Cluster's DeletedTime should be unchanged (same value as before)
@@ -1289,7 +1289,7 @@ func TestRequestDeletion_AlreadyDeleted_IdempotentCascade(t *testing.T) {
 	g.Expect(nodePoolDao.nodePools["np-1"].DeletedTime.Equal(DeletedTime)).To(BeTrue())
 }
 
-func TestRequestDeletion_ClusterNotFound(t *testing.T) {
+func TestSoftDelete_ClusterNotFound(t *testing.T) {
 	t.Parallel()
 	g := NewWithT(t)
 
@@ -1301,7 +1301,7 @@ func TestRequestDeletion_ClusterNotFound(t *testing.T) {
 
 	ctx := context.Background()
 
-	_, svcErr := service.RequestDeletion(ctx, "nonexistent")
+	_, svcErr := service.SoftDelete(ctx, "nonexistent")
 	g.Expect(svcErr).ToNot(BeNil())
 	g.Expect(svcErr.HTTPCode).To(Equal(404))
 }

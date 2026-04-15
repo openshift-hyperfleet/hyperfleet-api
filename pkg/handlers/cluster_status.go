@@ -67,6 +67,7 @@ func (h ClusterStatusHandler) List(w http.ResponseWriter, r *http.Request) {
 
 			return response, nil
 		},
+		ErrorHandler: handleError,
 	}
 
 	handleList(w, r, cfg)

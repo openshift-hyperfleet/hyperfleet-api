@@ -22,7 +22,7 @@ type NodePoolService interface {
 	Get(ctx context.Context, id string) (*api.NodePool, *errors.ServiceError)
 	Create(ctx context.Context, nodePool *api.NodePool) (*api.NodePool, *errors.ServiceError)
 	Replace(ctx context.Context, nodePool *api.NodePool) (*api.NodePool, *errors.ServiceError)
-	RequestDeletion(ctx context.Context, id string) (*api.NodePool, *errors.ServiceError)
+	SoftDelete(ctx context.Context, id string) (*api.NodePool, *errors.ServiceError)
 	Delete(ctx context.Context, id string) *errors.ServiceError
 	All(ctx context.Context) (api.NodePoolList, *errors.ServiceError)
 
@@ -99,10 +99,10 @@ func (s *sqlNodePoolService) Replace(
 	return updated, nil
 }
 
-func (s *sqlNodePoolService) RequestDeletion(ctx context.Context, id string) (*api.NodePool, *errors.ServiceError) {
-	nodePool, err := s.nodePoolDao.RequestDeletion(ctx, id)
+func (s *sqlNodePoolService) SoftDelete(ctx context.Context, id string) (*api.NodePool, *errors.ServiceError) {
+	nodePool, err := s.nodePoolDao.SoftDelete(ctx, id)
 	if err != nil {
-		return nil, handleRequestDeletionError("NodePool", err)
+		return nil, handleSoftDeleteError("NodePool", err)
 	}
 
 	return nodePool, nil

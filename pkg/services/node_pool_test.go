@@ -66,7 +66,7 @@ func (d *mockNodePoolDao) Replace(ctx context.Context, nodePool *api.NodePool) (
 	return nodePool, nil
 }
 
-func (d *mockNodePoolDao) RequestDeletion(ctx context.Context, id string) (*api.NodePool, error) {
+func (d *mockNodePoolDao) SoftDelete(ctx context.Context, id string) (*api.NodePool, error) {
 	np, ok := d.nodePools[id]
 	if !ok {
 		return nil, gorm.ErrRecordNotFound
@@ -99,7 +99,7 @@ func (d *mockNodePoolDao) FindByOwnerID(ctx context.Context, ownerID string) (ap
 	return result, nil
 }
 
-func (d *mockNodePoolDao) RequestDeletionByOwner(ctx context.Context, ownerID string, t time.Time) error {
+func (d *mockNodePoolDao) SoftDeleteByOwner(ctx context.Context, ownerID string, t time.Time) error {
 	actor := systemActor
 	for id, np := range d.nodePools {
 		if np.OwnerID == ownerID && np.DeletedTime == nil {
@@ -869,7 +869,7 @@ func TestNodePoolSyntheticTimestampsStableWithoutAdapterStatus(t *testing.T) {
 	g.Expect(updatedReady.LastUpdatedTime).To(Equal(fixedNow))
 }
 
-func TestNodePool_RequestDeletion_NotFound(t *testing.T) {
+func TestNodePool_SoftDelete_NotFound(t *testing.T) {
 	t.Parallel()
 	g := NewWithT(t)
 
@@ -880,7 +880,7 @@ func TestNodePool_RequestDeletion_NotFound(t *testing.T) {
 
 	ctx := context.Background()
 
-	_, svcErr := service.RequestDeletion(ctx, "nonexistent")
+	_, svcErr := service.SoftDelete(ctx, "nonexistent")
 	g.Expect(svcErr).ToNot(BeNil())
 	g.Expect(svcErr.HTTPCode).To(Equal(404))
 }

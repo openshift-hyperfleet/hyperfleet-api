@@ -22,7 +22,7 @@ type ClusterService interface {
 	Get(ctx context.Context, id string) (*api.Cluster, *errors.ServiceError)
 	Create(ctx context.Context, cluster *api.Cluster) (*api.Cluster, *errors.ServiceError)
 	Replace(ctx context.Context, cluster *api.Cluster) (*api.Cluster, *errors.ServiceError)
-	RequestDeletion(ctx context.Context, id string) (*api.Cluster, *errors.ServiceError)
+	SoftDelete(ctx context.Context, id string) (*api.Cluster, *errors.ServiceError)
 	All(ctx context.Context) (api.ClusterList, *errors.ServiceError)
 
 	FindByIDs(ctx context.Context, ids []string) (api.ClusterList, *errors.ServiceError)
@@ -103,14 +103,14 @@ func (s *sqlClusterService) Replace(ctx context.Context, cluster *api.Cluster) (
 	return updated, nil
 }
 
-// RequestDeletion marks a cluster for deletion by setting DeletedTime and
+// SoftDelete marks a cluster for deletion by setting DeletedTime and
 // DeletedBy to the current time and system@hyperfleet.local.
 // If already marked, it returns the cluster unchanged. Cascades the deletion timestamp to all child nodepools.
 // Actual removal is handled by adapters detecting the new generation and triggering hard deletion asynchronously.
-func (s *sqlClusterService) RequestDeletion(ctx context.Context, id string) (*api.Cluster, *errors.ServiceError) {
-	cluster, alreadyDeleted, err := s.clusterDao.RequestDeletion(ctx, id)
+func (s *sqlClusterService) SoftDelete(ctx context.Context, id string) (*api.Cluster, *errors.ServiceError) {
+	cluster, alreadyDeleted, err := s.clusterDao.SoftDelete(ctx, id)
 	if err != nil {
-		return nil, handleRequestDeletionError("Cluster", err)
+		return nil, handleSoftDeleteError("Cluster", err)
 	}
 
 	// Already marked for deletion — skip cascade to avoid unnecessary DB roundtrips.
@@ -121,7 +121,7 @@ func (s *sqlClusterService) RequestDeletion(ctx context.Context, id string) (*ap
 	}
 	t := *cluster.DeletedTime
 
-	if err := s.nodePoolDao.RequestDeletionByOwner(ctx, id, t); err != nil {
+	if err := s.nodePoolDao.SoftDeleteByOwner(ctx, id, t); err != nil {
 		return nil, errors.GeneralError("Unable to cascade deletion to nodepools for cluster %s: %s", id, err)
 	}
 

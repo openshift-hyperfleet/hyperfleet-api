@@ -146,6 +146,7 @@ func (h NodePoolHandler) List(w http.ResponseWriter, r *http.Request) {
 			}
 			return nodePoolList, nil
 		},
+		ErrorHandler: handleError,
 	}
 
 	handleList(w, r, cfg)
@@ -167,16 +168,18 @@ func (h NodePoolHandler) Get(w http.ResponseWriter, r *http.Request) {
 			}
 			return presented, nil
 		},
+		ErrorHandler: handleError,
 	}
 
 	handleGet(w, r, cfg)
 }
 
-func (h NodePoolHandler) Delete(w http.ResponseWriter, r *http.Request) {
+func (h NodePoolHandler) SoftDelete(w http.ResponseWriter, r *http.Request) {
 	cfg := &handlerConfig{
 		Action: func() (interface{}, *errors.ServiceError) {
 			return nil, errors.NotImplemented("delete")
 		},
+		ErrorHandler: handleError,
 	}
-	handleDelete(w, r, cfg, http.StatusNoContent)
+	handleSoftDelete(w, r, cfg, http.StatusNoContent)
 }
