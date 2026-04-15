@@ -35,8 +35,9 @@ func (d *nodePoolDaoMock) Replace(ctx context.Context, nodePool *api.NodePool) (
 	return nil, errors.NotImplemented("NodePool").AsError()
 }
 
-func (d *nodePoolDaoMock) SoftDelete(ctx context.Context, id string) (*api.NodePool, error) {
-	return nil, errors.NotImplemented("NodePool").AsError()
+func (d *nodePoolDaoMock) Save(ctx context.Context, nodePool *api.NodePool) error {
+	d.nodePools = append(d.nodePools, nodePool)
+	return nil
 }
 
 func (d *nodePoolDaoMock) Delete(ctx context.Context, id string) error {

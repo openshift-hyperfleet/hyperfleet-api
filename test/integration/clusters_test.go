@@ -856,118 +856,103 @@ func TestClusterPost_MissingSpec(t *testing.T) {
 	Expect(detail).To(ContainSubstring("spec is required"))
 }
 
-func TestClusterDelete_Success(t *testing.T) {
-	h, client := test.RegisterIntegration(t)
+func TestClusterSoftDelete(t *testing.T) {
+	t.Run("given a valid cluster, when deleted, then returns 202 with deleted_time and deleted_by set", func(t *testing.T) {
+		RegisterTestingT(t)
+		// Given:
+		h, client := test.RegisterIntegration(t)
+		account := h.NewRandAccount()
+		ctx := h.NewAuthenticatedContext(account)
+		cluster, err := h.Factories.NewClusters(h.NewID())
+		Expect(err).NotTo(HaveOccurred())
+		// When:
+		resp, err := client.DeleteClusterByIdWithResponse(ctx, cluster.ID, test.WithAuthToken(ctx))
+		// Then:
+		Expect(err).NotTo(HaveOccurred())
+		Expect(resp.StatusCode()).To(Equal(http.StatusAccepted))
+		Expect(resp.JSON202).NotTo(BeNil())
+		Expect(*resp.JSON202.Id).To(Equal(cluster.ID))
+		Expect(resp.JSON202.DeletedTime).NotTo(BeNil())
+		Expect(resp.JSON202.DeletedBy).NotTo(BeNil())
+		Expect(string(*resp.JSON202.DeletedBy)).To(Equal("system@hyperfleet.local"))
+	})
 
-	account := h.NewRandAccount()
-	ctx := h.NewAuthenticatedContext(account)
+	t.Run("given a cluster with child nodepools, when deleted, then nodepools are cascade soft-deleted in DB", func(t *testing.T) {
+		RegisterTestingT(t)
+		// Given:
+		h, client := test.RegisterIntegration(t)
+		account := h.NewRandAccount()
+		ctx := h.NewAuthenticatedContext(account)
+		cluster, err := h.Factories.NewClusters(h.NewID())
+		Expect(err).NotTo(HaveOccurred())
+		npInput := openapi.NodePoolCreateRequest{
+			Kind: util.PtrString("NodePool"),
+			Name: "cascade-np",
+			Spec: map[string]interface{}{"test": "spec"},
+		}
+		npResp, err := client.CreateNodePoolWithResponse(
+			ctx, cluster.ID, openapi.CreateNodePoolJSONRequestBody(npInput), test.WithAuthToken(ctx),
+		)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(npResp.StatusCode()).To(Equal(http.StatusCreated))
+		nodePoolID := *npResp.JSON201.Id
+		// When:
+		delResp, err := client.DeleteClusterByIdWithResponse(ctx, cluster.ID, test.WithAuthToken(ctx))
+		// Then:
+		Expect(err).NotTo(HaveOccurred())
+		Expect(delResp.StatusCode()).To(Equal(http.StatusAccepted))
+		Expect(delResp.JSON202.DeletedTime).NotTo(BeNil())
+		Expect(string(*delResp.JSON202.DeletedBy)).To(Equal("system@hyperfleet.local"))
+		// Verify cascade via direct DB query
+		dbSession := h.DBFactory.New(ctx)
+		var nodePool api.NodePool
+		Expect(dbSession.First(&nodePool, "id = ?", nodePoolID).Error).NotTo(HaveOccurred())
+		Expect(nodePool.DeletedTime).NotTo(BeNil(), "nodepool should be soft-deleted after cluster cascade")
+		Expect(nodePool.DeletedBy).NotTo(BeNil(), "nodepool deleted_by should be set after cluster cascade")
+	})
 
-	cluster, err := h.Factories.NewClusters(h.NewID())
-	Expect(err).NotTo(HaveOccurred())
-
-	resp, err := client.DeleteClusterByIdWithResponse(ctx, cluster.ID, test.WithAuthToken(ctx))
-	Expect(err).NotTo(HaveOccurred())
-	Expect(resp.StatusCode()).To(Equal(http.StatusAccepted))
-
-	clusterOutput := resp.JSON202
-	Expect(clusterOutput).NotTo(BeNil())
-	Expect(clusterOutput.DeletedTime).NotTo(BeNil(), "deleted_time should be set")
-	Expect(clusterOutput.DeletedBy).NotTo(BeNil(), "deleted_by should be set")
-	Expect(string(*clusterOutput.DeletedBy)).To(Equal("system@hyperfleet.local"))
-	Expect(*clusterOutput.Id).To(Equal(cluster.ID))
-}
-
-func TestClusterDelete_CascadesToNodePools(t *testing.T) {
-	h, client := test.RegisterIntegration(t)
-
-	account := h.NewRandAccount()
-	ctx := h.NewAuthenticatedContext(account)
-
-	// Create a cluster
-	cluster, err := h.Factories.NewClusters(h.NewID())
-	Expect(err).NotTo(HaveOccurred())
-
-	// Create a nodepool for this cluster via the API
-	npInput := openapi.NodePoolCreateRequest{
-		Kind: util.PtrString("NodePool"),
-		Name: "cascade-test-np",
-		Spec: map[string]interface{}{"test": "spec"},
-	}
-	npResp, err := client.CreateNodePoolWithResponse(
-		ctx, cluster.ID, openapi.CreateNodePoolJSONRequestBody(npInput), test.WithAuthToken(ctx),
-	)
-	Expect(err).NotTo(HaveOccurred())
-	Expect(npResp.StatusCode()).To(Equal(http.StatusCreated))
-	nodePoolID := *npResp.JSON201.Id
-
-	// Delete the cluster
-	delResp, err := client.DeleteClusterByIdWithResponse(ctx, cluster.ID, test.WithAuthToken(ctx))
-	Expect(err).NotTo(HaveOccurred())
-	Expect(delResp.StatusCode()).To(Equal(http.StatusAccepted))
-	Expect(delResp.JSON202.DeletedTime).NotTo(BeNil())
-	Expect(delResp.JSON202.DeletedBy).NotTo(BeNil(), "deleted_by should be set on cluster")
-	Expect(string(*delResp.JSON202.DeletedBy)).To(Equal("system@hyperfleet.local"))
-
-	// Verify cascade: child nodepool must be soft-deleted
-	dbSession := h.DBFactory.New(ctx)
-
-	var nodePool api.NodePool
-	err = dbSession.First(&nodePool, "id = ?", nodePoolID).Error
-	Expect(err).NotTo(HaveOccurred())
-	Expect(nodePool.DeletedTime).NotTo(BeNil(), "nodepool should be soft-deleted after cluster cascade")
-	Expect(nodePool.DeletedBy).NotTo(BeNil(), "nodepool deleted_by should be set after cluster cascade")
-}
-
-func TestClusterDelete_Idempotent(t *testing.T) {
-	h, client := test.RegisterIntegration(t)
-
-	account := h.NewRandAccount()
-	ctx := h.NewAuthenticatedContext(account)
-
-	cluster, err := h.Factories.NewClusters(h.NewID())
-	Expect(err).NotTo(HaveOccurred())
-
-	// Create a nodepool so we can verify cascade is not re-applied on repeat calls.
-	npInput := openapi.NodePoolCreateRequest{
-		Kind: util.PtrString("NodePool"),
-		Name: "idem-test-np",
-		Spec: map[string]interface{}{"test": "spec"},
-	}
-	npResp, err := client.CreateNodePoolWithResponse(
-		ctx, cluster.ID, openapi.CreateNodePoolJSONRequestBody(npInput), test.WithAuthToken(ctx),
-	)
-	Expect(err).NotTo(HaveOccurred())
-	Expect(npResp.StatusCode()).To(Equal(http.StatusCreated))
-	nodePoolID := *npResp.JSON201.Id
-
-	// First delete
-	resp1, err := client.DeleteClusterByIdWithResponse(ctx, cluster.ID, test.WithAuthToken(ctx))
-	Expect(err).NotTo(HaveOccurred())
-	Expect(resp1.StatusCode()).To(Equal(http.StatusAccepted))
-	firstDeletedTime := resp1.JSON202.DeletedTime
-	Expect(firstDeletedTime).NotTo(BeNil())
-
-	// Capture the nodepool state after the first (real) delete.
-	dbSession := h.DBFactory.New(ctx)
-	var npAfterFirst api.NodePool
-	Expect(dbSession.First(&npAfterFirst, "id = ?", nodePoolID).Error).NotTo(HaveOccurred())
-	Expect(npAfterFirst.DeletedTime).NotTo(BeNil(), "nodepool should be soft-deleted after first delete")
-	npGenerationAfterFirst := npAfterFirst.Generation
-
-	// Second delete — must be idempotent: no state changes on the cluster or its children.
-	resp2, err := client.DeleteClusterByIdWithResponse(ctx, cluster.ID, test.WithAuthToken(ctx))
-	Expect(err).NotTo(HaveOccurred())
-	Expect(resp2.StatusCode()).To(Equal(http.StatusAccepted))
-	Expect(resp2.JSON202.DeletedTime).NotTo(BeNil())
-	Expect(resp2.JSON202.DeletedTime.Equal(*firstDeletedTime)).To(BeTrue(),
-		"cluster deleted_time should not change on repeated delete")
-
-	// Verify the nodepool's deleted_time and generation are unchanged after the second delete.
-	var npAfterSecond api.NodePool
-	Expect(dbSession.First(&npAfterSecond, "id = ?", nodePoolID).Error).NotTo(HaveOccurred())
-	Expect(npAfterSecond.DeletedTime).NotTo(BeNil())
-	Expect(npAfterSecond.DeletedTime.Equal(*npAfterFirst.DeletedTime)).To(BeTrue(),
-		"nodepool deleted_time should not change on repeated delete")
-	Expect(npAfterSecond.Generation).To(Equal(npGenerationAfterFirst),
-		"nodepool generation should not be incremented on repeated delete")
+	t.Run("given an already-deleted cluster, when deleted again, then returns 202 with unchanged deleted_time and nodepool state is unchanged", func(t *testing.T) {
+		RegisterTestingT(t)
+		// Given:
+		h, client := test.RegisterIntegration(t)
+		account := h.NewRandAccount()
+		ctx := h.NewAuthenticatedContext(account)
+		cluster, err := h.Factories.NewClusters(h.NewID())
+		Expect(err).NotTo(HaveOccurred())
+		npInput := openapi.NodePoolCreateRequest{
+			Kind: util.PtrString("NodePool"),
+			Name: "idem-np",
+			Spec: map[string]interface{}{"test": "spec"},
+		}
+		npResp, err := client.CreateNodePoolWithResponse(
+			ctx, cluster.ID, openapi.CreateNodePoolJSONRequestBody(npInput), test.WithAuthToken(ctx),
+		)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(npResp.StatusCode()).To(Equal(http.StatusCreated))
+		nodePoolID := *npResp.JSON201.Id
+		// When: first delete
+		resp1, err := client.DeleteClusterByIdWithResponse(ctx, cluster.ID, test.WithAuthToken(ctx))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(resp1.StatusCode()).To(Equal(http.StatusAccepted))
+		firstDeletedTime := resp1.JSON202.DeletedTime
+		Expect(firstDeletedTime).NotTo(BeNil())
+		// Capture nodepool state after first delete
+		dbSession := h.DBFactory.New(ctx)
+		var npAfterFirst api.NodePool
+		Expect(dbSession.First(&npAfterFirst, "id = ?", nodePoolID).Error).NotTo(HaveOccurred())
+		npGenerationAfterFirst := npAfterFirst.Generation
+		// When: second delete (idempotent)
+		resp2, err := client.DeleteClusterByIdWithResponse(ctx, cluster.ID, test.WithAuthToken(ctx))
+		// Then:
+		Expect(err).NotTo(HaveOccurred())
+		Expect(resp2.StatusCode()).To(Equal(http.StatusAccepted))
+		Expect(resp2.JSON202.DeletedTime.Equal(*firstDeletedTime)).To(BeTrue(),
+			"cluster deleted_time should not change on repeated delete")
+		var npAfterSecond api.NodePool
+		Expect(dbSession.First(&npAfterSecond, "id = ?", nodePoolID).Error).NotTo(HaveOccurred())
+		Expect(npAfterSecond.DeletedTime.Equal(*npAfterFirst.DeletedTime)).To(BeTrue(),
+			"nodepool deleted_time should not change on repeated delete")
+		Expect(npAfterSecond.Generation).To(Equal(npGenerationAfterFirst),
+			"nodepool generation should not be incremented on repeated delete")
+	})
 }

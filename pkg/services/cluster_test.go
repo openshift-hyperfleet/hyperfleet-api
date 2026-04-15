@@ -47,7 +47,7 @@ func (d *mockClusterDao) Get(ctx context.Context, id string) (*api.Cluster, erro
 	if c, ok := d.clusters[id]; ok {
 		return c, nil
 	}
-	return nil, errors.NotFound("Cluster").AsError()
+	return nil, gorm.ErrRecordNotFound
 }
 
 func (d *mockClusterDao) Create(ctx context.Context, cluster *api.Cluster) (*api.Cluster, error) {
@@ -67,21 +67,9 @@ func (d *mockClusterDao) Replace(ctx context.Context, cluster *api.Cluster) (*ap
 	return cluster, nil
 }
 
-func (d *mockClusterDao) SoftDelete(ctx context.Context, id string) (*api.Cluster, bool, error) {
-	c, ok := d.clusters[id]
-	if !ok {
-		return nil, false, gorm.ErrRecordNotFound
-	}
-	if c.DeletedTime != nil {
-		return c, true, nil
-	}
-	t := time.Now()
-	actor := systemActor
-	c.DeletedTime = &t
-	c.DeletedBy = &actor
-	c.Generation++
-	d.clusters[id] = c
-	return c, false, nil
+func (d *mockClusterDao) Save(ctx context.Context, cluster *api.Cluster) error {
+	d.clusters[cluster.ID] = cluster
+	return nil
 }
 
 func (d *mockClusterDao) Delete(ctx context.Context, id string) error {
@@ -1214,94 +1202,88 @@ func TestProcessAdapterStatus_CustomConditionRemoval(t *testing.T) {
 	g.Expect(conditionTypes["CustomCondition"]).To(BeFalse(), "CustomCondition should not be present")
 }
 
-func TestSoftDelete_CascadesToNodePools(t *testing.T) {
-	t.Parallel()
-	g := NewWithT(t)
+func TestClusterSoftDelete(t *testing.T) {
+	t.Run("given a live cluster, when soft-deleted, then deleted_time/deleted_by/generation are set", func(t *testing.T) {
+		g := NewWithT(t)
+		// Given:
+		clusterDao := newMockClusterDao()
+		nodePoolDao := newMockNodePoolDao()
+		adapterStatusDao := newMockAdapterStatusDao()
+		service := NewClusterService(clusterDao, nodePoolDao, adapterStatusDao, testAdapterConfig())
+		ctx := context.Background()
+		clusterID := "live-cluster"
+		clusterDao.clusters[clusterID] = &api.Cluster{
+			Meta:       api.Meta{ID: clusterID},
+			Generation: 1,
+		}
+		// When:
+		cluster, svcErr := service.SoftDelete(ctx, clusterID)
+		// Then:
+		g.Expect(svcErr).To(BeNil())
+		g.Expect(cluster.DeletedTime).NotTo(BeNil())
+		g.Expect(cluster.DeletedBy).NotTo(BeNil())
+		g.Expect(*cluster.DeletedBy).To(Equal(systemActor))
+		g.Expect(cluster.Generation).To(Equal(int32(2)))
+	})
 
-	clusterDao := newMockClusterDao()
-	nodePoolDao := newMockNodePoolDao()
-	adapterStatusDao := newMockAdapterStatusDao()
-	cfg := testAdapterConfig()
-	service := NewClusterService(clusterDao, nodePoolDao, adapterStatusDao, cfg)
+	t.Run("given a cluster with child nodepools, when soft-deleted, then all nodepools are also soft-deleted", func(t *testing.T) {
+		g := NewWithT(t)
+		// Given:
+		clusterDao := newMockClusterDao()
+		nodePoolDao := newMockNodePoolDao()
+		adapterStatusDao := newMockAdapterStatusDao()
+		service := NewClusterService(clusterDao, nodePoolDao, adapterStatusDao, testAdapterConfig())
+		ctx := context.Background()
+		clusterID := "cluster-with-pools"
+		clusterDao.clusters[clusterID] = &api.Cluster{Meta: api.Meta{ID: clusterID}, Generation: 1}
+		nodePoolDao.nodePools["np-1"] = &api.NodePool{Meta: api.Meta{ID: "np-1"}, OwnerID: clusterID, Generation: 1}
+		nodePoolDao.nodePools["np-2"] = &api.NodePool{Meta: api.Meta{ID: "np-2"}, OwnerID: clusterID, Generation: 1}
+		// When:
+		cluster, svcErr := service.SoftDelete(ctx, clusterID)
+		// Then:
+		g.Expect(svcErr).To(BeNil())
+		g.Expect(cluster.DeletedTime).NotTo(BeNil())
+		g.Expect(nodePoolDao.nodePools["np-1"].DeletedTime).NotTo(BeNil())
+		g.Expect(nodePoolDao.nodePools["np-2"].DeletedTime).NotTo(BeNil())
+	})
 
-	ctx := context.Background()
-	clusterID := "cascade-cluster"
+	t.Run("given an already-deleted cluster, when soft-deleted again, then deleted_time and generation are unchanged", func(t *testing.T) {
+		g := NewWithT(t)
+		// Given:
+		clusterDao := newMockClusterDao()
+		nodePoolDao := newMockNodePoolDao()
+		adapterStatusDao := newMockAdapterStatusDao()
+		service := NewClusterService(clusterDao, nodePoolDao, adapterStatusDao, testAdapterConfig())
+		ctx := context.Background()
+		clusterID := "already-deleted"
+		originalTime := time.Now().Add(-time.Hour)
+		clusterDao.clusters[clusterID] = &api.Cluster{
+			Meta: api.Meta{ID: clusterID}, DeletedTime: &originalTime, Generation: 2,
+		}
+		nodePoolDao.nodePools["np-1"] = &api.NodePool{
+			Meta: api.Meta{ID: "np-1"}, OwnerID: clusterID, DeletedTime: &originalTime, Generation: 2,
+		}
+		// When:
+		cluster, svcErr := service.SoftDelete(ctx, clusterID)
+		// Then:
+		g.Expect(svcErr).To(BeNil())
+		g.Expect(cluster.DeletedTime.Equal(originalTime)).To(BeTrue())
+		g.Expect(cluster.Generation).To(Equal(int32(2)))
+		g.Expect(nodePoolDao.nodePools["np-1"].DeletedTime.Equal(originalTime)).To(BeTrue())
+	})
 
-	clusterDao.clusters[clusterID] = &api.Cluster{
-		Meta:       api.Meta{ID: clusterID},
-		Generation: 1,
-	}
-
-	nodePoolDao.nodePools["np-1"] = &api.NodePool{
-		Meta:       api.Meta{ID: "np-1"},
-		OwnerID:    clusterID,
-		Generation: 1,
-	}
-	nodePoolDao.nodePools["np-2"] = &api.NodePool{
-		Meta:       api.Meta{ID: "np-2"},
-		OwnerID:    clusterID,
-		Generation: 1,
-	}
-
-	cluster, svcErr := service.SoftDelete(ctx, clusterID)
-	g.Expect(svcErr).To(BeNil())
-	g.Expect(cluster.DeletedTime).ToNot(BeNil())
-
-	g.Expect(nodePoolDao.nodePools["np-1"].DeletedTime).ToNot(BeNil())
-	g.Expect(nodePoolDao.nodePools["np-2"].DeletedTime).ToNot(BeNil())
-}
-
-func TestSoftDelete_AlreadyDeleted_IdempotentCascade(t *testing.T) {
-	t.Parallel()
-	g := NewWithT(t)
-
-	clusterDao := newMockClusterDao()
-	nodePoolDao := newMockNodePoolDao()
-	adapterStatusDao := newMockAdapterStatusDao()
-	cfg := testAdapterConfig()
-	service := NewClusterService(clusterDao, nodePoolDao, adapterStatusDao, cfg)
-
-	ctx := context.Background()
-	clusterID := "already-deleted"
-
-	DeletedTime := time.Now().Add(-time.Hour)
-	clusterDao.clusters[clusterID] = &api.Cluster{
-		Meta:        api.Meta{ID: clusterID},
-		DeletedTime: &DeletedTime,
-		Generation:  2,
-	}
-
-	// Nodepool already soft-deleted from the previous cascade
-	nodePoolDao.nodePools["np-1"] = &api.NodePool{
-		Meta:        api.Meta{ID: "np-1"},
-		DeletedTime: &DeletedTime,
-		OwnerID:     clusterID,
-		Generation:  2,
-	}
-
-	cluster, svcErr := service.SoftDelete(ctx, clusterID)
-	g.Expect(svcErr).To(BeNil())
-	g.Expect(cluster.DeletedTime).ToNot(BeNil())
-	// Cluster's DeletedTime should be unchanged (same value as before)
-	g.Expect(cluster.DeletedTime.Equal(DeletedTime)).To(BeTrue())
-
-	// Already-deleted nodepool retains its original DeletedTime
-	g.Expect(nodePoolDao.nodePools["np-1"].DeletedTime.Equal(DeletedTime)).To(BeTrue())
-}
-
-func TestSoftDelete_ClusterNotFound(t *testing.T) {
-	t.Parallel()
-	g := NewWithT(t)
-
-	clusterDao := newMockClusterDao()
-	nodePoolDao := newMockNodePoolDao()
-	adapterStatusDao := newMockAdapterStatusDao()
-	cfg := testAdapterConfig()
-	service := NewClusterService(clusterDao, nodePoolDao, adapterStatusDao, cfg)
-
-	ctx := context.Background()
-
-	_, svcErr := service.SoftDelete(ctx, "nonexistent")
-	g.Expect(svcErr).ToNot(BeNil())
-	g.Expect(svcErr.HTTPCode).To(Equal(404))
+	t.Run("given a non-existent cluster ID, when soft-deleted, then returns 404 service error", func(t *testing.T) {
+		g := NewWithT(t)
+		// Given:
+		clusterDao := newMockClusterDao()
+		nodePoolDao := newMockNodePoolDao()
+		adapterStatusDao := newMockAdapterStatusDao()
+		service := NewClusterService(clusterDao, nodePoolDao, adapterStatusDao, testAdapterConfig())
+		ctx := context.Background()
+		// When:
+		_, svcErr := service.SoftDelete(ctx, "nonexistent")
+		// Then:
+		g.Expect(svcErr).NotTo(BeNil())
+		g.Expect(svcErr.HTTPCode).To(Equal(404))
+	})
 }

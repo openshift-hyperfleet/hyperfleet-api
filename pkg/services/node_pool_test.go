@@ -13,7 +13,6 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/dao"
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 )
 
 const (
@@ -46,7 +45,7 @@ func (d *mockNodePoolDao) Get(ctx context.Context, id string) (*api.NodePool, er
 	if np, ok := d.nodePools[id]; ok {
 		return np, nil
 	}
-	return nil, errors.NotFound("NodePool").AsError()
+	return nil, gorm.ErrRecordNotFound
 }
 
 func (d *mockNodePoolDao) Create(ctx context.Context, nodePool *api.NodePool) (*api.NodePool, error) {
@@ -66,21 +65,9 @@ func (d *mockNodePoolDao) Replace(ctx context.Context, nodePool *api.NodePool) (
 	return nodePool, nil
 }
 
-func (d *mockNodePoolDao) SoftDelete(ctx context.Context, id string) (*api.NodePool, error) {
-	np, ok := d.nodePools[id]
-	if !ok {
-		return nil, gorm.ErrRecordNotFound
-	}
-	if np.DeletedTime != nil {
-		return np, nil
-	}
-	t := time.Now()
-	actor := systemActor
-	np.DeletedTime = &t
-	np.DeletedBy = &actor
-	np.Generation++
-	d.nodePools[id] = np
-	return np, nil
+func (d *mockNodePoolDao) Save(ctx context.Context, nodePool *api.NodePool) error {
+	d.nodePools[nodePool.ID] = nodePool
+	return nil
 }
 
 func (d *mockNodePoolDao) Delete(ctx context.Context, id string) error {
@@ -869,18 +856,62 @@ func TestNodePoolSyntheticTimestampsStableWithoutAdapterStatus(t *testing.T) {
 	g.Expect(updatedReady.LastUpdatedTime).To(Equal(fixedNow))
 }
 
-func TestNodePool_SoftDelete_NotFound(t *testing.T) {
-	t.Parallel()
-	g := NewWithT(t)
+func TestNodePoolSoftDelete(t *testing.T) {
+	t.Run("given a live nodepool, when soft-deleted, then deleted_time/deleted_by/generation are set", func(t *testing.T) {
+		g := NewWithT(t)
+		// Given:
+		nodePoolDao := newMockNodePoolDao()
+		adapterStatusDao := newMockAdapterStatusDao()
+		service := NewNodePoolService(nodePoolDao, adapterStatusDao, testNodePoolAdapterConfig())
+		ctx := context.Background()
+		nodePoolID := testNodePoolID
+		nodePoolDao.nodePools[nodePoolID] = &api.NodePool{
+			Meta:       api.Meta{ID: nodePoolID},
+			Generation: 1,
+		}
+		// When:
+		nodePool, svcErr := service.SoftDelete(ctx, nodePoolID)
+		// Then:
+		g.Expect(svcErr).To(BeNil())
+		g.Expect(nodePool.DeletedTime).NotTo(BeNil())
+		g.Expect(nodePool.DeletedBy).NotTo(BeNil())
+		g.Expect(*nodePool.DeletedBy).To(Equal(systemActor))
+		g.Expect(nodePool.Generation).To(Equal(int32(2)))
+	})
 
-	nodePoolDao := newMockNodePoolDao()
-	adapterStatusDao := newMockAdapterStatusDao()
-	cfg := testNodePoolAdapterConfig()
-	service := NewNodePoolService(nodePoolDao, adapterStatusDao, cfg)
+	t.Run("given an already-deleted nodepool, when soft-deleted again, then deleted_time and generation are unchanged", func(t *testing.T) {
+		g := NewWithT(t)
+		// Given:
+		nodePoolDao := newMockNodePoolDao()
+		adapterStatusDao := newMockAdapterStatusDao()
+		service := NewNodePoolService(nodePoolDao, adapterStatusDao, testNodePoolAdapterConfig())
+		ctx := context.Background()
+		nodePoolID := testNodePoolID
+		originalTime := time.Now().Add(-time.Hour)
+		nodePoolDao.nodePools[nodePoolID] = &api.NodePool{
+			Meta:        api.Meta{ID: nodePoolID},
+			DeletedTime: &originalTime,
+			Generation:  3,
+		}
+		// When:
+		nodePool, svcErr := service.SoftDelete(ctx, nodePoolID)
+		// Then:
+		g.Expect(svcErr).To(BeNil())
+		g.Expect(nodePool.DeletedTime.Equal(originalTime)).To(BeTrue())
+		g.Expect(nodePool.Generation).To(Equal(int32(3)))
+	})
 
-	ctx := context.Background()
-
-	_, svcErr := service.SoftDelete(ctx, "nonexistent")
-	g.Expect(svcErr).ToNot(BeNil())
-	g.Expect(svcErr.HTTPCode).To(Equal(404))
+	t.Run("given a non-existent nodepool ID, when soft-deleted, then returns 404 service error", func(t *testing.T) {
+		g := NewWithT(t)
+		// Given:
+		nodePoolDao := newMockNodePoolDao()
+		adapterStatusDao := newMockAdapterStatusDao()
+		service := NewNodePoolService(nodePoolDao, adapterStatusDao, testNodePoolAdapterConfig())
+		ctx := context.Background()
+		// When:
+		_, svcErr := service.SoftDelete(ctx, "nonexistent")
+		// Then:
+		g.Expect(svcErr).NotTo(BeNil())
+		g.Expect(svcErr.HTTPCode).To(Equal(404))
+	})
 }

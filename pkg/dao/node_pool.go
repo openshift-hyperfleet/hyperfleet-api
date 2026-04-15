@@ -16,7 +16,7 @@ type NodePoolDao interface {
 	Get(ctx context.Context, id string) (*api.NodePool, error)
 	Create(ctx context.Context, nodePool *api.NodePool) (*api.NodePool, error)
 	Replace(ctx context.Context, nodePool *api.NodePool) (*api.NodePool, error)
-	SoftDelete(ctx context.Context, id string) (*api.NodePool, error)
+	Save(ctx context.Context, nodePool *api.NodePool) error
 	Delete(ctx context.Context, id string) error
 	FindByIDs(ctx context.Context, ids []string) (api.NodePoolList, error)
 	FindByOwnerID(ctx context.Context, ownerID string) (api.NodePoolList, error)
@@ -78,29 +78,13 @@ func (d *sqlNodePoolDao) Replace(ctx context.Context, nodePool *api.NodePool) (*
 	return nodePool, nil
 }
 
-func (d *sqlNodePoolDao) SoftDelete(ctx context.Context, id string) (*api.NodePool, error) {
+func (d *sqlNodePoolDao) Save(ctx context.Context, nodePool *api.NodePool) error {
 	g2 := (*d.sessionFactory).New(ctx)
-
-	nodePool, err := d.Get(ctx, id)
-	if err != nil {
-		db.MarkForRollback(ctx, err)
-		return nil, err
-	}
-
-	if nodePool.DeletedTime != nil {
-		return nodePool, nil
-	}
-
-	t := time.Now().UTC().Truncate(time.Microsecond)
-	deletedBy := "system@hyperfleet.local"
-	nodePool.DeletedTime = &t
-	nodePool.DeletedBy = &deletedBy
-	nodePool.Generation++
 	if err := g2.Omit(clause.Associations).Save(nodePool).Error; err != nil {
 		db.MarkForRollback(ctx, err)
-		return nil, err
+		return err
 	}
-	return nodePool, nil
+	return nil
 }
 
 func (d *sqlNodePoolDao) Delete(ctx context.Context, id string) error {

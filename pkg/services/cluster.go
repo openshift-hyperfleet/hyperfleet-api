@@ -108,18 +108,25 @@ func (s *sqlClusterService) Replace(ctx context.Context, cluster *api.Cluster) (
 // If already marked, it returns the cluster unchanged. Cascades the deletion timestamp to all child nodepools.
 // Actual removal is handled by adapters detecting the new generation and triggering hard deletion asynchronously.
 func (s *sqlClusterService) SoftDelete(ctx context.Context, id string) (*api.Cluster, *errors.ServiceError) {
-	cluster, alreadyDeleted, err := s.clusterDao.SoftDelete(ctx, id)
+	cluster, err := s.clusterDao.Get(ctx, id)
 	if err != nil {
 		return nil, handleSoftDeleteError("Cluster", err)
 	}
 
 	// Already marked for deletion — skip cascade to avoid unnecessary DB roundtrips.
-	// The DAO-level cascade method guards with WHERE deleted_time IS NULL, so a repeat call
-	// would be a safe no-op, but we short-circuit here for efficiency.
-	if alreadyDeleted {
+	if cluster.DeletedTime != nil {
 		return cluster, nil
 	}
-	t := *cluster.DeletedTime
+
+	t := time.Now().UTC().Truncate(time.Microsecond)
+	deletedBy := "system@hyperfleet.local"
+	cluster.DeletedTime = &t
+	cluster.DeletedBy = &deletedBy
+	cluster.Generation++
+
+	if err := s.clusterDao.Save(ctx, cluster); err != nil {
+		return nil, handleSoftDeleteError("Cluster", err)
+	}
 
 	if err := s.nodePoolDao.SoftDeleteByOwner(ctx, id, t); err != nil {
 		return nil, errors.GeneralError("Unable to cascade deletion to nodepools for cluster %s: %s", id, err)

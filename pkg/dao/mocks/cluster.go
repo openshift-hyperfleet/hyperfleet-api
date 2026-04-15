@@ -34,8 +34,9 @@ func (d *clusterDaoMock) Replace(ctx context.Context, cluster *api.Cluster) (*ap
 	return nil, errors.NotImplemented("Cluster").AsError()
 }
 
-func (d *clusterDaoMock) SoftDelete(ctx context.Context, id string) (*api.Cluster, bool, error) {
-	return nil, false, errors.NotImplemented("Cluster").AsError()
+func (d *clusterDaoMock) Save(ctx context.Context, cluster *api.Cluster) error {
+	d.clusters = append(d.clusters, cluster)
+	return nil
 }
 
 func (d *clusterDaoMock) Delete(ctx context.Context, id string) error {
