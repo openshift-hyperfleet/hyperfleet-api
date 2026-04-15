@@ -174,12 +174,3 @@ func (h NodePoolHandler) Get(w http.ResponseWriter, r *http.Request) {
 	handleGet(w, r, cfg)
 }
 
-func (h NodePoolHandler) SoftDelete(w http.ResponseWriter, r *http.Request) {
-	cfg := &handlerConfig{
-		Action: func() (interface{}, *errors.ServiceError) {
-			return nil, errors.NotImplemented("delete")
-		},
-		ErrorHandler: handleError,
-	}
-	handleSoftDelete(w, r, cfg, http.StatusNoContent)
-}
