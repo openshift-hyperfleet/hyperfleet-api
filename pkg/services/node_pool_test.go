@@ -903,4 +903,62 @@ func TestNodePoolSoftDelete(t *testing.T) {
 		g.Expect(svcErr).NotTo(BeNil())
 		g.Expect(svcErr.HTTPCode).To(Equal(404))
 	})
+
+	t.Run("given a nodepool with Ready=True, when soft-deleted, then Ready flips to False due to generation bump", func(t *testing.T) { //nolint:lll
+		g := NewWithT(t)
+		// Given:
+		nodePoolDao := newMockNodePoolDao()
+		adapterStatusDao := newMockAdapterStatusDao()
+		adapterConfig := testNodePoolAdapterConfig()
+		adapterConfig.Required.Nodepool = []string{"validation"}
+		service := NewNodePoolService(nodePoolDao, adapterStatusDao, adapterConfig)
+		ctx := context.Background()
+		nodePoolID := "ready-nodepool"
+
+		nodePoolDao.nodePools[nodePoolID] = &api.NodePool{Meta: api.Meta{ID: nodePoolID}, Generation: 1}
+		conditions := []api.AdapterCondition{
+			{Type: api.ConditionTypeAvailable, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+			{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+			{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		}
+		condJSON, _ := json.Marshal(conditions)
+		now := time.Now()
+		_, svcErr := service.ProcessAdapterStatus(ctx, nodePoolID, &api.AdapterStatus{
+			ResourceType: "NodePool", ResourceID: nodePoolID, Adapter: "validation",
+			ObservedGeneration: 1, Conditions: condJSON, CreatedTime: now, LastReportTime: now,
+		})
+		g.Expect(svcErr).To(BeNil())
+
+		// Pre-condition: Ready=True before soft-delete
+		stored, _ := nodePoolDao.Get(ctx, nodePoolID)
+		var preConds []api.ResourceCondition
+		g.Expect(json.Unmarshal(stored.StatusConditions, &preConds)).To(Succeed())
+		var preReady *api.ResourceCondition
+		for i := range preConds {
+			if preConds[i].Type == api.ConditionTypeReady {
+				preReady = &preConds[i]
+			}
+		}
+		g.Expect(preReady).NotTo(BeNil())
+		g.Expect(preReady.Status).To(Equal(api.ConditionTrue))
+
+		// When:
+		_, svcErr = service.SoftDelete(ctx, nodePoolID)
+		g.Expect(svcErr).To(BeNil())
+
+		// Then: generation bumped to 2, Ready must flip to False
+		stored, _ = nodePoolDao.Get(ctx, nodePoolID)
+		g.Expect(stored.Generation).To(Equal(int32(2)))
+		var postConds []api.ResourceCondition
+		g.Expect(json.Unmarshal(stored.StatusConditions, &postConds)).To(Succeed())
+		var postReady *api.ResourceCondition
+		for i := range postConds {
+			if postConds[i].Type == api.ConditionTypeReady {
+				postReady = &postConds[i]
+			}
+		}
+		g.Expect(postReady).NotTo(BeNil())
+		g.Expect(postReady.Status).To(Equal(api.ConditionFalse))
+		g.Expect(postReady.ObservedGeneration).To(Equal(int32(2)))
+	})
 }

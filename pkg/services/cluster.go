@@ -132,6 +132,11 @@ func (s *sqlClusterService) SoftDelete(ctx context.Context, id string) (*api.Clu
 		return nil, handleSoftDeleteError("NodePool", err)
 	}
 
+	cluster, svcErr := s.UpdateClusterStatusFromAdapters(ctx, cluster.ID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+
 	return cluster, nil
 }
 

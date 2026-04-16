@@ -120,6 +120,11 @@ func (s *sqlNodePoolService) SoftDelete(ctx context.Context, id string) (*api.No
 		return nil, handleSoftDeleteError("NodePool", err)
 	}
 
+	nodePool, svcErr := s.UpdateNodePoolStatusFromAdapters(ctx, nodePool.ID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+
 	return nodePool, nil
 }
 
