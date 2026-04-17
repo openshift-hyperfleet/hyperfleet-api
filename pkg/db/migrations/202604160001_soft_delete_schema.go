@@ -28,7 +28,7 @@ func addSoftDeleteSchema() *gormigrate.Migration {
 			if err := tx.Exec("DROP INDEX IF EXISTS idx_clusters_name;").Error; err != nil {
 				return err
 			}
-			if err := tx.Exec("CREATE UNIQUE INDEX idx_clusters_name ON clusters(name) WHERE deleted_time IS NULL;").Error; err != nil {
+			if err := tx.Exec("CREATE UNIQUE INDEX idx_clusters_name ON clusters(name) WHERE deleted_time IS NULL;").Error; err != nil { //nolint:lll
 				return err
 			}
 
@@ -36,7 +36,7 @@ func addSoftDeleteSchema() *gormigrate.Migration {
 			if err := tx.Exec("ALTER TABLE node_pools RENAME COLUMN deleted_at TO deleted_time;").Error; err != nil {
 				return err
 			}
-			if err := tx.Exec("ALTER TABLE node_pools ADD COLUMN IF NOT EXISTS deleted_by VARCHAR(255) NULL;").Error; err != nil {
+			if err := tx.Exec("ALTER TABLE node_pools ADD COLUMN IF NOT EXISTS deleted_by VARCHAR(255) NULL;").Error; err != nil { //nolint:lll
 				return err
 			}
 			if err := tx.Exec("DROP INDEX IF EXISTS idx_node_pools_deleted_at;").Error; err != nil {
@@ -76,7 +76,7 @@ func addSoftDeleteSchema() *gormigrate.Migration {
 			if err := tx.Exec("CREATE INDEX IF NOT EXISTS idx_adapter_statuses_deleted_at ON adapter_statuses(deleted_at);").Error; err != nil { //nolint:lll
 				return err
 			}
-			if err := tx.Exec("ALTER TABLE adapter_statuses ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ NULL;").Error; err != nil {
+			if err := tx.Exec("ALTER TABLE adapter_statuses ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ NULL;").Error; err != nil { //nolint:lll
 				return err
 			}
 
@@ -87,7 +87,7 @@ func addSoftDeleteSchema() *gormigrate.Migration {
 			if err := tx.Exec("CREATE UNIQUE INDEX idx_node_pools_owner_name ON node_pools(owner_id, name) WHERE deleted_at IS NULL;").Error; err != nil { //nolint:lll
 				return err
 			}
-			if err := tx.Exec("CREATE INDEX IF NOT EXISTS idx_node_pools_deleted_at ON node_pools(deleted_at);").Error; err != nil {
+			if err := tx.Exec("CREATE INDEX IF NOT EXISTS idx_node_pools_deleted_at ON node_pools(deleted_at);").Error; err != nil { //nolint:lll
 				return err
 			}
 			if err := tx.Exec("ALTER TABLE node_pools DROP COLUMN IF EXISTS deleted_by;").Error; err != nil {
@@ -101,7 +101,7 @@ func addSoftDeleteSchema() *gormigrate.Migration {
 			if err := tx.Exec("DROP INDEX IF EXISTS idx_clusters_name;").Error; err != nil {
 				return err
 			}
-			if err := tx.Exec("CREATE UNIQUE INDEX idx_clusters_name ON clusters(name) WHERE deleted_at IS NULL;").Error; err != nil {
+			if err := tx.Exec("CREATE UNIQUE INDEX idx_clusters_name ON clusters(name) WHERE deleted_at IS NULL;").Error; err != nil { //nolint:lll
 				return err
 			}
 			if err := tx.Exec("CREATE INDEX IF NOT EXISTS idx_clusters_deleted_at ON clusters(deleted_at);").Error; err != nil {
