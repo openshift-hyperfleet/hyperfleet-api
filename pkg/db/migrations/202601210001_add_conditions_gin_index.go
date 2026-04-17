@@ -33,14 +33,5 @@ func addConditionsGinIndex() *gormigrate.Migration {
 
 			return nil
 		},
-		Rollback: func(tx *gorm.DB) error {
-			if err := tx.Exec("DROP INDEX IF EXISTS idx_clusters_ready_status;").Error; err != nil {
-				return err
-			}
-			if err := tx.Exec("DROP INDEX IF EXISTS idx_node_pools_ready_status;").Error; err != nil {
-				return err
-			}
-			return nil
-		},
 	}
 }

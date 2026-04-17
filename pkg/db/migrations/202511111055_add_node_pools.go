@@ -83,29 +83,5 @@ func addNodePools() *gormigrate.Migration {
 
 			return nil
 		},
-		Rollback: func(tx *gorm.DB) error {
-			// Drop foreign key constraint first
-			if err := tx.Exec("ALTER TABLE node_pools DROP CONSTRAINT IF EXISTS fk_node_pools_clusters;").Error; err != nil {
-				return err
-			}
-
-			// Drop indexes
-			if err := tx.Exec("DROP INDEX IF EXISTS idx_node_pools_owner_name;").Error; err != nil {
-				return err
-			}
-			if err := tx.Exec("DROP INDEX IF EXISTS idx_node_pools_owner_id;").Error; err != nil {
-				return err
-			}
-			if err := tx.Exec("DROP INDEX IF EXISTS idx_node_pools_deleted_at;").Error; err != nil {
-				return err
-			}
-
-			// Drop table
-			if err := tx.Exec("DROP TABLE IF EXISTS node_pools;").Error; err != nil {
-				return err
-			}
-
-			return nil
-		},
 	}
 }
