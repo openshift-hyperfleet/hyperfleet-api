@@ -25,6 +25,7 @@ func NewServiceLocator(env *environments.Env) ServiceLocator {
 	return func() services.ClusterService {
 		return services.NewClusterService(
 			dao.NewClusterDao(&env.Database.SessionFactory),
+			dao.NewNodePoolDao(&env.Database.SessionFactory),
 			dao.NewAdapterStatusDao(&env.Database.SessionFactory),
 			env.Config.Adapters,
 		)
@@ -59,7 +60,7 @@ func init() {
 		clustersRouter.HandleFunc("/{id}", clusterHandler.Get).Methods(http.MethodGet)
 		clustersRouter.HandleFunc("", clusterHandler.Create).Methods(http.MethodPost)
 		clustersRouter.HandleFunc("/{id}", clusterHandler.Patch).Methods(http.MethodPatch)
-		clustersRouter.HandleFunc("/{id}", clusterHandler.Delete).Methods(http.MethodDelete)
+		clustersRouter.HandleFunc("/{id}", clusterHandler.SoftDelete).Methods(http.MethodDelete)
 
 		// Nested resource: cluster statuses
 		clusterStatusHandler := handlers.NewClusterStatusHandler(adapterStatus.Service(envServices), Service(envServices))
@@ -75,6 +76,7 @@ func init() {
 		clustersRouter.HandleFunc("/{id}/nodepools", clusterNodePoolsHandler.List).Methods(http.MethodGet)
 		clustersRouter.HandleFunc("/{id}/nodepools", clusterNodePoolsHandler.Create).Methods(http.MethodPost)
 		clustersRouter.HandleFunc("/{id}/nodepools/{nodepool_id}", clusterNodePoolsHandler.Get).Methods(http.MethodGet)
+		clustersRouter.HandleFunc("/{id}/nodepools/{nodepool_id}", clusterNodePoolsHandler.SoftDelete).Methods(http.MethodDelete)
 
 		// Nested resource: nodepool statuses
 		nodepoolStatusHandler := handlers.NewNodePoolStatusHandler(adapterStatus.Service(envServices), nodePools.Service(envServices))

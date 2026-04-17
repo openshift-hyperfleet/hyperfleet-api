@@ -8,6 +8,7 @@ import (
 	"time"
 
 	. "github.com/onsi/gomega"
+	"gorm.io/gorm"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
@@ -17,6 +18,7 @@ import (
 
 const (
 	testClusterID = "test-cluster-id"
+	systemActor   = "system@hyperfleet.local"
 )
 
 // testAdapterConfig creates a test adapter config with default values
@@ -45,7 +47,7 @@ func (d *mockClusterDao) Get(ctx context.Context, id string) (*api.Cluster, erro
 	if c, ok := d.clusters[id]; ok {
 		return c, nil
 	}
-	return nil, errors.NotFound("Cluster").AsError()
+	return nil, gorm.ErrRecordNotFound
 }
 
 func (d *mockClusterDao) Create(ctx context.Context, cluster *api.Cluster) (*api.Cluster, error) {
@@ -63,6 +65,11 @@ func (d *mockClusterDao) Create(ctx context.Context, cluster *api.Cluster) (*api
 func (d *mockClusterDao) Replace(ctx context.Context, cluster *api.Cluster) (*api.Cluster, error) {
 	d.clusters[cluster.ID] = cluster
 	return cluster, nil
+}
+
+func (d *mockClusterDao) Save(ctx context.Context, cluster *api.Cluster) error {
+	d.clusters[cluster.ID] = cluster
+	return nil
 }
 
 func (d *mockClusterDao) Delete(ctx context.Context, id string) error {
@@ -196,7 +203,7 @@ func TestProcessAdapterStatus_FirstUnknownCondition(t *testing.T) {
 	clusterDao := newMockClusterDao()
 	adapterStatusDao := newMockAdapterStatusDao()
 	config := testAdapterConfig()
-	service := NewClusterService(clusterDao, adapterStatusDao, config)
+	service := NewClusterService(clusterDao, newMockNodePoolDao(), adapterStatusDao, config)
 
 	ctx := context.Background()
 	clusterID := testClusterID
@@ -246,7 +253,7 @@ func TestProcessAdapterStatus_SubsequentUnknownCondition(t *testing.T) {
 	adapterStatusDao := newMockAdapterStatusDao()
 
 	config := testAdapterConfig()
-	service := NewClusterService(clusterDao, adapterStatusDao, config)
+	service := NewClusterService(clusterDao, newMockNodePoolDao(), adapterStatusDao, config)
 
 	ctx := context.Background()
 	clusterID := testClusterID
@@ -302,7 +309,7 @@ func TestProcessAdapterStatus_InvalidStatusReturnsValidationError(t *testing.T) 
 	clusterDao := newMockClusterDao()
 	adapterStatusDao := newMockAdapterStatusDao()
 	config := testAdapterConfig()
-	service := NewClusterService(clusterDao, adapterStatusDao, config)
+	service := NewClusterService(clusterDao, newMockNodePoolDao(), adapterStatusDao, config)
 
 	ctx := context.Background()
 	clusterID := testClusterID
@@ -345,7 +352,7 @@ func TestProcessAdapterStatus_EmptyStatusReturnsValidationError(t *testing.T) {
 	clusterDao := newMockClusterDao()
 	adapterStatusDao := newMockAdapterStatusDao()
 	config := testAdapterConfig()
-	service := NewClusterService(clusterDao, adapterStatusDao, config)
+	service := NewClusterService(clusterDao, newMockNodePoolDao(), adapterStatusDao, config)
 
 	ctx := context.Background()
 	clusterID := testClusterID
@@ -388,7 +395,7 @@ func TestProcessAdapterStatus_TrueCondition(t *testing.T) {
 	adapterStatusDao := newMockAdapterStatusDao()
 
 	config := testAdapterConfig()
-	service := NewClusterService(clusterDao, adapterStatusDao, config)
+	service := NewClusterService(clusterDao, newMockNodePoolDao(), adapterStatusDao, config)
 
 	ctx := context.Background()
 	clusterID := testClusterID
@@ -451,7 +458,7 @@ func TestProcessAdapterStatus_FalseCondition(t *testing.T) {
 	adapterStatusDao := newMockAdapterStatusDao()
 
 	config := testAdapterConfig()
-	service := NewClusterService(clusterDao, adapterStatusDao, config)
+	service := NewClusterService(clusterDao, newMockNodePoolDao(), adapterStatusDao, config)
 
 	ctx := context.Background()
 	clusterID := testClusterID
@@ -514,7 +521,7 @@ func TestProcessAdapterStatus_FirstMultipleConditions_AvailableUnknown(t *testin
 	adapterStatusDao := newMockAdapterStatusDao()
 
 	config := testAdapterConfig()
-	service := NewClusterService(clusterDao, adapterStatusDao, config)
+	service := NewClusterService(clusterDao, newMockNodePoolDao(), adapterStatusDao, config)
 
 	ctx := context.Background()
 	clusterID := testClusterID
@@ -580,7 +587,7 @@ func TestProcessAdapterStatus_SubsequentMultipleConditions_AvailableUnknown(t *t
 	adapterStatusDao := newMockAdapterStatusDao()
 
 	config := testAdapterConfig()
-	service := NewClusterService(clusterDao, adapterStatusDao, config)
+	service := NewClusterService(clusterDao, newMockNodePoolDao(), adapterStatusDao, config)
 
 	ctx := context.Background()
 	clusterID := testClusterID
@@ -647,7 +654,7 @@ func TestClusterAvailableReadyTransitions(t *testing.T) {
 	// Keep this small so we can cover transitions succinctly.
 	adapterConfig.Required.Cluster = []string{"validation", "dns"}
 
-	service := NewClusterService(clusterDao, adapterStatusDao, adapterConfig)
+	service := NewClusterService(clusterDao, newMockNodePoolDao(), adapterStatusDao, adapterConfig)
 
 	ctx := context.Background()
 	clusterID := testClusterID
@@ -801,7 +808,7 @@ func TestClusterStaleAdapterStatusUpdatePolicy(t *testing.T) {
 	adapterConfig := testAdapterConfig()
 	adapterConfig.Required.Cluster = []string{"validation", "dns"}
 
-	service := NewClusterService(clusterDao, adapterStatusDao, adapterConfig)
+	service := NewClusterService(clusterDao, newMockNodePoolDao(), adapterStatusDao, adapterConfig)
 
 	ctx := context.Background()
 	clusterID := testClusterID
@@ -879,7 +886,7 @@ func TestClusterSyntheticTimestampsStableWithoutAdapterStatus(t *testing.T) {
 	adapterConfig := testAdapterConfig()
 	adapterConfig.Required.Cluster = []string{"validation"}
 
-	service := NewClusterService(clusterDao, adapterStatusDao, adapterConfig)
+	service := NewClusterService(clusterDao, newMockNodePoolDao(), adapterStatusDao, adapterConfig)
 
 	ctx := context.Background()
 	clusterID := testClusterID
@@ -971,7 +978,7 @@ func TestProcessAdapterStatus_MissingMandatoryCondition_Available(t *testing.T) 
 	clusterDao := newMockClusterDao()
 	adapterStatusDao := newMockAdapterStatusDao()
 	config := testAdapterConfig()
-	service := NewClusterService(clusterDao, adapterStatusDao, config)
+	service := NewClusterService(clusterDao, newMockNodePoolDao(), adapterStatusDao, config)
 
 	ctx := context.Background()
 	clusterID := testClusterID
@@ -1057,7 +1064,7 @@ func TestProcessAdapterStatus_AllMandatoryConditions_WithCustom(t *testing.T) {
 	clusterDao := newMockClusterDao()
 	adapterStatusDao := newMockAdapterStatusDao()
 	config := testAdapterConfig()
-	service := NewClusterService(clusterDao, adapterStatusDao, config)
+	service := NewClusterService(clusterDao, newMockNodePoolDao(), adapterStatusDao, config)
 
 	ctx := context.Background()
 	clusterID := testClusterID
@@ -1118,7 +1125,7 @@ func TestProcessAdapterStatus_CustomConditionRemoval(t *testing.T) {
 	clusterDao := newMockClusterDao()
 	adapterStatusDao := newMockAdapterStatusDao()
 	config := testAdapterConfig()
-	service := NewClusterService(clusterDao, adapterStatusDao, config)
+	service := NewClusterService(clusterDao, newMockNodePoolDao(), adapterStatusDao, config)
 
 	ctx := context.Background()
 	clusterID := testClusterID
@@ -1193,4 +1200,149 @@ func TestProcessAdapterStatus_CustomConditionRemoval(t *testing.T) {
 	g.Expect(conditionTypes[api.ConditionTypeApplied]).To(BeTrue())
 	g.Expect(conditionTypes[api.ConditionTypeHealth]).To(BeTrue())
 	g.Expect(conditionTypes["CustomCondition"]).To(BeFalse(), "CustomCondition should not be present")
+}
+
+func TestClusterSoftDelete(t *testing.T) {
+	t.Run("given a live cluster, when soft-deleted, then deleted_time/deleted_by/generation are set", func(t *testing.T) {
+		g := NewWithT(t)
+		// Given:
+		clusterDao := newMockClusterDao()
+		nodePoolDao := newMockNodePoolDao()
+		adapterStatusDao := newMockAdapterStatusDao()
+		service := NewClusterService(clusterDao, nodePoolDao, adapterStatusDao, testAdapterConfig())
+		ctx := context.Background()
+		clusterID := "live-cluster"
+		clusterDao.clusters[clusterID] = &api.Cluster{
+			Meta:       api.Meta{ID: clusterID},
+			Generation: 1,
+		}
+		// When:
+		cluster, svcErr := service.SoftDelete(ctx, clusterID)
+		// Then:
+		g.Expect(svcErr).To(BeNil())
+		g.Expect(cluster.DeletedTime).NotTo(BeNil())
+		g.Expect(cluster.DeletedBy).NotTo(BeNil())
+		g.Expect(*cluster.DeletedBy).To(Equal(systemActor))
+		g.Expect(cluster.Generation).To(Equal(int32(2)))
+	})
+
+	t.Run("given a cluster with child nodepools, when soft-deleted, then all nodepools are also soft-deleted", func(t *testing.T) { //nolint:lll
+		g := NewWithT(t)
+		// Given:
+		clusterDao := newMockClusterDao()
+		nodePoolDao := newMockNodePoolDao()
+		adapterStatusDao := newMockAdapterStatusDao()
+		service := NewClusterService(clusterDao, nodePoolDao, adapterStatusDao, testAdapterConfig())
+		ctx := context.Background()
+		clusterID := "cluster-with-pools"
+		clusterDao.clusters[clusterID] = &api.Cluster{Meta: api.Meta{ID: clusterID}, Generation: 1}
+		nodePoolDao.nodePools["np-1"] = &api.NodePool{Meta: api.Meta{ID: "np-1"}, OwnerID: clusterID, Generation: 1}
+		nodePoolDao.nodePools["np-2"] = &api.NodePool{Meta: api.Meta{ID: "np-2"}, OwnerID: clusterID, Generation: 1}
+		// When:
+		cluster, svcErr := service.SoftDelete(ctx, clusterID)
+		// Then:
+		g.Expect(svcErr).To(BeNil())
+		g.Expect(cluster.DeletedTime).NotTo(BeNil())
+		g.Expect(nodePoolDao.nodePools["np-1"].DeletedTime).NotTo(BeNil())
+		g.Expect(nodePoolDao.nodePools["np-2"].DeletedTime).NotTo(BeNil())
+	})
+
+	t.Run("given an already-deleted cluster, when soft-deleted again, then deleted_time and generation are unchanged", func(t *testing.T) { //nolint:lll
+		g := NewWithT(t)
+		// Given:
+		clusterDao := newMockClusterDao()
+		nodePoolDao := newMockNodePoolDao()
+		adapterStatusDao := newMockAdapterStatusDao()
+		service := NewClusterService(clusterDao, nodePoolDao, adapterStatusDao, testAdapterConfig())
+		ctx := context.Background()
+		clusterID := "already-deleted"
+		originalTime := time.Now().Add(-time.Hour)
+		clusterDao.clusters[clusterID] = &api.Cluster{
+			Meta: api.Meta{ID: clusterID}, DeletedTime: &originalTime, Generation: 2,
+		}
+		nodePoolDao.nodePools["np-1"] = &api.NodePool{
+			Meta: api.Meta{ID: "np-1"}, OwnerID: clusterID, DeletedTime: &originalTime, Generation: 2,
+		}
+		// When:
+		cluster, svcErr := service.SoftDelete(ctx, clusterID)
+		// Then:
+		g.Expect(svcErr).To(BeNil())
+		g.Expect(cluster.DeletedTime.Equal(originalTime)).To(BeTrue())
+		g.Expect(cluster.Generation).To(Equal(int32(2)))
+		g.Expect(nodePoolDao.nodePools["np-1"].DeletedTime.Equal(originalTime)).To(BeTrue())
+	})
+
+	t.Run("given a non-existent cluster ID, when soft-deleted, then returns 404 service error", func(t *testing.T) {
+		g := NewWithT(t)
+		// Given:
+		clusterDao := newMockClusterDao()
+		nodePoolDao := newMockNodePoolDao()
+		adapterStatusDao := newMockAdapterStatusDao()
+		service := NewClusterService(clusterDao, nodePoolDao, adapterStatusDao, testAdapterConfig())
+		ctx := context.Background()
+		// When:
+		_, svcErr := service.SoftDelete(ctx, "nonexistent")
+		// Then:
+		g.Expect(svcErr).NotTo(BeNil())
+		g.Expect(svcErr.HTTPCode).To(Equal(404))
+	})
+
+	t.Run("given a cluster with Ready=True, when soft-deleted, then Ready flips to False due to generation bump", func(t *testing.T) { //nolint:lll
+		g := NewWithT(t)
+		// Given:
+		clusterDao := newMockClusterDao()
+		nodePoolDao := newMockNodePoolDao()
+		adapterStatusDao := newMockAdapterStatusDao()
+		adapterConfig := testAdapterConfig()
+		adapterConfig.Required.Cluster = []string{"validation"}
+		service := NewClusterService(clusterDao, nodePoolDao, adapterStatusDao, adapterConfig)
+		ctx := context.Background()
+		clusterID := "ready-cluster"
+
+		clusterDao.clusters[clusterID] = &api.Cluster{Meta: api.Meta{ID: clusterID}, Generation: 1}
+		conditions := []api.AdapterCondition{
+			{Type: api.ConditionTypeAvailable, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+			{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+			{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		}
+		condJSON, _ := json.Marshal(conditions)
+		now := time.Now()
+		_, svcErr := service.ProcessAdapterStatus(ctx, clusterID, &api.AdapterStatus{
+			ResourceType: "Cluster", ResourceID: clusterID, Adapter: "validation",
+			ObservedGeneration: 1, Conditions: condJSON, CreatedTime: now, LastReportTime: now,
+		})
+		g.Expect(svcErr).To(BeNil())
+
+		// Pre-condition: Ready=True before soft-delete
+		stored, _ := clusterDao.Get(ctx, clusterID)
+		var preConds []api.ResourceCondition
+		g.Expect(json.Unmarshal(stored.StatusConditions, &preConds)).To(Succeed())
+		var preReady *api.ResourceCondition
+		for i := range preConds {
+			if preConds[i].Type == api.ConditionTypeReady {
+				preReady = &preConds[i]
+			}
+		}
+		g.Expect(preReady).NotTo(BeNil())
+		g.Expect(preReady.Status).To(Equal(api.ConditionTrue))
+
+		// When:
+		_, svcErr = service.SoftDelete(ctx, clusterID)
+		g.Expect(svcErr).To(BeNil())
+
+		// Then: generation bumped to 2, Ready must flip to False
+		stored, _ = clusterDao.Get(ctx, clusterID)
+		g.Expect(stored.Generation).To(Equal(int32(2)))
+		var postConds []api.ResourceCondition
+		g.Expect(json.Unmarshal(stored.StatusConditions, &postConds)).To(Succeed())
+		var postReady *api.ResourceCondition
+		for i := range postConds {
+			if postConds[i].Type == api.ConditionTypeReady {
+				postReady = &postConds[i]
+			}
+		}
+		g.Expect(postReady).NotTo(BeNil())
+		g.Expect(postReady.Status).To(Equal(api.ConditionFalse))
+		g.Expect(postReady.ObservedGeneration).To(Equal(int32(2)))
+	})
 }

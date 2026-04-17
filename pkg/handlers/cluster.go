@@ -133,6 +133,7 @@ func (h ClusterHandler) List(w http.ResponseWriter, r *http.Request) {
 			}
 			return clusterList, nil
 		},
+		ErrorHandler: handleError,
 	}
 
 	handleList(w, r, cfg)
@@ -154,16 +155,30 @@ func (h ClusterHandler) Get(w http.ResponseWriter, r *http.Request) {
 			}
 			return presented, nil
 		},
+		ErrorHandler: handleError,
 	}
 
 	handleGet(w, r, cfg)
 }
 
-func (h ClusterHandler) Delete(w http.ResponseWriter, r *http.Request) {
+func (h ClusterHandler) SoftDelete(w http.ResponseWriter, r *http.Request) {
 	cfg := &handlerConfig{
 		Action: func() (interface{}, *errors.ServiceError) {
-			return nil, errors.NotImplemented("delete")
+			id := mux.Vars(r)["id"]
+			ctx := r.Context()
+			cluster, err := h.cluster.SoftDelete(ctx, id)
+			if err != nil {
+				return nil, err
+			}
+
+			presented, presErr := presenters.PresentCluster(cluster)
+			if presErr != nil {
+				return nil, errors.GeneralError("Failed to present cluster: %v", presErr)
+			}
+
+			return presented, nil
 		},
+		ErrorHandler: handleError,
 	}
-	handleDelete(w, r, cfg, http.StatusNoContent)
+	handleSoftDelete(w, r, cfg, http.StatusAccepted)
 }

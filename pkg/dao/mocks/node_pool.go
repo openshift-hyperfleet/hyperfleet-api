@@ -2,6 +2,7 @@ package mocks
 
 import (
 	"context"
+	"time"
 
 	"gorm.io/gorm"
 
@@ -34,7 +35,16 @@ func (d *nodePoolDaoMock) Replace(ctx context.Context, nodePool *api.NodePool) (
 	return nil, errors.NotImplemented("NodePool").AsError()
 }
 
+func (d *nodePoolDaoMock) Save(ctx context.Context, nodePool *api.NodePool) error {
+	d.nodePools = append(d.nodePools, nodePool)
+	return nil
+}
+
 func (d *nodePoolDaoMock) Delete(ctx context.Context, id string) error {
+	return errors.NotImplemented("NodePool").AsError()
+}
+
+func (d *nodePoolDaoMock) SoftDeleteByOwner(ctx context.Context, ownerID string, t time.Time, deletedBy string) error {
 	return errors.NotImplemented("NodePool").AsError()
 }
 

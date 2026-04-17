@@ -70,24 +70,5 @@ func addAdapterStatus() *gormigrate.Migration {
 
 			return nil
 		},
-		Rollback: func(tx *gorm.DB) error {
-			// Drop indexes
-			if err := tx.Exec("DROP INDEX IF EXISTS idx_adapter_statuses_unique;").Error; err != nil {
-				return err
-			}
-			if err := tx.Exec("DROP INDEX IF EXISTS idx_adapter_statuses_resource;").Error; err != nil {
-				return err
-			}
-			if err := tx.Exec("DROP INDEX IF EXISTS idx_adapter_statuses_deleted_at;").Error; err != nil {
-				return err
-			}
-
-			// Drop table
-			if err := tx.Exec("DROP TABLE IF EXISTS adapter_statuses;").Error; err != nil {
-				return err
-			}
-
-			return nil
-		},
 	}
 }

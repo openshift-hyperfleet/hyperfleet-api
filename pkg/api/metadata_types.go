@@ -20,8 +20,6 @@ package api
 
 import (
 	"time"
-
-	"gorm.io/gorm"
 )
 
 // Metadata api metadata.
@@ -35,10 +33,9 @@ type Metadata struct {
 
 // Meta is base model definition, embedded in all kinds
 type Meta struct {
-	ID          string
 	CreatedTime time.Time
 	UpdatedTime time.Time
-	DeletedAt   gorm.DeletedAt `gorm:"index"`
+	ID          string
 }
 
 // PagingMeta List Paging metadata

@@ -56,6 +56,16 @@ func handleUpdateError(resourceType string, err error) *errors.ServiceError {
 	return errors.GeneralError("Unable to update %s: %s", resourceType, err.Error())
 }
 
+func handleSoftDeleteError(resourceType string, err error) *errors.ServiceError {
+	if e.Is(err, gorm.ErrRecordNotFound) {
+		return errors.NotFound("%s not found", resourceType)
+	}
+	if db.IsDBConnectionError(err) {
+		return errors.ServiceUnavailable("Database connection unavailable")
+	}
+	return errors.GeneralError("Unable to soft-delete %s: %s", resourceType, err.Error())
+}
+
 func handleDeleteError(resourceType string, err error) *errors.ServiceError {
 	if db.IsDBConnectionError(err) {
 		return errors.ServiceUnavailable("Database connection unavailable")

@@ -15,6 +15,8 @@ type NodePool struct {
 	Kind             string         `json:"kind" gorm:"default:'NodePool'"`
 	Name             string         `json:"name" gorm:"size:15;not null"`
 	UpdatedBy        string         `json:"updated_by" gorm:"size:255;not null"`
+	DeletedBy        *string        `json:"deleted_by,omitempty" gorm:"size:255"`
+	DeletedTime      *time.Time     `json:"deleted_time,omitempty"`
 	Href             string         `json:"href,omitempty" gorm:"size:500"`
 	CreatedBy        string         `json:"created_by" gorm:"size:255;not null"`
 	OwnerID          string         `json:"owner_id" gorm:"size:255;not null;index"`

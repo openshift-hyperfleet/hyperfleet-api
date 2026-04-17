@@ -10,6 +10,7 @@ import (
 	"gopkg.in/resty.v1"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/util"
 	"github.com/openshift-hyperfleet/hyperfleet-api/test"
 )
 
@@ -449,4 +450,110 @@ func TestNodePoolPost_MissingSpec(t *testing.T) {
 	detail, ok := errorResponse["detail"].(string)
 	Expect(ok).To(BeTrue())
 	Expect(detail).To(ContainSubstring("spec is required"))
+}
+
+func newNodePoolInput(name string) openapi.NodePoolCreateRequest {
+	return openapi.NodePoolCreateRequest{
+		Kind: util.PtrString("NodePool"),
+		Name: name,
+		Spec: map[string]interface{}{"test": "spec"},
+	}
+}
+
+func TestNodePoolSoftDelete(t *testing.T) {
+	t.Run("given a valid nodepool owned by the cluster, when deleted, then returns 202 with deleted_time and deleted_by set", func(t *testing.T) { //nolint:lll
+		RegisterTestingT(t)
+		// Given:
+		h, client := test.RegisterIntegration(t)
+		account := h.NewRandAccount()
+		ctx := h.NewAuthenticatedContext(account)
+		cluster, err := h.Factories.NewClusters(h.NewID())
+		Expect(err).NotTo(HaveOccurred())
+		npResp, err := client.CreateNodePoolWithResponse(
+			ctx, cluster.ID, openapi.CreateNodePoolJSONRequestBody(newNodePoolInput("del-success-np")), test.WithAuthToken(ctx),
+		)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(npResp.StatusCode()).To(Equal(http.StatusCreated))
+		nodePoolID := *npResp.JSON201.Id
+		// When:
+		resp, err := client.DeleteNodePoolByIdWithResponse(ctx, cluster.ID, nodePoolID, test.WithAuthToken(ctx))
+		// Then:
+		Expect(err).NotTo(HaveOccurred())
+		Expect(resp.StatusCode()).To(Equal(http.StatusAccepted))
+		Expect(resp.JSON202).NotTo(BeNil())
+		Expect(*resp.JSON202.Id).To(Equal(nodePoolID))
+		Expect(resp.JSON202.DeletedTime).NotTo(BeNil())
+		Expect(resp.JSON202.DeletedBy).NotTo(BeNil())
+		Expect(string(*resp.JSON202.DeletedBy)).To(Equal("system@hyperfleet.local"))
+	})
+
+	t.Run("given a nodepool that belongs to a different cluster, when deleted via wrong cluster ID, then returns 404", func(t *testing.T) { //nolint:lll
+		RegisterTestingT(t)
+		// Given:
+		h, client := test.RegisterIntegration(t)
+		account := h.NewRandAccount()
+		ctx := h.NewAuthenticatedContext(account)
+		cluster1, err := h.Factories.NewClusters(h.NewID())
+		Expect(err).NotTo(HaveOccurred())
+		cluster2, err := h.Factories.NewClusters(h.NewID())
+		Expect(err).NotTo(HaveOccurred())
+		npResp, err := client.CreateNodePoolWithResponse(
+			ctx, cluster1.ID, openapi.CreateNodePoolJSONRequestBody(newNodePoolInput("ownership-np")), test.WithAuthToken(ctx),
+		)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(npResp.StatusCode()).To(Equal(http.StatusCreated))
+		nodePoolID := *npResp.JSON201.Id
+		// When: delete via cluster2 (wrong owner)
+		resp, err := client.DeleteNodePoolByIdWithResponse(ctx, cluster2.ID, nodePoolID, test.WithAuthToken(ctx))
+		// Then:
+		Expect(err).NotTo(HaveOccurred())
+		Expect(resp.StatusCode()).To(Equal(http.StatusNotFound))
+	})
+
+	t.Run("given an already-deleted nodepool, when deleted again, then returns 202 with unchanged deleted_time and generation", func(t *testing.T) { //nolint:lll
+		RegisterTestingT(t)
+		// Given:
+		h, client := test.RegisterIntegration(t)
+		account := h.NewRandAccount()
+		ctx := h.NewAuthenticatedContext(account)
+		cluster, err := h.Factories.NewClusters(h.NewID())
+		Expect(err).NotTo(HaveOccurred())
+		npResp, err := client.CreateNodePoolWithResponse(
+			ctx, cluster.ID, openapi.CreateNodePoolJSONRequestBody(newNodePoolInput("idempotent-np")), test.WithAuthToken(ctx),
+		)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(npResp.StatusCode()).To(Equal(http.StatusCreated))
+		nodePoolID := *npResp.JSON201.Id
+		// When: first delete
+		resp1, err := client.DeleteNodePoolByIdWithResponse(ctx, cluster.ID, nodePoolID, test.WithAuthToken(ctx))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(resp1.StatusCode()).To(Equal(http.StatusAccepted))
+		firstDeletedTime := resp1.JSON202.DeletedTime
+		firstGeneration := resp1.JSON202.Generation
+		Expect(firstDeletedTime).NotTo(BeNil())
+		// When: second delete (idempotent)
+		resp2, err := client.DeleteNodePoolByIdWithResponse(ctx, cluster.ID, nodePoolID, test.WithAuthToken(ctx))
+		// Then:
+		Expect(err).NotTo(HaveOccurred())
+		Expect(resp2.StatusCode()).To(Equal(http.StatusAccepted))
+		Expect(resp2.JSON202.DeletedTime.Equal(*firstDeletedTime)).To(BeTrue(),
+			"deleted_time should not change on repeated delete")
+		Expect(resp2.JSON202.Generation).To(Equal(firstGeneration),
+			"generation should not be incremented on repeated delete")
+	})
+
+	t.Run("given a non-existent nodepool ID on a valid cluster, when deleted, then returns 404", func(t *testing.T) {
+		RegisterTestingT(t)
+		// Given:
+		h, client := test.RegisterIntegration(t)
+		account := h.NewRandAccount()
+		ctx := h.NewAuthenticatedContext(account)
+		cluster, err := h.Factories.NewClusters(h.NewID())
+		Expect(err).NotTo(HaveOccurred())
+		// When:
+		resp, err := client.DeleteNodePoolByIdWithResponse(ctx, cluster.ID, h.NewID(), test.WithAuthToken(ctx))
+		// Then:
+		Expect(err).NotTo(HaveOccurred())
+		Expect(resp.StatusCode()).To(Equal(http.StatusNotFound))
+	})
 }

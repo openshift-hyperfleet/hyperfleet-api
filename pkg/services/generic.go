@@ -260,7 +260,7 @@ func (s *sqlGenericService) addJoins(listCtx *listContext, d *dao.GenericDao) {
 			continue
 		}
 		sql := fmt.Sprintf(
-			"LEFT JOIN %s ON %s.%s = %s.%s AND %s.deleted_at IS NULL",
+			"LEFT JOIN %s ON %s.%s = %s.%s AND %s.deleted_time IS NULL",
 			r.ForeignTableName, r.ForeignTableName, r.ForeignColumnName, r.TableName, r.ColumnName, r.ForeignTableName)
 		(*d).Joins(sql)
 

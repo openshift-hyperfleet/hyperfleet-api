@@ -120,11 +120,6 @@ func TestOTelMiddleware_SpanNameUsesRouteTemplate(t *testing.T) {
 				t.Fatalf("expected span with name %q, got spans: %v",
 					tt.expectedSpanName, getSpanNames(spans))
 			}
-
-			// Verify span name uses route template (low cardinality)
-			if httpSpan.Name != tt.expectedSpanName {
-				t.Errorf("expected span name %q, got %q", tt.expectedSpanName, httpSpan.Name)
-			}
 		})
 	}
 }

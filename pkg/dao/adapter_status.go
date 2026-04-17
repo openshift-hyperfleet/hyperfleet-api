@@ -138,6 +138,7 @@ func (d *sqlAdapterStatusDao) Upsert(
 	return d.FindByResourceAndAdapter(ctx, adapterStatus.ResourceType, adapterStatus.ResourceID, adapterStatus.Adapter)
 }
 
+// Delete permanently removes the adapter status row from the database.
 func (d *sqlAdapterStatusDao) Delete(ctx context.Context, id string) error {
 	g2 := (*d.sessionFactory).New(ctx)
 	adapterStatus := &api.AdapterStatus{Meta: api.Meta{ID: id}}

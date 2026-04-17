@@ -22,7 +22,7 @@ type ClusterService interface {
 	Get(ctx context.Context, id string) (*api.Cluster, *errors.ServiceError)
 	Create(ctx context.Context, cluster *api.Cluster) (*api.Cluster, *errors.ServiceError)
 	Replace(ctx context.Context, cluster *api.Cluster) (*api.Cluster, *errors.ServiceError)
-	Delete(ctx context.Context, id string) *errors.ServiceError
+	SoftDelete(ctx context.Context, id string) (*api.Cluster, *errors.ServiceError)
 	All(ctx context.Context) (api.ClusterList, *errors.ServiceError)
 
 	FindByIDs(ctx context.Context, ids []string) (api.ClusterList, *errors.ServiceError)
@@ -43,11 +43,13 @@ type ClusterService interface {
 
 func NewClusterService(
 	clusterDao dao.ClusterDao,
+	nodePoolDao dao.NodePoolDao,
 	adapterStatusDao dao.AdapterStatusDao,
 	adapterConfig *config.AdapterRequirementsConfig,
 ) ClusterService {
 	return &sqlClusterService{
 		clusterDao:       clusterDao,
+		nodePoolDao:      nodePoolDao,
 		adapterStatusDao: adapterStatusDao,
 		adapterConfig:    adapterConfig,
 	}
@@ -57,6 +59,7 @@ var _ ClusterService = &sqlClusterService{}
 
 type sqlClusterService struct {
 	clusterDao       dao.ClusterDao
+	nodePoolDao      dao.NodePoolDao
 	adapterStatusDao dao.AdapterStatusDao
 	adapterConfig    *config.AdapterRequirementsConfig
 }
@@ -100,12 +103,41 @@ func (s *sqlClusterService) Replace(ctx context.Context, cluster *api.Cluster) (
 	return updated, nil
 }
 
-func (s *sqlClusterService) Delete(ctx context.Context, id string) *errors.ServiceError {
-	if err := s.clusterDao.Delete(ctx, id); err != nil {
-		return handleDeleteError("Cluster", errors.GeneralError("Unable to delete cluster: %s", err))
+// SoftDelete marks a cluster for deletion by setting DeletedTime and
+// DeletedBy to the current time and system@hyperfleet.local.
+// If already marked, it returns the cluster unchanged. Cascades the deletion timestamp to all child nodepools.
+// Actual removal is handled by adapters detecting the new generation and triggering hard deletion asynchronously.
+func (s *sqlClusterService) SoftDelete(ctx context.Context, id string) (*api.Cluster, *errors.ServiceError) {
+	cluster, err := s.clusterDao.Get(ctx, id)
+	if err != nil {
+		return nil, handleSoftDeleteError("Cluster", err)
 	}
 
-	return nil
+	// Already marked for deletion — skip cascade to avoid unnecessary DB roundtrips.
+	if cluster.DeletedTime != nil {
+		return cluster, nil
+	}
+
+	t := time.Now().UTC().Truncate(time.Microsecond)
+	deletedBy := "system@hyperfleet.local"
+	cluster.DeletedTime = &t
+	cluster.DeletedBy = &deletedBy
+	cluster.Generation++
+
+	if err := s.clusterDao.Save(ctx, cluster); err != nil {
+		return nil, handleSoftDeleteError("Cluster", err)
+	}
+
+	if err := s.nodePoolDao.SoftDeleteByOwner(ctx, id, t, deletedBy); err != nil {
+		return nil, handleSoftDeleteError("NodePool", err)
+	}
+
+	cluster, svcErr := s.UpdateClusterStatusFromAdapters(ctx, cluster.ID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+
+	return cluster, nil
 }
 
 func (s *sqlClusterService) FindByIDs(ctx context.Context, ids []string) (api.ClusterList, *errors.ServiceError) {

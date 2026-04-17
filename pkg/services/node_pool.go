@@ -22,6 +22,7 @@ type NodePoolService interface {
 	Get(ctx context.Context, id string) (*api.NodePool, *errors.ServiceError)
 	Create(ctx context.Context, nodePool *api.NodePool) (*api.NodePool, *errors.ServiceError)
 	Replace(ctx context.Context, nodePool *api.NodePool) (*api.NodePool, *errors.ServiceError)
+	SoftDelete(ctx context.Context, id string) (*api.NodePool, *errors.ServiceError)
 	Delete(ctx context.Context, id string) *errors.ServiceError
 	All(ctx context.Context) (api.NodePoolList, *errors.ServiceError)
 
@@ -96,6 +97,35 @@ func (s *sqlNodePoolService) Replace(
 		return nil, svcErr
 	}
 	return updated, nil
+}
+
+func (s *sqlNodePoolService) SoftDelete(ctx context.Context, id string) (*api.NodePool, *errors.ServiceError) {
+	nodePool, err := s.nodePoolDao.Get(ctx, id)
+	if err != nil {
+		return nil, handleSoftDeleteError("NodePool", err)
+	}
+
+	// Already marked for deletion — return as-is (idempotent).
+	if nodePool.DeletedTime != nil {
+		return nodePool, nil
+	}
+
+	t := time.Now().UTC().Truncate(time.Microsecond)
+	deletedBy := "system@hyperfleet.local"
+	nodePool.DeletedTime = &t
+	nodePool.DeletedBy = &deletedBy
+	nodePool.Generation++
+
+	if err := s.nodePoolDao.Save(ctx, nodePool); err != nil {
+		return nil, handleSoftDeleteError("NodePool", err)
+	}
+
+	nodePool, svcErr := s.UpdateNodePoolStatusFromAdapters(ctx, nodePool.ID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+
+	return nodePool, nil
 }
 
 func (s *sqlNodePoolService) Delete(ctx context.Context, id string) *errors.ServiceError {

@@ -62,19 +62,5 @@ func addClusters() *gormigrate.Migration {
 
 			return nil
 		},
-		Rollback: func(tx *gorm.DB) error {
-			// Drop indexes first
-			if err := tx.Exec("DROP INDEX IF EXISTS idx_clusters_name;").Error; err != nil {
-				return err
-			}
-			if err := tx.Exec("DROP INDEX IF EXISTS idx_clusters_deleted_at;").Error; err != nil {
-				return err
-			}
-			// Drop table
-			if err := tx.Exec("DROP TABLE IF EXISTS clusters;").Error; err != nil {
-				return err
-			}
-			return nil
-		},
 	}
 }

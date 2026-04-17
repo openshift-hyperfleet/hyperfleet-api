@@ -1,7 +1,7 @@
 openapi: 3.0.0
 info:
   title: HyperFleet API
-  version: 1.0.5
+  version: 1.0.6
   contact:
     name: HyperFleet Team
   license:
@@ -95,6 +95,88 @@ paths:
                 $ref: '#/components/schemas/Cluster'
         '400':
           description: The server could not understand the request due to invalid syntax.
+        default:
+          description: An unexpected error response.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+        - BearerAuth: []
+    delete:
+      operationId: deleteClusterById
+      summary: Request cluster deletion
+      description: |-
+        Marks the cluster for deletion by setting deleted_time to the current time, cascades to its nodepools.
+        The cluster remains in the database until it is fully deleted.
+        Returns the updated cluster with generation incremented.
+      parameters:
+        - name: cluster_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '202':
+          description: The request has been accepted for processing, but processing has not yet completed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cluster'
+              example:
+                kind: Cluster
+                id: 019466a0-8f8e-7abc-9def-0123456789ab
+                href: https://api.hyperfleet.com/v1/clusters/019466a0-8f8e-7abc-9def-0123456789ab
+                name: cluster-123
+                labels:
+                  environment: production
+                  team: platform
+                spec: {}
+                generation: 2
+                status:
+                  conditions:
+                    - type: Ready
+                      status: 'True'
+                      reason: All adapters reported Ready True for the current generation
+                      message: All adapters reported Ready True for the current generation
+                      observed_generation: 1
+                      created_time: '2021-01-01T10:00:00Z'
+                      last_updated_time: '2021-01-01T10:00:00Z'
+                      last_transition_time: '2021-01-01T10:00:00Z'
+                    - type: Available
+                      status: 'True'
+                      reason: All adapters reported Available True for the same generation
+                      message: All adapters reported Available True for the same generation
+                      observed_generation: 1
+                      created_time: '2021-01-01T10:00:00Z'
+                      last_updated_time: '2021-01-01T10:00:00Z'
+                      last_transition_time: '2021-01-01T10:00:00Z'
+                    - type: Adapter1Successful
+                      status: 'True'
+                      reason: This adapter1 is available
+                      message: This adapter1 is available
+                      observed_generation: 1
+                      created_time: '2021-01-01T10:00:00Z'
+                      last_updated_time: '2021-01-01T10:00:00Z'
+                      last_transition_time: '2021-01-01T10:00:00Z'
+                    - type: Adapter2Successful
+                      status: 'True'
+                      reason: This adapter2 is available
+                      message: This adapter2 is available
+                      observed_generation: 1
+                      created_time: '2021-01-01T10:01:00Z'
+                      last_updated_time: '2021-01-01T10:01:00Z'
+                      last_transition_time: '2021-01-01T10:01:00Z'
+                created_time: '2021-01-01T00:00:00Z'
+                updated_time: '2021-01-01T10:02:00Z'
+                deleted_time: '2021-01-01T10:05:00Z'
+                created_by: user-123@example.com
+                updated_by: user-123@example.com
+                deleted_by: user-123@example.com
+        '400':
+          description: The server could not understand the request due to invalid syntax.
+        '404':
+          description: The server cannot find the requested resource.
         default:
           description: An unexpected error response.
           content:
@@ -198,6 +280,98 @@ paths:
                 $ref: '#/components/schemas/NodePool'
         '400':
           description: The server could not understand the request due to invalid syntax.
+        default:
+          description: An unexpected error response.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+        - BearerAuth: []
+    delete:
+      operationId: deleteNodePoolById
+      summary: Request nodepool deletion
+      description: |-
+        Marks the nodepool for deletion by setting deleted_time and deleted_by. Does not affect the parent cluster.
+        Returns the updated nodepool with generation incremented.
+      parameters:
+        - name: cluster_id
+          in: path
+          required: true
+          description: Cluster ID
+          schema:
+            type: string
+        - name: nodepool_id
+          in: path
+          required: true
+          description: NodePool ID
+          schema:
+            type: string
+      responses:
+        '202':
+          description: The request has been accepted for processing, but processing has not yet completed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodePool'
+              example:
+                kind: NodePool
+                id: 019466a1-2b3c-7def-8abc-456789abcdef
+                href: https://api.hyperfleet.com/v1/nodepools/019466a1-2b3c-7def-8abc-456789abcdef
+                name: worker-pool-1
+                labels:
+                  environment: production
+                  pooltype: worker
+                spec: {}
+                generation: 2
+                owner_references:
+                  id: 019466a0-8f8e-7abc-9def-0123456789ab
+                  kind: Cluster
+                  href: https://api.hyperfleet.com/v1/clusters/019466a0-8f8e-7abc-9def-0123456789ab
+                status:
+                  conditions:
+                    - type: Ready
+                      status: 'True'
+                      reason: All adapters reported Ready True for the current generation
+                      message: All adapters reported Ready True for the current generation
+                      observed_generation: 1
+                      created_time: '2021-01-01T10:00:00Z'
+                      last_updated_time: '2021-01-01T10:00:00Z'
+                      last_transition_time: '2021-01-01T10:00:00Z'
+                    - type: Available
+                      status: 'True'
+                      reason: All adapters reported Available True for the same generation
+                      message: All adapters reported Available True for the same generation
+                      observed_generation: 1
+                      created_time: '2021-01-01T10:00:00Z'
+                      last_updated_time: '2021-01-01T10:00:00Z'
+                      last_transition_time: '2021-01-01T10:00:00Z'
+                    - type: Adapter1Successful
+                      status: 'True'
+                      reason: This adapter1 is available
+                      message: This adapter1 is available
+                      observed_generation: 1
+                      created_time: '2021-01-01T10:00:00Z'
+                      last_updated_time: '2021-01-01T10:00:00Z'
+                      last_transition_time: '2021-01-01T10:00:00Z'
+                    - type: Adapter2Successful
+                      status: 'True'
+                      reason: This adapter2 is available
+                      message: This adapter2 is available
+                      observed_generation: 1
+                      created_time: '2021-01-01T10:01:00Z'
+                      last_updated_time: '2021-01-01T10:01:00Z'
+                      last_transition_time: '2021-01-01T10:01:00Z'
+                created_time: '2021-01-01T00:00:00Z'
+                updated_time: '2021-01-01T10:02:00Z'
+                deleted_time: '2021-01-01T10:05:00Z'
+                created_by: user-123@example.com
+                updated_by: user-123@example.com
+                deleted_by: user-123@example.com
+        '400':
+          description: The server could not understand the request due to invalid syntax.
+        '404':
+          description: The server cannot find the requested resource.
         default:
           description: An unexpected error response.
           content:
@@ -736,15 +910,27 @@ components:
         created_time:
           type: string
           format: date-time
+          description: Timestamp when the resource was created
         updated_time:
           type: string
           format: date-time
+          description: Timestamp when the resource was last updated
         created_by:
           type: string
           format: email
+          description: Identity that created the resource
         updated_by:
           type: string
           format: email
+          description: Identity that last updated the resource
+        deleted_time:
+          type: string
+          format: date-time
+          description: Timestamp when deletion was requested; omitted if not marked for deletion
+        deleted_by:
+          type: string
+          format: email
+          description: Identity that requested deletion; omitted if not marked for deletion
         generation:
           type: integer
           format: int32
@@ -761,8 +947,6 @@ components:
           environment: production
           team: platform
         spec: {}
-        created_time: '2021-01-01T00:00:00Z'
-        updated_time: '2021-01-01T00:00:00Z'
         generation: 1
         status:
           conditions:
@@ -798,6 +982,8 @@ components:
               created_time: '2021-01-01T10:01:00Z'
               last_updated_time: '2021-01-01T10:01:00Z'
               last_transition_time: '2021-01-01T10:01:00Z'
+        created_time: '2021-01-01T00:00:00Z'
+        updated_time: '2021-01-01T10:02:00Z'
         created_by: user-123@example.com
         updated_by: user-123@example.com
     ClusterCreateRequest:
@@ -993,15 +1179,27 @@ components:
         created_time:
           type: string
           format: date-time
+          description: Timestamp when the resource was created
         updated_time:
           type: string
           format: date-time
+          description: Timestamp when the resource was last updated
         created_by:
           type: string
           format: email
+          description: Identity that created the resource
         updated_by:
           type: string
           format: email
+          description: Identity that last updated the resource
+        deleted_time:
+          type: string
+          format: date-time
+          description: Timestamp when deletion was requested; omitted if not marked for deletion
+        deleted_by:
+          type: string
+          format: email
+          description: Identity that requested deletion; omitted if not marked for deletion
         generation:
           type: integer
           format: int32
@@ -1021,10 +1219,6 @@ components:
           pooltype: worker
         spec: {}
         generation: 1
-        created_time: '2021-01-01T00:00:00Z'
-        updated_time: '2021-01-01T00:00:00Z'
-        created_by: user-123@example.com
-        updated_by: user-123@example.com
         owner_references:
           id: 019466a0-8f8e-7abc-9def-0123456789ab
           kind: Cluster
@@ -1063,6 +1257,10 @@ components:
               created_time: '2021-01-01T10:01:00Z'
               last_updated_time: '2021-01-01T10:01:00Z'
               last_transition_time: '2021-01-01T10:01:00Z'
+        created_time: '2021-01-01T00:00:00Z'
+        updated_time: '2021-01-01T10:02:00Z'
+        created_by: user-123@example.com
+        updated_by: user-123@example.com
     NodePoolCreateRequest:
       type: object
       required:
@@ -1135,15 +1333,27 @@ components:
         created_time:
           type: string
           format: date-time
+          description: Timestamp when the resource was created
         updated_time:
           type: string
           format: date-time
+          description: Timestamp when the resource was last updated
         created_by:
           type: string
           format: email
+          description: Identity that created the resource
         updated_by:
           type: string
           format: email
+          description: Identity that last updated the resource
+        deleted_time:
+          type: string
+          format: date-time
+          description: Timestamp when deletion was requested; omitted if not marked for deletion
+        deleted_by:
+          type: string
+          format: email
+          description: Identity that requested deletion; omitted if not marked for deletion
         generation:
           type: integer
           format: int32

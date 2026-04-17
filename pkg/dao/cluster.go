@@ -14,6 +14,7 @@ type ClusterDao interface {
 	Get(ctx context.Context, id string) (*api.Cluster, error)
 	Create(ctx context.Context, cluster *api.Cluster) (*api.Cluster, error)
 	Replace(ctx context.Context, cluster *api.Cluster) (*api.Cluster, error)
+	Save(ctx context.Context, cluster *api.Cluster) error
 	Delete(ctx context.Context, id string) error
 	FindByIDs(ctx context.Context, ids []string) (api.ClusterList, error)
 	All(ctx context.Context) (api.ClusterList, error)
@@ -71,6 +72,15 @@ func (d *sqlClusterDao) Replace(ctx context.Context, cluster *api.Cluster) (*api
 		return nil, err
 	}
 	return cluster, nil
+}
+
+func (d *sqlClusterDao) Save(ctx context.Context, cluster *api.Cluster) error {
+	g2 := (*d.sessionFactory).New(ctx)
+	if err := g2.Omit(clause.Associations).Save(cluster).Error; err != nil {
+		db.MarkForRollback(ctx, err)
+		return err
+	}
+	return nil
 }
 
 func (d *sqlClusterDao) Delete(ctx context.Context, id string) error {

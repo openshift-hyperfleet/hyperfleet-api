@@ -8,11 +8,11 @@ import (
 	"time"
 
 	. "github.com/onsi/gomega"
+	"gorm.io/gorm"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/dao"
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 )
 
 const (
@@ -45,7 +45,7 @@ func (d *mockNodePoolDao) Get(ctx context.Context, id string) (*api.NodePool, er
 	if np, ok := d.nodePools[id]; ok {
 		return np, nil
 	}
-	return nil, errors.NotFound("NodePool").AsError()
+	return nil, gorm.ErrRecordNotFound
 }
 
 func (d *mockNodePoolDao) Create(ctx context.Context, nodePool *api.NodePool) (*api.NodePool, error) {
@@ -65,8 +65,25 @@ func (d *mockNodePoolDao) Replace(ctx context.Context, nodePool *api.NodePool) (
 	return nodePool, nil
 }
 
+func (d *mockNodePoolDao) Save(ctx context.Context, nodePool *api.NodePool) error {
+	d.nodePools[nodePool.ID] = nodePool
+	return nil
+}
+
 func (d *mockNodePoolDao) Delete(ctx context.Context, id string) error {
 	delete(d.nodePools, id)
+	return nil
+}
+
+func (d *mockNodePoolDao) SoftDeleteByOwner(ctx context.Context, ownerID string, t time.Time, deletedBy string) error {
+	for id, np := range d.nodePools {
+		if np.OwnerID == ownerID && np.DeletedTime == nil {
+			np.DeletedTime = &t
+			np.DeletedBy = &deletedBy
+			np.Generation++
+			d.nodePools[id] = np
+		}
+	}
 	return nil
 }
 
@@ -825,4 +842,122 @@ func TestNodePoolSyntheticTimestampsStableWithoutAdapterStatus(t *testing.T) {
 	g.Expect(updatedReady.CreatedTime).To(Equal(fixedNow))
 	g.Expect(updatedReady.LastTransitionTime).To(Equal(fixedNow))
 	g.Expect(updatedReady.LastUpdatedTime).To(Equal(fixedNow))
+}
+
+func TestNodePoolSoftDelete(t *testing.T) {
+	t.Run("given a live nodepool, when soft-deleted, then deleted_time/deleted_by/generation are set", func(t *testing.T) {
+		g := NewWithT(t)
+		// Given:
+		nodePoolDao := newMockNodePoolDao()
+		adapterStatusDao := newMockAdapterStatusDao()
+		service := NewNodePoolService(nodePoolDao, adapterStatusDao, testNodePoolAdapterConfig())
+		ctx := context.Background()
+		nodePoolID := testNodePoolID
+		nodePoolDao.nodePools[nodePoolID] = &api.NodePool{
+			Meta:       api.Meta{ID: nodePoolID},
+			Generation: 1,
+		}
+		// When:
+		nodePool, svcErr := service.SoftDelete(ctx, nodePoolID)
+		// Then:
+		g.Expect(svcErr).To(BeNil())
+		g.Expect(nodePool.DeletedTime).NotTo(BeNil())
+		g.Expect(nodePool.DeletedBy).NotTo(BeNil())
+		g.Expect(*nodePool.DeletedBy).To(Equal(systemActor))
+		g.Expect(nodePool.Generation).To(Equal(int32(2)))
+	})
+
+	t.Run("given an already-deleted nodepool, when soft-deleted again, then deleted_time and generation are unchanged", func(t *testing.T) { //nolint:lll
+		g := NewWithT(t)
+		// Given:
+		nodePoolDao := newMockNodePoolDao()
+		adapterStatusDao := newMockAdapterStatusDao()
+		service := NewNodePoolService(nodePoolDao, adapterStatusDao, testNodePoolAdapterConfig())
+		ctx := context.Background()
+		nodePoolID := testNodePoolID
+		originalTime := time.Now().Add(-time.Hour)
+		nodePoolDao.nodePools[nodePoolID] = &api.NodePool{
+			Meta:        api.Meta{ID: nodePoolID},
+			DeletedTime: &originalTime,
+			Generation:  3,
+		}
+		// When:
+		nodePool, svcErr := service.SoftDelete(ctx, nodePoolID)
+		// Then:
+		g.Expect(svcErr).To(BeNil())
+		g.Expect(nodePool.DeletedTime.Equal(originalTime)).To(BeTrue())
+		g.Expect(nodePool.Generation).To(Equal(int32(3)))
+	})
+
+	t.Run("given a non-existent nodepool ID, when soft-deleted, then returns 404 service error", func(t *testing.T) {
+		g := NewWithT(t)
+		// Given:
+		nodePoolDao := newMockNodePoolDao()
+		adapterStatusDao := newMockAdapterStatusDao()
+		service := NewNodePoolService(nodePoolDao, adapterStatusDao, testNodePoolAdapterConfig())
+		ctx := context.Background()
+		// When:
+		_, svcErr := service.SoftDelete(ctx, "nonexistent")
+		// Then:
+		g.Expect(svcErr).NotTo(BeNil())
+		g.Expect(svcErr.HTTPCode).To(Equal(404))
+	})
+
+	t.Run("given a nodepool with Ready=True, when soft-deleted, then Ready flips to False due to generation bump", func(t *testing.T) { //nolint:lll
+		g := NewWithT(t)
+		// Given:
+		nodePoolDao := newMockNodePoolDao()
+		adapterStatusDao := newMockAdapterStatusDao()
+		adapterConfig := testNodePoolAdapterConfig()
+		adapterConfig.Required.Nodepool = []string{"validation"}
+		service := NewNodePoolService(nodePoolDao, adapterStatusDao, adapterConfig)
+		ctx := context.Background()
+		nodePoolID := "ready-nodepool"
+
+		nodePoolDao.nodePools[nodePoolID] = &api.NodePool{Meta: api.Meta{ID: nodePoolID}, Generation: 1}
+		conditions := []api.AdapterCondition{
+			{Type: api.ConditionTypeAvailable, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+			{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+			{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		}
+		condJSON, _ := json.Marshal(conditions)
+		now := time.Now()
+		_, svcErr := service.ProcessAdapterStatus(ctx, nodePoolID, &api.AdapterStatus{
+			ResourceType: "NodePool", ResourceID: nodePoolID, Adapter: "validation",
+			ObservedGeneration: 1, Conditions: condJSON, CreatedTime: now, LastReportTime: now,
+		})
+		g.Expect(svcErr).To(BeNil())
+
+		// Pre-condition: Ready=True before soft-delete
+		stored, _ := nodePoolDao.Get(ctx, nodePoolID)
+		var preConds []api.ResourceCondition
+		g.Expect(json.Unmarshal(stored.StatusConditions, &preConds)).To(Succeed())
+		var preReady *api.ResourceCondition
+		for i := range preConds {
+			if preConds[i].Type == api.ConditionTypeReady {
+				preReady = &preConds[i]
+			}
+		}
+		g.Expect(preReady).NotTo(BeNil())
+		g.Expect(preReady.Status).To(Equal(api.ConditionTrue))
+
+		// When:
+		_, svcErr = service.SoftDelete(ctx, nodePoolID)
+		g.Expect(svcErr).To(BeNil())
+
+		// Then: generation bumped to 2, Ready must flip to False
+		stored, _ = nodePoolDao.Get(ctx, nodePoolID)
+		g.Expect(stored.Generation).To(Equal(int32(2)))
+		var postConds []api.ResourceCondition
+		g.Expect(json.Unmarshal(stored.StatusConditions, &postConds)).To(Succeed())
+		var postReady *api.ResourceCondition
+		for i := range postConds {
+			if postConds[i].Type == api.ConditionTypeReady {
+				postReady = &postConds[i]
+			}
+		}
+		g.Expect(postReady).NotTo(BeNil())
+		g.Expect(postReady.Status).To(Equal(api.ConditionFalse))
+		g.Expect(postReady.ObservedGeneration).To(Equal(int32(2)))
+	})
 }

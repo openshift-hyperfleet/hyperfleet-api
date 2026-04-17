@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Soft deletion for Clusters and NodePools with `deleted_time` and `deleted_by` fields for tracking deletion requests ([#106](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/106))
 - Aggregation logic for resource data ([#91](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/91))
 - Version subcommand to CLI ([#84](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/84))
 - Condition subfield queries for selective Sentinel polling ([#71](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/71))
@@ -25,6 +26,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Refactored DAO methods to remove Unscoped calls for fetching Clusters and NodePools ([#106](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/106))
+- Bumped oapi-codegen version to fix missing `omitempty` on generated response objects ([#106](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/106))
+- Updated OpenAPI spec with examples for Cluster and NodePool schemas ([#106](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/106))
 - Standardized appVersion and image.tag handling in Helm chart ([#90](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/90))
 - Aligned Helm chart with conventions standard ([#87](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/87))
 - Streamlined configuration system with Viper, removed getters and _FILE suffix pattern ([#75](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/75))

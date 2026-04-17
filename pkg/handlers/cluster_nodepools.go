@@ -91,6 +91,7 @@ func (h ClusterNodePoolsHandler) List(w http.ResponseWriter, r *http.Request) {
 			}
 			return nodePoolList, nil
 		},
+		ErrorHandler: handleError,
 	}
 
 	handleList(w, r, cfg)
@@ -127,9 +128,51 @@ func (h ClusterNodePoolsHandler) Get(w http.ResponseWriter, r *http.Request) {
 			}
 			return presented, nil
 		},
+		ErrorHandler: handleError,
 	}
 
 	handleGet(w, r, cfg)
+}
+
+// Delete soft-deletes a specific nodepool for a cluster
+func (h ClusterNodePoolsHandler) SoftDelete(w http.ResponseWriter, r *http.Request) {
+	cfg := &handlerConfig{
+		Action: func() (interface{}, *errors.ServiceError) {
+			ctx := r.Context()
+			clusterID := mux.Vars(r)["id"]
+			nodePoolID := mux.Vars(r)["nodepool_id"]
+
+			// Verify cluster exists
+			_, err := h.clusterService.Get(ctx, clusterID)
+			if err != nil {
+				return nil, err
+			}
+
+			// Get nodepool to verify ownership
+			nodePool, err := h.nodePoolService.Get(ctx, nodePoolID)
+			if err != nil {
+				return nil, err
+			}
+
+			if nodePool.OwnerID != clusterID {
+				return nil, errors.NotFound("NodePool '%s' not found for cluster '%s'", nodePoolID, clusterID)
+			}
+
+			nodePool, err = h.nodePoolService.SoftDelete(ctx, nodePoolID)
+			if err != nil {
+				return nil, err
+			}
+
+			presented, presErr := presenters.PresentNodePool(nodePool)
+			if presErr != nil {
+				return nil, errors.GeneralError("Failed to present nodepool: %v", presErr)
+			}
+			return presented, nil
+		},
+		ErrorHandler: handleError,
+	}
+
+	handleSoftDelete(w, r, cfg, http.StatusAccepted)
 }
 
 // Create creates a new nodepool for a cluster

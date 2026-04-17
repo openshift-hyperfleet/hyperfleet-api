@@ -100,6 +100,8 @@ func PresentNodePool(nodePool *api.NodePool) (openapi.NodePool, error) {
 	result := openapi.NodePool{
 		CreatedBy:   toEmail(nodePool.CreatedBy),
 		CreatedTime: nodePool.CreatedTime,
+		DeletedBy:   toEmailPtr(nodePool.DeletedBy),
+		DeletedTime: nodePool.DeletedTime,
 		Generation:  nodePool.Generation,
 		Href:        &href,
 		Id:          &nodePool.ID,

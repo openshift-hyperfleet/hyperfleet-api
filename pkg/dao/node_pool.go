@@ -3,7 +3,9 @@ package dao
 import (
 	"bytes"
 	"context"
+	"time"
 
+	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
@@ -14,8 +16,10 @@ type NodePoolDao interface {
 	Get(ctx context.Context, id string) (*api.NodePool, error)
 	Create(ctx context.Context, nodePool *api.NodePool) (*api.NodePool, error)
 	Replace(ctx context.Context, nodePool *api.NodePool) (*api.NodePool, error)
+	Save(ctx context.Context, nodePool *api.NodePool) error
 	Delete(ctx context.Context, id string) error
 	FindByIDs(ctx context.Context, ids []string) (api.NodePoolList, error)
+	SoftDeleteByOwner(ctx context.Context, ownerID string, t time.Time, deletedBy string) error
 	All(ctx context.Context) (api.NodePoolList, error)
 }
 
@@ -73,11 +77,36 @@ func (d *sqlNodePoolDao) Replace(ctx context.Context, nodePool *api.NodePool) (*
 	return nodePool, nil
 }
 
+func (d *sqlNodePoolDao) Save(ctx context.Context, nodePool *api.NodePool) error {
+	g2 := (*d.sessionFactory).New(ctx)
+	if err := g2.Omit(clause.Associations).Save(nodePool).Error; err != nil {
+		db.MarkForRollback(ctx, err)
+		return err
+	}
+	return nil
+}
+
 func (d *sqlNodePoolDao) Delete(ctx context.Context, id string) error {
 	g2 := (*d.sessionFactory).New(ctx)
 	if err := g2.Omit(clause.Associations).Delete(&api.NodePool{Meta: api.Meta{ID: id}}).Error; err != nil {
 		db.MarkForRollback(ctx, err)
 		return err
+	}
+	return nil
+}
+
+func (d *sqlNodePoolDao) SoftDeleteByOwner(ctx context.Context, ownerID string, t time.Time, deletedBy string) error {
+	g2 := (*d.sessionFactory).New(ctx)
+	result := g2.Model(&api.NodePool{}).
+		Where("owner_id = ? AND deleted_time IS NULL", ownerID).
+		Updates(map[string]interface{}{
+			"deleted_time": t,
+			"deleted_by":   deletedBy,
+			"generation":   gorm.Expr("generation + 1"),
+		})
+	if result.Error != nil {
+		db.MarkForRollback(ctx, result.Error)
+		return result.Error
 	}
 	return nil
 }
