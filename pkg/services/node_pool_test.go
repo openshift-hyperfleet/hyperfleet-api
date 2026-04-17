@@ -75,12 +75,11 @@ func (d *mockNodePoolDao) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-func (d *mockNodePoolDao) SoftDeleteByOwner(ctx context.Context, ownerID string, t time.Time) error {
-	actor := systemActor
+func (d *mockNodePoolDao) SoftDeleteByOwner(ctx context.Context, ownerID string, t time.Time, deletedBy string) error {
 	for id, np := range d.nodePools {
 		if np.OwnerID == ownerID && np.DeletedTime == nil {
 			np.DeletedTime = &t
-			np.DeletedBy = &actor
+			np.DeletedBy = &deletedBy
 			np.Generation++
 			d.nodePools[id] = np
 		}

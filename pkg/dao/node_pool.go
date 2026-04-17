@@ -19,7 +19,7 @@ type NodePoolDao interface {
 	Save(ctx context.Context, nodePool *api.NodePool) error
 	Delete(ctx context.Context, id string) error
 	FindByIDs(ctx context.Context, ids []string) (api.NodePoolList, error)
-	SoftDeleteByOwner(ctx context.Context, ownerID string, t time.Time) error
+	SoftDeleteByOwner(ctx context.Context, ownerID string, t time.Time, deletedBy string) error
 	All(ctx context.Context) (api.NodePoolList, error)
 }
 
@@ -95,13 +95,13 @@ func (d *sqlNodePoolDao) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-func (d *sqlNodePoolDao) SoftDeleteByOwner(ctx context.Context, ownerID string, t time.Time) error {
+func (d *sqlNodePoolDao) SoftDeleteByOwner(ctx context.Context, ownerID string, t time.Time, deletedBy string) error {
 	g2 := (*d.sessionFactory).New(ctx)
 	result := g2.Model(&api.NodePool{}).
 		Where("owner_id = ? AND deleted_time IS NULL", ownerID).
 		Updates(map[string]interface{}{
 			"deleted_time": t,
-			"deleted_by":   "system@hyperfleet.local",
+			"deleted_by":   deletedBy,
 			"generation":   gorm.Expr("generation + 1"),
 		})
 	if result.Error != nil {

@@ -128,7 +128,7 @@ func (s *sqlClusterService) SoftDelete(ctx context.Context, id string) (*api.Clu
 		return nil, handleSoftDeleteError("Cluster", err)
 	}
 
-	if err := s.nodePoolDao.SoftDeleteByOwner(ctx, id, t); err != nil {
+	if err := s.nodePoolDao.SoftDeleteByOwner(ctx, id, t, deletedBy); err != nil {
 		return nil, handleSoftDeleteError("NodePool", err)
 	}
 
