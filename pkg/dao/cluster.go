@@ -58,11 +58,11 @@ func (d *sqlClusterDao) Replace(ctx context.Context, cluster *api.Cluster) (*api
 		return nil, err
 	}
 
-	// Compare spec: if changed, increment generation. Aggregated conditions are recomputed in the service layer.
-	if !bytes.Equal(existing.Spec, cluster.Spec) {
+	// Compare spec and labels: if either changed, increment generation.
+	// Aggregated conditions are recomputed in the service layer.
+	if !bytes.Equal(existing.Spec, cluster.Spec) || !bytes.Equal(existing.Labels, cluster.Labels) {
 		cluster.Generation = existing.Generation + 1
 	} else {
-		// Spec unchanged, preserve generation
 		cluster.Generation = existing.Generation
 	}
 

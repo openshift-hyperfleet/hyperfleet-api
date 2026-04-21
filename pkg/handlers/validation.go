@@ -135,6 +135,28 @@ func validateSpec(i interface{}, fieldName string, field string) validate { //no
 	}
 }
 
+// validatePatchRequest validates that at least one patchable field (Spec or Labels) is provided
+func validatePatchRequest(i interface{}) validate {
+	return func() *errors.ServiceError {
+		v := reflect.ValueOf(i).Elem()
+
+		spec := v.FieldByName("Spec")
+		if spec.Kind() == reflect.Ptr {
+			spec = spec.Elem()
+		}
+
+		labels := v.FieldByName("Labels")
+		if labels.Kind() == reflect.Ptr {
+			labels = labels.Elem()
+		}
+
+		if !spec.IsValid() && !labels.IsValid() {
+			return errors.BadRequest("at least one field must be provided for update")
+		}
+		return nil
+	}
+}
+
 // validateConditions validates condition type and status fields
 // - Type must not be empty
 // - Type must not be duplicated

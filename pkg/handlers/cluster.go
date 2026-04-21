@@ -65,7 +65,9 @@ func (h ClusterHandler) Patch(w http.ResponseWriter, r *http.Request) {
 
 	cfg := &handlerConfig{
 		MarshalInto: &patch,
-		Validate:    []validate{},
+		Validate: []validate{
+			validatePatchRequest(&patch),
+		},
 		Action: func() (interface{}, *errors.ServiceError) {
 			ctx := r.Context()
 			id := mux.Vars(r)["id"]
@@ -80,6 +82,14 @@ func (h ClusterHandler) Patch(w http.ResponseWriter, r *http.Request) {
 					return nil, errors.GeneralError("Failed to marshal spec: %v", err)
 				}
 				found.Spec = specJSON
+			}
+
+			if patch.Labels != nil {
+				labelsJSON, err := json.Marshal(*patch.Labels)
+				if err != nil {
+					return nil, errors.GeneralError("Failed to marshal labels: %v", err)
+				}
+				found.Labels = labelsJSON
 			}
 
 			clusterModel, err := h.cluster.Replace(ctx, found)

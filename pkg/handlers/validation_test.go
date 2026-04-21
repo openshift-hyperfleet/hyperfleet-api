@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	. "github.com/onsi/gomega"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/util"
 )
@@ -264,6 +265,52 @@ func TestValidateSpec_Nil(t *testing.T) {
 	err := validator()
 	Expect(err).ToNot(BeNil(), "Expected nil spec to be invalid")
 	Expect(err.Reason).To(ContainSubstring("spec is required"))
+}
+
+func TestValidatePatchRequest(t *testing.T) {
+	spec := map[string]interface{}{"key": "value"}
+	labels := map[string]string{"env": "prod"}
+
+	testCases := []struct {
+		req         api.ClusterPatchRequest
+		name        string
+		expectError bool
+	}{
+		{
+			name:        "both nil returns error",
+			req:         api.ClusterPatchRequest{},
+			expectError: true,
+		},
+		{
+			name:        "spec only is valid",
+			req:         api.ClusterPatchRequest{Spec: &spec},
+			expectError: false,
+		},
+		{
+			name:        "labels only is valid",
+			req:         api.ClusterPatchRequest{Labels: &labels},
+			expectError: false,
+		},
+		{
+			name:        "both spec and labels is valid",
+			req:         api.ClusterPatchRequest{Spec: &spec, Labels: &labels},
+			expectError: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			RegisterTestingT(t)
+			validator := validatePatchRequest(&tc.req)
+			err := validator()
+			if tc.expectError {
+				Expect(err).ToNot(BeNil())
+				Expect(err.Reason).To(ContainSubstring("at least one field must be provided for update"))
+			} else {
+				Expect(err).To(BeNil())
+			}
+		})
+	}
 }
 
 func TestValidateConditions_Valid(t *testing.T) {
