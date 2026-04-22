@@ -27,6 +27,7 @@ const (
 // reasonMissingRequiredAdapters is the reason code for the Ready condition when one or more
 // required adapters have not yet reported Available=True at the current resource generation.
 const reasonMissingRequiredAdapters = "MissingRequiredAdapters"
+const reasonAllAdaptersAvailable = "All required adapters reported Available=True at the current generation"
 
 // ValidateMandatoryConditions checks if all mandatory conditions are present.
 // Format validation (empty type, duplicates, invalid status) is done in the Handler layer.
@@ -292,7 +293,7 @@ func computeReady(
 	reason := reasonMissingRequiredAdapters
 	message := buildReadyFalseMessage(required, byAdapter, resourceGen)
 	if status == api.ConditionTrue {
-		reason = "All required adapters reported Available=True at the current generation"
+		reason = reasonAllAdaptersAvailable
 		message = reason
 	}
 
@@ -344,7 +345,7 @@ func computeReconciled(
 	reason := reasonMissingRequiredAdapters
 	message := buildReadyFalseMessage(required, byAdapter, resourceGen)
 	if status == api.ConditionTrue {
-		reason = "All required adapters reported Available=True at the current generation"
+		reason = reasonAllAdaptersAvailable
 		message = reason
 	}
 
