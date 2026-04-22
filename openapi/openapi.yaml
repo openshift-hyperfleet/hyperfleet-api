@@ -1177,7 +1177,7 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ResourceCondition'
-          minItems: 3
+          minItems: 2
           description: |-
             List of status conditions for the cluster.
 
@@ -1543,7 +1543,7 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ResourceCondition'
-          minItems: 3
+          minItems: 2
           description: |-
             List of status conditions for the nodepool.
 
