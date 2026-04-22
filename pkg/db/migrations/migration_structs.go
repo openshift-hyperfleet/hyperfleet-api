@@ -33,6 +33,7 @@ var MigrationList = []*gormigrate.Migration{
 	addAdapterStatus(),
 	addConditionsGinIndex(),
 	addSoftDeleteSchema(),
+	addReconciledIndex(),
 }
 
 // Model represents the base model struct. All entities will have this struct embedded.

@@ -193,7 +193,7 @@ func (s *sqlNodePoolService) UpdateNodePoolStatusFromAdapters(
 	}
 
 	refTime := nodePoolRefTime(nodePool)
-	ready, available, adapterConditions := AggregateResourceStatus(ctx, AggregateResourceStatusInput{
+	ready, available, reconciled, adapterConditions := AggregateResourceStatus(ctx, AggregateResourceStatusInput{
 		ResourceGeneration: nodePool.Generation,
 		RefTime:            refTime,
 		PrevConditionsJSON: nodePool.StatusConditions,
@@ -201,8 +201,8 @@ func (s *sqlNodePoolService) UpdateNodePoolStatusFromAdapters(
 		AdapterStatuses:    adapterStatuses,
 	})
 
-	allConditions := make([]api.ResourceCondition, 0, 2+len(adapterConditions))
-	allConditions = append(allConditions, ready, available)
+	allConditions := make([]api.ResourceCondition, 0, 3+len(adapterConditions))
+	allConditions = append(allConditions, ready, available, reconciled)
 	allConditions = append(allConditions, adapterConditions...)
 
 	conditionsJSON, err := json.Marshal(allConditions)
