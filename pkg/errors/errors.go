@@ -169,7 +169,7 @@ var errorDefinitions = map[string]errorDefinition{
 	},
 	CodeConflictState: {
 		ErrorTypeConflict, "State Conflict",
-		"Operation not allowed in current resource state", http.StatusConflict,
+		"Operation not allowed in current state", http.StatusConflict,
 	},
 
 	// Rate Limit errors (LMT) - 429

@@ -639,6 +639,62 @@ func TestClusterNodePoolsHandler_Patch(t *testing.T) {
 			expectedStatusCode: http.StatusNotFound,
 			expectedError:      true,
 		},
+		{
+			name:       "Error 404 - NodePool not found",
+			clusterID:  clusterID,
+			nodePoolID: "non-existent-np",
+			setupMocks: func(ctrl *gomock.Controller) (
+				*services.MockClusterService, *services.MockNodePoolService, *services.MockGenericService,
+			) {
+				mockClusterSvc := services.NewMockClusterService(ctrl)
+				mockNodePoolSvc := services.NewMockNodePoolService(ctrl)
+				mockGenericSvc := services.NewMockGenericService(ctrl)
+
+				mockClusterSvc.EXPECT().Get(gomock.Any(), clusterID).Return(&api.Cluster{
+					Meta: api.Meta{ID: clusterID, CreatedTime: now, UpdatedTime: now},
+					Name: "test-cluster",
+				}, nil)
+
+				mockNodePoolSvc.EXPECT().Get(gomock.Any(), "non-existent-np").Return(nil, errors.NotFound("NodePool not found"))
+
+				return mockClusterSvc, mockNodePoolSvc, mockGenericSvc
+			},
+			expectedStatusCode: http.StatusNotFound,
+			expectedError:      true,
+		},
+		{
+			name:       "Error 404 - NodePool belongs to different cluster",
+			clusterID:  clusterID,
+			nodePoolID: nodePoolID,
+			setupMocks: func(ctrl *gomock.Controller) (
+				*services.MockClusterService, *services.MockNodePoolService, *services.MockGenericService,
+			) {
+				mockClusterSvc := services.NewMockClusterService(ctrl)
+				mockNodePoolSvc := services.NewMockNodePoolService(ctrl)
+				mockGenericSvc := services.NewMockGenericService(ctrl)
+
+				mockClusterSvc.EXPECT().Get(gomock.Any(), clusterID).Return(&api.Cluster{
+					Meta: api.Meta{ID: clusterID, CreatedTime: now, UpdatedTime: now},
+					Name: "test-cluster",
+				}, nil)
+
+				mockNodePoolSvc.EXPECT().Get(gomock.Any(), nodePoolID).Return(&api.NodePool{
+					Meta:             api.Meta{ID: nodePoolID, CreatedTime: now, UpdatedTime: now},
+					Kind:             "NodePool",
+					Name:             "test-nodepool",
+					OwnerID:          "different-cluster-id",
+					Spec:             []byte("{}"),
+					Labels:           []byte("{}"),
+					StatusConditions: []byte("[]"),
+					CreatedBy:        "user@example.com",
+					UpdatedBy:        "user@example.com",
+				}, nil)
+
+				return mockClusterSvc, mockNodePoolSvc, mockGenericSvc
+			},
+			expectedStatusCode: http.StatusNotFound,
+			expectedError:      true,
+		},
 	}
 
 	for _, tt := range tests {

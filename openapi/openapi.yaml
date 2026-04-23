@@ -1,7 +1,7 @@
 openapi: 3.0.0
 info:
   title: HyperFleet API
-  version: 1.0.8
+  version: 1.0.9
   contact:
     name: HyperFleet Team
   license:
@@ -125,6 +125,8 @@ paths:
           description: The server could not understand the request due to invalid syntax.
         '404':
           description: The server cannot find the requested resource.
+        '409':
+          description: The request conflicts with the current state of the server.
         default:
           description: An unexpected error response.
           content:
@@ -173,8 +175,8 @@ paths:
                   conditions:
                     - type: Ready
                       status: 'True'
-                      reason: All adapters reported Ready True for the current generation
-                      message: All adapters reported Ready True for the current generation
+                      reason: All adapters reported Available=True for the current generation
+                      message: All adapters reported Available=True for the current generation
                       observed_generation: 2
                       created_time: '2021-01-01T10:00:00Z'
                       last_updated_time: '2021-01-01T10:00:00Z'
@@ -283,6 +285,8 @@ paths:
                 $ref: '#/components/schemas/NodePoolCreateResponse'
         '400':
           description: The server could not understand the request due to invalid syntax.
+        '409':
+          description: The request conflicts with the current state of the server.
         default:
           description: An unexpected error response.
           content:
@@ -376,8 +380,8 @@ paths:
                   conditions:
                     - type: Ready
                       status: 'True'
-                      reason: All adapters reported Ready True for the current generation
-                      message: All adapters reported Ready True for the current generation
+                      reason: All adapters reported Available=True for the current generation
+                      message: All adapters reported Available=True for the current generation
                       observed_generation: 2
                       created_time: '2021-01-01T10:00:00Z'
                       last_updated_time: '2021-01-01T10:00:00Z'
@@ -460,6 +464,8 @@ paths:
           description: The server could not understand the request due to invalid syntax.
         '404':
           description: The server cannot find the requested resource.
+        '409':
+          description: The request conflicts with the current state of the server.
         default:
           description: An unexpected error response.
           content:
@@ -1055,8 +1061,8 @@ components:
           conditions:
             - type: Ready
               status: 'True'
-              reason: All adapters reported Ready True for the current generation
-              message: All adapters reported Ready True for the current generation
+              reason: All adapters reported Available=True for the current generation
+              message: All adapters reported Available=True for the current generation
               observed_generation: 1
               created_time: '2021-01-01T10:00:00Z'
               last_updated_time: '2021-01-01T10:00:00Z'
@@ -1354,8 +1360,8 @@ components:
           conditions:
             - type: Ready
               status: 'True'
-              reason: All adapters reported Ready True for the current generation
-              message: All adapters reported Ready True for the current generation
+              reason: All adapters reported Available=True for the current generation
+              message: All adapters reported Available=True for the current generation
               observed_generation: 1
               created_time: '2021-01-01T10:00:00Z'
               last_updated_time: '2021-01-01T10:00:00Z'
