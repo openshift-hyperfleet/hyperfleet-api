@@ -107,6 +107,16 @@ func (d *mockNodePoolDao) FindByIDs(ctx context.Context, ids []string) (api.Node
 	return result, nil
 }
 
+func (d *mockNodePoolDao) UpdateStatusConditionsByIDs(ctx context.Context, updates map[string][]byte) error {
+	for id, statusConditions := range updates {
+		if np, ok := d.nodePools[id]; ok {
+			np.StatusConditions = statusConditions
+			d.nodePools[id] = np
+		}
+	}
+	return nil
+}
+
 func (d *mockNodePoolDao) All(ctx context.Context) (api.NodePoolList, error) {
 	var result api.NodePoolList
 	for _, np := range d.nodePools {

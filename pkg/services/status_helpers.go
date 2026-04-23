@@ -67,3 +67,71 @@ func updateNodePoolStatusFromAdapters(
 
 	return nodePool, nil
 }
+
+// batchUpdateNodePoolStatusesFromAdapters updates status conditions for multiple nodepools.
+// It eliminates the N+1 query pattern by fetching all adapter statuses in one query
+// and persisting all changed nodepools via UpdateStatusConditionsByIDs.
+func batchUpdateNodePoolStatusesFromAdapters(
+	ctx context.Context,
+	nodePools []*api.NodePool,
+	nodePoolDao dao.NodePoolDao,
+	adapterStatusDao dao.AdapterStatusDao,
+	adapterConfig *config.AdapterRequirementsConfig,
+) *errors.ServiceError {
+	if len(nodePools) == 0 {
+		return nil
+	}
+
+	nodePoolIDs := make([]string, len(nodePools))
+	for i, np := range nodePools {
+		nodePoolIDs[i] = np.ID
+	}
+
+	allStatuses, err := adapterStatusDao.FindByResourceIDs(ctx, "NodePool", nodePoolIDs)
+	if err != nil {
+		return errors.GeneralError("Failed to get adapter statuses: %s", err)
+	}
+
+	statusesByResource := make(map[string][]*api.AdapterStatus)
+	for i := range allStatuses {
+		status := allStatuses[i]
+		statusesByResource[status.ResourceID] = append(statusesByResource[status.ResourceID], status)
+	}
+
+	updates := make(map[string][]byte)
+	requiredAdapters := adapterConfig.RequiredNodePoolAdapters()
+
+	for _, np := range nodePools {
+		refTime := nodePoolRefTime(np)
+		adapterStatuses := statusesByResource[np.ID]
+
+		ready, available, adapterConditions := AggregateResourceStatus(ctx, AggregateResourceStatusInput{
+			ResourceGeneration: np.Generation,
+			RefTime:            refTime,
+			PrevConditionsJSON: np.StatusConditions,
+			RequiredAdapters:   requiredAdapters,
+			AdapterStatuses:    adapterStatuses,
+		})
+
+		allConditions := make([]api.ResourceCondition, 0, 2+len(adapterConditions))
+		allConditions = append(allConditions, ready, available)
+		allConditions = append(allConditions, adapterConditions...)
+
+		conditionsJSON, marshalErr := json.Marshal(allConditions)
+		if marshalErr != nil {
+			return errors.GeneralError("Failed to marshal conditions: %s", marshalErr)
+		}
+
+		if !bytes.Equal(np.StatusConditions, conditionsJSON) {
+			updates[np.ID] = conditionsJSON
+		}
+	}
+
+	if len(updates) > 0 {
+		if err := nodePoolDao.UpdateStatusConditionsByIDs(ctx, updates); err != nil {
+			return handleUpdateError("NodePool", err)
+		}
+	}
+
+	return nil
+}

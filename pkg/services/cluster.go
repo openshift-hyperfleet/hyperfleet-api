@@ -144,17 +144,14 @@ func (s *sqlClusterService) SoftDelete(ctx context.Context, id string) (*api.Clu
 	if err != nil {
 		return nil, errors.GeneralError("Failed to fetch cascade-deleted nodepools: %s", err)
 	}
-	for i := range nodePools {
-		np := nodePools[i]
-		if _, npSvcErr := updateNodePoolStatusFromAdapters(
-			ctx,
-			np.ID,
-			s.nodePoolDao,
-			s.adapterStatusDao,
-			s.adapterConfig,
-		); npSvcErr != nil {
-			return nil, npSvcErr
-		}
+	if svcErr := batchUpdateNodePoolStatusesFromAdapters(
+		ctx,
+		nodePools,
+		s.nodePoolDao,
+		s.adapterStatusDao,
+		s.adapterConfig,
+	); svcErr != nil {
+		return nil, svcErr
 	}
 
 	return cluster, nil

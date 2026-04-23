@@ -56,6 +56,10 @@ func (d *nodePoolDaoMock) FindByIDs(ctx context.Context, ids []string) (api.Node
 	return nil, errors.NotImplemented("NodePool").AsError()
 }
 
+func (d *nodePoolDaoMock) UpdateStatusConditionsByIDs(ctx context.Context, updates map[string][]byte) error {
+	return errors.NotImplemented("NodePool").AsError()
+}
+
 func (d *nodePoolDaoMock) All(ctx context.Context) (api.NodePoolList, error) {
 	return d.nodePools, nil
 }
