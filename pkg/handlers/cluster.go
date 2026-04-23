@@ -76,6 +76,10 @@ func (h ClusterHandler) Patch(w http.ResponseWriter, r *http.Request) {
 				return nil, err
 			}
 
+			if found.DeletedTime != nil {
+				return nil, errors.ConflictState("Cluster '%s' is marked for deletion", id)
+			}
+
 			if patch.Spec != nil {
 				specJSON, err := json.Marshal(*patch.Spec)
 				if err != nil {
