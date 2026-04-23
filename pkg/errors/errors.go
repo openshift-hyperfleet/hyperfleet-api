@@ -52,6 +52,7 @@ const (
 	// Conflict errors (CNF) - 409
 	CodeConflictExists  = "HYPERFLEET-CNF-001"
 	CodeConflictVersion = "HYPERFLEET-CNF-002"
+	CodeConflictState   = "HYPERFLEET-CNF-003"
 
 	// Rate Limit errors (LMT) - 429
 	CodeRateLimitExceeded = "HYPERFLEET-LMT-001"
@@ -165,6 +166,10 @@ var errorDefinitions = map[string]errorDefinition{
 	},
 	CodeConflictVersion: {
 		ErrorTypeConflict, "Version Conflict", "The resource version does not match", http.StatusConflict,
+	},
+	CodeConflictState: {
+		ErrorTypeConflict, "State Conflict",
+		"Operation not allowed in current resource state", http.StatusConflict,
 	},
 
 	// Rate Limit errors (LMT) - 429
@@ -361,6 +366,10 @@ func NotImplemented(reason string, values ...interface{}) *ServiceError {
 
 func Conflict(reason string, values ...interface{}) *ServiceError {
 	return New(CodeConflictExists, reason, values...)
+}
+
+func ConflictState(reason string, values ...interface{}) *ServiceError {
+	return New(CodeConflictState, reason, values...)
 }
 
 func Validation(reason string, values ...interface{}) *ServiceError {
