@@ -124,12 +124,12 @@ func (s *sqlClusterService) SoftDelete(ctx context.Context, id string) (*api.Clu
 	cluster.DeletedBy = &deletedBy
 	cluster.Generation++
 
-	if err := s.clusterDao.Save(ctx, cluster); err != nil {
-		return nil, handleSoftDeleteError("Cluster", err)
+	if saveErr := s.clusterDao.Save(ctx, cluster); saveErr != nil {
+		return nil, handleSoftDeleteError("Cluster", saveErr)
 	}
 
-	if err := s.nodePoolDao.SoftDeleteByOwner(ctx, id, t, deletedBy); err != nil {
-		return nil, handleSoftDeleteError("NodePool", err)
+	if cascadeErr := s.nodePoolDao.SoftDeleteByOwner(ctx, id, t, deletedBy); cascadeErr != nil {
+		return nil, handleSoftDeleteError("NodePool", cascadeErr)
 	}
 
 	cluster, svcErr := s.UpdateClusterStatusFromAdapters(ctx, cluster.ID)
