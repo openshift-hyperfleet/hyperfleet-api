@@ -116,7 +116,8 @@ func (s *sqlNodePoolService) SoftDelete(ctx context.Context, id string) (*api.No
 	nodePool.DeletedBy = &deletedBy
 	nodePool.Generation++
 
-	if err := s.nodePoolDao.Save(ctx, nodePool); err != nil {
+	err = s.nodePoolDao.Save(ctx, nodePool)
+	if err != nil {
 		return nil, handleSoftDeleteError("NodePool", err)
 	}
 
