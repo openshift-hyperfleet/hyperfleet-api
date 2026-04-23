@@ -1,7 +1,6 @@
 package services
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	stderrors "errors"
@@ -183,46 +182,13 @@ func nodePoolRefTime(np *api.NodePool) time.Time {
 func (s *sqlNodePoolService) UpdateNodePoolStatusFromAdapters(
 	ctx context.Context, nodePoolID string,
 ) (*api.NodePool, *errors.ServiceError) {
-	nodePool, err := s.nodePoolDao.Get(ctx, nodePoolID)
-	if err != nil {
-		return nil, handleGetError("NodePool", "id", nodePoolID, err)
-	}
-
-	adapterStatuses, err := s.adapterStatusDao.FindByResource(ctx, "NodePool", nodePoolID)
-	if err != nil {
-		return nil, errors.GeneralError("Failed to get adapter statuses: %s", err)
-	}
-
-	refTime := nodePoolRefTime(nodePool)
-	ready, available, adapterConditions := AggregateResourceStatus(ctx, AggregateResourceStatusInput{
-		ResourceGeneration: nodePool.Generation,
-		RefTime:            refTime,
-		PrevConditionsJSON: nodePool.StatusConditions,
-		RequiredAdapters:   s.adapterConfig.RequiredNodePoolAdapters(),
-		AdapterStatuses:    adapterStatuses,
-	})
-
-	allConditions := make([]api.ResourceCondition, 0, 2+len(adapterConditions))
-	allConditions = append(allConditions, ready, available)
-	allConditions = append(allConditions, adapterConditions...)
-
-	conditionsJSON, err := json.Marshal(allConditions)
-	if err != nil {
-		return nil, errors.GeneralError("Failed to marshal conditions: %s", err)
-	}
-
-	if bytes.Equal(nodePool.StatusConditions, conditionsJSON) {
-		return nodePool, nil
-	}
-
-	nodePool.StatusConditions = conditionsJSON
-
-	nodePool, err = s.nodePoolDao.Replace(ctx, nodePool)
-	if err != nil {
-		return nil, handleUpdateError("NodePool", err)
-	}
-
-	return nodePool, nil
+	return updateNodePoolStatusFromAdapters(
+		ctx,
+		nodePoolID,
+		s.nodePoolDao,
+		s.adapterStatusDao,
+		s.adapterConfig,
+	)
 }
 
 func (s *sqlNodePoolService) ProcessAdapterStatus(

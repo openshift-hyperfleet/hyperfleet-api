@@ -146,7 +146,13 @@ func (s *sqlClusterService) SoftDelete(ctx context.Context, id string) (*api.Clu
 	}
 	for i := range nodePools {
 		np := nodePools[i]
-		if _, npSvcErr := s.UpdateNodePoolStatusFromAdapters(ctx, np.ID); npSvcErr != nil {
+		if _, npSvcErr := updateNodePoolStatusFromAdapters(
+			ctx,
+			np.ID,
+			s.nodePoolDao,
+			s.adapterStatusDao,
+			s.adapterConfig,
+		); npSvcErr != nil {
 			return nil, npSvcErr
 		}
 	}
@@ -196,56 +202,6 @@ func clusterRefTime(c *api.Cluster) time.Time {
 		return c.UpdatedTime
 	}
 	return c.CreatedTime
-}
-
-// UpdateNodePoolStatusFromAdapters recomputes aggregated Ready, Available, and per-adapter conditions
-// from stored adapter rows and persists them to the nodepool's status.
-func (s *sqlClusterService) UpdateNodePoolStatusFromAdapters(
-	ctx context.Context, nodePoolID string,
-) (*api.NodePool, *errors.ServiceError) {
-	nodePool, err := s.nodePoolDao.Get(ctx, nodePoolID)
-	if err != nil {
-		return nil, handleGetError("NodePool", "id", nodePoolID, err)
-	}
-
-	adapterStatuses, err := s.adapterStatusDao.FindByResource(ctx, "NodePool", nodePoolID)
-	if err != nil {
-		return nil, errors.GeneralError("Failed to get adapter statuses: %s", err)
-	}
-
-	refTime := nodePool.UpdatedTime
-	if refTime.IsZero() {
-		refTime = nodePool.CreatedTime
-	}
-	ready, available, adapterConditions := AggregateResourceStatus(ctx, AggregateResourceStatusInput{
-		ResourceGeneration: nodePool.Generation,
-		RefTime:            refTime,
-		PrevConditionsJSON: nodePool.StatusConditions,
-		RequiredAdapters:   s.adapterConfig.RequiredNodePoolAdapters(),
-		AdapterStatuses:    adapterStatuses,
-	})
-
-	allConditions := make([]api.ResourceCondition, 0, 2+len(adapterConditions))
-	allConditions = append(allConditions, ready, available)
-	allConditions = append(allConditions, adapterConditions...)
-
-	conditionsJSON, err := json.Marshal(allConditions)
-	if err != nil {
-		return nil, errors.GeneralError("Failed to marshal conditions: %s", err)
-	}
-
-	if bytes.Equal(nodePool.StatusConditions, conditionsJSON) {
-		return nodePool, nil
-	}
-
-	nodePool.StatusConditions = conditionsJSON
-
-	nodePool, err = s.nodePoolDao.Replace(ctx, nodePool)
-	if err != nil {
-		return nil, handleUpdateError("NodePool", err)
-	}
-
-	return nodePool, nil
 }
 
 // UpdateClusterStatusFromAdapters recomputes aggregated Ready, Available, and per-adapter conditions
