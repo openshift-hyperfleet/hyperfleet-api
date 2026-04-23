@@ -140,7 +140,7 @@ func (s *sqlClusterService) SoftDelete(ctx context.Context, id string) (*api.Clu
 	}
 
 	// Update status for all cascade-deleted nodepools so their Ready condition reflects the generation bump.
-	nodePools, err := s.nodePoolDao.FindByOwnerAndDeletedTime(ctx, id, t)
+	nodePools, err := s.nodePoolDao.FindSoftDeletedByOwner(ctx, id)
 	if err != nil {
 		return nil, errors.GeneralError("Failed to fetch cascade-deleted nodepools: %s", err)
 	}

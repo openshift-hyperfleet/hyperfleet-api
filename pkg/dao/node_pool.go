@@ -19,7 +19,7 @@ type NodePoolDao interface {
 	Save(ctx context.Context, nodePool *api.NodePool) error
 	Delete(ctx context.Context, id string) error
 	FindByIDs(ctx context.Context, ids []string) (api.NodePoolList, error)
-	FindByOwnerAndDeletedTime(ctx context.Context, ownerID string, deletedTime time.Time) (api.NodePoolList, error)
+	FindSoftDeletedByOwner(ctx context.Context, ownerID string) (api.NodePoolList, error)
 	SoftDeleteByOwner(ctx context.Context, ownerID string, t time.Time, deletedBy string) error
 	All(ctx context.Context) (api.NodePoolList, error)
 }
@@ -112,12 +112,10 @@ func (d *sqlNodePoolDao) SoftDeleteByOwner(ctx context.Context, ownerID string, 
 	return nil
 }
 
-func (d *sqlNodePoolDao) FindByOwnerAndDeletedTime(
-	ctx context.Context, ownerID string, deletedTime time.Time,
-) (api.NodePoolList, error) {
+func (d *sqlNodePoolDao) FindSoftDeletedByOwner(ctx context.Context, ownerID string) (api.NodePoolList, error) {
 	g2 := (*d.sessionFactory).New(ctx)
 	var nodePools api.NodePoolList
-	if err := g2.Where("owner_id = ? AND deleted_time = ?", ownerID, deletedTime).Find(&nodePools).Error; err != nil {
+	if err := g2.Where("owner_id = ? AND deleted_time IS NOT NULL", ownerID).Find(&nodePools).Error; err != nil {
 		return nil, err
 	}
 	return nodePools, nil

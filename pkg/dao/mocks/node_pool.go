@@ -48,9 +48,7 @@ func (d *nodePoolDaoMock) SoftDeleteByOwner(ctx context.Context, ownerID string,
 	return errors.NotImplemented("NodePool").AsError()
 }
 
-func (d *nodePoolDaoMock) FindByOwnerAndDeletedTime(
-	ctx context.Context, ownerID string, deletedTime time.Time,
-) (api.NodePoolList, error) {
+func (d *nodePoolDaoMock) FindSoftDeletedByOwner(ctx context.Context, ownerID string) (api.NodePoolList, error) {
 	return nil, errors.NotImplemented("NodePool").AsError()
 }
 
