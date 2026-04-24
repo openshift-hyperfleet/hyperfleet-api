@@ -995,6 +995,85 @@ func TestClusterSoftDelete(t *testing.T) {
 		Expect(nodePool.DeletedBy).NotTo(BeNil(), "nodepool deleted_by should be set after cluster cascade")
 	})
 
+	t.Run("given a cluster with Ready=True, when deleted, then generation increments and Ready becomes False", func(t *testing.T) { //nolint:lll
+		RegisterTestingT(t)
+		// Given:
+		h, client := test.RegisterIntegration(t)
+		account := h.NewRandAccount()
+		ctx := h.NewAuthenticatedContext(account)
+		cluster, err := factories.NewClusterWithStatus(&h.Factories, h.DBFactory, h.NewID(), true, true)
+		Expect(err).NotTo(HaveOccurred())
+		initialGeneration := cluster.Generation
+		// When:
+		delResp, err := client.DeleteClusterByIdWithResponse(ctx, cluster.ID, test.WithAuthToken(ctx))
+		// Then:
+		Expect(err).NotTo(HaveOccurred())
+		Expect(delResp.StatusCode()).To(Equal(http.StatusAccepted))
+		Expect(delResp.JSON202).NotTo(BeNil())
+		Expect(delResp.JSON202.Generation).To(Equal(initialGeneration+1),
+			"Generation should be incremented after soft-delete")
+		var readyCond *openapi.ResourceCondition
+		for i := range delResp.JSON202.Status.Conditions {
+			if delResp.JSON202.Status.Conditions[i].Type == api.ConditionTypeReady {
+				readyCond = &delResp.JSON202.Status.Conditions[i]
+				break
+			}
+		}
+		Expect(readyCond).NotTo(BeNil(), "Expected Ready condition in response")
+		Expect(readyCond.Status).To(Equal(openapi.ResourceConditionStatusFalse),
+			"Ready should be False after soft-delete due to generation bump")
+	})
+
+	t.Run("given a cluster soft-delete cascades to child nodepools, when deleted, then both cluster and nodepool generation increment and Ready becomes False", func(t *testing.T) { //nolint:lll
+		RegisterTestingT(t)
+		// Given:
+		h, client := test.RegisterIntegration(t)
+		account := h.NewRandAccount()
+		ctx := h.NewAuthenticatedContext(account)
+		cluster, err := factories.NewClusterWithStatus(&h.Factories, h.DBFactory, h.NewID(), true, true)
+		Expect(err).NotTo(HaveOccurred())
+		nodePool, err := factories.NewNodePoolWithStatus(&h.Factories, h.DBFactory, h.NewID(), true, true)
+		Expect(err).NotTo(HaveOccurred())
+		initialNodePoolGeneration := nodePool.Generation
+		dbSession := h.DBFactory.New(ctx)
+		Expect(dbSession.Model(nodePool).Update("owner_id", cluster.ID).Error).NotTo(HaveOccurred())
+		// When:
+		delResp, err := client.DeleteClusterByIdWithResponse(ctx, cluster.ID, test.WithAuthToken(ctx))
+		// Then: Verify cluster generation and Ready status
+		Expect(err).NotTo(HaveOccurred())
+		Expect(delResp.StatusCode()).To(Equal(http.StatusAccepted))
+		Expect(delResp.JSON202.Generation).To(Equal(cluster.Generation+1),
+			"Cluster generation should increment on soft-delete")
+		var clusterReadyCond *openapi.ResourceCondition
+		for i := range delResp.JSON202.Status.Conditions {
+			if delResp.JSON202.Status.Conditions[i].Type == api.ConditionTypeReady {
+				clusterReadyCond = &delResp.JSON202.Status.Conditions[i]
+				break
+			}
+		}
+		Expect(clusterReadyCond).NotTo(BeNil(), "Expected Ready condition in cluster response")
+		Expect(clusterReadyCond.Status).To(Equal(openapi.ResourceConditionStatusFalse),
+			"Cluster Ready should be False after soft-delete")
+		// Then: Verify cascaded nodepool generation and Ready status
+		var npAfterDelete api.NodePool
+		Expect(dbSession.First(&npAfterDelete, "id = ?", nodePool.ID).Error).NotTo(HaveOccurred())
+		Expect(npAfterDelete.Generation).To(Equal(initialNodePoolGeneration+1),
+			"NodePool generation should be incremented after cascade soft-delete")
+		var conditions []api.ResourceCondition
+		err = json.Unmarshal(npAfterDelete.StatusConditions, &conditions)
+		Expect(err).NotTo(HaveOccurred(), "should be able to unmarshal nodepool status conditions")
+		var readyCond *api.ResourceCondition
+		for i := range conditions {
+			if conditions[i].Type == api.ConditionTypeReady {
+				readyCond = &conditions[i]
+				break
+			}
+		}
+		Expect(readyCond).NotTo(BeNil(), "Expected Ready condition in nodepool status")
+		Expect(readyCond.Status).To(Equal(api.ConditionFalse),
+			"Ready should be False after cascade soft-delete due to generation bump")
+	})
+
 	t.Run("given an already-deleted cluster, when deleted again, then returns 202 with unchanged deleted_time and nodepool state is unchanged", func(t *testing.T) { //nolint:lll
 		RegisterTestingT(t)
 		// Given:

@@ -48,8 +48,16 @@ func (d *nodePoolDaoMock) SoftDeleteByOwner(ctx context.Context, ownerID string,
 	return errors.NotImplemented("NodePool").AsError()
 }
 
+func (d *nodePoolDaoMock) FindSoftDeletedByOwner(ctx context.Context, ownerID string) (api.NodePoolList, error) {
+	return nil, errors.NotImplemented("NodePool").AsError()
+}
+
 func (d *nodePoolDaoMock) FindByIDs(ctx context.Context, ids []string) (api.NodePoolList, error) {
 	return nil, errors.NotImplemented("NodePool").AsError()
+}
+
+func (d *nodePoolDaoMock) UpdateStatusConditionsByIDs(ctx context.Context, updates map[string][]byte) error {
+	return errors.NotImplemented("NodePool").AsError()
 }
 
 func (d *nodePoolDaoMock) All(ctx context.Context) (api.NodePoolList, error) {

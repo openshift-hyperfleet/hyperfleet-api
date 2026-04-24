@@ -19,7 +19,9 @@ type NodePoolDao interface {
 	Save(ctx context.Context, nodePool *api.NodePool) error
 	Delete(ctx context.Context, id string) error
 	FindByIDs(ctx context.Context, ids []string) (api.NodePoolList, error)
+	FindSoftDeletedByOwner(ctx context.Context, ownerID string) (api.NodePoolList, error)
 	SoftDeleteByOwner(ctx context.Context, ownerID string, t time.Time, deletedBy string) error
+	UpdateStatusConditionsByIDs(ctx context.Context, updates map[string][]byte) error
 	All(ctx context.Context) (api.NodePoolList, error)
 }
 
@@ -111,6 +113,15 @@ func (d *sqlNodePoolDao) SoftDeleteByOwner(ctx context.Context, ownerID string, 
 	return nil
 }
 
+func (d *sqlNodePoolDao) FindSoftDeletedByOwner(ctx context.Context, ownerID string) (api.NodePoolList, error) {
+	g2 := (*d.sessionFactory).New(ctx)
+	var nodePools api.NodePoolList
+	if err := g2.Where("owner_id = ? AND deleted_time IS NOT NULL", ownerID).Find(&nodePools).Error; err != nil {
+		return nil, err
+	}
+	return nodePools, nil
+}
+
 func (d *sqlNodePoolDao) FindByIDs(ctx context.Context, ids []string) (api.NodePoolList, error) {
 	g2 := (*d.sessionFactory).New(ctx)
 	nodePools := api.NodePoolList{}
@@ -118,6 +129,24 @@ func (d *sqlNodePoolDao) FindByIDs(ctx context.Context, ids []string) (api.NodeP
 		return nil, err
 	}
 	return nodePools, nil
+}
+
+func (d *sqlNodePoolDao) UpdateStatusConditionsByIDs(ctx context.Context, updates map[string][]byte) error {
+	g2 := (*d.sessionFactory).New(ctx)
+	if len(updates) == 0 {
+		return nil
+	}
+
+	for id, statusConditions := range updates {
+		result := g2.Model(&api.NodePool{}).
+			Where("id = ?", id).
+			Update("status_conditions", statusConditions)
+		if result.Error != nil {
+			db.MarkForRollback(ctx, result.Error)
+			return result.Error
+		}
+	}
+	return nil
 }
 
 func (d *sqlNodePoolDao) All(ctx context.Context) (api.NodePoolList, error) {

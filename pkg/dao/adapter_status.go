@@ -22,6 +22,7 @@ type AdapterStatusDao interface {
 	Upsert(ctx context.Context, adapterStatus *api.AdapterStatus) (*api.AdapterStatus, error)
 	Delete(ctx context.Context, id string) error
 	FindByResource(ctx context.Context, resourceType, resourceID string) (api.AdapterStatusList, error)
+	FindByResourceIDs(ctx context.Context, resourceType string, resourceIDs []string) (api.AdapterStatusList, error)
 	FindByResourcePaginated(
 		ctx context.Context, resourceType, resourceID string, offset, limit int,
 	) (api.AdapterStatusList, int64, error)
@@ -155,6 +156,21 @@ func (d *sqlAdapterStatusDao) FindByResource(
 	g2 := (*d.sessionFactory).New(ctx)
 	statuses := api.AdapterStatusList{}
 	query := g2.Where("resource_type = ? AND resource_id = ?", resourceType, resourceID)
+	if err := query.Find(&statuses).Error; err != nil {
+		return nil, err
+	}
+	return statuses, nil
+}
+
+func (d *sqlAdapterStatusDao) FindByResourceIDs(
+	ctx context.Context, resourceType string, resourceIDs []string,
+) (api.AdapterStatusList, error) {
+	g2 := (*d.sessionFactory).New(ctx)
+	statuses := api.AdapterStatusList{}
+	if len(resourceIDs) == 0 {
+		return statuses, nil
+	}
+	query := g2.Where("resource_type = ? AND resource_id IN ?", resourceType, resourceIDs)
 	if err := query.Find(&statuses).Error; err != nil {
 		return nil, err
 	}
