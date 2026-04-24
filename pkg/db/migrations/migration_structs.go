@@ -33,6 +33,7 @@ var MigrationList = []*gormigrate.Migration{
 	addAdapterStatus(),
 	addConditionsGinIndex(),
 	addSoftDeleteSchema(),
+	addNodePoolOwnerDeletedIndex(),
 	addReconciledIndex(),
 }
 

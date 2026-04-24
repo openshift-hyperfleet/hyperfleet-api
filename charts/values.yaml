@@ -271,6 +271,18 @@ serviceMonitor:
   labels: {}
   namespace: ""
 
+tracing:
+  enabled: true
+  serviceName: "hyperfleet-api"
+  # OTLP exporter endpoint (traces go to stdout if not set)
+  otlpEndpoint: ""
+  # OTLP protocol: grpc (default) or http/protobuf
+  otlpProtocol: "grpc"
+  # Sampler type (default per tracing standard)
+  sampler: "parentbased_traceidratio"
+  # Sampling rate: 1.0 for dev, 0.01 for production
+  samplerArg: "1.0"
+  propagators: "tracecontext,baggage"
 # ============================================================
 # Advanced Overrides (Escape Hatch)
 # ============================================================

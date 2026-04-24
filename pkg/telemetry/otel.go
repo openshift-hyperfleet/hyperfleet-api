@@ -7,11 +7,11 @@ import (
 	"strconv"
 	"strings"
 
+	"go.opentelemetry.io/contrib/propagators/autoprop"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
-	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
 	"go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
@@ -40,6 +40,7 @@ const (
 //   - OTEL_TRACES_SAMPLER: sampler type (default: "parentbased_traceidratio")
 //   - OTEL_TRACES_SAMPLER_ARG: sampling rate 0.0-1.0 (default: 1.0)
 //   - OTEL_RESOURCE_ATTRIBUTES: additional resource attributes (k=v,k2=v2 format)
+//   - OTEL_PROPAGATORS: list of propagators to use (default: "tracecontext,baggage")
 func InitTraceProvider(ctx context.Context, serviceName, serviceVersion string) (*trace.TracerProvider, error) {
 	// Create exporter (OTLP or stdout)
 	exporter, err := createExporter(ctx)
@@ -78,10 +79,10 @@ func InitTraceProvider(ctx context.Context, serviceName, serviceVersion string) 
 
 	// Set global trace provider
 	otel.SetTracerProvider(tp)
-	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
-		propagation.TraceContext{},
-		propagation.Baggage{},
-	))
+	// Select the propagator based on envivronment variable OTEL_PROPAGATORS
+	// If OTEL_PROPAGATORS is not provided, uses default "tracecontext,baggage"
+	textMapProp := autoprop.NewTextMapPropagator()
+	otel.SetTextMapPropagator(textMapProp)
 
 	return tp, nil
 }

@@ -604,6 +604,39 @@ func TestNodePoolSoftDelete(t *testing.T) {
 		Expect(string(*resp.JSON202.DeletedBy)).To(Equal("system@hyperfleet.local"))
 	})
 
+	t.Run("given a nodepool with Ready=True, when deleted, then generation increments and Ready becomes False", func(t *testing.T) { //nolint:lll
+		RegisterTestingT(t)
+		// Given:
+		h, client := test.RegisterIntegration(t)
+		account := h.NewRandAccount()
+		ctx := h.NewAuthenticatedContext(account)
+		cluster, err := h.Factories.NewClusters(h.NewID())
+		Expect(err).NotTo(HaveOccurred())
+		nodePool, err := factories.NewNodePoolWithStatus(&h.Factories, h.DBFactory, h.NewID(), true, true)
+		Expect(err).NotTo(HaveOccurred())
+		initialGeneration := nodePool.Generation
+		dbSession := h.DBFactory.New(ctx)
+		Expect(dbSession.Model(nodePool).Update("owner_id", cluster.ID).Error).NotTo(HaveOccurred())
+		// When:
+		resp, err := client.DeleteNodePoolByIdWithResponse(ctx, cluster.ID, nodePool.ID, test.WithAuthToken(ctx))
+		// Then:
+		Expect(err).NotTo(HaveOccurred())
+		Expect(resp.StatusCode()).To(Equal(http.StatusAccepted))
+		Expect(resp.JSON202).NotTo(BeNil())
+		Expect(resp.JSON202.Generation).To(Equal(initialGeneration+1),
+			"Generation should be incremented after soft-delete")
+		var readyCond *openapi.ResourceCondition
+		for i := range resp.JSON202.Status.Conditions {
+			if resp.JSON202.Status.Conditions[i].Type == api.ConditionTypeReady {
+				readyCond = &resp.JSON202.Status.Conditions[i]
+				break
+			}
+		}
+		Expect(readyCond).NotTo(BeNil(), "Expected Ready condition in response")
+		Expect(readyCond.Status).To(Equal(openapi.ResourceConditionStatusFalse),
+			"Ready should be False after soft-delete due to generation bump")
+	})
+
 	t.Run("given a nodepool that belongs to a different cluster, when deleted via wrong cluster ID, then returns 404", func(t *testing.T) { //nolint:lll
 		RegisterTestingT(t)
 		// Given:

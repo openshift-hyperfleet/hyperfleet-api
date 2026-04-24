@@ -164,6 +164,24 @@ func (d *mockAdapterStatusDao) FindByResource(
 	return result, nil
 }
 
+func (d *mockAdapterStatusDao) FindByResourceIDs(
+	ctx context.Context,
+	resourceType string,
+	resourceIDs []string,
+) (api.AdapterStatusList, error) {
+	var result api.AdapterStatusList
+	resourceIDSet := make(map[string]bool, len(resourceIDs))
+	for _, id := range resourceIDs {
+		resourceIDSet[id] = true
+	}
+	for _, s := range d.statuses {
+		if s.ResourceType == resourceType && resourceIDSet[s.ResourceID] {
+			result = append(result, s)
+		}
+	}
+	return result, nil
+}
+
 func (d *mockAdapterStatusDao) FindByResourcePaginated(
 	ctx context.Context,
 	resourceType, resourceID string,

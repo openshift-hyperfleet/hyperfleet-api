@@ -124,16 +124,31 @@ func (s *sqlClusterService) SoftDelete(ctx context.Context, id string) (*api.Clu
 	cluster.DeletedBy = &deletedBy
 	cluster.Generation++
 
-	if err := s.clusterDao.Save(ctx, cluster); err != nil {
-		return nil, handleSoftDeleteError("Cluster", err)
+	if saveErr := s.clusterDao.Save(ctx, cluster); saveErr != nil {
+		return nil, handleSoftDeleteError("Cluster", saveErr)
 	}
 
-	if err := s.nodePoolDao.SoftDeleteByOwner(ctx, id, t, deletedBy); err != nil {
-		return nil, handleSoftDeleteError("NodePool", err)
+	if cascadeErr := s.nodePoolDao.SoftDeleteByOwner(ctx, id, t, deletedBy); cascadeErr != nil {
+		return nil, handleSoftDeleteError("NodePool", cascadeErr)
 	}
 
 	cluster, svcErr := s.UpdateClusterStatusFromAdapters(ctx, cluster.ID)
 	if svcErr != nil {
+		return nil, svcErr
+	}
+
+	// Update status for all cascade-deleted nodepools so their Ready condition reflects the generation bump.
+	nodePools, err := s.nodePoolDao.FindSoftDeletedByOwner(ctx, id)
+	if err != nil {
+		return nil, errors.GeneralError("Failed to fetch cascade-deleted nodepools: %s", err)
+	}
+	if svcErr := batchUpdateNodePoolStatusesFromAdapters(
+		ctx,
+		nodePools,
+		s.nodePoolDao,
+		s.adapterStatusDao,
+		s.adapterConfig,
+	); svcErr != nil {
 		return nil, svcErr
 	}
 
