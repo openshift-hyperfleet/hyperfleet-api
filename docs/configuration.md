@@ -81,7 +81,7 @@ clients:
 ### Logging (`log`)
 
 - `log.level` (string, optional): Log level (`debug`, `info`, `warn`, `error`). Default: `info`.
-- `log.format` (string, optional): Log format (`text`, `json`). Default: `text`.
+- `log.format` (string, optional): Log format (`text`, `json`). Default: `json`.
 - `log.output` (string, optional): Log output destination (`stdout`, `stderr`). Default: `stdout`.
 
 ### Maestro client (`clients.maestro`)
