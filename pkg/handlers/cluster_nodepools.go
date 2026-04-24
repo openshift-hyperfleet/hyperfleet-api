@@ -190,9 +190,13 @@ func (h ClusterNodePoolsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 			clusterID := mux.Vars(r)["id"]
 			nodePoolID := mux.Vars(r)["nodepool_id"]
 
-			_, err := h.clusterService.Get(ctx, clusterID)
+			cluster, err := h.clusterService.Get(ctx, clusterID)
 			if err != nil {
 				return nil, err
+			}
+
+			if cluster.DeletedTime != nil {
+				return nil, errors.ConflictState("Cluster '%s' is marked for deletion", clusterID)
 			}
 
 			found, err := h.nodePoolService.Get(ctx, nodePoolID)
@@ -202,6 +206,10 @@ func (h ClusterNodePoolsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 
 			if found.OwnerID != clusterID {
 				return nil, errors.NotFound("NodePool '%s' not found for cluster '%s'", nodePoolID, clusterID)
+			}
+
+			if found.DeletedTime != nil {
+				return nil, errors.ConflictState("NodePool '%s' is marked for deletion", nodePoolID)
 			}
 
 			if patch.Spec != nil {
@@ -256,6 +264,10 @@ func (h ClusterNodePoolsHandler) Create(w http.ResponseWriter, r *http.Request) 
 			cluster, err := h.clusterService.Get(ctx, clusterID)
 			if err != nil {
 				return nil, err
+			}
+
+			if cluster.DeletedTime != nil {
+				return nil, errors.ConflictState("Cluster '%s' is marked for deletion", clusterID)
 			}
 
 			// Use the presenters.ConvertNodePool helper to convert the request
