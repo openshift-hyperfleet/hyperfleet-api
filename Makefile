@@ -112,6 +112,10 @@ verify: ## Verify source passes standard checks
 lint: $(GOLANGCI_LINT) ## Run golangci-lint
 	$(GOLANGCI_LINT) run ./cmd/... ./pkg/... ./test/...
 
+.PHONY: verify-migrations
+verify-migrations: ## Verify migration files follow project conventions
+	@hack/verify-migrations.sh
+
 ##@ Code Generation
 
 .PHONY: generate
@@ -222,7 +226,7 @@ test-all: lint test test-integration test-helm ## Run all checks (lint, unit, in
 ##@ Agent Verification
 
 .PHONY: verify-all
-verify-all: verify lint test ## Run all static checks + unit tests (no database required)
+verify-all: verify lint verify-migrations test ## Run all static checks + unit tests (no database required)
 	@echo "All static checks and unit tests passed."
 	@echo "Run 'make test-integration' separately for integration tests (requires database)."
 
