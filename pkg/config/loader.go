@@ -185,6 +185,9 @@ func (l *ConfigLoader) validateConfig(config *ApplicationConfig) error {
 		if valErr := config.Metrics.TLS.Validate(); valErr != nil {
 			return fmt.Errorf("metrics TLS validation failed: %w", valErr)
 		}
+		if valErr := config.Metrics.Validate(); valErr != nil {
+			return fmt.Errorf("metrics config validation failed: %w", valErr)
+		}
 		return nil
 	}
 
@@ -345,6 +348,7 @@ func (l *ConfigLoader) bindAllEnvVars() {
 	l.bindEnv("metrics.port")
 	l.bindEnv("metrics.tls.enabled")
 	l.bindEnv("metrics.label_metrics_inclusion_duration")
+	l.bindEnv("metrics.deletion_stuck_threshold")
 
 	// Health config
 	l.bindEnv("health.host")
@@ -411,6 +415,8 @@ func (l *ConfigLoader) bindFlags(cmd *cobra.Command) {
 	l.bindPFlag("metrics.tls.key_file", cmd.Flags().Lookup("metrics-tls-key-file"))
 	l.bindPFlag("metrics.label_metrics_inclusion_duration",
 		cmd.Flags().Lookup("metrics-label-metrics-inclusion-duration"))
+	l.bindPFlag("metrics.deletion_stuck_threshold",
+		cmd.Flags().Lookup("metrics-deletion-stuck-threshold"))
 
 	// Health flags: --health-* -> health.*
 	l.bindPFlag("health.host", cmd.Flags().Lookup("health-host"))
