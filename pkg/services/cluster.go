@@ -218,6 +218,7 @@ func (s *sqlClusterService) UpdateClusterStatusFromAdapters(
 	ready, available, reconciled, adapterConditions := AggregateResourceStatus(ctx, AggregateResourceStatusInput{
 		ResourceGeneration: cluster.Generation,
 		RefTime:            refTime,
+		DeletedTime:        cluster.DeletedTime,
 		PrevConditionsJSON: cluster.StatusConditions,
 		RequiredAdapters:   s.adapterConfig.RequiredClusterAdapters(),
 		AdapterStatuses:    adapterStatuses,

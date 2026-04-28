@@ -86,6 +86,7 @@ func mapAdapterToConditionType(adapterName string, suffixMap map[string]string) 
 type AggregateResourceStatusInput struct {
 	ResourceGeneration int32
 	RefTime            time.Time
+	DeletedTime        *time.Time
 	PrevConditionsJSON []byte
 	RequiredAdapters   []string
 	AdapterStatuses    api.AdapterStatusList
@@ -121,6 +122,7 @@ func AggregateResourceStatus(ctx context.Context, in AggregateResourceStatusInpu
 	reconciled = computeReconciled(
 		in.ResourceGeneration,
 		in.RefTime,
+		in.DeletedTime,
 		prevReconciled,
 		in.RequiredAdapters,
 		reports,
@@ -169,6 +171,7 @@ type adapterAvailableSnapshot struct {
 	reason             *string
 	message            *string
 	availableTrue      bool
+	finalizedTrue      bool
 	observedGeneration int32
 }
 
@@ -220,9 +223,18 @@ func normalizeAdapterReportsForAggregation(
 			continue
 		}
 
+		var finalized *api.AdapterCondition
+		for i := range conditions {
+			if conditions[i].Type == api.ConditionTypeFinalized {
+				finalized = &conditions[i]
+				break
+			}
+		}
+
 		out[as.Adapter] = adapterAvailableSnapshot{
 			observedTime:       obsTime,
 			availableTrue:      avail.Status == api.AdapterConditionTrue,
+			finalizedTrue:      finalized != nil && finalized.Status == api.AdapterConditionTrue,
 			observedGeneration: as.ObservedGeneration,
 			reason:             avail.Reason,
 			message:            avail.Message,
@@ -312,6 +324,7 @@ func computeReady(
 func computeReconciled(
 	resourceGen int32,
 	refTime time.Time,
+	deletedTime *time.Time,
 	prev *api.ResourceCondition,
 	required []string,
 	byAdapter map[string]adapterAvailableSnapshot,
@@ -321,7 +334,13 @@ func computeReconciled(
 		s, ok := byAdapter[name]
 		if !ok || !s.availableTrue || s.observedGeneration != resourceGen {
 			allAtCurrent = false
-			break
+		}
+		if deletedTime != nil {
+			// Deletion lifecycle: check Finalized
+			if !s.finalizedTrue {
+				allAtCurrent = false
+				break
+			}
 		}
 	}
 

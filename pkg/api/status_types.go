@@ -28,6 +28,7 @@ const (
 	ConditionTypeHealth     = "Health"
 	ConditionTypeReady      = "Ready"
 	ConditionTypeReconciled = "Reconciled"
+	ConditionTypeFinalized  = "Finalized"
 )
 
 // ResourceCondition represents a condition of a resource

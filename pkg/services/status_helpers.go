@@ -22,6 +22,7 @@ func computeNodePoolConditionsJSON(
 	ready, available, reconciled, adapterConditions := AggregateResourceStatus(ctx, AggregateResourceStatusInput{
 		ResourceGeneration: np.Generation,
 		RefTime:            nodePoolRefTime(np),
+		DeletedTime:        np.DeletedTime,
 		PrevConditionsJSON: np.StatusConditions,
 		RequiredAdapters:   requiredAdapters,
 		AdapterStatuses:    adapterStatuses,
