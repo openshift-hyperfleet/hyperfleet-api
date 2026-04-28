@@ -28,7 +28,7 @@ const (
 // required adapters have not yet reported Available=True at the current resource generation.
 const reasonMissingRequiredAdapters = "MissingRequiredAdapters"
 const reasonAllAdaptersAvailable = "All required adapters reported Available=True at the current generation"
-const reasonAllAdaptersFinalized = "All required adapters reported Finalized=True at the current generation"
+const reasonAllAdaptersReconciled = "All required adapters reconciled at the current generation"
 
 // ValidateMandatoryConditions checks if all mandatory conditions are present.
 // Format validation (empty type, duplicates, invalid status) is done in the Handler layer.
@@ -399,14 +399,14 @@ func computeReconciled(
 		reason = reasonMissingRequiredAdapters
 		message = buildFinalizedFalseMessage(required, byAdapter, resourceGen)
 		if status == api.ConditionTrue {
-			reason = reasonAllAdaptersFinalized
+			reason = reasonAllAdaptersReconciled
 			message = reason
 		}
 	} else {
 		reason = reasonMissingRequiredAdapters
 		message = buildReadyFalseMessage(required, byAdapter, resourceGen)
 		if status == api.ConditionTrue {
-			reason = reasonAllAdaptersAvailable
+			reason = reasonAllAdaptersReconciled
 			message = reason
 		}
 	}
