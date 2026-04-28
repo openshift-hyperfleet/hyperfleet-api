@@ -66,7 +66,7 @@ resources:
   # ============================================================================
   - name: configMapManifestWork
     discovery:
-      by_name: mw-configmap-{{ .clusterId }}
+      by_name: '{{ .clusterId }}-mw2-cm'
     manifest:
       ref: /etc/adapter/manifestwork-configmap.yaml
     nested_discoveries:
@@ -93,7 +93,7 @@ resources:
   # ============================================================================
   - name: namespaceManifestWork
     discovery:
-      by_name: mw-namespace-{{ .clusterId }}
+      by_name: '{{ .clusterId }}-mw2'
     manifest:
       ref: /etc/adapter/manifestwork-namespace.yaml
     nested_discoveries:

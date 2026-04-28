@@ -55,7 +55,7 @@ resources:
     # With this approach, the manifestWork object can be used to get the resources inside the manifestWork.
     # When try to dig  Manifest
     discovery:
-      by_name: mw-{{ .clusterId }}
+      by_name: '{{ .clusterId }}-mw'
     # ManifestWork is a kind of manifest that can be used to create resources on the cluster.
     # It is a collection of resources that are created together.
     # It is created by the adapter and can be used to create resources on the cluster.
@@ -74,7 +74,7 @@ resources:
               hyperfleet.io/resource-type: namespace
         name: mgmtNamespace
       - discovery:
-          by_name: '{{ .clusterId }}'
+          by_name: 'cluster-config'
         name: mgmtConfigMap
     transport:
       client: maestro

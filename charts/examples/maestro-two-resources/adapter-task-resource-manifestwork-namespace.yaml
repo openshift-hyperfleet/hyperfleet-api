@@ -13,7 +13,7 @@
 apiVersion: work.open-cluster-management.io/v1
 kind: ManifestWork
 metadata:
-  name: "mw-namespace-{{ .clusterId }}"
+  name: "{{ .clusterId }}-mw2"
 
   labels:
     hyperfleet.io/cluster-id: "{{ .clusterId }}"
@@ -39,7 +39,7 @@ spec:
     - apiVersion: v1
       kind: Namespace
       metadata:
-        name: "{{ .clusterId }}"
+        name: "{{ .clusterId }}-mw2"
         labels:
           hyperfleet.io/cluster-id: "{{ .clusterId }}"
           hyperfleet.io/cluster-name: "{{ .clusterName }}"
@@ -57,7 +57,7 @@ spec:
     - resourceIdentifier:
         group: ""
         resource: "namespaces"
-        name: "{{ .clusterId }}"
+        name: "{{ .clusterId }}-mw2"
       updateStrategy:
         type: "ServerSideApply"
         serverSideApply:

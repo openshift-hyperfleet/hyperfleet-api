@@ -1,204 +1,27 @@
-# Kubernetes Job template for GCP validator testing
-#
-# This template embeds the validate.sh script directly in the job spec, avoiding the need
-# to build and push a container image for development. Uses a standard Alpine image.
-#
-# Prerequisites:
-#   Apply RBAC resources: kubectl apply -f rbac.yaml
-#
-#
-#
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: example-job
-  namespace: "{{ .clusterId }}"                        # <- this gets resolved from adapterconfig params
+  name: hello-world-job
+  namespace: "{{ .clusterId }}-k8s"
   labels:
     hyperfleet.io/cluster-id: "{{ .clusterId }}"
     hyperfleet.io/resource-type: "job"
   annotations:
-    hyperfleet.io/generation: "{{ .generation }}"  # <- this gets resolved from adapterconfig params
+    hyperfleet.io/generation: "{{ .generation }}"
 spec:
   backoffLimit: 0
-  activeDeadlineSeconds: 310  # 300 + 10 second buffer
   template:
-    metadata:
-      labels:
-        app: example-job
-        job-name: example-job
     spec:
-      serviceAccountName: "{{ .clusterId }}"
       restartPolicy: Never
-
-      # Volumes
-      volumes:
-      - name: results
-        emptyDir: {}
-
       containers:
-      - name: example-job
+      - name: hello-world
         image: alpine:3.19
         imagePullPolicy: IfNotPresent
-        command: ["/bin/sh", "-c"]
-        args:
-          - |
-            set -e
-
-            # Default configuration
-            RESULTS_PATH="${RESULTS_PATH:-/results/adapter-result.json}"
-            SIMULATE_RESULT="${SIMULATE_RESULT:-success}"
-
-            echo "Dummy GCP Validator starting..."
-            echo "Simulating result: ${SIMULATE_RESULT}"
-            echo "Results path: ${RESULTS_PATH}"
-
-            # Ensure results directory exists
-            RESULTS_DIR=$(dirname "${RESULTS_PATH}")
-            mkdir -p "${RESULTS_DIR}"
-
-            case "${SIMULATE_RESULT}" in
-              success)
-                echo "Writing success result..."
-                cat > "${RESULTS_PATH}" <<EOF
-            {
-              "status": "success",
-              "reason": "ValidationPassed",
-              "message": "GCP environment validated successfully (simulated)",
-              "details": {
-                "simulation": true,
-                "checks_run": 5,
-                "checks_passed": 5,
-                "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-              }
-            }
-            EOF
-                echo "Success result written to ${RESULTS_PATH}"
-                exit 0
-                ;;
-
-              failure)
-                echo "Writing failure result..."
-                cat > "${RESULTS_PATH}" <<EOF
-            {
-              "status": "failure",
-              "reason": "MissingPermissions",
-              "message": "Service account lacks required IAM permissions (simulated)",
-              "details": {
-                "simulation": true,
-                "missing_permissions": [
-                  "compute.instances.list",
-                  "iam.serviceAccounts.get"
-                ],
-                "service_account": "dummy-sa@project.iam.gserviceaccount.com",
-                "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-              }
-            }
-            EOF
-                echo "Failure result written to ${RESULTS_PATH}"
-                exit 1
-                ;;
-
-              hang)
-                echo "Simulating hang (sleeping indefinitely)..."
-                sleep 9999999
-                ;;
-
-              crash)
-                echo "Simulating crash (exiting without writing results)..."
-                exit 1
-                ;;
-
-              invalid-json)
-                echo "Writing invalid JSON result..."
-                echo "{ this is not valid json }" > "${RESULTS_PATH}"
-                exit 0
-                ;;
-
-              missing-status)
-                echo "Writing result with missing status field..."
-                cat > "${RESULTS_PATH}" <<EOF
-            {
-              "reason": "TestReason",
-              "message": "This result is missing the status field"
-            }
-            EOF
-                exit 0
-                ;;
-
-              *)
-                echo "Unknown SIMULATE_RESULT value: ${SIMULATE_RESULT}"
-                echo "Valid values: success, failure, hang, crash, invalid-json, missing-status"
-                echo "Defaulting to success..."
-                cat > "${RESULTS_PATH}" <<EOF
-            {
-              "status": "success",
-              "reason": "ValidationPassed",
-              "message": "GCP environment validated successfully (default simulation)",
-              "details": {
-                "simulation": true,
-                "note": "Unknown SIMULATE_RESULT value, defaulted to success"
-              }
-            }
-            EOF
-                exit 0
-                ;;
-            esac
-        env:
-        # Configure simulation scenario
-        # Valid values: success, failure, hang, crash, invalid-json, missing-status
-        - name: SIMULATE_RESULT
-          value: "{{ .simulateResult }}"  # <- this gets resolved from adapterconfig params
-        - name: RESULTS_PATH
-          value: "/results/adapter-result.json"
-        volumeMounts:
-        - name: results
-          mountPath: /results
+        command: ["/bin/sh", "-c", "echo 'Hello, World!'"]
         resources:
           requests:
+            memory: "32Mi"
+            cpu: "50m"
+          limits:
             memory: "64Mi"
             cpu: "100m"
-          limits:
-            memory: "128Mi"
-            cpu: "200m"
-
-      # Status reporter sidecar
-      - name: status-reporter
-        image: registry.ci.openshift.org/ci/status-reporter:latest
-        imagePullPolicy: Always
-        env:
-        # Required environment variables
-        - name: JOB_NAME
-          value: "example-job"
-        - name: JOB_NAMESPACE
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.namespace
-        - name: POD_NAME
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.name
-
-        # Optional configuration
-        - name: RESULTS_PATH
-          value: "/results/adapter-result.json"
-        - name: POLL_INTERVAL_SECONDS
-          value: "2"
-        - name: MAX_WAIT_TIME_SECONDS
-          value: "300"
-        - name: CONDITION_TYPE
-          value: "Available"
-        - name: LOG_LEVEL
-          value: "info"
-        - name: ADAPTER_CONTAINER_NAME
-          value: "example-job"
-
-        volumeMounts:
-        - name: results
-          mountPath: /results
-        resources:
-          requests:
-            memory: "64Mi"
-            cpu: "100m"
-          limits:
-            memory: "128Mi"
-            cpu: "200m"
