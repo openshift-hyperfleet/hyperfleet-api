@@ -206,7 +206,7 @@ podDisruptionBudget:
 # Infrastructure Configuration
 # ============================================================
 # These settings control Kubernetes infrastructure components
-# (PostgreSQL pod, secrets, pgbouncer sidecar)
+# (PostgreSQL pod, secrets)
 # ============================================================
 
 # Database infrastructure
@@ -222,26 +222,6 @@ database:
     enabled: false
     # Name of existing secret with db.host, db.port, db.name, db.user, db.password keys
     secretName: ""
-
-  # PgBouncer connection pooler sidecar (opt-in for production)
-  # Runs as a sidecar container, proxying connections to PostgreSQL
-  pgbouncer:
-    enabled: false
-    image: public.ecr.aws/bitnami/pgbouncer:1.25.1
-    port: 6432
-    poolMode: transaction
-    defaultPoolSize: 50
-    maxClientConn: 100
-    minPoolSize: 5
-    serverIdleTimeout: 600
-    serverLifetime: 3600
-    resources:
-      limits:
-        cpu: 200m
-        memory: 128Mi
-      requests:
-        cpu: 50m
-        memory: 64Mi
 
   # Built-in PostgreSQL for development/testing
   postgresql:
@@ -283,6 +263,68 @@ tracing:
   # Sampling rate: 1.0 for dev, 0.01 for production
   samplerArg: "1.0"
   propagators: "tracecontext,baggage"
+
+# ============================================================
+# Sidecar Containers
+# ============================================================
+# Generic sidecar injection — each entry is a full Kubernetes container spec.
+# Use extraVolumes/extraVolumeMounts for sidecar volume needs.
+# Operators SHOULD enforce container security via admission policies (PodSecurity Standards, Kyverno, etc.).
+sidecars: []
+# Example: PgBouncer connection pooler
+#   - name: pgbouncer
+#     image: public.ecr.aws/bitnami/pgbouncer:1.25.1
+#     securityContext:
+#       allowPrivilegeEscalation: false
+#       capabilities:
+#         drop: [ALL]
+#       readOnlyRootFilesystem: true
+#       seccompProfile:
+#         type: RuntimeDefault
+#     ports:
+#       - name: pgbouncer
+#         containerPort: 6432
+#         protocol: TCP
+#     env:
+#       - name: POSTGRESQL_HOST
+#         value: my-postgresql-host
+#       - name: POSTGRESQL_PORT
+#         value: "5432"
+#       - name: POSTGRESQL_DATABASE
+#         value: hyperfleet
+#       - name: POSTGRESQL_USERNAME
+#         value: hyperfleet
+#       - name: POSTGRESQL_PASSWORD
+#         valueFrom:
+#           secretKeyRef:
+#             name: my-db-secret
+#             key: db.password
+#       - name: PGBOUNCER_PORT
+#         value: "6432"
+#       - name: PGBOUNCER_POOL_MODE
+#         value: transaction
+#     resources:
+#       limits:
+#         cpu: 200m
+#         memory: 128Mi
+#       requests:
+#         cpu: 50m
+#         memory: 64Mi
+#
+# Example: Cloud SQL Auth Proxy (GCP)
+#   - name: cloud-sql-proxy
+#     image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.14.3
+#     args:
+#       - "--structured-logs"
+#       - "--port=5432"
+#       - "PROJECT:REGION:INSTANCE"
+#     securityContext:
+#       runAsNonRoot: true
+#     resources:
+#       requests:
+#         cpu: 100m
+#         memory: 64Mi
+
 # ============================================================
 # Advanced Overrides (Escape Hatch)
 # ============================================================

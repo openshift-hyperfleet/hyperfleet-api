@@ -182,97 +182,92 @@ On startup the API retries the database connection up to `--db-conn-retry-attemp
 
 The readiness probe (`/readyz`) pings the database with a separate timeout controlled by `--health-db-ping-timeout` (default 2s). This ensures health checks respond quickly even when the main connection pool is under pressure, preventing Kubernetes from removing the pod from service endpoints due to slow readiness responses during load spikes. The default is set below the Kubernetes readiness probe `timeoutSeconds` (3s) so the Go-level timeout fires first and returns a proper 503 rather than a connection timeout.
 
-## PgBouncer Connection Pooler
+## Sidecar Containers
 
-For production deployments, the Helm chart includes an optional [PgBouncer](https://www.pgbouncer.org/) sidecar that acts as a lightweight connection pooler between the API and PostgreSQL.
+The Helm chart supports generic sidecar injection via the `sidecars` list in `values.yaml`. Each entry is a full Kubernetes container spec injected into the deployment pod. This can be used for any purpose — database proxies, log shippers, monitoring agents, etc.
 
-### Why PgBouncer?
+A common use case is database proxy sidecars (PgBouncer, Cloud SQL Auth Proxy). The example below shows a PgBouncer configuration.
 
-Without pgbouncer, each API pod opens up to `--db-max-open-connections` (default 50) direct connections to PostgreSQL. At scale:
-
-- 10 pods = 500 direct connections to a single PostgreSQL instance
-- Connection setup overhead (TLS handshake, authentication) is paid per connection
-- PostgreSQL `max_connections` becomes a bottleneck
-
-PgBouncer in **transaction mode** multiplexes many client connections over a smaller pool of server connections. A server connection is only held for the duration of a single transaction, then returned to the pool.
-
-### Enabling PgBouncer
+### Example: PgBouncer Sidecar
 
 ```yaml
 # values.yaml
-database:
-  pgbouncer:
-    enabled: true
+sidecars:
+  - name: pgbouncer
+    image: public.ecr.aws/bitnami/pgbouncer:1.25.1
+    securityContext:
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: [ALL]
+      readOnlyRootFilesystem: true
+      seccompProfile:
+        type: RuntimeDefault
+    ports:
+      - name: pgbouncer
+        containerPort: 6432
+        protocol: TCP
+    env:
+      - name: POSTGRESQL_HOST
+        value: my-postgresql-host
+      - name: POSTGRESQL_PORT
+        value: "5432"
+      - name: POSTGRESQL_DATABASE
+        value: hyperfleet
+      - name: POSTGRESQL_USERNAME
+        value: hyperfleet
+      - name: POSTGRESQL_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: my-db-secret
+            key: db.password
+      - name: PGBOUNCER_PORT
+        value: "6432"
+      - name: PGBOUNCER_POOL_MODE
+        value: transaction
+    resources:
+      limits:
+        cpu: 200m
+        memory: 128Mi
+      requests:
+        cpu: 50m
+        memory: 64Mi
 ```
 
-Or via Helm install/upgrade:
+When using a proxy sidecar, the API container must connect to the proxy instead of PostgreSQL directly. The `database.external.secretName` secret must contain the **direct** database endpoint (host/port) so the `db-migrate` init container can run migrations before sidecars start. To route runtime traffic through the proxy, use `extraEnv` overrides in the main container:
 
-```bash
-helm upgrade hyperfleet-api charts/ --set database.pgbouncer.enabled=true
+```yaml
+extraEnv:
+  - name: HYPERFLEET_DATABASE_HOST
+    value: "localhost"
+  - name: HYPERFLEET_DATABASE_PORT
+    value: "6432"  # proxy port
 ```
 
-### Architecture
+Use `extraVolumes` and `extraVolumeMounts` for any volumes the sidecar requires (e.g., temp dirs, config dirs).
 
-When pgbouncer is enabled, the deployment changes:
+### Proxy Architecture
 
 ```text
 ┌─────────────────────────────────────────┐
 │  Pod                                    │
 │                                         │
 │  ┌──────────────┐     ┌──────────┐      │
-│  │  hyperfleet   │────▶│ pgbouncer │─────┼──▶ PostgreSQL
-│  │  API          │     │ :6432    │      │   (separate pod)
+│  │  hyperfleet   │────▶│  proxy   │─────┼──▶ Database
+│  │  API          │     │ sidecar  │      │
 │  │  (localhost)  │     └──────────┘      │
 │  └──────────────┘                       │
 │                                         │
-│  Init containers (migrate) ─────────────┼──▶ PostgreSQL
-│  (direct connection, bypasses pgbouncer) │
+│  Init containers (migrate) ─────────────┼──▶ Database
+│  (direct connection, bypasses proxy)     │
 └─────────────────────────────────────────┘
 ```
 
-- **API container** connects to `localhost:6432` (pgbouncer)
-- **Init containers** (migrations) connect directly to PostgreSQL — they run before the sidecar starts and need DDL operations that don't work well with transaction pooling
-- Two Kubernetes Secrets are created: one with the direct PostgreSQL host, one pointing to `localhost:6432`
+- Init containers (migrations) should connect directly to the database — they run before sidecars start, and DDL operations may not be compatible with connection pooling.
 
-### Configuration
+### Common Proxy Choices
 
-All pgbouncer settings are in `values.yaml` under `database.pgbouncer`:
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `enabled` | `false` | Enable pgbouncer sidecar |
-| `image` | `public.ecr.aws/bitnami/pgbouncer:1.25.1` | PgBouncer container image |
-| `port` | `6432` | Port pgbouncer listens on |
-| `poolMode` | `transaction` | Pool mode (`transaction` recommended for stateless APIs) |
-| `defaultPoolSize` | `50` | Server connections per database per user |
-| `maxClientConn` | `100` | Maximum client connections accepted |
-| `minPoolSize` | `5` | Minimum server connections kept open |
-| `serverIdleTimeout` | `600` | Close idle server connections after this many seconds |
-| `serverLifetime` | `3600` | Close server connections after this many seconds regardless of activity |
-
-### Pool Modes
-
-- **`transaction`** (default, recommended): Server connection is assigned per transaction. Best for stateless CRUD APIs like HyperFleet. Allows high client concurrency with fewer server connections. HyperFleet uses GORM with simple queries and no prepared statements, so transaction mode is safe.
-- **`session`**: Server connection held for the entire client session. Required if the application relies on session-level state (prepared statements, `SET` commands, advisory locks, temp tables). Provides less connection multiplexing than transaction mode.
-- **`statement`**: Server connection per statement. Most aggressive pooling but breaks multi-statement transactions.
-
-### Monitoring
-
-PgBouncer logs connection stats every 60 seconds:
-
-```text
-LOG stats: 15 xacts/s, 30 queries/s, in 1234 B/s, out 5678 B/s, xact 2ms, query 1ms, wait 0us
-```
-
-Key metrics:
-- **xacts/s**: Transactions per second
-- **wait**: Time clients spend waiting for a server connection (should be near 0)
-- **xact**: Average transaction duration
-
-### Limitations
-
-- PgBouncer sidecar is currently only supported with the built-in PostgreSQL deployment (`database.postgresql.enabled=true`). External database support requires manual pgbouncer configuration.
-- Migrations bypass pgbouncer intentionally — DDL statements and `SET` commands are not compatible with transaction-mode pooling.
+- **PgBouncer**: Lightweight connection pooler. Use `transaction` pool mode for stateless APIs. See commented example in `values.yaml`.
+- **Cloud SQL Auth Proxy**: Required for GCP Cloud SQL access without complex network/IP setup. See commented example in `values.yaml`.
 
 ## Related Documentation
 
