@@ -338,15 +338,15 @@ test-helm: ## Test Helm charts (lint, template, validate)
 		--set image.tag=v1.0.0 > /dev/null
 	@echo "Custom image config template OK"
 	@echo ""
-	@echo "Testing template with pgbouncer enabled..."
+	@echo "Testing template with sidecar injection..."
 	helm template test-release charts/ \
 		--set image.registry=quay.io \
 		--set image.repository=openshift-hyperfleet/hyperfleet-api \
 		--set image.tag=test \
 		--set 'adapters.cluster=["validation"]' \
 		--set 'adapters.nodepool=["validation"]' \
-		--set database.pgbouncer.enabled=true > /dev/null
-	@echo "PgBouncer sidecar config template OK"
+		--set-json 'sidecars=[{"name":"test-sidecar","image":"busybox:1.36","command":["sleep","infinity"]}]' > /dev/null
+	@echo "Sidecar injection config template OK"
 	@echo ""
 	@echo "Testing template with full adapter config..."
 	helm template test-release charts/ \
