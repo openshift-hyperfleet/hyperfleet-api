@@ -12,6 +12,7 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/dao"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/metrics"
 	"gorm.io/gorm"
 )
 
@@ -118,6 +119,8 @@ func (s *sqlNodePoolService) SoftDelete(ctx context.Context, id string) (*api.No
 	if err := s.nodePoolDao.Save(ctx, nodePool); err != nil {
 		return nil, handleSoftDeleteError("NodePool", err)
 	}
+
+	metrics.RecordPendingDeletion("nodepool")
 
 	nodePool, svcErr := s.UpdateNodePoolStatusFromAdapters(ctx, nodePool.ID)
 	if svcErr != nil {
