@@ -124,7 +124,7 @@ func TestParsePrevConditions(t *testing.T) {
 		t.Parallel()
 		r, a, rc, m := parsePrevConditions(context.Background(), nil)
 		if r != nil || a != nil || rc != nil || len(m) != 0 {
-			t.Fatalf("expected (nil,nil,empty), got (%v,%v,%v)", r, a, m)
+			t.Fatalf("expected (nil,nil,nil,empty), got (%v,%v,%v,%v)", r, a, rc, m)
 		}
 	})
 
@@ -132,7 +132,7 @@ func TestParsePrevConditions(t *testing.T) {
 		t.Parallel()
 		r, a, rc, m := parsePrevConditions(context.Background(), []byte{})
 		if r != nil || a != nil || rc != nil || len(m) != 0 {
-			t.Fatalf("expected (nil,nil,empty), got (%v,%v,%v)", r, a, m)
+			t.Fatalf("expected (nil,nil,nil,empty), got (%v,%v,%v,%v)", r, a, rc, m)
 		}
 	})
 
@@ -140,7 +140,7 @@ func TestParsePrevConditions(t *testing.T) {
 		t.Parallel()
 		r, a, rc, m := parsePrevConditions(context.Background(), []byte("not-json"))
 		if r != nil || a != nil || rc != nil || len(m) != 0 {
-			t.Fatalf("expected (nil,nil,empty) on bad JSON, got (%v,%v,%v)", r, a, m)
+			t.Fatalf("expected (nil,nil,nil,empty), got (%v,%v,%v,%v)", r, a, rc, m)
 		}
 	})
 
@@ -367,7 +367,7 @@ func TestNormalizeAdapterReportsForAggregation(t *testing.T) {
 		}
 	})
 
-	t.Run("Finalized=False sets finalizedTrue=false", func(t *testing.T) {
+	t.Run("Finalized=True sets finalizedTrue=true", func(t *testing.T) {
 		t.Parallel()
 		list := api.AdapterStatusList{makeAdapterStatus("alpha", aggT1, 2, finalizedConds(api.AdapterConditionTrue))}
 		out := normalizeAdapterReportsForAggregation(context.Background(), list, []string{"alpha"}, 2)
@@ -1475,8 +1475,18 @@ func TestAggregateResourceStatus(t *testing.T) {
 			DeletedTime:        &dt,
 			RequiredAdapters:   required,
 			AdapterStatuses: api.AdapterStatusList{
-				makeAdapterStatus("a", aggT1, 2, finalizedConds(api.AdapterConditionTrue)),
-				makeAdapterStatus("b", aggT2, 2, finalizedConds(api.AdapterConditionTrue)),
+				makeAdapterStatus("a", aggT1, 2, marshalConds([]api.AdapterCondition{
+					{Type: api.ConditionTypeFinalized, Status: api.AdapterConditionTrue},
+					{Type: api.ConditionTypeAvailable, Status: api.AdapterConditionFalse},
+					{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue},
+					{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue},
+				})),
+				makeAdapterStatus("b", aggT2, 2, marshalConds([]api.AdapterCondition{
+					{Type: api.ConditionTypeFinalized, Status: api.AdapterConditionTrue},
+					{Type: api.ConditionTypeAvailable, Status: api.AdapterConditionFalse},
+					{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue},
+					{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue},
+				})),
 			},
 		}
 		ready, _, reconciled, _ := AggregateResourceStatus(context.Background(), in)

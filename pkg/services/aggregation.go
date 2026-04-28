@@ -28,6 +28,7 @@ const (
 // required adapters have not yet reported Available=True at the current resource generation.
 const reasonMissingRequiredAdapters = "MissingRequiredAdapters"
 const reasonAllAdaptersAvailable = "All required adapters reported Available=True at the current generation"
+const reasonAllAdaptersFinalized = "All required adapters reported Finalized=True at the current generation"
 
 // ValidateMandatoryConditions checks if all mandatory conditions are present.
 // Format validation (empty type, duplicates, invalid status) is done in the Handler layer.
@@ -269,6 +270,30 @@ func buildReadyFalseMessage(
 	)
 }
 
+// buildFinalizedFalseMessage returns the diagnostic message for a False Reconciled condition during deletion,
+// listing which required adapters are not yet reporting Finalized=True at the current generation.
+func buildFinalizedFalseMessage(
+	required []string, byAdapter map[string]adapterAvailableSnapshot, resourceGen int32,
+) string {
+	var notFinalized, reporting []string
+	for _, name := range required {
+		s, ok := byAdapter[name]
+		if !ok || !s.finalizedTrue || s.observedGeneration != resourceGen {
+			notFinalized = append(notFinalized, name)
+		}
+		if ok {
+			reporting = append(reporting, name)
+		}
+	}
+	sort.Strings(notFinalized)
+	sort.Strings(reporting)
+	return fmt.Sprintf(
+		"Required adapters not reporting Finalized=True: [%s]. Currently reporting: [%s]",
+		strings.Join(notFinalized, ", "),
+		strings.Join(reporting, ", "),
+	)
+}
+
 func computeReady(
 	resourceGen int32,
 	refTime time.Time,
@@ -321,6 +346,10 @@ func computeReady(
 	}
 }
 
+// computeReconciled synthesizes the Reconciled condition from adapter reports.
+// Its meaning adapts based on resource lifecycle:
+//   - Normal (deletedTime == nil): True when all required adapters report Available=True at current generation.
+//   - Deletion (deletedTime != nil): True when all required adapters report Finalized=True at current generation.
 func computeReconciled(
 	resourceGen int32,
 	refTime time.Time,
@@ -332,15 +361,19 @@ func computeReconciled(
 	allAtCurrent := true
 	for _, name := range required {
 		s, ok := byAdapter[name]
-		if !ok || !s.availableTrue || s.observedGeneration != resourceGen {
+		if !ok || s.observedGeneration != resourceGen {
 			allAtCurrent = false
+			break
 		}
+		// Normal lifecycle: reconciled when all adapters report Available=True
+		// Deletion lifecycle: reconciled when all adapters report Finalized=True
+		conditionMet := s.availableTrue
 		if deletedTime != nil {
-			// Deletion lifecycle: check Finalized
-			if !s.finalizedTrue {
-				allAtCurrent = false
-				break
-			}
+			conditionMet = s.finalizedTrue
+		}
+		if !conditionMet {
+			allAtCurrent = false
+			break
 		}
 	}
 
@@ -361,11 +394,21 @@ func computeReconciled(
 		created = prev.CreatedTime
 	}
 
-	reason := reasonMissingRequiredAdapters
-	message := buildReadyFalseMessage(required, byAdapter, resourceGen)
-	if status == api.ConditionTrue {
-		reason = reasonAllAdaptersAvailable
-		message = reason
+	var reason, message string
+	if deletedTime != nil {
+		reason = reasonMissingRequiredAdapters
+		message = buildFinalizedFalseMessage(required, byAdapter, resourceGen)
+		if status == api.ConditionTrue {
+			reason = reasonAllAdaptersFinalized
+			message = reason
+		}
+	} else {
+		reason = reasonMissingRequiredAdapters
+		message = buildReadyFalseMessage(required, byAdapter, resourceGen)
+		if status == api.ConditionTrue {
+			reason = reasonAllAdaptersAvailable
+			message = reason
+		}
 	}
 
 	return api.ResourceCondition{

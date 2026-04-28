@@ -29,7 +29,7 @@ func computeNodePoolConditionsJSON(
 	})
 
 	allConditions := make([]api.ResourceCondition, 0, 3+len(adapterConditions))
-	allConditions = append(allConditions, ready, available, reconciled)
+	allConditions = append(allConditions, ready, reconciled, available)
 	allConditions = append(allConditions, adapterConditions...)
 
 	conditionsJSON, err := json.Marshal(allConditions)
