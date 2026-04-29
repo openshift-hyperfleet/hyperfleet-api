@@ -82,9 +82,7 @@ Database environment variables (using secretKeyRef - Kubernetes best practice)
 */}}
 {{- define "hyperfleet-api.databaseEnvVars" -}}
 {{- $secretName := "" }}
-{{- if .Values.database.pgbouncer.enabled }}
-{{- $secretName = printf "%s-db-secrets-pgbouncer" (include "hyperfleet-api.fullname" .) }}
-{{- else if .Values.database.external.enabled }}
+{{- if .Values.database.external.enabled }}
 {{- $secretName = .Values.database.external.secretName }}
 {{- else if .Values.database.postgresql.enabled }}
 {{- $secretName = printf "%s-db-secrets" (include "hyperfleet-api.fullname" .) }}

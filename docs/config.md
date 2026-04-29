@@ -127,7 +127,7 @@ PostgreSQL database connection settings.
 | `database.pool.conn_max_lifetime` | duration | `5m` | Maximum connection lifetime |
 | `database.pool.conn_max_idle_time` | duration | `1m` | Maximum connection idle time |
 | `database.pool.request_timeout` | duration | `30s` | Database request timeout |
-| `database.pool.conn_retry_attempts` | int | `10` | Connection retry attempts on startup (for pgbouncer/sidecar startup races) |
+| `database.pool.conn_retry_attempts` | int | `10` | Connection retry attempts on startup (for sidecar startup races) |
 | `database.pool.conn_retry_interval` | duration | `3s` | Interval between connection retry attempts |
 | `database.debug` | bool | `false` | Enable SQL query logging |
 
