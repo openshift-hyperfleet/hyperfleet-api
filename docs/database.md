@@ -184,11 +184,56 @@ The readiness probe (`/readyz`) pings the database with a separate timeout contr
 
 ## Sidecar Containers
 
-The Helm chart supports generic sidecar injection via the `sidecars` list in `values.yaml`. Each entry is a full Kubernetes container spec injected into the deployment pod. This can be used for any purpose — database proxies, log shippers, monitoring agents, etc.
+The Helm chart supports two sidecar injection mechanisms:
 
-A common use case is database proxy sidecars (PgBouncer, Cloud SQL Auth Proxy). The example below shows a PgBouncer configuration.
+| List | Where it renders | Starts when | Use case |
+|------|------------------|-------------|----------|
+| `nativeSidecars` | `initContainers` (with `restartPolicy: Always`) | Before all other init containers | Database proxies that must be available during `db-migrate` |
+| `sidecars` | `containers` | After all init containers complete | Log shippers, monitoring agents, connection poolers that don't need to run during init |
 
-### Example: PgBouncer Sidecar
+Each entry in either list is a full Kubernetes container spec injected as-is into the deployment pod.
+
+### Native Sidecars (`nativeSidecars`)
+
+Kubernetes 1.28+ supports [native sidecar containers](https://kubernetes.io/docs/concepts/workloads/pods/sidecar-containers/) — init containers declared with `restartPolicy: Always`. They start before other init containers and keep running throughout the pod lifecycle.
+
+Use `nativeSidecars` for database proxies (Cloud SQL Auth Proxy, AlloyDB Auth Proxy) that must be reachable when the `db-migrate` init container runs. Without this, the migration deadlocks: the init container waits for the proxy, but regular sidecars only start after all init containers finish.
+
+### Example: Cloud SQL Auth Proxy (Native Sidecar)
+
+```yaml
+# values.yaml
+nativeSidecars:
+  - name: cloud-sql-proxy
+    restartPolicy: Always
+    image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.14.3
+    args:
+      - "--auto-iam-authn"
+      - "--structured-logs"
+      - "--port=5432"
+      - "PROJECT:REGION:INSTANCE"
+    securityContext:
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: [ALL]
+      readOnlyRootFilesystem: true
+      runAsNonRoot: true
+      seccompProfile:
+        type: RuntimeDefault
+    resources:
+      requests:
+        cpu: 100m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 128Mi
+```
+
+With this setup, both the `db-migrate` init container and the runtime API container connect through the proxy — no `extraEnv` override needed since the proxy listens on `localhost:5432`. The `database.external.secretName` secret must set `db.host` to `localhost` and `db.port` to `5432` so both containers route through the proxy.
+
+### Regular Sidecars (`sidecars`)
+
+Use the `sidecars` list for containers that don't need to be available during init. The example below shows a PgBouncer connection pooler:
 
 ```yaml
 # values.yaml
@@ -233,7 +278,7 @@ sidecars:
         memory: 64Mi
 ```
 
-When using a proxy sidecar, the API container must connect to the proxy instead of PostgreSQL directly. The `database.external.secretName` secret must contain the **direct** database endpoint (host/port) so the `db-migrate` init container can run migrations before sidecars start. To route runtime traffic through the proxy, use `extraEnv` overrides in the main container:
+When using a regular sidecar proxy, the `db-migrate` init container connects directly to the database (regular sidecars aren't running yet). Route runtime traffic through the proxy with `extraEnv`:
 
 ```yaml
 extraEnv:
@@ -245,29 +290,33 @@ extraEnv:
 
 Use `extraVolumes` and `extraVolumeMounts` for any volumes the sidecar requires (e.g., temp dirs, config dirs).
 
-### Proxy Architecture
+### Architecture
 
 ```text
-┌─────────────────────────────────────────┐
-│  Pod                                    │
-│                                         │
-│  ┌──────────────┐     ┌──────────┐      │
-│  │  hyperfleet   │────▶│  proxy   │─────┼──▶ Database
-│  │  API          │     │ sidecar  │      │
-│  │  (localhost)  │     └──────────┘      │
-│  └──────────────┘                       │
-│                                         │
-│  Init containers (migrate) ─────────────┼──▶ Database
-│  (direct connection, bypasses proxy)     │
-└─────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────┐
+│  Pod                                                   │
+│                                                        │
+│  nativeSidecars (restartPolicy: Always)                  │
+│  ┌──────────────────┐                                  │
+│  │  cloud-sql-proxy  │◄─── starts first, stays running │
+│  └────────┬─────────┘                                  │
+│           │                                            │
+│  initContainers                                        │
+│  ┌──────────────────┐                                  │
+│  │  db-migrate       │──▶ proxy ──▶ Database           │
+│  └──────────────────┘                                  │
+│                                                        │
+│  containers                                            │
+│  ┌──────────────────┐                                  │
+│  │  hyperfleet-api   │──▶ proxy ──▶ Database           │
+│  └──────────────────┘                                  │
+└────────────────────────────────────────────────────────┘
 ```
-
-- Init containers (migrations) should connect directly to the database — they run before sidecars start, and DDL operations may not be compatible with connection pooling.
 
 ### Common Proxy Choices
 
-- **PgBouncer**: Lightweight connection pooler. Use `transaction` pool mode for stateless APIs. See commented example in `values.yaml`.
-- **Cloud SQL Auth Proxy**: Required for GCP Cloud SQL access without complex network/IP setup. See commented example in `values.yaml`.
+- **Cloud SQL Auth Proxy**: Required for GCP Cloud SQL. Use `nativeSidecars` so migrations can reach the database through the proxy.
+- **PgBouncer**: Lightweight connection pooler. Use `transaction` pool mode for stateless APIs. Can go in either `nativeSidecars` or `sidecars` depending on whether migrations need it.
 
 ## Related Documentation
 

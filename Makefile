@@ -348,6 +348,34 @@ test-helm: ## Test Helm charts (lint, template, validate)
 		--set-json 'sidecars=[{"name":"test-sidecar","image":"busybox:1.36","command":["sleep","infinity"]}]' > /dev/null
 	@echo "Sidecar injection config template OK"
 	@echo ""
+	@echo "Testing template with native sidecar injection..."
+	@OUTPUT=$$(helm template test-release charts/ \
+		--set image.registry=quay.io \
+		--set image.repository=openshift-hyperfleet/hyperfleet-api \
+		--set image.tag=test \
+		--set 'adapters.cluster=["validation"]' \
+		--set 'adapters.nodepool=["validation"]' \
+		--set-json 'nativeSidecars=[{"name":"cloud-sql-proxy","restartPolicy":"Always","image":"gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.14.3","args":["--structured-logs","--port=5432","project:region:instance"]}]'); \
+		echo "$$OUTPUT" | grep -q 'name: cloud-sql-proxy' || { echo "FAIL: cloud-sql-proxy not found in rendered output"; exit 1; }; \
+		PROXY_LINE=$$(echo "$$OUTPUT" | grep -n 'name: cloud-sql-proxy' | head -1 | cut -d: -f1); \
+		MIGRATE_LINE=$$(echo "$$OUTPUT" | grep -n 'name: db-migrate' | head -1 | cut -d: -f1); \
+		if [ "$$PROXY_LINE" -ge "$$MIGRATE_LINE" ]; then echo "FAIL: cloud-sql-proxy must appear before db-migrate"; exit 1; fi
+	@echo "Native sidecar injection config template OK"
+	@echo ""
+	@echo "Testing template with native sidecars and no database..."
+	@OUTPUT=$$(helm template test-release charts/ \
+		--set image.registry=quay.io \
+		--set image.repository=openshift-hyperfleet/hyperfleet-api \
+		--set image.tag=test \
+		--set 'adapters.cluster=["validation"]' \
+		--set 'adapters.nodepool=["validation"]' \
+		--set database.postgresql.enabled=false \
+		--set-json 'nativeSidecars=[{"name":"test-proxy","restartPolicy":"Always","image":"busybox:1.36","command":["sleep","infinity"]}]'); \
+		echo "$$OUTPUT" | grep -q 'name: test-proxy' || { echo "FAIL: test-proxy not found in rendered output"; exit 1; }; \
+		if echo "$$OUTPUT" | grep -q 'name: wait-for-db'; then echo "FAIL: wait-for-db should not appear when no database is configured"; exit 1; fi; \
+		if echo "$$OUTPUT" | grep -q 'name: db-migrate'; then echo "FAIL: db-migrate should not appear when no database is configured"; exit 1; fi
+	@echo "Native sidecar without database config template OK"
+	@echo ""
 	@echo "Testing template with full adapter config..."
 	helm template test-release charts/ \
 		--set image.registry=quay.io \

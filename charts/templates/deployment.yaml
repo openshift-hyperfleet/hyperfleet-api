@@ -39,8 +39,15 @@ spec:
       serviceAccountName: {{ include "hyperfleet-api.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
-      {{- if or .Values.database.postgresql.enabled .Values.database.external.enabled }}
+      {{- if and .Values.nativeSidecars (not (semverCompare ">=1.28.0-0" .Capabilities.KubeVersion.Version)) }}
+        {{- fail "nativeSidecars requires Kubernetes >= 1.28 (SidecarContainers feature gate). Remove nativeSidecars or upgrade your cluster." }}
+      {{- end }}
+      {{- if or .Values.nativeSidecars (or .Values.database.postgresql.enabled .Values.database.external.enabled) }}
       initContainers:
+      {{- range .Values.nativeSidecars }}
+      - {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if or .Values.database.postgresql.enabled .Values.database.external.enabled }}
       {{- if .Values.database.postgresql.enabled }}
       - name: wait-for-db
         image: busybox:1.36
@@ -60,6 +67,7 @@ spec:
         - name: config
           mountPath: /etc/hyperfleet
           readOnly: true
+      {{- end }}
       {{- end }}
       containers:
       - name: {{ .Chart.Name }}
