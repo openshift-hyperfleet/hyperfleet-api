@@ -19,7 +19,7 @@ func computeNodePoolConditionsJSON(
 	adapterStatuses []*api.AdapterStatus,
 	requiredAdapters []string,
 ) ([]byte, *errors.ServiceError) {
-	ready, available, reconciled, adapterConditions := AggregateResourceStatus(ctx, AggregateResourceStatusInput{
+	reconciled, available, adapterConditions := AggregateResourceStatus(ctx, AggregateResourceStatusInput{
 		ResourceGeneration: np.Generation,
 		RefTime:            nodePoolRefTime(np),
 		DeletedTime:        np.DeletedTime,
@@ -27,6 +27,10 @@ func computeNodePoolConditionsJSON(
 		RequiredAdapters:   requiredAdapters,
 		AdapterStatuses:    adapterStatuses,
 	})
+
+	// Ready mirrors Reconciled for backward compatibility (deprecated)
+	ready := reconciled
+	ready.Type = api.ConditionTypeReady
 
 	allConditions := make([]api.ResourceCondition, 0, 3+len(adapterConditions))
 	allConditions = append(allConditions, ready, reconciled, available)

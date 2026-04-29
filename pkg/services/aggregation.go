@@ -27,8 +27,8 @@ const (
 // reasonMissingRequiredAdapters is the reason code for the Ready condition when one or more
 // required adapters have not yet reported Available=True at the current resource generation.
 const reasonMissingRequiredAdapters = "MissingRequiredAdapters"
-const reasonAllAdaptersAvailable = "All required adapters reported Available=True at the current generation"
-const reasonAllAdaptersReconciled = "All required adapters reconciled at the current generation"
+const reasonAllAdaptersReconciled = "All required adapters reported Available=True or Finalized=True " +
+	"at the current generation"
 
 // ValidateMandatoryConditions checks if all mandatory conditions are present.
 // Format validation (empty type, duplicates, invalid status) is done in the Handler layer.
@@ -107,19 +107,12 @@ func AdapterObservedTime(as *api.AdapterStatus) time.Time {
 // The returned adapterConditions slice contains one entry per required adapter that has reported,
 // with a type derived from the adapter name (e.g. "adapter1" → "Adapter1Successful").
 func AggregateResourceStatus(ctx context.Context, in AggregateResourceStatusInput) (
-	ready, available, reconciled api.ResourceCondition, adapterConditions []api.ResourceCondition,
+	reconciled, available api.ResourceCondition, adapterConditions []api.ResourceCondition,
 ) {
-	prevReady, prevAvail, prevReconciled, prevAdapterByType := parsePrevConditions(ctx, in.PrevConditionsJSON)
+	prevReconciled, prevAvail, prevAdapterByType := parsePrevConditions(ctx, in.PrevConditionsJSON)
 
 	reports := normalizeAdapterReportsForAggregation(ctx, in.AdapterStatuses, in.RequiredAdapters, in.ResourceGeneration)
 
-	ready = computeReady(
-		in.ResourceGeneration,
-		in.RefTime,
-		prevReady,
-		in.RequiredAdapters,
-		reports,
-	)
 	reconciled = computeReconciled(
 		in.ResourceGeneration,
 		in.RefTime,
@@ -135,26 +128,31 @@ func AggregateResourceStatus(ctx context.Context, in AggregateResourceStatusInpu
 		reports,
 	)
 	adapterConditions = computeAdapterConditions(in.RequiredAdapters, reports, prevAdapterByType, in.RefTime)
-	return ready, available, reconciled, adapterConditions
+	return reconciled, available, adapterConditions
 }
 
 func parsePrevConditions(ctx context.Context, raw []byte) (
-	prevReady, prevAvail, prevReconciled *api.ResourceCondition, prevAdapterByType map[string]*api.ResourceCondition,
+	prevReconciled, prevAvail *api.ResourceCondition, prevAdapterByType map[string]*api.ResourceCondition,
 ) {
 	prevAdapterByType = make(map[string]*api.ResourceCondition)
 	if len(raw) == 0 {
-		return nil, nil, nil, prevAdapterByType
+		return nil, nil, prevAdapterByType
 	}
 	var conditions []api.ResourceCondition
 	if err := json.Unmarshal(raw, &conditions); err != nil {
 		logger.WithError(ctx, err).Error("Failed to unmarshal previous conditions JSON; proceeding with empty state")
-		return nil, nil, nil, prevAdapterByType
+		return nil, nil, prevAdapterByType
 	}
+	// Backward compat: existing DB records may only have Ready (written before Reconciled was introduced).
+	// Use Ready as the previous Reconciled state if no Reconciled condition is stored yet.
+	// Reconciled takes precedence if both are present, regardless of array order
 	for i := range conditions {
 		c := conditions[i]
 		switch c.Type {
 		case api.ConditionTypeReady:
-			prevReady = &c
+			if prevReconciled == nil {
+				prevReconciled = &c
+			}
 		case api.ConditionTypeReconciled:
 			prevReconciled = &c
 		case api.ConditionTypeAvailable:
@@ -163,7 +161,7 @@ func parsePrevConditions(ctx context.Context, raw []byte) (
 			prevAdapterByType[c.Type] = &c
 		}
 	}
-	return prevReady, prevAvail, prevReconciled, prevAdapterByType
+	return prevReconciled, prevAvail, prevAdapterByType
 }
 
 // adapterAvailableSnapshot is one required adapter's Available signal after normalization.
@@ -292,58 +290,6 @@ func buildFinalizedFalseMessage(
 		strings.Join(notFinalized, ", "),
 		strings.Join(reporting, ", "),
 	)
-}
-
-func computeReady(
-	resourceGen int32,
-	refTime time.Time,
-	prev *api.ResourceCondition,
-	required []string,
-	byAdapter map[string]adapterAvailableSnapshot,
-) api.ResourceCondition {
-	allAtCurrent := true
-	for _, name := range required {
-		s, ok := byAdapter[name]
-		if !ok || !s.availableTrue || s.observedGeneration != resourceGen {
-			allAtCurrent = false
-			break
-		}
-	}
-
-	status := api.ConditionFalse
-	if len(required) > 0 && allAtCurrent {
-		status = api.ConditionTrue
-	}
-
-	lastUpdated := computeReadyLastUpdatedTime(
-		resourceGen, refTime, required, byAdapter,
-	)
-	lastTransition := computeReadyLastTransitionTime(
-		resourceGen, refTime, prev, status, lastUpdated,
-	)
-
-	created := refTime
-	if prev != nil && !prev.CreatedTime.IsZero() {
-		created = prev.CreatedTime
-	}
-
-	reason := reasonMissingRequiredAdapters
-	message := buildReadyFalseMessage(required, byAdapter, resourceGen)
-	if status == api.ConditionTrue {
-		reason = reasonAllAdaptersAvailable
-		message = reason
-	}
-
-	return api.ResourceCondition{
-		Type:               api.ConditionTypeReady,
-		Status:             status,
-		ObservedGeneration: resourceGen,
-		Reason:             strPtr(reason),
-		Message:            strPtr(message),
-		CreatedTime:        created,
-		LastUpdatedTime:    lastUpdated,
-		LastTransitionTime: lastTransition,
-	}
 }
 
 // computeReconciled synthesizes the Reconciled condition from adapter reports.
