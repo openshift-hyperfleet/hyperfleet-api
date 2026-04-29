@@ -23,10 +23,12 @@ const (
 
 // Condition type constants
 const (
-	ConditionTypeAvailable = "Available"
-	ConditionTypeApplied   = "Applied"
-	ConditionTypeHealth    = "Health"
-	ConditionTypeReady     = "Ready"
+	ConditionTypeAvailable  = "Available"
+	ConditionTypeApplied    = "Applied"
+	ConditionTypeHealth     = "Health"
+	ConditionTypeReady      = "Ready"
+	ConditionTypeReconciled = "Reconciled"
+	ConditionTypeFinalized  = "Finalized"
 )
 
 // ResourceCondition represents a condition of a resource

@@ -36,6 +36,18 @@ func availConds(status api.AdapterConditionStatus) []byte {
 	})
 }
 
+// finalizedConds returns minimal conditions JSON with the given Finalized status.
+func finalizedConds(status api.AdapterConditionStatus) []byte {
+	return marshalConds([]api.AdapterCondition{
+		{Type: api.ConditionTypeFinalized, Status: status},
+		{Type: api.ConditionTypeAvailable, Status: api.AdapterConditionTrue},
+		{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue},
+		{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue},
+	})
+}
+
+func deletedAt(t time.Time) *time.Time { return &t }
+
 // makeAdapterStatus builds a minimal *api.AdapterStatus for normalise tests.
 func makeAdapterStatus(adapter string, lastReport time.Time, obsGen int32, conds []byte) *api.AdapterStatus {
 	return &api.AdapterStatus{
@@ -52,6 +64,20 @@ func mkPrevReady(
 ) *api.ResourceCondition {
 	return &api.ResourceCondition{
 		Type:               api.ConditionTypeReady,
+		Status:             status,
+		ObservedGeneration: obsGen,
+		LastTransitionTime: lastTransition,
+		LastUpdatedTime:    lastUpdated,
+		CreatedTime:        aggT0,
+	}
+}
+
+// mkPrevReconciled builds a Reconciled ResourceCondition for use as a prev fixture.
+func mkPrevReconciled(
+	status api.ResourceConditionStatus, obsGen int32, lastTransition, lastUpdated time.Time,
+) *api.ResourceCondition {
+	return &api.ResourceCondition{
+		Type:               api.ConditionTypeReconciled,
 		Status:             status,
 		ObservedGeneration: obsGen,
 		LastTransitionTime: lastTransition,
@@ -91,13 +117,14 @@ func TestParsePrevConditions(t *testing.T) {
 	}
 	readyCond := api.ResourceCondition{Type: api.ConditionTypeReady, Status: api.ConditionTrue}
 	availCond := api.ResourceCondition{Type: api.ConditionTypeAvailable, Status: api.ConditionFalse}
+	reconciledCond := api.ResourceCondition{Type: api.ConditionTypeReconciled, Status: api.ConditionFalse}
 	adapterCond := api.ResourceCondition{Type: "Adapter1Successful", Status: api.ConditionTrue}
 
 	t.Run("nil input", func(t *testing.T) {
 		t.Parallel()
 		r, a, m := parsePrevConditions(context.Background(), nil)
 		if r != nil || a != nil || len(m) != 0 {
-			t.Fatalf("expected (nil,nil,empty), got (%v,%v,%v)", r, a, m)
+			t.Fatalf("expected (nil,nil,nil,empty), got (%v,%v,%v)", r, a, m)
 		}
 	})
 
@@ -105,7 +132,7 @@ func TestParsePrevConditions(t *testing.T) {
 		t.Parallel()
 		r, a, m := parsePrevConditions(context.Background(), []byte{})
 		if r != nil || a != nil || len(m) != 0 {
-			t.Fatalf("expected (nil,nil,empty), got (%v,%v,%v)", r, a, m)
+			t.Fatalf("expected (nil,nil,nil,empty), got (%v,%v,%v)", r, a, m)
 		}
 	})
 
@@ -113,26 +140,26 @@ func TestParsePrevConditions(t *testing.T) {
 		t.Parallel()
 		r, a, m := parsePrevConditions(context.Background(), []byte("not-json"))
 		if r != nil || a != nil || len(m) != 0 {
-			t.Fatalf("expected (nil,nil,empty) on bad JSON, got (%v,%v,%v)", r, a, m)
+			t.Fatalf("expected (nil,nil,nil,empty), got (%v,%v,%v)", r, a, m)
 		}
 	})
 
-	t.Run("both Ready and Available", func(t *testing.T) {
+	t.Run("both Reconciled and Available", func(t *testing.T) {
 		t.Parallel()
-		r, a, _ := parsePrevConditions(context.Background(), encode(readyCond, availCond))
-		if r == nil || r.Type != api.ConditionTypeReady {
-			t.Fatalf("expected Ready condition, got %v", r)
+		r, a, _ := parsePrevConditions(context.Background(), encode(reconciledCond, availCond))
+		if r == nil || r.Type != api.ConditionTypeReconciled {
+			t.Fatalf("expected Reconciled condition, got %v", r)
 		}
 		if a == nil || a.Type != api.ConditionTypeAvailable {
 			t.Fatalf("expected Available condition, got %v", a)
 		}
 	})
 
-	t.Run("only Ready", func(t *testing.T) {
+	t.Run("only Reconciled", func(t *testing.T) {
 		t.Parallel()
-		r, a, _ := parsePrevConditions(context.Background(), encode(readyCond))
-		if r == nil || r.Type != api.ConditionTypeReady {
-			t.Fatalf("expected Ready, got %v", r)
+		r, a, _ := parsePrevConditions(context.Background(), encode(reconciledCond))
+		if r == nil || r.Type != api.ConditionTypeReconciled {
+			t.Fatalf("expected Reconciled, got %v", r)
 		}
 		if a != nil {
 			t.Fatalf("expected nil Available, got %v", a)
@@ -143,7 +170,7 @@ func TestParsePrevConditions(t *testing.T) {
 		t.Parallel()
 		r, a, _ := parsePrevConditions(context.Background(), encode(availCond))
 		if r != nil {
-			t.Fatalf("expected nil Ready, got %v", r)
+			t.Fatalf("expected nil Reconciled, got %v", r)
 		}
 		if a == nil || a.Type != api.ConditionTypeAvailable {
 			t.Fatalf("expected Available, got %v", a)
@@ -152,7 +179,7 @@ func TestParsePrevConditions(t *testing.T) {
 
 	t.Run("per-adapter condition is placed in map", func(t *testing.T) {
 		t.Parallel()
-		_, _, m := parsePrevConditions(context.Background(), encode(readyCond, availCond, adapterCond))
+		_, _, m := parsePrevConditions(context.Background(), encode(availCond, adapterCond))
 		prev, ok := m["Adapter1Successful"]
 		if !ok || prev == nil || prev.Type != "Adapter1Successful" {
 			t.Fatalf("expected Adapter1Successful in map, got %v", m)
@@ -168,6 +195,22 @@ func TestParsePrevConditions(t *testing.T) {
 		}
 		if _, ok := m["CustomType"]; !ok {
 			t.Fatal("expected CustomType in adapter map")
+		}
+	})
+
+	t.Run("Ready used as prevReconciled fallback when no Reconciled stored", func(t *testing.T) {
+		t.Parallel()
+		rc, _, _ := parsePrevConditions(context.Background(), encode(readyCond))
+		if rc == nil || rc.Type != api.ConditionTypeReady {
+			t.Fatal("expected Ready to be used as prevReconciled fallback")
+		}
+	})
+
+	t.Run("Reconciled takes precedence over Ready for prevReconciled", func(t *testing.T) {
+		t.Parallel()
+		rc, _, _ := parsePrevConditions(context.Background(), encode(readyCond, reconciledCond))
+		if rc == nil || rc.Type != api.ConditionTypeReconciled {
+			t.Fatalf("expected Reconciled to take precedence, got %v", rc)
 		}
 	})
 }
@@ -302,6 +345,36 @@ func TestNormalizeAdapterReportsForAggregation(t *testing.T) {
 			t.Fatal("expected alpha in output")
 		}
 	})
+
+	t.Run("Finalized=False sets finalizedTrue=false", func(t *testing.T) {
+		t.Parallel()
+		list := api.AdapterStatusList{makeAdapterStatus("alpha", aggT1, 2, finalizedConds(api.AdapterConditionFalse))}
+		out := normalizeAdapterReportsForAggregation(context.Background(), list, []string{"alpha"}, 2)
+		if out["alpha"].finalizedTrue {
+			t.Error("expected finalizedTrue=false")
+		}
+	})
+
+	t.Run("Finalized=True sets finalizedTrue=true", func(t *testing.T) {
+		t.Parallel()
+		list := api.AdapterStatusList{makeAdapterStatus("alpha", aggT1, 2, finalizedConds(api.AdapterConditionTrue))}
+		out := normalizeAdapterReportsForAggregation(context.Background(), list, []string{"alpha"}, 2)
+		if !out["alpha"].finalizedTrue {
+			t.Error("expected finalizedTrue=true")
+		}
+	})
+
+	t.Run("missing Finalized defaults to finalizedTrue=false", func(t *testing.T) {
+		t.Parallel()
+		list := api.AdapterStatusList{
+			makeAdapterStatus("alpha", aggT1, 2, availConds(api.AdapterConditionTrue)),
+		}
+		out := normalizeAdapterReportsForAggregation(context.Background(), list, []string{"alpha"}, 2)
+		if out["alpha"].finalizedTrue {
+			t.Error("expected finalizedTrue=false when Finalized not reported")
+		}
+	})
+
 }
 
 // ---------------------------------------------------------------------------
@@ -430,19 +503,24 @@ func TestComputeReadyLastTransitionTime(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// computeReady
+// computeReconciled
 // ---------------------------------------------------------------------------
-
-func TestComputeReady(t *testing.T) {
+func TestComputeReconciled(t *testing.T) {
 	t.Parallel()
+
+	t.Run("Type is Reconciled", func(t *testing.T) {
+		t.Parallel()
+		cond := computeReconciled(1, aggTRef, nil, nil, nil, map[string]adapterAvailableSnapshot{})
+		if cond.Type != api.ConditionTypeReconciled {
+			t.Errorf("type got %v, want Reconciled", cond.Type)
+		}
+	})
+
 	t.Run("empty required list → False", func(t *testing.T) {
 		t.Parallel()
-		cond := computeReady(1, aggTRef, nil, nil, map[string]adapterAvailableSnapshot{})
+		cond := computeReconciled(1, aggTRef, nil, nil, nil, map[string]adapterAvailableSnapshot{})
 		if cond.Status != api.ConditionFalse {
 			t.Errorf("got %v, want False", cond.Status)
-		}
-		if cond.Type != api.ConditionTypeReady {
-			t.Errorf("type got %v, want Ready", cond.Type)
 		}
 	})
 
@@ -453,40 +531,9 @@ func TestComputeReady(t *testing.T) {
 			"a": snap(2, true, aggT1),
 			"b": snap(2, true, aggT2),
 		}
-		cond := computeReady(2, aggTRef, nil, required, byAdapter)
+		cond := computeReconciled(2, aggTRef, nil, nil, required, byAdapter)
 		if cond.Status != api.ConditionTrue {
 			t.Errorf("got %v, want True", cond.Status)
-		}
-		// LastUpdatedTime = min(t1,t2) = t1
-		if !cond.LastUpdatedTime.Equal(aggT1) {
-			t.Errorf("LastUpdatedTime got %v, want %v", cond.LastUpdatedTime, aggT1)
-		}
-		wantReason := "All required adapters reported Available=True at the current generation"
-		if cond.Reason == nil || *cond.Reason != wantReason {
-			t.Errorf("Reason got %v, want %q", cond.Reason, wantReason)
-		}
-		if cond.Message == nil || *cond.Message != wantReason {
-			t.Errorf("Message got %v, want %q", cond.Message, wantReason)
-		}
-	})
-
-	t.Run("adapter missing from byAdapter → False", func(t *testing.T) {
-		t.Parallel()
-		required := []string{"a", "b"}
-		byAdapter := map[string]adapterAvailableSnapshot{
-			"a": snap(2, true, aggT1),
-		}
-		cond := computeReady(2, aggTRef, nil, required, byAdapter)
-		if cond.Status != api.ConditionFalse {
-			t.Errorf("got %v, want False", cond.Status)
-		}
-		wantReason := reasonMissingRequiredAdapters
-		wantMessage := "Required adapters not reporting Available=True: [b]. Currently reporting: [a]"
-		if cond.Reason == nil || *cond.Reason != wantReason {
-			t.Errorf("Reason got %v, want %q", cond.Reason, wantReason)
-		}
-		if cond.Message == nil || *cond.Message != wantMessage {
-			t.Errorf("Message got %v, want %q", cond.Message, wantMessage)
 		}
 	})
 
@@ -495,52 +542,31 @@ func TestComputeReady(t *testing.T) {
 		required := []string{"a", "b"}
 		byAdapter := map[string]adapterAvailableSnapshot{
 			"a": snap(2, true, aggT1),
-			"b": snap(1, true, aggT2), // gen 1 ≠ current gen 2
+			"b": snap(1, true, aggT2),
 		}
-		cond := computeReady(2, aggTRef, nil, required, byAdapter)
+		cond := computeReconciled(2, aggTRef, nil, nil, required, byAdapter)
 		if cond.Status != api.ConditionFalse {
 			t.Errorf("got %v, want False", cond.Status)
-		}
-		wantReason := reasonMissingRequiredAdapters
-		wantMessage := "Required adapters not reporting Available=True: [b]. Currently reporting: [a, b]"
-		if cond.Reason == nil || *cond.Reason != wantReason {
-			t.Errorf("Reason got %v, want %q", cond.Reason, wantReason)
-		}
-		if cond.Message == nil || *cond.Message != wantMessage {
-			t.Errorf("Message got %v, want %q", cond.Message, wantMessage)
 		}
 	})
 
 	t.Run("adapter availableTrue=false → False", func(t *testing.T) {
 		t.Parallel()
-		required := []string{"a", "b"}
+		required := []string{"a"}
 		byAdapter := map[string]adapterAvailableSnapshot{
-			"a": snap(2, true, aggT1),
-			"b": snap(2, false, aggT2),
+			"a": snap(2, false, aggT1),
 		}
-		cond := computeReady(2, aggTRef, nil, required, byAdapter)
+		cond := computeReconciled(2, aggTRef, nil, nil, required, byAdapter)
 		if cond.Status != api.ConditionFalse {
 			t.Errorf("got %v, want False", cond.Status)
 		}
-		wantReason := reasonMissingRequiredAdapters
-		wantMessage := "Required adapters not reporting Available=True: [b]. Currently reporting: [a, b]"
-		if cond.Reason == nil || *cond.Reason != wantReason {
-			t.Errorf("Reason got %v, want %q", cond.Reason, wantReason)
-		}
-		if cond.Message == nil || *cond.Message != wantMessage {
-			t.Errorf("Message got %v, want %q", cond.Message, wantMessage)
-		}
 	})
 
-	t.Run("False status → LastUpdatedTime is refTime", func(t *testing.T) {
+	t.Run("ObservedGeneration always equals resourceGen", func(t *testing.T) {
 		t.Parallel()
-		required := []string{"a"}
-		byAdapter := map[string]adapterAvailableSnapshot{
-			"a": snap(1, true, aggT1), // old gen
-		}
-		cond := computeReady(2, aggTRef, nil, required, byAdapter)
-		if !cond.LastUpdatedTime.Equal(aggTRef) {
-			t.Errorf("LastUpdatedTime got %v, want refTime=%v", cond.LastUpdatedTime, aggTRef)
+		cond := computeReconciled(5, aggTRef, nil, nil, nil, map[string]adapterAvailableSnapshot{})
+		if cond.ObservedGeneration != 5 {
+			t.Errorf("ObservedGeneration got %d, want 5", cond.ObservedGeneration)
 		}
 	})
 
@@ -548,37 +574,86 @@ func TestComputeReady(t *testing.T) {
 		t.Parallel()
 		required := []string{"a"}
 		byAdapter := map[string]adapterAvailableSnapshot{"a": snap(2, true, aggT1)}
-		prev := mkPrevReady(api.ConditionTrue, 1, aggT0, aggT0)
-		cond := computeReady(2, aggTRef, prev, required, byAdapter)
+		prev := mkPrevReconciled(api.ConditionTrue, 1, aggT0, aggT0)
+		cond := computeReconciled(2, aggTRef, nil, prev, required, byAdapter)
 		if !cond.CreatedTime.Equal(aggT0) {
 			t.Errorf("CreatedTime got %v, want prev.CreatedTime=%v", cond.CreatedTime, aggT0)
 		}
 	})
 
-	t.Run("some adapters at @gen (Ready=False) → LastUpdatedTime is min(observed_time@gen)", func(t *testing.T) {
+	t.Run("deletedTime set, no Finalized reported → False", func(t *testing.T) {
 		t.Parallel()
-		// "a" is at current gen 2, "b" is still at gen 1 → not all at current gen → False.
-		// Spec: when some required adapters have reported at current generation,
-		// last_updated_time = min(observed_time of those at current generation).
 		required := []string{"a", "b"}
 		byAdapter := map[string]adapterAvailableSnapshot{
-			"a": snap(2, true, aggT1),
-			"b": snap(1, true, aggT2),
+			"a": {observedGeneration: 2, availableTrue: true, finalizedTrue: false, observedTime: aggT1},
+			"b": {observedGeneration: 2, availableTrue: true, finalizedTrue: false, observedTime: aggT2},
 		}
-		cond := computeReady(2, aggTRef, nil, required, byAdapter)
+		cond := computeReconciled(2, aggTRef, deletedAt(aggT0), nil, required, byAdapter)
 		if cond.Status != api.ConditionFalse {
-			t.Errorf("Status got %v, want False", cond.Status)
-		}
-		if !cond.LastUpdatedTime.Equal(aggT1) {
-			t.Errorf("LastUpdatedTime got %v, want aggT1=%v (min observed_time at current gen)", cond.LastUpdatedTime, aggT1)
+			t.Errorf("got %v, want False", cond.Status)
 		}
 	})
 
-	t.Run("ObservedGeneration always equals resourceGen", func(t *testing.T) {
+	t.Run("deletedTime set, all Finalized=True at current gen → True", func(t *testing.T) {
 		t.Parallel()
-		cond := computeReady(5, aggTRef, nil, nil, map[string]adapterAvailableSnapshot{})
-		if cond.ObservedGeneration != 5 {
-			t.Errorf("ObservedGeneration got %d, want 5", cond.ObservedGeneration)
+		required := []string{"a", "b"}
+		byAdapter := map[string]adapterAvailableSnapshot{
+			"a": {observedGeneration: 2, availableTrue: false, finalizedTrue: true, observedTime: aggT1},
+			"b": {observedGeneration: 2, availableTrue: false, finalizedTrue: true, observedTime: aggT2},
+		}
+		cond := computeReconciled(2, aggTRef, deletedAt(aggT0), nil, required, byAdapter)
+		if cond.Status != api.ConditionTrue {
+			t.Errorf("got %v, want True", cond.Status)
+		}
+	})
+
+	t.Run("deletedTime set, some Finalized=True some not → False", func(t *testing.T) {
+		t.Parallel()
+		required := []string{"a", "b"}
+		byAdapter := map[string]adapterAvailableSnapshot{
+			"a": {observedGeneration: 2, availableTrue: false, finalizedTrue: true, observedTime: aggT1},
+			"b": {observedGeneration: 2, availableTrue: false, finalizedTrue: false, observedTime: aggT2},
+		}
+		cond := computeReconciled(2, aggTRef, deletedAt(aggT0), nil, required, byAdapter)
+		if cond.Status != api.ConditionFalse {
+			t.Errorf("got %v, want False", cond.Status)
+		}
+	})
+
+	t.Run("deletedTime set, Finalized=True at old gen → False", func(t *testing.T) {
+		t.Parallel()
+		required := []string{"a"}
+		byAdapter := map[string]adapterAvailableSnapshot{
+			"a": {observedGeneration: 1, availableTrue: false, finalizedTrue: true, observedTime: aggT1},
+		}
+		cond := computeReconciled(2, aggTRef, deletedAt(aggT0), nil, required, byAdapter)
+		if cond.Status != api.ConditionFalse {
+			t.Errorf("got %v, want False (old gen)", cond.Status)
+		}
+	})
+
+	t.Run("deletedTime set, Available=True but Finalized=False → False", func(t *testing.T) {
+		t.Parallel()
+		// Adapters still available but haven't cleaned up yet
+		required := []string{"a"}
+		byAdapter := map[string]adapterAvailableSnapshot{
+			"a": {observedGeneration: 2, availableTrue: true, finalizedTrue: false, observedTime: aggT1},
+		}
+		cond := computeReconciled(2, aggTRef, deletedAt(aggT0), nil, required, byAdapter)
+		if cond.Status != api.ConditionFalse {
+			t.Errorf("got %v, want False (Available=True irrelevant during deletion)", cond.Status)
+		}
+	})
+
+	t.Run("deletedTime nil, still uses Available", func(t *testing.T) {
+		t.Parallel()
+		required := []string{"a"}
+		byAdapter := map[string]adapterAvailableSnapshot{
+			"a": {observedGeneration: 2, availableTrue: true, finalizedTrue: false, observedTime: aggT1},
+		}
+		cond := computeReconciled(2, aggTRef, nil, nil, required, byAdapter)
+		if cond.Status != api.ConditionTrue {
+			t.Errorf("got %v, want True (normal lifecycle uses Available)", cond.Status)
 		}
 	})
 }
@@ -897,10 +972,10 @@ func TestAggregateResourceStatus(t *testing.T) {
 		return b
 	}
 
-	t.Run("initial creation: req adapters, no reports → both False, observed_gen=1, times=refTime", func(t *testing.T) {
+	t.Run("initial creation: req adapters, no reports → all False, observed_gen=1, times=refTime", func(t *testing.T) {
 		t.Parallel()
 		// Doc: when resource is created at gen=1, no adapter has reported yet.
-		// observed_generation for both Ready and Available must be 1.
+		// observed_generation for Ready, Reconciled and Available must be 1.
 		// last_updated_time and last_transition_time must equal resource.last_updated_time (refTime).
 		required := []string{"a", "b"}
 		in := AggregateResourceStatusInput{
@@ -908,42 +983,42 @@ func TestAggregateResourceStatus(t *testing.T) {
 			RefTime:            aggTRef,
 			RequiredAdapters:   required,
 		}
-		ready, avail, _ := AggregateResourceStatus(context.Background(), in)
-		if ready.Status != api.ConditionFalse {
-			t.Errorf("ready.Status got %v, want False", ready.Status)
+		reconciled, avail, _ := AggregateResourceStatus(context.Background(), in)
+		if reconciled.Status != api.ConditionFalse {
+			t.Errorf("reconciled.Status got %v, want False", reconciled.Status)
 		}
 		if avail.Status != api.ConditionFalse {
 			t.Errorf("avail.Status got %v, want False", avail.Status)
 		}
-		if ready.ObservedGeneration != 1 {
-			t.Errorf("ready.ObservedGeneration got %d, want 1", ready.ObservedGeneration)
+		if reconciled.ObservedGeneration != 1 {
+			t.Errorf("reconciled.ObservedGeneration got %d, want 1", reconciled.ObservedGeneration)
 		}
 		if avail.ObservedGeneration != 1 {
 			t.Errorf("avail.ObservedGeneration got %d, want 1", avail.ObservedGeneration)
 		}
-		if !ready.LastUpdatedTime.Equal(aggTRef) {
-			t.Errorf("ready.LastUpdatedTime got %v, want refTime=%v", ready.LastUpdatedTime, aggTRef)
+		if !reconciled.LastUpdatedTime.Equal(aggTRef) {
+			t.Errorf("reconciled.LastUpdatedTime got %v, want refTime=%v", reconciled.LastUpdatedTime, aggTRef)
 		}
 		if !avail.LastUpdatedTime.Equal(aggTRef) {
 			t.Errorf("avail.LastUpdatedTime got %v, want refTime=%v", avail.LastUpdatedTime, aggTRef)
 		}
-		if !ready.LastTransitionTime.Equal(aggTRef) {
-			t.Errorf("ready.LastTransitionTime got %v, want refTime=%v", ready.LastTransitionTime, aggTRef)
+		if !reconciled.LastTransitionTime.Equal(aggTRef) {
+			t.Errorf("reconciled.LastTransitionTime got %v, want refTime=%v", reconciled.LastTransitionTime, aggTRef)
 		}
 		if !avail.LastTransitionTime.Equal(aggTRef) {
 			t.Errorf("avail.LastTransitionTime got %v, want refTime=%v", avail.LastTransitionTime, aggTRef)
 		}
 	})
 
-	t.Run("no required adapters → both False", func(t *testing.T) {
+	t.Run("no required adapters → all False", func(t *testing.T) {
 		t.Parallel()
 		in := AggregateResourceStatusInput{
 			ResourceGeneration: 1,
 			RefTime:            aggTRef,
 		}
-		ready, avail, _ := AggregateResourceStatus(context.Background(), in)
-		if ready.Status != api.ConditionFalse {
-			t.Errorf("ready: got %v, want False", ready.Status)
+		reconciled, avail, _ := AggregateResourceStatus(context.Background(), in)
+		if reconciled.Status != api.ConditionFalse {
+			t.Errorf("reconciled: got %v, want False", reconciled.Status)
 		}
 		if avail.Status != api.ConditionFalse {
 			t.Errorf("avail: got %v, want False", avail.Status)
@@ -962,39 +1037,40 @@ func TestAggregateResourceStatus(t *testing.T) {
 				makeStatus("b", 2, aggT2, api.AdapterConditionTrue),
 			},
 		}
-		ready, avail, _ := AggregateResourceStatus(context.Background(), in)
-		if ready.Status != api.ConditionTrue {
-			t.Errorf("ready: got %v, want True", ready.Status)
+		reconciled, avail, _ := AggregateResourceStatus(context.Background(), in)
+		if reconciled.Status != api.ConditionTrue {
+			t.Errorf("reconciled: got %v, want True", reconciled.Status)
 		}
 		if avail.Status != api.ConditionTrue {
 			t.Errorf("avail: got %v, want True", avail.Status)
 		}
 	})
 
-	t.Run("adapters at old generation → Ready False, Available True (same-gen all-True)", func(t *testing.T) {
-		t.Parallel()
-		// Both adapters True at gen 1; resource is at gen 2.
-		// Ready=False (not at current gen), Available=True (all True at same old gen).
-		required := []string{"a", "b"}
-		in := AggregateResourceStatusInput{
-			ResourceGeneration: 2,
-			RefTime:            aggTRef,
-			RequiredAdapters:   required,
-			AdapterStatuses: api.AdapterStatusList{
-				makeStatus("a", 1, aggT1, api.AdapterConditionTrue),
-				makeStatus("b", 1, aggT2, api.AdapterConditionTrue),
-			},
-		}
-		ready, avail, _ := AggregateResourceStatus(context.Background(), in)
-		if ready.Status != api.ConditionFalse {
-			t.Errorf("ready: got %v, want False", ready.Status)
-		}
-		if avail.Status != api.ConditionTrue {
-			t.Errorf("avail: got %v, want True (all True at same old gen)", avail.Status)
-		}
-	})
+	t.Run("adapters at old generation → Reconciled False, Available True (same-gen all-True)",
+		func(t *testing.T) {
+			t.Parallel()
+			// Both adapters True at gen 1; resource is at gen 2.
+			// Ready=False (not at current gen), Available=True (all True at same old gen).
+			required := []string{"a", "b"}
+			in := AggregateResourceStatusInput{
+				ResourceGeneration: 2,
+				RefTime:            aggTRef,
+				RequiredAdapters:   required,
+				AdapterStatuses: api.AdapterStatusList{
+					makeStatus("a", 1, aggT1, api.AdapterConditionTrue),
+					makeStatus("b", 1, aggT2, api.AdapterConditionTrue),
+				},
+			}
+			reconciled, avail, _ := AggregateResourceStatus(context.Background(), in)
+			if reconciled.Status != api.ConditionFalse {
+				t.Errorf("reconciled: got %v, want False", reconciled.Status)
+			}
+			if avail.Status != api.ConditionTrue {
+				t.Errorf("avail: got %v, want True (all True at same old gen)", avail.Status)
+			}
+		})
 
-	t.Run("split generations, no prev → Ready False, Available False", func(t *testing.T) {
+	t.Run("split generations, no prev → Reconciled False, Available False", func(t *testing.T) {
 		t.Parallel()
 		required := []string{"a", "b"}
 		in := AggregateResourceStatusInput{
@@ -1006,9 +1082,9 @@ func TestAggregateResourceStatus(t *testing.T) {
 				makeStatus("b", 2, aggT2, api.AdapterConditionTrue),
 			},
 		}
-		ready, avail, _ := AggregateResourceStatus(context.Background(), in)
-		if ready.Status != api.ConditionFalse {
-			t.Errorf("ready: got %v, want False", ready.Status)
+		reconciled, avail, _ := AggregateResourceStatus(context.Background(), in)
+		if reconciled.Status != api.ConditionFalse {
+			t.Errorf("reconciled: got %v, want False", reconciled.Status)
 		}
 		if avail.Status != api.ConditionFalse {
 			t.Errorf("avail: got %v, want False (mixed gens, no prev=True)", avail.Status)
@@ -1040,7 +1116,7 @@ func TestAggregateResourceStatus(t *testing.T) {
 		}
 	})
 
-	t.Run("generation-bump Ready True→False: LastTransitionTime=refTime", func(t *testing.T) {
+	t.Run("generation-bump Reconciled True→False: LastTransitionTime=refTime", func(t *testing.T) {
 		t.Parallel()
 		// Was Ready=True at gen 1; bumped to gen 2, adapter still at old gen.
 		required := []string{"a"}
@@ -1059,12 +1135,13 @@ func TestAggregateResourceStatus(t *testing.T) {
 				makeStatus("a", 1, aggT1, api.AdapterConditionTrue), // still at old gen
 			},
 		}
-		ready, _, _ := AggregateResourceStatus(context.Background(), in)
-		if ready.Status != api.ConditionFalse {
-			t.Errorf("ready: got %v, want False", ready.Status)
+		reconciled, _, _ := AggregateResourceStatus(context.Background(), in)
+		if reconciled.Status != api.ConditionFalse {
+			t.Errorf("reconciled: got %v, want False", reconciled.Status)
 		}
-		if !ready.LastTransitionTime.Equal(aggTRef) {
-			t.Errorf("ready.LastTransitionTime got %v, want refTime=%v (gen-bump branch)", ready.LastTransitionTime, aggTRef)
+		if !reconciled.LastTransitionTime.Equal(aggTRef) {
+			t.Errorf("reconciled.LastTransitionTime got %v, want refTime=%v (gen-bump branch)",
+				reconciled.LastTransitionTime, aggTRef)
 		}
 	})
 
@@ -1096,9 +1173,9 @@ func TestAggregateResourceStatus(t *testing.T) {
 	t.Run("condition Type fields are set correctly", func(t *testing.T) {
 		t.Parallel()
 		in := AggregateResourceStatusInput{ResourceGeneration: 1, RefTime: aggTRef}
-		ready, avail, _ := AggregateResourceStatus(context.Background(), in)
-		if ready.Type != api.ConditionTypeReady {
-			t.Errorf("ready.Type=%q, want %q", ready.Type, api.ConditionTypeReady)
+		reconciled, avail, _ := AggregateResourceStatus(context.Background(), in)
+		if reconciled.Type != api.ConditionTypeReconciled {
+			t.Errorf("reconciled.Type=%q, want %q", reconciled.Type, api.ConditionTypeReconciled)
 		}
 		if avail.Type != api.ConditionTypeAvailable {
 			t.Errorf("avail.Type=%q, want %q", avail.Type, api.ConditionTypeAvailable)
@@ -1130,6 +1207,73 @@ func TestAggregateResourceStatus(t *testing.T) {
 		}
 		if c, ok := byType["Adapter2Successful"]; !ok || c.Status != api.ConditionTrue {
 			t.Errorf("Adapter2Successful: got %+v", byType["Adapter2Successful"])
+		}
+	})
+
+	t.Run("deletion lifecycle: all Finalized=True → Reconciled=True", func(t *testing.T) {
+		t.Parallel()
+		required := []string{"a", "b"}
+		dt := aggT0
+		in := AggregateResourceStatusInput{
+			ResourceGeneration: 2,
+			RefTime:            aggTRef,
+			DeletedTime:        &dt,
+			RequiredAdapters:   required,
+			AdapterStatuses: api.AdapterStatusList{
+				makeAdapterStatus("a", aggT1, 2, marshalConds([]api.AdapterCondition{
+					{Type: api.ConditionTypeFinalized, Status: api.AdapterConditionTrue},
+					{Type: api.ConditionTypeAvailable, Status: api.AdapterConditionFalse},
+					{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue},
+					{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue},
+				})),
+				makeAdapterStatus("b", aggT2, 2, marshalConds([]api.AdapterCondition{
+					{Type: api.ConditionTypeFinalized, Status: api.AdapterConditionTrue},
+					{Type: api.ConditionTypeAvailable, Status: api.AdapterConditionFalse},
+					{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue},
+					{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue},
+				})),
+			},
+		}
+		reconciled, _, _ := AggregateResourceStatus(context.Background(), in)
+		if reconciled.Status != api.ConditionTrue {
+			t.Errorf("reconciled: got %v, want True", reconciled.Status)
+		}
+	})
+
+	t.Run("deletion lifecycle: no Finalized → Reconciled=False", func(t *testing.T) {
+		t.Parallel()
+		required := []string{"a"}
+		dt := aggT0
+		in := AggregateResourceStatusInput{
+			ResourceGeneration: 2,
+			RefTime:            aggTRef,
+			DeletedTime:        &dt,
+			RequiredAdapters:   required,
+			AdapterStatuses: api.AdapterStatusList{
+				makeAdapterStatus("a", aggT1, 2, availConds(api.AdapterConditionTrue)),
+			},
+		}
+		reconciled, _, _ := AggregateResourceStatus(context.Background(), in)
+		if reconciled.Status != api.ConditionFalse {
+			t.Errorf("reconciled: got %v, want False (no Finalized reported)", reconciled.Status)
+		}
+	})
+
+	t.Run("normal lifecycle ignores Finalized", func(t *testing.T) {
+		t.Parallel()
+		required := []string{"a"}
+		in := AggregateResourceStatusInput{
+			ResourceGeneration: 2,
+			RefTime:            aggTRef,
+			DeletedTime:        nil,
+			RequiredAdapters:   required,
+			AdapterStatuses: api.AdapterStatusList{
+				makeAdapterStatus("a", aggT1, 2, finalizedConds(api.AdapterConditionFalse)),
+			},
+		}
+		reconciled, _, _ := AggregateResourceStatus(context.Background(), in)
+		if reconciled.Status != api.ConditionTrue {
+			t.Errorf("reconciled: got %v, want True (normal lifecycle uses Available, not Finalized)", reconciled.Status)
 		}
 	})
 }
