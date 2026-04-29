@@ -120,7 +120,9 @@ func NewDatabaseConfig() *DatabaseConfig {
 // This function follows the libpq specification: only quote when necessary.
 func escapeDSNValue(value string) string {
 	if value == "" {
-		return value
+		// Per libpq spec, empty values must be quoted; an unquoted empty value
+		// causes lib/pq's parser to consume the next key=value pair as the value.
+		return "''"
 	}
 
 	// Escape backslashes first (must be done before escaping quotes)
