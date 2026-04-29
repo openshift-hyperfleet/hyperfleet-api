@@ -1,7 +1,7 @@
 openapi: 3.0.0
 info:
   title: HyperFleet API
-  version: 1.0.8
+  version: 1.0.9
   contact:
     name: HyperFleet Team
   license:
@@ -494,6 +494,7 @@ paths:
         - name: nodepool_id
           in: path
           required: true
+          description: Nodepool ID
           schema:
             type: string
       responses:
@@ -515,6 +516,45 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/AdapterStatusCreateRequest'
+      security:
+        - BearerAuth: []
+    put:
+      operationId: putNodePoolStatuses
+      summary: Adapter creates or updates resource nodepool status
+      parameters:
+        - name: cluster_id
+          in: path
+          required: true
+          description: Cluster ID
+          schema:
+            type: string
+        - name: nodepool_id
+          in: path
+          required: true
+          description: Nodepool ID
+          schema:
+            type: string
+      responses:
+        '201':
+          description: The request has succeeded and a new resource has been created as a result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdapterStatus'
+        '400':
+          description: The server could not understand the request due to invalid syntax.
+        '404':
+          description: The server cannot find the requested resource.
+        '409':
+          description: The request conflicts with the current state of the server.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdapterStatusCreateRequest'
+      security:
+        - BearerAuth: []
     get:
       operationId: getNodePoolsStatuses
       summary: List all adapter statuses for nodepools
@@ -561,6 +601,37 @@ paths:
 
         Response includes the full adapter status with all conditions.
         Adapter should call this endpoint every time it evaluates the cluster.
+      parameters:
+        - name: cluster_id
+          in: path
+          required: true
+          description: Cluster ID
+          schema:
+            type: string
+      responses:
+        '201':
+          description: The request has succeeded and a new resource has been created as a result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdapterStatus'
+        '400':
+          description: The server could not understand the request due to invalid syntax.
+        '404':
+          description: The server cannot find the requested resource.
+        '409':
+          description: The request conflicts with the current state of the server.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdapterStatusCreateRequest'
+      security:
+        - BearerAuth: []
+    put:
+      operationId: putClusterStatuses
+      summary: Adapter creates or updates resource cluster status
       parameters:
         - name: cluster_id
           in: path
