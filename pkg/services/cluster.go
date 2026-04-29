@@ -215,16 +215,21 @@ func (s *sqlClusterService) UpdateClusterStatusFromAdapters(
 	}
 
 	refTime := clusterRefTime(cluster)
-	ready, available, adapterConditions := AggregateResourceStatus(ctx, AggregateResourceStatusInput{
+	reconciled, available, adapterConditions := AggregateResourceStatus(ctx, AggregateResourceStatusInput{
 		ResourceGeneration: cluster.Generation,
 		RefTime:            refTime,
+		DeletedTime:        cluster.DeletedTime,
 		PrevConditionsJSON: cluster.StatusConditions,
 		RequiredAdapters:   s.adapterConfig.RequiredClusterAdapters(),
 		AdapterStatuses:    adapterStatuses,
 	})
 
-	allConditions := make([]api.ResourceCondition, 0, 2+len(adapterConditions))
-	allConditions = append(allConditions, ready, available)
+	// Ready mirrors Reconciled for backward compatibility (deprecated)
+	ready := reconciled
+	ready.Type = api.ConditionTypeReady
+
+	allConditions := make([]api.ResourceCondition, 0, 3+len(adapterConditions))
+	allConditions = append(allConditions, ready, reconciled, available)
 	allConditions = append(allConditions, adapterConditions...)
 
 	conditionsJSON, err := json.Marshal(allConditions)

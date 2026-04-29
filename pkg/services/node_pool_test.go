@@ -551,17 +551,20 @@ func TestNodePoolAvailableReadyTransitions(t *testing.T) {
 
 		var conds []api.ResourceCondition
 		g.Expect(json.Unmarshal(stored.StatusConditions, &conds)).To(Succeed())
-		g.Expect(len(conds)).To(BeNumerically(">=", 2))
+		g.Expect(len(conds)).To(BeNumerically(">=", 3))
 
-		var available, ready *api.ResourceCondition
+		var available, ready, reconciled *api.ResourceCondition
 		for i := range conds {
 			switch conds[i].Type {
 			case api.ConditionTypeAvailable:
 				available = &conds[i]
 			case api.ConditionTypeReady:
 				ready = &conds[i]
+			case api.ConditionTypeReconciled:
+				reconciled = &conds[i]
 			}
 		}
+		g.Expect(reconciled).ToNot(BeNil())
 		g.Expect(available).ToNot(BeNil())
 		g.Expect(ready).ToNot(BeNil())
 		return *available, *ready
@@ -818,50 +821,62 @@ func TestNodePoolSyntheticTimestampsStableWithoutAdapterStatus(t *testing.T) {
 
 	var createdConds []api.ResourceCondition
 	g.Expect(json.Unmarshal(created.StatusConditions, &createdConds)).To(Succeed())
-	g.Expect(len(createdConds)).To(BeNumerically(">=", 2))
+	g.Expect(len(createdConds)).To(BeNumerically(">=", 3))
 
-	var createdAvailable, createdReady *api.ResourceCondition
+	var createdAvailable, createdReady, createdReconciled *api.ResourceCondition
 	for i := range createdConds {
 		switch createdConds[i].Type {
 		case api.ConditionTypeAvailable:
 			createdAvailable = &createdConds[i]
 		case api.ConditionTypeReady:
 			createdReady = &createdConds[i]
+		case api.ConditionTypeReconciled:
+			createdReconciled = &createdConds[i]
 		}
 	}
 	g.Expect(createdAvailable).ToNot(BeNil())
 	g.Expect(createdReady).ToNot(BeNil())
+	g.Expect(createdReconciled).ToNot(BeNil())
 	g.Expect(createdAvailable.CreatedTime).To(Equal(fixedNow))
 	g.Expect(createdAvailable.LastTransitionTime).To(Equal(fixedNow))
 	g.Expect(createdAvailable.LastUpdatedTime).To(Equal(fixedNow))
 	g.Expect(createdReady.CreatedTime).To(Equal(fixedNow))
 	g.Expect(createdReady.LastTransitionTime).To(Equal(fixedNow))
 	g.Expect(createdReady.LastUpdatedTime).To(Equal(fixedNow))
+	g.Expect(createdReconciled.CreatedTime).To(Equal(fixedNow))
+	g.Expect(createdReconciled.LastTransitionTime).To(Equal(fixedNow))
+	g.Expect(createdReconciled.LastUpdatedTime).To(Equal(fixedNow))
 
 	updated, err := service.UpdateNodePoolStatusFromAdapters(ctx, nodePoolID)
 	g.Expect(err).To(BeNil())
 
 	var updatedConds []api.ResourceCondition
 	g.Expect(json.Unmarshal(updated.StatusConditions, &updatedConds)).To(Succeed())
-	g.Expect(len(updatedConds)).To(BeNumerically(">=", 2))
+	g.Expect(len(updatedConds)).To(BeNumerically(">=", 3))
 
-	var updatedAvailable, updatedReady *api.ResourceCondition
+	var updatedAvailable, updatedReady, updatedReconciled *api.ResourceCondition
 	for i := range updatedConds {
 		switch updatedConds[i].Type {
 		case api.ConditionTypeAvailable:
 			updatedAvailable = &updatedConds[i]
 		case api.ConditionTypeReady:
 			updatedReady = &updatedConds[i]
+		case api.ConditionTypeReconciled:
+			updatedReconciled = &updatedConds[i]
 		}
 	}
 	g.Expect(updatedAvailable).ToNot(BeNil())
 	g.Expect(updatedReady).ToNot(BeNil())
+	g.Expect(updatedReconciled).ToNot(BeNil())
 	g.Expect(updatedAvailable.CreatedTime).To(Equal(fixedNow))
 	g.Expect(updatedAvailable.LastTransitionTime).To(Equal(fixedNow))
 	g.Expect(updatedAvailable.LastUpdatedTime).To(Equal(fixedNow))
 	g.Expect(updatedReady.CreatedTime).To(Equal(fixedNow))
 	g.Expect(updatedReady.LastTransitionTime).To(Equal(fixedNow))
 	g.Expect(updatedReady.LastUpdatedTime).To(Equal(fixedNow))
+	g.Expect(updatedReconciled.CreatedTime).To(Equal(fixedNow))
+	g.Expect(updatedReconciled.LastTransitionTime).To(Equal(fixedNow))
+	g.Expect(updatedReconciled.LastUpdatedTime).To(Equal(fixedNow))
 }
 
 func TestNodePoolSoftDelete(t *testing.T) {
