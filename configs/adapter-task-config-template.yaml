@@ -351,7 +351,7 @@ post:
     # Report cluster status to HyperFleet API (always executed)
     - name: "reportClusterStatus"
       api_call:
-        method: "POST"
+        method: "PUT"
         # NOTE: API path includes /api/hyperfleet/ prefix and ends with /statuses
         url: "/clusters/{{ .clusterId }}/statuses"
         body: "{{ .clusterStatusPayload }}"

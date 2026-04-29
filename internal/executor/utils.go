@@ -149,7 +149,7 @@ func ExecuteAPICall(
 		}
 		log.Debugf(ctx, "API call payload: %s %s payload=%s", apiCall.Method, url, string(body))
 		resp, err = apiClient.Post(ctx, url, body, opts...)
-		// Log body on failure for debugging
+		// Log error message on failure for debugging purposes
 		if err != nil || (resp != nil && !resp.IsSuccess()) {
 			var logErr error
 			if err != nil {
@@ -158,7 +158,7 @@ func ExecuteAPICall(
 				logErr = fmt.Errorf("POST %s returned non-success status: %d", url, resp.StatusCode)
 			}
 			errCtx := logger.WithErrorField(ctx, logErr)
-			log.Error(errCtx, "Request failed")
+			log.Error(errCtx, "POST Request failed")
 		}
 	case http.MethodPut:
 		body := []byte(apiCall.Body)
@@ -170,6 +170,17 @@ func ExecuteAPICall(
 		}
 		log.Debugf(ctx, "API call payload: %s %s payload=%s", apiCall.Method, url, string(body))
 		resp, err = apiClient.Put(ctx, url, body, opts...)
+		// Log error message on failure for debugging purposes
+		if err != nil || (resp != nil && !resp.IsSuccess()) {
+			var logErr error
+			if err != nil {
+				logErr = err
+			} else {
+				logErr = fmt.Errorf("PUT %s returned non-success status: %d", url, resp.StatusCode)
+			}
+			errCtx := logger.WithErrorField(ctx, logErr)
+			log.Error(errCtx, "PUT Request failed")
+		}
 	case http.MethodPatch:
 		body := []byte(apiCall.Body)
 		if apiCall.Body != "" {

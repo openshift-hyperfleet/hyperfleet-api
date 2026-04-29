@@ -345,7 +345,7 @@ post:
   post_actions:
     - name: "reportStatus"
       api_call:
-        method: "POST"
+        method: "PUT"
         url: "{{ .apiBaseUrl }}/clusters/{{ .clusterId }}/statuses"
         body: "{{ .statusPayload }}"
 ```
@@ -446,7 +446,7 @@ post:
   post_actions:
     - name: "reportStatus"
       api_call:
-        method: "POST"
+        method: "PUT"
         url: "{{ .apiBaseUrl }}/clusters/{{ .clusterId }}/statuses"
         body: "{{ .statusPayload }}"
 ```
