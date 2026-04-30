@@ -25,6 +25,10 @@ func (d *clusterDaoMock) Get(ctx context.Context, id string) (*api.Cluster, erro
 	return nil, gorm.ErrRecordNotFound
 }
 
+func (d *clusterDaoMock) GetForUpdate(ctx context.Context, id string) (*api.Cluster, error) {
+	return d.Get(ctx, id)
+}
+
 func (d *clusterDaoMock) Create(ctx context.Context, cluster *api.Cluster) (*api.Cluster, error) {
 	d.clusters = append(d.clusters, cluster)
 	return cluster, nil
@@ -37,6 +41,16 @@ func (d *clusterDaoMock) Replace(ctx context.Context, cluster *api.Cluster) (*ap
 func (d *clusterDaoMock) Save(ctx context.Context, cluster *api.Cluster) error {
 	d.clusters = append(d.clusters, cluster)
 	return nil
+}
+
+func (d *clusterDaoMock) SaveStatusConditions(ctx context.Context, id string, statusConditions []byte) error {
+	for _, c := range d.clusters {
+		if c.ID == id {
+			c.StatusConditions = statusConditions
+			return nil
+		}
+	}
+	return gorm.ErrRecordNotFound
 }
 
 func (d *clusterDaoMock) Delete(ctx context.Context, id string) error {

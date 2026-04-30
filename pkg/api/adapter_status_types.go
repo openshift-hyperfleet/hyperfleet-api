@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -51,4 +52,17 @@ func (as *AdapterStatus) BeforeCreate(tx *gorm.DB) error {
 	}
 	as.ID = id
 	return nil
+}
+
+func (as *AdapterStatus) IsFinalized() bool {
+	var conditions []AdapterCondition
+	if err := json.Unmarshal(as.Conditions, &conditions); err != nil {
+		return false
+	}
+	for _, cond := range conditions {
+		if cond.Type == ConditionTypeFinalized && cond.Status == AdapterConditionTrue {
+			return true
+		}
+	}
+	return false
 }

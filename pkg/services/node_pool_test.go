@@ -48,6 +48,18 @@ func (d *mockNodePoolDao) Get(ctx context.Context, id string) (*api.NodePool, er
 	return nil, gorm.ErrRecordNotFound
 }
 
+func (d *mockNodePoolDao) GetForUpdate(ctx context.Context, id string) (*api.NodePool, error) {
+	return d.Get(ctx, id)
+}
+
+func (d *mockNodePoolDao) SaveStatusConditions(ctx context.Context, id string, statusConditions []byte) error {
+	if np, ok := d.nodePools[id]; ok {
+		np.StatusConditions = statusConditions
+		return nil
+	}
+	return gorm.ErrRecordNotFound
+}
+
 func (d *mockNodePoolDao) Create(ctx context.Context, nodePool *api.NodePool) (*api.NodePool, error) {
 	if nodePool.CreatedTime.IsZero() {
 		now := time.Now()
@@ -107,6 +119,16 @@ func (d *mockNodePoolDao) FindByIDs(ctx context.Context, ids []string) (api.Node
 	return result, nil
 }
 
+func (d *mockNodePoolDao) FindByOwner(ctx context.Context, ownerID string) (api.NodePoolList, error) {
+	var result api.NodePoolList
+	for _, np := range d.nodePools {
+		if np.OwnerID == ownerID {
+			result = append(result, np)
+		}
+	}
+	return result, nil
+}
+
 func (d *mockNodePoolDao) UpdateStatusConditionsByIDs(ctx context.Context, updates map[string][]byte) error {
 	for id, statusConditions := range updates {
 		if np, ok := d.nodePools[id]; ok {
@@ -115,6 +137,15 @@ func (d *mockNodePoolDao) UpdateStatusConditionsByIDs(ctx context.Context, updat
 		}
 	}
 	return nil
+}
+
+func (d *mockNodePoolDao) ExistsByOwner(ctx context.Context, ownerID string) (bool, error) {
+	for _, np := range d.nodePools {
+		if np.OwnerID == ownerID {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (d *mockNodePoolDao) All(ctx context.Context) (api.NodePoolList, error) {
@@ -225,7 +256,7 @@ func TestNodePoolProcessAdapterStatus_SubsequentUnknownCondition(t *testing.T) {
 		CreatedTime:        now,
 		LastReportTime:     now,
 	}
-	_, _ = adapterStatusDao.Upsert(ctx, existingStatus)
+	_, _ = adapterStatusDao.Upsert(ctx, existingStatus, nil)
 
 	// Now send another Unknown status report
 	newAdapterStatus := &api.AdapterStatus{
@@ -497,7 +528,7 @@ func TestNodePoolProcessAdapterStatus_SubsequentMultipleConditions_AvailableUnkn
 		CreatedTime:        now,
 		LastReportTime:     now,
 	}
-	_, _ = adapterStatusDao.Upsert(ctx, existingStatus)
+	_, _ = adapterStatusDao.Upsert(ctx, existingStatus, nil)
 
 	// Now send another report with multiple conditions including Available=Unknown
 	conditions := []api.AdapterCondition{

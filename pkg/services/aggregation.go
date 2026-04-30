@@ -24,11 +24,16 @@ const (
 	ConditionValidationErrorMissing = "missing"
 )
 
+// fixedConditionCount is the number of top-level conditions always present in resource status:
+// Ready (deprecated), Reconciled, and Available.
+const fixedConditionCount = 3
+
 // reasonMissingRequiredAdapters is the reason code for the Ready condition when one or more
 // required adapters have not yet reported Available=True at the current resource generation.
 const reasonMissingRequiredAdapters = "MissingRequiredAdapters"
 const reasonAllAdaptersReconciled = "All required adapters reported Available=True or Finalized=True " +
 	"at the current generation"
+const reasonWaitingForChildResources = "WaitingForChildResources"
 
 // ValidateMandatoryConditions checks if all mandatory conditions are present.
 // Format validation (empty type, duplicates, invalid status) is done in the Handler layer.
@@ -91,6 +96,7 @@ type AggregateResourceStatusInput struct {
 	PrevConditionsJSON []byte
 	RequiredAdapters   []string
 	AdapterStatuses    api.AdapterStatusList
+	HasChildResources  bool
 }
 
 // AdapterObservedTime returns the adapter-reported observation instant used for ordering and aggregation.
@@ -101,7 +107,7 @@ func AdapterObservedTime(as *api.AdapterStatus) time.Time {
 	return as.LastReportTime
 }
 
-// AggregateResourceStatus computes Ready, Available, and per-adapter conditions from stored adapter
+// AggregateResourceStatus computes Reconciled, Available, and per-adapter conditions from stored adapter
 // rows and previous conditions. It does not use wall clock.
 //
 // The returned adapterConditions slice contains one entry per required adapter that has reported,
@@ -120,6 +126,7 @@ func AggregateResourceStatus(ctx context.Context, in AggregateResourceStatusInpu
 		prevReconciled,
 		in.RequiredAdapters,
 		reports,
+		in.HasChildResources,
 	)
 	available = computeAvailable(
 		in.RefTime,
@@ -303,6 +310,7 @@ func computeReconciled(
 	prev *api.ResourceCondition,
 	required []string,
 	byAdapter map[string]adapterAvailableSnapshot,
+	hasChildResources bool,
 ) api.ResourceCondition {
 	allAtCurrent := true
 	for _, name := range required {
@@ -323,8 +331,12 @@ func computeReconciled(
 		}
 	}
 
+	// During deletion: even when all adapters have finalized, keep Reconciled=False
+	// until all child resources (node pools) have also been removed from the database.
+	allFinalizedButChildrenExist := deletedTime != nil && allAtCurrent && hasChildResources
+
 	status := api.ConditionFalse
-	if len(required) > 0 && allAtCurrent {
+	if len(required) > 0 && allAtCurrent && !allFinalizedButChildrenExist {
 		status = api.ConditionTrue
 	}
 
@@ -342,11 +354,16 @@ func computeReconciled(
 
 	var reason, message string
 	if deletedTime != nil {
-		reason = reasonMissingRequiredAdapters
-		message = buildFinalizedFalseMessage(required, byAdapter, resourceGen)
-		if status == api.ConditionTrue {
+		switch {
+		case status == api.ConditionTrue:
 			reason = reasonAllAdaptersReconciled
 			message = reason
+		case allFinalizedButChildrenExist:
+			reason = reasonWaitingForChildResources
+			message = "Deletion in progress. All required adapters reported Finalized=True but child resources still exist"
+		default:
+			reason = reasonMissingRequiredAdapters
+			message = buildFinalizedFalseMessage(required, byAdapter, resourceGen)
 		}
 	} else {
 		reason = reasonMissingRequiredAdapters
@@ -716,4 +733,23 @@ func minTime(times []time.Time) time.Time {
 
 func strPtr(s string) *string {
 	return &s
+}
+
+// allAdaptersFinalized checks if all required adapters have Finalized=True in their adapter_status conditions.
+// Finalized is optional — if the condition is absent, it's treated as not finalized (same as False).
+func allAdaptersFinalized(requiredAdapters []string, adapterStatuses api.AdapterStatusList) bool {
+	finalizedAdapters := make(map[string]struct{})
+
+	for _, adapterStatus := range adapterStatuses {
+		if adapterStatus.IsFinalized() {
+			finalizedAdapters[adapterStatus.Adapter] = struct{}{}
+		}
+	}
+
+	for _, requiredAdapter := range requiredAdapters {
+		if _, exists := finalizedAdapters[requiredAdapter]; !exists {
+			return false
+		}
+	}
+	return true
 }

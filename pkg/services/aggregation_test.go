@@ -510,7 +510,7 @@ func TestComputeReconciled(t *testing.T) {
 
 	t.Run("Type is Reconciled", func(t *testing.T) {
 		t.Parallel()
-		cond := computeReconciled(1, aggTRef, nil, nil, nil, map[string]adapterAvailableSnapshot{})
+		cond := computeReconciled(1, aggTRef, nil, nil, nil, map[string]adapterAvailableSnapshot{}, false)
 		if cond.Type != api.ConditionTypeReconciled {
 			t.Errorf("type got %v, want Reconciled", cond.Type)
 		}
@@ -518,7 +518,7 @@ func TestComputeReconciled(t *testing.T) {
 
 	t.Run("empty required list → False", func(t *testing.T) {
 		t.Parallel()
-		cond := computeReconciled(1, aggTRef, nil, nil, nil, map[string]adapterAvailableSnapshot{})
+		cond := computeReconciled(1, aggTRef, nil, nil, nil, map[string]adapterAvailableSnapshot{}, false)
 		if cond.Status != api.ConditionFalse {
 			t.Errorf("got %v, want False", cond.Status)
 		}
@@ -531,7 +531,7 @@ func TestComputeReconciled(t *testing.T) {
 			"a": snap(2, true, aggT1),
 			"b": snap(2, true, aggT2),
 		}
-		cond := computeReconciled(2, aggTRef, nil, nil, required, byAdapter)
+		cond := computeReconciled(2, aggTRef, nil, nil, required, byAdapter, false)
 		if cond.Status != api.ConditionTrue {
 			t.Errorf("got %v, want True", cond.Status)
 		}
@@ -544,7 +544,7 @@ func TestComputeReconciled(t *testing.T) {
 			"a": snap(2, true, aggT1),
 			"b": snap(1, true, aggT2),
 		}
-		cond := computeReconciled(2, aggTRef, nil, nil, required, byAdapter)
+		cond := computeReconciled(2, aggTRef, nil, nil, required, byAdapter, false)
 		if cond.Status != api.ConditionFalse {
 			t.Errorf("got %v, want False", cond.Status)
 		}
@@ -556,7 +556,7 @@ func TestComputeReconciled(t *testing.T) {
 		byAdapter := map[string]adapterAvailableSnapshot{
 			"a": snap(2, false, aggT1),
 		}
-		cond := computeReconciled(2, aggTRef, nil, nil, required, byAdapter)
+		cond := computeReconciled(2, aggTRef, nil, nil, required, byAdapter, false)
 		if cond.Status != api.ConditionFalse {
 			t.Errorf("got %v, want False", cond.Status)
 		}
@@ -564,7 +564,7 @@ func TestComputeReconciled(t *testing.T) {
 
 	t.Run("ObservedGeneration always equals resourceGen", func(t *testing.T) {
 		t.Parallel()
-		cond := computeReconciled(5, aggTRef, nil, nil, nil, map[string]adapterAvailableSnapshot{})
+		cond := computeReconciled(5, aggTRef, nil, nil, nil, map[string]adapterAvailableSnapshot{}, false)
 		if cond.ObservedGeneration != 5 {
 			t.Errorf("ObservedGeneration got %d, want 5", cond.ObservedGeneration)
 		}
@@ -575,7 +575,7 @@ func TestComputeReconciled(t *testing.T) {
 		required := []string{"a"}
 		byAdapter := map[string]adapterAvailableSnapshot{"a": snap(2, true, aggT1)}
 		prev := mkPrevReconciled(api.ConditionTrue, 1, aggT0, aggT0)
-		cond := computeReconciled(2, aggTRef, nil, prev, required, byAdapter)
+		cond := computeReconciled(2, aggTRef, nil, prev, required, byAdapter, false)
 		if !cond.CreatedTime.Equal(aggT0) {
 			t.Errorf("CreatedTime got %v, want prev.CreatedTime=%v", cond.CreatedTime, aggT0)
 		}
@@ -588,7 +588,7 @@ func TestComputeReconciled(t *testing.T) {
 			"a": {observedGeneration: 2, availableTrue: true, finalizedTrue: false, observedTime: aggT1},
 			"b": {observedGeneration: 2, availableTrue: true, finalizedTrue: false, observedTime: aggT2},
 		}
-		cond := computeReconciled(2, aggTRef, deletedAt(aggT0), nil, required, byAdapter)
+		cond := computeReconciled(2, aggTRef, deletedAt(aggT0), nil, required, byAdapter, false)
 		if cond.Status != api.ConditionFalse {
 			t.Errorf("got %v, want False", cond.Status)
 		}
@@ -601,7 +601,7 @@ func TestComputeReconciled(t *testing.T) {
 			"a": {observedGeneration: 2, availableTrue: false, finalizedTrue: true, observedTime: aggT1},
 			"b": {observedGeneration: 2, availableTrue: false, finalizedTrue: true, observedTime: aggT2},
 		}
-		cond := computeReconciled(2, aggTRef, deletedAt(aggT0), nil, required, byAdapter)
+		cond := computeReconciled(2, aggTRef, deletedAt(aggT0), nil, required, byAdapter, false)
 		if cond.Status != api.ConditionTrue {
 			t.Errorf("got %v, want True", cond.Status)
 		}
@@ -614,7 +614,7 @@ func TestComputeReconciled(t *testing.T) {
 			"a": {observedGeneration: 2, availableTrue: false, finalizedTrue: true, observedTime: aggT1},
 			"b": {observedGeneration: 2, availableTrue: false, finalizedTrue: false, observedTime: aggT2},
 		}
-		cond := computeReconciled(2, aggTRef, deletedAt(aggT0), nil, required, byAdapter)
+		cond := computeReconciled(2, aggTRef, deletedAt(aggT0), nil, required, byAdapter, false)
 		if cond.Status != api.ConditionFalse {
 			t.Errorf("got %v, want False", cond.Status)
 		}
@@ -626,7 +626,7 @@ func TestComputeReconciled(t *testing.T) {
 		byAdapter := map[string]adapterAvailableSnapshot{
 			"a": {observedGeneration: 1, availableTrue: false, finalizedTrue: true, observedTime: aggT1},
 		}
-		cond := computeReconciled(2, aggTRef, deletedAt(aggT0), nil, required, byAdapter)
+		cond := computeReconciled(2, aggTRef, deletedAt(aggT0), nil, required, byAdapter, false)
 		if cond.Status != api.ConditionFalse {
 			t.Errorf("got %v, want False (old gen)", cond.Status)
 		}
@@ -639,7 +639,7 @@ func TestComputeReconciled(t *testing.T) {
 		byAdapter := map[string]adapterAvailableSnapshot{
 			"a": {observedGeneration: 2, availableTrue: true, finalizedTrue: false, observedTime: aggT1},
 		}
-		cond := computeReconciled(2, aggTRef, deletedAt(aggT0), nil, required, byAdapter)
+		cond := computeReconciled(2, aggTRef, deletedAt(aggT0), nil, required, byAdapter, false)
 		if cond.Status != api.ConditionFalse {
 			t.Errorf("got %v, want False (Available=True irrelevant during deletion)", cond.Status)
 		}
@@ -651,9 +651,43 @@ func TestComputeReconciled(t *testing.T) {
 		byAdapter := map[string]adapterAvailableSnapshot{
 			"a": {observedGeneration: 2, availableTrue: true, finalizedTrue: false, observedTime: aggT1},
 		}
-		cond := computeReconciled(2, aggTRef, nil, nil, required, byAdapter)
+		cond := computeReconciled(2, aggTRef, nil, nil, required, byAdapter, false)
 		if cond.Status != api.ConditionTrue {
 			t.Errorf("got %v, want True (normal lifecycle uses Available)", cond.Status)
+		}
+	})
+
+	name := "deletedTime set, all Finalized=True, hasChildResources=true" +
+		" → False with WaitingForChildResources"
+	t.Run(name, func(t *testing.T) {
+		t.Parallel()
+		required := []string{"a", "b"}
+		byAdapter := map[string]adapterAvailableSnapshot{
+			"a": {observedGeneration: 2, availableTrue: false, finalizedTrue: true, observedTime: aggT1},
+			"b": {observedGeneration: 2, availableTrue: false, finalizedTrue: true, observedTime: aggT2},
+		}
+		cond := computeReconciled(2, aggTRef, deletedAt(aggT0), nil, required, byAdapter, true)
+		if cond.Status != api.ConditionFalse {
+			t.Errorf("got %v, want False (child resources still exist)", cond.Status)
+		}
+		if cond.Reason == nil || *cond.Reason != reasonWaitingForChildResources {
+			t.Errorf("Reason got %v, want %q", cond.Reason, reasonWaitingForChildResources)
+		}
+	})
+
+	t.Run("deletedTime set, all Finalized=True, hasChildResources=false → True", func(t *testing.T) {
+		t.Parallel()
+		required := []string{"a", "b"}
+		byAdapter := map[string]adapterAvailableSnapshot{
+			"a": {observedGeneration: 2, availableTrue: false, finalizedTrue: true, observedTime: aggT1},
+			"b": {observedGeneration: 2, availableTrue: false, finalizedTrue: true, observedTime: aggT2},
+		}
+		cond := computeReconciled(2, aggTRef, deletedAt(aggT0), nil, required, byAdapter, false)
+		if cond.Status != api.ConditionTrue {
+			t.Errorf("got %v, want True (no child resources)", cond.Status)
+		}
+		if cond.Reason == nil || *cond.Reason != reasonAllAdaptersReconciled {
+			t.Errorf("Reason got %v, want %q", cond.Reason, reasonAllAdaptersReconciled)
 		}
 	})
 }
@@ -949,6 +983,7 @@ func TestComputeAvailable(t *testing.T) {
 			t.Errorf("LastTransitionTime got %v, want prev.LastTransitionTime=%v", cond.LastTransitionTime, aggT0)
 		}
 	})
+
 }
 
 // ---------------------------------------------------------------------------
