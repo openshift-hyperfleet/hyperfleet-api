@@ -18,7 +18,7 @@ func TestNewLogger(t *testing.T) {
 			name: "create_logger_with_json_format",
 			config: Config{
 				Level:     "debug",
-				Format:    "json",
+				Format:    FormatJSON,
 				Output:    "stdout",
 				Component: "test-adapter",
 				Version:   "v1.0.0",
@@ -28,7 +28,7 @@ func TestNewLogger(t *testing.T) {
 			name: "create_logger_with_text_format",
 			config: Config{
 				Level:     "info",
-				Format:    "text",
+				Format:    FormatText,
 				Output:    "stderr",
 				Component: "test-adapter",
 				Version:   "v1.0.0",
@@ -57,13 +57,26 @@ func TestNewLogger(t *testing.T) {
 func TestNewLoggerInvalidOutput(t *testing.T) {
 	_, err := NewLogger(Config{
 		Level:     "info",
-		Format:    "text",
+		Format:    FormatText,
 		Output:    "invalid_output",
 		Component: "test",
 		Version:   "v1.0.0",
 	})
 	if err == nil {
 		t.Fatal("Expected error for invalid output, got nil")
+	}
+}
+
+func TestNewLoggerInvalidFormat(t *testing.T) {
+	_, err := NewLogger(Config{
+		Level:     "info",
+		Format:    "yaml",
+		Output:    "stdout",
+		Component: "test",
+		Version:   "v1.0.0",
+	})
+	if err == nil {
+		t.Fatal("Expected error for invalid format, got nil")
 	}
 }
 
@@ -157,7 +170,7 @@ func TestLoggerMethods(t *testing.T) {
 	// These tests verify the methods don't panic
 	log, err := NewLogger(Config{
 		Level:     "debug", // Enable all levels
-		Format:    "text",
+		Format:    FormatText,
 		Output:    "stdout",
 		Component: "test",
 		Version:   "v1.0.0",
@@ -353,8 +366,8 @@ func TestConfigFromEnv(t *testing.T) {
 		if cfg.Level != "info" {
 			t.Errorf("Expected default level 'info', got %s", cfg.Level)
 		}
-		if cfg.Format != "text" {
-			t.Errorf("Expected default format 'text', got %s", cfg.Format)
+		if cfg.Format != FormatJSON {
+			t.Errorf("Expected default format %q, got %s", FormatJSON, cfg.Format)
 		}
 		if cfg.Output != "stdout" {
 			t.Errorf("Expected default output 'stdout', got %s", cfg.Output)
@@ -372,8 +385,8 @@ func TestConfigFromEnv(t *testing.T) {
 	t.Run("reads_LOG_FORMAT_env_var", func(t *testing.T) {
 		t.Setenv("LOG_FORMAT", "JSON")
 		cfg := ConfigFromEnv()
-		if cfg.Format != "json" {
-			t.Errorf("Expected format 'json', got %s", cfg.Format)
+		if cfg.Format != FormatJSON {
+			t.Errorf("Expected format %q, got %s", FormatJSON, cfg.Format)
 		}
 	})
 
@@ -416,7 +429,7 @@ func TestParseLevel(t *testing.T) {
 func TestLoggerContextExtraction(t *testing.T) {
 	log, err := NewLogger(Config{
 		Level:     "debug",
-		Format:    "text",
+		Format:    FormatText,
 		Output:    "stdout",
 		Component: "test",
 		Version:   "v1.0.0",

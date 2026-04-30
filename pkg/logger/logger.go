@@ -9,6 +9,11 @@ import (
 	"strings"
 )
 
+const (
+	FormatJSON = "json"
+	FormatText = "text"
+)
+
 // Logger is the interface for structured logging.
 // Context is passed as a parameter to each method (aligned with sentinel pattern).
 type Logger interface {
@@ -54,7 +59,7 @@ type logger struct {
 type Config struct {
 	// Level is the minimum log level: "debug", "info", "warn", "error"
 	Level string
-	// Format is the output format: "text" or "json"
+	// Format is the output format: FormatText ("text") or FormatJSON ("json")
 	Format string
 	// Output is the output destination: "stdout", "stderr", or empty (defaults to stdout)
 	// Ignored if Writer is set.
@@ -72,7 +77,7 @@ type Config struct {
 func DefaultConfig() Config {
 	return Config{
 		Level:     "info",
-		Format:    "text",
+		Format:    FormatJSON,
 		Output:    "stdout",
 		Component: "adapter",
 		Version:   "unknown",
@@ -128,10 +133,13 @@ func NewLogger(cfg Config) (Logger, error) {
 
 	// Create handler based on format
 	var handler slog.Handler
-	if cfg.Format == "json" {
+	switch strings.ToLower(cfg.Format) {
+	case FormatJSON:
 		handler = slog.NewJSONHandler(writer, opts)
-	} else {
+	case FormatText:
 		handler = slog.NewTextHandler(writer, opts)
+	default:
+		return nil, fmt.Errorf("invalid log format %q: must be %q or %q", cfg.Format, FormatJSON, FormatText)
 	}
 
 	// Get hostname

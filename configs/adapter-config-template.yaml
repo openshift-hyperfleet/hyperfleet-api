@@ -40,7 +40,7 @@ log:
   # Flag: --log-level
   level: "info"
 
-  # Log format: text, json (default: text)
+  # Log format: text, json (default: json)
   # Environment variable: LOG_FORMAT
   # Flag: --log-format
   format: "json"
