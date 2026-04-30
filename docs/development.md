@@ -116,12 +116,17 @@ curl -X POST http://localhost:8000/api/hyperfleet/v1/clusters \
   }' | jq
 ```
 
-### Production Mode (OCM Authentication)
+### Production Mode (JWT Authentication)
 
+**Terminal 1** (start server):
 ```bash
 make run
-ocm login --token=${OCM_ACCESS_TOKEN} --url=http://localhost:8000
-ocm get /api/hyperfleet/v1/clusters
+```
+
+**Terminal 2** (call API):
+```bash
+curl -H "Authorization: Bearer ${TOKEN}" \
+  http://localhost:8000/api/hyperfleet/v1/clusters
 ```
 
 See [Deployment](deployment.md) and [Authentication](authentication.md) for complete configuration options.
@@ -182,7 +187,7 @@ make db/login      # Connect to database shell
 | `make test` | Run unit tests |
 | `make test-integration` | Run integration tests |
 | `make run-no-auth` | Start server without authentication |
-| `make run` | Start server with OCM authentication |
+| `make run` | Start server with JWT authentication |
 | `make db/setup` | Create PostgreSQL container |
 | `make db/teardown` | Remove PostgreSQL container |
 | `make db/login` | Connect to database shell |

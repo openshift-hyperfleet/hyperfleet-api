@@ -30,10 +30,6 @@ func (e *unitTestingEnvImpl) OverrideConfig(c *config.ApplicationConfig) error {
 	if c.Database.SSL.Mode == "" {
 		c.Database.SSL.Mode = SSLModeDisable
 	}
-
-	// Enable OCM mocks for unit testing (no real OCM connection needed)
-	c.OCM.Mock.Enabled = true
-
 	// Unit tests use a mock DB and don't need real credentials
 	return nil
 }

@@ -33,8 +33,6 @@ database:
   password: "testpass"
 logging:
   level: "debug"
-ocm:
-  base_url: "https://config.example.com"
 metrics:
   host: "localhost"
   port: 9090
@@ -175,8 +173,6 @@ database:
   password: "test"
 logging:
   level: "info"
-ocm:
-  base_url: "https://api.example.com"
 metrics:
   host: "localhost"
   port: 9090
@@ -278,8 +274,6 @@ database:
 logging:
   level: "info"
   format: "file-format"
-ocm:
-  base_url: "https://api.example.com"
 metrics:
   host: "localhost"
   port: 9090

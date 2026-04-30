@@ -6,24 +6,17 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/golang-jwt/jwt/v4"
-	"github.com/openshift-online/ocm-sdk-go/authentication"
+	"github.com/golang-jwt/jwt/v5"
 )
 
-// Context key type defined to avoid collisions in other pkgs using context
-// See https://golang.org/pkg/context/#WithValue
 type contextKey string
 
 const (
 	ContextUsernameKey contextKey = "username"
-
-	// Does not use contextKey type because the jwt middleware improperly updates context with string key type
-	// See https://github.com/auth0/go-jwt-middleware/blob/master/jwtmiddleware.go#L232
-	ContextAuthKey string = "user"
+	ContextJWTTokenKey contextKey = "jwt_token"
 )
 
-// AuthPayload defines the structure of the JWT payload we expect from
-// RHD JWT tokens
+// Payload defines the structure of the JWT payload we expect
 type Payload struct {
 	Username  string `json:"username"`
 	FirstName string `json:"first_name"`
@@ -48,37 +41,30 @@ func GetUsernameFromContext(ctx context.Context) string {
 	return ""
 }
 
-// GetAuthPayloadFromContext Get authorization payload api object from context
-func GetAuthPayloadFromContext(ctx context.Context) (*Payload, error) {
-	// Get user token from request context and validate
-	userToken, err := authentication.TokenFromContext(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("unable to retrieve JWT token from request context: %v", err)
-	}
+func SetJWTTokenContext(ctx context.Context, token *jwt.Token) context.Context {
+	return context.WithValue(ctx, ContextJWTTokenKey, token)
+}
 
+func GetJWTTokenFromContext(ctx context.Context) *jwt.Token {
+	token, ok := ctx.Value(ContextJWTTokenKey).(*jwt.Token)
+	if !ok {
+		return nil
+	}
+	return token
+}
+
+func GetAuthPayloadFromContext(ctx context.Context) (*Payload, error) {
+	userToken := GetJWTTokenFromContext(ctx)
 	if userToken == nil {
 		return nil, fmt.Errorf("JWT token in context is nil, unauthorized")
 	}
 
-	// Username is stored in token claim with key 'sub'
 	claims, ok := userToken.Claims.(jwt.MapClaims)
 	if !ok {
-		err := fmt.Errorf("unable to parse JWT token claims: %#v", userToken.Claims)
-		return nil, err
+		return nil, fmt.Errorf("unable to parse JWT token claims: unexpected type %T", userToken.Claims)
 	}
 
-	// TODO figure out how to unmarshal jwt.mapclaims into the struct to avoid all the
-	// type assertions
-	//
-	// var accountAuth api.AuthPayload
-	// err := json.Unmarshal([]byte(claims), &accountAuth)
-	// if err != nil {
-	// 	err := fmt.Errorf("Unable to parse JWT token claims")
-	// 	return nil, err
-	// }
-
 	payload := &Payload{}
-	// default to the values we expect from RHSSO
 	if username, ok := claims["username"].(string); ok {
 		payload.Username = username
 	}
@@ -95,7 +81,6 @@ func GetAuthPayloadFromContext(ctx context.Context) (*Payload, error) {
 		payload.ClientID = clientID
 	}
 
-	// Check values, if empty, use alternative claims from RHD
 	if payload.Username == "" {
 		if username, ok := claims["preferred_username"].(string); ok {
 			payload.Username = username
@@ -114,7 +99,6 @@ func GetAuthPayloadFromContext(ctx context.Context) (*Payload, error) {
 		}
 	}
 
-	// If given and family names are not present, use the name field
 	if payload.FirstName == "" || payload.LastName == "" {
 		if name, ok := claims["name"].(string); ok {
 			names := strings.Split(name, " ")
