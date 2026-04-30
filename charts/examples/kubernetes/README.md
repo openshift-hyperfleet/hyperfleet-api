@@ -1,37 +1,29 @@
-# Adapter example to create resources in a regional cluster
+# Adapter example to create a hello-world Job in a regional cluster
 
 This `values.yaml` deploys an `adapter-task-config.yaml` that creates:
 
-- A new namespace with the name of the cluster ID from the CloudEvent
-- A service account, role and role bindings in that new namespace
-- A Kubernetes Job with a status-reporter sidecar in that new namespace
-- A nginx deployment in the same namespace as the adapter itself
+- A new namespace named `<clusterId>-k8s`
+- A hello-world Kubernetes Job in that namespace
 
 ## Overview
 
 This example showcases:
 
 - **Inline manifests**: Defines the Kubernetes Namespace resource directly in the adapter task config
-- **External file references**: References external YAML files for Job, ServiceAccount, Role, RoleBinding, and Deployment
+- **External file references**: References an external YAML file for the Job
 - **Preconditions**: Fetches cluster status from the Hyperfleet API before proceeding
 - **Resource discovery**: Finds existing resources using label selectors
 - **Status reporting**: Builds a status payload with CEL expressions and reports back to the Hyperfleet API
-- **Job with sidecar**: Demonstrates a Job pattern with a status-reporter sidecar that monitors job completion and updates job conditions
-- **Simulation modes**: Supports different test scenarios via `SIMULATE_RESULT` environment variable
-- **RBAC configuration**: Demonstrates configuring additional RBAC resources in helm values
+- **Lifecycle delete**: Cleans up resources (namespace and job) when the cluster is marked for deletion
 
 ## Files
 
 | File | Description |
 |------|-------------|
-| `values.yaml` | Helm values that configure the adapter, broker, image, environment variables, and RBAC permissions |
+| `values.yaml` | Helm values that configure the adapter, broker, image, and RBAC permissions |
 | `adapter-config.yaml` | Adapter deployment config (clients, broker, Kubernetes settings) |
-| `adapter-task-config.yaml` | Task configuration with inline namespace manifest, external file references, params, preconditions, and post-processing |
-| `adapter-task-resource-job.yaml` | Kubernetes Job template with a main container and status-reporter sidecar |
-| `adapter-task-resource-job-serviceaccount.yaml` | ServiceAccount for the Job to use in the cluster namespace |
-| `adapter-task-resource-job-role.yaml` | Role granting permissions for the status-reporter to update job status |
-| `adapter-task-resource-job-rolebinding.yaml` | RoleBinding connecting the ServiceAccount to the Role |
-| `adapter-task-resource-deployment.yaml` | Nginx deployment template created in the adapter's namespace |
+| `adapter-task-config.yaml` | Task configuration with inline namespace manifest, external job file reference, params, preconditions, and post-processing |
+| `adapter-task-resource-job.yaml` | Kubernetes Job that prints "Hello, World!" and exits |
 
 ## Key Features
 
@@ -43,69 +35,45 @@ This example uses both approaches:
 
 ```yaml
 resources:
-  - name: "clusterNamespace"
+  - name: "namespace"
     manifest:
       apiVersion: v1
       kind: Namespace
       metadata:
-        name: "{{ .clusterId }}"
+        name: "{{ .clusterId }}-k8s"
 ```
 
-**External file reference** for complex resources:
+**External file reference** for the Job:
 
 ```yaml
 resources:
-  - name: "jobNamespace"
+  - name: "helloWorldJob"
     manifest:
       ref: "/etc/adapter/job.yaml"
 ```
 
-### Job with Status-Reporter Sidecar
+### Job Completion Tracking
 
-The Job (`job.yaml`) includes two containers:
+The `Available` condition checks the native Kubernetes Job `Complete` condition to determine
+whether the job has finished successfully:
 
-1. **Main container**: Runs the workload and writes results to a shared volume
-2. **Status-reporter sidecar**: Monitors the main container, reads results, and updates the Job's status conditions
-
-This pattern enables the adapter to track job completion through Kubernetes native conditions.
-
-### Simulation Modes
-
-The `SIMULATE_RESULT` environment variable controls test scenarios:
-
-| Value | Behavior |
-|-------|----------|
-| `success` | Writes success result and exits cleanly |
-| `failure` | Writes failure result and exits with error |
-| `hang` | Sleeps indefinitely (tests timeout handling) |
-| `crash` | Exits without writing results |
-| `invalid-json` | Writes malformed JSON |
-| `missing-status` | Writes JSON without required status field |
-
-Configure in `values.yaml`:
-
-```yaml
-env:
-  - name: SIMULATE_RESULT
-    value: success
-```
+| Job state | Available status | Reason |
+|-----------|-----------------|--------|
+| Not yet applied | `False` | `JobPending` |
+| Running | `False` | `JobRunning` |
+| Completed | `True` | `JobComplete` |
+| Failed | `False` | `JobFailed` |
 
 ## Configuration
 
 ### RBAC Resources
 
-The `values.yaml` configures RBAC permissions needed for resource management.
-In this example is overly permissive since is creating deployments and jobs
+The `values.yaml` configures RBAC permissions needed for resource management:
 
 ```yaml
 rbac:
   resources:
     - namespaces
-    - serviceaccounts
-    - configmaps
-    - deployments
-    - roles
-    - rolebindings
     - jobs
     - jobs/status
     - pods
@@ -118,10 +86,10 @@ Update the `broker.googlepubsub` section in `values.yaml` with your GCP Pub/Sub 
 ```yaml
 broker:
   googlepubsub:
-    project_id: CHANGE_ME
-    subscription_id: CHANGE_ME
+    projectId: CHANGE_ME
+    subscriptionId: CHANGE_ME
     topic: CHANGE_ME
-    dead_letter_topic: CHANGE_ME
+    deadLetterTopic: CHANGE_ME
 ```
 
 ### Image Configuration
@@ -139,26 +107,22 @@ image:
 ## Usage
 
 ```bash
-helm install <name> ./charts -f charts/examples/values.yaml \
+helm install <name> ./charts -f charts/examples/kubernetes/values.yaml \
   --namespace <namespace> \
   --set image.registry=quay.io/<developer-registry> \
-  --set broker.googlepubsub.project_id=<gcp-project> \
-  --set broker.googlepubsub.subscription_id=<gcp-subscription? \
+  --set broker.googlepubsub.projectId=<gcp-project> \
+  --set broker.googlepubsub.subscriptionId=<gcp-subscription> \
   --set broker.googlepubsub.topic=<gcp-topic> \
-  --set broker.googlepubsub.dead_letter_topic=<gcp-dlq-topic>
+  --set broker.googlepubsub.deadLetterTopic=<gcp-dlq-topic>
 ```
 
 ## How It Works
 
-1. The adapter receives a CloudEvent with a cluster ID and generation
-2. **Preconditions**: Fetches cluster status from the Hyperfleet API and captures the cluster name, generation, and ready condition
-3. **Validation**: Checks that the cluster's Ready condition is "False" before proceeding
-4. **Resource creation**: Creates resources in order:
-   - Namespace named with the cluster ID
-   - ServiceAccount in the new namespace
-   - Role and RoleBinding for the status-reporter
-   - Job with main container and status-reporter sidecar
-   - Nginx deployment in the adapter's namespace
-5. **Job execution**: The Job runs, writes results to a shared volume, and the status-reporter updates job conditions
-6. **Post-processing**: Builds a status payload checking Applied, Available, and Health conditions
-7. **Status reporting**: Reports the status back to the Hyperfleet API
+1. The adapter receives a CloudEvent with a cluster ID
+2. **Preconditions**: Fetches cluster status from the Hyperfleet API and captures the cluster name, generation, and deletion state
+3. **Resource creation**: Creates resources in order:
+   - Namespace named `<clusterId>-k8s`
+   - Hello-world Job in that namespace
+4. **Job execution**: The Job prints "Hello, World!" and exits successfully
+5. **Post-processing**: Builds a status payload checking Applied, Available, Health, and Finalized conditions
+6. **Status reporting**: Reports the status back to the Hyperfleet API

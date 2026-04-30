@@ -12,7 +12,7 @@
 apiVersion: work.open-cluster-management.io/v1
 kind: ManifestWork
 metadata:
-  name: "mw-configmap-{{ .clusterId }}"
+  name: "{{ .clusterId }}-mw2-cm"
 
   labels:
     hyperfleet.io/cluster-id: "{{ .clusterId }}"
@@ -39,7 +39,7 @@ spec:
       kind: ConfigMap
       metadata:
         name: "cluster-config"
-        namespace: "{{ .clusterId }}"
+        namespace: "{{ .clusterId }}-mw2"
         labels:
           hyperfleet.io/cluster-id: "{{ .clusterId }}"
           hyperfleet.io/cluster-name: "{{ .clusterName }}"
@@ -57,7 +57,7 @@ spec:
     - resourceIdentifier:
         group: ""
         resource: "configmaps"
-        namespace: "{{ .clusterId }}"
+        namespace: "{{ .clusterId }}-mw2"
         name: "cluster-config"
       updateStrategy:
         type: "ServerSideApply"

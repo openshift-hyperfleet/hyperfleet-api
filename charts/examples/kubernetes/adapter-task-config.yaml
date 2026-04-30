@@ -1,184 +1,57 @@
-# Example HyperFleet Adapter task configuration
-# Parameters with all required variables
 params:
-
   - name: "clusterId"
     source: "event.id"
     type: "string"
     required: true
 
-  - name: "namespace"
-    source: "env.NAMESPACE"
-    type: "string"
-    required: true
-
-  - name: "serviceAccountName"
-    source: "env.SERVICE_ACCOUNT"
-    type: "string"
-    required: true
-
-  - name: "simulateResult"
-    source: "env.SIMULATE_RESULT"
-    type: "string"
-    required: true
-
-# Preconditions with time-based stability check
-# This example demonstrates the recommended pattern for handling both:
-# 1. Initial deployment - deploy resources when cluster is NOT Ready
-# 2. Self-healing - recreate deleted resources when cluster has been Ready >= 5 minutes
 preconditions:
   - name: "checkClusterState"
     api_call:
       method: "GET"
       url: "/clusters/{{ .clusterId }}"
       timeout: 10s
-      retry_attempts: 3
-      retry_backoff: "exponential"
     capture:
-      - name: "clusterName"
-        field: "name"
       - name: "generation"
         field: "generation"
-      # is_deleting is the canonical deletion gate used throughout payload expressions.
-      # Capturing it here avoids repeating "has(checkClusterState.deleted_time)" everywhere and
-      # prevents false-positive Finalized=True when resources are absent for
-      # unrelated reasons (e.g., first reconciliation before provisioning).
-      # has() safely checks map key presence without requiring deleted_time to exist.
+      - name: "clusterName"
+        field: "name"
       - name: "is_deleting"
         expression: "has(checkClusterState.deleted_time)"
-      - name: "clusterNotReady"
-        expression: |
-          status.conditions.filter(c, c.type == "Ready").size() > 0
-            ? status.conditions.filter(c, c.type == "Ready")[0].status != "True"
-            : true
-      - name: "clusterReadyTTL"
-        expression: |
-          (timestamp(now()) - timestamp(
-            status.conditions.filter(c, c.type == "Ready").size() > 0
-              ? status.conditions.filter(c, c.type == "Ready")[0].last_transition_time
-              : now()
-          )).getSeconds() > 300
 
-  - name: "validationCheck"
-    # Precondition passes if cluster is NOT Ready OR if cluster is Ready and stable for >300 seconds since last transition (enables self-healing)
-    expression: |
-      clusterNotReady || clusterReadyTTL
-
-# Resources with valid K8s manifests
 resources:
-  - name: "clusterNamespace"
+  - name: namespace
     transport:
       client: "kubernetes"
     manifest:
       apiVersion: v1
       kind: Namespace
       metadata:
-        name: "{{ .clusterId }}"
+        name: "{{ .clusterId }}-k8s"
         labels:
           hyperfleet.io/cluster-id: "{{ .clusterId }}"
           hyperfleet.io/cluster-name: "{{ .clusterName }}"
+          hyperfleet.io/managed-by: "{{ .adapter.name }}"
+          hyperfleet.io/resource-type: "namespace"
         annotations:
+          hyperfleet.io/created-by: "hyperfleet-adapter"
           hyperfleet.io/generation: "{{ .generation }}"
     discovery:
-      by_selectors:
-        label_selector:
-          hyperfleet.io/cluster-id: "{{ .clusterId }}"
-          hyperfleet.io/cluster-name: "{{ .clusterName }}"
-    lifecycle:
-      delete:
-        # Foreground: wait for all namespace contents to be removed before deleting
-        # the namespace itself. Ensures no orphaned resources remain.
-        # The namespace is deleted last — only once all inner resources are confirmed gone.
-        propagationPolicy: Foreground
-        when:
-          expression: |
-            is_deleting
-              && !resources.?jobServiceAccount.hasValue()
-              && !resources.?job_role.hasValue()
-              && !resources.?job_rolebinding.hasValue()
-              && !resources.?jobNamespace.hasValue()
-              && !resources.?deploymentNamespace.hasValue()
-
-  #  the following configuration is for a job that will be created in the cluster
-  # in the namespace created above
-  # it will require a service account to be created in that namespace as well as a role and rolebinding
-  - name: "jobServiceAccount"
-    transport:
-      client: "kubernetes"
-    manifest:
-      ref: "/etc/adapter/job-serviceaccount.yaml"
-    discovery:
-      by_selectors:
-        label_selector:
-          hyperfleet.io/resource-type: "service-account"
-          hyperfleet.io/cluster-id: "{{ .clusterId }}"
+      by_name: '{{ .clusterId }}-k8s'
     lifecycle:
       delete:
         propagationPolicy: Background
         when:
           expression: "is_deleting"
-
-  - name: "job_role"
-    transport:
-      client: "kubernetes"
-    manifest:
-      ref: "/etc/adapter/job-role.yaml"
-    discovery:
-      by_selectors:
-        label_selector:
-          hyperfleet.io/cluster-id: "{{ .clusterId }}"
-          hyperfleet.io/resource-type: "role"
-    lifecycle:
-      delete:
-        propagationPolicy: Background
-        when:
-          expression: "is_deleting"
-
-  - name: "job_rolebinding"
-    transport:
-      client: "kubernetes"
-    manifest:
-      ref: "/etc/adapter/job-rolebinding.yaml"
-    discovery:
-      by_selectors:
-        label_selector:
-          hyperfleet.io/cluster-id: "{{ .clusterId }}"
-          hyperfleet.io/resource-type: "role-binding"
-    lifecycle:
-      delete:
-        propagationPolicy: Background
-        when:
-          expression: "is_deleting"
-
-  - name: "jobNamespace"
+  - name: "helloWorldJob"
     transport:
       client: "kubernetes"
     manifest:
       ref: "/etc/adapter/job.yaml"
     discovery:
+      namespace: '{{ .clusterId }}-k8s'
       by_selectors:
         label_selector:
-          hyperfleet.io/cluster-id: "{{ .clusterId }}"
           hyperfleet.io/resource-type: "job"
-    lifecycle:
-      delete:
-        propagationPolicy: Background
-        when:
-          expression: "is_deleting"
-
-  # the following configuration is for a deployment that will be created in the cluster
-  # in the same namespace as the adapter
-  # and using the same service account as the adapter
-
-  - name: "deploymentNamespace"
-    transport:
-      client: "kubernetes"
-    manifest:
-      ref: "/etc/adapter/deployment.yaml"
-    discovery:
-      by_selectors:
-        label_selector:
-          hyperfleet.io/resource-type: "deployment"
           hyperfleet.io/cluster-id: "{{ .clusterId }}"
     lifecycle:
       delete:
@@ -186,49 +59,52 @@ resources:
         when:
           expression: "is_deleting"
 
-# Post-processing with valid CEL expressions
-# This example contains multiple resources, we will only report on the conditions of the jobNamespace not to overcomplicate the example
 post:
   payloads:
     - name: "clusterStatusPayload"
       build:
         adapter: "{{ .adapter.name }}"
         conditions:
-          # Applied: Job successfully created
+          # Applied: job manifest was successfully applied
           - type: "Applied"
             status:
               expression: |
-                has(resources.jobNamespace) ? "True" : "False"
+                has(resources.helloWorldJob) ? "True" : "False"
             reason:
               expression: |
-                has(resources.jobNamespace)
-                  ? "JobApplied"
-                  : "JobPending"
+                has(resources.helloWorldJob) ? "JobApplied" : "JobPending"
             message:
               expression: |
-                has(resources.jobNamespace)
-                  ? "jobNamespace manifest applied successfully"
-                  : "jobNamespace is pending to be applied"
-          # Available: Check job status conditions
+                has(resources.helloWorldJob)
+                  ? "Hello-world job applied successfully"
+                  : "Hello-world job is pending"
+          # Available: True when the job has completed successfully
           - type: "Available"
             status:
               expression: |
-                has(resources.jobNamespace) ?
-                 ( resources.?jobNamespace.?status.?conditions.orValue([]).exists(c, c.type == "Available")
-                  ? resources.jobNamespace.status.conditions.filter(c, c.type == "Available")[0].status : "Unknown")
-                 : "Unknown"
+                has(resources.helloWorldJob) ?
+                  ( resources.?helloWorldJob.?status.?conditions.orValue([]).exists(c, c.type == "Complete")
+                    ? resources.helloWorldJob.status.conditions.filter(c, c.type == "Complete")[0].status
+                    : "False")
+                  : "False"
             reason:
               expression: |
-                resources.?jobNamespace.?status.?conditions.orValue([]).exists(c, c.type == "Available")
-                  ? resources.jobNamespace.status.conditions.filter(c, c.type == "Available")[0].reason
-                  : resources.?jobNamespace.?status.?conditions.orValue([]).exists(c, c.type == "Failed") ? "ValidationFailed"
-                       : resources.?jobNamespace.?status.hasValue() ? "ValidationInProgress" : "ValidationPending"
+                resources.?helloWorldJob.?status.?conditions.orValue([]).exists(c, c.type == "Complete")
+                  ? "JobComplete"
+                  : resources.?helloWorldJob.?status.?conditions.orValue([]).exists(c, c.type == "Failed")
+                    ? "JobFailed"
+                    : resources.?helloWorldJob.?status.hasValue()
+                      ? "JobRunning"
+                      : "JobPending"
             message:
               expression: |
-                resources.?jobNamespace.?status.?conditions.orValue([]).exists(c, c.type == "Available")
-                  ? resources.jobNamespace.status.conditions.filter(c, c.type == "Available")[0].message
-                  : resources.?jobNamespace.?status.?conditions.orValue([]).exists(c, c.type == "Failed") ? "Validation failed"
-                       : resources.?jobNamespace.?status.hasValue() ? "Validation in progress" : "Validation is pending"
+                resources.?helloWorldJob.?status.?conditions.orValue([]).exists(c, c.type == "Complete")
+                  ? "Hello-world job completed successfully"
+                  : resources.?helloWorldJob.?status.?conditions.orValue([]).exists(c, c.type == "Failed")
+                    ? "Hello-world job failed"
+                    : resources.?helloWorldJob.?status.hasValue()
+                      ? "Hello-world job is running"
+                      : "Hello-world job is pending"
           # Health: Adapter execution status (runtime)
           - type: "Health"
             status:
@@ -256,89 +132,30 @@ post:
                 : adapter.?resourcesSkipped.orValue(false)
                   ? "Resources skipped: " + adapter.?skipReason.orValue("unknown reason")
                   : "Adapter execution completed successfully"
-          # Deleted: all managed resources confirmed gone.
-          - type: "Deleted"
-            status:
-              expression: |
-                !resources.?clusterNamespace.hasValue()
-                  && !resources.?jobServiceAccount.hasValue()
-                  && !resources.?job_role.hasValue()
-                  && !resources.?job_rolebinding.hasValue()
-                  && !resources.?jobNamespace.hasValue()
-                  && !resources.?deploymentNamespace.hasValue()
-                ? "True"
-                : "False"
-            reason:
-              expression: |
-                !resources.?clusterNamespace.hasValue()
-                  && !resources.?jobServiceAccount.hasValue()
-                  && !resources.?job_role.hasValue()
-                  && !resources.?job_rolebinding.hasValue()
-                  && !resources.?jobNamespace.hasValue()
-                  && !resources.?deploymentNamespace.hasValue()
-                ? "ResourcesDeleted"
-                : "DeletionInProgress"
-            message:
-              expression: |
-                !resources.?clusterNamespace.hasValue()
-                  && !resources.?jobServiceAccount.hasValue()
-                  && !resources.?job_role.hasValue()
-                  && !resources.?job_rolebinding.hasValue()
-                  && !resources.?jobNamespace.hasValue()
-                  && !resources.?deploymentNamespace.hasValue()
-                ? "All cluster resources successfully deleted"
-                : "Deletion in progress; waiting for resources to be removed"
-          # Finalized: True once all resources are confirmed deleted; triggers API hard-delete.
-          #
-          # Four-part guard (per design decision matrix):
-          #   1. is_deleting         — only report True when deletion is actually pending
-          #   2. executionStatus     — adapter must be healthy; unhealthy adapters cannot
-          #                           confirm cleanup (Health=False → Finalized=False)
-          #   3. resourcesSkipped    — prevents false True when preconditions skipped resources
-          #   4. resources all gone  — every managed resource must be confirmed gone
+          # Finalized: True once the namespace is confirmed deleted during a deletion event
           - type: "Finalized"
             status:
               expression: |
                 is_deleting
                   && adapter.?executionStatus.orValue("") == "success"
                   && !adapter.?resourcesSkipped.orValue(false)
-                  && !resources.?clusterNamespace.hasValue()
-                  && !resources.?jobServiceAccount.hasValue()
-                  && !resources.?job_role.hasValue()
-                  && !resources.?job_rolebinding.hasValue()
-                  && !resources.?jobNamespace.hasValue()
-                  && !resources.?deploymentNamespace.hasValue()
+                  && !resources.?namespace.hasValue()
                 ? "True"
                 : "False"
             reason:
               expression: |
                 !is_deleting
                 ? ""
-                : adapter.?executionStatus.orValue("") != "success"
-                  ? "AdapterUnhealthy"
-                  : !resources.?clusterNamespace.hasValue()
-                      && !resources.?jobServiceAccount.hasValue()
-                      && !resources.?job_role.hasValue()
-                      && !resources.?job_rolebinding.hasValue()
-                      && !resources.?jobNamespace.hasValue()
-                      && !resources.?deploymentNamespace.hasValue()
-                    ? "CleanupConfirmed"
-                    : "CleanupInProgress"
+                : !resources.?namespace.hasValue()
+                  ? "CleanupConfirmed"
+                  : "CleanupInProgress"
             message:
               expression: |
                 !is_deleting
                 ? ""
-                : adapter.?executionStatus.orValue("") != "success"
-                  ? "Cannot confirm cleanup while adapter is unhealthy"
-                  : !resources.?clusterNamespace.hasValue()
-                      && !resources.?jobServiceAccount.hasValue()
-                      && !resources.?job_role.hasValue()
-                      && !resources.?job_rolebinding.hasValue()
-                      && !resources.?jobNamespace.hasValue()
-                      && !resources.?deploymentNamespace.hasValue()
-                    ? "All resources deleted; cleanup confirmed"
-                    : "Deletion in progress; waiting for resources to be removed"
-        # Event generation ID metadata field needs to use expression to avoid interpolation issues
+                : !resources.?namespace.hasValue()
+                  ? "All resources deleted; cleanup confirmed"
+                  : "Deletion in progress; waiting for namespace to be removed"
         observed_generation:
           expression: "generation"
         observed_time: "{{ now | date \"2006-01-02T15:04:05Z07:00\" }}"

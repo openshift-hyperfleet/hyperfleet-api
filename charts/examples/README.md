@@ -62,10 +62,10 @@ All examples share the same broker and image placeholders that must be updated b
 ```yaml
 broker:
   googlepubsub:
-    project_id: CHANGE_ME
-    subscription_id: CHANGE_ME
+    projectId: CHANGE_ME
+    subscriptionId: CHANGE_ME
     topic: CHANGE_ME
-    dead_letter_topic: CHANGE_ME
+    deadLetterTopic: CHANGE_ME
 ```
 
 ### Image
@@ -84,8 +84,8 @@ image:
 helm install <name> ./charts -f charts/examples/<example>/values.yaml \
   --namespace <namespace> \
   --set image.registry=quay.io/<developer-registry> \
-  --set broker.googlepubsub.project_id=<gcp-project> \
-  --set broker.googlepubsub.subscription_id=<gcp-subscription> \
+  --set broker.googlepubsub.projectId=<gcp-project> \
+  --set broker.googlepubsub.subscriptionId=<gcp-subscription> \
   --set broker.googlepubsub.topic=<gcp-topic> \
-  --set broker.googlepubsub.dead_letter_topic=<gcp-dlq-topic>
+  --set broker.googlepubsub.deadLetterTopic=<gcp-dlq-topic>
 ```
