@@ -3,8 +3,6 @@ package services
 import (
 	"context"
 	"encoding/json"
-	stderrors "errors"
-	"strings"
 	"time"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
@@ -12,7 +10,6 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/dao"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
-	"gorm.io/gorm"
 )
 
 //go:generate mockgen-v0.6.0 -source=node_pool.go -package=services -destination=node_pool_mock.go
@@ -178,6 +175,9 @@ func nodePoolRefTime(np *api.NodePool) time.Time {
 	return np.CreatedTime
 }
 
+// UpdateNodePoolStatusFromAdapters is the public entry point for callers outside
+// ProcessAdapterStatus (e.g. Create, Replace, SoftDelete) that don't already hold the node
+// pool and adapter statuses.
 func (s *sqlNodePoolService) UpdateNodePoolStatusFromAdapters(
 	ctx context.Context, nodePoolID string,
 ) (*api.NodePool, *errors.ServiceError) {
@@ -190,60 +190,150 @@ func (s *sqlNodePoolService) UpdateNodePoolStatusFromAdapters(
 	)
 }
 
+// recomputeAndSaveNodePoolStatus aggregates adapter reports into node pool conditions and
+// persists only when the result differs from the current stored value. Accepts pre-fetched
+// data to avoid redundant DB reads.
+func (s *sqlNodePoolService) recomputeAndSaveNodePoolStatus(
+	ctx context.Context, nodePool *api.NodePool, adapterStatuses api.AdapterStatusList,
+) (*api.NodePool, *errors.ServiceError) {
+	conditionsJSON, svcErr := computeNodePoolConditionsJSON(
+		ctx, nodePool, adapterStatuses, s.adapterConfig.RequiredNodePoolAdapters(),
+	)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	if conditionsJSON == nil {
+		return nodePool, nil
+	}
+
+	if err := s.nodePoolDao.SaveStatusConditions(ctx, nodePool.ID, conditionsJSON); err != nil {
+		return nil, handleUpdateError("NodePool", err)
+	}
+
+	nodePool.StatusConditions = conditionsJSON
+	return nodePool, nil
+}
+
+// ProcessAdapterStatus validates mandatory conditions, applies discard rules, upserts adapter
+// status, and triggers aggregation when appropriate.
+//
+// DB call budget (non-deleted happy path):
+//  1. GetForUpdate        — lock + fetch node pool
+//  2. FindByResource      — all adapter statuses (existing status found in-memory)
+//  3. Upsert             — write adapter status
+//  4. SaveStatusConditions — write updated node pool conditions (skipped when unchanged)
 func (s *sqlNodePoolService) ProcessAdapterStatus(
 	ctx context.Context, nodePoolID string, adapterStatus *api.AdapterStatus,
 ) (*api.AdapterStatus, *errors.ServiceError) {
-	nodePool, err := s.nodePoolDao.Get(ctx, nodePoolID)
+	// 1. Acquire a row-level exclusive lock on the node pool for the duration of this
+	// transaction. Concurrent adapter status updates for the same node pool are
+	// serialized here: the second caller blocks until the first commits, ensuring
+	// the aggregation step always reads a fully up-to-date set of adapter statuses.
+	nodePool, err := s.nodePoolDao.GetForUpdate(ctx, nodePoolID)
 	if err != nil {
 		return nil, handleGetError("NodePool", "id", nodePoolID, err)
 	}
 
-	existingStatus, findErr := s.adapterStatusDao.FindByResourceAndAdapter(
-		ctx, "NodePool", nodePoolID, adapterStatus.Adapter,
+	// 2. Fetch all adapter statuses for this node pool in one query. This replaces the
+	// individual FindByResourceAndAdapter and later FindByResource calls.
+	allStatuses, err := s.adapterStatusDao.FindByResource(ctx, "NodePool", nodePoolID)
+	if err != nil {
+		return nil, errors.GeneralError("Failed to get adapter statuses: %s", err)
+	}
+
+	existingStatus := findAdapterStatusInList(allStatuses, adapterStatus.Adapter)
+
+	conditions, triggerAggregation, svcErr := s.validateAndClassifyNodePool(
+		ctx, nodePoolID, adapterStatus, nodePool, existingStatus,
 	)
-	if findErr != nil && !stderrors.Is(findErr, gorm.ErrRecordNotFound) {
-		if !strings.Contains(findErr.Error(), errors.CodeNotFoundGeneric) {
-			return nil, errors.GeneralError("Failed to get adapter status: %s", findErr)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	if conditions == nil && !triggerAggregation {
+		return nil, nil
+	}
+
+	// 3. Upsert using the already-fetched existing status to skip a redundant lookup.
+	adapterStatus.ResourceType = "NodePool"
+	adapterStatus.ResourceID = nodePoolID
+	setConditionTransitionTimes(adapterStatus, existingStatus)
+
+	upsertedStatus, err := s.adapterStatusDao.Upsert(ctx, adapterStatus, existingStatus)
+	if err != nil {
+		return nil, handleCreateError("AdapterStatus", err)
+	}
+
+	// Build the post-upsert snapshot once and reuse it for both the hard-delete check
+	// and aggregation. Using the pre-upsert allStatuses for the hard-delete check would
+	// cause allAdaptersFinalized to return false when the current adapter is the last one
+	// needed to complete the Finalized=True quorum.
+	updatedStatuses := replaceAdapterStatusInList(allStatuses, upsertedStatus)
+
+	if nodePool.DeletedTime != nil {
+		hardDeleted, hdErr := s.tryHardDeleteNodePool(ctx, nodePoolID, conditions, updatedStatuses)
+		if hdErr != nil {
+			return nil, hdErr
+		}
+		if hardDeleted {
+			return upsertedStatus, nil
 		}
 	}
 
+	// 4. Re-aggregate using data already in memory.
+	if triggerAggregation {
+		if _, aggregateErr := s.recomputeAndSaveNodePoolStatus(ctx, nodePool, updatedStatuses); aggregateErr != nil {
+			return nil, aggregateErr
+		}
+	}
+
+	return upsertedStatus, nil
+}
+
+// validateAndClassifyNodePool performs all stateless validation and discard-rule checks on an
+// incoming adapter status for a node pool. Returns the parsed conditions and whether aggregation
+// should be triggered. Returns (nil, false, nil) when the update should be silently discarded.
+func (s *sqlNodePoolService) validateAndClassifyNodePool(
+	ctx context.Context,
+	nodePoolID string,
+	adapterStatus *api.AdapterStatus,
+	nodePool *api.NodePool,
+	existingStatus *api.AdapterStatus,
+) ([]api.AdapterCondition, bool, *errors.ServiceError) {
+	l := logger.With(ctx, logger.FieldNodePoolID, nodePoolID, logger.FieldAdapter, adapterStatus.Adapter)
+
 	if adapterStatus.ObservedGeneration > nodePool.Generation {
-		logger.With(ctx, logger.FieldNodePoolID, nodePoolID, logger.FieldAdapter, adapterStatus.Adapter).
-			Debug("Discarding adapter status update: future generation")
-		return nil, nil
+		l.Debug("Discarding adapter status update: future generation")
+		return nil, false, nil
 	}
 
 	if existingStatus != nil && adapterStatus.ObservedGeneration < existingStatus.ObservedGeneration {
-		logger.With(ctx, logger.FieldNodePoolID, nodePoolID, logger.FieldAdapter, adapterStatus.Adapter).
-			Debug("Discarding adapter status update: stale generation")
-		return nil, nil
+		l.Debug("Discarding adapter status update: stale generation")
+		return nil, false, nil
 	}
 
 	incomingObs := AdapterObservedTime(adapterStatus)
 	if incomingObs.IsZero() {
-		logger.With(ctx, logger.FieldNodePoolID, nodePoolID, logger.FieldAdapter, adapterStatus.Adapter).
-			Debug("Discarding adapter status update: zero observed time")
-		return nil, nil
+		l.Debug("Discarding adapter status update: zero observed time")
+		return nil, false, nil
 	}
 
 	if existingStatus != nil && adapterStatus.ObservedGeneration == existingStatus.ObservedGeneration {
 		prevObs := AdapterObservedTime(existingStatus)
 		if !prevObs.IsZero() && incomingObs.Before(prevObs) {
-			logger.With(ctx, logger.FieldNodePoolID, nodePoolID, logger.FieldAdapter, adapterStatus.Adapter).
-				Debug("Discarding adapter status update: stale observed time")
-			return nil, nil
+			l.Debug("Discarding adapter status update: stale observed time")
+			return nil, false, nil
 		}
 	}
 
 	var conditions []api.AdapterCondition
 	if len(adapterStatus.Conditions) > 0 {
 		if errUnmarshal := json.Unmarshal(adapterStatus.Conditions, &conditions); errUnmarshal != nil {
-			return nil, errors.GeneralError("Failed to unmarshal adapter status conditions: %s", errUnmarshal)
+			return nil, false, errors.GeneralError("Failed to unmarshal adapter status conditions: %s", errUnmarshal)
 		}
 	}
 
 	if errorType, conditionName := ValidateMandatoryConditions(conditions); errorType != "" {
-		return nil, errors.Validation(
+		return nil, false, errors.Validation(
 			"missing mandatory condition '%s': all adapters must report Available, Applied, and Health",
 			conditionName,
 		)
@@ -259,18 +349,16 @@ func (s *sqlNodePoolService) ProcessAdapterStatus(
 			cond.Status == api.AdapterConditionFalse ||
 			cond.Status == api.AdapterConditionUnknown
 		if !isValidStatus {
-			return nil, errors.Validation(
+			return nil, false, errors.Validation(
 				"condition '%s' has invalid status '%s': must be True, False, or Unknown",
 				cond.Type, cond.Status,
 			)
 		}
 
 		if cond.Status != api.AdapterConditionTrue && cond.Status != api.AdapterConditionFalse {
-			// Status is Unknown — only valid on first report; discard subsequent reports.
 			if existingStatus != nil {
-				logger.With(ctx, logger.FieldNodePoolID, nodePoolID, logger.FieldAdapter, adapterStatus.Adapter).
-					Debug("Discarding adapter status update: subsequent Unknown Available")
-				return nil, nil
+				l.Debug("Discarding adapter status update: subsequent Unknown Available")
+				return nil, false, nil
 			}
 			triggerAggregation = false
 			break
@@ -280,19 +368,37 @@ func (s *sqlNodePoolService) ProcessAdapterStatus(
 		break
 	}
 
-	adapterStatus.ResourceType = "NodePool"
-	adapterStatus.ResourceID = nodePoolID
+	return conditions, triggerAggregation, nil
+}
 
-	upsertedStatus, err := s.adapterStatusDao.Upsert(ctx, adapterStatus)
-	if err != nil {
-		return nil, handleCreateError("AdapterStatus", err)
+// tryHardDeleteNodePool checks whether all required adapters have reported Finalized=True for
+// a soft-deleted node pool and, when so, permanently removes the node pool and all its adapter
+// statuses. Unlike clusters, node pools have no child resources to check. Returns true when the
+// hard-delete was performed.
+//
+// Accepts the pre-fetched (post-upsert) adapter statuses list to avoid a redundant FindByResource
+// call and to ensure the just-upserted status is visible to allAdaptersFinalized.
+func (s *sqlNodePoolService) tryHardDeleteNodePool(
+	ctx context.Context, nodePoolID string, conditions []api.AdapterCondition,
+	allStatuses api.AdapterStatusList,
+) (bool, *errors.ServiceError) {
+	if !incomingReportedFinalized(conditions) {
+		return false, nil
 	}
 
-	if triggerAggregation {
-		if _, aggregateErr := s.UpdateNodePoolStatusFromAdapters(ctx, nodePoolID); aggregateErr != nil {
-			return nil, aggregateErr
-		}
+	if !allAdaptersFinalized(s.adapterConfig.Required.Nodepool, allStatuses) {
+		return false, nil
 	}
 
-	return upsertedStatus, nil
+	if err := s.adapterStatusDao.DeleteByResource(ctx, "NodePool", nodePoolID); err != nil {
+		return false, errors.GeneralError("Failed to delete adapter statuses during hard-delete: %s", err)
+	}
+	if err := s.nodePoolDao.Delete(ctx, nodePoolID); err != nil {
+		return false, errors.GeneralError("Failed to hard-delete nodepool: %s", err)
+	}
+
+	logger.With(ctx, logger.FieldNodePoolID, nodePoolID).
+		Info("Hard-deleted nodepool after all required adapters reported Finalized=True")
+
+	return true, nil
 }

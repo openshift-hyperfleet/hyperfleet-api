@@ -2,6 +2,8 @@ package services
 
 import (
 	"context"
+	"encoding/json"
+	"time"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/dao"
@@ -68,16 +70,6 @@ func (s *sqlAdapterStatusService) Replace(
 	return adapterStatus, nil
 }
 
-func (s *sqlAdapterStatusService) Upsert(
-	ctx context.Context, adapterStatus *api.AdapterStatus,
-) (*api.AdapterStatus, *errors.ServiceError) {
-	adapterStatus, err := s.adapterStatusDao.Upsert(ctx, adapterStatus)
-	if err != nil {
-		return nil, handleCreateError("AdapterStatus", err)
-	}
-	return adapterStatus, nil
-}
-
 func (s *sqlAdapterStatusService) Delete(ctx context.Context, id string) *errors.ServiceError {
 	if err := s.adapterStatusDao.Delete(ctx, id); err != nil {
 		return handleDeleteError("AdapterStatus", errors.GeneralError("Unable to delete adapter status: %s", err))
@@ -125,4 +117,55 @@ func (s *sqlAdapterStatusService) All(ctx context.Context) (api.AdapterStatusLis
 		return nil, errors.GeneralError("Unable to get all adapter statuses: %s", err)
 	}
 	return statuses, nil
+}
+
+func (s *sqlAdapterStatusService) Upsert(
+	ctx context.Context, adapterStatus *api.AdapterStatus,
+) (*api.AdapterStatus, *errors.ServiceError) {
+	existing, findErr := s.adapterStatusDao.FindByResourceAndAdapter(
+		ctx, adapterStatus.ResourceType, adapterStatus.ResourceID, adapterStatus.Adapter,
+	)
+	if findErr != nil {
+		existing = nil
+	}
+	setConditionTransitionTimes(adapterStatus, existing)
+	result, err := s.adapterStatusDao.Upsert(ctx, adapterStatus, existing)
+	if err != nil {
+		return nil, handleCreateError("AdapterStatus", err)
+	}
+	return result, nil
+}
+
+// setConditionTransitionTimes sets LastReportTime if unset and preserves condition
+// LastTransitionTime for any condition whose status hasn't changed since the last report
+// (Kubernetes condition semantic: LastTransitionTime only updates on status change).
+func setConditionTransitionTimes(incoming *api.AdapterStatus, existing *api.AdapterStatus) {
+	if incoming.LastReportTime.IsZero() {
+		incoming.LastReportTime = time.Now()
+	}
+	if existing == nil || len(existing.Conditions) == 0 {
+		return
+	}
+
+	var oldConds []api.AdapterCondition
+	if err := json.Unmarshal(existing.Conditions, &oldConds); err != nil {
+		return
+	}
+	var newConds []api.AdapterCondition
+	if len(incoming.Conditions) == 0 || json.Unmarshal(incoming.Conditions, &newConds) != nil {
+		return
+	}
+
+	oldByType := make(map[string]api.AdapterCondition, len(oldConds))
+	for _, c := range oldConds {
+		oldByType[c.Type] = c
+	}
+	for i := range newConds {
+		if old, ok := oldByType[newConds[i].Type]; ok && old.Status == newConds[i].Status {
+			newConds[i].LastTransitionTime = old.LastTransitionTime
+		}
+	}
+	if b, err := json.Marshal(newConds); err == nil {
+		incoming.Conditions = b
+	}
 }

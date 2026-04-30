@@ -32,7 +32,7 @@ func computeNodePoolConditionsJSON(
 	ready := reconciled
 	ready.Type = api.ConditionTypeReady
 
-	allConditions := make([]api.ResourceCondition, 0, 3+len(adapterConditions))
+	allConditions := make([]api.ResourceCondition, 0, fixedConditionCount+len(adapterConditions))
 	allConditions = append(allConditions, ready, reconciled, available)
 	allConditions = append(allConditions, adapterConditions...)
 
@@ -89,10 +89,10 @@ func updateNodePoolStatusFromAdapters(
 	return nodePool, nil
 }
 
-// batchUpdateNodePoolStatusesFromAdapters updates status conditions for multiple nodepools.
-// It's fetching all adapter statuses in one query and persisting
-// all changed nodepools via UpdateStatusConditionsByIDs.
-func batchUpdateNodePoolStatusesFromAdapters(
+// updateNodePoolStatusesForCascadeDelete recomputes and persists status conditions for a set of
+// cascade-soft-deleted nodepools. Fetches all their adapter statuses in one query and writes
+// only changed rows via UpdateStatusConditionsByIDs.
+func updateNodePoolStatusesForCascadeDelete(
 	ctx context.Context,
 	nodePools []*api.NodePool,
 	nodePoolDao dao.NodePoolDao,

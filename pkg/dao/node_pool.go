@@ -14,14 +14,18 @@ import (
 
 type NodePoolDao interface {
 	Get(ctx context.Context, id string) (*api.NodePool, error)
+	GetForUpdate(ctx context.Context, id string) (*api.NodePool, error)
 	Create(ctx context.Context, nodePool *api.NodePool) (*api.NodePool, error)
 	Replace(ctx context.Context, nodePool *api.NodePool) (*api.NodePool, error)
 	Save(ctx context.Context, nodePool *api.NodePool) error
+	SaveStatusConditions(ctx context.Context, id string, statusConditions []byte) error
 	Delete(ctx context.Context, id string) error
 	FindByIDs(ctx context.Context, ids []string) (api.NodePoolList, error)
+	FindByOwner(ctx context.Context, ownerID string) (api.NodePoolList, error)
 	FindSoftDeletedByOwner(ctx context.Context, ownerID string) (api.NodePoolList, error)
 	SoftDeleteByOwner(ctx context.Context, ownerID string, t time.Time, deletedBy string) error
 	UpdateStatusConditionsByIDs(ctx context.Context, updates map[string][]byte) error
+	ExistsByOwner(ctx context.Context, ownerID string) (bool, error)
 	All(ctx context.Context) (api.NodePoolList, error)
 }
 
@@ -42,6 +46,25 @@ func (d *sqlNodePoolDao) Get(ctx context.Context, id string) (*api.NodePool, err
 		return nil, err
 	}
 	return &nodePool, nil
+}
+
+func (d *sqlNodePoolDao) GetForUpdate(ctx context.Context, id string) (*api.NodePool, error) {
+	g2 := (*d.sessionFactory).New(ctx)
+	var nodePool api.NodePool
+	if err := g2.Clauses(clause.Locking{Strength: "UPDATE"}).Take(&nodePool, "id = ?", id).Error; err != nil {
+		return nil, err
+	}
+	return &nodePool, nil
+}
+
+func (d *sqlNodePoolDao) SaveStatusConditions(ctx context.Context, id string, statusConditions []byte) error {
+	g2 := (*d.sessionFactory).New(ctx)
+	result := g2.Model(&api.NodePool{}).Where("id = ?", id).Update("status_conditions", statusConditions)
+	if result.Error != nil {
+		db.MarkForRollback(ctx, result.Error)
+		return result.Error
+	}
+	return nil
 }
 
 func (d *sqlNodePoolDao) Create(ctx context.Context, nodePool *api.NodePool) (*api.NodePool, error) {
@@ -131,6 +154,15 @@ func (d *sqlNodePoolDao) FindByIDs(ctx context.Context, ids []string) (api.NodeP
 	return nodePools, nil
 }
 
+func (d *sqlNodePoolDao) FindByOwner(ctx context.Context, ownerID string) (api.NodePoolList, error) {
+	g2 := (*d.sessionFactory).New(ctx)
+	var nodePools api.NodePoolList
+	if err := g2.Where("owner_id = ?", ownerID).Find(&nodePools).Error; err != nil {
+		return nil, err
+	}
+	return nodePools, nil
+}
+
 func (d *sqlNodePoolDao) UpdateStatusConditionsByIDs(ctx context.Context, updates map[string][]byte) error {
 	g2 := (*d.sessionFactory).New(ctx)
 	if len(updates) == 0 {
@@ -147,6 +179,15 @@ func (d *sqlNodePoolDao) UpdateStatusConditionsByIDs(ctx context.Context, update
 		}
 	}
 	return nil
+}
+
+func (d *sqlNodePoolDao) ExistsByOwner(ctx context.Context, ownerID string) (bool, error) {
+	g2 := (*d.sessionFactory).New(ctx)
+	var count int64
+	if err := g2.Model(&api.NodePool{}).Where("owner_id = ?", ownerID).Limit(1).Count(&count).Error; err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }
 
 func (d *sqlNodePoolDao) All(ctx context.Context) (api.NodePoolList, error) {
