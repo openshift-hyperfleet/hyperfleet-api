@@ -9,8 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Hard deletion for Clusters and NodePools: resources and their adapter statuses are permanently removed from the database once all required adapters report `Finalized=True` and no child resources remain ([#HYPERFLEET-854](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/HYPERFLEET-854))
-- `Finalized` condition aggregation with `WaitingForChildResources` intermediate state when all adapters are finalized but child node pools still exist ([#HYPERFLEET-854](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/HYPERFLEET-854))
+- Hard deletion for Clusters and NodePools: resources and their adapter statuses are permanently removed from the database once all required adapters report `Finalized=True` and no child resources remain ([#119](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/119))
+- `Finalized` condition aggregation with `WaitingForChildResources` intermediate state when all adapters are finalized but child node pools still exist ([#119](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/119))
 - Soft deletion for Clusters and NodePools with `deleted_time` and `deleted_by` fields for tracking deletion requests ([#106](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/106))
 - Aggregation logic for resource data ([#91](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/91))
 - Version subcommand to CLI ([#84](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/84))
@@ -28,7 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Refactored `AdapterStatusDao.Upsert()` to accept a pre-fetched existing record, moving lookup and `LastTransitionTime` preservation logic to the service layer ([#HYPERFLEET-854](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/HYPERFLEET-854))
+- Refactored `AdapterStatusDao.Upsert()` to accept a pre-fetched existing record, moving lookup and `LastTransitionTime` preservation logic to the service layer ([#119](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/119))
 - Refactored DAO methods to remove Unscoped calls for fetching Clusters and NodePools ([#106](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/106))
 - Bumped oapi-codegen version to fix missing `omitempty` on generated response objects ([#106](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/106))
 - Updated OpenAPI spec with examples for Cluster and NodePool schemas ([#106](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/106))
