@@ -265,9 +265,46 @@ tracing:
   propagators: "tracecontext,baggage"
 
 # ============================================================
+# Native Sidecar Containers (Kubernetes 1.28+)
+# ============================================================
+# Native sidecars are init containers with restartPolicy: Always (Kubernetes 1.28+).
+# They start BEFORE other init containers and keep running throughout the pod lifecycle.
+# Use this for database proxies that must be available during db-migrate.
+# Each entry is a full Kubernetes container spec — you MUST include restartPolicy: Always.
+# WARNING: Requires Kubernetes 1.28+. On older clusters, these containers will NOT stay running.
+# Operators SHOULD enforce container security via admission policies (PodSecurity Standards, Kyverno, etc.).
+nativeSidecars: []
+# Example: Cloud SQL Auth Proxy as native sidecar
+#   - name: cloud-sql-proxy
+#     restartPolicy: Always
+#     image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.14.3
+#     args:
+#       - "--auto-iam-authn"
+#       - "--structured-logs"
+#       - "--port=5432"
+#       - "PROJECT:REGION:INSTANCE"
+#     securityContext:
+#       allowPrivilegeEscalation: false
+#       capabilities:
+#         drop: [ALL]
+#       readOnlyRootFilesystem: true
+#       runAsNonRoot: true
+#       seccompProfile:
+#         type: RuntimeDefault
+#     resources:
+#       requests:
+#         cpu: 100m
+#         memory: 64Mi
+#       limits:
+#         cpu: 200m
+#         memory: 128Mi
+
+# ============================================================
 # Sidecar Containers
 # ============================================================
-# Generic sidecar injection — each entry is a full Kubernetes container spec.
+# Regular sidecar injection — each entry is a full Kubernetes container spec.
+# These start AFTER init containers complete. Use nativeSidecars above for
+# containers that must be available during init (e.g., database proxies).
 # Use extraVolumes/extraVolumeMounts for sidecar volume needs.
 # Operators SHOULD enforce container security via admission policies (PodSecurity Standards, Kyverno, etc.).
 sidecars: []
@@ -309,20 +346,6 @@ sidecars: []
 #         memory: 128Mi
 #       requests:
 #         cpu: 50m
-#         memory: 64Mi
-#
-# Example: Cloud SQL Auth Proxy (GCP)
-#   - name: cloud-sql-proxy
-#     image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.14.3
-#     args:
-#       - "--structured-logs"
-#       - "--port=5432"
-#       - "PROJECT:REGION:INSTANCE"
-#     securityContext:
-#       runAsNonRoot: true
-#     resources:
-#       requests:
-#         cpu: 100m
 #         memory: 64Mi
 
 # ============================================================
