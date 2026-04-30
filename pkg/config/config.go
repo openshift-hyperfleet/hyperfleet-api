@@ -7,7 +7,6 @@ type ApplicationConfig struct {
 	Metrics  *MetricsConfig             `mapstructure:"metrics" json:"metrics" validate:"required"`
 	Health   *HealthConfig              `mapstructure:"health" json:"health" validate:"required"`
 	Database *DatabaseConfig            `mapstructure:"database" json:"database" validate:"required"`
-	OCM      *OCMConfig                 `mapstructure:"ocm" json:"ocm" validate:"required"`
 	Logging  *LoggingConfig             `mapstructure:"logging" json:"logging" validate:"required"`
 	Adapters *AdapterRequirementsConfig `mapstructure:"adapters" json:"adapters" validate:"required"`
 }
@@ -20,7 +19,6 @@ func NewApplicationConfig() *ApplicationConfig {
 		Metrics:  NewMetricsConfig(),
 		Health:   NewHealthConfig(),
 		Database: NewDatabaseConfig(),
-		OCM:      NewOCMConfig(),
 		Logging:  NewLoggingConfig(),
 		Adapters: NewAdapterRequirementsConfig(),
 	}

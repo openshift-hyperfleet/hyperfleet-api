@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- JWT authentication handler using `golang-jwt/jwt/v5` and `MicahParks/keyfunc/v3` with RS256 validation, configurable issuer and audience, and JWKS key rotation support ([#120](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/120))
 - Hard deletion for Clusters and NodePools: resources and their adapter statuses are permanently removed from the database once all required adapters report `Finalized=True` and no child resources remain ([#119](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/119))
 - `Finalized` condition aggregation with `WaitingForChildResources` intermediate state when all adapters are finalized but child node pools still exist ([#119](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/119))
 - Soft deletion for Clusters and NodePools with `deleted_time` and `deleted_by` fields for tracking deletion requests ([#106](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/106))
@@ -28,6 +29,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Replaced OCM SDK authentication handler with standalone JWT middleware, removing `ocm-sdk-go` dependency and its transitive dependencies (`glog`, `bluemonday`, `json-iterator`) ([#120](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/120))
+- Upgraded JWT library from `golang-jwt/jwt/v4` to `golang-jwt/jwt/v5` ([#120](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/120))
 - Refactored `AdapterStatusDao.Upsert()` to accept a pre-fetched existing record, moving lookup and `LastTransitionTime` preservation logic to the service layer ([#119](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/119))
 - Refactored DAO methods to remove Unscoped calls for fetching Clusters and NodePools ([#106](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/106))
 - Bumped oapi-codegen version to fix missing `omitempty` on generated response objects ([#106](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/106))
@@ -36,6 +39,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Aligned Helm chart with conventions standard ([#87](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/87))
 - Streamlined configuration system with Viper, removed getters and _FILE suffix pattern ([#75](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/75))
 - Used CHANGE_ME placeholder for image registry ([#83](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/83))
+
+### Removed
+
+- OCM SDK dependency (`ocm-sdk-go`), OCM client (`pkg/client/ocm/`), OCM configuration (`pkg/config/ocm.go`), OCM logger bridge (`pkg/logger/ocm_bridge.go`), and OCM authorization mocks ([#120](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/120))
 
 ### Fixed
 

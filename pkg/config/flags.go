@@ -29,6 +29,8 @@ func AddServerFlags(cmd *cobra.Command) {
 	cmd.Flags().String("server-https-key-file", defaults.TLS.KeyFile, "Path to TLS key file")
 	cmd.Flags().Bool("server-https-enabled", defaults.TLS.Enabled, "Enable HTTPS rather than HTTP")
 	cmd.Flags().Bool("server-jwt-enabled", defaults.JWT.Enabled, "Enable JWT authentication")
+	cmd.Flags().String("server-jwt-issuer-url", defaults.JWT.IssuerURL, "Expected JWT issuer URL for token validation")
+	cmd.Flags().String("server-jwt-audience", defaults.JWT.Audience, "Expected JWT audience (optional)")
 	cmd.Flags().Bool("server-authz-enabled", defaults.Authz.Enabled, "Enable authorization on endpoints")
 	cmd.Flags().String("server-jwk-cert-file", defaults.JWK.CertFile, "JWK certificate file path")
 	cmd.Flags().String("server-jwk-cert-url", defaults.JWK.CertURL, "JWK certificate URL")
@@ -95,20 +97,6 @@ func AddHealthFlags(cmd *cobra.Command) {
 	cmd.Flags().Duration("health-db-ping-timeout", defaults.DBPingTimeout, "Database ping timeout")
 }
 
-// AddOCMFlags adds OCM configuration flags following standard naming
-// Format: --ocm-<field> maps to HYPERFLEET_OCM_<FIELD> and ocm.<field>
-func AddOCMFlags(cmd *cobra.Command) {
-	defaults := NewOCMConfig()
-
-	cmd.Flags().String("ocm-base-url", defaults.BaseURL, "OCM API base URL")
-	cmd.Flags().String("ocm-token-url", defaults.TokenURL, "OCM token URL")
-	cmd.Flags().String("ocm-client-id", "", "OCM client ID (prefer env var for security)")
-	cmd.Flags().String("ocm-client-secret", "", "OCM client secret (prefer env var for security)")
-	cmd.Flags().String("ocm-self-token", "", "OCM self token (prefer env var for security)")
-	cmd.Flags().Bool("ocm-debug", defaults.Debug, "Enable OCM debug mode")
-	cmd.Flags().Bool("ocm-mock-enabled", defaults.Mock.Enabled, "Enable mock OCM clients")
-}
-
 // AddAllConfigFlags adds all configuration flags to the command
 // This is a convenience function that adds all flag groups
 //
@@ -124,5 +112,4 @@ func AddAllConfigFlags(cmd *cobra.Command) {
 	AddLoggingFlags(cmd)
 	AddMetricsFlags(cmd)
 	AddHealthFlags(cmd)
-	AddOCMFlags(cmd)
 }

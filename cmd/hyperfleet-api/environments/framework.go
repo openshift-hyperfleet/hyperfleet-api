@@ -8,7 +8,6 @@ import (
 	"github.com/spf13/pflag"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/environments/registry"
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/client/ocm"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
@@ -30,7 +29,7 @@ func init() {
 	})
 }
 
-// EnvironmentImpl defines a set of behaviors for an OCM environment.
+// EnvironmentImpl defines a set of behaviors for a runtime environment.
 // Each environment provides a set of flags for basic set/override of the environment
 // and configuration functions for each component type.
 type EnvironmentImpl interface {
@@ -58,8 +57,6 @@ func Environment() *Env {
 // This is used by the new config system to apply environment-specific settings
 // (e.g., development environment disables JWT and TLS)
 func ApplyEnvironmentOverrides(cfg *config.ApplicationConfig) error {
-	// Read current environment from env var instead of using cached environment.Name
-	// to ensure we use the most up-to-date value
 	envName := GetEnvironmentStrFromEnv()
 	envImpl, found := environments[envName]
 	if !found {
@@ -69,13 +66,12 @@ func ApplyEnvironmentOverrides(cfg *config.ApplicationConfig) error {
 }
 
 // SetEnvironmentDefaults sets environment-specific flag defaults
-// This is used for environment-specific behavior flags (e.g., verbose mode, OCM debug)
 func (e *Env) SetEnvironmentDefaults(flags *pflag.FlagSet) error {
 	return setFlagDefaults(flags, environments[e.Name].EnvironmentDefaults())
 }
 
 // Initialize loads the environment's resources
-// This should be called after the e.Config has been set appropriately though AddFlags and pasing, done elsewhere
+// This should be called after the e.Config has been set appropriately though AddFlags and parsing, done elsewhere
 // The environment does NOT handle flag parsing
 func (e *Env) Initialize() error {
 	ctx := context.Background()
@@ -103,10 +99,6 @@ func (e *Env) Initialize() error {
 		os.Exit(1)
 	}
 
-	err := e.LoadClients()
-	if err != nil {
-		return err
-	}
 	if err := envImpl.OverrideClients(&e.Clients); err != nil {
 		logger.WithError(ctx, err).Error("Failed to configure Clients")
 		os.Exit(1)
@@ -136,39 +128,8 @@ func (e *Env) Seed() *errors.ServiceError {
 }
 
 func (e *Env) LoadServices() {
-	// Initialize the service registry map
 	e.Services.serviceRegistry = make(map[string]interface{})
-
-	// Auto-discovered services (no manual editing needed)
 	registry.LoadDiscoveredServices(&e.Services, e)
-}
-
-func (e *Env) LoadClients() error {
-	ctx := context.Background()
-	var err error
-
-	ocmConfig := ocm.Config{
-		BaseURL:      e.Config.OCM.BaseURL,
-		ClientID:     e.Config.OCM.ClientID,
-		ClientSecret: e.Config.OCM.ClientSecret,
-		SelfToken:    e.Config.OCM.SelfToken,
-		TokenURL:     e.Config.OCM.TokenURL,
-		Debug:        e.Config.OCM.Debug,
-	}
-
-	// Create OCM Authz client
-	if e.Config.OCM.Mock.Enabled {
-		logger.Info(ctx, "Using Mock OCM Authz Client")
-		e.Clients.OCM, err = ocm.NewClientMock(ocmConfig)
-	} else {
-		e.Clients.OCM, err = ocm.NewClient(ocmConfig)
-	}
-	if err != nil {
-		logger.WithError(ctx, err).Error("Unable to create OCM Authz client")
-		return err
-	}
-
-	return nil
 }
 
 func (e *Env) Teardown() {
@@ -176,11 +137,6 @@ func (e *Env) Teardown() {
 	if e.Database.SessionFactory != nil {
 		if err := e.Database.SessionFactory.Close(); err != nil {
 			logger.WithError(ctx, err).Error("Error closing database session factory")
-		}
-	}
-	if e.Clients.OCM != nil {
-		if err := e.Clients.OCM.Close(); err != nil {
-			logger.WithError(ctx, err).Error("Error closing OCM client")
 		}
 	}
 }

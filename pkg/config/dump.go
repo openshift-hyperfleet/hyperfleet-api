@@ -16,6 +16,7 @@ func DumpConfig(config *ApplicationConfig) string {
     BindAddress: %s
     EnableHTTPS: %t
     EnableJWT: %t
+    IssuerURL: %s
   Database:
     Host: %s
     Port: %d
@@ -27,9 +28,6 @@ func DumpConfig(config *ApplicationConfig) string {
     Level: %s
     Format: %s
     OTel.Enabled: %t
-  OCM:
-    BaseURL: %s
-    EnableMock: %t
   Metrics:
     BindAddress: %s
   Health:
@@ -41,6 +39,7 @@ func DumpConfig(config *ApplicationConfig) string {
 		config.Server.BindAddress(),
 		config.Server.TLS.Enabled,
 		config.Server.JWT.Enabled,
+		config.Server.JWT.IssuerURL,
 		config.Database.Host,
 		config.Database.Port,
 		config.Database.Name,
@@ -50,8 +49,6 @@ func DumpConfig(config *ApplicationConfig) string {
 		config.Logging.Level,
 		config.Logging.Format,
 		config.Logging.OTel.Enabled,
-		config.OCM.BaseURL,
-		config.OCM.Mock.Enabled,
 		config.Metrics.BindAddress(),
 		config.Health.BindAddress(),
 		safeAdapterList(config.Adapters, true),

@@ -38,9 +38,6 @@ func (e *integrationTestingEnvImpl) OverrideConfig(c *config.ApplicationConfig) 
 		c.Database.SSL.Mode = SSLModeDisable
 	}
 
-	// Enable OCM mocks for integration testing (no real OCM connection needed)
-	c.OCM.Mock.Enabled = true
-
 	return nil
 }
 

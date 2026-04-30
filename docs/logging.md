@@ -20,9 +20,8 @@ HyperFleet API uses Go's standard library `log/slog` for structured logging with
 1. **pkg/logger/logger.go**: Core logger with HyperFleetHandler (custom slog.Handler)
 2. **pkg/logger/context.go**: Context key definitions for trace_id, span_id, cluster_id, etc.
 3. **pkg/logger/requestid_middleware.go**: Request ID generation and middleware
-4. **pkg/logger/ocm_bridge.go**: OCMLogger interface for backward compatibility
-5. **pkg/middleware/otel.go**: OpenTelemetry trace context extraction
-6. **pkg/telemetry/otel.go**: OpenTelemetry trace provider initialization
+4. **pkg/middleware/otel.go**: OpenTelemetry trace context extraction
+5. **pkg/telemetry/otel.go**: OpenTelemetry trace provider initialization
 
 ### Middleware Chain
 
@@ -533,10 +532,10 @@ func TestLogging(t *testing.T) {
 
 ```bash
 # Run tests with debug logging
-HYPERFLEET_LOGGING_LEVEL=debug OCM_ENV=integration_testing go test ./test/integration/...
+HYPERFLEET_LOGGING_LEVEL=debug go test ./test/integration/...
 
 # Run tests without OTel
-HYPERFLEET_TRACING_ENABLED=false OCM_ENV=integration_testing go test ./...
+HYPERFLEET_TRACING_ENABLED=false go test ./...
 ```
 
 ## References

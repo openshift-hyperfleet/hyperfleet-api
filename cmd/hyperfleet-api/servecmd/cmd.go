@@ -87,6 +87,13 @@ func runServe(cmd *cobra.Command, args []string) {
 		).Warn("HYPERFLEET_LOGGING_OTEL_SAMPLING_RATE is deprecated and ignored. Please use OTEL_TRACES_SAMPLER_ARG instead.")
 	}
 
+	// Check for deprecated ACL config (no longer enforced)
+	if cfg.Server.ACL.File != "" {
+		logger.With(ctx,
+			"deprecated_field", "server.acl.file",
+		).Warn("server.acl.file is set but ACL enforcement is not active in this build; the value will be ignored")
+	}
+
 	// Determine if tracing is enabled using HYPERFLEET_TRACING_ENABLED (tracing standard)
 	var tracingEnabled bool
 	if tracingEnv := os.Getenv("HYPERFLEET_TRACING_ENABLED"); tracingEnv != "" {

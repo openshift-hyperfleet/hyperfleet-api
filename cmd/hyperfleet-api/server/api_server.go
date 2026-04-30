@@ -9,14 +9,15 @@ import (
 	"time"
 
 	gorillahandlers "github.com/gorilla/handlers"
-	"github.com/openshift-online/ocm-sdk-go/authentication"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/environments"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/auth"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
 type apiServer struct {
 	httpServer *http.Server
+	jwtHandler *auth.JWTHandler
 }
 
 var _ Server = &apiServer{}
@@ -34,30 +35,29 @@ func NewAPIServer(tracingEnabled bool) Server {
 	var mainHandler http.Handler = mainRouter
 
 	if env().Config.Server.JWT.Enabled {
-		// Create the logger for the authentication handler using slog bridge
-		authnLogger := logger.NewOCMLoggerBridge()
-
-		// Create the handler that verifies that tokens are valid:
-		var err error
-		mainHandler, err = authentication.NewHandler().
-			Logger(authnLogger).
-			KeysFile(env().Config.Server.JWK.CertFile).
-			KeysURL(env().Config.Server.JWK.CertURL).
-			ACLFile(env().Config.Server.ACL.File).
-			Public("^/api/hyperfleet/?$").
-			Public("^/api/hyperfleet/v1/?$").
-			Public("^/api/hyperfleet/v1/openapi/?$").
-			Public("^/api/hyperfleet/v1/openapi.html/?$").
-			Public("^/api/hyperfleet/v1/errors(/.*)?$").
-			Next(mainHandler).
-			Build()
-		check(err, "Unable to create authentication handler")
+		jwtHandler, err := auth.NewJWTHandler(context.Background(), auth.JWTHandlerConfig{
+			KeysFile:  env().Config.Server.JWK.CertFile,
+			KeysURL:   env().Config.Server.JWK.CertURL,
+			IssuerURL: env().Config.Server.JWT.IssuerURL,
+			Audience:  env().Config.Server.JWT.Audience,
+			PublicPaths: []string{
+				"^/api/hyperfleet/?$",
+				"^/api/hyperfleet/v1/?$",
+				"^/api/hyperfleet/v1/openapi/?$",
+				"^/api/hyperfleet/v1/openapi.html/?$",
+				"^/api/hyperfleet/v1/errors(/.*)?$",
+			},
+			Next: mainHandler,
+		})
+		check(err, "Unable to create JWT authentication handler")
+		s.jwtHandler = jwtHandler
+		mainHandler = jwtHandler
 	}
 
 	// Configure CORS for Red Hat console and API access
 	mainHandler = gorillahandlers.CORS(
 		gorillahandlers.AllowedOrigins([]string{
-			// OCM UI local development URLs
+			// Console local development URLs
 			"https://qa.foo.redhat.com:1337",
 			"https://prod.foo.redhat.com:1337",
 			"https://ci.foo.redhat.com:1337",
@@ -162,5 +162,10 @@ func (s apiServer) Start() {
 func (s apiServer) Stop() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	return s.httpServer.Shutdown(ctx)
+	err := s.httpServer.Shutdown(ctx)
+	// Close JWT handler after HTTP drain so in-flight requests can still verify tokens.
+	if s.jwtHandler != nil {
+		s.jwtHandler.Close()
+	}
+	return err
 }

@@ -29,9 +29,6 @@ func SetMinimalTestEnv(t *testing.T) {
 	// Logging config - minimal required
 	t.Setenv("HYPERFLEET_LOGGING_LEVEL", "info")
 
-	// OCM config - minimal required
-	t.Setenv("HYPERFLEET_OCM_BASE_URL", "https://api.example.com")
-
 	// Metrics config - using new structure (host + port)
 	t.Setenv("HYPERFLEET_METRICS_HOST", "localhost")
 	t.Setenv("HYPERFLEET_METRICS_PORT", "9090")

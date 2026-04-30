@@ -10,15 +10,15 @@ import (
 // ServerConfig holds HTTP/HTTPS server configuration
 // Follows HyperFleet Configuration Standard
 type ServerConfig struct {
-	JWK               JWKConfig      `mapstructure:"jwk" json:"jwk" validate:"required"`
 	Hostname          string         `mapstructure:"hostname" json:"hostname" validate:"omitempty,hostname|ip"`
 	Host              string         `mapstructure:"host" json:"host" validate:"required,hostname|ip"`
 	OpenAPISchemaPath string         `mapstructure:"openapi_schema_path" json:"openapi_schema_path"`
-	ACL               ACLConfig      `mapstructure:"acl" json:"acl" validate:"required"`
+	JWK               JWKConfig      `mapstructure:"jwk" json:"jwk" validate:"required"`
+	ACL               ACLConfig      `mapstructure:"acl" json:"acl" validate:"omitempty"`
 	TLS               TLSConfig      `mapstructure:"tls" json:"tls" validate:"required"`
+	JWT               JWTConfig      `mapstructure:"jwt" json:"jwt" validate:"required"`
 	Timeouts          TimeoutsConfig `mapstructure:"timeouts" json:"timeouts" validate:"required"`
 	Port              int            `mapstructure:"port" json:"port" validate:"required,min=1,max=65535"`
-	JWT               JWTConfig      `mapstructure:"jwt" json:"jwt" validate:"required"`
 	Authz             AuthzConfig    `mapstructure:"authz" json:"authz" validate:"required"`
 }
 
@@ -63,7 +63,19 @@ func (c *TLSConfig) Validate() error {
 
 // JWTConfig holds JWT authentication configuration
 type JWTConfig struct {
-	Enabled bool `mapstructure:"enabled" json:"enabled"`
+	IssuerURL string `mapstructure:"issuer_url" json:"issuer_url" validate:"omitempty,url"`
+	Audience  string `mapstructure:"audience" json:"audience"`
+	Enabled   bool   `mapstructure:"enabled" json:"enabled"`
+}
+
+func (c *JWTConfig) Validate() error {
+	if !c.Enabled {
+		return nil
+	}
+	if c.IssuerURL == "" {
+		return fmt.Errorf("server.jwt.issuer_url is required when jwt is enabled")
+	}
+	return nil
 }
 
 // JWKConfig holds JWK certificate configuration
@@ -77,7 +89,8 @@ type AuthzConfig struct {
 	Enabled bool `mapstructure:"enabled" json:"enabled"`
 }
 
-// ACLConfig holds access control list configuration
+// Deprecated: ACLConfig is kept for Helm values.yaml backward compatibility.
+// ACL checking was provided by the OCM SDK handler and is no longer functional.
 type ACLConfig struct {
 	File string `mapstructure:"file" json:"file" validate:"omitempty,filepath"`
 }
@@ -100,7 +113,9 @@ func NewServerConfig() *ServerConfig {
 			KeyFile:  "",
 		},
 		JWT: JWTConfig{
-			Enabled: true,
+			Enabled:   true,
+			IssuerURL: "https://sso.redhat.com/auth/realms/redhat-external",
+			Audience:  "",
 		},
 		JWK: JWKConfig{
 			CertFile: "",

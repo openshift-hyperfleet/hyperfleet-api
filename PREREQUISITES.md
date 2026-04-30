@@ -38,15 +38,6 @@ PostgreSQL client tools provide the `psql` command-line interface for database i
 - **Installation**: Follow the instructions on the [jq official website](https://jqlang.github.io/jq/)
 - **Verification**: Run `jq --version`
 
-## ocm CLI (Optional)
-
-`ocm` stands for OpenShift Cluster Manager CLI and is used for authentication in production mode.
-
-- **Purpose**: CLI tool for authenticating with OCM and making authenticated API requests
-- **Installation**: Refer to the [OCM CLI documentation](https://github.com/openshift-online/ocm-cli)
-- **Note**: Only required when running with authentication enabled (production mode)
-- **Development**: For local development, use `make run-no-auth` which bypasses authentication
-
 ## Quick Verification
 
 Run these commands to verify all prerequisites are installed:
@@ -57,9 +48,6 @@ go version              # Should show 1.24 or higher
 podman --version
 psql --version          # PostgreSQL client
 jq --version            # JSON processor
-
-# Optional tools
-ocm version             # OCM CLI (production auth only)
 ```
 
 ## Getting Started
