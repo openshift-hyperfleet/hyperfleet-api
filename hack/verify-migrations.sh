@@ -4,10 +4,12 @@ set -euo pipefail
 
 MIGRATION_DIR="pkg/db/migrations"
 
-# In Prow, compare against PULL_BASE_SHA (the upstream commit the PR targets —
-# a fork's origin/main may be stale). Locally, fall back to merge-base with
-# origin/main; this also catches uncommitted changes in the working tree.
-BASE="${PULL_BASE_SHA:-$(git merge-base HEAD origin/main)}"
+# Find the base commit to diff against:
+# - In Prow: ci-operator merges the PR onto the base, so HEAD is a merge commit
+#   and merge-base resolves to the base tip.
+# - Locally: resolves to where the current branch diverged from origin/main,
+#   which also catches uncommitted changes in the working tree.
+BASE=$(git merge-base HEAD origin/main)
 
 # Migration implementation files must not be modified, renamed, or deleted.
 # migration_structs.go is excluded — it must change when registering new migrations.
