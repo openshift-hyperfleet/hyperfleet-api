@@ -270,7 +270,7 @@ func (s *sqlNodePoolService) ProcessAdapterStatus(
 	updatedStatuses := replaceAdapterStatusInList(allStatuses, upsertedStatus)
 
 	if nodePool.DeletedTime != nil {
-		hardDeleted, hdErr := s.tryHardDeleteNodePool(ctx, nodePoolID, conditions, updatedStatuses)
+		hardDeleted, hdErr := s.tryHardDeleteNodePool(ctx, nodePool, conditions, updatedStatuses)
 		if hdErr != nil {
 			return nil, hdErr
 		}
@@ -371,33 +371,33 @@ func (s *sqlNodePoolService) validateAndClassifyNodePool(
 	return conditions, triggerAggregation, nil
 }
 
-// tryHardDeleteNodePool checks whether all required adapters have reported Finalized=True for
-// a soft-deleted node pool and, when so, permanently removes the node pool and all its adapter
-// statuses. Unlike clusters, node pools have no child resources to check. Returns true when the
+// tryHardDeleteNodePool checks whether all required adapters have reported Finalized=True at the current
+// resource generation for a soft-deleted node pool and, when so, permanently removes the node pool and all
+// its adapter statuses. Unlike clusters, node pools have no child resources to check. Returns true when the
 // hard-delete was performed.
 //
 // Accepts the pre-fetched (post-upsert) adapter statuses list to avoid a redundant FindByResource
 // call and to ensure the just-upserted status is visible to allAdaptersFinalized.
 func (s *sqlNodePoolService) tryHardDeleteNodePool(
-	ctx context.Context, nodePoolID string, conditions []api.AdapterCondition,
+	ctx context.Context, nodePool *api.NodePool, conditions []api.AdapterCondition,
 	allStatuses api.AdapterStatusList,
 ) (bool, *errors.ServiceError) {
 	if !incomingReportedFinalized(conditions) {
 		return false, nil
 	}
 
-	if !allAdaptersFinalized(s.adapterConfig.Required.Nodepool, allStatuses) {
+	if !allAdaptersFinalized(s.adapterConfig.Required.Nodepool, allStatuses, nodePool.Generation) {
 		return false, nil
 	}
 
-	if err := s.adapterStatusDao.DeleteByResource(ctx, "NodePool", nodePoolID); err != nil {
+	if err := s.adapterStatusDao.DeleteByResource(ctx, "NodePool", nodePool.ID); err != nil {
 		return false, errors.GeneralError("Failed to delete adapter statuses during hard-delete: %s", err)
 	}
-	if err := s.nodePoolDao.Delete(ctx, nodePoolID); err != nil {
+	if err := s.nodePoolDao.Delete(ctx, nodePool.ID); err != nil {
 		return false, errors.GeneralError("Failed to hard-delete nodepool: %s", err)
 	}
 
-	logger.With(ctx, logger.FieldNodePoolID, nodePoolID).
+	logger.With(ctx, logger.FieldNodePoolID, nodePool.ID).
 		Info("Hard-deleted nodepool after all required adapters reported Finalized=True")
 
 	return true, nil

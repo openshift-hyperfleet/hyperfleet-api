@@ -735,13 +735,15 @@ func strPtr(s string) *string {
 	return &s
 }
 
-// allAdaptersFinalized checks if all required adapters have Finalized=True in their adapter_status conditions.
-// Finalized is optional — if the condition is absent, it's treated as not finalized (same as False).
-func allAdaptersFinalized(requiredAdapters []string, adapterStatuses api.AdapterStatusList) bool {
+// allAdaptersFinalized checks if all required adapters have Finalized=True in their adapter_status conditions
+// at the specified resource generation. Finalized is optional — if the condition is absent, it's treated as
+// not finalized (same as False). Adapter statuses from older generations are ignored to prevent premature
+// hard-deletion when the resource generation changes during the deletion lifecycle.
+func allAdaptersFinalized(requiredAdapters []string, adapterStatuses api.AdapterStatusList, currentGeneration int32) bool {
 	finalizedAdapters := make(map[string]struct{})
 
 	for _, adapterStatus := range adapterStatuses {
-		if adapterStatus.IsFinalized() {
+		if adapterStatus.ObservedGeneration == currentGeneration && adapterStatus.IsFinalized() {
 			finalizedAdapters[adapterStatus.Adapter] = struct{}{}
 		}
 	}
