@@ -183,13 +183,11 @@ func (d *sqlNodePoolDao) UpdateStatusConditionsByIDs(ctx context.Context, update
 
 func (d *sqlNodePoolDao) ExistsByOwner(ctx context.Context, ownerID string) (bool, error) {
 	g2 := (*d.sessionFactory).New(ctx)
-	var exists bool
-
-	query := "SELECT EXISTS(SELECT 1 FROM node_pools WHERE owner_id = ?)"
-	if err := g2.Raw(query, ownerID).Scan(&exists).Error; err != nil {
+	var count int64
+	if err := g2.Model(&api.NodePool{}).Where("owner_id = ?", ownerID).Limit(1).Count(&count).Error; err != nil {
 		return false, err
 	}
-	return exists, nil
+	return count > 0, nil
 }
 
 func (d *sqlNodePoolDao) All(ctx context.Context) (api.NodePoolList, error) {
