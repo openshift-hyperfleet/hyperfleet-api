@@ -1,19 +1,40 @@
 #!/usr/bin/env bash
 # Verifies migration files follow project conventions.
+#
+# Migration implementation files must not be modified, renamed, or deleted
+# once committed. migration_structs.go is excluded — it must change when
+# registering new migrations. Schema changes must be additive: add a new
+# migration file instead.
 set -euo pipefail
 
 MIGRATION_DIR="pkg/db/migrations"
 
-# Find the base commit to diff against:
-# - In Prow: ci-operator merges the PR onto the base, so HEAD is a merge commit
-#   and merge-base resolves to the base tip.
-# - Locally: resolves to where the current branch diverged from origin/main,
-#   which also catches uncommitted changes in the working tree.
-BASE=$(git merge-base HEAD origin/main)
+# Determine the base commit to diff against.
+#
+# Prow's clonerefs fetches via raw URLs and does NOT add an `origin` remote,
+# so `origin/main` only exists in local checkouts. Three possible contexts:
+#
+#   1. Prow presubmit on this repo: clonerefs runs `git merge --no-ff <pr-sha>`
+#      onto the upstream base, so HEAD is a merge commit. HEAD^1 is the
+#      upstream main tip the PR was merged onto; the working tree contains
+#      all PR changes layered on top. `git diff HEAD^1` therefore yields the
+#      cumulative diff of every commit in the PR against upstream main.
+#
+#   2. Prow rehearsal / extra_refs (e.g. openshift/release PR running this
+#      job against hyperfleet-api at main): no PR is merged in, HEAD has a
+#      single parent and there is nothing to verify.
+#
+#   3. Local run: diff against the local origin/main snapshot. May lag
+#      behind upstream if not recently fetched — CI is the source of truth.
+if git rev-parse --verify --quiet HEAD^2 >/dev/null; then
+    BASE=$(git rev-parse HEAD^1)
+elif git rev-parse --verify --quiet origin/main >/dev/null; then
+    BASE=$(git merge-base HEAD origin/main)
+else
+    echo "verify-migrations: no PR detected (HEAD is not a merge commit and origin/main is not configured); skipping."
+    exit 0
+fi
 
-# Migration implementation files must not be modified, renamed, or deleted.
-# migration_structs.go is excluded — it must change when registering new migrations.
-# Schema changes must be additive — add a new migration file instead.
 VIOLATIONS=$(git diff --diff-filter=MRCD --name-only "${BASE}" -- \
     "${MIGRATION_DIR}/*.go" \
     ":(exclude)${MIGRATION_DIR}/migration_structs.go")
