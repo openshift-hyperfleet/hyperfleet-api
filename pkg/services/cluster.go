@@ -424,7 +424,7 @@ func (s *sqlClusterService) tryHardDeleteCluster(
 		return false, nil
 	}
 
-	if !allAdaptersFinalized(s.adapterConfig.Required.Cluster, allStatuses) {
+	if !allAdaptersFinalized(s.adapterConfig.Required.Cluster, allStatuses, cluster.Generation) {
 		return false, nil
 	}
 
