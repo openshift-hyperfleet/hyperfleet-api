@@ -314,11 +314,11 @@ func computeReconciled(
 ) api.ResourceCondition {
 	isDeleting := deletedTime != nil
 
-	allAdaptersReady := len(requiredAdapters) > 0
+	allAdaptersConditionMet := len(requiredAdapters) > 0
 	for _, adapterName := range requiredAdapters {
 		snap, found := snapshotsByAdapter[adapterName]
 		if !found || snap.observedGeneration != resourceGen {
-			allAdaptersReady = false
+			allAdaptersConditionMet = false
 			break
 		}
 		conditionMet := snap.availableTrue
@@ -326,14 +326,14 @@ func computeReconciled(
 			conditionMet = snap.finalizedTrue
 		}
 		if !conditionMet {
-			allAdaptersReady = false
+			allAdaptersConditionMet = false
 			break
 		}
 	}
 
 	// Reconciled=True requires all adapters ready AND, during deletion, no child resources remaining.
 	status := api.ConditionTrue
-	if !allAdaptersReady || (isDeleting && hasChildResources) {
+	if !allAdaptersConditionMet || (isDeleting && hasChildResources) {
 		status = api.ConditionFalse
 	}
 
@@ -342,7 +342,7 @@ func computeReconciled(
 	case status == api.ConditionTrue:
 		reason = reasonAllAdaptersReconciled
 		message = reason
-	case isDeleting && allAdaptersReady: // adapters finalized but children still exist
+	case isDeleting && allAdaptersConditionMet: // adapters finalized but children still exist
 		reason = reasonWaitingForChildResources
 		message = "Deletion in progress. All required adapters reported Finalized=True but child resources still exist"
 	case isDeleting:
