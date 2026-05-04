@@ -707,3 +707,238 @@ func TestNodePoolSoftDelete(t *testing.T) {
 		Expect(resp.StatusCode()).To(Equal(http.StatusNotFound))
 	})
 }
+
+func TestNodePoolHardDelete(t *testing.T) {
+	t.Run("given a soft-deleted nodepool, when all required adapters report Finalized=True, then nodepool and its adapter statuses are hard-deleted from DB", func(t *testing.T) { //nolint:lll
+		RegisterTestingT(t)
+		h, client := test.RegisterIntegration(t)
+		account := h.NewRandAccount()
+		ctx := h.NewAuthenticatedContext(account)
+
+		cluster, err := h.Factories.NewClusters(h.NewID())
+		Expect(err).NotTo(HaveOccurred())
+		nodePool, err := h.Factories.NewNodePools(h.NewID())
+		Expect(err).NotTo(HaveOccurred())
+		dbSession := h.DBFactory.New(ctx)
+		err = dbSession.Model(nodePool).Update("owner_id", cluster.ID).Error
+		Expect(err).NotTo(HaveOccurred())
+
+		delResp, err := client.DeleteNodePoolByIdWithResponse(ctx, cluster.ID, nodePool.ID, test.WithAuthToken(ctx))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(delResp.StatusCode()).To(Equal(http.StatusAccepted))
+		newGeneration := delResp.JSON202.Generation
+		Expect(newGeneration).To(Equal(nodePool.Generation + 1))
+
+		requiredAdapters := []string{"validation", "hypershift"}
+		for _, adapter := range requiredAdapters {
+			statusInput := newAdapterStatusRequest(
+				adapter,
+				newGeneration,
+				[]openapi.ConditionRequest{
+					{
+						Type:   api.ConditionTypeApplied,
+						Status: openapi.AdapterConditionStatusFalse,
+						Reason: util.PtrString("ManifestWorkNotDiscovered"),
+					},
+					{
+						Type:   api.ConditionTypeAvailable,
+						Status: openapi.AdapterConditionStatusFalse,
+						Reason: util.PtrString("NamespaceNotDiscovered"),
+					},
+					{Type: api.ConditionTypeHealth, Status: openapi.AdapterConditionStatusTrue, Reason: util.PtrString("Healthy")},
+					{
+						Type:   api.ConditionTypeFinalized,
+						Status: openapi.AdapterConditionStatusTrue,
+						Reason: util.PtrString("CleanupConfirmed"),
+					},
+				},
+				nil,
+			)
+			statusResp, loopErr := client.PostNodePoolStatusesWithResponse(
+				ctx, cluster.ID, nodePool.ID,
+				openapi.PostNodePoolStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
+			)
+			Expect(loopErr).NotTo(HaveOccurred())
+			Expect(statusResp.StatusCode()).To(Equal(http.StatusCreated))
+		}
+
+		var nodePoolCheck api.NodePool
+		dbErr := dbSession.First(&nodePoolCheck, "id = ?", nodePool.ID).Error
+		Expect(dbErr).To(HaveOccurred(), "Nodepool should be hard-deleted from DB")
+		Expect(dbErr.Error()).To(ContainSubstring("record not found"))
+
+		var adapterStatuses []api.AdapterStatus
+		err = dbSession.Where("resource_type = ? AND resource_id = ?", "NodePool", nodePool.ID).Find(&adapterStatuses).Error
+		Expect(err).NotTo(HaveOccurred())
+		Expect(adapterStatuses).To(BeEmpty(), "Adapter statuses should be hard-deleted")
+
+		var clusterCheck api.Cluster
+		err = dbSession.First(&clusterCheck, "id = ?", cluster.ID).Error
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	t.Run("given a soft-deleted nodepool, when adapters report Finalized=False, then nodepool remains in DB", func(t *testing.T) { //nolint:lll
+		RegisterTestingT(t)
+		h, client := test.RegisterIntegration(t)
+		account := h.NewRandAccount()
+		ctx := h.NewAuthenticatedContext(account)
+
+		cluster, err := h.Factories.NewClusters(h.NewID())
+		Expect(err).NotTo(HaveOccurred())
+		nodePool, err := h.Factories.NewNodePools(h.NewID())
+		Expect(err).NotTo(HaveOccurred())
+		dbSession := h.DBFactory.New(ctx)
+		err = dbSession.Model(nodePool).Update("owner_id", cluster.ID).Error
+		Expect(err).NotTo(HaveOccurred())
+
+		delResp, err := client.DeleteNodePoolByIdWithResponse(ctx, cluster.ID, nodePool.ID, test.WithAuthToken(ctx))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(delResp.StatusCode()).To(Equal(http.StatusAccepted))
+		newGeneration := delResp.JSON202.Generation
+
+		statusInput := newAdapterStatusRequest(
+			"validation",
+			newGeneration,
+			[]openapi.ConditionRequest{
+				{
+					Type:   api.ConditionTypeApplied,
+					Status: openapi.AdapterConditionStatusFalse,
+					Reason: util.PtrString("CleanupInProgress"),
+				},
+				{
+					Type:   api.ConditionTypeAvailable,
+					Status: openapi.AdapterConditionStatusFalse,
+					Reason: util.PtrString("ResourcesStillExist"),
+				},
+				{Type: api.ConditionTypeHealth, Status: openapi.AdapterConditionStatusTrue, Reason: util.PtrString("Healthy")},
+				{Type: api.ConditionTypeFinalized, Status: openapi.AdapterConditionStatusFalse, Reason: util.PtrString("")},
+			},
+			nil,
+		)
+		statusResp, err := client.PostNodePoolStatusesWithResponse(
+			ctx, cluster.ID, nodePool.ID,
+			openapi.PostNodePoolStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
+		)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(statusResp.StatusCode()).To(Equal(http.StatusCreated))
+
+		var nodePoolCheck api.NodePool
+		err = dbSession.First(&nodePoolCheck, "id = ?", nodePool.ID).Error
+		Expect(err).NotTo(HaveOccurred())
+		Expect(nodePoolCheck.DeletedTime).NotTo(BeNil(), "Nodepool should still be soft-deleted")
+	})
+
+	t.Run("given a soft-deleted nodepool, when only one of the required adapters reports Finalized=True, then nodepool remains and partial adapter status is stored", func(t *testing.T) { //nolint:lll
+		RegisterTestingT(t)
+		h, client := test.RegisterIntegration(t)
+		account := h.NewRandAccount()
+		ctx := h.NewAuthenticatedContext(account)
+
+		cluster, err := h.Factories.NewClusters(h.NewID())
+		Expect(err).NotTo(HaveOccurred())
+		nodePool, err := h.Factories.NewNodePools(h.NewID())
+		Expect(err).NotTo(HaveOccurred())
+		dbSession := h.DBFactory.New(ctx)
+		err = dbSession.Model(nodePool).Update("owner_id", cluster.ID).Error
+		Expect(err).NotTo(HaveOccurred())
+
+		delResp, err := client.DeleteNodePoolByIdWithResponse(ctx, cluster.ID, nodePool.ID, test.WithAuthToken(ctx))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(delResp.StatusCode()).To(Equal(http.StatusAccepted))
+		newGeneration := delResp.JSON202.Generation
+
+		statusInput := newAdapterStatusRequest(
+			"validation",
+			newGeneration,
+			[]openapi.ConditionRequest{
+				{
+					Type:   api.ConditionTypeApplied,
+					Status: openapi.AdapterConditionStatusFalse,
+					Reason: util.PtrString("ManifestWorkNotDiscovered"),
+				},
+				{
+					Type:   api.ConditionTypeAvailable,
+					Status: openapi.AdapterConditionStatusFalse,
+					Reason: util.PtrString("NamespaceNotDiscovered"),
+				},
+				{Type: api.ConditionTypeHealth, Status: openapi.AdapterConditionStatusTrue, Reason: util.PtrString("Healthy")},
+				{
+					Type:   api.ConditionTypeFinalized,
+					Status: openapi.AdapterConditionStatusTrue,
+					Reason: util.PtrString("CleanupConfirmed"),
+				},
+			},
+			nil,
+		)
+		statusResp, err := client.PostNodePoolStatusesWithResponse(
+			ctx, cluster.ID, nodePool.ID,
+			openapi.PostNodePoolStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
+		)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(statusResp.StatusCode()).To(Equal(http.StatusCreated))
+
+		var nodePoolCheck api.NodePool
+		err = dbSession.First(&nodePoolCheck, "id = ?", nodePool.ID).Error
+		Expect(err).NotTo(HaveOccurred())
+
+		var adapterStatus api.AdapterStatus
+		err = dbSession.Where("resource_type = ? AND resource_id = ? AND adapter = ?",
+			"NodePool", nodePool.ID, "validation").First(&adapterStatus).Error
+		Expect(err).NotTo(HaveOccurred())
+		Expect(adapterStatus.Adapter).To(Equal("validation"), "Adapter status should be stored")
+	})
+
+	t.Run("given a nodepool that is not soft-deleted, when all adapters report Finalized=True, then nodepool is not hard-deleted", func(t *testing.T) { //nolint:lll
+		RegisterTestingT(t)
+		h, client := test.RegisterIntegration(t)
+		account := h.NewRandAccount()
+		ctx := h.NewAuthenticatedContext(account)
+
+		cluster, err := h.Factories.NewClusters(h.NewID())
+		Expect(err).NotTo(HaveOccurred())
+		nodePool, err := h.Factories.NewNodePools(h.NewID())
+		Expect(err).NotTo(HaveOccurred())
+		dbSession := h.DBFactory.New(ctx)
+		err = dbSession.Model(nodePool).Update("owner_id", cluster.ID).Error
+		Expect(err).NotTo(HaveOccurred())
+
+		requiredAdapters := []string{"validation", "hypershift"}
+		for _, adapter := range requiredAdapters {
+			statusInput := newAdapterStatusRequest(
+				adapter,
+				nodePool.Generation,
+				[]openapi.ConditionRequest{
+					{
+						Type:   api.ConditionTypeApplied,
+						Status: openapi.AdapterConditionStatusTrue,
+						Reason: util.PtrString("AppliedManifestWorkComplete"),
+					},
+					{
+						Type:   api.ConditionTypeAvailable,
+						Status: openapi.AdapterConditionStatusTrue,
+						Reason: util.PtrString("AllResourcesAvailable"),
+					},
+					{Type: api.ConditionTypeHealth, Status: openapi.AdapterConditionStatusTrue, Reason: util.PtrString("Healthy")},
+					{Type: api.ConditionTypeFinalized, Status: openapi.AdapterConditionStatusTrue, Reason: util.PtrString("")},
+				},
+				nil,
+			)
+			statusResp, loopErr := client.PostNodePoolStatusesWithResponse(
+				ctx, cluster.ID, nodePool.ID,
+				openapi.PostNodePoolStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
+			)
+			Expect(loopErr).NotTo(HaveOccurred())
+			Expect(statusResp.StatusCode()).To(Equal(http.StatusCreated))
+		}
+
+		var nodePoolCheck api.NodePool
+		err = dbSession.First(&nodePoolCheck, "id = ?", nodePool.ID).Error
+		Expect(err).NotTo(HaveOccurred())
+		Expect(nodePoolCheck.DeletedTime).To(BeNil(), "Nodepool should not be soft-deleted")
+
+		var adapterStatuses []api.AdapterStatus
+		err = dbSession.Where("resource_type = ? AND resource_id = ?", "NodePool", nodePool.ID).Find(&adapterStatuses).Error
+		Expect(err).NotTo(HaveOccurred())
+		Expect(adapterStatuses).To(HaveLen(2))
+	})
+}

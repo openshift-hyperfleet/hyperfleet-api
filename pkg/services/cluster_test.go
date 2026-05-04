@@ -50,6 +50,10 @@ func (d *mockClusterDao) Get(ctx context.Context, id string) (*api.Cluster, erro
 	return nil, gorm.ErrRecordNotFound
 }
 
+func (d *mockClusterDao) GetForUpdate(ctx context.Context, id string) (*api.Cluster, error) {
+	return d.Get(ctx, id)
+}
+
 func (d *mockClusterDao) Create(ctx context.Context, cluster *api.Cluster) (*api.Cluster, error) {
 	if cluster.CreatedTime.IsZero() {
 		now := time.Now()
@@ -69,6 +73,15 @@ func (d *mockClusterDao) Replace(ctx context.Context, cluster *api.Cluster) (*ap
 
 func (d *mockClusterDao) Save(ctx context.Context, cluster *api.Cluster) error {
 	d.clusters[cluster.ID] = cluster
+	return nil
+}
+
+func (d *mockClusterDao) SaveStatusConditions(ctx context.Context, id string, statusConditions []byte) error {
+	c, ok := d.clusters[id]
+	if !ok {
+		return gorm.ErrRecordNotFound
+	}
+	c.StatusConditions = statusConditions
 	return nil
 }
 
@@ -124,9 +137,11 @@ func (d *mockAdapterStatusDao) Replace(ctx context.Context, status *api.AdapterS
 	return status, nil
 }
 
-func (d *mockAdapterStatusDao) Upsert(ctx context.Context, status *api.AdapterStatus) (*api.AdapterStatus, error) {
+func (d *mockAdapterStatusDao) Upsert(
+	ctx context.Context, status *api.AdapterStatus, existing *api.AdapterStatus,
+) (*api.AdapterStatus, error) {
 	key := status.ResourceType + ":" + status.ResourceID + ":" + status.Adapter
-	if existing, ok := d.statuses[key]; ok {
+	if existing != nil {
 		isStoredFresherOrEqual := existing.ObservedGeneration > status.ObservedGeneration ||
 			(existing.ObservedGeneration == status.ObservedGeneration &&
 				!existing.LastReportTime.Before(status.LastReportTime))
@@ -148,6 +163,15 @@ func (d *mockAdapterStatusDao) Upsert(ctx context.Context, status *api.AdapterSt
 
 func (d *mockAdapterStatusDao) Delete(ctx context.Context, id string) error {
 	delete(d.statuses, id)
+	return nil
+}
+
+func (d *mockAdapterStatusDao) DeleteByResource(ctx context.Context, resourceType, resourceID string) error {
+	for key, s := range d.statuses {
+		if s.ResourceType == resourceType && s.ResourceID == resourceID {
+			delete(d.statuses, key)
+		}
+	}
 	return nil
 }
 
@@ -299,7 +323,7 @@ func TestProcessAdapterStatus_SubsequentUnknownCondition(t *testing.T) {
 		CreatedTime:        now,
 		LastReportTime:     now,
 	}
-	_, _ = adapterStatusDao.Upsert(ctx, existingStatus)
+	_, _ = adapterStatusDao.Upsert(ctx, existingStatus, nil)
 
 	// Now send another Unknown status report
 	newAdapterStatus := &api.AdapterStatus{
@@ -633,7 +657,7 @@ func TestProcessAdapterStatus_SubsequentMultipleConditions_AvailableUnknown(t *t
 		CreatedTime:        now,
 		LastReportTime:     now,
 	}
-	_, _ = adapterStatusDao.Upsert(ctx, existingStatus)
+	_, _ = adapterStatusDao.Upsert(ctx, existingStatus, nil)
 
 	// Now send another report with multiple conditions including Available=Unknown
 	conditions := []api.AdapterCondition{
@@ -1377,5 +1401,131 @@ func TestClusterSoftDelete(t *testing.T) {
 		g.Expect(postReady).NotTo(BeNil())
 		g.Expect(postReady.Status).To(Equal(api.ConditionFalse))
 		g.Expect(postReady.ObservedGeneration).To(Equal(int32(2)))
+	})
+}
+
+func TestReconciled_DuringDeletion_ChildResources(t *testing.T) {
+	adapterConfig := &config.AdapterRequirementsConfig{
+		Required: config.RequiredAdapters{
+			Cluster:  []string{"validation"},
+			Nodepool: []string{"validation"},
+		},
+	}
+
+	makeClusterWithDeletion := func(clusterID string, gen int32) *api.Cluster {
+		t := time.Now().UTC().Truncate(time.Microsecond)
+		return &api.Cluster{
+			Meta:        api.Meta{ID: clusterID},
+			Generation:  gen,
+			DeletedTime: &t,
+		}
+	}
+
+	finalizedConditions := func() []byte {
+		now := time.Now()
+		conds := []api.AdapterCondition{
+			{Type: api.ConditionTypeAvailable, Status: api.AdapterConditionTrue, LastTransitionTime: now},
+			{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: now},
+			{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: now},
+			{Type: api.ConditionTypeFinalized, Status: api.AdapterConditionTrue, LastTransitionTime: now},
+		}
+		b, _ := json.Marshal(conds)
+		return b
+	}
+
+	name := "all adapters finalized, nodepool still exists" +
+		" → Reconciled=False with WaitingForChildResources"
+	t.Run(name, func(t *testing.T) {
+		g := NewWithT(t)
+		ctx := context.Background()
+		clusterID := "cluster-with-nodepools"
+
+		clusterDao := newMockClusterDao()
+		nodePoolDao := newMockNodePoolDao()
+		adapterStatusDao := newMockAdapterStatusDao()
+		service := NewClusterService(clusterDao, nodePoolDao, adapterStatusDao, adapterConfig)
+
+		cluster := makeClusterWithDeletion(clusterID, 2)
+		clusterDao.clusters[clusterID] = cluster
+
+		nodePoolDao.nodePools["np-1"] = &api.NodePool{Meta: api.Meta{ID: "np-1"}, OwnerID: clusterID}
+
+		now := time.Now()
+		condJSON := finalizedConditions()
+		adapterStatusDao.statuses["Cluster:"+clusterID+":validation"] = &api.AdapterStatus{
+			ResourceType: "Cluster", ResourceID: clusterID, Adapter: "validation",
+			ObservedGeneration: 2, Conditions: condJSON,
+			CreatedTime: now, LastReportTime: now,
+		}
+
+		updated, svcErr := service.UpdateClusterStatusFromAdapters(ctx, clusterID)
+		g.Expect(svcErr).To(BeNil())
+
+		var conds []api.ResourceCondition
+		g.Expect(json.Unmarshal(updated.StatusConditions, &conds)).To(Succeed())
+
+		var reconciled, ready *api.ResourceCondition
+		for i := range conds {
+			switch conds[i].Type {
+			case api.ConditionTypeReconciled:
+				reconciled = &conds[i]
+			case api.ConditionTypeReady:
+				ready = &conds[i]
+			}
+		}
+
+		g.Expect(reconciled).NotTo(BeNil())
+		g.Expect(reconciled.Status).To(Equal(api.ConditionFalse))
+		g.Expect(reconciled.Reason).NotTo(BeNil())
+		g.Expect(*reconciled.Reason).To(Equal(reasonWaitingForChildResources))
+
+		g.Expect(ready).NotTo(BeNil())
+		g.Expect(ready.Status).To(Equal(api.ConditionFalse))
+	})
+
+	t.Run("all adapters finalized, no nodepools → Reconciled=True", func(t *testing.T) {
+		g := NewWithT(t)
+		ctx := context.Background()
+		clusterID := "cluster-no-nodepools"
+
+		clusterDao := newMockClusterDao()
+		nodePoolDao := newMockNodePoolDao()
+		adapterStatusDao := newMockAdapterStatusDao()
+		service := NewClusterService(clusterDao, nodePoolDao, adapterStatusDao, adapterConfig)
+
+		cluster := makeClusterWithDeletion(clusterID, 2)
+		clusterDao.clusters[clusterID] = cluster
+
+		now := time.Now()
+		condJSON := finalizedConditions()
+		adapterStatusDao.statuses["Cluster:"+clusterID+":validation"] = &api.AdapterStatus{
+			ResourceType: "Cluster", ResourceID: clusterID, Adapter: "validation",
+			ObservedGeneration: 2, Conditions: condJSON,
+			CreatedTime: now, LastReportTime: now,
+		}
+
+		updated, svcErr := service.UpdateClusterStatusFromAdapters(ctx, clusterID)
+		g.Expect(svcErr).To(BeNil())
+
+		var conds []api.ResourceCondition
+		g.Expect(json.Unmarshal(updated.StatusConditions, &conds)).To(Succeed())
+
+		var reconciled, ready *api.ResourceCondition
+		for i := range conds {
+			switch conds[i].Type {
+			case api.ConditionTypeReconciled:
+				reconciled = &conds[i]
+			case api.ConditionTypeReady:
+				ready = &conds[i]
+			}
+		}
+
+		g.Expect(reconciled).NotTo(BeNil())
+		g.Expect(reconciled.Status).To(Equal(api.ConditionTrue))
+		g.Expect(reconciled.Reason).NotTo(BeNil())
+		g.Expect(*reconciled.Reason).To(Equal(reasonAllAdaptersReconciled))
+
+		g.Expect(ready).NotTo(BeNil())
+		g.Expect(ready.Status).To(Equal(api.ConditionTrue))
 	})
 }

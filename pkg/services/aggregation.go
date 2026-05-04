@@ -24,11 +24,16 @@ const (
 	ConditionValidationErrorMissing = "missing"
 )
 
+// fixedConditionCount is the number of top-level conditions always present in resource status:
+// Ready (deprecated), Reconciled, and Available.
+const fixedConditionCount = 3
+
 // reasonMissingRequiredAdapters is the reason code for the Ready condition when one or more
 // required adapters have not yet reported Available=True at the current resource generation.
 const reasonMissingRequiredAdapters = "MissingRequiredAdapters"
 const reasonAllAdaptersReconciled = "All required adapters reported Available=True or Finalized=True " +
 	"at the current generation"
+const reasonWaitingForChildResources = "WaitingForChildResources"
 
 // ValidateMandatoryConditions checks if all mandatory conditions are present.
 // Format validation (empty type, duplicates, invalid status) is done in the Handler layer.
@@ -91,6 +96,7 @@ type AggregateResourceStatusInput struct {
 	PrevConditionsJSON []byte
 	RequiredAdapters   []string
 	AdapterStatuses    api.AdapterStatusList
+	HasChildResources  bool
 }
 
 // AdapterObservedTime returns the adapter-reported observation instant used for ordering and aggregation.
@@ -101,7 +107,7 @@ func AdapterObservedTime(as *api.AdapterStatus) time.Time {
 	return as.LastReportTime
 }
 
-// AggregateResourceStatus computes Ready, Available, and per-adapter conditions from stored adapter
+// AggregateResourceStatus computes Reconciled, Available, and per-adapter conditions from stored adapter
 // rows and previous conditions. It does not use wall clock.
 //
 // The returned adapterConditions slice contains one entry per required adapter that has reported,
@@ -120,6 +126,7 @@ func AggregateResourceStatus(ctx context.Context, in AggregateResourceStatusInpu
 		prevReconciled,
 		in.RequiredAdapters,
 		reports,
+		in.HasChildResources,
 	)
 	available = computeAvailable(
 		in.RefTime,
@@ -293,68 +300,69 @@ func buildFinalizedFalseMessage(
 }
 
 // computeReconciled synthesizes the Reconciled condition from adapter reports.
-// Its meaning adapts based on resource lifecycle:
-//   - Normal (deletedTime == nil): True when all required adapters report Available=True at current generation.
-//   - Deletion (deletedTime != nil): True when all required adapters report Finalized=True at current generation.
+// Reconciled=True when all required adapters have reported at the current generation AND:
+//   - Normal lifecycle (deletedTime == nil): all adapters report Available=True.
+//   - Deletion lifecycle (deletedTime != nil): all adapters report Finalized=True AND no child resources remain.
 func computeReconciled(
 	resourceGen int32,
 	refTime time.Time,
 	deletedTime *time.Time,
-	prev *api.ResourceCondition,
-	required []string,
-	byAdapter map[string]adapterAvailableSnapshot,
+	prevCondition *api.ResourceCondition,
+	requiredAdapters []string,
+	snapshotsByAdapter map[string]adapterAvailableSnapshot,
+	hasChildResources bool,
 ) api.ResourceCondition {
-	allAtCurrent := true
-	for _, name := range required {
-		s, ok := byAdapter[name]
-		if !ok || s.observedGeneration != resourceGen {
-			allAtCurrent = false
+	isDeleting := deletedTime != nil
+
+	allAdaptersConditionMet := len(requiredAdapters) > 0
+	for _, adapterName := range requiredAdapters {
+		snap, found := snapshotsByAdapter[adapterName]
+		if !found || snap.observedGeneration != resourceGen {
+			allAdaptersConditionMet = false
 			break
 		}
-		// Normal lifecycle: reconciled when all adapters report Available=True
-		// Deletion lifecycle: reconciled when all adapters report Finalized=True
-		conditionMet := s.availableTrue
-		if deletedTime != nil {
-			conditionMet = s.finalizedTrue
+		conditionMet := snap.availableTrue
+		if isDeleting {
+			conditionMet = snap.finalizedTrue
 		}
 		if !conditionMet {
-			allAtCurrent = false
+			allAdaptersConditionMet = false
 			break
 		}
 	}
 
-	status := api.ConditionFalse
-	if len(required) > 0 && allAtCurrent {
-		status = api.ConditionTrue
-	}
-
-	lastUpdated := computeReadyLastUpdatedTime(
-		resourceGen, refTime, required, byAdapter,
-	)
-	lastTransition := computeReadyLastTransitionTime(
-		resourceGen, refTime, prev, status, lastUpdated,
-	)
-
-	created := refTime
-	if prev != nil && !prev.CreatedTime.IsZero() {
-		created = prev.CreatedTime
+	// Reconciled=True requires all adapters ready AND, during deletion, no child resources remaining.
+	status := api.ConditionTrue
+	if !allAdaptersConditionMet || (isDeleting && hasChildResources) {
+		status = api.ConditionFalse
 	}
 
 	var reason, message string
-	if deletedTime != nil {
+	switch {
+	case status == api.ConditionTrue:
+		reason = reasonAllAdaptersReconciled
+		message = reason
+	case isDeleting && allAdaptersConditionMet: // adapters finalized but children still exist
+		reason = reasonWaitingForChildResources
+		message = "Deletion in progress. All required adapters reported Finalized=True but child resources still exist"
+	case isDeleting:
 		reason = reasonMissingRequiredAdapters
-		message = buildFinalizedFalseMessage(required, byAdapter, resourceGen)
-		if status == api.ConditionTrue {
-			reason = reasonAllAdaptersReconciled
-			message = reason
-		}
-	} else {
+		message = buildFinalizedFalseMessage(requiredAdapters, snapshotsByAdapter, resourceGen)
+	default:
 		reason = reasonMissingRequiredAdapters
-		message = buildReadyFalseMessage(required, byAdapter, resourceGen)
-		if status == api.ConditionTrue {
-			reason = reasonAllAdaptersReconciled
-			message = reason
-		}
+		message = buildReadyFalseMessage(requiredAdapters, snapshotsByAdapter, resourceGen)
+	}
+
+	lastUpdated := computeReadyLastUpdatedTime(
+		resourceGen, refTime, requiredAdapters, snapshotsByAdapter,
+	)
+	lastTransition := computeReadyLastTransitionTime(
+		resourceGen, refTime, prevCondition, status, lastUpdated,
+	)
+
+	createdTime := refTime
+	if prevCondition != nil && !prevCondition.CreatedTime.IsZero() {
+		createdTime = prevCondition.CreatedTime
 	}
 
 	return api.ResourceCondition{
@@ -363,7 +371,7 @@ func computeReconciled(
 		ObservedGeneration: resourceGen,
 		Reason:             strPtr(reason),
 		Message:            strPtr(message),
-		CreatedTime:        created,
+		CreatedTime:        createdTime,
 		LastUpdatedTime:    lastUpdated,
 		LastTransitionTime: lastTransition,
 	}
@@ -716,4 +724,27 @@ func minTime(times []time.Time) time.Time {
 
 func strPtr(s string) *string {
 	return &s
+}
+
+// allAdaptersFinalized checks if all required adapters have Finalized=True in their adapter_status conditions
+// at the specified resource generation. Finalized is optional — if the condition is absent, it's treated as
+// not finalized (same as False). Adapter statuses from older generations are ignored to prevent premature
+// hard-deletion when the resource generation changes during the deletion lifecycle.
+func allAdaptersFinalized(
+	requiredAdapters []string, adapterStatuses api.AdapterStatusList, currentGeneration int32,
+) bool {
+	finalizedAdapters := make(map[string]bool)
+
+	for _, adapterStatus := range adapterStatuses {
+		if adapterStatus.ObservedGeneration == currentGeneration && adapterStatus.IsFinalized() {
+			finalizedAdapters[adapterStatus.Adapter] = true
+		}
+	}
+
+	for _, requiredAdapter := range requiredAdapters {
+		if !finalizedAdapters[requiredAdapter] {
+			return false
+		}
+	}
+	return true
 }

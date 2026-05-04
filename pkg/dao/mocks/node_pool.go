@@ -26,6 +26,20 @@ func (d *nodePoolDaoMock) Get(ctx context.Context, id string) (*api.NodePool, er
 	return nil, gorm.ErrRecordNotFound
 }
 
+func (d *nodePoolDaoMock) GetForUpdate(ctx context.Context, id string) (*api.NodePool, error) {
+	return d.Get(ctx, id)
+}
+
+func (d *nodePoolDaoMock) SaveStatusConditions(ctx context.Context, id string, statusConditions []byte) error {
+	for _, np := range d.nodePools {
+		if np.ID == id {
+			np.StatusConditions = statusConditions
+			return nil
+		}
+	}
+	return gorm.ErrRecordNotFound
+}
+
 func (d *nodePoolDaoMock) Create(ctx context.Context, nodePool *api.NodePool) (*api.NodePool, error) {
 	d.nodePools = append(d.nodePools, nodePool)
 	return nodePool, nil
@@ -56,8 +70,21 @@ func (d *nodePoolDaoMock) FindByIDs(ctx context.Context, ids []string) (api.Node
 	return nil, errors.NotImplemented("NodePool").AsError()
 }
 
+func (d *nodePoolDaoMock) FindByOwner(ctx context.Context, ownerID string) (api.NodePoolList, error) {
+	return nil, errors.NotImplemented("NodePool").AsError()
+}
+
 func (d *nodePoolDaoMock) UpdateStatusConditionsByIDs(ctx context.Context, updates map[string][]byte) error {
 	return errors.NotImplemented("NodePool").AsError()
+}
+
+func (d *nodePoolDaoMock) ExistsByOwner(ctx context.Context, ownerID string) (bool, error) {
+	for _, np := range d.nodePools {
+		if np.OwnerID == ownerID {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (d *nodePoolDaoMock) All(ctx context.Context) (api.NodePoolList, error) {
