@@ -97,7 +97,7 @@ func (s *sqlClusterService) Replace(ctx context.Context, cluster *api.Cluster) (
 // If already marked, it returns the cluster unchanged. Cascades the deletion timestamp to all child nodepools.
 // Actual removal is handled by adapters detecting the new generation and triggering hard deletion asynchronously.
 func (s *sqlClusterService) SoftDelete(ctx context.Context, id string) (*api.Cluster, *errors.ServiceError) {
-	cluster, err := s.clusterDao.Get(ctx, id)
+	cluster, err := s.clusterDao.GetForUpdate(ctx, id)
 	if err != nil {
 		return nil, handleSoftDeleteError("Cluster", err)
 	}
