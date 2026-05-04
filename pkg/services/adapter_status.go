@@ -3,7 +3,10 @@ package services
 import (
 	"context"
 	"encoding/json"
+	e "errors"
 	"time"
+
+	"gorm.io/gorm"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/dao"
@@ -126,6 +129,9 @@ func (s *sqlAdapterStatusService) Upsert(
 		ctx, adapterStatus.ResourceType, adapterStatus.ResourceID, adapterStatus.Adapter,
 	)
 	if findErr != nil {
+		if !e.Is(findErr, gorm.ErrRecordNotFound) {
+			return nil, handleGetError("AdapterStatus", "adapter", adapterStatus.Adapter, findErr)
+		}
 		existing = nil
 	}
 	setConditionTransitionTimes(adapterStatus, existing)
