@@ -742,16 +742,16 @@ func strPtr(s string) *string {
 func allAdaptersFinalized(
 	requiredAdapters []string, adapterStatuses api.AdapterStatusList, currentGeneration int32,
 ) bool {
-	finalizedAdapters := make(map[string]struct{})
+	finalizedAdapters := make(map[string]bool)
 
 	for _, adapterStatus := range adapterStatuses {
 		if adapterStatus.ObservedGeneration == currentGeneration && adapterStatus.IsFinalized() {
-			finalizedAdapters[adapterStatus.Adapter] = struct{}{}
+			finalizedAdapters[adapterStatus.Adapter] = true
 		}
 	}
 
 	for _, requiredAdapter := range requiredAdapters {
-		if _, exists := finalizedAdapters[requiredAdapter]; !exists {
+		if !finalizedAdapters[requiredAdapter] {
 			return false
 		}
 	}
