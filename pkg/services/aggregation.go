@@ -739,7 +739,9 @@ func strPtr(s string) *string {
 // at the specified resource generation. Finalized is optional — if the condition is absent, it's treated as
 // not finalized (same as False). Adapter statuses from older generations are ignored to prevent premature
 // hard-deletion when the resource generation changes during the deletion lifecycle.
-func allAdaptersFinalized(requiredAdapters []string, adapterStatuses api.AdapterStatusList, currentGeneration int32) bool {
+func allAdaptersFinalized(
+	requiredAdapters []string, adapterStatuses api.AdapterStatusList, currentGeneration int32,
+) bool {
 	finalizedAdapters := make(map[string]struct{})
 
 	for _, adapterStatus := range adapterStatuses {
