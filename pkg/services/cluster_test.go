@@ -1421,7 +1421,7 @@ func TestReconciled_DuringDeletion_ChildResources(t *testing.T) {
 		}
 	}
 
-	finalizedConditions := func(gen int32) []byte {
+	finalizedConditions := func() []byte {
 		now := time.Now()
 		conds := []api.AdapterCondition{
 			{Type: api.ConditionTypeAvailable, Status: api.AdapterConditionTrue, LastTransitionTime: now},
@@ -1451,7 +1451,7 @@ func TestReconciled_DuringDeletion_ChildResources(t *testing.T) {
 		nodePoolDao.nodePools["np-1"] = &api.NodePool{Meta: api.Meta{ID: "np-1"}, OwnerID: clusterID}
 
 		now := time.Now()
-		condJSON := finalizedConditions(2)
+		condJSON := finalizedConditions()
 		adapterStatusDao.statuses["Cluster:"+clusterID+":validation"] = &api.AdapterStatus{
 			ResourceType: "Cluster", ResourceID: clusterID, Adapter: "validation",
 			ObservedGeneration: 2, Conditions: condJSON,
@@ -1497,7 +1497,7 @@ func TestReconciled_DuringDeletion_ChildResources(t *testing.T) {
 		clusterDao.clusters[clusterID] = cluster
 
 		now := time.Now()
-		condJSON := finalizedConditions(2)
+		condJSON := finalizedConditions()
 		adapterStatusDao.statuses["Cluster:"+clusterID+":validation"] = &api.AdapterStatus{
 			ResourceType: "Cluster", ResourceID: clusterID, Adapter: "validation",
 			ObservedGeneration: 2, Conditions: condJSON,

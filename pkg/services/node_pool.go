@@ -96,7 +96,7 @@ func (s *sqlNodePoolService) Replace(
 }
 
 func (s *sqlNodePoolService) SoftDelete(ctx context.Context, id string) (*api.NodePool, *errors.ServiceError) {
-	nodePool, err := s.nodePoolDao.Get(ctx, id)
+	nodePool, err := s.nodePoolDao.GetForUpdate(ctx, id)
 	if err != nil {
 		return nil, handleSoftDeleteError("NodePool", err)
 	}
