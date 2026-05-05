@@ -98,14 +98,14 @@ Label keys must contain only lowercase letters (a-z), digits (0-9), and undersco
 
 Query resources by status conditions: `status.conditions.<Type>='<Status>'`
 
-Condition types must be PascalCase (`Ready`, `Available`) and status must be `True` or `False` for resource conditions.
+Condition types must be PascalCase (`Ready`, `LastKnownReconciled`) and status must be `True` or `False` for resource conditions.
 
 **Note:** Only the `=` operator is supported for condition queries. Other operators (`!=`, `<`, `>`, `in`, etc.) will return an error. The `NOT` operator is not supported with condition queries (`status.conditions.<Type>` or `status.conditions.<Type>.<Subfield>`) and will return a `400 Bad Request` error. Use the inverse condition value instead (e.g., `status.conditions.Ready='False'` rather than `NOT status.conditions.Ready='True'`).
 
 ```bash
 # Find available clusters
 curl -G "http://localhost:8000/api/hyperfleet/v1/clusters" \
-  --data-urlencode "search=status.conditions.Available='True'"
+  --data-urlencode "search=status.conditions.LastKnownReconciled='True'"
 
 # Find clusters that are not ready
 curl -G "http://localhost:8000/api/hyperfleet/v1/clusters" \

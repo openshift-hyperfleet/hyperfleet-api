@@ -53,7 +53,17 @@ POST   /api/hyperfleet/v1/clusters/{cluster_id}/statuses
   "status": {
     "conditions": [
       {
-        "type": "Available",
+        "type": "Reconciled",
+        "status": "False",
+        "reason": "AwaitingAdapters",
+        "message": "Waiting for adapters to report status",
+        "observed_generation": 1,
+        "created_time": "2025-01-01T00:00:00Z",
+        "last_updated_time": "2025-01-01T00:00:00Z",
+        "last_transition_time": "2025-01-01T00:00:00Z"
+      },
+      {
+        "type": "LastKnownReconciled",
         "status": "False",
         "reason": "AwaitingAdapters",
         "message": "Waiting for adapters to report status",
@@ -79,7 +89,7 @@ POST   /api/hyperfleet/v1/clusters/{cluster_id}/statuses
 
 </details>
 
-**Note**: Status initially has `Available=False` and `Ready=False` conditions until adapters report status.
+**Note**: Status initially has `Reconciled=False`, `LastKnownReconciled=False`, and `Ready=False` conditions until adapters report status.
 
 ### Get Cluster
 
@@ -108,10 +118,20 @@ POST   /api/hyperfleet/v1/clusters/{cluster_id}/statuses
   "status": {
     "conditions": [
       {
-        "type": "Available",
+        "type": "Reconciled",
         "status": "True",
-        "reason": "ResourceAvailable",
-        "message": "Cluster is accessible",
+        "reason": "AllAdaptersReconciled",
+        "message": "All adapters report ready at current generation",
+        "observed_generation": 1,
+        "created_time": "2025-01-01T00:00:00Z",
+        "last_updated_time": "2025-01-01T00:00:00Z",
+        "last_transition_time": "2025-01-01T00:00:00Z"
+      },
+      {
+        "type": "LastKnownReconciled",
+        "status": "True",
+        "reason": "AllAdaptersReconciled",
+        "message": "All required adapters report Available=True for the tracked generation",
         "observed_generation": 1,
         "created_time": "2025-01-01T00:00:00Z",
         "last_updated_time": "2025-01-01T00:00:00Z",
@@ -304,7 +324,17 @@ POST   /api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepool_id}/statuses
   "status": {
     "conditions": [
       {
-        "type": "Available",
+        "type": "Reconciled",
+        "status": "False",
+        "reason": "AwaitingAdapters",
+        "message": "Waiting for adapters to report status",
+        "observed_generation": 1,
+        "created_time": "2025-01-01T00:00:00Z",
+        "last_updated_time": "2025-01-01T00:00:00Z",
+        "last_transition_time": "2025-01-01T00:00:00Z"
+      },
+      {
+        "type": "LastKnownReconciled",
         "status": "False",
         "reason": "AwaitingAdapters",
         "message": "Waiting for adapters to report status",
@@ -361,10 +391,17 @@ POST   /api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepool_id}/statuses
   "status": {
     "conditions": [
       {
-        "type": "Available",
+        "type": "Reconciled",
         "status": "True",
-        "reason": "ResourceAvailable",
-        "message": "NodePool is accessible",
+        "reason": "AllAdaptersReconciled",
+        "message": "All adapters report ready at current generation",
+        "observed_generation": 1
+      },
+      {
+        "type": "LastKnownReconciled",
+        "status": "True",
+        "reason": "AllAdaptersReconciled",
+        "message": "All required adapters report Available=True for the tracked generation",
         "observed_generation": 1
       },
       {
@@ -446,8 +483,9 @@ See **[search.md](search.md)** for complete documentation.
 The status object contains synthesized conditions computed from adapter reports:
 
 - `conditions` - Array of resource conditions, including:
-  - **Available** - Whether resource is running at any known good configuration
-  - **Ready** - Whether all adapters have processed current spec generation
+  - **Reconciled** - Whether all adapters have reconciled at the current spec generation
+  - **LastKnownReconciled** - Whether resource is running at any known good configuration
+  - **Ready** *(deprecated — use Reconciled)* - Whether all adapters have processed current spec generation
   - Additional conditions from adapters (with `observed_generation`, timestamps)
 
 ### Condition Fields

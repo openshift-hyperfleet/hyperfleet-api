@@ -86,7 +86,7 @@ func mkPrevReconciled(
 	}
 }
 
-// mkPrevAvail builds an Available ResourceCondition for use as a prev fixture.
+// mkPrevAvail builds a previous LastKnownReconciled (formerly Available) ResourceCondition for backward-compat testing.
 func mkPrevAvail(
 	status api.ResourceConditionStatus, obsGen int32, lastTransition, lastUpdated time.Time,
 ) *api.ResourceCondition {
@@ -211,6 +211,24 @@ func TestParsePrevConditions(t *testing.T) {
 		rc, _, _ := parsePrevConditions(context.Background(), encode(readyCond, reconciledCond))
 		if rc == nil || rc.Type != api.ConditionTypeReconciled {
 			t.Fatalf("expected Reconciled to take precedence, got %v", rc)
+		}
+	})
+
+	t.Run("LastKnownReconciled takes precedence over legacy Available", func(t *testing.T) {
+		t.Parallel()
+		lkrCond := api.ResourceCondition{Type: api.ConditionTypeLastKnownReconciled, Status: api.ConditionTrue}
+		_, a, _ := parsePrevConditions(context.Background(), encode(availCond, lkrCond))
+		if a == nil || a.Type != api.ConditionTypeLastKnownReconciled {
+			t.Fatalf("expected LastKnownReconciled to take precedence over Available, got %v", a)
+		}
+	})
+
+	t.Run("LastKnownReconciled takes precedence regardless of order", func(t *testing.T) {
+		t.Parallel()
+		lkrCond := api.ResourceCondition{Type: api.ConditionTypeLastKnownReconciled, Status: api.ConditionTrue}
+		_, a, _ := parsePrevConditions(context.Background(), encode(lkrCond, availCond))
+		if a == nil || a.Type != api.ConditionTypeLastKnownReconciled {
+			t.Fatalf("expected LastKnownReconciled to take precedence over Available, got %v", a)
 		}
 	})
 }
@@ -670,8 +688,8 @@ func TestComputeReconciled(t *testing.T) {
 		if cond.Status != api.ConditionFalse {
 			t.Errorf("got %v, want False (child resources still exist)", cond.Status)
 		}
-		if cond.Reason == nil || *cond.Reason != reasonWaitingForChildResources {
-			t.Errorf("Reason got %v, want %q", cond.Reason, reasonWaitingForChildResources)
+		if cond.Reason == nil || *cond.Reason != reasonReadyWaitingForChildren {
+			t.Errorf("Reason got %v, want %q", cond.Reason, reasonReadyWaitingForChildren)
 		}
 	})
 
@@ -686,21 +704,21 @@ func TestComputeReconciled(t *testing.T) {
 		if cond.Status != api.ConditionTrue {
 			t.Errorf("got %v, want True (no child resources)", cond.Status)
 		}
-		if cond.Reason == nil || *cond.Reason != reasonAllAdaptersReconciled {
-			t.Errorf("Reason got %v, want %q", cond.Reason, reasonAllAdaptersReconciled)
+		if cond.Reason == nil || *cond.Reason != reasonReadyAllReconciled {
+			t.Errorf("Reason got %v, want %q", cond.Reason, reasonReadyAllReconciled)
 		}
 	})
 }
 
 // ---------------------------------------------------------------------------
-// computeAvailableLastUpdatedTime
+// computeLastKnownReconciledLastUpdatedTime
 // ---------------------------------------------------------------------------
 
-func TestComputeAvailableLastUpdatedTime(t *testing.T) {
+func TestComputeLastKnownReconciledLastUpdatedTime(t *testing.T) {
 	t.Parallel()
 	t.Run("empty required → refTime", func(t *testing.T) {
 		t.Parallel()
-		got := computeAvailableLastUpdatedTime(api.ConditionFalse, nil, aggTRef, nil, nil, 1, true, false)
+		got := computeLastKnownReconciledLastUpdatedTime(api.ConditionFalse, nil, aggTRef, nil, nil, 1, true, false)
 		if !got.Equal(aggTRef) {
 			t.Errorf("got %v, want refTime=%v", got, aggTRef)
 		}
@@ -713,7 +731,7 @@ func TestComputeAvailableLastUpdatedTime(t *testing.T) {
 			"a": snap(2, true, aggT3), // later
 			"b": snap(2, true, aggT1), // earlier → min
 		}
-		got := computeAvailableLastUpdatedTime(api.ConditionTrue, nil, aggTRef, required, byAdapter, 2, true, false)
+		got := computeLastKnownReconciledLastUpdatedTime(api.ConditionTrue, nil, aggTRef, required, byAdapter, 2, true, false)
 		if !got.Equal(aggT1) {
 			t.Errorf("got %v, want min=%v", got, aggT1)
 		}
@@ -727,7 +745,7 @@ func TestComputeAvailableLastUpdatedTime(t *testing.T) {
 			"b": snap(2, true, aggT2),
 		}
 		prev := mkPrevAvail(api.ConditionTrue, 1, aggT0, aggT0)
-		got := computeAvailableLastUpdatedTime(api.ConditionTrue, prev, aggTRef, required, byAdapter, 1, true, true)
+		got := computeLastKnownReconciledLastUpdatedTime(api.ConditionTrue, prev, aggTRef, required, byAdapter, 1, true, true)
 		if !got.Equal(aggT0) {
 			t.Errorf("got %v, want prev.LastUpdatedTime=%v", got, aggT0)
 		}
@@ -740,7 +758,7 @@ func TestComputeAvailableLastUpdatedTime(t *testing.T) {
 			"a": snap(1, true, aggT1),
 			"b": snap(2, true, aggT2),
 		}
-		got := computeAvailableLastUpdatedTime(api.ConditionTrue, nil, aggTRef, required, byAdapter, 1, true, true)
+		got := computeLastKnownReconciledLastUpdatedTime(api.ConditionTrue, nil, aggTRef, required, byAdapter, 1, true, true)
 		if !got.Equal(aggTRef) {
 			t.Errorf("got %v, want refTime=%v", got, aggTRef)
 		}
@@ -756,7 +774,9 @@ func TestComputeAvailableLastUpdatedTime(t *testing.T) {
 			"b": snap(2, true, aggT2),
 		}
 		prev := mkPrevAvail(api.ConditionFalse, 1, aggT0, aggT0)
-		got := computeAvailableLastUpdatedTime(api.ConditionFalse, prev, aggTRef, required, byAdapter, 2, true, true)
+		got := computeLastKnownReconciledLastUpdatedTime(
+			api.ConditionFalse, prev, aggTRef, required, byAdapter, 2, true, true,
+		)
 		if !got.Equal(aggT0) {
 			t.Errorf("got %v, want prev.LastUpdatedTime=%v", got, aggT0)
 		}
@@ -770,7 +790,9 @@ func TestComputeAvailableLastUpdatedTime(t *testing.T) {
 			"b": snap(2, true, aggT1),  // True at gen 2 (still included in atX)
 		}
 		// observedGen=2, hasFalseAtX=true; atX=[t3,t1], min=t1 (oldest, matches Ready semantics)
-		got := computeAvailableLastUpdatedTime(api.ConditionFalse, nil, aggTRef, required, byAdapter, 2, false, false)
+		got := computeLastKnownReconciledLastUpdatedTime(
+			api.ConditionFalse, nil, aggTRef, required, byAdapter, 2, false, false,
+		)
 		if !got.Equal(aggT1) {
 			t.Errorf("got %v, want min of gen-2 adapters=%v", got, aggT1)
 		}
@@ -785,7 +807,9 @@ func TestComputeAvailableLastUpdatedTime(t *testing.T) {
 			"b": snap(2, false, aggT2),
 		}
 		prev := mkPrevAvail(api.ConditionFalse, 2, aggT0, aggT0)
-		got := computeAvailableLastUpdatedTime(api.ConditionFalse, prev, aggTRef, required, byAdapter, 3, false, false)
+		got := computeLastKnownReconciledLastUpdatedTime(
+			api.ConditionFalse, prev, aggTRef, required, byAdapter, 3, false, false,
+		)
 		if !got.Equal(aggT0) {
 			t.Errorf("got %v, want prev.LastUpdatedTime=%v", got, aggT0)
 		}
@@ -798,7 +822,9 @@ func TestComputeAvailableLastUpdatedTime(t *testing.T) {
 		byAdapter := map[string]adapterAvailableSnapshot{
 			"a": snap(1, false, aggT1),
 		}
-		got := computeAvailableLastUpdatedTime(api.ConditionFalse, nil, aggTRef, required, byAdapter, 2, false, false)
+		got := computeLastKnownReconciledLastUpdatedTime(
+			api.ConditionFalse, nil, aggTRef, required, byAdapter, 2, false, false,
+		)
 		if !got.Equal(aggTRef) {
 			t.Errorf("got %v, want refTime=%v", got, aggTRef)
 		}
@@ -806,16 +832,19 @@ func TestComputeAvailableLastUpdatedTime(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// computeAvailable
+// computeLastKnownReconciled
 // ---------------------------------------------------------------------------
 
-func TestComputeAvailable(t *testing.T) {
+func TestComputeLastKnownReconciled(t *testing.T) {
 	t.Parallel()
 	t.Run("empty required list → False", func(t *testing.T) {
 		t.Parallel()
-		cond := computeAvailable(aggTRef, nil, nil, map[string]adapterAvailableSnapshot{})
+		cond := computeLastKnownReconciled(aggTRef, nil, nil, map[string]adapterAvailableSnapshot{})
 		if cond.Status != api.ConditionFalse {
 			t.Errorf("got %v, want False", cond.Status)
+		}
+		if cond.Reason == nil || *cond.Reason != reasonLKRMissingReports {
+			t.Errorf("Reason got %v, want %s", cond.Reason, reasonLKRMissingReports)
 		}
 	})
 
@@ -826,9 +855,12 @@ func TestComputeAvailable(t *testing.T) {
 			"a": snap(1, true, aggT1),
 			// "b" absent
 		}
-		cond := computeAvailable(aggTRef, nil, required, byAdapter)
+		cond := computeLastKnownReconciled(aggTRef, nil, required, byAdapter)
 		if cond.Status != api.ConditionFalse {
 			t.Errorf("got %v, want False", cond.Status)
+		}
+		if cond.Reason == nil || *cond.Reason != reasonLKRMissingReports {
+			t.Errorf("Reason got %v, want %s", cond.Reason, reasonLKRMissingReports)
 		}
 	})
 
@@ -839,9 +871,12 @@ func TestComputeAvailable(t *testing.T) {
 			"a": snap(1, true, aggT1),
 			"b": snap(1, true, aggT2),
 		}
-		cond := computeAvailable(aggTRef, nil, required, byAdapter)
+		cond := computeLastKnownReconciled(aggTRef, nil, required, byAdapter)
 		if cond.Status != api.ConditionTrue {
 			t.Errorf("got %v, want True", cond.Status)
+		}
+		if cond.Reason == nil || *cond.Reason != reasonLKRAllReconciled {
+			t.Errorf("Reason got %v, want %s", cond.Reason, reasonLKRAllReconciled)
 		}
 	})
 
@@ -852,9 +887,12 @@ func TestComputeAvailable(t *testing.T) {
 			"a": snap(1, true, aggT1),
 			"b": snap(2, true, aggT2),
 		}
-		cond := computeAvailable(aggTRef, nil, required, byAdapter)
+		cond := computeLastKnownReconciled(aggTRef, nil, required, byAdapter)
 		if cond.Status != api.ConditionFalse {
 			t.Errorf("got %v, want False (mixed gens, no prev=True)", cond.Status)
+		}
+		if cond.Reason == nil || *cond.Reason != reasonLKRNotAtSameGeneration {
+			t.Errorf("Reason got %v, want %s", cond.Reason, reasonLKRNotAtSameGeneration)
 		}
 	})
 
@@ -866,7 +904,7 @@ func TestComputeAvailable(t *testing.T) {
 			"b": snap(2, true, aggT2),
 		}
 		prev := mkPrevAvail(api.ConditionTrue, 1, aggT0, aggT0)
-		cond := computeAvailable(aggTRef, prev, required, byAdapter)
+		cond := computeLastKnownReconciled(aggTRef, prev, required, byAdapter)
 		if cond.Status != api.ConditionTrue {
 			t.Errorf("got %v, want True (sticky from prev=True)", cond.Status)
 		}
@@ -879,9 +917,12 @@ func TestComputeAvailable(t *testing.T) {
 			"a": snap(1, true, aggT1),
 			"b": snap(1, false, aggT2),
 		}
-		cond := computeAvailable(aggTRef, nil, required, byAdapter)
+		cond := computeLastKnownReconciled(aggTRef, nil, required, byAdapter)
 		if cond.Status != api.ConditionFalse {
 			t.Errorf("got %v, want False", cond.Status)
+		}
+		if cond.Reason == nil || *cond.Reason != reasonLKRNotAvailable {
+			t.Errorf("Reason got %v, want %s", cond.Reason, reasonLKRNotAvailable)
 		}
 	})
 
@@ -894,7 +935,7 @@ func TestComputeAvailable(t *testing.T) {
 			"b": snap(1, false, aggT2),
 		}
 		prev := mkPrevAvail(api.ConditionTrue, 1, aggT0, aggT0)
-		cond := computeAvailable(aggTRef, prev, required, byAdapter)
+		cond := computeLastKnownReconciled(aggTRef, prev, required, byAdapter)
 		if cond.Status != api.ConditionFalse {
 			t.Errorf("got %v, want False (False at tracked gen breaks sticky)", cond.Status)
 		}
@@ -909,7 +950,7 @@ func TestComputeAvailable(t *testing.T) {
 			"b": snap(2, false, aggT2), // False at gen 2 ≠ tracked gen 1
 		}
 		prev := mkPrevAvail(api.ConditionTrue, 1, aggT0, aggT0)
-		cond := computeAvailable(aggTRef, prev, required, byAdapter)
+		cond := computeLastKnownReconciled(aggTRef, prev, required, byAdapter)
 		if cond.Status != api.ConditionTrue {
 			t.Errorf("got %v, want True (False not at tracked gen → stays sticky)", cond.Status)
 		}
@@ -919,7 +960,7 @@ func TestComputeAvailable(t *testing.T) {
 		t.Parallel()
 		required := []string{"a"}
 		byAdapter := map[string]adapterAvailableSnapshot{"a": snap(3, true, aggT1)}
-		cond := computeAvailable(aggTRef, nil, required, byAdapter)
+		cond := computeLastKnownReconciled(aggTRef, nil, required, byAdapter)
 		if cond.ObservedGeneration != 3 {
 			t.Errorf("ObservedGeneration got %d, want 3", cond.ObservedGeneration)
 		}
@@ -934,7 +975,7 @@ func TestComputeAvailable(t *testing.T) {
 			"a": snap(1, false, aggT1),
 			"b": snap(2, true, aggT2),
 		}
-		cond := computeAvailable(aggTRef, nil, required, byAdapter)
+		cond := computeLastKnownReconciled(aggTRef, nil, required, byAdapter)
 		if cond.Status != api.ConditionFalse {
 			t.Errorf("Status got %v, want False", cond.Status)
 		}
@@ -953,7 +994,7 @@ func TestComputeAvailable(t *testing.T) {
 			"b": snap(2, true, aggT2),
 		}
 		prev := mkPrevAvail(api.ConditionTrue, 1, aggT0, aggT0)
-		cond := computeAvailable(aggTRef, prev, required, byAdapter)
+		cond := computeLastKnownReconciled(aggTRef, prev, required, byAdapter)
 		if cond.Status != api.ConditionTrue {
 			t.Errorf("Status got %v, want True", cond.Status)
 		}
@@ -967,7 +1008,7 @@ func TestComputeAvailable(t *testing.T) {
 		required := []string{"a"}
 		byAdapter := map[string]adapterAvailableSnapshot{"a": snap(1, true, aggT1)}
 		prev := mkPrevAvail(api.ConditionTrue, 1, aggT0, aggT0)
-		cond := computeAvailable(aggTRef, prev, required, byAdapter)
+		cond := computeLastKnownReconciled(aggTRef, prev, required, byAdapter)
 		if !cond.CreatedTime.Equal(aggT0) {
 			t.Errorf("CreatedTime got %v, want %v", cond.CreatedTime, aggT0)
 		}
@@ -978,7 +1019,7 @@ func TestComputeAvailable(t *testing.T) {
 		required := []string{"a"}
 		byAdapter := map[string]adapterAvailableSnapshot{"a": snap(1, true, aggT1)}
 		prev := mkPrevAvail(api.ConditionTrue, 1, aggT0, aggT0)
-		cond := computeAvailable(aggTRef, prev, required, byAdapter)
+		cond := computeLastKnownReconciled(aggTRef, prev, required, byAdapter)
 		if !cond.LastTransitionTime.Equal(aggT0) {
 			t.Errorf("LastTransitionTime got %v, want prev.LastTransitionTime=%v", cond.LastTransitionTime, aggT0)
 		}
@@ -1212,8 +1253,8 @@ func TestAggregateResourceStatus(t *testing.T) {
 		if reconciled.Type != api.ConditionTypeReconciled {
 			t.Errorf("reconciled.Type=%q, want %q", reconciled.Type, api.ConditionTypeReconciled)
 		}
-		if avail.Type != api.ConditionTypeAvailable {
-			t.Errorf("avail.Type=%q, want %q", avail.Type, api.ConditionTypeAvailable)
+		if avail.Type != api.ConditionTypeLastKnownReconciled {
+			t.Errorf("avail.Type=%q, want %q", avail.Type, api.ConditionTypeLastKnownReconciled)
 		}
 	})
 

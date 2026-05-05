@@ -717,7 +717,7 @@ func TestClusterAvailableReadyTransitions(t *testing.T) {
 		var available, ready, reconciled *api.ResourceCondition
 		for i := range conds {
 			switch conds[i].Type {
-			case api.ConditionTypeAvailable:
+			case api.ConditionTypeLastKnownReconciled:
 				available = &conds[i]
 			case api.ConditionTypeReady:
 				ready = &conds[i]
@@ -870,7 +870,7 @@ func TestClusterStaleAdapterStatusUpdatePolicy(t *testing.T) {
 		var conds []api.ResourceCondition
 		g.Expect(json.Unmarshal(stored.StatusConditions, &conds)).To(Succeed())
 		for i := range conds {
-			if conds[i].Type == api.ConditionTypeAvailable {
+			if conds[i].Type == api.ConditionTypeLastKnownReconciled {
 				return conds[i]
 			}
 		}
@@ -974,7 +974,7 @@ func TestClusterSyntheticTimestampsStableWithoutAdapterStatus(t *testing.T) {
 	var createdAvailable, createdReady, createdReconciled *api.ResourceCondition
 	for i := range createdConds {
 		switch createdConds[i].Type {
-		case api.ConditionTypeAvailable:
+		case api.ConditionTypeLastKnownReconciled:
 			createdAvailable = &createdConds[i]
 		case api.ConditionTypeReady:
 			createdReady = &createdConds[i]
@@ -1005,7 +1005,7 @@ func TestClusterSyntheticTimestampsStableWithoutAdapterStatus(t *testing.T) {
 	var updatedAvailable, updatedReady, updatedReconciled *api.ResourceCondition
 	for i := range updatedConds {
 		switch updatedConds[i].Type {
-		case api.ConditionTypeAvailable:
+		case api.ConditionTypeLastKnownReconciled:
 			updatedAvailable = &updatedConds[i]
 		case api.ConditionTypeReady:
 			updatedReady = &updatedConds[i]
@@ -1477,7 +1477,7 @@ func TestReconciled_DuringDeletion_ChildResources(t *testing.T) {
 		g.Expect(reconciled).NotTo(BeNil())
 		g.Expect(reconciled.Status).To(Equal(api.ConditionFalse))
 		g.Expect(reconciled.Reason).NotTo(BeNil())
-		g.Expect(*reconciled.Reason).To(Equal(reasonWaitingForChildResources))
+		g.Expect(*reconciled.Reason).To(Equal(reasonReadyWaitingForChildren))
 
 		g.Expect(ready).NotTo(BeNil())
 		g.Expect(ready.Status).To(Equal(api.ConditionFalse))
@@ -1523,7 +1523,7 @@ func TestReconciled_DuringDeletion_ChildResources(t *testing.T) {
 		g.Expect(reconciled).NotTo(BeNil())
 		g.Expect(reconciled.Status).To(Equal(api.ConditionTrue))
 		g.Expect(reconciled.Reason).NotTo(BeNil())
-		g.Expect(*reconciled.Reason).To(Equal(reasonAllAdaptersReconciled))
+		g.Expect(*reconciled.Reason).To(Equal(reasonReadyAllReconciled))
 
 		g.Expect(ready).NotTo(BeNil())
 		g.Expect(ready.Status).To(Equal(api.ConditionTrue))

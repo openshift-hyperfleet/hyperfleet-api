@@ -222,7 +222,7 @@ func (s *sqlClusterService) recomputeAndSaveClusterStatus(
 		hasChildResources = exists
 	}
 
-	reconciled, available, adapterConditions := AggregateResourceStatus(ctx, AggregateResourceStatusInput{
+	reconciled, lastKnownReconciled, adapterConditions := AggregateResourceStatus(ctx, AggregateResourceStatusInput{
 		ResourceGeneration: cluster.Generation,
 		RefTime:            refTime,
 		DeletedTime:        cluster.DeletedTime,
@@ -237,7 +237,7 @@ func (s *sqlClusterService) recomputeAndSaveClusterStatus(
 	ready.Type = api.ConditionTypeReady
 
 	allConditions := make([]api.ResourceCondition, 0, fixedConditionCount+len(adapterConditions))
-	allConditions = append(allConditions, ready, reconciled, available)
+	allConditions = append(allConditions, ready, reconciled, lastKnownReconciled)
 	allConditions = append(allConditions, adapterConditions...)
 
 	conditionsJSON, err := json.Marshal(allConditions)

@@ -17,8 +17,8 @@ A practical guide for deploying, configuring, and operating the HyperFleet API c
       - [Rules to accept/discard adapter reports](#rules-to-acceptdiscard-adapter-reports)
       - [Computing `observed_generation`](#computing-observed_generation)
       - [Computing `status.conditions[type==Ready].last_updated_time`](#computing-statusconditionstypereadylast_updated_time)
-      - [Computing `status.conditions[type==Available].last_updated_time`](#computing-statusconditionstypeavailablelast_updated_time)
-      - [Computing `last_transition_time` for both `Ready` and `Available`](#computing-last_transition_time-for-both-ready-and-available)
+      - [Computing `status.conditions[type==LastKnownReconciled].last_updated_time`](#computing-statusconditionstypelastknownreconciledlast_updated_time)
+      - [Computing `last_transition_time` for both `Ready` and `LastKnownReconciled`](#computing-last_transition_time-for-both-ready-and-lastknownreconciled)
 3. [Configuration Reference](#3-configuration-reference)
    - [Adapter Requirements (REQUIRED)](#31-adapter-requirements-required)
    - [Database Configuration](#32-database-configuration)
@@ -108,7 +108,7 @@ Resource (e.g., Cluster)
 
 2. **Automatic Version Tracking (generation)**: Every time you update the `spec`, the API automatically increments the `generation` counter. This allows distributed adapters to detect when they need to reconcile infrastructure changes.
 
-3. **Observed State (status)**: Adapters report their progress and results back to the API via status endpoints. The API aggregates these reports into unified resource-level conditions (e.g., `Ready`, `Available`).
+3. **Observed State (status)**: Adapters report their progress and results back to the API via status endpoints. The API aggregates these reports into unified resource-level conditions (e.g., `Ready`, `LastKnownReconciled`).
 
 4. **Filtering (labels)**: Labels are key-value pairs you can attach to resources for organization and filtering (e.g., `environment: production`, `region: us-east-1`). E.g., Sentinel instances can define resource selectors based on labels to watch specific subsets of resources, enabling horizontal scaling across multiple Sentinel deployments.
 
@@ -147,7 +147,13 @@ GET /api/hyperfleet/v1/clusters/{id}
   "status": {
     "conditions": [
       {
-        "type": "Available",
+        "type": "Reconciled",
+        "status": "True",
+        "observed_generation": 1,
+        "last_transition_time": "2026-03-10T07:56:35Z"
+      },
+      {
+        "type": "LastKnownReconciled",
         "status": "True",
         "observed_generation": 1,
         "last_transition_time": "2026-03-10T07:56:35Z"
@@ -164,7 +170,7 @@ GET /api/hyperfleet/v1/clusters/{id}
   "updated_time": "2026-03-10T07:56:35Z"
 }
 
-→ API returns aggregated status with Available and Ready conditions
+→ API returns aggregated status with Reconciled, LastKnownReconciled, and Ready conditions
 
 # 3. View adapter statuses
 GET /api/hyperfleet/v1/clusters/{id}/statuses
@@ -323,7 +329,7 @@ HyperFleet API aggregates the condition values reported by adapters associated w
 | Condition | Meaning | When True |
 |-----------|---------|-----------|
 | **Ready** | Resource is fully reconciled at current spec | All registered adapters report `Available=True` at the **current** `resource.spec.generation` |
-| **Available** | Resource is operational at any known good configuration | All registered adapters report `Available=True` (at any generation) |
+| **LastKnownReconciled** | Resource is operational at any known good configuration | All registered adapters report `Available=True` for a common `observed_generation`, or sticky-true is preserved when adapters are transitioning to a new generation |
 
 **Note**: The meaning of the field `last_updated_time` for the aggregated conditions has special meaning. It doesn't reflect the last time it was updated from adapters but the OLDEST time it can be considered to be valid.
 
@@ -337,16 +343,16 @@ The resource `status.conditions` array contains:
   - `True`: All required adapters `conditions[type=Available].status==True` at current spec generation
   - `False`: Any other combination of conditions
 
-- **Available** - The resource is reconciled at a generation of the spec, current or past
+- **LastKnownReconciled** - The resource is reconciled at a generation of the spec, current or past
   - This condition is stateful meaning that is computed taking into account its previous values of `status` and `observed_generation`
   - This condition is "best effort", since there are cases that can not be covered correctly.
   - `True`:
     - All required adapters `conditions[type=Available].status==True` for the same `observed_generation`
     - Current value `status==True` and required adapters `conditions[type=Available]` at mixed `observed_generation`
   - `False`: Any other combination of conditions
-  - e.g. `Available=True` for `observed_generation==1`
-    - One adapter reports `Available=False` for `observed_generation=1` `Available` transitions to `False`
-    - One adapter reports `Available=False` for `observed_generation=2` `Available` keeps its `True` status
+  - e.g. `LastKnownReconciled=True` for `observed_generation==1`
+    - One adapter reports `Available=False` for `observed_generation=1` `LastKnownReconciled` transitions to `False`
+    - One adapter reports `Available=False` for `observed_generation=2` `LastKnownReconciled` keeps its `True` status
 
 - One **per-adapter** condition for each required adapter that has reported, mirroring the adapter's `conditions[type=Available]`:
   - `type`: Derived from the adapter name — PascalCase with `Successful` suffix (e.g., `adapter1` → `Adapter1Successful`, `my-adapter` → `MyAdapterSuccessful`)
@@ -392,10 +398,10 @@ These are API examples for a resource and resource statuses:
         "last_transition_time": "2021-01-01T10:00:00Z"
       },
       {
-        "type": "Available",
+        "type": "LastKnownReconciled",
         "status": "True",
-        "reason": "All adapters reported Available True for the same generation",
-        "message": "All adapters reported Available True for the same generation",
+        "reason": "AllAdaptersReconciled",
+        "message": "All required adapters report Available=True for the tracked generation",
         "observed_generation": 1,
         "created_time": "2021-01-01T10:00:00Z",
         "last_updated_time": "2021-01-01T10:00:00Z",
@@ -497,23 +503,23 @@ These are API examples for a resource and resource statuses:
 When a resource is created:
 
 - Initial `generation` is 1 and aggregated conditions are evaluated
-- `observed_generation` for `Ready` and `Available` aggregated conditions is 1
-- `last_updated_time` and `last_transition_time` for `Ready` and `Available` aggregated conditions is `resource.last_updated_time`
+- `observed_generation` for `Ready` and `LastKnownReconciled` aggregated conditions is 1
+- `last_updated_time` and `last_transition_time` for `Ready` and `LastKnownReconciled` aggregated conditions is `resource.last_updated_time`
 
 When a resource is changed:
 
 - `resource.generation` gets incremented and aggregated conditions are re-evaluated
 - `status.conditions[type==Ready].observed_generation` always follows `resource.generation`
-- `status.conditions[type==Available].observed_generation` changes when all required adapters `condition[type==Available].observed_generation==resource.generation` otherwise remains unchanged.
+- `status.conditions[type==LastKnownReconciled].observed_generation` changes when all required adapters `condition[type==Available].observed_generation==resource.generation` otherwise remains unchanged.
 
 ##### Computing `observed_generation`
 
 - For `Ready` it always matches `resource.generation`
-- For `Available`:
+- For `LastKnownReconciled`:
   - If all required adapters have a common `observed_generation` it will match the common value
   - If required adapters have mixed `observed_generation`
-    - If `Available` is `True`, `observed_generation` remains at its current value
-    - If `Available` is `False`, `observed_generation` will get the value of the `max(condition[type==Available].observed_generation)`
+    - If `LastKnownReconciled` is `True`, `observed_generation` remains at its current value
+    - If `LastKnownReconciled` is `False`, `observed_generation` will get the value of the `max(condition[type==Available].observed_generation)`
 
 ##### Computing `status.conditions[type==Ready].last_updated_time`
 
@@ -526,14 +532,14 @@ The meaning of `last_updated_time` in the aggregated conditions refers to the ne
   - Why do we want to keep the "oldest" value? because if it is too old, we need to trigger a reconciliation
 - When some required adapter conditions `condition[type==Available].observed_generation==resource.generation` then `last_updated_time=min(statuses[].conditions[type==Available && observed_generation==resource.generation].observed_time)`
 
-##### Computing `status.conditions[type==Available].last_updated_time`
+##### Computing `status.conditions[type==LastKnownReconciled].last_updated_time`
 
 - If all required adapters have `condition[type==Available].observed_generation` at the same value then `last_updated_time=min(statuses[].conditions[type==Available].observed_time)`
 - If not all required adapters have `condition[type==Available].observed_generation` at the same value:
   - If any adapter at current `observed_generation==X` has `conditions[type==Available].status==False` then `last_updated_time=min(adapters[type==Available && observed_generation==X].observed_time`
 - In any other case `last_updated_time` is kept unchanged
 
-##### Computing `last_transition_time` for both `Ready` and `Available`
+##### Computing `last_transition_time` for both `Ready` and `LastKnownReconciled`
 
 - Meaning is last time this condition’s status (True / False) changed, regardless of the existing and new `observed_generation`
 - This property is stateful since it relies on the existing value to determine if there has been a transition
