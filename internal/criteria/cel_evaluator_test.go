@@ -137,7 +137,8 @@ func TestCELEvaluatorWithNestedData(t *testing.T) {
 	require.NoError(t, err)
 
 	// Test nested field access
-	result, err := evaluator.EvaluateSafe(`cluster.status.conditions.exists(c, c.type == "Reconciled" && c.status == "True")`)
+	result, err := evaluator.EvaluateSafe(
+		`cluster.status.conditions.exists(c, c.type == "Reconciled" && c.status == "True")`)
 	require.NoError(t, err)
 	assert.False(t, result.HasError())
 	assert.True(t, result.Matched)
@@ -164,7 +165,8 @@ func TestCELEvaluatorEvaluateSafe(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("successful evaluation", func(t *testing.T) {
-		result, err := evaluator.EvaluateSafe(`cluster.status.conditions.exists(c, c.type == "Reconciled" && c.status == "True")`)
+		result, err := evaluator.EvaluateSafe(
+			`cluster.status.conditions.exists(c, c.type == "Reconciled" && c.status == "True")`)
 		require.NoError(t, err, "EvaluateSafe should not return error for valid expression")
 		assert.False(t, result.HasError())
 		assert.True(t, result.Matched)

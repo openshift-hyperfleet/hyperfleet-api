@@ -66,7 +66,7 @@ func TestConfigLoadAndCriteriaEvaluation(t *testing.T) {
 	ctx := criteria.NewEvaluationContext()
 
 	// Simulate data extracted from HyperFleet API response
-	// NOTE: reconciledConditionStatus must match the condition in the template (True)
+	// NOTE: reconciledConditionStatus must match the condition in the template (False)
 	ctx.Set("reconciledConditionStatus", "False")
 	ctx.Set("cloudProvider", "aws")
 	ctx.Set("vpcId", "vpc-12345")
@@ -151,9 +151,9 @@ func TestConfigWithFailingPreconditions(t *testing.T) {
 	precond := config.GetPreconditionByName("clusterStatus")
 	require.NotNil(t, precond)
 
-	t.Run("preconditions fail with Reconciled condition False", func(t *testing.T) {
+	t.Run("preconditions fail with Reconciled condition True", func(t *testing.T) {
 		ctx := criteria.NewEvaluationContext()
-		ctx.Set("reconciledConditionStatus", "True") // Not matching expected "True"
+		ctx.Set("reconciledConditionStatus", "True") // Not matching expected "False"
 
 		evaluator, err := criteria.NewEvaluator(context.Background(), ctx, logger.NewTestLogger())
 		require.NoError(t, err)
@@ -168,7 +168,7 @@ func TestConfigWithFailingPreconditions(t *testing.T) {
 
 		result, err := evaluator.EvaluateConditions(conditions)
 		require.NoError(t, err)
-		assert.False(t, result.Matched, "preconditions should fail with Reconciled condition False")
+		assert.False(t, result.Matched, "preconditions should fail with Reconciled condition True")
 		assert.Equal(t, 0, result.FailedCondition, "first condition (reconciledConditionStatus) should fail")
 	})
 
