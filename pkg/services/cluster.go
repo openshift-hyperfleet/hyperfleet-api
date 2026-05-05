@@ -120,17 +120,18 @@ func (s *sqlClusterService) SoftDelete(ctx context.Context, id string) (*api.Clu
 
 	metrics.RecordPendingDeletion("cluster")
 
-	if cascadeErr := s.nodePoolDao.SoftDeleteByOwner(ctx, id, t, deletedBy); cascadeErr != nil {
+	cascadeCount, cascadeErr := s.nodePoolDao.SoftDeleteByOwner(ctx, id, t, deletedBy)
+	if cascadeErr != nil {
 		return nil, handleSoftDeleteError("NodePool", cascadeErr)
+	}
+
+	for range cascadeCount {
+		metrics.RecordPendingDeletion("nodepool")
 	}
 
 	nodePools, err := s.nodePoolDao.FindSoftDeletedByOwner(ctx, id)
 	if err != nil {
 		return nil, errors.GeneralError("Failed to fetch cascade-deleted nodepools: %s", err)
-	}
-
-	for range nodePools {
-		metrics.RecordPendingDeletion("nodepool")
 	}
 
 	cluster, svcErr := s.UpdateClusterStatusFromAdapters(ctx, cluster.ID)

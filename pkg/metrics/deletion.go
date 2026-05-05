@@ -141,21 +141,21 @@ func (c *PendingDeletionCollector) Collect(ch chan<- prometheus.Metric) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), c.queryTimeout)
-	defer cancel()
-
 	threshold := time.Now().UTC().Add(-c.stuckThreshold)
 
 	for _, q := range stuckQueries {
+		ctx, cancel := context.WithTimeout(context.Background(), c.queryTimeout)
 		var count int64
 		row := c.db.QueryRowContext(ctx, q.query, threshold) //nolint:gosec // table names are compile-time constants
 		if err := row.Scan(&count); err != nil {
+			cancel()
 			slog.Error("Failed to query pending deletion resources",
 				"resource_type", q.resourceType,
 				"error", err,
 			)
 			continue
 		}
+		cancel()
 
 		ch <- prometheus.MustNewConstMetric(
 			c.stuckDesc,
