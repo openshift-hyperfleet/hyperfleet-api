@@ -2,7 +2,6 @@ package mocks
 
 import (
 	"context"
-	"time"
 
 	"gorm.io/gorm"
 
@@ -20,6 +19,15 @@ type nodePoolDaoMock struct {
 func (d *nodePoolDaoMock) Get(ctx context.Context, id string) (*api.NodePool, error) {
 	for _, nodePool := range d.nodePools {
 		if nodePool.ID == id {
+			return nodePool, nil
+		}
+	}
+	return nil, gorm.ErrRecordNotFound
+}
+
+func (d *nodePoolDaoMock) GetByIDAndOwner(ctx context.Context, id string, ownerID string) (*api.NodePool, error) {
+	for _, nodePool := range d.nodePools {
+		if nodePool.ID == id && nodePool.OwnerID == ownerID {
 			return nodePool, nil
 		}
 	}
@@ -45,10 +53,6 @@ func (d *nodePoolDaoMock) Create(ctx context.Context, nodePool *api.NodePool) (*
 	return nodePool, nil
 }
 
-func (d *nodePoolDaoMock) Replace(ctx context.Context, nodePool *api.NodePool) (*api.NodePool, error) {
-	return nil, errors.NotImplemented("NodePool").AsError()
-}
-
 func (d *nodePoolDaoMock) Save(ctx context.Context, nodePool *api.NodePool) error {
 	d.nodePools = append(d.nodePools, nodePool)
 	return nil
@@ -56,14 +60,6 @@ func (d *nodePoolDaoMock) Save(ctx context.Context, nodePool *api.NodePool) erro
 
 func (d *nodePoolDaoMock) Delete(ctx context.Context, id string) error {
 	return errors.NotImplemented("NodePool").AsError()
-}
-
-func (d *nodePoolDaoMock) SoftDeleteByOwner(ctx context.Context, ownerID string, t time.Time, deletedBy string) error {
-	return errors.NotImplemented("NodePool").AsError()
-}
-
-func (d *nodePoolDaoMock) FindSoftDeletedByOwner(ctx context.Context, ownerID string) (api.NodePoolList, error) {
-	return nil, errors.NotImplemented("NodePool").AsError()
 }
 
 func (d *nodePoolDaoMock) FindByIDs(ctx context.Context, ids []string) (api.NodePoolList, error) {
@@ -74,7 +70,7 @@ func (d *nodePoolDaoMock) FindByOwner(ctx context.Context, ownerID string) (api.
 	return nil, errors.NotImplemented("NodePool").AsError()
 }
 
-func (d *nodePoolDaoMock) UpdateStatusConditionsByIDs(ctx context.Context, updates map[string][]byte) error {
+func (d *nodePoolDaoMock) SaveAll(ctx context.Context, nodePools api.NodePoolList) error {
 	return errors.NotImplemented("NodePool").AsError()
 }
 

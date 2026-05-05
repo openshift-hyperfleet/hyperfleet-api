@@ -39,17 +39,7 @@ func TestClusterHandler_Patch(t *testing.T) {
 				mockClusterSvc := services.NewMockClusterService(ctrl)
 				mockGenericSvc := services.NewMockGenericService(ctrl)
 
-				mockClusterSvc.EXPECT().Get(gomock.Any(), clusterID).Return(&api.Cluster{
-					Meta:             api.Meta{ID: clusterID, CreatedTime: now, UpdatedTime: now},
-					Name:             "test-cluster",
-					Spec:             []byte("{}"),
-					Labels:           []byte("{}"),
-					StatusConditions: []byte("[]"),
-					CreatedBy:        testSystemUser,
-					UpdatedBy:        testSystemUser,
-				}, nil)
-
-				mockClusterSvc.EXPECT().Replace(gomock.Any(), gomock.Any()).Return(&api.Cluster{
+				mockClusterSvc.EXPECT().Patch(gomock.Any(), clusterID, gomock.Any()).Return(&api.Cluster{
 					Meta:             api.Meta{ID: clusterID, CreatedTime: now, UpdatedTime: now},
 					Name:             "test-cluster",
 					Spec:             []byte(`{"region":"us-east1"}`),
@@ -71,12 +61,8 @@ func TestClusterHandler_Patch(t *testing.T) {
 				mockClusterSvc := services.NewMockClusterService(ctrl)
 				mockGenericSvc := services.NewMockGenericService(ctrl)
 
-				deletedTime := now
-				mockClusterSvc.EXPECT().Get(gomock.Any(), clusterID).Return(&api.Cluster{
-					Meta:        api.Meta{ID: clusterID, CreatedTime: now, UpdatedTime: now},
-					Name:        "test-cluster",
-					DeletedTime: &deletedTime,
-				}, nil)
+				mockClusterSvc.EXPECT().Patch(gomock.Any(), clusterID, gomock.Any()).
+					Return(nil, errors.ConflictState("Cluster '%s' is marked for deletion", clusterID))
 
 				return mockClusterSvc, mockGenericSvc
 			},
@@ -90,7 +76,8 @@ func TestClusterHandler_Patch(t *testing.T) {
 				mockClusterSvc := services.NewMockClusterService(ctrl)
 				mockGenericSvc := services.NewMockGenericService(ctrl)
 
-				mockClusterSvc.EXPECT().Get(gomock.Any(), "non-existent").Return(nil, errors.NotFound("Cluster not found"))
+				mockClusterSvc.EXPECT().Patch(gomock.Any(), "non-existent", gomock.Any()).
+					Return(nil, errors.NotFound("Cluster not found"))
 
 				return mockClusterSvc, mockGenericSvc
 			},

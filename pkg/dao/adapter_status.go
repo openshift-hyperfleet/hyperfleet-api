@@ -12,7 +12,6 @@ import (
 type AdapterStatusDao interface {
 	Get(ctx context.Context, id string) (*api.AdapterStatus, error)
 	Create(ctx context.Context, adapterStatus *api.AdapterStatus) (*api.AdapterStatus, error)
-	Replace(ctx context.Context, adapterStatus *api.AdapterStatus) (*api.AdapterStatus, error)
 	Upsert(ctx context.Context, adapterStatus *api.AdapterStatus, existing *api.AdapterStatus) (*api.AdapterStatus, error)
 	Delete(ctx context.Context, id string) error
 	DeleteByResource(ctx context.Context, resourceType, resourceID string) error
@@ -51,17 +50,6 @@ func (d *sqlAdapterStatusDao) Create(
 ) (*api.AdapterStatus, error) {
 	g2 := (*d.sessionFactory).New(ctx)
 	if err := g2.Omit(clause.Associations).Create(adapterStatus).Error; err != nil {
-		db.MarkForRollback(ctx, err)
-		return nil, err
-	}
-	return adapterStatus, nil
-}
-
-func (d *sqlAdapterStatusDao) Replace(
-	ctx context.Context, adapterStatus *api.AdapterStatus,
-) (*api.AdapterStatus, error) {
-	g2 := (*d.sessionFactory).New(ctx)
-	if err := g2.Omit(clause.Associations).Save(adapterStatus).Error; err != nil {
 		db.MarkForRollback(ctx, err)
 		return nil, err
 	}

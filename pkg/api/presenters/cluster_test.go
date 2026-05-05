@@ -36,16 +36,13 @@ func TestConvertCluster_Complete(t *testing.T) {
 	RegisterTestingT(t)
 
 	req := createTestClusterRequest()
-	createdBy := "user123"
 
-	result, err := ConvertCluster(req, createdBy)
+	result, err := ConvertCluster(req)
 	Expect(err).To(BeNil())
 
 	// Verify basic fields
 	Expect(result.Kind).To(Equal("Cluster"))
 	Expect(result.Name).To(Equal("test-cluster"))
-	Expect(result.CreatedBy).To(Equal(createdBy))
-	Expect(result.UpdatedBy).To(Equal(createdBy))
 
 	// Verify defaults
 	Expect(result.Generation).To(Equal(int32(1)))
@@ -83,7 +80,7 @@ func TestConvertCluster_WithLabels(t *testing.T) {
 		Spec:   map[string]interface{}{"test": "spec"},
 	}
 
-	result, err := ConvertCluster(req, "user456")
+	result, err := ConvertCluster(req)
 	Expect(err).To(BeNil())
 
 	var resultLabels map[string]string
@@ -104,7 +101,7 @@ func TestConvertCluster_WithoutLabels(t *testing.T) {
 		Spec:   map[string]interface{}{"test": "spec"},
 	}
 
-	result, err := ConvertCluster(req, "user789")
+	result, err := ConvertCluster(req)
 	Expect(err).To(BeNil())
 
 	var resultLabels map[string]string
@@ -135,7 +132,7 @@ func TestConvertCluster_SpecMarshaling(t *testing.T) {
 		Spec: complexSpec,
 	}
 
-	result, err := ConvertCluster(req, "user000")
+	result, err := ConvertCluster(req)
 	Expect(err).To(BeNil())
 
 	var resultSpec map[string]interface{}
@@ -319,13 +316,12 @@ func TestConvertAndPresentCluster_RoundTrip(t *testing.T) {
 	RegisterTestingT(t)
 
 	originalReq := createTestClusterRequest()
-	createdBy := "user999@example.com"
 
 	// Convert from OpenAPI request to domain
-	cluster, err := ConvertCluster(originalReq, createdBy)
+	cluster, err := ConvertCluster(originalReq)
 	Expect(err).To(BeNil())
 
-	// Simulate database fields (ID, timestamps)
+	// Simulate database fields (ID, timestamps, created_by/updated_by set by service layer)
 	cluster.ID = "cluster-roundtrip-123"
 	now := time.Now()
 	cluster.CreatedTime = now
@@ -339,8 +335,6 @@ func TestConvertAndPresentCluster_RoundTrip(t *testing.T) {
 	Expect(*result.Id).To(Equal("cluster-roundtrip-123"))
 	Expect(result.Kind).To(Equal(originalReq.Kind))
 	Expect(result.Name).To(Equal(originalReq.Name))
-	Expect(result.CreatedBy).To(Equal(openapi_types.Email(createdBy)))
-	Expect(result.UpdatedBy).To(Equal(openapi_types.Email(createdBy)))
 
 	// Verify Spec preserved
 	Expect(result.Spec["region"]).To(Equal(originalReq.Spec["region"]))

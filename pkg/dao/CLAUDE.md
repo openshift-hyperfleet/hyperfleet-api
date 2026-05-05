@@ -30,7 +30,7 @@ This is critical — without it, the middleware will commit a partially-failed t
 
 ## Patterns
 
-- `Replace()` compares spec bytes to detect changes; auto-increments `Generation` only when spec actually changed
+- Generation increment is handled by the service layer's `Patch` method via `IncrementGeneration()`; `Save()` persists the result
 - Use `clause.Associations` carefully — omit on updates to prevent cascading deletes of related records
 - All methods accept `context.Context` as first parameter for transaction propagation
 - Return stdlib `error` (not `*errors.ServiceError`) — service layer wraps DAO errors into ServiceErrors

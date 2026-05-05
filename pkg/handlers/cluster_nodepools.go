@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"encoding/json"
 	"net/http"
 
 	"github.com/gorilla/mux"
@@ -16,18 +15,15 @@ import (
 type ClusterNodePoolsHandler struct {
 	clusterService  services.ClusterService
 	nodePoolService services.NodePoolService
-	generic         services.GenericService
 }
 
 func NewClusterNodePoolsHandler(
 	clusterService services.ClusterService,
 	nodePoolService services.NodePoolService,
-	generic services.GenericService,
 ) *ClusterNodePoolsHandler {
 	return &ClusterNodePoolsHandler{
 		clusterService:  clusterService,
 		nodePoolService: nodePoolService,
-		generic:         generic,
 	}
 }
 
@@ -38,31 +34,20 @@ func (h ClusterNodePoolsHandler) List(w http.ResponseWriter, r *http.Request) {
 			ctx := r.Context()
 			clusterID := mux.Vars(r)["id"]
 
-			// Verify cluster exists
-			_, err := h.clusterService.Get(ctx, clusterID)
-			if err != nil {
+			if err := validatePathID(clusterID, "cluster id"); err != nil {
 				return nil, err
 			}
 
-			// Get nodepools with owner_id = clusterID
 			listArgs := services.NewListArguments(r.URL.Query())
-			// Add filter for owner_id
-			if listArgs.Search == "" {
-				listArgs.Search = "owner_id = '" + clusterID + "'"
-			} else {
-				listArgs.Search = listArgs.Search + " AND owner_id = '" + clusterID + "'"
-			}
 
-			var nodePools []api.NodePool
-			paging, err := h.generic.List(ctx, "username", listArgs, &nodePools)
+			nodePools, paging, err := h.nodePoolService.ListByCluster(ctx, clusterID, listArgs)
 			if err != nil {
 				return nil, err
 			}
 
-			// Build list response
 			items := make([]openapi.NodePool, 0, len(nodePools))
 			for _, nodePool := range nodePools {
-				presented, err := presenters.PresentNodePool(&nodePool)
+				presented, err := presenters.PresentNodePool(nodePool)
 				if err != nil {
 					return nil, errors.GeneralError("Failed to present nodepool: %v", err)
 				}
@@ -106,21 +91,9 @@ func (h ClusterNodePoolsHandler) Get(w http.ResponseWriter, r *http.Request) {
 			clusterID := mux.Vars(r)["id"]
 			nodePoolID := mux.Vars(r)["nodepool_id"]
 
-			// Verify cluster exists
-			_, err := h.clusterService.Get(ctx, clusterID)
+			nodePool, err := h.nodePoolService.GetByIDAndOwner(ctx, nodePoolID, clusterID)
 			if err != nil {
 				return nil, err
-			}
-
-			// Get nodepool
-			nodePool, err := h.nodePoolService.Get(ctx, nodePoolID)
-			if err != nil {
-				return nil, err
-			}
-
-			// Verify nodepool belongs to this cluster
-			if nodePool.OwnerID != clusterID {
-				return nil, errors.NotFound("NodePool '%s' not found for cluster '%s'", nodePoolID, clusterID)
 			}
 
 			presented, presErr := presenters.PresentNodePool(nodePool)
@@ -135,7 +108,7 @@ func (h ClusterNodePoolsHandler) Get(w http.ResponseWriter, r *http.Request) {
 	handleGet(w, r, cfg)
 }
 
-// Delete soft-deletes a specific nodepool for a cluster
+// SoftDelete soft-deletes a specific nodepool for a cluster
 func (h ClusterNodePoolsHandler) SoftDelete(w http.ResponseWriter, r *http.Request) {
 	cfg := &handlerConfig{
 		Action: func() (interface{}, *errors.ServiceError) {
@@ -143,23 +116,12 @@ func (h ClusterNodePoolsHandler) SoftDelete(w http.ResponseWriter, r *http.Reque
 			clusterID := mux.Vars(r)["id"]
 			nodePoolID := mux.Vars(r)["nodepool_id"]
 
-			// Verify cluster exists
-			_, err := h.clusterService.Get(ctx, clusterID)
+			_, err := h.nodePoolService.GetByIDAndOwner(ctx, nodePoolID, clusterID)
 			if err != nil {
 				return nil, err
 			}
 
-			// Get nodepool to verify ownership
-			nodePool, err := h.nodePoolService.Get(ctx, nodePoolID)
-			if err != nil {
-				return nil, err
-			}
-
-			if nodePool.OwnerID != clusterID {
-				return nil, errors.NotFound("NodePool '%s' not found for cluster '%s'", nodePoolID, clusterID)
-			}
-
-			nodePool, err = h.nodePoolService.SoftDelete(ctx, nodePoolID)
+			nodePool, err := h.nodePoolService.SoftDelete(ctx, nodePoolID)
 			if err != nil {
 				return nil, err
 			}
@@ -190,45 +152,12 @@ func (h ClusterNodePoolsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 			clusterID := mux.Vars(r)["id"]
 			nodePoolID := mux.Vars(r)["nodepool_id"]
 
-			cluster, err := h.clusterService.Get(ctx, clusterID)
+			_, err := h.nodePoolService.GetByIDAndOwner(ctx, nodePoolID, clusterID)
 			if err != nil {
 				return nil, err
 			}
 
-			if cluster.DeletedTime != nil {
-				return nil, errors.ConflictState("Cluster '%s' is marked for deletion", clusterID)
-			}
-
-			found, err := h.nodePoolService.Get(ctx, nodePoolID)
-			if err != nil {
-				return nil, err
-			}
-
-			if found.OwnerID != clusterID {
-				return nil, errors.NotFound("NodePool '%s' not found for cluster '%s'", nodePoolID, clusterID)
-			}
-
-			if found.DeletedTime != nil {
-				return nil, errors.ConflictState("NodePool '%s' is marked for deletion", nodePoolID)
-			}
-
-			if patch.Spec != nil {
-				specJSON, jsonErr := json.Marshal(*patch.Spec)
-				if jsonErr != nil {
-					return nil, errors.GeneralError("Failed to marshal spec: %v", jsonErr)
-				}
-				found.Spec = specJSON
-			}
-
-			if patch.Labels != nil {
-				labelsJSON, jsonErr := json.Marshal(*patch.Labels)
-				if jsonErr != nil {
-					return nil, errors.GeneralError("Failed to marshal labels: %v", jsonErr)
-				}
-				found.Labels = labelsJSON
-			}
-
-			found, err = h.nodePoolService.Replace(ctx, found)
+			found, err := h.nodePoolService.Patch(ctx, nodePoolID, &patch)
 			if err != nil {
 				return nil, err
 			}
@@ -260,7 +189,6 @@ func (h ClusterNodePoolsHandler) Create(w http.ResponseWriter, r *http.Request) 
 			ctx := r.Context()
 			clusterID := mux.Vars(r)["id"]
 
-			// Verify cluster exists
 			cluster, err := h.clusterService.Get(ctx, clusterID)
 			if err != nil {
 				return nil, err
@@ -270,13 +198,11 @@ func (h ClusterNodePoolsHandler) Create(w http.ResponseWriter, r *http.Request) 
 				return nil, errors.ConflictState("Cluster '%s' is marked for deletion", clusterID)
 			}
 
-			// Use the presenters.ConvertNodePool helper to convert the request
-			nodePoolModel, convErr := presenters.ConvertNodePool(&req, cluster.ID, "system@hyperfleet.local")
+			nodePoolModel, convErr := presenters.ConvertNodePool(&req, cluster.ID)
 			if convErr != nil {
 				return nil, errors.GeneralError("Failed to convert nodepool: %v", convErr)
 			}
 
-			// Create nodepool
 			nodePoolModel, err = h.nodePoolService.Create(ctx, nodePoolModel)
 			if err != nil {
 				return nil, err

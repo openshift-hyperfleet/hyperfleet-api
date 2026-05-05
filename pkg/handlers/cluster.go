@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"encoding/json"
 	"net/http"
 
 	"github.com/gorilla/mux"
@@ -40,7 +39,7 @@ func (h ClusterHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Action: func() (interface{}, *errors.ServiceError) {
 			ctx := r.Context()
 			// Use the presenters.ConvertCluster helper to convert the request
-			clusterModel, err := presenters.ConvertCluster(&req, "system@hyperfleet.local")
+			clusterModel, err := presenters.ConvertCluster(&req)
 			if err != nil {
 				return nil, errors.GeneralError("Failed to convert cluster: %v", err)
 			}
@@ -71,32 +70,8 @@ func (h ClusterHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		Action: func() (interface{}, *errors.ServiceError) {
 			ctx := r.Context()
 			id := mux.Vars(r)["id"]
-			found, err := h.cluster.Get(ctx, id)
-			if err != nil {
-				return nil, err
-			}
 
-			if found.DeletedTime != nil {
-				return nil, errors.ConflictState("Cluster '%s' is marked for deletion", id)
-			}
-
-			if patch.Spec != nil {
-				specJSON, err := json.Marshal(*patch.Spec)
-				if err != nil {
-					return nil, errors.GeneralError("Failed to marshal spec: %v", err)
-				}
-				found.Spec = specJSON
-			}
-
-			if patch.Labels != nil {
-				labelsJSON, err := json.Marshal(*patch.Labels)
-				if err != nil {
-					return nil, errors.GeneralError("Failed to marshal labels: %v", err)
-				}
-				found.Labels = labelsJSON
-			}
-
-			clusterModel, err := h.cluster.Replace(ctx, found)
+			clusterModel, err := h.cluster.Patch(ctx, id, &patch)
 			if err != nil {
 				return nil, err
 			}
@@ -119,7 +94,7 @@ func (h ClusterHandler) List(w http.ResponseWriter, r *http.Request) {
 
 			listArgs := services.NewListArguments(r.URL.Query())
 			var clusters []api.Cluster
-			paging, err := h.generic.List(ctx, "username", listArgs, &clusters)
+			paging, err := h.generic.List(ctx, listArgs, &clusters)
 			if err != nil {
 				return nil, err
 			}

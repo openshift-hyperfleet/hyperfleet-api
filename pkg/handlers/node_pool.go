@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"encoding/json"
 	"net/http"
 
 	"github.com/gorilla/mux"
@@ -40,7 +39,7 @@ func (h NodePoolHandler) Create(w http.ResponseWriter, r *http.Request) {
 			ctx := r.Context()
 			// For standalone nodepools, owner_id would need to come from somewhere
 			// This is likely not a supported use case, but using empty string for now
-			nodePoolModel, convErr := presenters.ConvertNodePool(&req, "", "system@hyperfleet.local")
+			nodePoolModel, convErr := presenters.ConvertNodePool(&req, "")
 			if convErr != nil {
 				return nil, errors.GeneralError("Failed to convert nodepool: %v", convErr)
 			}
@@ -71,28 +70,8 @@ func (h NodePoolHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		Action: func() (interface{}, *errors.ServiceError) {
 			ctx := r.Context()
 			id := mux.Vars(r)["id"]
-			found, err := h.nodePool.Get(ctx, id)
-			if err != nil {
-				return nil, err
-			}
 
-			if patch.Spec != nil {
-				specJSON, err := json.Marshal(*patch.Spec)
-				if err != nil {
-					return nil, errors.GeneralError("Failed to marshal spec: %v", err)
-				}
-				found.Spec = specJSON
-			}
-
-			if patch.Labels != nil {
-				labelsJSON, err := json.Marshal(*patch.Labels)
-				if err != nil {
-					return nil, errors.GeneralError("Failed to marshal labels: %v", err)
-				}
-				found.Labels = labelsJSON
-			}
-
-			nodePoolModel, err := h.nodePool.Replace(ctx, found)
+			nodePoolModel, err := h.nodePool.Patch(ctx, id, &patch)
 			if err != nil {
 				return nil, err
 			}
@@ -115,7 +94,7 @@ func (h NodePoolHandler) List(w http.ResponseWriter, r *http.Request) {
 
 			listArgs := services.NewListArguments(r.URL.Query())
 			var nodePools []api.NodePool
-			paging, err := h.generic.List(ctx, "username", listArgs, &nodePools)
+			paging, err := h.generic.List(ctx, listArgs, &nodePools)
 			if err != nil {
 				return nil, err
 			}

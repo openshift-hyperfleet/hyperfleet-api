@@ -33,9 +33,8 @@ func TestConvertNodePool_Complete(t *testing.T) {
 
 	req := createTestNodePoolRequest()
 	ownerID := "cluster-owner-123"
-	createdBy := "user456"
 
-	result, err := ConvertNodePool(req, ownerID, createdBy)
+	result, err := ConvertNodePool(req, ownerID)
 	Expect(err).To(BeNil())
 
 	// Verify basic fields
@@ -43,8 +42,6 @@ func TestConvertNodePool_Complete(t *testing.T) {
 	Expect(result.Name).To(Equal("test-nodepool"))
 	Expect(result.OwnerID).To(Equal("cluster-owner-123"))
 	Expect(result.OwnerKind).To(Equal("Cluster"))
-	Expect(result.CreatedBy).To(Equal("user456"))
-	Expect(result.UpdatedBy).To(Equal("user456"))
 
 	// Verify Spec marshaled correctly
 	var spec map[string]interface{}
@@ -75,7 +72,7 @@ func TestConvertNodePool_WithKind(t *testing.T) {
 		Labels: nil,
 	}
 
-	result, err := ConvertNodePool(req, "cluster-123", "user789")
+	result, err := ConvertNodePool(req, "cluster-123")
 	Expect(err).To(BeNil())
 
 	Expect(result.Kind).To(Equal("CustomNodePool"))
@@ -92,7 +89,7 @@ func TestConvertNodePool_WithoutKind(t *testing.T) {
 		Labels: nil,
 	}
 
-	result, err := ConvertNodePool(req, "cluster-456", "user000")
+	result, err := ConvertNodePool(req, "cluster-456")
 	Expect(err).To(BeNil())
 
 	Expect(result.Kind).To(Equal("NodePool")) // Default value
@@ -114,7 +111,7 @@ func TestConvertNodePool_WithLabels(t *testing.T) {
 		Labels: &labels,
 	}
 
-	result, err := ConvertNodePool(req, "cluster-789", "user111")
+	result, err := ConvertNodePool(req, "cluster-789")
 	Expect(err).To(BeNil())
 
 	var resultLabels map[string]string
@@ -135,7 +132,7 @@ func TestConvertNodePool_WithoutLabels(t *testing.T) {
 		Labels: nil, // Nil labels
 	}
 
-	result, err := ConvertNodePool(req, "cluster-xyz", "user222")
+	result, err := ConvertNodePool(req, "cluster-xyz")
 	Expect(err).To(BeNil())
 
 	var resultLabels map[string]string
@@ -361,10 +358,9 @@ func TestConvertAndPresentNodePool_RoundTrip(t *testing.T) {
 
 	originalReq := createTestNodePoolRequest()
 	ownerID := "cluster-roundtrip-789"
-	createdBy := "user-roundtrip@example.com"
 
 	// Convert from OpenAPI request to domain
-	nodePool, err := ConvertNodePool(originalReq, ownerID, createdBy)
+	nodePool, err := ConvertNodePool(originalReq, ownerID)
 	Expect(err).To(BeNil())
 
 	// Simulate database fields (ID, timestamps)
@@ -381,8 +377,6 @@ func TestConvertAndPresentNodePool_RoundTrip(t *testing.T) {
 	Expect(*result.Id).To(Equal("nodepool-roundtrip-123"))
 	Expect(*result.Kind).To(Equal(*originalReq.Kind))
 	Expect(result.Name).To(Equal(originalReq.Name))
-	Expect(result.CreatedBy).To(Equal(openapi_types.Email(createdBy)))
-	Expect(result.UpdatedBy).To(Equal(openapi_types.Email(createdBy)))
 
 	// Verify Spec preserved
 	Expect(result.Spec["replicas"]).To(BeNumerically("==", originalReq.Spec["replicas"]))

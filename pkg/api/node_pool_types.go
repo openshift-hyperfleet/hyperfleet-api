@@ -28,8 +28,10 @@ type NodePool struct {
 	Generation       int32          `json:"generation" gorm:"default:1;not null"`
 }
 
-type NodePoolList []*NodePool
-type NodePoolIndex map[string]*NodePool
+type (
+	NodePoolList  []*NodePool
+	NodePoolIndex map[string]*NodePool
+)
 
 func (l NodePoolList) Index() NodePoolIndex {
 	index := NodePoolIndex{}
@@ -40,14 +42,18 @@ func (l NodePoolList) Index() NodePoolIndex {
 }
 
 func (np *NodePool) BeforeCreate(tx *gorm.DB) error {
-	id, err := NewID()
-	if err != nil {
-		return fmt.Errorf("failed to generate node pool ID: %w", err)
+	if np.ID == "" {
+		id, err := NewID()
+		if err != nil {
+			return fmt.Errorf("failed to generate node pool ID: %w", err)
+		}
+		np.ID = id
 	}
-	np.ID = id
 
 	now := time.Now()
-	np.CreatedTime = now
+	if np.CreatedTime.IsZero() {
+		np.CreatedTime = now
+	}
 	np.UpdatedTime = now
 	if np.Generation == 0 {
 		np.Generation = 1
@@ -74,4 +80,13 @@ func (np *NodePool) BeforeUpdate(tx *gorm.DB) error {
 type NodePoolPatchRequest struct {
 	Spec   *map[string]interface{} `json:"spec,omitempty"`
 	Labels *map[string]string      `json:"labels,omitempty"`
+}
+
+func (np *NodePool) MarkDeleted(by string, t time.Time) {
+	np.DeletedTime = &t
+	np.DeletedBy = &by
+}
+
+func (np *NodePool) IncrementGeneration() {
+	np.Generation++
 }

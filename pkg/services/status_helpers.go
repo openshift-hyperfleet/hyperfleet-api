@@ -49,7 +49,7 @@ func computeNodePoolConditionsJSON(
 }
 
 // updateNodePoolStatusFromAdapters fetches a single nodepool by ID, recomputes its status
-// conditions from current adapter reports, and persists the result via Replace.
+// conditions from current adapter reports, and persists the result via Save.
 // Returns the updated nodepool unchanged if conditions have not changed.
 func updateNodePoolStatusFromAdapters(
 	ctx context.Context,
@@ -81,21 +81,18 @@ func updateNodePoolStatusFromAdapters(
 	}
 
 	nodePool.StatusConditions = conditionsJSON
-	nodePool, err = nodePoolDao.Replace(ctx, nodePool)
-	if err != nil {
+	if err = nodePoolDao.Save(ctx, nodePool); err != nil {
 		return nil, handleUpdateError("NodePool", err)
 	}
 
 	return nodePool, nil
 }
 
-// updateNodePoolStatusesForCascadeDelete recomputes and persists status conditions for a set of
-// cascade-soft-deleted nodepools. Fetches all their adapter statuses in one query and writes
-// only changed rows via UpdateStatusConditionsByIDs.
-func updateNodePoolStatusesForCascadeDelete(
+// recomputeNodePoolConditions fetches adapter statuses and recomputes status conditions
+// for each nodepool, setting StatusConditions directly on the models.
+func recomputeNodePoolConditions(
 	ctx context.Context,
 	nodePools []*api.NodePool,
-	nodePoolDao dao.NodePoolDao,
 	adapterStatusDao dao.AdapterStatusDao,
 	adapterConfig *config.AdapterRequirementsConfig,
 ) *errors.ServiceError {
@@ -119,7 +116,6 @@ func updateNodePoolStatusesForCascadeDelete(
 		statusesByResource[s.ResourceID] = append(statusesByResource[s.ResourceID], s)
 	}
 
-	updates := make(map[string][]byte)
 	requiredAdapters := adapterConfig.RequiredNodePoolAdapters()
 
 	for _, np := range nodePools {
@@ -128,13 +124,7 @@ func updateNodePoolStatusesForCascadeDelete(
 			return svcErr
 		}
 		if conditionsJSON != nil {
-			updates[np.ID] = conditionsJSON
-		}
-	}
-
-	if len(updates) > 0 {
-		if err := nodePoolDao.UpdateStatusConditionsByIDs(ctx, updates); err != nil {
-			return handleUpdateError("NodePool", err)
+			np.StatusConditions = conditionsJSON
 		}
 	}
 

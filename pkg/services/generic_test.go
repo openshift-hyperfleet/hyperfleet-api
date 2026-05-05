@@ -41,7 +41,7 @@ func TestSQLTranslation(t *testing.T) {
 		search := test["search"].(string)
 		errorMsg := test["error"].(string)
 		listCtx, model, serviceErr := genericService.newListContext(
-			context.Background(), "", &ListArguments{Search: search}, &list,
+			context.Background(), &ListArguments{Search: search}, &list,
 		)
 		Expect(serviceErr).ToNot(HaveOccurred())
 		d := g.GetInstanceDao(context.Background(), model)
@@ -78,7 +78,7 @@ func TestSQLTranslation(t *testing.T) {
 		sqlReal := test["sql"].(string)
 		valuesReal := test["values"].(types.GomegaMatcher)
 		listCtx, _, serviceErr := genericService.newListContext(
-			context.Background(), "", &ListArguments{Search: search}, &list,
+			context.Background(), &ListArguments{Search: search}, &list,
 		)
 		Expect(serviceErr).ToNot(HaveOccurred())
 		tslTree, err := tsl.ParseTSL(search)

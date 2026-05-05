@@ -4,9 +4,18 @@ import (
 	"reflect"
 	"regexp"
 
+	"github.com/google/uuid"
+
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 )
+
+func validatePathID(id, name string) *errors.ServiceError {
+	if _, err := uuid.Parse(id); err != nil {
+		return errors.Validation("invalid %s format", name)
+	}
+	return nil
+}
 
 // Cluster/NodePool name pattern: compliant with Kubernetes DNS Subdomain Names (RFC 1123)
 // Must start and end with alphanumeric, can contain hyphens in the middle

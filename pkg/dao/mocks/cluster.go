@@ -34,10 +34,6 @@ func (d *clusterDaoMock) Create(ctx context.Context, cluster *api.Cluster) (*api
 	return cluster, nil
 }
 
-func (d *clusterDaoMock) Replace(ctx context.Context, cluster *api.Cluster) (*api.Cluster, error) {
-	return nil, errors.NotImplemented("Cluster").AsError()
-}
-
 func (d *clusterDaoMock) Save(ctx context.Context, cluster *api.Cluster) error {
 	d.clusters = append(d.clusters, cluster)
 	return nil

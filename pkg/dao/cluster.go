@@ -1,7 +1,6 @@
 package dao
 
 import (
-	"bytes"
 	"context"
 
 	"gorm.io/gorm/clause"
@@ -14,7 +13,6 @@ type ClusterDao interface {
 	Get(ctx context.Context, id string) (*api.Cluster, error)
 	GetForUpdate(ctx context.Context, id string) (*api.Cluster, error)
 	Create(ctx context.Context, cluster *api.Cluster) (*api.Cluster, error)
-	Replace(ctx context.Context, cluster *api.Cluster) (*api.Cluster, error)
 	Save(ctx context.Context, cluster *api.Cluster) error
 	SaveStatusConditions(ctx context.Context, id string, statusConditions []byte) error
 	Delete(ctx context.Context, id string) error
@@ -53,32 +51,6 @@ func (d *sqlClusterDao) GetForUpdate(ctx context.Context, id string) (*api.Clust
 func (d *sqlClusterDao) Create(ctx context.Context, cluster *api.Cluster) (*api.Cluster, error) {
 	g2 := (*d.sessionFactory).New(ctx)
 	if err := g2.Omit(clause.Associations).Create(cluster).Error; err != nil {
-		db.MarkForRollback(ctx, err)
-		return nil, err
-	}
-	return cluster, nil
-}
-
-func (d *sqlClusterDao) Replace(ctx context.Context, cluster *api.Cluster) (*api.Cluster, error) {
-	g2 := (*d.sessionFactory).New(ctx)
-
-	// Get the existing cluster to compare spec
-	existing, err := d.Get(ctx, cluster.ID)
-	if err != nil {
-		db.MarkForRollback(ctx, err)
-		return nil, err
-	}
-
-	// Compare spec and labels: if either changed, increment generation.
-	// Aggregated conditions are recomputed in the service layer.
-	if !bytes.Equal(existing.Spec, cluster.Spec) || !bytes.Equal(existing.Labels, cluster.Labels) {
-		cluster.Generation = existing.Generation + 1
-	} else {
-		cluster.Generation = existing.Generation
-	}
-
-	// Save the cluster
-	if err := g2.Omit(clause.Associations).Save(cluster).Error; err != nil {
 		db.MarkForRollback(ctx, err)
 		return nil, err
 	}

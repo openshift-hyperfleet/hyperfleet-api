@@ -66,11 +66,6 @@ func (d *mockClusterDao) Create(ctx context.Context, cluster *api.Cluster) (*api
 	return cluster, nil
 }
 
-func (d *mockClusterDao) Replace(ctx context.Context, cluster *api.Cluster) (*api.Cluster, error) {
-	d.clusters[cluster.ID] = cluster
-	return cluster, nil
-}
-
 func (d *mockClusterDao) Save(ctx context.Context, cluster *api.Cluster) error {
 	d.clusters[cluster.ID] = cluster
 	return nil
@@ -128,11 +123,6 @@ func (d *mockAdapterStatusDao) Get(ctx context.Context, id string) (*api.Adapter
 }
 
 func (d *mockAdapterStatusDao) Create(ctx context.Context, status *api.AdapterStatus) (*api.AdapterStatus, error) {
-	d.statuses[status.ID] = status
-	return status, nil
-}
-
-func (d *mockAdapterStatusDao) Replace(ctx context.Context, status *api.AdapterStatus) (*api.AdapterStatus, error) {
 	d.statuses[status.ID] = status
 	return status, nil
 }
@@ -1304,6 +1294,122 @@ func TestClusterSoftDelete(t *testing.T) {
 		g.Expect(nodePoolDao.nodePools["np-2"].DeletedTime).NotTo(BeNil())
 	})
 
+	t.Run("cascade delete bumps nodepool generation and sets deleted_by", func(t *testing.T) {
+		g := NewWithT(t)
+		clusterDao := newMockClusterDao()
+		nodePoolDao := newMockNodePoolDao()
+		adapterStatusDao := newMockAdapterStatusDao()
+		service := NewClusterService(clusterDao, nodePoolDao, adapterStatusDao, testAdapterConfig())
+		ctx := context.Background()
+		clusterID := "cascade-gen"
+		clusterDao.clusters[clusterID] = &api.Cluster{Meta: api.Meta{ID: clusterID}, Generation: 1}
+		nodePoolDao.nodePools["np-1"] = &api.NodePool{Meta: api.Meta{ID: "np-1"}, OwnerID: clusterID, Generation: 3}
+		nodePoolDao.nodePools["np-2"] = &api.NodePool{Meta: api.Meta{ID: "np-2"}, OwnerID: clusterID, Generation: 1}
+
+		_, svcErr := service.SoftDelete(ctx, clusterID)
+
+		g.Expect(svcErr).To(BeNil())
+		g.Expect(nodePoolDao.nodePools["np-1"].Generation).To(Equal(int32(4)))
+		g.Expect(nodePoolDao.nodePools["np-2"].Generation).To(Equal(int32(2)))
+		g.Expect(nodePoolDao.nodePools["np-1"].DeletedBy).NotTo(BeNil())
+		g.Expect(*nodePoolDao.nodePools["np-1"].DeletedBy).To(Equal(systemActor))
+		g.Expect(nodePoolDao.nodePools["np-2"].DeletedBy).NotTo(BeNil())
+		g.Expect(*nodePoolDao.nodePools["np-2"].DeletedBy).To(Equal(systemActor))
+	})
+
+	t.Run("cascade delete recomputes nodepool status conditions", func(t *testing.T) {
+		g := NewWithT(t)
+		clusterDao := newMockClusterDao()
+		nodePoolDao := newMockNodePoolDao()
+		adapterStatusDao := newMockAdapterStatusDao()
+		adapterConfig := testAdapterConfig()
+		adapterConfig.Required.Nodepool = []string{"validation"}
+		adapterConfig.Required.Cluster = []string{}
+		service := NewClusterService(clusterDao, nodePoolDao, adapterStatusDao, adapterConfig)
+		ctx := context.Background()
+		clusterID := "cascade-conditions"
+		clusterDao.clusters[clusterID] = &api.Cluster{Meta: api.Meta{ID: clusterID}, Generation: 1}
+		nodePoolDao.nodePools["np-1"] = &api.NodePool{
+			Meta: api.Meta{ID: "np-1"}, OwnerID: clusterID, Generation: 1,
+		}
+
+		now := time.Now()
+		adapterConds := []api.AdapterCondition{
+			{Type: api.ConditionTypeAvailable, Status: api.AdapterConditionTrue, LastTransitionTime: now},
+			{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: now},
+			{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: now},
+		}
+		condJSON, _ := json.Marshal(adapterConds)
+		adapterStatusDao.statuses["NodePool:np-1:validation"] = &api.AdapterStatus{
+			ResourceType: "NodePool", ResourceID: "np-1", Adapter: "validation",
+			ObservedGeneration: 1, Conditions: condJSON,
+			CreatedTime: now, LastReportTime: now,
+		}
+
+		_, svcErr := service.SoftDelete(ctx, clusterID)
+
+		g.Expect(svcErr).To(BeNil())
+		np := nodePoolDao.nodePools["np-1"]
+		g.Expect(np.Generation).To(Equal(int32(2)))
+		g.Expect(np.StatusConditions).NotTo(BeNil())
+
+		var conds []api.ResourceCondition
+		g.Expect(json.Unmarshal(np.StatusConditions, &conds)).To(Succeed())
+
+		var reconciled, available *api.ResourceCondition
+		for i := range conds {
+			switch conds[i].Type {
+			case api.ConditionTypeReconciled:
+				reconciled = &conds[i]
+			case api.ConditionTypeAvailable:
+				available = &conds[i]
+			}
+		}
+		g.Expect(reconciled).NotTo(BeNil())
+		g.Expect(reconciled.Status).To(Equal(api.ConditionFalse),
+			"Reconciled=False: adapter at gen=1, nodepool at gen=2 after MarkDeleted")
+		g.Expect(available).NotTo(BeNil())
+		g.Expect(available.Status).To(Equal(api.ConditionTrue),
+			"Available=True: adapter still reports Available=True")
+	})
+
+	t.Run("already-deleted nodepools are not re-marked during cascade", func(t *testing.T) {
+		g := NewWithT(t)
+		clusterDao := newMockClusterDao()
+		nodePoolDao := newMockNodePoolDao()
+		adapterStatusDao := newMockAdapterStatusDao()
+		service := NewClusterService(clusterDao, nodePoolDao, adapterStatusDao, testAdapterConfig())
+		ctx := context.Background()
+		clusterID := "cascade-mixed"
+		clusterDao.clusters[clusterID] = &api.Cluster{Meta: api.Meta{ID: clusterID}, Generation: 1}
+
+		originalDeletedTime := time.Now().Add(-time.Hour).UTC().Truncate(time.Microsecond)
+		originalDeletedBy := "earlier-actor"
+		nodePoolDao.nodePools["np-live"] = &api.NodePool{
+			Meta: api.Meta{ID: "np-live"}, OwnerID: clusterID, Generation: 1,
+		}
+		nodePoolDao.nodePools["np-already-deleted"] = &api.NodePool{
+			Meta: api.Meta{ID: "np-already-deleted"}, OwnerID: clusterID, Generation: 5,
+			DeletedTime: &originalDeletedTime, DeletedBy: &originalDeletedBy,
+		}
+
+		_, svcErr := service.SoftDelete(ctx, clusterID)
+
+		g.Expect(svcErr).To(BeNil())
+		live := nodePoolDao.nodePools["np-live"]
+		g.Expect(live.DeletedTime).NotTo(BeNil())
+		g.Expect(live.Generation).To(Equal(int32(2)))
+		g.Expect(*live.DeletedBy).To(Equal(systemActor))
+
+		deleted := nodePoolDao.nodePools["np-already-deleted"]
+		g.Expect(deleted.DeletedTime.Equal(originalDeletedTime)).To(BeTrue(),
+			"already-deleted nodepool should keep original deleted_time")
+		g.Expect(*deleted.DeletedBy).To(Equal(originalDeletedBy),
+			"already-deleted nodepool should keep original deleted_by")
+		g.Expect(deleted.Generation).To(Equal(int32(5)),
+			"already-deleted nodepool should keep original generation")
+	})
+
 	t.Run("given an already-deleted cluster, when soft-deleted again, then deleted_time and generation are unchanged", func(t *testing.T) { //nolint:lll
 		g := NewWithT(t)
 		// Given:
@@ -1527,5 +1633,99 @@ func TestReconciled_DuringDeletion_ChildResources(t *testing.T) {
 
 		g.Expect(ready).NotTo(BeNil())
 		g.Expect(ready.Status).To(Equal(api.ConditionTrue))
+	})
+}
+
+func TestClusterPatch(t *testing.T) {
+	t.Parallel()
+	t.Run("spec changed increments generation", func(t *testing.T) {
+		t.Parallel()
+		g := NewWithT(t)
+		clusterDao := newMockClusterDao()
+		nodePoolDao := newMockNodePoolDao()
+		adapterStatusDao := newMockAdapterStatusDao()
+		adapterConfig := testAdapterConfig()
+		adapterConfig.Required.Cluster = []string{}
+		service := NewClusterService(clusterDao, nodePoolDao, adapterStatusDao, adapterConfig)
+		ctx := context.Background()
+
+		clusterDao.clusters["c1"] = &api.Cluster{
+			Meta:       api.Meta{ID: "c1"},
+			Spec:       []byte(`{"old":"spec"}`),
+			Labels:     []byte(`{}`),
+			Generation: 1,
+		}
+
+		newSpec := map[string]interface{}{"new": "spec"}
+		result, svcErr := service.Patch(ctx, "c1", &api.ClusterPatchRequest{Spec: &newSpec})
+
+		g.Expect(svcErr).To(BeNil())
+		g.Expect(result.Generation).To(Equal(int32(2)))
+	})
+
+	t.Run("spec unchanged keeps generation", func(t *testing.T) {
+		t.Parallel()
+		g := NewWithT(t)
+		clusterDao := newMockClusterDao()
+		nodePoolDao := newMockNodePoolDao()
+		adapterStatusDao := newMockAdapterStatusDao()
+		adapterConfig := testAdapterConfig()
+		adapterConfig.Required.Cluster = []string{}
+		service := NewClusterService(clusterDao, nodePoolDao, adapterStatusDao, adapterConfig)
+		ctx := context.Background()
+
+		clusterDao.clusters["c1"] = &api.Cluster{
+			Meta:       api.Meta{ID: "c1"},
+			Spec:       []byte(`{"key":"value"}`),
+			Labels:     []byte(`{}`),
+			Generation: 3,
+		}
+
+		sameSpec := map[string]interface{}{"key": "value"}
+		result, svcErr := service.Patch(ctx, "c1", &api.ClusterPatchRequest{Spec: &sameSpec})
+
+		g.Expect(svcErr).To(BeNil())
+		g.Expect(result.Generation).To(Equal(int32(3)))
+	})
+
+	t.Run("labels changed increments generation", func(t *testing.T) {
+		t.Parallel()
+		g := NewWithT(t)
+		clusterDao := newMockClusterDao()
+		nodePoolDao := newMockNodePoolDao()
+		adapterStatusDao := newMockAdapterStatusDao()
+		adapterConfig := testAdapterConfig()
+		adapterConfig.Required.Cluster = []string{}
+		service := NewClusterService(clusterDao, nodePoolDao, adapterStatusDao, adapterConfig)
+		ctx := context.Background()
+
+		clusterDao.clusters["c1"] = &api.Cluster{
+			Meta:       api.Meta{ID: "c1"},
+			Spec:       []byte(`{}`),
+			Labels:     []byte(`{"env":"dev"}`),
+			Generation: 1,
+		}
+
+		newLabels := map[string]string{"env": "prod"}
+		result, svcErr := service.Patch(ctx, "c1", &api.ClusterPatchRequest{Labels: &newLabels})
+
+		g.Expect(svcErr).To(BeNil())
+		g.Expect(result.Generation).To(Equal(int32(2)))
+	})
+
+	t.Run("not found returns 404", func(t *testing.T) {
+		t.Parallel()
+		g := NewWithT(t)
+		clusterDao := newMockClusterDao()
+		nodePoolDao := newMockNodePoolDao()
+		adapterStatusDao := newMockAdapterStatusDao()
+		service := NewClusterService(clusterDao, nodePoolDao, adapterStatusDao, testAdapterConfig())
+		ctx := context.Background()
+
+		newSpec := map[string]interface{}{"a": "b"}
+		_, svcErr := service.Patch(ctx, "nonexistent", &api.ClusterPatchRequest{Spec: &newSpec})
+
+		g.Expect(svcErr).NotTo(BeNil())
+		g.Expect(svcErr.HTTPCode).To(Equal(404))
 	})
 }
