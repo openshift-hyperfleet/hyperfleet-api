@@ -183,11 +183,11 @@ Captures values from API responses. Supports two modes (mutually exclusive):
 
 ```yaml
 capture:
-  # CEL expression for Ready condition status
-  - name: "readyConditionStatus"
+  # CEL expression for Reconciled condition status
+  - name: "reconciledConditionStatus"
     expression: |
-      status.conditions.filter(c, c.type == "Ready").size() > 0
-        ? status.conditions.filter(c, c.type == "Ready")[0].status
+      status.conditions.filter(c, c.type == "Reconciled").size() > 0
+        ? status.conditions.filter(c, c.type == "Reconciled")[0].status
         : "False"
   
   # JSONPath for complex extraction

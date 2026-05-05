@@ -44,7 +44,7 @@
             "status": {
               "conditions": [
                 {
-                  "type": "Ready",
+                  "type": "Reconciled",
                   "status": "False",
                   "reason": "ClusterProvisioning",
                   "message": "Cluster is still provisioning"

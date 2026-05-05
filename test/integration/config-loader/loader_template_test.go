@@ -94,7 +94,7 @@ func TestLoadSplitConfig(t *testing.T) {
 	// Verify conditions in precondition
 	assert.GreaterOrEqual(t, len(firstPrecond.Conditions), 1)
 	firstCondition := firstPrecond.Conditions[0]
-	assert.Equal(t, "readyConditionStatus", firstCondition.Field)
+	assert.Equal(t, "reconciledConditionStatus", firstCondition.Field)
 	assert.Equal(t, "equals", firstCondition.Operator)
 
 	// Verify resources (from task config)

@@ -29,8 +29,8 @@ preconditions:
       - field: name
         name: clusterName
       - expression: |
-          status.conditions.filter(c, c.type == "Ready").size() > 0
-            ? status.conditions.filter(c, c.type == "Ready")[0].status
+          status.conditions.filter(c, c.type == "Reconciled").size() > 0
+            ? status.conditions.filter(c, c.type == "Reconciled")[0].status
             : "False"
         name: clusterStatus
       - field: nodes.compute

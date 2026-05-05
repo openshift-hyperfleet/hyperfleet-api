@@ -90,10 +90,10 @@ func createTestConfig(apiBaseURL string) *configloader.Config {
 				Capture: []configloader.CaptureField{
 					{Name: "clusterName", FieldExpressionDef: configloader.FieldExpressionDef{Field: "name"}},
 					{
-						Name: "readyConditionStatus",
+						Name: "reconciledConditionStatus",
 						FieldExpressionDef: configloader.FieldExpressionDef{
-							Expression: `status.conditions.filter(c, c.type == "Ready").size() > 0
-  ? status.conditions.filter(c, c.type == "Ready")[0].status
+							Expression: `status.conditions.filter(c, c.type == "Reconciled").size() > 0
+  ? status.conditions.filter(c, c.type == "Reconciled")[0].status
   : "False"`,
 						},
 					},
@@ -102,7 +102,7 @@ func createTestConfig(apiBaseURL string) *configloader.Config {
 					{Name: "vpcId", FieldExpressionDef: configloader.FieldExpressionDef{Field: "spec.vpc_id"}},
 				},
 				Conditions: []configloader.Condition{
-					{Field: "readyConditionStatus", Operator: "equals", Value: "True"},
+					{Field: "reconciledConditionStatus", Operator: "equals", Value: "True"},
 					{Field: "cloudProvider", Operator: "in", Value: []interface{}{"aws", "gcp", "azure"}},
 				},
 			},
@@ -513,16 +513,16 @@ func TestExecutor_CELExpressionEvaluation(t *testing.T) {
 			Capture: []configloader.CaptureField{
 				{Name: "clusterName", FieldExpressionDef: configloader.FieldExpressionDef{Field: "name"}},
 				{
-					Name: "readyConditionStatus",
+					Name: "reconciledConditionStatus",
 					FieldExpressionDef: configloader.FieldExpressionDef{
-						Expression: `status.conditions.filter(c, c.type == "Ready").size() > 0 ? ` +
-							`status.conditions.filter(c, c.type == "Ready")[0].status : "False"`,
+						Expression: `status.conditions.filter(c, c.type == "Reconciled").size() > 0 ? ` +
+							`status.conditions.filter(c, c.type == "Reconciled")[0].status : "False"`,
 					},
 				},
 				{Name: "nodeCount", FieldExpressionDef: configloader.FieldExpressionDef{Field: "spec.node_count"}},
 			},
 			// Use CEL expression instead of structured conditions
-			Expression: `readyConditionStatus == "True" && nodeCount >= 3`,
+			Expression: `reconciledConditionStatus == "True" && nodeCount >= 3`,
 		},
 	}
 
@@ -973,15 +973,15 @@ func TestExecutor_LogAction(t *testing.T) {
 				},
 				Capture: []configloader.CaptureField{
 					{
-						Name: "readyConditionStatus",
+						Name: "reconciledConditionStatus",
 						FieldExpressionDef: configloader.FieldExpressionDef{
-							Expression: `status.conditions.filter(c, c.type == "Ready").size() > 0 ? ` +
-								`status.conditions.filter(c, c.type == "Ready")[0].status : "False"`,
+							Expression: `status.conditions.filter(c, c.type == "Reconciled").size() > 0 ? ` +
+								`status.conditions.filter(c, c.type == "Reconciled")[0].status : "False"`,
 						},
 					},
 				},
 				Conditions: []configloader.Condition{
-					{Field: "readyConditionStatus", Operator: "equals", Value: "True"},
+					{Field: "reconciledConditionStatus", Operator: "equals", Value: "True"},
 				},
 			},
 		},
@@ -1202,15 +1202,15 @@ func TestExecutor_ExecutionError_CELAccess(t *testing.T) {
 				},
 				Capture: []configloader.CaptureField{
 					{
-						Name: "readyConditionStatus",
+						Name: "reconciledConditionStatus",
 						FieldExpressionDef: configloader.FieldExpressionDef{
-							Expression: `status.conditions.filter(c, c.type == "Ready").size() > 0 ? ` +
-								`status.conditions.filter(c, c.type == "Ready")[0].status : "False"`,
+							Expression: `status.conditions.filter(c, c.type == "Reconciled").size() > 0 ? ` +
+								`status.conditions.filter(c, c.type == "Reconciled")[0].status : "False"`,
 						},
 					},
 				},
 				Conditions: []configloader.Condition{
-					{Field: "readyConditionStatus", Operator: "equals", Value: "True"},
+					{Field: "reconciledConditionStatus", Operator: "equals", Value: "True"},
 				},
 			},
 		},

@@ -13,11 +13,11 @@
 # =================
 # Option 1: CEL expression (direct field on precondition)
 #   expression: |
-#     readyConditionStatus == "False"
+#     reconciledConditionStatus == "False"
 #
 # Option 2: Structured conditions (direct field on precondition)
 #   conditions:
-#     - field: "readyConditionStatus"
+#     - field: "reconciledConditionStatus"
 #       operator: "equals"
 #       value: "Terminating"
 #
@@ -118,10 +118,10 @@ preconditions:
       # Simple dot notation
       - name: "clusterName"
         field: "name"
-      - name: "readyConditionStatus"
+      - name: "reconciledConditionStatus"
         expression: |
-          status.conditions.filter(c, c.type == "Ready").size() > 0
-            ? status.conditions.filter(c, c.type == "Ready")[0].status
+          status.conditions.filter(c, c.type == "Reconciled").size() > 0
+            ? status.conditions.filter(c, c.type == "Reconciled")[0].status
             : "False"
       - name: "generationId"
         field: "generation"
@@ -146,12 +146,12 @@ preconditions:
 
     # Conditions to check. SCOPE: Full execution context
     # You can access:
-    #   - Captured values: readyConditionStatus, clusterName, etc.
+    #   - Captured values: reconciledConditionStatus, clusterName, etc.
     #   - Full API response: clusterStatus.status.conditions, clusterStatus.spec.nodeCount
     #   - Params: clusterId, hyperfleetApiBaseUrl, etc.
     conditions:
       # Using captured value
-      - field: "readyConditionStatus"
+      - field: "reconciledConditionStatus"
         operator: "equals"
         value: "True"
 
@@ -162,7 +162,7 @@ preconditions:
 
     # Alternative: CEL expression with full access
     # expression: |
-    #   clusterStatus.status.conditions.filter(c, c.type == "Ready")[0].status == "True" &&
+    #   clusterStatus.status.conditions.filter(c, c.type == "Reconciled")[0].status == "True" &&
     #   clusterStatus.spec.nodeCount > 0
 
 # ============================================================================

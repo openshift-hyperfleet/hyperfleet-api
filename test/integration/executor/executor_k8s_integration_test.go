@@ -53,7 +53,7 @@ func newK8sTestAPIServer(t *testing.T) *k8sTestAPIServer {
 			"status": map[string]interface{}{
 				"conditions": []map[string]interface{}{
 					{
-						"type":   "Ready",
+						"type":   "Reconciled",
 						"status": "True",
 					},
 				},
@@ -192,10 +192,10 @@ func createK8sTestConfig(testNamespace string) *configloader.Config {
 				Capture: []configloader.CaptureField{
 					{Name: "clusterName", FieldExpressionDef: configloader.FieldExpressionDef{Field: "name"}},
 					{
-						Name: "readyConditionStatus",
+						Name: "reconciledConditionStatus",
 						FieldExpressionDef: configloader.FieldExpressionDef{
-							Expression: `status.conditions.filter(c, c.type == "Ready").size() > 0 ` +
-								`? status.conditions.filter(c, c.type == "Ready")[0].status ` +
+							Expression: `status.conditions.filter(c, c.type == "Reconciled").size() > 0 ` +
+								`? status.conditions.filter(c, c.type == "Reconciled")[0].status ` +
 								`: "False"`,
 						},
 					},
@@ -203,7 +203,7 @@ func createK8sTestConfig(testNamespace string) *configloader.Config {
 					{Name: "cloudProvider", FieldExpressionDef: configloader.FieldExpressionDef{Field: "spec.provider"}},
 				},
 				Conditions: []configloader.Condition{
-					{Field: "readyConditionStatus", Operator: "equals", Value: "True"},
+					{Field: "reconciledConditionStatus", Operator: "equals", Value: "True"},
 				},
 			},
 		},
@@ -224,11 +224,11 @@ func createK8sTestConfig(testNamespace string) *configloader.Config {
 						},
 					},
 					"data": map[string]interface{}{
-						"cluster-id":   "{{ .clusterID }}",
-						"cluster-name": "{{ .clusterName }}",
-						"region":       "{{ .region }}",
-						"provider":     "{{ .cloudProvider }}",
-						"readyStatus":  "{{ .readyConditionStatus }}",
+						"cluster-id":       "{{ .clusterID }}",
+						"cluster-name":     "{{ .clusterName }}",
+						"region":           "{{ .region }}",
+						"provider":         "{{ .cloudProvider }}",
+						"reconciledStatus": "{{ .reconciledConditionStatus }}",
 					},
 				},
 				Discovery: &configloader.DiscoveryConfig{
@@ -398,7 +398,7 @@ func TestExecutor_K8s_CreateResources(t *testing.T) {
 	assert.Equal(t, "test-cluster", cmData["cluster-name"])
 	assert.Equal(t, "us-east-1", cmData["region"])
 	assert.Equal(t, "aws", cmData["provider"])
-	assert.Equal(t, "True", cmData["readyStatus"])
+	assert.Equal(t, "True", cmData["reconciledStatus"])
 	t.Logf("ConfigMap data verified: %+v", cmData)
 
 	// Verify ConfigMap labels
@@ -471,8 +471,8 @@ func TestExecutor_K8s_UpdateExistingResource(t *testing.T) {
 				},
 			},
 			"data": map[string]interface{}{
-				"cluster-id":  clusterID,
-				"readyStatus": "False", // Old value
+				"cluster-id":       clusterID,
+				"reconciledStatus": "False", // Old value
 			},
 		},
 	}
@@ -481,7 +481,7 @@ func TestExecutor_K8s_UpdateExistingResource(t *testing.T) {
 	ctx := context.Background()
 	_, err := k8sEnv.Client.CreateResource(ctx, existingCM)
 	require.NoError(t, err, "Failed to pre-create ConfigMap")
-	t.Logf("Pre-created ConfigMap with readyStatus=False")
+	t.Logf("Pre-created ConfigMap with reconciledStatus=False")
 
 	// Create executor
 	config := createK8sTestConfig(testNamespace)
@@ -517,7 +517,7 @@ func TestExecutor_K8s_UpdateExistingResource(t *testing.T) {
 	require.NoError(t, err)
 
 	cmData, _, _ := unstructured.NestedStringMap(updatedCM.Object, "data")
-	assert.Equal(t, "True", cmData["readyStatus"], "readyStatus should be updated to True")
+	assert.Equal(t, "True", cmData["reconciledStatus"], "reconciledStatus should be updated to True")
 	assert.Equal(t, "test-cluster", cmData["cluster-name"], "Should have new cluster-name field")
 	t.Logf("Updated ConfigMap data: %+v", cmData)
 
@@ -975,7 +975,7 @@ func TestExecutor_K8s_PostActionsAfterPreconditionNotMet(t *testing.T) {
 	mockAPI := newK8sTestAPIServer(t)
 	defer mockAPI.Close()
 
-	// Set cluster to Ready condition False (won't match condition)
+	// Set cluster to Reconciled condition False (won't match condition)
 	mockAPI.clusterResponse = map[string]interface{}{
 		"id":   "test-cluster-id",
 		"name": "test-cluster",
@@ -984,7 +984,7 @@ func TestExecutor_K8s_PostActionsAfterPreconditionNotMet(t *testing.T) {
 		"status": map[string]interface{}{
 			"conditions": []map[string]interface{}{
 				{
-					"type":   "Ready",
+					"type":   "Reconciled",
 					"status": "False", // Won't match
 				},
 			},

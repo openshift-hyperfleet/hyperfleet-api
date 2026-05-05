@@ -27,7 +27,7 @@
             "status": {
               "conditions": [
                 {
-                  "type": "Ready",
+                  "type": "Reconciled",
                   "status": "False"
                 }
               ]

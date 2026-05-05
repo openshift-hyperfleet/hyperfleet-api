@@ -64,7 +64,7 @@ func NewMockAPIServer(t *testing.T) *MockAPIServer {
 			"status": map[string]interface{}{
 				"conditions": []map[string]interface{}{
 					{
-						"type":   "Ready",
+						"type":   "Reconciled",
 						"status": "True",
 					},
 				},
@@ -243,7 +243,7 @@ func (m *MockAPIServer) Reset() {
 		"status": map[string]interface{}{
 			"conditions": []map[string]interface{}{
 				{
-					"type":   "Ready",
+					"type":   "Reconciled",
 					"status": "True",
 				},
 			},

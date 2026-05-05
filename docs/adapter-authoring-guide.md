@@ -83,7 +83,7 @@ sequenceDiagram
     Adapter->>API: GET /clusters/{id}
     Adapter->>Adapter: Create/update resources
     Adapter->>API: POST status {observed_generation: N+1}
-    API->>API: All adapters at N+1 → Ready=True
+    API->>API: All adapters at N+1 → Reconciled=True
 ```
 
 ### Anemic events
@@ -257,10 +257,10 @@ After the API call, capture values from the response for use in later phases. Tw
         field: "name"
 
       # CEL expression for computed values
-      - name: "readyStatus"
+      - name: "reconciledStatus"
         expression: |
-          status.conditions.filter(c, c.type == "Ready").size() > 0
-            ? status.conditions.filter(c, c.type == "Ready")[0].status
+          status.conditions.filter(c, c.type == "Reconciled").size() > 0
+            ? status.conditions.filter(c, c.type == "Reconciled")[0].status
             : "False"
 
       # JSONPath with filter
@@ -278,7 +278,7 @@ After captures, evaluate conditions to decide whether to proceed. Two syntaxes a
 
 ```yaml
     conditions:
-      - field: "readyStatus"
+      - field: "reconciledStatus"
         operator: "equals"
         value: "False"
 ```
@@ -287,7 +287,7 @@ After captures, evaluate conditions to decide whether to proceed. Two syntaxes a
 
 ```yaml
     expression: |
-      readyStatus == "False" && clusterStatus.spec.nodeCount > 0
+      reconciledStatus == "False" && clusterStatus.spec.nodeCount > 0
 ```
 
 > **Scope:** Conditions see the **full execution context**: all params, all captured fields, and the full API response accessible via the precondition name (e.g., `clusterStatus.status.conditions`).
@@ -325,10 +325,10 @@ preconditions:
     api_call:
       url: "/api/hyperfleet/v1/clusters/{{ .clusterId }}/statuses"
     capture:
-      - name: "lzReady"
+      - name: "lzReconciled"
         field: "{.items[?(@.adapter=='landing-zone')].data.namespace.status}"
     conditions:
-      - field: "lzReady"
+      - field: "lzReconciled"
         operator: "equals"
         value: "Active"
 ```
@@ -341,10 +341,10 @@ When a condition is **not met**, the adapter skips the resources phase but still
 
 Adapter preconditions typically need to handle two scenarios:
 
-1. **Initial deployment** — Deploy resources when the cluster is NOT Ready
-2. **Self-healing** — Detect and recreate accidentally deleted resources when the cluster IS Ready
+1. **Initial deployment** — Deploy resources when the cluster is NOT Reconciled
+2. **Self-healing** — Detect and recreate accidentally deleted resources when the cluster IS Reconciled
 
-A condition-only precondition (e.g., "only run when cluster is NOT Ready") handles scenario 1 but breaks scenario 2:
+A condition-only precondition (e.g., "only run when cluster is NOT Reconciled") handles scenario 1 but breaks scenario 2:
 
 ```yaml
 # Condition-only pattern - INCOMPLETE
@@ -353,23 +353,23 @@ preconditions:
     api_call:
       url: "/api/hyperfleet/v1/clusters/{{ .clusterId }}"
     capture:
-      - name: "readyStatus"
+      - name: "reconciledStatus"
         expression: |
-          status.conditions.filter(c, c.type == "Ready").size() > 0
-            ? status.conditions.filter(c, c.type == "Ready")[0].status
+          status.conditions.filter(c, c.type == "Reconciled").size() > 0
+            ? status.conditions.filter(c, c.type == "Reconciled")[0].status
             : "False"
     conditions:
-      - field: "readyStatus"
+      - field: "reconciledStatus"
         operator: "equals"
-        value: "False"   # Only runs resource phase when NOT Ready
+        value: "False"   # Only runs resource phase when NOT Reconciled
 ```
 
-**Problem:** If a resource is accidentally deleted while the cluster is Ready, the adapter skips the resource operation phase because the precondition is `False`. The adapter still runs and reports status, but it cannot detect or recreate the deleted resource because it never executes the resource phase.
+**Problem:** If a resource is accidentally deleted while the cluster is Reconciled, the adapter skips the resource operation phase because the precondition is `False`. The adapter still runs and reports status, but it cannot detect or recreate the deleted resource because it never executes the resource phase.
 
 **Solution:** Add a time-based stability check to enable both scenarios:
 
-- Run resource phase when cluster is **NOT Ready**
-- Run resource phase when cluster is **Ready AND stable for >5 minutes** (periodic self-healing)
+- Run resource phase when cluster is **NOT Reconciled**
+- Run resource phase when cluster is **Reconciled AND stable for >5 minutes** (periodic self-healing)
 
 #### Understanding `last_transition_time` vs `last_updated_time`
 
@@ -377,7 +377,7 @@ To implement time-based stability checks, you need to know how long a cluster ha
 
 | Field | Updates when | Use for |
 |-------|-------------|---------|
-| **`last_transition_time`** | Condition status **changes** (True→False or False→True) | **Stability windows** — "cluster has been Ready for N minutes" |
+| **`last_transition_time`** | Condition status **changes** (True→False or False→True) | **Stability windows** — "cluster has been Reconciled for N minutes" |
 | **`last_updated_time`** | Adapter **reports status** (every POST, even if unchanged) | **Liveness checks** — "adapter reported recently" |
 
 **Critical:** For stability windows, always use `last_transition_time`. The `last_updated_time` field has special aggregation behavior that makes it unsuitable for measuring state duration.
@@ -390,30 +390,30 @@ preconditions:
     api_call:
       url: "/api/hyperfleet/v1/clusters/{{ .clusterId }}"
     capture:
-      - name: "clusterNotReady"
+      - name: "clusterNotReconciled"
         expression: |
-          status.conditions.filter(c, c.type == "Ready").size() > 0
-            ? status.conditions.filter(c, c.type == "Ready")[0].status != "True"
+          status.conditions.filter(c, c.type == "Reconciled").size() > 0
+            ? status.conditions.filter(c, c.type == "Reconciled")[0].status != "True"
             : true
-      - name: "clusterReadyTTL"
+      - name: "clusterReconciledTTL"
         expression: |
           (timestamp(now()) - timestamp(
-            status.conditions.filter(c, c.type == "Ready").size() > 0
-              ? status.conditions.filter(c, c.type == "Ready")[0].last_transition_time
+            status.conditions.filter(c, c.type == "Reconciled").size() > 0
+              ? status.conditions.filter(c, c.type == "Reconciled")[0].last_transition_time
               : now()
           )).getSeconds() > 300
 
   - name: "validationCheck"
-    # Precondition passes if cluster is NOT Ready OR if cluster is Ready and stable for >300 seconds since last transition (enables self-healing)
+    # Precondition passes if cluster is NOT Reconciled OR if cluster is Reconciled and stable for >300 seconds since last transition (enables self-healing)
     expression: |
-      clusterNotReady || clusterReadyTTL
+      clusterNotReconciled || clusterReconciledTTL
 ```
 
 **What this does:**
 
-- `clusterNotReady` → Captures whether the cluster is NOT Ready (true when Ready condition is missing or not "True")
-- `clusterReadyTTL` → Captures whether the cluster has been Ready for >5 minutes (300 seconds) since the last status transition
-- `validationCheck` → Evaluates both conditions: run resource phase when cluster is NOT Ready OR when cluster has been Ready and stable for >5 minutes (self-healing)
+- `clusterNotReconciled` → Captures whether the cluster is NOT Reconciled (true when Reconciled condition is missing or not "True")
+- `clusterReconciledTTL` → Captures whether the cluster has been Reconciled for >5 minutes (300 seconds) since the last status transition
+- `validationCheck` → Evaluates both conditions: run resource phase when cluster is NOT Reconciled OR when cluster has been Reconciled and stable for >5 minutes (self-healing)
 
 **Important notes:**
 
@@ -1014,10 +1014,10 @@ Because the adapter reads status at a point in time, the overall flow is a **con
 
 1. First cycle: adapter creates resources, discovers them immediately — status may be `Pending` or `Unknown`
 2. Adapter reports `Applied=True, Available=Unknown` to the API
-3. Sentinel detects the cluster is not yet Ready (generation mismatch or max-age exceeded)
+3. Sentinel detects the cluster is not yet Reconciled (generation mismatch or max-age exceeded)
 4. Next cycle: adapter discovers the same resources — status has progressed to `Active` or `Complete`
 5. Adapter reports `Applied=True, Available=True`
-6. API aggregates: all adapters at current generation with `Available=True` → cluster is `Ready`
+6. API aggregates: all adapters at current generation with `Available=True` → cluster is `Reconciled`
 
 This means your adapter does not need to poll or wait. The framework and Sentinel handle retry timing. Your job is to write CEL expressions that correctly read the current state, whatever it may be.
 
@@ -1178,7 +1178,7 @@ Optionally attach adapter-specific metrics extracted from your resources:
 When your adapter reports status, the API aggregates across **all registered adapters**:
 
 - **Available** = all adapters report `Available=True` at *any* generation (last known good)
-- **Ready** = all adapters report `Available=True` at the *current* generation (fully reconciled)
+- **Reconciled** = all adapters report `Available=True` at the *current* generation (fully reconciled)
 
 Your adapter name must be registered in the `HYPERFLEET_CLUSTER_ADAPTERS` environment variable on the API for it to participate in aggregation.
 
@@ -1250,7 +1250,7 @@ Mock responses matched by HTTP method and URL regex. Supports sequential respons
             "generation": 5,
             "status": {
               "conditions": [
-                { "type": "Ready", "status": "False" }
+                { "type": "Reconciled", "status": "False" }
               ]
             }
           }
@@ -1313,7 +1313,7 @@ Phase 2: Preconditions ..................... SUCCESS (MET)
   [1/1] fetch-cluster                      PASS
     API Call: GET /api/hyperfleet/v1/clusters/abc123 -> 200
     Captured: clusterName = "my-cluster"
-    Captured: readyStatus = "False"
+    Captured: reconciledStatus = "False"
 
 Phase 3: Resources ........................ SUCCESS
   [1/2] namespace0                         CREATE
@@ -1342,7 +1342,7 @@ Use `--dry-run-verbose` to see rendered manifests and full API request/response 
 2. Create mock files for a representative cluster
 3. Run dry-run, inspect the trace
 4. Fix config issues, re-run
-5. Test edge cases: change mock API responses to simulate different cluster states (Ready=True, missing fields, error responses)
+5. Test edge cases: change mock API responses to simulate different cluster states (Reconciled=True, missing fields, error responses)
 6. Deploy when the trace shows the expected behavior
 
 ---
@@ -1382,13 +1382,13 @@ preconditions:
     capture:
       - name: "generation"
         field: "generation"
-      - name: "readyStatus"
+      - name: "reconciledStatus"
         expression: |
-          status.conditions.filter(c, c.type == "Ready").size() > 0
-            ? status.conditions.filter(c, c.type == "Ready")[0].status
+          status.conditions.filter(c, c.type == "Reconciled").size() > 0
+            ? status.conditions.filter(c, c.type == "Reconciled")[0].status
             : "False"
     conditions:
-      - field: "readyStatus"
+      - field: "reconciledStatus"
         operator: "equals"
         value: "False"
 
@@ -1470,7 +1470,7 @@ The adapter will run preconditions, skip straight to post-actions, and report st
 
 1. **Register your adapter name** in the HyperFleet API's `HYPERFLEET_CLUSTER_ADAPTERS` (or `HYPERFLEET_NODEPOOL_ADAPTERS`) environment variable. Without this, the API won't include your adapter in status aggregation.
 
-- The API will compute the `Ready` condition of the managed object as when all registered adapters have reported `True` as their `Available` condition status.
+- The API will compute the `Reconciled` condition of the managed object as when all registered adapters have reported `True` as their `Available` condition status.
 
 1. **Create the AdapterConfig** with your environment's API endpoint, broker subscription, and client settings:
 
@@ -1519,14 +1519,14 @@ resources.?clusterNamespace.?status.?phase.orValue("")
 has(resources.clusterNamespace)
 
 # Array filtering — find a condition by type
-status.conditions.filter(c, c.type == "Ready")
+status.conditions.filter(c, c.type == "Reconciled")
 
 # Array existence check
-status.conditions.exists(c, c.type == "Ready" && c.status == "True")
+status.conditions.exists(c, c.type == "Reconciled" && c.status == "True")
 
 # Get first matching element with fallback
-status.conditions.filter(c, c.type == "Ready").size() > 0
-  ? status.conditions.filter(c, c.type == "Ready")[0].status
+status.conditions.filter(c, c.type == "Reconciled").size() > 0
+  ? status.conditions.filter(c, c.type == "Reconciled")[0].status
   : "False"
 
 # Ternary

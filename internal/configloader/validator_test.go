@@ -295,7 +295,7 @@ func TestValidateCELExpressions(t *testing.T) {
 	t.Run("valid CEL with has() function", func(t *testing.T) {
 		cfg := withExpression(
 			`has(cluster.status) && ` +
-				`cluster.status.conditions.exists(c, c.type == "Ready" && c.status == "True")`,
+				`cluster.status.conditions.exists(c, c.type == "Reconciled" && c.status == "True")`,
 		)
 		v := newTaskValidator(cfg)
 		require.NoError(t, v.ValidateStructure())

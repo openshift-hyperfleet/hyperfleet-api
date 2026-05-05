@@ -13,11 +13,11 @@
 # =========================
 # Option 1: Expression syntax (CEL)
 #     expression: |
-#       readyConditionStatus == "False"
+#       reconciledConditionStatus == "False"
 #
 # Option 2: Structured conditions (field + operator + value)
 #     conditions:
-#       - field: "readyConditionStatus"
+#       - field: "reconciledConditionStatus"
 #         operator: "equals"
 #         value: "Terminating"
 #
@@ -136,10 +136,10 @@ preconditions:
     capture:
       - name: "clusterName"
         field: "name"
-      - name: "readyConditionStatus"
+      - name: "reconciledConditionStatus"
         expression: |
-          status.conditions.filter(c, c.type == "Ready").size() > 0
-            ? status.conditions.filter(c, c.type == "Ready")[0].status
+          status.conditions.filter(c, c.type == "Reconciled").size() > 0
+            ? status.conditions.filter(c, c.type == "Reconciled")[0].status
             : "False"
       - name: "region"
         field: "spec.region"
@@ -150,7 +150,7 @@ preconditions:
       - name: "nodeCount"
         field: "spec.node_count"
     conditions:
-      - field: "readyConditionStatus"
+      - field: "reconciledConditionStatus"
         operator: "equals"
         value: "True"
       - field: "cloudProvider"

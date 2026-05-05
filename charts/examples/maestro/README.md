@@ -151,8 +151,8 @@ helm install <name> ./charts -f charts/examples/values.yaml \
 ## How It Works
 
 1. The adapter receives a CloudEvent with a cluster ID and generation
-2. **Preconditions**: Fetches cluster status from the Hyperfleet API and captures the cluster name, generation, and ready condition
-3. **Validation**: Checks that the cluster's Ready condition is "False" before proceeding
+2. **Preconditions**: Fetches cluster status from the Hyperfleet API and captures the cluster name, generation, and reconciled condition
+3. **Validation**: Checks that the cluster's Reconciled condition is "False" before proceeding
 4. **Resource creation**: Creates resources in order:
    - Namespace named with the cluster ID
    - ServiceAccount in the new namespace

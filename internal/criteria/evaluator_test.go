@@ -40,7 +40,7 @@ func TestEvaluationContextGetField(t *testing.T) {
 	ctx.Set("cluster", map[string]interface{}{
 		"status": map[string]interface{}{
 			"conditions": []interface{}{
-				map[string]interface{}{"type": "Ready", "status": "True"},
+				map[string]interface{}{"type": "Reconciled", "status": "True"},
 				map[string]interface{}{"type": "Available", "status": "True"},
 			},
 		},
@@ -59,7 +59,7 @@ func TestEvaluationContextGetField(t *testing.T) {
 			name: "simple nested field",
 			path: "cluster.status.conditions",
 			want: []interface{}{
-				map[string]interface{}{"type": "Ready", "status": "True"},
+				map[string]interface{}{"type": "Reconciled", "status": "True"},
 				map[string]interface{}{"type": "Available", "status": "True"},
 			},
 		},
@@ -924,7 +924,7 @@ func TestExtractValue(t *testing.T) {
 		"name": "test-cluster",
 		"status": map[string]interface{}{
 			"conditions": []interface{}{
-				map[string]interface{}{"type": "Ready", "status": "True"},
+				map[string]interface{}{"type": "Reconciled", "status": "True"},
 			},
 		},
 	})
@@ -940,7 +940,7 @@ func TestExtractValue(t *testing.T) {
 	// Get nested field
 	result, err = evaluator.ExtractValue("cluster.status.conditions", "")
 	require.NoError(t, err)
-	assert.Equal(t, []interface{}{map[string]interface{}{"type": "Ready", "status": "True"}}, result.Value)
+	assert.Equal(t, []interface{}{map[string]interface{}{"type": "Reconciled", "status": "True"}}, result.Value)
 
 	// Get non-existent field - returns nil value with result.Error set (not a returned error)
 	result, err = evaluator.ExtractValue("cluster.nonexistent", "")

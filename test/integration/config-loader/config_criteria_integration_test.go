@@ -66,8 +66,8 @@ func TestConfigLoadAndCriteriaEvaluation(t *testing.T) {
 	ctx := criteria.NewEvaluationContext()
 
 	// Simulate data extracted from HyperFleet API response
-	// NOTE: readyConditionStatus must match the condition in the template (True)
-	ctx.Set("readyConditionStatus", "False")
+	// NOTE: reconciledConditionStatus must match the condition in the template (True)
+	ctx.Set("reconciledConditionStatus", "False")
 	ctx.Set("cloudProvider", "aws")
 	ctx.Set("vpcId", "vpc-12345")
 	ctx.Set("region", "us-east-1")
@@ -88,7 +88,7 @@ func TestConfigLoadAndCriteriaEvaluation(t *testing.T) {
 		"status": map[string]interface{}{
 			"conditions": []map[string]interface{}{
 				{
-					"type":   "Ready",
+					"type":   "Reconciled",
 					"status": "True",
 				},
 			},
@@ -151,9 +151,9 @@ func TestConfigWithFailingPreconditions(t *testing.T) {
 	precond := config.GetPreconditionByName("clusterStatus")
 	require.NotNil(t, precond)
 
-	t.Run("preconditions fail with Ready condition False", func(t *testing.T) {
+	t.Run("preconditions fail with Reconciled condition False", func(t *testing.T) {
 		ctx := criteria.NewEvaluationContext()
-		ctx.Set("readyConditionStatus", "True") // Not matching expected "True"
+		ctx.Set("reconciledConditionStatus", "True") // Not matching expected "True"
 
 		evaluator, err := criteria.NewEvaluator(context.Background(), ctx, logger.NewTestLogger())
 		require.NoError(t, err)
@@ -168,13 +168,13 @@ func TestConfigWithFailingPreconditions(t *testing.T) {
 
 		result, err := evaluator.EvaluateConditions(conditions)
 		require.NoError(t, err)
-		assert.False(t, result.Matched, "preconditions should fail with Ready condition False")
-		assert.Equal(t, 0, result.FailedCondition, "first condition (readyConditionStatus) should fail")
+		assert.False(t, result.Matched, "preconditions should fail with Reconciled condition False")
+		assert.Equal(t, 0, result.FailedCondition, "first condition (reconciledConditionStatus) should fail")
 	})
 
-	t.Run("preconditions fail with Ready condition Unknown", func(t *testing.T) {
+	t.Run("preconditions fail with Reconciled condition Unknown", func(t *testing.T) {
 		ctx := criteria.NewEvaluationContext()
-		ctx.Set("readyConditionStatus", "Unknown") // Not matching expected "True"
+		ctx.Set("reconciledConditionStatus", "Unknown") // Not matching expected "True"
 
 		evaluator, err := criteria.NewEvaluator(context.Background(), ctx, logger.NewTestLogger())
 		require.NoError(t, err)
@@ -189,7 +189,7 @@ func TestConfigWithFailingPreconditions(t *testing.T) {
 
 		result, err := evaluator.EvaluateConditions(conditions)
 		require.NoError(t, err)
-		assert.False(t, result.Matched, "preconditions should fail when Ready condition is Unknown")
+		assert.False(t, result.Matched, "preconditions should fail when Reconciled condition is Unknown")
 	})
 
 	t.Run("preconditions fail with missing vpcId", func(t *testing.T) {
