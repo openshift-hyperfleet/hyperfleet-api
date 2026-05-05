@@ -21,6 +21,11 @@ const (
 	AdapterConditionUnknown AdapterConditionStatus = "Unknown"
 )
 
+// IsValid returns true if the status is one of the accepted enum values (True, False, Unknown).
+func (s AdapterConditionStatus) IsValid() bool {
+	return s == AdapterConditionTrue || s == AdapterConditionFalse || s == AdapterConditionUnknown
+}
+
 // Condition type constants
 const (
 	ConditionTypeAvailable  = "Available"
