@@ -33,6 +33,19 @@ func TestAdapterConditionStatus_Constants(t *testing.T) {
 	// which has "True", "False", and "Unknown" values
 }
 
+// TestAdapterConditionStatus_IsValid verifies that IsValid accepts valid statuses and rejects invalid ones
+func TestAdapterConditionStatus_IsValid(t *testing.T) {
+	RegisterTestingT(t)
+
+	Expect(AdapterConditionTrue.IsValid()).To(BeTrue())
+	Expect(AdapterConditionFalse.IsValid()).To(BeTrue())
+	Expect(AdapterConditionUnknown.IsValid()).To(BeTrue())
+
+	Expect(AdapterConditionStatus("").IsValid()).To(BeFalse())
+	Expect(AdapterConditionStatus("garbage").IsValid()).To(BeFalse())
+	Expect(AdapterConditionStatus("true").IsValid()).To(BeFalse())
+}
+
 // TestAdapterConditionStatus_StringConversion tests type casting to/from string
 func TestAdapterConditionStatus_StringConversion(t *testing.T) {
 	RegisterTestingT(t)
