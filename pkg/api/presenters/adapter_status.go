@@ -10,6 +10,15 @@ import (
 	"gorm.io/datatypes"
 )
 
+func isValidAdapterConditionStatus(status api.AdapterConditionStatus) bool {
+	switch status {
+	case api.AdapterConditionTrue, api.AdapterConditionFalse, api.AdapterConditionUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
 // ConvertAdapterStatus converts openapi.AdapterStatusCreateRequest to api.AdapterStatus (GORM model)
 func ConvertAdapterStatus(
 	resourceType, resourceID string,
@@ -82,16 +91,20 @@ func PresentAdapterStatus(adapterStatus *api.AdapterStatus) (openapi.AdapterStat
 		}
 	}
 
-	// Convert domain AdapterConditions to openapi format
-	openapiConditions := make([]openapi.AdapterCondition, len(conditions))
-	for i, cond := range conditions {
-		openapiConditions[i] = openapi.AdapterCondition{
+	// Convert domain AdapterConditions to openapi format, filtering out
+	// conditions with empty/invalid status (legacy data before validation was added).
+	openapiConditions := make([]openapi.AdapterCondition, 0, len(conditions))
+	for _, cond := range conditions {
+		if !isValidAdapterConditionStatus(cond.Status) {
+			continue
+		}
+		openapiConditions = append(openapiConditions, openapi.AdapterCondition{
 			Type:               cond.Type,
 			Status:             openapi.AdapterConditionStatus(cond.Status),
 			Reason:             cond.Reason,
 			Message:            cond.Message,
 			LastTransitionTime: cond.LastTransitionTime,
-		}
+		})
 	}
 
 	// Unmarshal Data
