@@ -109,7 +109,7 @@ verify: ## Verify source passes standard checks
 		)
 
 .PHONY: lint
-lint: $(GOLANGCI_LINT) ## Run golangci-lint
+lint: generate-all $(GOLANGCI_LINT) ## Run golangci-lint
 	$(GOLANGCI_LINT) run ./cmd/... ./pkg/... ./test/...
 
 .PHONY: verify-migrations
