@@ -49,9 +49,9 @@ func TestEscapeDSNValue(t *testing.T) {
 			expected: "'has\rcarriage'",
 		},
 		{
-			name:     "empty string stays empty",
+			name:     "empty string becomes quoted empty",
 			input:    "",
-			expected: "",
+			expected: "''",
 		},
 		{
 			name:     "value with both backslash and quote is escaped and quoted",
@@ -215,6 +215,20 @@ func TestConnectionString(t *testing.T) {
 			},
 			ssl:      false,
 			expected: "host=db-host.example.com port=5432 dbname=my-database user=my-user password=my-pass sslmode=disable",
+		},
+		{
+			// Regression: empty password must be quoted so subsequent parameters (e.g. sslmode) are not swallowed
+			name: "empty password is quoted preserving subsequent parameters",
+			config: &DatabaseConfig{
+				Host:     "127.0.0.1",
+				Port:     5432,
+				Name:     "hyperfleet",
+				Username: "user@project.iam",
+				Password: "",
+				SSL:      SSLConfig{Mode: "disable"},
+			},
+			ssl:      false,
+			expected: "host=127.0.0.1 port=5432 dbname=hyperfleet user='user@project.iam' password='' sslmode=disable",
 		},
 		{
 			// Integration test: verifies that escapeDSNValue integrates correctly with ConnectionString
