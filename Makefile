@@ -81,9 +81,6 @@ ifndef TEST_SUMMARY_FORMAT
 	TEST_SUMMARY_FORMAT = short-verbose
 endif
 
-ifndef OCM_BASE_URL
-	OCM_BASE_URL := "https://api.integration.openshift.com"
-endif
 
 .PHONY: help
 help: ## Display this help
@@ -191,9 +188,7 @@ secrets: ## Initialize secrets directory with default values
 	@printf "$(db_password)" > secrets/db.password
 	@printf "$(db_port)" > secrets/db.port
 	@printf "$(db_user)" > secrets/db.user
-	@printf "ocm-hyperfleet-testing" > secrets/ocm-service.clientId
-	@printf "your-client-secret-here" > secrets/ocm-service.clientSecret
-	@printf "your-token-here" > secrets/ocm-service.token
+
 	@echo "Secrets directory initialized with default values"
 
 ##@ Testing

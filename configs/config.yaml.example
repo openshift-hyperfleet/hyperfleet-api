@@ -81,17 +81,6 @@ logging:
       - refresh_token
       - client_secret
 
-# OCM (OpenShift Cluster Manager) Configuration
-ocm:
-  base_url: https://api.integration.openshift.com  # OCM API base URL
-  client_id: ""                     # OCM client ID (use env var HYPERFLEET_OCM_CLIENT_ID instead)
-  client_secret: ""                 # OCM client secret (use env var HYPERFLEET_OCM_CLIENT_SECRET instead)
-  self_token: ""                    # OCM self token (use env var HYPERFLEET_OCM_SELF_TOKEN instead)
-  token_url: https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token
-  debug: false                      # Enable OCM debug mode
-
-  mock:
-    enabled: true                   # Enable mock OCM clients (for testing)
 
 # Metrics Configuration
 metrics:
@@ -171,9 +160,6 @@ adapters:
 # - HYPERFLEET_DATABASE_USERNAME_FILE=/secrets/db-username
 # - HYPERFLEET_DATABASE_PASSWORD_FILE=/secrets/db-password
 # - HYPERFLEET_DATABASE_NAME_FILE=/secrets/db-name
-# - HYPERFLEET_OCM_CLIENT_ID_FILE=/secrets/ocm-client-id
-# - HYPERFLEET_OCM_CLIENT_SECRET_FILE=/secrets/ocm-client-secret
-# - HYPERFLEET_OCM_SELF_TOKEN_FILE=/secrets/ocm-self-token
 #
 # OpenTelemetry Tracing Configuration:
 # HyperFleet uses standard OpenTelemetry environment variables for tracing.

@@ -15,13 +15,11 @@ import (
 	"time"
 
 	"github.com/bxcodec/faker/v3"
-	"github.com/golang-jwt/jwt/v4"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"gorm.io/gorm"
-
-	amv1 "github.com/openshift-online/ocm-sdk-go/accountsmgmt/v1"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/environments"
 	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/server"
@@ -312,33 +310,33 @@ func (helper *Helper) NewAPIClient() *openapi.ClientWithResponses {
 	return client
 }
 
-func (helper *Helper) NewRandAccount() *amv1.Account {
+type TestAccount struct {
+	Username  string
+	FirstName string
+	LastName  string
+	Email     string
+}
+
+func (helper *Helper) NewRandAccount() *TestAccount {
 	return helper.NewAccount(helper.NewID(), faker.Name(), faker.Email())
 }
 
-func (helper *Helper) NewAccount(username, name, email string) *amv1.Account {
-	var firstName string
-	var lastName string
+func (helper *Helper) NewAccount(username, name, email string) *TestAccount {
+	var firstName, lastName string
 	names := strings.SplitN(name, " ", 2)
 	if len(names) < 2 {
 		firstName = name
-		lastName = ""
 	} else {
 		firstName = names[0]
 		lastName = names[1]
 	}
 
-	builder := amv1.NewAccount().
-		Username(username).
-		FirstName(firstName).
-		LastName(lastName).
-		Email(email)
-
-	acct, err := builder.Build()
-	if err != nil {
-		helper.T.Errorf("Unable to build account: %s", err)
+	return &TestAccount{
+		Username:  username,
+		FirstName: firstName,
+		LastName:  lastName,
+		Email:     email,
 	}
-	return acct
 }
 
 // contextKeyAccessToken is a context key for storing the access token
@@ -347,7 +345,7 @@ type contextKeyAccessToken struct{}
 // ContextAccessToken is the context key for access tokens (used by tests)
 var ContextAccessToken = contextKeyAccessToken{}
 
-func (helper *Helper) NewAuthenticatedContext(account *amv1.Account) context.Context {
+func (helper *Helper) NewAuthenticatedContext(account *TestAccount) context.Context {
 	tokenString := helper.CreateJWTString(account)
 	return context.WithValue(context.Background(), ContextAccessToken, tokenString)
 }
@@ -576,34 +574,26 @@ func (helper *Helper) ResetDB() error {
 	return nil
 }
 
-func (helper *Helper) CreateJWTString(account *amv1.Account) string {
-	// Use an RH SSO JWT by default since we are phasing RHD out
+func (helper *Helper) CreateJWTString(account *TestAccount) string {
 	claims := jwt.MapClaims{
-		"iss":        helper.Env().Config.OCM.TokenURL,
-		"username":   strings.ToLower(account.Username()),
-		"first_name": account.FirstName(),
-		"last_name":  account.LastName(),
+		"iss":        helper.Env().Config.Server.JWT.IssuerURL,
+		"username":   strings.ToLower(account.Username),
+		"first_name": account.FirstName,
+		"last_name":  account.LastName,
 		"typ":        "Bearer",
 		"iat":        time.Now().Unix(),
 		"exp":        time.Now().Add(1 * time.Hour).Unix(),
 	}
-	if account.Email() != "" {
-		claims["email"] = account.Email()
+	if aud := helper.Env().Config.Server.JWT.Audience; aud != "" {
+		claims["aud"] = aud
 	}
-	/* TODO the ocm api model needs to be updated to expose this
-	if account.ServiceAccount {
-		claims["clientId"] = account.Username()
+	if account.Email != "" {
+		claims["email"] = account.Email
 	}
-	*/
 
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
-	// Set the token header kid to the same value we expect when validating the token
-	// The kid is an arbitrary identifier for the key
-	// See https://tools.ietf.org/html/rfc7517#section-4.5
 	token.Header["kid"] = jwkKID
 
-	// private key and public key taken from http://kjur.github.io/jsjws/tool_jwt.html
-	// the go-jwt-middleware pkg we use does the same for their tests
 	signedToken, err := token.SignedString(helper.JWTPrivateKey)
 	if err != nil {
 		helper.T.Errorf("Unable to sign test jwt: %s", err)
@@ -612,7 +602,7 @@ func (helper *Helper) CreateJWTString(account *amv1.Account) string {
 	return signedToken
 }
 
-func (helper *Helper) CreateJWTToken(account *amv1.Account) *jwt.Token {
+func (helper *Helper) CreateJWTToken(account *TestAccount) *jwt.Token {
 	tokenString := helper.CreateJWTString(account)
 
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {

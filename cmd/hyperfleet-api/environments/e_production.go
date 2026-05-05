@@ -35,8 +35,6 @@ func (e *productionEnvImpl) OverrideClients(c *Clients) error {
 
 func (e *productionEnvImpl) EnvironmentDefaults() map[string]string {
 	return map[string]string{
-		"v":               "1",
-		"ocm-debug":       "false",
-		"enable-ocm-mock": "false",
+		"v": "1",
 	}
 }

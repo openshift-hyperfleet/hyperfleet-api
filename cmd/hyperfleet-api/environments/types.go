@@ -4,7 +4,6 @@ import (
 	"sync"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/auth"
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/client/ocm"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
 )
@@ -66,15 +65,12 @@ func (s *Services) SetService(name string, service interface{}) {
 	s.serviceRegistry[name] = service
 }
 
-type Clients struct {
-	OCM *ocm.Client
-}
+type Clients struct{}
 
 type ConfigDefaults struct {
 	Server   map[string]interface{}
 	Metrics  map[string]interface{}
 	Database map[string]interface{}
-	OCM      map[string]interface{}
 	Options  map[string]interface{}
 }
 

@@ -1,7 +1,6 @@
 package environments
 
 import (
-	"os/exec"
 	"reflect"
 	"testing"
 
@@ -9,20 +8,6 @@ import (
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
 )
-
-func BenchmarkGetDynos(b *testing.B) {
-	b.ReportAllocs()
-	fn := func(b *testing.B) {
-		cmd := exec.Command("ocm", "get", "/api/hyperfleet/v1/clusters", "params='size=2'")
-		_, err := cmd.CombinedOutput()
-		if err != nil {
-			b.Errorf("ERROR %+v", err)
-		}
-	}
-	for n := 0; n < b.N; n++ {
-		fn(b)
-	}
-}
 
 func TestLoadServices(t *testing.T) {
 	// Set environment to unit_testing to use mocks

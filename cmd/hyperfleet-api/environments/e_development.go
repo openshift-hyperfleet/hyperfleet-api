@@ -26,9 +26,6 @@ func (e *devEnvImpl) OverrideConfig(c *config.ApplicationConfig) error {
 		c.Database.SSL.Mode = SSLModeDisable
 	}
 
-	// Enable OCM mocks for development (no real OCM connection needed)
-	c.OCM.Mock.Enabled = true
-
 	return nil
 }
 

@@ -176,6 +176,9 @@ func (l *ConfigLoader) validateConfig(config *ApplicationConfig) error {
 		if valErr := config.Server.TLS.Validate(); valErr != nil {
 			return fmt.Errorf("server TLS validation failed: %w", valErr)
 		}
+		if valErr := config.Server.JWT.Validate(); valErr != nil {
+			return fmt.Errorf("server JWT validation failed: %w", valErr)
+		}
 		if valErr := config.Health.Validate(); valErr != nil {
 			return fmt.Errorf("health config validation failed: %w", valErr)
 		}
@@ -300,6 +303,8 @@ func (l *ConfigLoader) bindAllEnvVars() {
 	l.bindEnv("server.tls.cert_file")
 	l.bindEnv("server.tls.key_file")
 	l.bindEnv("server.jwt.enabled")
+	l.bindEnv("server.jwt.issuer_url")
+	l.bindEnv("server.jwt.audience")
 	l.bindEnv("server.jwk.cert_file")
 	l.bindEnv("server.jwk.cert_url")
 	l.bindEnv("server.authz.enabled")
@@ -330,15 +335,6 @@ func (l *ConfigLoader) bindAllEnvVars() {
 	l.bindEnv("logging.masking.enabled")
 	l.bindEnv("logging.masking.headers")
 	l.bindEnv("logging.masking.fields")
-
-	// OCM config
-	l.bindEnv("ocm.base_url")
-	l.bindEnv("ocm.client_id")
-	l.bindEnv("ocm.client_secret")
-	l.bindEnv("ocm.self_token")
-	l.bindEnv("ocm.token_url")
-	l.bindEnv("ocm.debug")
-	l.bindEnv("ocm.mock.enabled")
 
 	// Metrics config
 	l.bindEnv("metrics.host")
@@ -378,6 +374,8 @@ func (l *ConfigLoader) bindFlags(cmd *cobra.Command) {
 	l.bindPFlag("server.tls.key_file", cmd.Flags().Lookup("server-https-key-file"))
 	l.bindPFlag("server.tls.enabled", cmd.Flags().Lookup("server-https-enabled"))
 	l.bindPFlag("server.jwt.enabled", cmd.Flags().Lookup("server-jwt-enabled"))
+	l.bindPFlag("server.jwt.issuer_url", cmd.Flags().Lookup("server-jwt-issuer-url"))
+	l.bindPFlag("server.jwt.audience", cmd.Flags().Lookup("server-jwt-audience"))
 	l.bindPFlag("server.jwk.cert_file", cmd.Flags().Lookup("server-jwk-cert-file"))
 	l.bindPFlag("server.jwk.cert_url", cmd.Flags().Lookup("server-jwk-cert-url"))
 	l.bindPFlag("server.authz.enabled", cmd.Flags().Lookup("server-authz-enabled"))
@@ -420,15 +418,6 @@ func (l *ConfigLoader) bindFlags(cmd *cobra.Command) {
 	l.bindPFlag("health.tls.key_file", cmd.Flags().Lookup("health-tls-key-file"))
 	l.bindPFlag("health.shutdown_timeout", cmd.Flags().Lookup("health-shutdown-timeout"))
 	l.bindPFlag("health.db_ping_timeout", cmd.Flags().Lookup("health-db-ping-timeout"))
-
-	// OCM flags: --ocm-* -> ocm.*
-	l.bindPFlag("ocm.base_url", cmd.Flags().Lookup("ocm-base-url"))
-	l.bindPFlag("ocm.token_url", cmd.Flags().Lookup("ocm-token-url"))
-	l.bindPFlag("ocm.client_id", cmd.Flags().Lookup("ocm-client-id"))
-	l.bindPFlag("ocm.client_secret", cmd.Flags().Lookup("ocm-client-secret"))
-	l.bindPFlag("ocm.self_token", cmd.Flags().Lookup("ocm-self-token"))
-	l.bindPFlag("ocm.debug", cmd.Flags().Lookup("ocm-debug"))
-	l.bindPFlag("ocm.mock.enabled", cmd.Flags().Lookup("ocm-mock-enabled"))
 
 	// Adapters: No flags (configured via env vars only)
 }

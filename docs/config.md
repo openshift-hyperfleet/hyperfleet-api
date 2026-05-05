@@ -254,6 +254,8 @@ HTTP server settings for the API endpoint.
 | `server.tls.cert_file` | string | `""` | Path to TLS certificate file |
 | `server.tls.key_file` | string | `""` | Path to TLS key file |
 | `server.jwt.enabled` | bool | `true` | Enable JWT authentication |
+| `server.jwt.issuer_url` | string | `https://sso.redhat.com/...` | Expected JWT issuer URL for token validation (required when JWT is enabled) |
+| `server.jwt.audience` | string | `""` | Expected JWT audience claim (optional) |
 | `server.authz.enabled` | bool | `false` | Enable authorization checks |
 | `server.jwk.cert_file` | string | `""` | JWK certificate file path (optional) |
 | `server.jwk.cert_url` | string | `https://sso.redhat.com/...` | JWK certificate URL |
@@ -271,6 +273,8 @@ server:
     key_file: /etc/certs/tls.key
   jwt:
     enabled: true
+    issuer_url: https://sso.redhat.com/auth/realms/redhat-external
+    audience: ""
   jwk:
     cert_url: https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/certs
 ```
@@ -324,30 +328,6 @@ health:
 
 </details>
 
-<details>
-<summary><b>OCM Configuration</b> (click to expand)</summary>
-
-OpenShift Cluster Manager integration settings.
-
-| Property | Type | Default | Description |
-|----------|------|---------|-------------|
-| `ocm.base_url` | string | `https://api.integration.openshift.com` | OCM API base URL |
-| `ocm.client_id` | string | `""` | OCM client ID (use env var with secretKeyRef for Kubernetes) |
-| `ocm.client_secret` | string | `""` | OCM client secret (use env var with secretKeyRef for Kubernetes) |
-| `ocm.self_token` | string | `""` | OCM self token (use env var with secretKeyRef for Kubernetes) |
-| `ocm.mock.enabled` | bool | `false` | Enable mock OCM client for testing |
-| `ocm.insecure` | bool | `false` | Skip TLS verification (development only) |
-
-**Example:**
-```yaml
-ocm:
-  base_url: https://api.openshift.com
-  # Credentials via environment variables (recommended for Kubernetes: secretKeyRef)
-  mock:
-    enabled: false
-```
-
-</details>
 
 ---
 
@@ -369,6 +349,8 @@ Complete table of all configuration properties, their environment variables, and
 | `server.tls.cert_file` | `HYPERFLEET_SERVER_TLS_CERT_FILE` | string | `""` |
 | `server.tls.key_file` | `HYPERFLEET_SERVER_TLS_KEY_FILE` | string | `""` |
 | `server.jwt.enabled` | `HYPERFLEET_SERVER_JWT_ENABLED` | bool | `true` |
+| `server.jwt.issuer_url` | `HYPERFLEET_SERVER_JWT_ISSUER_URL` | string | `https://sso.redhat.com/...` |
+| `server.jwt.audience` | `HYPERFLEET_SERVER_JWT_AUDIENCE` | string | `""` |
 | `server.authz.enabled` | `HYPERFLEET_SERVER_AUTHZ_ENABLED` | bool | `false` |
 | `server.jwk.cert_file` | `HYPERFLEET_SERVER_JWK_CERT_FILE` | string | `""` |
 | `server.jwk.cert_url` | `HYPERFLEET_SERVER_JWK_CERT_URL` | string | `https://sso.redhat.com/...` |
@@ -398,13 +380,6 @@ Complete table of all configuration properties, their environment variables, and
 | `logging.masking.enabled` | `HYPERFLEET_LOGGING_MASKING_ENABLED` | bool | `true` |
 | `logging.masking.headers` | `HYPERFLEET_LOGGING_MASKING_HEADERS` | csv | `Authorization,Cookie` |
 | `logging.masking.fields` | `HYPERFLEET_LOGGING_MASKING_FIELDS` | csv | `password,token` |
-| **OCM** | | | |
-| `ocm.base_url` | `HYPERFLEET_OCM_BASE_URL` | string | `https://api.integration.openshift.com` |
-| `ocm.client_id` | `HYPERFLEET_OCM_CLIENT_ID` | string | `""` |
-| `ocm.client_secret` | `HYPERFLEET_OCM_CLIENT_SECRET` | string | `""` |
-| `ocm.self_token` | `HYPERFLEET_OCM_SELF_TOKEN` | string | `""` |
-| `ocm.mock.enabled` | `HYPERFLEET_OCM_MOCK_ENABLED` | bool | `false` |
-| `ocm.insecure` | `HYPERFLEET_OCM_INSECURE` | bool | `false` |
 | **Metrics** | | | |
 | `metrics.host` | `HYPERFLEET_METRICS_HOST` | string | `localhost` |
 | `metrics.port` | `HYPERFLEET_METRICS_PORT` | int | `9090` |
@@ -437,6 +412,8 @@ All CLI flags and their corresponding configuration paths.
 | `--server-https-cert-file` | `server.tls.cert_file` | string |
 | `--server-https-key-file` | `server.tls.key_file` | string |
 | `--server-jwt-enabled` | `server.jwt.enabled` | bool |
+| `--server-jwt-issuer-url` | `server.jwt.issuer_url` | string |
+| `--server-jwt-audience` | `server.jwt.audience` | string |
 | `--server-authz-enabled` | `server.authz.enabled` | bool |
 | `--server-jwk-cert-file` | `server.jwk.cert_file` | string |
 | `--server-jwk-cert-url` | `server.jwk.cert_url` | string |
@@ -455,13 +432,6 @@ All CLI flags and their corresponding configuration paths.
 | `--log-level`, `-l` | `logging.level` | string |
 | `--log-format` | `logging.format` | string |
 | `--log-output` | `logging.output` | string |
-| **OCM** | | |
-| `--ocm-base-url` | `ocm.base_url` | string |
-| `--ocm-client-id` | `ocm.client_id` | string |
-| `--ocm-client-secret` | `ocm.client_secret` | string |
-| `--ocm-self-token` | `ocm.self_token` | string |
-| `--ocm-mock` | `ocm.mock.enabled` | bool |
-| `--ocm-insecure` | `ocm.insecure` | bool |
 | **Metrics** | | |
 | `--metrics-host` | `metrics.host` | string |
 | `--metrics-port` | `metrics.port` | int |
@@ -502,16 +472,12 @@ server:
     key_file: /etc/certs/tls.key
 ```
 
-### Testing with Mock OCM
+### Testing without Authentication
 
 ```yaml
 server:
   jwt:
     enabled: false
-
-ocm:
-  mock:
-    enabled: true
 ```
 
 ---
