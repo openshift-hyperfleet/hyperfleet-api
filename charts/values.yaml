@@ -126,6 +126,7 @@ config:
       enabled: false
 
     label_metrics_inclusion_duration: 168h
+    deletion_stuck_threshold: 30m
 
   # Health check configuration
   health:
@@ -242,6 +243,19 @@ database:
       enabled: false
       size: 1Gi
       storageClass: ""
+
+# PrometheusRule for alerting
+prometheusRule:
+  enabled: false
+  labels: {}
+  namespace: ""
+  rules:
+    deletionStuck:
+      for: "5m"
+      runbookUrl: ""
+    deletionTimeout:
+      for: "30m"
+      runbookUrl: ""
 
 # ServiceMonitor for Prometheus Operator
 serviceMonitor:

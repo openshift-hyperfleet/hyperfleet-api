@@ -11,6 +11,7 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/dao"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/metrics"
 )
 
 //go:generate mockgen-v0.6.0 -source=cluster.go -package=services -destination=cluster_mock.go
@@ -117,8 +118,19 @@ func (s *sqlClusterService) SoftDelete(ctx context.Context, id string) (*api.Clu
 		return nil, handleSoftDeleteError("Cluster", saveErr)
 	}
 
+	metrics.RecordPendingDeletion("cluster")
+
 	if cascadeErr := s.nodePoolDao.SoftDeleteByOwner(ctx, id, t, deletedBy); cascadeErr != nil {
 		return nil, handleSoftDeleteError("NodePool", cascadeErr)
+	}
+
+	nodePools, err := s.nodePoolDao.FindSoftDeletedByOwner(ctx, id)
+	if err != nil {
+		return nil, errors.GeneralError("Failed to fetch cascade-deleted nodepools: %s", err)
+	}
+
+	for range nodePools {
+		metrics.RecordPendingDeletion("nodepool")
 	}
 
 	cluster, svcErr := s.UpdateClusterStatusFromAdapters(ctx, cluster.ID)
@@ -126,11 +138,6 @@ func (s *sqlClusterService) SoftDelete(ctx context.Context, id string) (*api.Clu
 		return nil, svcErr
 	}
 
-	// Update status for all cascade-deleted nodepools so their Ready condition reflects the generation bump.
-	nodePools, err := s.nodePoolDao.FindSoftDeletedByOwner(ctx, id)
-	if err != nil {
-		return nil, errors.GeneralError("Failed to fetch cascade-deleted nodepools: %s", err)
-	}
 	if svcErr := updateNodePoolStatusesForCascadeDelete(
 		ctx,
 		nodePools,
