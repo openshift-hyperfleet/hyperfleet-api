@@ -457,6 +457,48 @@ func TestConvertAndPresent_RoundTrip(t *testing.T) {
 	Expect(*result.Metadata.JobName).To(Equal(*originalReq.Metadata.JobName))
 }
 
+// TestPresentAdapterStatus_FiltersInvalidConditionStatus verifies that conditions with
+// empty or invalid status values (legacy data) are excluded from GET responses.
+func TestPresentAdapterStatus_FiltersInvalidConditionStatus(t *testing.T) {
+	RegisterTestingT(t)
+
+	now := time.Now()
+	reason := "Healthy"
+	message := "All good"
+
+	conditions := []api.AdapterCondition{
+		// Valid — should be kept
+		{Type: "Health", Status: api.AdapterConditionTrue, Reason: &reason, Message: &message, LastTransitionTime: now},
+		{Type: "Available", Status: api.AdapterConditionFalse, LastTransitionTime: now},
+		{Type: "Ready", Status: api.AdapterConditionUnknown, LastTransitionTime: now},
+
+		// Invalid — should be filtered out (legacy data)
+		{Type: "Applied", Status: "", LastTransitionTime: now},
+		{Type: "Reconciled", Status: "garbage", LastTransitionTime: now},
+	}
+	conditionsJSON, _ := json.Marshal(conditions)
+
+	adapterStatus := &api.AdapterStatus{
+		ResourceType:       "Cluster",
+		ResourceID:         "cluster-legacy",
+		Adapter:            "test-adapter",
+		ObservedGeneration: 1,
+		Conditions:         conditionsJSON,
+		Data:               []byte("{}"),
+		CreatedTime:        now,
+		LastReportTime:     now,
+	}
+
+	result, err := PresentAdapterStatus(adapterStatus)
+	Expect(err).To(BeNil())
+
+	Expect(result.Conditions).To(HaveLen(3))
+	for _, cond := range result.Conditions {
+		Expect(cond.Type).ToNot(Equal("Applied"))
+		Expect(cond.Type).ToNot(Equal("Reconciled"))
+	}
+}
+
 // TestPresentAdapterStatus_MalformedConditions tests error handling for malformed Conditions JSON
 func TestPresentAdapterStatus_MalformedConditions(t *testing.T) {
 	RegisterTestingT(t)
