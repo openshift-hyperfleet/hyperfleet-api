@@ -50,7 +50,7 @@ paths:
 
         **Note**: The `status` object in the response is read-only and computed by the service.
         It is NOT part of the request body. Initially,
-        status.conditions will include mandatory "Available", "Ready" and "Reconciled" conditions.
+        status.conditions will include mandatory "LastKnownReconciled", "Ready" and "Reconciled" conditions.
       parameters: []
       responses:
         '201':
@@ -189,10 +189,10 @@ paths:
                       created_time: '2021-01-01T10:00:00Z'
                       last_updated_time: '2021-01-01T10:00:00Z'
                       last_transition_time: '2021-01-01T10:00:00Z'
-                    - type: Available
+                    - type: LastKnownReconciled
                       status: 'True'
-                      reason: All adapters reported Available True for the same generation
-                      message: All adapters reported Available True for the same generation
+                      reason: AllAdaptersReconciled
+                      message: All required adapters report Available=True for the tracked generation
                       observed_generation: 2
                       created_time: '2021-01-01T10:00:00Z'
                       last_updated_time: '2021-01-01T10:00:00Z'
@@ -394,10 +394,10 @@ paths:
                       created_time: '2021-01-01T10:00:00Z'
                       last_updated_time: '2021-01-01T10:00:00Z'
                       last_transition_time: '2021-01-01T10:00:00Z'
-                    - type: Available
+                    - type: LastKnownReconciled
                       status: 'True'
-                      reason: All adapters reported Available True for the same generation
-                      message: All adapters reported Available True for the same generation
+                      reason: AllAdaptersReconciled
+                      message: All required adapters report Available=True for the tracked generation
                       observed_generation: 2
                       created_time: '2021-01-01T10:00:00Z'
                       last_updated_time: '2021-01-01T10:00:00Z'
@@ -1075,10 +1075,10 @@ components:
               created_time: '2021-01-01T10:00:00Z'
               last_updated_time: '2021-01-01T10:00:00Z'
               last_transition_time: '2021-01-01T10:00:00Z'
-            - type: Available
+            - type: LastKnownReconciled
               status: 'True'
-              reason: All adapters reported Available True for the same generation
-              message: All adapters reported Available True for the same generation
+              reason: AllAdaptersReconciled
+              message: All required adapters report Available=True for the tracked generation
               observed_generation: 1
               created_time: '2021-01-01T10:00:00Z'
               last_updated_time: '2021-01-01T10:00:00Z'
@@ -1192,14 +1192,14 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ResourceCondition'
-          minItems: 2
+          minItems: 3
           description: |-
             List of status conditions for the cluster.
 
-            **Mandatory conditions**: 
+            **Mandatory conditions**:
             - `type: "Ready"` *(deprecated — use Reconciled)*: Whether all adapters report successfully at the current generation.
             - `type: "Reconciled"`: Whether the resource's desired state has been fully reconciled by all adapters at the current generation.
-            - `type: "Available"`: Aggregated adapter result for a common observed_generation.   
+            - `type: "LastKnownReconciled"`: Aggregated adapter result for a common observed_generation. Sticky — stays True as long as all required adapters were reconciled at a common observed generation, even if a new generation is being processed.
 
             These conditions are present immediately upon resource creation.
       description: |-
@@ -1374,10 +1374,10 @@ components:
               created_time: '2021-01-01T10:00:00Z'
               last_updated_time: '2021-01-01T10:00:00Z'
               last_transition_time: '2021-01-01T10:00:00Z'
-            - type: Available
+            - type: LastKnownReconciled
               status: 'True'
-              reason: All adapters reported Available True for the same generation
-              message: All adapters reported Available True for the same generation
+              reason: AllAdaptersReconciled
+              message: All required adapters report Available=True for the tracked generation
               observed_generation: 1
               created_time: '2021-01-01T10:00:00Z'
               last_updated_time: '2021-01-01T10:00:00Z'
@@ -1558,14 +1558,14 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ResourceCondition'
-          minItems: 2
+          minItems: 3
           description: |-
             List of status conditions for the nodepool.
 
-            **Mandatory conditions**: 
+            **Mandatory conditions**:
             - `type: "Ready"` *(deprecated — use Reconciled)*: Whether all adapters report successfully at the current generation.
             - `type: "Reconciled"`: Whether the resource's desired state has been fully reconciled by all adapters at the current generation.
-            - `type: "Available"`: Aggregated adapter result for a common observed_generation.   
+            - `type: "LastKnownReconciled"`: Aggregated adapter result for a common observed_generation. Sticky — stays True as long as all required adapters were reconciled at a common observed generation, even if a new generation is being processed.
 
             These conditions are present immediately upon resource creation.
       description: |-
