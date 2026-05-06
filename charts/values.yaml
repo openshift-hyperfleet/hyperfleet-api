@@ -217,6 +217,11 @@ database:
   # For DEVELOPMENT: Use built-in PostgreSQL pod
   # Set postgresql.enabled=true (default)
 
+  # SSL mode for database connections
+  # Options: disable, allow, prefer, require, verify-ca, verify-full
+  # For production, use "require" or higher
+  sslMode: "prefer"
+
   # External database configuration (production)
   external:
     enabled: false
