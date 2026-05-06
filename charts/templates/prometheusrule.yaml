@@ -1,0 +1,40 @@
+{{- if .Values.prometheusRule.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "hyperfleet-api.fullname" . }}
+  namespace: {{ .Values.prometheusRule.namespace | default .Release.Namespace }}
+  labels:
+    {{- include "hyperfleet-api.labels" . | nindent 4 }}
+    {{- with .Values.prometheusRule.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  groups:
+    - name: hyperfleet-api-deletion
+      rules:
+        - alert: HyperFleetResourceDeletionStuckWarning
+          expr: max by (namespace, resource_type)(hyperfleet_api_resource_pending_deletion_stuck) > 0
+          for: {{ .Values.prometheusRule.rules.deletionStuck.for | default "5m" }}
+          labels:
+            severity: warning
+          annotations:
+            summary: "HyperFleet resources stuck in Pending Deletion state"
+            description: >-
+              {{ "{{ $value }}" }} {{ "{{ $labels.resource_type }}" }} resource(s) have been in
+              Pending Deletion state for more than {{ .Values.config.metrics.deletion_stuck_threshold | default "30m" }}
+              (stuck threshold) + {{ .Values.prometheusRule.rules.deletionStuck.for | default "5m" }} (alert delay).
+            runbook_url: {{ .Values.prometheusRule.rules.deletionStuck.runbookUrl | default "" | quote }}
+        - alert: HyperFleetResourceDeletionStuckCritical
+          expr: max by (namespace, resource_type)(hyperfleet_api_resource_pending_deletion_stuck) > 0
+          for: {{ .Values.prometheusRule.rules.deletionTimeout.for | default "30m" }}
+          labels:
+            severity: critical
+          annotations:
+            summary: "HyperFleet resources timed out in Pending Deletion state"
+            description: >-
+              {{ "{{ $value }}" }} {{ "{{ $labels.resource_type }}" }} resource(s) have been in
+              Pending Deletion state for more than {{ .Values.config.metrics.deletion_stuck_threshold | default "30m" }}
+              (stuck threshold) + {{ .Values.prometheusRule.rules.deletionTimeout.for | default "30m" }} (alert delay). Immediate investigation required.
+            runbook_url: {{ .Values.prometheusRule.rules.deletionTimeout.runbookUrl | default "" | quote }}
+{{- end }}

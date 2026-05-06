@@ -87,16 +87,20 @@ func (d *mockNodePoolDao) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-func (d *mockNodePoolDao) SoftDeleteByOwner(ctx context.Context, ownerID string, t time.Time, deletedBy string) error {
+func (d *mockNodePoolDao) SoftDeleteByOwner(
+	ctx context.Context, ownerID string, t time.Time, deletedBy string,
+) (int64, error) {
+	var count int64
 	for id, np := range d.nodePools {
 		if np.OwnerID == ownerID && np.DeletedTime == nil {
 			np.DeletedTime = &t
 			np.DeletedBy = &deletedBy
 			np.Generation++
 			d.nodePools[id] = np
+			count++
 		}
 	}
-	return nil
+	return count, nil
 }
 
 func (d *mockNodePoolDao) FindSoftDeletedByOwner(ctx context.Context, ownerID string) (api.NodePoolList, error) {

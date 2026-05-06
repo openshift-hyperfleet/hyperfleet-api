@@ -99,6 +99,69 @@ hyperfleet_api_request_duration_seconds_sum{component="api",version="abc123",cod
 hyperfleet_api_request_duration_seconds_count{component="api",version="abc123",code="200",method="GET",path="/api/hyperfleet/v1/clusters"} 1523
 ```
 
+### Deletion Observability Metrics
+
+These metrics track resources in the Pending Deletion state (`deleted_time` set, pending hard-delete by adapters).
+
+#### `hyperfleet_api_resource_pending_deletion_total`
+
+**Type:** Counter
+
+**Description:** Total number of resources that entered the Pending Deletion state (`deleted_time` set).
+
+**Labels:**
+
+| Label | Description | Example Values |
+|-------|-------------|----------------|
+| `resource_type` | Type of resource | `cluster`, `nodepool` |
+| `component` | Component name | `api` |
+| `version` | Application version | `abc123` |
+
+**Example output:**
+
+```text
+hyperfleet_api_resource_pending_deletion_total{component="api",resource_type="cluster",version="abc123"} 42
+hyperfleet_api_resource_pending_deletion_total{component="api",resource_type="nodepool",version="abc123"} 156
+```
+
+#### `hyperfleet_api_resource_pending_deletion_duration_seconds`
+
+**Type:** Histogram
+
+**Description:** Duration from pending deletion (`deleted_time` set) to hard-delete completion in seconds. Observed when a resource is hard-deleted after all adapters report `Finalized=True`.
+
+**Labels:** Same as `hyperfleet_api_resource_pending_deletion_total`
+
+**Buckets:** `1s`, `5s`, `10s`, `30s`, `60s`, `120s`, `300s`, `600s`, `1800s`, `3600s`
+
+**Note:** This metric is populated when the hard-delete flow is active. See the [hard-delete design](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/components/api-service/hard-delete-design.md) for details.
+
+#### `hyperfleet_api_resource_pending_deletion_stuck`
+
+**Type:** Gauge (Collector)
+
+**Description:** Number of resources in Pending Deletion state beyond the stuck threshold (default 30 minutes). This gauge is computed on each Prometheus scrape by querying the database for resources with `deleted_time` set before the threshold.
+
+**Labels:** Same as `hyperfleet_api_resource_pending_deletion_total`
+
+**Configuration:** The stuck threshold is configurable via `--metrics-deletion-stuck-threshold` (default `30m`).
+
+**Example output:**
+
+```text
+hyperfleet_api_resource_pending_deletion_stuck{component="api",resource_type="cluster",version="abc123"} 2
+hyperfleet_api_resource_pending_deletion_stuck{component="api",resource_type="nodepool",version="abc123"} 0
+```
+
+### Deletion Alerts
+
+Two alerts are available via the PrometheusRule (requires `prometheusRule.enabled=true` in Helm values):
+
+| Alert | Severity | Condition | Description |
+|-------|----------|-----------|-------------|
+| `HyperFleetResourceDeletionStuckWarning` | Warning | `resource_pending_deletion_stuck > 0` for 30m | Resources stuck in Pending Deletion beyond 1 hour |
+| `HyperFleetResourceDeletionStuckCritical` | Critical | `resource_pending_deletion_stuck > 0` for 2h | Resources stuck in Pending Deletion beyond 2.5 hours |
+
 ## Go Runtime Metrics
 
 The following metrics are automatically exposed by the Prometheus Go client library.
@@ -253,6 +316,26 @@ rate(process_cpu_seconds_total[5m])
 
 # File descriptor usage percentage
 process_open_fds / process_max_fds * 100
+```
+
+### Deletion Observability
+
+```promql
+# Resources entering Pending Deletion state per minute
+sum by (resource_type) (rate(hyperfleet_api_resource_pending_deletion_total[5m])) * 60
+
+# Resources currently stuck in Pending Deletion state
+hyperfleet_api_resource_pending_deletion_stuck
+
+# Stuck resources by type
+sum by (resource_type) (hyperfleet_api_resource_pending_deletion_stuck)
+
+# Average pending deletion duration (once hard-delete is active)
+sum by (resource_type) (rate(hyperfleet_api_resource_pending_deletion_duration_seconds_sum[5m])) /
+sum by (resource_type) (rate(hyperfleet_api_resource_pending_deletion_duration_seconds_count[5m]))
+
+# P99 pending deletion duration
+histogram_quantile(0.99, sum by (le, resource_type) (rate(hyperfleet_api_resource_pending_deletion_duration_seconds_bucket[5m])))
 ```
 
 ### Common Investigation Queries
