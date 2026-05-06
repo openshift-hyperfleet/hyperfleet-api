@@ -70,9 +70,9 @@ func TestClusterStatusPost(t *testing.T) {
 		&data,
 	)
 
-	resp, err := client.PostClusterStatusesWithResponse(
+	resp, err := client.PutClusterStatusesWithResponse(
 		ctx, cluster.ID,
-		openapi.PostClusterStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
+		openapi.PutClusterStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
 	)
 	Expect(err).NotTo(HaveOccurred(), "Error posting cluster status: %v", err)
 	Expect(resp.StatusCode()).To(Equal(http.StatusCreated))
@@ -118,9 +118,9 @@ func TestClusterStatusGet(t *testing.T) {
 			},
 			nil,
 		)
-		_, err = client.PostClusterStatusesWithResponse(
+		_, err = client.PutClusterStatusesWithResponse(
 			ctx, cluster.ID,
-			openapi.PostClusterStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
+			openapi.PutClusterStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
 		)
 		Expect(err).NotTo(HaveOccurred())
 	}
@@ -196,9 +196,9 @@ func TestNodePoolStatusPost(t *testing.T) {
 	)
 
 	// Use nodePool.OwnerID as the cluster_id parameter
-	resp, err := client.PostNodePoolStatusesWithResponse(
+	resp, err := client.PutNodePoolStatusesWithResponse(
 		ctx, nodePool.OwnerID, nodePool.ID,
-		openapi.PostNodePoolStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
+		openapi.PutNodePoolStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
 	)
 	Expect(err).NotTo(HaveOccurred(), "Error posting nodepool status: %v", err)
 	Expect(resp.StatusCode()).To(Equal(http.StatusCreated))
@@ -244,9 +244,9 @@ func TestNodePoolStatusGet(t *testing.T) {
 			nil,
 		)
 		// Use nodePool.OwnerID as the cluster_id parameter
-		_, err = client.PostNodePoolStatusesWithResponse(
+		_, err = client.PutNodePoolStatusesWithResponse(
 			ctx, nodePool.OwnerID, nodePool.ID,
-			openapi.PostNodePoolStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
+			openapi.PutNodePoolStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
 		)
 		Expect(err).NotTo(HaveOccurred())
 	}
@@ -295,9 +295,9 @@ func TestAdapterStatusPaging(t *testing.T) {
 			},
 			nil,
 		)
-		_, err = client.PostClusterStatusesWithResponse(
+		_, err = client.PutClusterStatusesWithResponse(
 			ctx, cluster.ID,
-			openapi.PostClusterStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
+			openapi.PutClusterStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
 		)
 		Expect(err).NotTo(HaveOccurred())
 	}
@@ -359,9 +359,9 @@ func TestAdapterStatusIdempotency(t *testing.T) {
 		&data1,
 	)
 
-	resp1, err := client.PostClusterStatusesWithResponse(
+	resp1, err := client.PutClusterStatusesWithResponse(
 		ctx, cluster.ID,
-		openapi.PostClusterStatusesJSONRequestBody(statusInput1), test.WithAuthToken(ctx),
+		openapi.PutClusterStatusesJSONRequestBody(statusInput1), test.WithAuthToken(ctx),
 	)
 	Expect(err).NotTo(HaveOccurred())
 	Expect(resp1.StatusCode()).To(Equal(http.StatusCreated))
@@ -401,9 +401,9 @@ func TestAdapterStatusIdempotency(t *testing.T) {
 		&data2,
 	)
 
-	resp2, err := client.PostClusterStatusesWithResponse(
+	resp2, err := client.PutClusterStatusesWithResponse(
 		ctx, cluster.ID,
-		openapi.PostClusterStatusesJSONRequestBody(statusInput2), test.WithAuthToken(ctx),
+		openapi.PutClusterStatusesJSONRequestBody(statusInput2), test.WithAuthToken(ctx),
 	)
 	Expect(err).NotTo(HaveOccurred())
 	Expect(resp2.StatusCode()).To(Equal(http.StatusCreated))
@@ -469,9 +469,9 @@ func TestClusterStatusPost_FirstUnknownAccepted(t *testing.T) {
 	)
 
 	// First report with Unknown Available condition: should be accepted
-	resp, err := client.PostClusterStatusesWithResponse(
+	resp, err := client.PutClusterStatusesWithResponse(
 		ctx, cluster.ID,
-		openapi.PostClusterStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
+		openapi.PutClusterStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
 	)
 	Expect(err).NotTo(HaveOccurred(), "Error posting cluster status: %v", err)
 	Expect(resp.StatusCode()).
@@ -492,9 +492,9 @@ func TestClusterStatusPost_FirstUnknownAccepted(t *testing.T) {
 	Expect(found).To(BeTrue(), "First status with Unknown Available condition should be stored")
 
 	// Subsequent report with same adapter: should be rejected (204 No Content)
-	resp2, err := client.PostClusterStatusesWithResponse(
+	resp2, err := client.PutClusterStatusesWithResponse(
 		ctx, cluster.ID,
-		openapi.PostClusterStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
+		openapi.PutClusterStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
 	)
 	Expect(err).NotTo(HaveOccurred(), "Error posting cluster status: %v", err)
 	Expect(resp2.StatusCode()).
@@ -538,9 +538,9 @@ func TestNodePoolStatusPost_FirstUnknownAccepted(t *testing.T) {
 	)
 
 	// First report with Unknown Available condition: should be accepted
-	resp, err := client.PostNodePoolStatusesWithResponse(
+	resp, err := client.PutNodePoolStatusesWithResponse(
 		ctx, nodePool.OwnerID, nodePool.ID,
-		openapi.PostNodePoolStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
+		openapi.PutNodePoolStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
 	)
 	Expect(err).NotTo(HaveOccurred(), "Error posting nodepool status: %v", err)
 	Expect(resp.StatusCode()).
@@ -563,9 +563,9 @@ func TestNodePoolStatusPost_FirstUnknownAccepted(t *testing.T) {
 	Expect(found).To(BeTrue(), "First status with Unknown Available condition should be stored")
 
 	// Subsequent report with same adapter: should be rejected (204 No Content)
-	resp2, err := client.PostNodePoolStatusesWithResponse(
+	resp2, err := client.PutNodePoolStatusesWithResponse(
 		ctx, nodePool.OwnerID, nodePool.ID,
-		openapi.PostNodePoolStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
+		openapi.PutNodePoolStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
 	)
 	Expect(err).NotTo(HaveOccurred(), "Error posting nodepool status: %v", err)
 	Expect(resp2.StatusCode()).
@@ -617,18 +617,18 @@ func TestClusterStatusPost_MultipleConditionsWithUnknownAvailable(t *testing.T) 
 	)
 
 	// First report with Unknown Available condition: should be accepted
-	resp, err := client.PostClusterStatusesWithResponse(
+	resp, err := client.PutClusterStatusesWithResponse(
 		ctx, cluster.ID,
-		openapi.PostClusterStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
+		openapi.PutClusterStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
 	)
 	Expect(err).NotTo(HaveOccurred(), "Error posting cluster status: %v", err)
 	Expect(resp.StatusCode()).To(Equal(http.StatusCreated),
 		"Expected 201 Created for first report with Available=Unknown among multiple conditions")
 
 	// Subsequent report: should be rejected (204 No Content)
-	resp2, err := client.PostClusterStatusesWithResponse(
+	resp2, err := client.PutClusterStatusesWithResponse(
 		ctx, cluster.ID,
-		openapi.PostClusterStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
+		openapi.PutClusterStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
 	)
 	Expect(err).NotTo(HaveOccurred(), "Error posting cluster status: %v", err)
 	Expect(resp2.StatusCode()).To(Equal(http.StatusNoContent),
@@ -671,9 +671,9 @@ func TestAdapterStatusPagingEdgeCases(t *testing.T) {
 			},
 			nil,
 		)
-		_, err = client.PostClusterStatusesWithResponse(
+		_, err = client.PutClusterStatusesWithResponse(
 			ctx, cluster.ID,
-			openapi.PostClusterStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
+			openapi.PutClusterStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
 		)
 		Expect(err).NotTo(HaveOccurred())
 	}
@@ -728,9 +728,9 @@ func TestAdapterStatusPagingEdgeCases(t *testing.T) {
 		},
 		nil,
 	)
-	_, err = client.PostClusterStatusesWithResponse(
+	_, err = client.PutClusterStatusesWithResponse(
 		ctx, singleCluster.ID,
-		openapi.PostClusterStatusesJSONRequestBody(singleStatus), test.WithAuthToken(ctx),
+		openapi.PutClusterStatusesJSONRequestBody(singleStatus), test.WithAuthToken(ctx),
 	)
 	Expect(err).NotTo(HaveOccurred())
 
@@ -814,9 +814,9 @@ func TestClusterStatusPost_MissingMandatoryConditionsRejected(t *testing.T) {
 		nil,
 	)
 
-	resp1, err := client.PostClusterStatusesWithResponse(
+	resp1, err := client.PutClusterStatusesWithResponse(
 		ctx, cluster.ID,
-		openapi.PostClusterStatusesJSONRequestBody(initialStatus), test.WithAuthToken(ctx),
+		openapi.PutClusterStatusesJSONRequestBody(initialStatus), test.WithAuthToken(ctx),
 	)
 	Expect(err).NotTo(HaveOccurred())
 	Expect(resp1.StatusCode()).To(Equal(http.StatusCreated))
@@ -856,9 +856,9 @@ func TestClusterStatusPost_MissingMandatoryConditionsRejected(t *testing.T) {
 		},
 	)
 
-	resp2, err := client.PostClusterStatusesWithResponse(
+	resp2, err := client.PutClusterStatusesWithResponse(
 		ctx, cluster.ID,
-		openapi.PostClusterStatusesJSONRequestBody(incompleteStatus), test.WithAuthToken(ctx),
+		openapi.PutClusterStatusesJSONRequestBody(incompleteStatus), test.WithAuthToken(ctx),
 	)
 	Expect(err).NotTo(HaveOccurred())
 	// Should return 400 Bad Request (missing mandatory conditions)
@@ -925,9 +925,9 @@ func TestClusterStatusPost_FirstUnknownAcceptedSubsequentRejected(t *testing.T) 
 	)
 
 	// First report: should be accepted
-	resp, err := client.PostClusterStatusesWithResponse(
+	resp, err := client.PutClusterStatusesWithResponse(
 		ctx, cluster.ID,
-		openapi.PostClusterStatusesJSONRequestBody(statusWithUnknown), test.WithAuthToken(ctx),
+		openapi.PutClusterStatusesJSONRequestBody(statusWithUnknown), test.WithAuthToken(ctx),
 	)
 	Expect(err).NotTo(HaveOccurred())
 	Expect(resp.StatusCode()).To(Equal(http.StatusCreated), "First status with Unknown Available should be accepted")
@@ -940,9 +940,9 @@ func TestClusterStatusPost_FirstUnknownAcceptedSubsequentRejected(t *testing.T) 
 	Expect(len(respGet.JSON200.Items)).To(Equal(1), "First status with Unknown Available should be stored")
 
 	// Subsequent report: should be rejected (204 No Content)
-	resp2, err := client.PostClusterStatusesWithResponse(
+	resp2, err := client.PutClusterStatusesWithResponse(
 		ctx, cluster.ID,
-		openapi.PostClusterStatusesJSONRequestBody(statusWithUnknown), test.WithAuthToken(ctx),
+		openapi.PutClusterStatusesJSONRequestBody(statusWithUnknown), test.WithAuthToken(ctx),
 	)
 	Expect(err).NotTo(HaveOccurred())
 	Expect(resp2.StatusCode()).To(Equal(http.StatusNoContent),
@@ -994,9 +994,9 @@ func TestClusterStatusPost_DuplicateConditionsRejected(t *testing.T) {
 		nil,
 	)
 
-	resp, err := client.PostClusterStatusesWithResponse(
+	resp, err := client.PutClusterStatusesWithResponse(
 		ctx, cluster.ID,
-		openapi.PostClusterStatusesJSONRequestBody(duplicateStatus), test.WithAuthToken(ctx),
+		openapi.PutClusterStatusesJSONRequestBody(duplicateStatus), test.WithAuthToken(ctx),
 	)
 	Expect(err).NotTo(HaveOccurred())
 	// Should return 400 Bad Request (format validation failure)
@@ -1051,9 +1051,9 @@ func TestClusterStatusPost_EmptyConditionTypeRejected(t *testing.T) {
 		nil,
 	)
 
-	resp, err := client.PostClusterStatusesWithResponse(
+	resp, err := client.PutClusterStatusesWithResponse(
 		ctx, cluster.ID,
-		openapi.PostClusterStatusesJSONRequestBody(emptyTypeStatus), test.WithAuthToken(ctx),
+		openapi.PutClusterStatusesJSONRequestBody(emptyTypeStatus), test.WithAuthToken(ctx),
 	)
 	Expect(err).NotTo(HaveOccurred())
 	// Should return 400 Bad Request (format validation failure)
@@ -1097,9 +1097,9 @@ func TestClusterStatusPost_InvalidStatusRejected(t *testing.T) {
 			nil,
 		)
 
-		resp, err := client.PostClusterStatusesWithResponse(
+		resp, err := client.PutClusterStatusesWithResponse(
 			ctx, cluster.ID,
-			openapi.PostClusterStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
+			openapi.PutClusterStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
 		)
 		Expect(err).NotTo(HaveOccurred(), "Test case: "+tc.name)
 		Expect(resp.StatusCode()).To(Equal(http.StatusBadRequest),
@@ -1142,9 +1142,9 @@ func TestNodePoolStatusPost_InvalidStatusRejected(t *testing.T) {
 			nil,
 		)
 
-		resp, err := client.PostNodePoolStatusesWithResponse(
+		resp, err := client.PutNodePoolStatusesWithResponse(
 			ctx, nodePool.OwnerID, nodePool.ID,
-			openapi.PostNodePoolStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
+			openapi.PutNodePoolStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
 		)
 		Expect(err).NotTo(HaveOccurred(), "Test case: "+tc.name)
 		Expect(resp.StatusCode()).To(Equal(http.StatusBadRequest),
@@ -1196,9 +1196,9 @@ func TestClusterStatusPost_ValidStatusesStillWork(t *testing.T) {
 			nil,
 		)
 
-		resp, err := client.PostClusterStatusesWithResponse(
+		resp, err := client.PutClusterStatusesWithResponse(
 			ctx, cluster.ID,
-			openapi.PostClusterStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
+			openapi.PutClusterStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
 		)
 		Expect(err).NotTo(HaveOccurred(), "Valid status should work: "+string(status))
 		Expect(resp.StatusCode()).To(Equal(http.StatusCreated),

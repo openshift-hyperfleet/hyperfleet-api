@@ -80,6 +80,7 @@ func NewAPIServer(tracingEnabled bool) Server {
 			http.MethodGet,
 			http.MethodPatch,
 			http.MethodPost,
+			http.MethodPut,
 		}),
 		gorillahandlers.AllowedHeaders([]string{
 			"Authorization",
