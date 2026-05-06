@@ -19,7 +19,6 @@ type ServerConfig struct {
 	JWT               JWTConfig      `mapstructure:"jwt" json:"jwt" validate:"required"`
 	Timeouts          TimeoutsConfig `mapstructure:"timeouts" json:"timeouts" validate:"required"`
 	Port              int            `mapstructure:"port" json:"port" validate:"required,min=1,max=65535"`
-	Authz             AuthzConfig    `mapstructure:"authz" json:"authz" validate:"required"`
 }
 
 // TimeoutsConfig holds HTTP timeout configuration
@@ -84,11 +83,6 @@ type JWKConfig struct {
 	CertURL  string `mapstructure:"cert_url" json:"cert_url" validate:"omitempty,url"`
 }
 
-// AuthzConfig holds authorization configuration
-type AuthzConfig struct {
-	Enabled bool `mapstructure:"enabled" json:"enabled"`
-}
-
 // Deprecated: ACLConfig is kept for Helm values.yaml backward compatibility.
 // ACL checking was provided by the OCM SDK handler and is no longer functional.
 type ACLConfig struct {
@@ -120,9 +114,6 @@ func NewServerConfig() *ServerConfig {
 		JWK: JWKConfig{
 			CertFile: "",
 			CertURL:  "https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/certs",
-		},
-		Authz: AuthzConfig{
-			Enabled: true,
 		},
 		ACL: ACLConfig{
 			File: "",

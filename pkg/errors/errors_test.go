@@ -37,28 +37,12 @@ func TestConstructors(t *testing.T) {
 			expectedReason: "error code 42",
 		},
 		{
-			name:           "Unauthorized",
-			build:          func() *ServiceError { return Unauthorized("not allowed") },
-			expectedCode:   CodeAuthzInsufficient,
-			expectedHTTP:   http.StatusForbidden,
-			expectedType:   ErrorTypeAuthz,
-			expectedReason: "not allowed",
-		},
-		{
 			name:           "Unauthenticated",
 			build:          func() *ServiceError { return Unauthenticated("no credentials") },
 			expectedCode:   CodeAuthNoCredentials,
 			expectedHTTP:   http.StatusUnauthorized,
 			expectedType:   ErrorTypeAuth,
 			expectedReason: "no credentials",
-		},
-		{
-			name:           "Forbidden",
-			build:          func() *ServiceError { return Forbidden("access denied") },
-			expectedCode:   CodeAuthzForbidden,
-			expectedHTTP:   http.StatusForbidden,
-			expectedType:   ErrorTypeAuthz,
-			expectedReason: "access denied",
 		},
 		{
 			name:           "NotImplemented",
@@ -166,7 +150,6 @@ func TestServiceError_HelperMethods(t *testing.T) {
 		expectedError string
 		is404         bool
 		isConflict    bool
-		isForbidden   bool
 	}{
 		{
 			name:          "NotFound",
@@ -179,18 +162,6 @@ func TestServiceError_HelperMethods(t *testing.T) {
 			build:         func() *ServiceError { return Conflict("already exists") },
 			expectedError: CodeConflictExists + ": already exists",
 			isConflict:    true,
-		},
-		{
-			name:          "Unauthorized",
-			build:         func() *ServiceError { return Unauthorized("not allowed") },
-			expectedError: CodeAuthzInsufficient + ": not allowed",
-			isForbidden:   true,
-		},
-		{
-			name:          "Forbidden",
-			build:         func() *ServiceError { return Forbidden("access denied") },
-			expectedError: CodeAuthzForbidden + ": access denied",
-			isForbidden:   true,
 		},
 		{
 			name:          "Unauthenticated",
@@ -217,7 +188,6 @@ func TestServiceError_HelperMethods(t *testing.T) {
 			Expect(err.AsError().Error()).To(Equal(tt.expectedError))
 			Expect(err.Is404()).To(Equal(tt.is404))
 			Expect(err.IsConflict()).To(Equal(tt.isConflict))
-			Expect(err.IsForbidden()).To(Equal(tt.isForbidden))
 		})
 	}
 }

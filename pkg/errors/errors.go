@@ -15,7 +15,6 @@ const (
 	ErrorTypeBase       = "https://api.hyperfleet.io/errors/"
 	ErrorTypeValidation = ErrorTypeBase + "validation-error"
 	ErrorTypeAuth       = ErrorTypeBase + "authentication-error"
-	ErrorTypeAuthz      = ErrorTypeBase + "authorization-error"
 	ErrorTypeNotFound   = ErrorTypeBase + "not-found"
 	ErrorTypeConflict   = ErrorTypeBase + "conflict"
 	ErrorTypeRateLimit  = ErrorTypeBase + "rate-limit"
@@ -39,10 +38,6 @@ const (
 	CodeAuthNoCredentials      = "HYPERFLEET-AUT-001" //nolint:gosec // Not actual credentials, just error code names
 	CodeAuthInvalidCredentials = "HYPERFLEET-AUT-002" //nolint:gosec // Not actual credentials, just error code names
 	CodeAuthExpiredToken       = "HYPERFLEET-AUT-003" //nolint:gosec // Not actual credentials, just error code names
-
-	// Authorization errors (AUZ) - 403
-	CodeAuthzInsufficient = "HYPERFLEET-AUZ-001"
-	CodeAuthzForbidden    = "HYPERFLEET-AUZ-002"
 
 	// Not Found errors (NTF) - 404
 	CodeNotFoundGeneric  = "HYPERFLEET-NTF-001"
@@ -111,14 +106,6 @@ var errorDefinitions = map[string]errorDefinition{
 	},
 	CodeAuthExpiredToken: {
 		ErrorTypeAuth, "Invalid Token", "Invalid token provided", http.StatusUnauthorized,
-	},
-
-	// Authorization errors (AUZ) - 403
-	CodeAuthzInsufficient: {
-		ErrorTypeAuthz, "Unauthorized", "Account is unauthorized to perform this action", http.StatusForbidden,
-	},
-	CodeAuthzForbidden: {
-		ErrorTypeAuthz, "Forbidden", "Forbidden to perform this action", http.StatusForbidden,
 	},
 
 	// Validation errors (VAL) - 400
@@ -271,10 +258,6 @@ func (e *ServiceError) IsConflict() bool {
 	return e.Type == ErrorTypeConflict
 }
 
-func (e *ServiceError) IsForbidden() bool {
-	return e.Type == ErrorTypeAuthz
-}
-
 // validConstraints maps string values to their corresponding ValidationErrorConstraint enum values
 var validConstraints = map[string]openapi.ValidationErrorConstraint{
 	"required":   openapi.Required,
@@ -348,16 +331,8 @@ func GeneralError(reason string, values ...interface{}) *ServiceError {
 	return New(CodeInternalGeneral, reason, values...)
 }
 
-func Unauthorized(reason string, values ...interface{}) *ServiceError {
-	return New(CodeAuthzInsufficient, reason, values...)
-}
-
 func Unauthenticated(reason string, values ...interface{}) *ServiceError {
 	return New(CodeAuthNoCredentials, reason, values...)
-}
-
-func Forbidden(reason string, values ...interface{}) *ServiceError {
-	return New(CodeAuthzForbidden, reason, values...)
 }
 
 func NotImplemented(reason string, values ...interface{}) *ServiceError {

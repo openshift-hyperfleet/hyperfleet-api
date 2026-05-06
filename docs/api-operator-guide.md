@@ -625,28 +625,30 @@ Use the `--db-sslmode` flag when running the binary directly:
 
 ```yaml
 # Development (no authentication)
-auth:
-  enableJwt: false
-  enableAuthz: false
+server:
+  jwt:
+    enabled: false
 
 # Production (with JWT authentication)
-auth:
-  enableJwt: true
-  enableAuthz: true
-  jwksUrl: https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/certs
+server:
+  jwt:
+    enabled: true
+    issuer_url: https://sso.redhat.com/auth/realms/redhat-external
+  jwk:
+    cert_url: https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/certs
 ```
 
 **Direct binary execution:**
 
 ```bash
 # Development (no authentication)
-./hyperfleet-api serve --enable-jwt=false --enable-authz=false
+./hyperfleet-api serve --server-jwt-enabled=false
 
 # Production (with JWT authentication)
 ./hyperfleet-api serve \
-  --enable-jwt=true \
-  --enable-authz=true \
-  --jwk-cert-url=https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/certs
+  --server-jwt-enabled=true \
+  --server-jwt-issuer-url=https://sso.redhat.com/auth/realms/redhat-external \
+  --server-jwk-cert-url=https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/certs
 ```
 
 See [Authentication Guide](authentication.md) for detailed JWT setup.
@@ -924,7 +926,7 @@ For detailed documentation on specific integration topics:
 
 **Development (no auth):**
 
-If `auth.enableJwt=false`, no authentication is required:
+If `server.jwt.enabled=false`, no authentication is required:
 
 ```bash
 curl http://api-host:8000/api/hyperfleet/v1/clusters
@@ -1043,7 +1045,7 @@ This section provides a **quick reference** for common API-specific issues and t
 | **Pods stuck in init phase: `connection timeout`** | Database connection retry settings too low | Increase database connection retry settings using `--db-conn-retry-attempts` and `--db-conn-retry-interval` flags in the init container command                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | **High API latency, slow responses** | Resource limits, database slow queries, or connection pool exhausted | Check metrics: `curl http://<api-service>:9090/metrics \| grep hyperfleet_api_request_duration_seconds`. Check resources: `kubectl top pods -n hyperfleet-system`. Check slow queries: `kubectl logs -n hyperfleet-system deployment/hyperfleet-api \| grep "slow query"`. Resolution: Increase resource limits/replicas, add database indexes, or increase `--db-max-open-connections` (default: 50).                                                                                                                                                                                         |
 | **400 Bad Request** | Resource spec doesn't match OpenAPI schema | Check loaded schema: `kubectl logs -n hyperfleet-system deployment/hyperfleet-api \| grep "OPENAPI_SCHEMA_PATH"`. Retrieve schema: `kubectl exec -n hyperfleet-system deployment/hyperfleet-api -- cat /etc/hyperfleet/schemas/openapi.yaml`. Validate and fix spec.                                                                                                                                                                                                                                                                                                                           |
-| **401 Unauthorized** | Missing or invalid JWT token | Verify authentication is enabled (`auth.enableJwt=true`). If production, ensure valid JWT token is provided. Reference: [Authentication Guide](authentication.md).                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| **401 Unauthorized** | Missing or invalid JWT token | Verify authentication is enabled (`server.jwt.enabled=true`). If production, ensure valid JWT token is provided. Reference: [Authentication Guide](authentication.md).                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | **404 Not Found** | Resource doesn't exist | Verify resource ID is correct. Check if resource was deleted: `curl http://<api-service>:8000/api/hyperfleet/v1/clusters/$CLUSTER_ID`.                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | **409 Conflict** | Concurrent update or generation mismatch | Retry with exponential backoff. Ensure only one controller updates the same resource.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | **500 Internal Server Error** | Database error or unexpected panic | Check API logs: `kubectl logs -n hyperfleet-system -l app=hyperfleet-api --tail=100`. Verify database connectivity with `/readyz` endpoint.                                                                                                                                                                                                                                                                                                                                                                                                                                                    |

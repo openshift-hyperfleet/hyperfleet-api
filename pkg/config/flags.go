@@ -31,7 +31,6 @@ func AddServerFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool("server-jwt-enabled", defaults.JWT.Enabled, "Enable JWT authentication")
 	cmd.Flags().String("server-jwt-issuer-url", defaults.JWT.IssuerURL, "Expected JWT issuer URL for token validation")
 	cmd.Flags().String("server-jwt-audience", defaults.JWT.Audience, "Expected JWT audience (optional)")
-	cmd.Flags().Bool("server-authz-enabled", defaults.Authz.Enabled, "Enable authorization on endpoints")
 	cmd.Flags().String("server-jwk-cert-file", defaults.JWK.CertFile, "JWK certificate file path")
 	cmd.Flags().String("server-jwk-cert-url", defaults.JWK.CertURL, "JWK certificate URL")
 	cmd.Flags().String("server-acl-file", defaults.ACL.File, "Access control list file path")

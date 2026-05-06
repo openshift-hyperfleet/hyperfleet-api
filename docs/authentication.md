@@ -69,32 +69,6 @@ curl -H "Authorization: Bearer ${TOKEN}" \
   http://localhost:8000/api/hyperfleet/v1/clusters
 ```
 
-## Authorization
-
-HyperFleet API implements resource-based authorization.
-
-### Resource Ownership
-
-Resources track ownership via `created_by` and `updated_by` fields:
-
-```json
-{
-  "id": "cluster-123",
-  "name": "my-cluster",
-  "created_by": "user@example.com",
-  "updated_by": "user@example.com"
-}
-```
-
-### Access Control
-
-- **Create**: Users can create resources
-- **Read**: Users can read resources they created or have access to
-- **Update**: Users can update resources they own
-- **Delete**: Users can delete resources they own
-
-Users within the same organization can access shared resources based on organizational membership.
-
 ## Configuration
 
 ### Environment Variables

@@ -151,7 +151,7 @@ run: build ## Run the application
 .PHONY: run-no-auth
 run-no-auth: build ## Run the application without auth
 	./bin/hyperfleet-api migrate
-	./bin/hyperfleet-api serve --server-jwt-enabled=false --server-authz-enabled=false
+	./bin/hyperfleet-api serve --server-jwt-enabled=false
 
 .PHONY: run/docs
 run/docs: check-container-tool ## Run swagger and host the api spec
@@ -324,8 +324,7 @@ test-helm: ## Test Helm charts (lint, template, validate)
 		--set image.tag=test \
 		--set 'adapters.cluster=["validation"]' \
 		--set 'adapters.nodepool=["validation"]' \
-		--set auth.enableJwt=false \
-		--set auth.enableAuthz=false > /dev/null
+		--set config.server.jwt.enabled=false > /dev/null
 	@echo "Auth disabled config template OK"
 	@echo ""
 	@echo "Testing template with custom image..."

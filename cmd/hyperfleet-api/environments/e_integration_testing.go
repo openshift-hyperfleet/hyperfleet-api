@@ -49,10 +49,6 @@ func (e *integrationTestingEnvImpl) OverrideHandlers(h *Handlers) error {
 	return nil
 }
 
-func (e *integrationTestingEnvImpl) OverrideClients(c *Clients) error {
-	return nil
-}
-
 func (e *integrationTestingEnvImpl) EnvironmentDefaults() map[string]string {
 	// Return empty map - new config system has appropriate defaults
 	// and OverrideConfig() sets test-specific values programmatically

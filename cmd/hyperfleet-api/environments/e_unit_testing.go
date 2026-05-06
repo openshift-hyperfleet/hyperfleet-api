@@ -42,10 +42,6 @@ func (e *unitTestingEnvImpl) OverrideHandlers(h *Handlers) error {
 	return nil
 }
 
-func (e *unitTestingEnvImpl) OverrideClients(c *Clients) error {
-	return nil
-}
-
 func (e *unitTestingEnvImpl) EnvironmentDefaults() map[string]string {
 	// Return empty map - new config system has appropriate defaults
 	// and OverrideConfig() sets test-specific values programmatically

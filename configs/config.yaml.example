@@ -20,9 +20,6 @@ server:
   jwt:
     enabled: true                   # Enable JWT authentication
 
-  authz:
-    enabled: true                   # Enable authorization
-
   jwk:
     cert_file: ""                   # JWK certificate file path
     cert_url: "https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/certs"

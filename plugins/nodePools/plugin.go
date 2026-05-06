@@ -48,7 +48,7 @@ func init() {
 	})
 
 	// Routes registration
-	server.RegisterRoutes("nodePools", func(apiV1Router *mux.Router, services server.ServicesInterface, authMiddleware auth.JWTMiddleware, authzMiddleware auth.AuthorizationMiddleware) {
+	server.RegisterRoutes("nodePools", func(apiV1Router *mux.Router, services server.ServicesInterface, authMiddleware auth.JWTMiddleware) {
 		envServices := services.(*environments.Services)
 		nodePoolHandler := handlers.NewNodePoolHandler(Service(envServices), generic.Service(envServices))
 
@@ -58,7 +58,6 @@ func init() {
 		nodePoolsRouter.HandleFunc("", nodePoolHandler.List).Methods(http.MethodGet)
 
 		nodePoolsRouter.Use(authMiddleware.AuthenticateAccountJWT)
-		nodePoolsRouter.Use(authzMiddleware.AuthorizeAPI)
 	})
 
 	// REMOVED: Controller registration - Sentinel handles orchestration

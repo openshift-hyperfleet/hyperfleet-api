@@ -37,10 +37,6 @@ func (e *devEnvImpl) OverrideHandlers(h *Handlers) error {
 	return nil
 }
 
-func (e *devEnvImpl) OverrideClients(c *Clients) error {
-	return nil
-}
-
 func (e *devEnvImpl) EnvironmentDefaults() map[string]string {
 	// Return empty map - new config system has appropriate defaults
 	// and OverrideConfig() sets development-specific values programmatically

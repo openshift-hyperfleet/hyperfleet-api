@@ -256,7 +256,6 @@ HTTP server settings for the API endpoint.
 | `server.jwt.enabled` | bool | `true` | Enable JWT authentication |
 | `server.jwt.issuer_url` | string | `https://sso.redhat.com/...` | Expected JWT issuer URL for token validation (required when JWT is enabled) |
 | `server.jwt.audience` | string | `""` | Expected JWT audience claim (optional) |
-| `server.authz.enabled` | bool | `false` | Enable authorization checks |
 | `server.jwk.cert_file` | string | `""` | JWK certificate file path (optional) |
 | `server.jwk.cert_url` | string | `https://sso.redhat.com/...` | JWK certificate URL |
 | `server.acl.file` | string | `""` | **(Deprecated)** ACL file path — accepted but not enforced |
@@ -351,7 +350,6 @@ Complete table of all configuration properties, their environment variables, and
 | `server.jwt.enabled` | `HYPERFLEET_SERVER_JWT_ENABLED` | bool | `true` |
 | `server.jwt.issuer_url` | `HYPERFLEET_SERVER_JWT_ISSUER_URL` | string | `https://sso.redhat.com/...` |
 | `server.jwt.audience` | `HYPERFLEET_SERVER_JWT_AUDIENCE` | string | `""` |
-| `server.authz.enabled` | `HYPERFLEET_SERVER_AUTHZ_ENABLED` | bool | `false` |
 | `server.jwk.cert_file` | `HYPERFLEET_SERVER_JWK_CERT_FILE` | string | `""` |
 | `server.jwk.cert_url` | `HYPERFLEET_SERVER_JWK_CERT_URL` | string | `https://sso.redhat.com/...` |
 | `server.acl.file` *(deprecated)* | `HYPERFLEET_SERVER_ACL_FILE` | string | `""` |
@@ -414,7 +412,6 @@ All CLI flags and their corresponding configuration paths.
 | `--server-jwt-enabled` | `server.jwt.enabled` | bool |
 | `--server-jwt-issuer-url` | `server.jwt.issuer_url` | string |
 | `--server-jwt-audience` | `server.jwt.audience` | string |
-| `--server-authz-enabled` | `server.authz.enabled` | bool |
 | `--server-jwk-cert-file` | `server.jwk.cert_file` | string |
 | `--server-jwk-cert-url` | `server.jwk.cert_url` | string |
 | `--server-acl-file` *(deprecated)* | `server.acl.file` | string |

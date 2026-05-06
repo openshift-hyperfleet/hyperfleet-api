@@ -26,7 +26,6 @@ type RouteRegistrationFunc func(
 	apiV1Router *mux.Router,
 	services ServicesInterface,
 	authMiddleware auth.JWTMiddleware,
-	authzMiddleware auth.AuthorizationMiddleware,
 )
 
 var routeRegistry = make(map[string]RouteRegistrationFunc)
@@ -42,10 +41,9 @@ func LoadDiscoveredRoutes(
 	apiV1Router *mux.Router,
 	services ServicesInterface,
 	authMiddleware auth.JWTMiddleware,
-	authzMiddleware auth.AuthorizationMiddleware,
 ) {
 	for name, registrationFunc := range routeRegistry {
-		registrationFunc(apiV1Router, services, authMiddleware, authzMiddleware)
+		registrationFunc(apiV1Router, services, authMiddleware)
 		_ = name // prevent unused variable warning
 	}
 }
@@ -66,13 +64,6 @@ func (s *apiServer) routes(tracingEnabled bool) *mux.Router {
 		check(fmt.Errorf("auth middleware is nil"), "Unable to create auth middleware: missing middleware")
 	}
 
-	authzMiddleware := auth.NewAuthzMiddlewareMock()
-	// TODO: Create issue to track enabling authorization middleware
-	// if env().Config.Server.EnableAuthz {
-	// 	var err error
-	// 	authzMiddleware, err = auth.NewAuthzMiddleware()
-	// 	check(err, "Unable to create authz middleware")
-	// }
 	// mainRouter is top level "/"
 	mainRouter := mux.NewRouter()
 	mainRouter.NotFoundHandler = http.HandlerFunc(api.SendNotFound)
@@ -108,7 +99,7 @@ func (s *apiServer) routes(tracingEnabled bool) *mux.Router {
 	registerAPIMiddleware(apiV1Router)
 
 	// Auto-discovered routes (no manual editing needed)
-	LoadDiscoveredRoutes(apiV1Router, services, authMiddleware, authzMiddleware)
+	LoadDiscoveredRoutes(apiV1Router, services, authMiddleware)
 
 	return mainRouter
 }

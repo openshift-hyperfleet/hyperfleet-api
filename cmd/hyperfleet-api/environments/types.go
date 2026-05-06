@@ -24,7 +24,6 @@ const (
 type Env struct {
 	Handlers Handlers
 	Database Database
-	Clients  Clients
 	Config   *config.ApplicationConfig
 	Name     string
 	Services Services
@@ -63,15 +62,6 @@ func (s *Services) SetService(name string, service interface{}) {
 		s.serviceRegistry = make(map[string]interface{})
 	}
 	s.serviceRegistry[name] = service
-}
-
-type Clients struct{}
-
-type ConfigDefaults struct {
-	Server   map[string]interface{}
-	Metrics  map[string]interface{}
-	Database map[string]interface{}
-	Options  map[string]interface{}
 }
 
 var (

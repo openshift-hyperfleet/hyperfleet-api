@@ -38,7 +38,6 @@ type EnvironmentImpl interface {
 	OverrideServices(s *Services) error
 	OverrideDatabase(s *Database) error
 	OverrideHandlers(c *Handlers) error
-	OverrideClients(c *Clients) error
 }
 
 func GetEnvironmentStrFromEnv() string {
@@ -96,11 +95,6 @@ func (e *Env) Initialize() error {
 	// each env will set db explicitly because the DB impl has a `once` init section
 	if err := envImpl.OverrideDatabase(&e.Database); err != nil {
 		logger.WithError(ctx, err).Error("Failed to configure Database")
-		os.Exit(1)
-	}
-
-	if err := envImpl.OverrideClients(&e.Clients); err != nil {
-		logger.WithError(ctx, err).Error("Failed to configure Clients")
 		os.Exit(1)
 	}
 

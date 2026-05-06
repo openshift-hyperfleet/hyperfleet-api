@@ -28,9 +28,6 @@ data:
       jwt:
         enabled: {{ .Values.config.server.jwt.enabled }}
 
-      authz:
-        enabled: {{ .Values.config.server.authz.enabled }}
-
       jwk:
         cert_file: {{ .Values.config.server.jwk.cert_file | quote }}
         cert_url: {{ .Values.config.server.jwk.cert_url | quote }}

@@ -23,7 +23,6 @@ Format: `HYPERFLEET-[CAT]-[NUM]`
 |---|---|---|
 | VAL | Validation | Request validation failures |
 | AUT | Auth | Authentication errors |
-| AUZ | Authz | Authorization errors |
 | NTF | NotFound | Resource not found |
 | CNF | Conflict | Resource conflicts |
 | LMT | RateLimit | Rate limiting |
@@ -38,7 +37,6 @@ Format: `HYPERFLEET-[CAT]-[NUM]`
 - `ValidationWithDetails(reason, details)` — 400 with field-level errors
 - `MalformedRequest(reason, values...)` — 400 (unparseable body)
 - `BadRequest(reason, values...)` — 400
-- `Unauthorized(reason, values...)` — 401
 - `Conflict(reason, values...)` — 409
 - `FailedToParseSearch(reason, values...)` — 400
 - `New(code, reason, values...)` — Custom error from registered code

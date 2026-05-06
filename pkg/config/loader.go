@@ -314,7 +314,6 @@ func (l *ConfigLoader) bindAllEnvVars() {
 	l.bindEnv("server.jwt.audience")
 	l.bindEnv("server.jwk.cert_file")
 	l.bindEnv("server.jwk.cert_url")
-	l.bindEnv("server.authz.enabled")
 	l.bindEnv("server.acl.file")
 
 	// Database config
@@ -385,7 +384,6 @@ func (l *ConfigLoader) bindFlags(cmd *cobra.Command) {
 	l.bindPFlag("server.jwt.audience", cmd.Flags().Lookup("server-jwt-audience"))
 	l.bindPFlag("server.jwk.cert_file", cmd.Flags().Lookup("server-jwk-cert-file"))
 	l.bindPFlag("server.jwk.cert_url", cmd.Flags().Lookup("server-jwk-cert-url"))
-	l.bindPFlag("server.authz.enabled", cmd.Flags().Lookup("server-authz-enabled"))
 	l.bindPFlag("server.acl.file", cmd.Flags().Lookup("server-acl-file"))
 
 	// Database flags: --db-* -> database.*
