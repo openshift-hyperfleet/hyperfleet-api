@@ -10,6 +10,7 @@ import (
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common/types"
 	"github.com/google/cel-go/common/types/ref"
+	"github.com/google/cel-go/ext"
 	apperrors "github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/errors"
 )
 
@@ -67,6 +68,7 @@ func buildCELOptions(ctx *EvaluationContext) []cel.EnvOption {
 
 	// Enable optional types for optional chaining syntax (e.g., a.?b.?c)
 	options = append(options, cel.OptionalTypes())
+	options = append(options, ext.Strings())
 	options = append(options, customCELFunctions()...)
 
 	// Get a snapshot of the data for thread safety
