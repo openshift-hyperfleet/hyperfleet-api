@@ -125,7 +125,7 @@ func TestCELEvaluatorWithNestedData(t *testing.T) {
 	ctx.Set("cluster", map[string]interface{}{
 		"status": map[string]interface{}{
 			"conditions": []interface{}{
-				map[string]interface{}{"type": "Ready", "status": "True"},
+				map[string]interface{}{"type": "Reconciled", "status": "True"},
 			},
 		},
 		"spec": map[string]interface{}{
@@ -137,7 +137,8 @@ func TestCELEvaluatorWithNestedData(t *testing.T) {
 	require.NoError(t, err)
 
 	// Test nested field access
-	result, err := evaluator.EvaluateSafe(`cluster.status.conditions.exists(c, c.type == "Ready" && c.status == "True")`)
+	result, err := evaluator.EvaluateSafe(
+		`cluster.status.conditions.exists(c, c.type == "Reconciled" && c.status == "True")`)
 	require.NoError(t, err)
 	assert.False(t, result.HasError())
 	assert.True(t, result.Matched)
@@ -154,7 +155,7 @@ func TestCELEvaluatorEvaluateSafe(t *testing.T) {
 	ctx.Set("cluster", map[string]interface{}{
 		"status": map[string]interface{}{
 			"conditions": []interface{}{
-				map[string]interface{}{"type": "Ready", "status": "True"},
+				map[string]interface{}{"type": "Reconciled", "status": "True"},
 			},
 		},
 	})
@@ -164,7 +165,8 @@ func TestCELEvaluatorEvaluateSafe(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("successful evaluation", func(t *testing.T) {
-		result, err := evaluator.EvaluateSafe(`cluster.status.conditions.exists(c, c.type == "Ready" && c.status == "True")`)
+		result, err := evaluator.EvaluateSafe(
+			`cluster.status.conditions.exists(c, c.type == "Reconciled" && c.status == "True")`)
 		require.NoError(t, err, "EvaluateSafe should not return error for valid expression")
 		assert.False(t, result.HasError())
 		assert.True(t, result.Matched)
@@ -301,7 +303,7 @@ func TestCELEvaluatorCustomFunctions(t *testing.T) {
 		"managedCluster": map[string]interface{}{
 			"status": map[string]interface{}{
 				"conditions": []interface{}{
-					map[string]interface{}{"type": "Ready", "status": "True"},
+					map[string]interface{}{"type": "Reconciled", "status": "True"},
 				},
 			},
 		},
@@ -333,7 +335,7 @@ func TestCELEvaluatorCustomFunctions(t *testing.T) {
 		require.NoError(t, err)
 		require.False(t, result.HasError())
 		assert.NotNil(t, result.Value)
-		assert.Equal(t, []interface{}{map[string]interface{}{"type": "Ready", "status": "True"}}, result.Value)
+		assert.Equal(t, []interface{}{map[string]interface{}{"type": "Reconciled", "status": "True"}}, result.Value)
 	})
 
 	t.Run("dig returns null for missing path", func(t *testing.T) {

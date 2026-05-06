@@ -177,11 +177,11 @@ preconditions:
       method: "GET"
       url: "{{ .apiBaseUrl }}/clusters/{{ .clusterId }}"
     capture:
-      # CEL expression for Ready condition status
-      - name: "readyConditionStatus"
+      # CEL expression for Reconciled condition status
+      - name: "reconciledConditionStatus"
         expression: |
-          status.conditions.filter(c, c.type == "Ready").size() > 0
-            ? status.conditions.filter(c, c.type == "Ready")[0].status
+          status.conditions.filter(c, c.type == "Reconciled").size() > 0
+            ? status.conditions.filter(c, c.type == "Reconciled")[0].status
             : "False"
       
       # JSONPath for complex extraction
@@ -193,7 +193,7 @@ preconditions:
         expression: "items.filter(i, i.status == 'active').size()"
     conditions:
       # Access captured values
-      - field: "readyConditionStatus"
+      - field: "reconciledConditionStatus"
         operator: "equals"
         value: "True"
       
@@ -247,7 +247,7 @@ preconditions:
         value: 0
     # Or use CEL expression with full access
     expression: |
-      getCluster.status.conditions.filter(c, c.type == "Ready")[0].status == "True" &&
+      getCluster.status.conditions.filter(c, c.type == "Reconciled")[0].status == "True" &&
       size(getCluster.spec.nodes) > 0
 ```
 
@@ -277,7 +277,7 @@ For complex conditions, use CEL expressions:
 preconditions:
   - name: "complexCheck"
     expression: |
-      readyConditionStatus == "True" && nodeCount >= 3
+      reconciledConditionStatus == "True" && nodeCount >= 3
 ```
 
 </details>
@@ -474,12 +474,12 @@ url: "{{ .apiBaseUrl }}/api/{{ .apiVersion }}/clusters/{{ .clusterId }}"
 
 ### Available Template Variables
 
-| Source | Example |
-|--------|---------|
-| Extracted params | `{{ .clusterId }}` |
-| Captured fields | `{{ .readyConditionStatus }}` |
-| Adapter metadata | `{{ .adapter.name }}` |
-| Event metadata | `{{ .eventMetadata.id }}` |
+| Source | Example                            |
+|--------|------------------------------------|
+| Extracted params | `{{ .clusterId }}`                 |
+| Captured fields | `{{ .reconciledConditionStatus }}` |
+| Adapter metadata | `{{ .adapter.name }}`              |
+| Event metadata | `{{ .eventMetadata.id }}`          |
 
 ## Integration
 

@@ -17,16 +17,16 @@ This package is used to evaluate preconditions, post-conditions, and other crite
 
 ## Supported Operators
 
-| Operator | Description | Example |
-|----------|-------------|---------|
-| `equals` | Field equals value | `readyConditionStatus == "True"` |
-| `notEquals` | Field does not equal value | `status != "Failed"` |
-| `in` | Field is in a list of values | `provider in ["aws", "gcp", "azure"]` |
+| Operator | Description | Example                                 |
+|----------|-------------|-----------------------------------------|
+| `equals` | Field equals value | `reconciledConditionStatus == "True"`   |
+| `notEquals` | Field does not equal value | `status != "Failed"`                    |
+| `in` | Field is in a list of values | `provider in ["aws", "gcp", "azure"]`   |
 | `notIn` | Field is not in a list of values | `phase notIn ["Terminating", "Failed"]` |
-| `contains` | String/array contains value | `"hello world" contains "world"` |
-| `greaterThan` | Numeric field is greater than value | `nodeCount > 3` |
-| `lessThan` | Numeric field is less than value | `replicas < 10` |
-| `exists` | Field exists and is not empty | `vpcId exists` |
+| `contains` | String/array contains value | `"hello world" contains "world"`        |
+| `greaterThan` | Numeric field is greater than value | `nodeCount > 3`                         |
+| `lessThan` | Numeric field is less than value | `replicas < 10`                         |
+| `exists` | Field exists and is not empty | `vpcId exists`                          |
 
 ## Usage
 
@@ -37,7 +37,7 @@ import "github.com/openshift-hyperfleet/hyperfleet-adapter/internal/criteria"
 
 // Create evaluation context
 ctx := criteria.NewEvaluationContext()
-ctx.Set("readyConditionStatus", "True")
+ctx.Set("reconciledConditionStatus", "True")
 ctx.Set("provider", "aws")
 ctx.Set("nodeCount", 5)
 
@@ -46,14 +46,14 @@ evaluator, _ := criteria.NewEvaluator(context.Background(), ctx, log)
 
 // Evaluate a single condition
 result, err := evaluator.EvaluateCondition(
-    "readyConditionStatus",
+    "reconciledConditionStatus",
     criteria.OperatorEquals,
     "True",
 )
 if err != nil {
     log.Fatal(err)
 }
-fmt.Println("Cluster is ready:", result.Matched) // true
+fmt.Println("Cluster is reconciled:", result.Matched) // true
 ```
 
 ### Evaluating Multiple Conditions
@@ -62,7 +62,7 @@ fmt.Println("Cluster is ready:", result.Matched) // true
 // Multiple conditions (AND logic)
 // Use typed Operator constants for compile-time safety
 conditions := []criteria.ConditionDef{
-    {Field: "readyConditionStatus", Operator: criteria.OperatorIn, Value: []interface{}{"True"}},
+    {Field: "reconciledConditionStatus", Operator: criteria.OperatorIn, Value: []interface{}{"True"}},
     {Field: "provider", Operator: criteria.OperatorIn, Value: []interface{}{"aws", "gcp", "azure"}},
     {Field: "nodeCount", Operator: criteria.OperatorGreaterThan, Value: 1},
 }
@@ -82,7 +82,7 @@ ctx.Set("cluster", map[string]interface{}{
     "status": map[string]interface{}{
         "conditions": []interface{}{
             map[string]interface{}{
-                "type":   "Ready",
+                "type":   "Reconciled",
                 "status": "True",
             },
         },
@@ -91,7 +91,7 @@ ctx.Set("cluster", map[string]interface{}{
 
 // Evaluate nested field
 result, err := evaluator.EvaluateCondition(
-    "{.cluster.status.conditions[?(@.type=='Ready')].status}",
+    "{.cluster.status.conditions[?(@.type=='Reconciled')].status}",
     criteria.OperatorEquals,
     "True",
 )
@@ -142,7 +142,7 @@ The `ExtractValue` method provides a unified interface for extracting values usi
 
 ```go
 // Extract using JSONPath (using evaluator from Basic Evaluation example above)
-result, err := evaluator.ExtractValue("{.status.conditions[?(@.type=='Ready')].status}", "")
+result, err := evaluator.ExtractValue("{.status.conditions[?(@.type=='Reconciled')].status}", "")
 
 // Extract using CEL expression
 result, err = evaluator.ExtractValue("", "items.filter(i, i.status == 'active').size()")
@@ -221,7 +221,7 @@ precond := config.GetPreconditionByName("clusterStatus")
 
 // Create evaluation context with API response data
 ctx := criteria.NewEvaluationContext()
-ctx.Set("readyConditionStatus", "True")
+ctx.Set("reconciledConditionStatus", "True")
 ctx.Set("cloudProvider", "aws")
 ctx.Set("vpcId", "vpc-12345")
 
@@ -320,7 +320,7 @@ See `configs/adapter-task-config-template.yaml` for examples of condition usage:
 preconditions:
   - name: "clusterStatus"
     conditions:
-      - field: "readyConditionStatus"
+      - field: "reconciledConditionStatus"
         operator: "equals"
         value: "True"
       - field: "cloudProvider"

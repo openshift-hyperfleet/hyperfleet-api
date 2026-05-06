@@ -73,13 +73,13 @@ preconditions:
 
       # ---------------------------------------------------------------
       # Pattern 2: filter() + ternary — list filtering with fallback
-      # Filters the conditions list for type=="Ready", returns status
+      # Filters the conditions list for type=="Reconciled", returns status
       # or "Unknown" if not found.
       # ---------------------------------------------------------------
       - name: "clusterStatus"
         expression: |
-          status.conditions.filter(c, c.type == "Ready").size() > 0
-            ? status.conditions.filter(c, c.type == "Ready")[0].status
+          status.conditions.filter(c, c.type == "Reconciled").size() > 0
+            ? status.conditions.filter(c, c.type == "Reconciled")[0].status
             : "Unknown"
 
       # ---------------------------------------------------------------
