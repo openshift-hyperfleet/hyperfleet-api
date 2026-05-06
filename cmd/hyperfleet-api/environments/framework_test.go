@@ -11,7 +11,7 @@ import (
 
 func TestLoadServices(t *testing.T) {
 	// Set environment to unit_testing to use mocks
-	t.Setenv("OCM_ENV", "unit_testing")
+	t.Setenv("HYPERFLEET_ENV", "unit_testing")
 
 	// Create minimal configuration for unit test
 	cfg := config.NewApplicationConfig()

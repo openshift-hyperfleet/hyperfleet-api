@@ -81,8 +81,8 @@ type JWTHandler struct {
 	keyfunc        keyfunc.Keyfunc
 	next           http.Handler
 	parser         *jwt.Parser
-	publicPatterns []*regexp.Regexp
 	cancel         context.CancelFunc
+	publicPatterns []*regexp.Regexp
 }
 
 func (h *JWTHandler) Close() {
@@ -105,11 +105,12 @@ func (h *JWTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tokenString, found := strings.CutPrefix(authHeader, "Bearer ")
-	if !found {
+	parts := strings.Fields(authHeader)
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
 		handleError(r.Context(), w, r, hferrors.CodeAuthInvalidCredentials, "Authorization header must use Bearer scheme")
 		return
 	}
+	tokenString := parts[1]
 
 	token, err := h.parser.Parse(tokenString, h.keyfunc.Keyfunc)
 	if err != nil {

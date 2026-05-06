@@ -34,7 +34,7 @@ Tool management uses [Bingo](https://github.com/bwplotka/bingo) — tool version
 |---|---|---|
 | `make verify` | go vet + gofmt check | No |
 | `make lint` | golangci-lint | No |
-| `make test` | Unit tests (`OCM_ENV=unit_testing`) | No |
+| `make test` | Unit tests (`HYPERFLEET_ENV=unit_testing`) | No |
 | `make test-integration` | Integration tests (testcontainers) | No (auto-creates) |
 | `make test-helm` | Helm chart lint + template validation | No |
 | `make verify-all` | verify + lint + test (single command) | No |

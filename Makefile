@@ -73,8 +73,8 @@ unit_test_json_output ?= ${PWD}/unit-test-results.json
 integration_test_json_output ?= ${PWD}/integration-test-results.json
 
 ### Environment-sourced variables with defaults
-ifndef OCM_ENV
-	OCM_ENV := development
+ifndef HYPERFLEET_ENV
+	HYPERFLEET_ENV := development
 endif
 
 ifndef TEST_SUMMARY_FORMAT
@@ -151,7 +151,7 @@ run: build ## Run the application
 .PHONY: run-no-auth
 run-no-auth: build ## Run the application without auth
 	./bin/hyperfleet-api migrate
-	./bin/hyperfleet-api serve --enable-authz=false --enable-jwt=false
+	./bin/hyperfleet-api serve --server-jwt-enabled=false --server-authz-enabled=false
 
 .PHONY: run/docs
 run/docs: check-container-tool ## Run swagger and host the api spec
@@ -195,24 +195,24 @@ secrets: ## Initialize secrets directory with default values
 
 .PHONY: test
 test: install secrets $(GOTESTSUM) ## Run unit tests
-	OCM_ENV=unit_testing $(GOTESTSUM) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -v $(TESTFLAGS) \
+	HYPERFLEET_ENV=unit_testing $(GOTESTSUM) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -v $(TESTFLAGS) \
 		./pkg/... \
 		./cmd/...
 
 .PHONY: ci-test-unit
 ci-test-unit: install secrets $(GOTESTSUM) ## Run unit tests with JSON output
-	OCM_ENV=unit_testing $(GOTESTSUM) --jsonfile-timing-events=$(unit_test_json_output) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -v $(TESTFLAGS) \
+	HYPERFLEET_ENV=unit_testing $(GOTESTSUM) --jsonfile-timing-events=$(unit_test_json_output) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -v $(TESTFLAGS) \
 		./pkg/... \
 		./cmd/...
 
 .PHONY: test-integration
 test-integration: install secrets $(GOTESTSUM) ## Run integration tests
-	TESTCONTAINERS_RYUK_DISABLED=true OCM_ENV=integration_testing $(GOTESTSUM) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) \
+	TESTCONTAINERS_RYUK_DISABLED=true HYPERFLEET_ENV=integration_testing $(GOTESTSUM) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) \
 			./test/integration
 
 .PHONY: ci-test-integration
 ci-test-integration: install secrets $(GOTESTSUM) ## Run integration tests with JSON output
-	TESTCONTAINERS_RYUK_DISABLED=true OCM_ENV=integration_testing $(GOTESTSUM) --jsonfile-timing-events=$(integration_test_json_output) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) \
+	TESTCONTAINERS_RYUK_DISABLED=true HYPERFLEET_ENV=integration_testing $(GOTESTSUM) --jsonfile-timing-events=$(integration_test_json_output) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) \
 			./test/integration
 
 .PHONY: test-all

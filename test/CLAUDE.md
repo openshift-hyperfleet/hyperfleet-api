@@ -2,14 +2,14 @@
 
 ## Unit Tests
 
-- Run: `make test` (sets `OCM_ENV=unit_testing` automatically)
+- Run: `make test` (sets `HYPERFLEET_ENV=unit_testing` automatically)
 - Use Gomega assertions: `. "github.com/onsi/gomega"` with `RegisterTestingT(t)`
 - Mock generation: `make generate-mocks` — never write mocks manually
 - Mocks use `go.uber.org/mock/gomock`
 
 ## Integration Tests
 
-- Run: `make test-integration` (sets `OCM_ENV=integration_testing` and `TESTCONTAINERS_RYUK_DISABLED=true`)
+- Run: `make test-integration` (sets `HYPERFLEET_ENV=integration_testing` and `TESTCONTAINERS_RYUK_DISABLED=true`)
 - Located in `integration/`
 - Testcontainers auto-creates isolated PostgreSQL per test suite — no external DB needed
 - Setup: `test.RegisterIntegration(t)` returns `(helper, httpClient)`
@@ -35,7 +35,7 @@ Reference: `factories/`
 
 ## Key Environment Variables
 
-- `OCM_ENV` — selects config environment: `unit_testing`, `integration_testing`, `development`
+- `HYPERFLEET_ENV` — selects config environment: `unit_testing`, `integration_testing`, `development`
 - `TESTCONTAINERS_RYUK_DISABLED=true` — required for testcontainers in CI
 - `HYPERFLEET_ADAPTERS_REQUIRED_CLUSTER` / `HYPERFLEET_ADAPTERS_REQUIRED_NODEPOOL` — adapter lists for tests
 - `HYPERFLEET_SERVER_OPENAPI_SCHEMA_PATH` — OpenAPI schema path for spec validation

@@ -36,8 +36,8 @@ make generate-all     # Both of the above
 ```
 make verify           # go vet + gofmt check
 make lint             # golangci-lint
-make test             # Unit tests (OCM_ENV=unit_testing)
-make test-integration # Integration tests with testcontainers (OCM_ENV=integration_testing)
+make test             # Unit tests (HYPERFLEET_ENV=unit_testing)
+make test-integration # Integration tests with testcontainers (HYPERFLEET_ENV=integration_testing)
 make test-helm        # Helm chart lint + template validation
 make verify-all       # verify + lint + test — fast, no DB needed
 make test-all         # lint + test + test-integration + test-helm — full suite
@@ -54,9 +54,9 @@ Run `make help` for the complete target list.
 
 ## Testing
 
-**Unit tests**: `make test` — sets `OCM_ENV=unit_testing`, runs `./pkg/...` and `./cmd/...`
+**Unit tests**: `make test` — sets `HYPERFLEET_ENV=unit_testing`, runs `./pkg/...` and `./cmd/...`
 
-**Integration tests**: `make test-integration` — sets `OCM_ENV=integration_testing` and `TESTCONTAINERS_RYUK_DISABLED=true`. Testcontainers auto-creates isolated PostgreSQL instances. Located in `test/integration/`.
+**Integration tests**: `make test-integration` — sets `HYPERFLEET_ENV=integration_testing` and `TESTCONTAINERS_RYUK_DISABLED=true`. Testcontainers auto-creates isolated PostgreSQL instances. Located in `test/integration/`.
 
 **Helm tests**: `make test-helm` — lints and renders templates with multiple value combinations.
 
@@ -67,7 +67,7 @@ Run `make help` for the complete target list.
 **Integration test setup**: `test.RegisterIntegration(t)` returns `(helper, client)`. Uses Gomega assertions and Resty HTTP client.
 
 **Environment variables for tests**:
-- `OCM_ENV` — selects config: `unit_testing`, `integration_testing`, `development`
+- `HYPERFLEET_ENV` — selects config: `unit_testing`, `integration_testing`, `development`
 - `TESTCONTAINERS_RYUK_DISABLED=true` — required in CI
 - `HYPERFLEET_CLUSTER_ADAPTERS` / `HYPERFLEET_NODEPOOL_ADAPTERS` — adapter lists (defaults set in TestMain)
 

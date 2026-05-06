@@ -179,6 +179,13 @@ func (l *ConfigLoader) validateConfig(config *ApplicationConfig) error {
 		if valErr := config.Server.JWT.Validate(); valErr != nil {
 			return fmt.Errorf("server JWT validation failed: %w", valErr)
 		}
+		if config.Server.JWT.Enabled &&
+			config.Server.JWK.CertFile == "" &&
+			config.Server.JWK.CertURL == "" {
+			return fmt.Errorf(
+				"server JWK validation failed: server.jwk.cert_file or server.jwk.cert_url required when jwt is enabled",
+			)
+		}
 		if valErr := config.Health.Validate(); valErr != nil {
 			return fmt.Errorf("health config validation failed: %w", valErr)
 		}

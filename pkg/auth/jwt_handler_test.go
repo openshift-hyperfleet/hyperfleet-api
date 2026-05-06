@@ -121,6 +121,17 @@ func TestJWTHandler(t *testing.T) {
 		Expect(rr.Code).To(Equal(http.StatusUnauthorized))
 	})
 
+	t.Run("lowercase bearer scheme accepted per RFC 7235", func(t *testing.T) {
+		RegisterTestingT(t)
+		token := signToken(t, privateKey, jwt.MapClaims{
+			"iss": "https://test-issuer.example.com",
+			"exp": time.Now().Add(time.Hour).Unix(),
+			"iat": time.Now().Unix(),
+		})
+		rr := serve(handler, "/protected", "bearer "+token)
+		Expect(rr.Code).To(Equal(http.StatusOK))
+	})
+
 	t.Run("malformed Authorization header returns 401", func(t *testing.T) {
 		RegisterTestingT(t)
 		rr := serve(handler, "/protected", "Basic dXNlcjpwYXNz")

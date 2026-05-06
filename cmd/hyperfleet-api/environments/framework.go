@@ -76,7 +76,7 @@ func (e *Env) SetEnvironmentDefaults(flags *pflag.FlagSet) error {
 func (e *Env) Initialize() error {
 	ctx := context.Background()
 
-	// Re-read environment name from env var to support tests that set OCM_ENV after init()
+	// Re-read environment name from env var to support tests that set HYPERFLEET_ENV after init()
 	envName := GetEnvironmentStrFromEnv()
 	e.Name = envName
 

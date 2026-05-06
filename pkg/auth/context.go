@@ -77,6 +77,9 @@ func GetAuthPayloadFromContext(ctx context.Context) (*Payload, error) {
 	if email, ok := claims["email"].(string); ok {
 		payload.Email = email
 	}
+	if issuer, ok := claims["iss"].(string); ok {
+		payload.Issuer = issuer
+	}
 	if clientID, ok := claims["clientId"].(string); ok {
 		payload.ClientID = clientID
 	}

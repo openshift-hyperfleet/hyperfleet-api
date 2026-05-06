@@ -14,8 +14,7 @@ const (
 	DevelopmentEnv        string = "development"
 	ProductionEnv         string = "production"
 
-	// EnvironmentStringKey uses "OCM_ENV" for backward compatibility with existing deployments.
-	EnvironmentStringKey string = "OCM_ENV"
+	EnvironmentStringKey string = "HYPERFLEET_ENV"
 	EnvironmentDefault          = DevelopmentEnv
 
 	// Database SSL modes
