@@ -46,11 +46,13 @@ func (l AdapterStatusList) Index() AdapterStatusIndex {
 }
 
 func (as *AdapterStatus) BeforeCreate(tx *gorm.DB) error {
-	id, err := NewID()
-	if err != nil {
-		return fmt.Errorf("failed to generate adapter status ID: %w", err)
+	if as.ID == "" {
+		id, err := NewID()
+		if err != nil {
+			return fmt.Errorf("failed to generate adapter status ID: %w", err)
+		}
+		as.ID = id
 	}
-	as.ID = id
 	return nil
 }
 

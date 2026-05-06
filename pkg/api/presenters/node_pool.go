@@ -9,7 +9,7 @@ import (
 )
 
 // ConvertNodePool converts openapi.NodePoolCreateRequest to api.NodePool (GORM model)
-func ConvertNodePool(req *openapi.NodePoolCreateRequest, ownerID, createdBy string) (*api.NodePool, error) {
+func ConvertNodePool(req *openapi.NodePoolCreateRequest, ownerID string) (*api.NodePool, error) {
 	// Marshal Spec
 	specJSON, err := json.Marshal(req.Spec)
 	if err != nil {
@@ -38,8 +38,6 @@ func ConvertNodePool(req *openapi.NodePoolCreateRequest, ownerID, createdBy stri
 		Labels:    labelsJSON,
 		OwnerID:   ownerID,
 		OwnerKind: "Cluster",
-		CreatedBy: createdBy,
-		UpdatedBy: createdBy,
 	}, nil
 }
 

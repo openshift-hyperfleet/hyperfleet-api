@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
@@ -13,12 +14,14 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
+const defaultSystemUser = "system@hyperfleet.local"
+
 //go:generate mockgen-v0.6.0 -source=cluster.go -package=services -destination=cluster_mock.go
 
 type ClusterService interface {
 	Get(ctx context.Context, id string) (*api.Cluster, *errors.ServiceError)
 	Create(ctx context.Context, cluster *api.Cluster) (*api.Cluster, *errors.ServiceError)
-	Replace(ctx context.Context, cluster *api.Cluster) (*api.Cluster, *errors.ServiceError)
+	Patch(ctx context.Context, id string, patch *api.ClusterPatchRequest) (*api.Cluster, *errors.ServiceError)
 	SoftDelete(ctx context.Context, id string) (*api.Cluster, *errors.ServiceError)
 	All(ctx context.Context) (api.ClusterList, *errors.ServiceError)
 	FindByIDs(ctx context.Context, ids []string) (api.ClusterList, *errors.ServiceError)
@@ -62,6 +65,12 @@ func (s *sqlClusterService) Get(ctx context.Context, id string) (*api.Cluster, *
 }
 
 func (s *sqlClusterService) Create(ctx context.Context, cluster *api.Cluster) (*api.Cluster, *errors.ServiceError) {
+	if cluster.CreatedBy == "" {
+		cluster.CreatedBy = defaultSystemUser
+	}
+	if cluster.UpdatedBy == "" {
+		cluster.UpdatedBy = defaultSystemUser
+	}
 	if cluster.Generation == 0 {
 		cluster.Generation = 1
 	}
@@ -79,10 +88,33 @@ func (s *sqlClusterService) Create(ctx context.Context, cluster *api.Cluster) (*
 	return updatedCluster, nil
 }
 
-func (s *sqlClusterService) Replace(ctx context.Context, cluster *api.Cluster) (*api.Cluster, *errors.ServiceError) {
-	cluster, err := s.clusterDao.Replace(ctx, cluster)
+func (s *sqlClusterService) Patch(
+	ctx context.Context, id string, patch *api.ClusterPatchRequest,
+) (*api.Cluster, *errors.ServiceError) {
+	cluster, err := s.clusterDao.GetForUpdate(ctx, id)
 	if err != nil {
-		return nil, handleUpdateError("Cluster", err)
+		return nil, handleGetError("Cluster", "id", id, err)
+	}
+
+	if cluster.DeletedTime != nil {
+		return nil, errors.ConflictState("Cluster '%s' is marked for deletion", id)
+	}
+
+	oldSpec := cluster.Spec
+	oldLabels := cluster.Labels
+
+	if applyErr := applyClusterPatch(cluster, patch); applyErr != nil {
+		return nil, errors.Validation("Invalid patch data: %v", applyErr)
+	}
+
+	if bytes.Equal(oldSpec, cluster.Spec) && bytes.Equal(oldLabels, cluster.Labels) {
+		return cluster, nil
+	}
+
+	cluster.IncrementGeneration()
+
+	if saveErr := s.clusterDao.Save(ctx, cluster); saveErr != nil {
+		return nil, handleUpdateError("Cluster", saveErr)
 	}
 
 	updated, svcErr := s.UpdateClusterStatusFromAdapters(ctx, cluster.ID)
@@ -107,38 +139,38 @@ func (s *sqlClusterService) SoftDelete(ctx context.Context, id string) (*api.Clu
 		return cluster, nil
 	}
 
-	t := time.Now().UTC().Truncate(time.Microsecond)
-	deletedBy := "system@hyperfleet.local"
-	cluster.DeletedTime = &t
-	cluster.DeletedBy = &deletedBy
-	cluster.Generation++
+	deletedTime := time.Now().UTC().Truncate(time.Microsecond)
+	deletedBy := defaultSystemUser
+	cluster.MarkDeleted(deletedBy, deletedTime)
+	cluster.IncrementGeneration()
 
 	if saveErr := s.clusterDao.Save(ctx, cluster); saveErr != nil {
 		return nil, handleSoftDeleteError("Cluster", saveErr)
 	}
 
-	if cascadeErr := s.nodePoolDao.SoftDeleteByOwner(ctx, id, t, deletedBy); cascadeErr != nil {
-		return nil, handleSoftDeleteError("NodePool", cascadeErr)
-	}
-
-	cluster, svcErr := s.UpdateClusterStatusFromAdapters(ctx, cluster.ID)
+	cluster, svcErr := s.UpdateClusterStatusFromAdapters(ctx, id)
 	if svcErr != nil {
 		return nil, svcErr
 	}
 
-	// Update status for all cascade-deleted nodepools so their Ready condition reflects the generation bump.
-	nodePools, err := s.nodePoolDao.FindSoftDeletedByOwner(ctx, id)
+	allNodePools, err := s.nodePoolDao.FindByOwner(ctx, id)
 	if err != nil {
-		return nil, errors.GeneralError("Failed to fetch cascade-deleted nodepools: %s", err)
+		return nil, errors.GeneralError("Failed to fetch nodepools for cascade delete: %s", err)
 	}
-	if svcErr := updateNodePoolStatusesForCascadeDelete(
-		ctx,
-		nodePools,
-		s.nodePoolDao,
-		s.adapterStatusDao,
-		s.adapterConfig,
-	); svcErr != nil {
+
+	for _, np := range allNodePools {
+		if np.DeletedTime == nil {
+			np.MarkDeleted(deletedBy, deletedTime)
+			np.IncrementGeneration()
+		}
+	}
+
+	if svcErr := recomputeNodePoolConditions(ctx, allNodePools, s.adapterStatusDao, s.adapterConfig); svcErr != nil {
 		return nil, svcErr
+	}
+
+	if err := s.nodePoolDao.SaveAll(ctx, allNodePools); err != nil {
+		return nil, handleSoftDeleteError("NodePool", err)
 	}
 
 	return cluster, nil
@@ -175,6 +207,24 @@ func (s *sqlClusterService) OnUpsert(ctx context.Context, id string) error {
 func (s *sqlClusterService) OnDelete(ctx context.Context, id string) error {
 	ctx = logger.WithClusterID(ctx, id)
 	logger.Info(ctx, "Cluster has been deleted")
+	return nil
+}
+
+func applyClusterPatch(cluster *api.Cluster, patch *api.ClusterPatchRequest) error {
+	if patch.Spec != nil {
+		specJSON, err := json.Marshal(*patch.Spec)
+		if err != nil {
+			return fmt.Errorf("failed to marshal cluster spec: %w", err)
+		}
+		cluster.Spec = specJSON
+	}
+	if patch.Labels != nil {
+		labelsJSON, err := json.Marshal(*patch.Labels)
+		if err != nil {
+			return fmt.Errorf("failed to marshal cluster labels: %w", err)
+		}
+		cluster.Labels = labelsJSON
+	}
 	return nil
 }
 

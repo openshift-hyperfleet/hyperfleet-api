@@ -13,6 +13,7 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/dao"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 )
 
 const (
@@ -48,6 +49,17 @@ func (d *mockNodePoolDao) Get(ctx context.Context, id string) (*api.NodePool, er
 	return nil, gorm.ErrRecordNotFound
 }
 
+func (d *mockNodePoolDao) GetByIDAndOwner(ctx context.Context, id string, ownerID string) (*api.NodePool, error) {
+	np, err := d.Get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if np.OwnerID != ownerID {
+		return nil, gorm.ErrRecordNotFound
+	}
+	return np, nil
+}
+
 func (d *mockNodePoolDao) GetForUpdate(ctx context.Context, id string) (*api.NodePool, error) {
 	return d.Get(ctx, id)
 }
@@ -72,11 +84,6 @@ func (d *mockNodePoolDao) Create(ctx context.Context, nodePool *api.NodePool) (*
 	return nodePool, nil
 }
 
-func (d *mockNodePoolDao) Replace(ctx context.Context, nodePool *api.NodePool) (*api.NodePool, error) {
-	d.nodePools[nodePool.ID] = nodePool
-	return nodePool, nil
-}
-
 func (d *mockNodePoolDao) Save(ctx context.Context, nodePool *api.NodePool) error {
 	d.nodePools[nodePool.ID] = nodePool
 	return nil
@@ -85,28 +92,6 @@ func (d *mockNodePoolDao) Save(ctx context.Context, nodePool *api.NodePool) erro
 func (d *mockNodePoolDao) Delete(ctx context.Context, id string) error {
 	delete(d.nodePools, id)
 	return nil
-}
-
-func (d *mockNodePoolDao) SoftDeleteByOwner(ctx context.Context, ownerID string, t time.Time, deletedBy string) error {
-	for id, np := range d.nodePools {
-		if np.OwnerID == ownerID && np.DeletedTime == nil {
-			np.DeletedTime = &t
-			np.DeletedBy = &deletedBy
-			np.Generation++
-			d.nodePools[id] = np
-		}
-	}
-	return nil
-}
-
-func (d *mockNodePoolDao) FindSoftDeletedByOwner(ctx context.Context, ownerID string) (api.NodePoolList, error) {
-	var result api.NodePoolList
-	for _, np := range d.nodePools {
-		if np.OwnerID == ownerID && np.DeletedTime != nil {
-			result = append(result, np)
-		}
-	}
-	return result, nil
 }
 
 func (d *mockNodePoolDao) FindByIDs(ctx context.Context, ids []string) (api.NodePoolList, error) {
@@ -129,12 +114,9 @@ func (d *mockNodePoolDao) FindByOwner(ctx context.Context, ownerID string) (api.
 	return result, nil
 }
 
-func (d *mockNodePoolDao) UpdateStatusConditionsByIDs(ctx context.Context, updates map[string][]byte) error {
-	for id, statusConditions := range updates {
-		if np, ok := d.nodePools[id]; ok {
-			np.StatusConditions = statusConditions
-			d.nodePools[id] = np
-		}
+func (d *mockNodePoolDao) SaveAll(ctx context.Context, nodePools api.NodePoolList) error {
+	for _, np := range nodePools {
+		d.nodePools[np.ID] = np
 	}
 	return nil
 }
@@ -158,6 +140,24 @@ func (d *mockNodePoolDao) All(ctx context.Context) (api.NodePoolList, error) {
 
 var _ dao.NodePoolDao = &mockNodePoolDao{}
 
+type mockGenericService struct {
+	err       *errors.ServiceError
+	nodePools []api.NodePool
+}
+
+func (m *mockGenericService) List(
+	_ context.Context, _ *ListArguments, resourceList interface{},
+) (*api.PagingMeta, *errors.ServiceError) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	target := resourceList.(*[]api.NodePool)
+	*target = m.nodePools
+	return &api.PagingMeta{Page: 1, Size: int64(len(m.nodePools)), Total: int64(len(m.nodePools))}, nil
+}
+
+var _ GenericService = &mockGenericService{}
+
 // TestNodePoolProcessAdapterStatus_FirstUnknownCondition tests that the first Unknown Available condition is stored
 func TestNodePoolProcessAdapterStatus_FirstUnknownCondition(t *testing.T) {
 	t.Parallel()
@@ -167,7 +167,7 @@ func TestNodePoolProcessAdapterStatus_FirstUnknownCondition(t *testing.T) {
 	adapterStatusDao := newMockAdapterStatusDao()
 
 	config := testNodePoolAdapterConfig()
-	service := NewNodePoolService(nodePoolDao, adapterStatusDao, config)
+	service := NewNodePoolService(nodePoolDao, nil, adapterStatusDao, config, nil)
 
 	ctx := context.Background()
 	nodePoolID := testNodePoolID
@@ -228,7 +228,7 @@ func TestNodePoolProcessAdapterStatus_SubsequentUnknownCondition(t *testing.T) {
 	adapterStatusDao := newMockAdapterStatusDao()
 
 	config := testNodePoolAdapterConfig()
-	service := NewNodePoolService(nodePoolDao, adapterStatusDao, config)
+	service := NewNodePoolService(nodePoolDao, nil, adapterStatusDao, config, nil)
 
 	ctx := context.Background()
 	nodePoolID := testNodePoolID
@@ -284,7 +284,7 @@ func TestNodePoolProcessAdapterStatus_InvalidStatusReturnsValidationError(t *tes
 	nodePoolDao := newMockNodePoolDao()
 	adapterStatusDao := newMockAdapterStatusDao()
 	config := testNodePoolAdapterConfig()
-	service := NewNodePoolService(nodePoolDao, adapterStatusDao, config)
+	service := NewNodePoolService(nodePoolDao, nil, adapterStatusDao, config, nil)
 
 	ctx := context.Background()
 	nodePoolID := testNodePoolID
@@ -327,7 +327,7 @@ func TestNodePoolProcessAdapterStatus_EmptyStatusReturnsValidationError(t *testi
 	nodePoolDao := newMockNodePoolDao()
 	adapterStatusDao := newMockAdapterStatusDao()
 	config := testNodePoolAdapterConfig()
-	service := NewNodePoolService(nodePoolDao, adapterStatusDao, config)
+	service := NewNodePoolService(nodePoolDao, nil, adapterStatusDao, config, nil)
 
 	ctx := context.Background()
 	nodePoolID := testNodePoolID
@@ -370,7 +370,7 @@ func TestNodePoolProcessAdapterStatus_TrueCondition(t *testing.T) {
 	adapterStatusDao := newMockAdapterStatusDao()
 
 	config := testNodePoolAdapterConfig()
-	service := NewNodePoolService(nodePoolDao, adapterStatusDao, config)
+	service := NewNodePoolService(nodePoolDao, nil, adapterStatusDao, config, nil)
 
 	ctx := context.Background()
 	nodePoolID := testNodePoolID
@@ -434,7 +434,7 @@ func TestNodePoolProcessAdapterStatus_FirstMultipleConditions_AvailableUnknown(t
 	adapterStatusDao := newMockAdapterStatusDao()
 
 	config := testNodePoolAdapterConfig()
-	service := NewNodePoolService(nodePoolDao, adapterStatusDao, config)
+	service := NewNodePoolService(nodePoolDao, nil, adapterStatusDao, config, nil)
 
 	ctx := context.Background()
 	nodePoolID := testNodePoolID
@@ -500,7 +500,7 @@ func TestNodePoolProcessAdapterStatus_SubsequentMultipleConditions_AvailableUnkn
 	adapterStatusDao := newMockAdapterStatusDao()
 
 	config := testNodePoolAdapterConfig()
-	service := NewNodePoolService(nodePoolDao, adapterStatusDao, config)
+	service := NewNodePoolService(nodePoolDao, nil, adapterStatusDao, config, nil)
 
 	ctx := context.Background()
 	nodePoolID := testNodePoolID
@@ -566,7 +566,7 @@ func TestNodePoolAvailableReadyTransitions(t *testing.T) {
 	adapterConfig := testNodePoolAdapterConfig()
 	adapterConfig.Required.Nodepool = []string{"validation", "hypershift"}
 
-	service := NewNodePoolService(nodePoolDao, adapterStatusDao, adapterConfig)
+	service := NewNodePoolService(nodePoolDao, nil, adapterStatusDao, adapterConfig, nil)
 
 	ctx := context.Background()
 	nodePoolID := testNodePoolID
@@ -736,7 +736,7 @@ func TestNodePoolStaleAdapterStatusUpdatePolicy(t *testing.T) {
 	adapterConfig := testNodePoolAdapterConfig()
 	adapterConfig.Required.Nodepool = []string{"validation", "hypershift"}
 
-	service := NewNodePoolService(nodePoolDao, adapterStatusDao, adapterConfig)
+	service := NewNodePoolService(nodePoolDao, nil, adapterStatusDao, adapterConfig, nil)
 
 	ctx := context.Background()
 	nodePoolID := testNodePoolID
@@ -814,7 +814,7 @@ func TestNodePoolSyntheticTimestampsStableWithoutAdapterStatus(t *testing.T) {
 	adapterConfig := testNodePoolAdapterConfig()
 	adapterConfig.Required.Nodepool = []string{"validation"}
 
-	service := NewNodePoolService(nodePoolDao, adapterStatusDao, adapterConfig)
+	service := NewNodePoolService(nodePoolDao, nil, adapterStatusDao, adapterConfig, nil)
 
 	ctx := context.Background()
 	nodePoolID := testNodePoolID
@@ -916,7 +916,7 @@ func TestNodePoolSoftDelete(t *testing.T) {
 		// Given:
 		nodePoolDao := newMockNodePoolDao()
 		adapterStatusDao := newMockAdapterStatusDao()
-		service := NewNodePoolService(nodePoolDao, adapterStatusDao, testNodePoolAdapterConfig())
+		service := NewNodePoolService(nodePoolDao, nil, adapterStatusDao, testNodePoolAdapterConfig(), nil)
 		ctx := context.Background()
 		nodePoolID := testNodePoolID
 		nodePoolDao.nodePools[nodePoolID] = &api.NodePool{
@@ -938,7 +938,7 @@ func TestNodePoolSoftDelete(t *testing.T) {
 		// Given:
 		nodePoolDao := newMockNodePoolDao()
 		adapterStatusDao := newMockAdapterStatusDao()
-		service := NewNodePoolService(nodePoolDao, adapterStatusDao, testNodePoolAdapterConfig())
+		service := NewNodePoolService(nodePoolDao, nil, adapterStatusDao, testNodePoolAdapterConfig(), nil)
 		ctx := context.Background()
 		nodePoolID := testNodePoolID
 		originalTime := time.Now().Add(-time.Hour)
@@ -960,7 +960,7 @@ func TestNodePoolSoftDelete(t *testing.T) {
 		// Given:
 		nodePoolDao := newMockNodePoolDao()
 		adapterStatusDao := newMockAdapterStatusDao()
-		service := NewNodePoolService(nodePoolDao, adapterStatusDao, testNodePoolAdapterConfig())
+		service := NewNodePoolService(nodePoolDao, nil, adapterStatusDao, testNodePoolAdapterConfig(), nil)
 		ctx := context.Background()
 		// When:
 		_, svcErr := service.SoftDelete(ctx, "nonexistent")
@@ -976,7 +976,7 @@ func TestNodePoolSoftDelete(t *testing.T) {
 		adapterStatusDao := newMockAdapterStatusDao()
 		adapterConfig := testNodePoolAdapterConfig()
 		adapterConfig.Required.Nodepool = []string{"validation"}
-		service := NewNodePoolService(nodePoolDao, adapterStatusDao, adapterConfig)
+		service := NewNodePoolService(nodePoolDao, nil, adapterStatusDao, adapterConfig, nil)
 		ctx := context.Background()
 		nodePoolID := "ready-nodepool"
 
@@ -1025,5 +1025,226 @@ func TestNodePoolSoftDelete(t *testing.T) {
 		g.Expect(postReady).NotTo(BeNil())
 		g.Expect(postReady.Status).To(Equal(api.ConditionFalse))
 		g.Expect(postReady.ObservedGeneration).To(Equal(int32(2)))
+	})
+}
+
+func TestNodePoolPatch(t *testing.T) {
+	t.Parallel()
+	t.Run("spec changed increments generation", func(t *testing.T) {
+		t.Parallel()
+		g := NewWithT(t)
+		nodePoolDao := newMockNodePoolDao()
+		adapterStatusDao := newMockAdapterStatusDao()
+		adapterConfig := testNodePoolAdapterConfig()
+		adapterConfig.Required.Nodepool = []string{}
+		service := NewNodePoolService(nodePoolDao, nil, adapterStatusDao, adapterConfig, nil)
+		ctx := context.Background()
+
+		nodePoolDao.nodePools["np1"] = &api.NodePool{
+			Meta:       api.Meta{ID: "np1"},
+			Spec:       []byte(`{"old":"spec"}`),
+			Labels:     []byte(`{}`),
+			Generation: 1,
+		}
+
+		newSpec := map[string]interface{}{"new": "spec"}
+		result, svcErr := service.Patch(ctx, "np1", &api.NodePoolPatchRequest{Spec: &newSpec})
+
+		g.Expect(svcErr).To(BeNil())
+		g.Expect(result.Generation).To(Equal(int32(2)))
+	})
+
+	t.Run("spec unchanged keeps generation", func(t *testing.T) {
+		t.Parallel()
+		g := NewWithT(t)
+		nodePoolDao := newMockNodePoolDao()
+		adapterStatusDao := newMockAdapterStatusDao()
+		adapterConfig := testNodePoolAdapterConfig()
+		adapterConfig.Required.Nodepool = []string{}
+		service := NewNodePoolService(nodePoolDao, nil, adapterStatusDao, adapterConfig, nil)
+		ctx := context.Background()
+
+		nodePoolDao.nodePools["np1"] = &api.NodePool{
+			Meta:       api.Meta{ID: "np1"},
+			Spec:       []byte(`{"key":"value"}`),
+			Labels:     []byte(`{}`),
+			Generation: 3,
+		}
+
+		sameSpec := map[string]interface{}{"key": "value"}
+		result, svcErr := service.Patch(ctx, "np1", &api.NodePoolPatchRequest{Spec: &sameSpec})
+
+		g.Expect(svcErr).To(BeNil())
+		g.Expect(result.Generation).To(Equal(int32(3)))
+	})
+
+	t.Run("labels changed increments generation", func(t *testing.T) {
+		t.Parallel()
+		g := NewWithT(t)
+		nodePoolDao := newMockNodePoolDao()
+		adapterStatusDao := newMockAdapterStatusDao()
+		adapterConfig := testNodePoolAdapterConfig()
+		adapterConfig.Required.Nodepool = []string{}
+		service := NewNodePoolService(nodePoolDao, nil, adapterStatusDao, adapterConfig, nil)
+		ctx := context.Background()
+
+		nodePoolDao.nodePools["np1"] = &api.NodePool{
+			Meta:       api.Meta{ID: "np1"},
+			Spec:       []byte(`{}`),
+			Labels:     []byte(`{"env":"dev"}`),
+			Generation: 1,
+		}
+
+		newLabels := map[string]string{"env": "prod"}
+		result, svcErr := service.Patch(ctx, "np1", &api.NodePoolPatchRequest{Labels: &newLabels})
+
+		g.Expect(svcErr).To(BeNil())
+		g.Expect(result.Generation).To(Equal(int32(2)))
+	})
+
+	t.Run("not found returns 404", func(t *testing.T) {
+		t.Parallel()
+		g := NewWithT(t)
+		nodePoolDao := newMockNodePoolDao()
+		adapterStatusDao := newMockAdapterStatusDao()
+		service := NewNodePoolService(nodePoolDao, nil, adapterStatusDao, testNodePoolAdapterConfig(), nil)
+		ctx := context.Background()
+
+		newSpec := map[string]interface{}{"a": "b"}
+		_, svcErr := service.Patch(ctx, "nonexistent", &api.NodePoolPatchRequest{Spec: &newSpec})
+
+		g.Expect(svcErr).NotTo(BeNil())
+		g.Expect(svcErr.HTTPCode).To(Equal(404))
+	})
+}
+
+func TestGetByIDAndOwner(t *testing.T) {
+	t.Parallel()
+	t.Run("happy path returns nodepool", func(t *testing.T) {
+		t.Parallel()
+		g := NewWithT(t)
+		nodePoolDao := newMockNodePoolDao()
+		service := NewNodePoolService(nodePoolDao, nil, newMockAdapterStatusDao(), testNodePoolAdapterConfig(), nil)
+		ctx := context.Background()
+
+		nodePoolDao.nodePools["np1"] = &api.NodePool{
+			Meta:    api.Meta{ID: "np1"},
+			OwnerID: "cluster1",
+		}
+
+		result, svcErr := service.GetByIDAndOwner(ctx, "np1", "cluster1")
+		g.Expect(svcErr).To(BeNil())
+		g.Expect(result.ID).To(Equal("np1"))
+	})
+
+	t.Run("owner mismatch returns 404", func(t *testing.T) {
+		t.Parallel()
+		g := NewWithT(t)
+		nodePoolDao := newMockNodePoolDao()
+		service := NewNodePoolService(nodePoolDao, nil, newMockAdapterStatusDao(), testNodePoolAdapterConfig(), nil)
+		ctx := context.Background()
+
+		nodePoolDao.nodePools["np1"] = &api.NodePool{
+			Meta:    api.Meta{ID: "np1"},
+			OwnerID: "cluster1",
+		}
+
+		_, svcErr := service.GetByIDAndOwner(ctx, "np1", "wrong-cluster")
+		g.Expect(svcErr).NotTo(BeNil())
+		g.Expect(svcErr.HTTPCode).To(Equal(404))
+	})
+
+	t.Run("nodepool not found returns 404", func(t *testing.T) {
+		t.Parallel()
+		g := NewWithT(t)
+		nodePoolDao := newMockNodePoolDao()
+		service := NewNodePoolService(nodePoolDao, nil, newMockAdapterStatusDao(), testNodePoolAdapterConfig(), nil)
+		ctx := context.Background()
+
+		_, svcErr := service.GetByIDAndOwner(ctx, "nonexistent", "cluster1")
+		g.Expect(svcErr).NotTo(BeNil())
+		g.Expect(svcErr.HTTPCode).To(Equal(404))
+	})
+}
+
+func TestListByCluster(t *testing.T) {
+	t.Parallel()
+	testClusterUUID := "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"
+
+	t.Run("happy path returns nodepools for cluster", func(t *testing.T) {
+		t.Parallel()
+		g := NewWithT(t)
+		nodePoolDao := newMockNodePoolDao()
+		clusterDao := newMockClusterDao()
+		genericSvc := &mockGenericService{
+			nodePools: []api.NodePool{
+				{Meta: api.Meta{ID: "np1"}, OwnerID: testClusterUUID},
+				{Meta: api.Meta{ID: "np2"}, OwnerID: testClusterUUID},
+			},
+		}
+		service := NewNodePoolService(nodePoolDao,
+			clusterDao,
+			newMockAdapterStatusDao(),
+			testNodePoolAdapterConfig(),
+			genericSvc,
+		)
+		ctx := context.Background()
+
+		clusterDao.clusters[testClusterUUID] = &api.Cluster{Meta: api.Meta{ID: testClusterUUID}}
+
+		args := &ListArguments{Page: 1, Size: 100}
+		result, paging, svcErr := service.ListByCluster(ctx, testClusterUUID, args)
+
+		g.Expect(svcErr).To(BeNil())
+		g.Expect(result).To(HaveLen(2))
+		g.Expect(result[0].ID).To(Equal("np1"))
+		g.Expect(result[1].ID).To(Equal("np2"))
+		g.Expect(paging.Total).To(Equal(int64(2)))
+	})
+
+	t.Run("cluster not found returns 404", func(t *testing.T) {
+		t.Parallel()
+		g := NewWithT(t)
+		nodePoolDao := newMockNodePoolDao()
+		clusterDao := newMockClusterDao()
+		genericSvc := &mockGenericService{}
+		service := NewNodePoolService(nodePoolDao,
+			clusterDao,
+			newMockAdapterStatusDao(),
+			testNodePoolAdapterConfig(),
+			genericSvc,
+		)
+		ctx := context.Background()
+
+		nonexistentUUID := "b1ffbc99-9c0b-4ef8-bb6d-6bb9bd380a22"
+		args := &ListArguments{Page: 1, Size: 100}
+		_, _, svcErr := service.ListByCluster(ctx, nonexistentUUID, args)
+
+		g.Expect(svcErr).NotTo(BeNil())
+		g.Expect(svcErr.HTTPCode).To(Equal(404))
+	})
+
+	t.Run("existing search is preserved and ANDed with owner_id", func(t *testing.T) {
+		t.Parallel()
+		g := NewWithT(t)
+		nodePoolDao := newMockNodePoolDao()
+		clusterDao := newMockClusterDao()
+		genericSvc := &mockGenericService{}
+		service := NewNodePoolService(nodePoolDao,
+			clusterDao,
+			newMockAdapterStatusDao(),
+			testNodePoolAdapterConfig(),
+			genericSvc,
+		)
+		ctx := context.Background()
+
+		clusterDao.clusters[testClusterUUID] = &api.Cluster{Meta: api.Meta{ID: testClusterUUID}}
+
+		args := &ListArguments{Page: 1, Size: 100, Search: "name = 'test'"}
+		_, _, svcErr := service.ListByCluster(ctx, testClusterUUID, args)
+
+		g.Expect(svcErr).To(BeNil())
+		g.Expect(args.Search).To(ContainSubstring("name = 'test'"))
+		g.Expect(args.Search).To(ContainSubstring("AND owner_id = '" + testClusterUUID + "'"))
 	})
 }

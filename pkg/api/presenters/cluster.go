@@ -11,7 +11,7 @@ import (
 )
 
 // ConvertCluster converts openapi.ClusterCreateRequest to api.Cluster (GORM model)
-func ConvertCluster(req *openapi.ClusterCreateRequest, createdBy string) (*api.Cluster, error) {
+func ConvertCluster(req *openapi.ClusterCreateRequest) (*api.Cluster, error) {
 	// Marshal Spec
 	specJSON, err := json.Marshal(req.Spec)
 	if err != nil {
@@ -40,8 +40,6 @@ func ConvertCluster(req *openapi.ClusterCreateRequest, createdBy string) (*api.C
 		Spec:       specJSON,
 		Labels:     labelsJSON,
 		Generation: 1,
-		CreatedBy:  createdBy,
-		UpdatedBy:  createdBy,
 	}, nil
 }
 

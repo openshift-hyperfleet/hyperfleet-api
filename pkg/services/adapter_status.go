@@ -18,7 +18,6 @@ import (
 type AdapterStatusService interface {
 	Get(ctx context.Context, id string) (*api.AdapterStatus, *errors.ServiceError)
 	Create(ctx context.Context, adapterStatus *api.AdapterStatus) (*api.AdapterStatus, *errors.ServiceError)
-	Replace(ctx context.Context, adapterStatus *api.AdapterStatus) (*api.AdapterStatus, *errors.ServiceError)
 	Upsert(ctx context.Context, adapterStatus *api.AdapterStatus) (*api.AdapterStatus, *errors.ServiceError)
 	Delete(ctx context.Context, id string) *errors.ServiceError
 	FindByResource(
@@ -59,16 +58,6 @@ func (s *sqlAdapterStatusService) Create(
 	adapterStatus, err := s.adapterStatusDao.Create(ctx, adapterStatus)
 	if err != nil {
 		return nil, handleCreateError("AdapterStatus", err)
-	}
-	return adapterStatus, nil
-}
-
-func (s *sqlAdapterStatusService) Replace(
-	ctx context.Context, adapterStatus *api.AdapterStatus,
-) (*api.AdapterStatus, *errors.ServiceError) {
-	adapterStatus, err := s.adapterStatusDao.Replace(ctx, adapterStatus)
-	if err != nil {
-		return nil, handleUpdateError("AdapterStatus", err)
 	}
 	return adapterStatus, nil
 }

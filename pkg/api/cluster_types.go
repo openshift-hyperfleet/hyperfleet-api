@@ -24,8 +24,10 @@ type Cluster struct {
 	Generation       int32          `json:"generation" gorm:"default:1;not null"`
 }
 
-type ClusterList []*Cluster
-type ClusterIndex map[string]*Cluster
+type (
+	ClusterList  []*Cluster
+	ClusterIndex map[string]*Cluster
+)
 
 func (l ClusterList) Index() ClusterIndex {
 	index := ClusterIndex{}
@@ -36,14 +38,18 @@ func (l ClusterList) Index() ClusterIndex {
 }
 
 func (c *Cluster) BeforeCreate(tx *gorm.DB) error {
-	id, err := NewID()
-	if err != nil {
-		return fmt.Errorf("failed to generate cluster ID: %w", err)
+	if c.ID == "" {
+		id, err := NewID()
+		if err != nil {
+			return fmt.Errorf("failed to generate cluster ID: %w", err)
+		}
+		c.ID = id
 	}
-	c.ID = id
 
 	now := time.Now()
-	c.CreatedTime = now
+	if c.CreatedTime.IsZero() {
+		c.CreatedTime = now
+	}
 	c.UpdatedTime = now
 	if c.Generation == 0 {
 		c.Generation = 1
@@ -63,4 +69,13 @@ func (c *Cluster) BeforeUpdate(tx *gorm.DB) error {
 type ClusterPatchRequest struct {
 	Spec   *map[string]interface{} `json:"spec,omitempty"`
 	Labels *map[string]string      `json:"labels,omitempty"`
+}
+
+func (c *Cluster) MarkDeleted(by string, t time.Time) {
+	c.DeletedTime = &t
+	c.DeletedBy = &by
+}
+
+func (c *Cluster) IncrementGeneration() {
+	c.Generation++
 }

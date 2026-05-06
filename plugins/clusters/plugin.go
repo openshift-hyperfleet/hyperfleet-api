@@ -71,7 +71,6 @@ func init() {
 		clusterNodePoolsHandler := handlers.NewClusterNodePoolsHandler(
 			Service(envServices),
 			nodePools.Service(envServices),
-			generic.Service(envServices),
 		)
 		clustersRouter.HandleFunc("/{id}/nodepools", clusterNodePoolsHandler.List).Methods(http.MethodGet)
 		clustersRouter.HandleFunc("/{id}/nodepools", clusterNodePoolsHandler.Create).Methods(http.MethodPost)

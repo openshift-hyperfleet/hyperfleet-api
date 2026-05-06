@@ -25,7 +25,7 @@ import (
 
 type GenericService interface {
 	List(
-		ctx context.Context, username string, args *ListArguments, resourceList interface{},
+		ctx context.Context, args *ListArguments, resourceList interface{},
 	) (*api.PagingMeta, *errors.ServiceError)
 }
 
@@ -60,13 +60,12 @@ type listContext struct {
 	disallowedFields *map[string]string
 	joins            map[string]dao.TableRelation
 	set              map[string]bool
-	username         string
 	resourceType     string
 	groupBy          []string
 }
 
 func (s *sqlGenericService) newListContext(
-	ctx context.Context, username string, args *ListArguments, resourceList interface{},
+	ctx context.Context, args *ListArguments, resourceList interface{},
 ) (*listContext, interface{}, *errors.ServiceError) {
 	resourceModel := reflect.TypeOf(resourceList).Elem().Elem()
 	resourceTypeStr := resourceModel.Name()
@@ -81,7 +80,6 @@ func (s *sqlGenericService) newListContext(
 	return &listContext{
 		ctx:              ctx,
 		args:             args,
-		username:         username,
 		pagingMeta:       &api.PagingMeta{Page: args.Page},
 		resourceList:     resourceList,
 		disallowedFields: &disallowedFields,
@@ -91,9 +89,9 @@ func (s *sqlGenericService) newListContext(
 
 // List resourceList must be a pointer to a slice of database resource objects
 func (s *sqlGenericService) List(
-	ctx context.Context, username string, args *ListArguments, resourceList interface{},
+	ctx context.Context, args *ListArguments, resourceList interface{},
 ) (*api.PagingMeta, *errors.ServiceError) {
-	listCtx, model, err := s.newListContext(ctx, username, args, resourceList)
+	listCtx, model, err := s.newListContext(ctx, args, resourceList)
 	if err != nil {
 		return nil, err
 	}
