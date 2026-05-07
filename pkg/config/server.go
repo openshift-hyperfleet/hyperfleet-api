@@ -14,7 +14,6 @@ type ServerConfig struct {
 	Host              string         `mapstructure:"host" json:"host" validate:"required,hostname|ip"`
 	OpenAPISchemaPath string         `mapstructure:"openapi_schema_path" json:"openapi_schema_path"`
 	JWK               JWKConfig      `mapstructure:"jwk" json:"jwk" validate:"required"`
-	ACL               ACLConfig      `mapstructure:"acl" json:"acl" validate:"omitempty"`
 	TLS               TLSConfig      `mapstructure:"tls" json:"tls" validate:"required"`
 	JWT               JWTConfig      `mapstructure:"jwt" json:"jwt" validate:"required"`
 	Timeouts          TimeoutsConfig `mapstructure:"timeouts" json:"timeouts" validate:"required"`
@@ -83,12 +82,6 @@ type JWKConfig struct {
 	CertURL  string `mapstructure:"cert_url" json:"cert_url" validate:"omitempty,url"`
 }
 
-// Deprecated: ACLConfig is kept for Helm values.yaml backward compatibility.
-// ACL checking was provided by the OCM SDK handler and is no longer functional.
-type ACLConfig struct {
-	File string `mapstructure:"file" json:"file" validate:"omitempty,filepath"`
-}
-
 // NewServerConfig returns default ServerConfig values
 // These defaults can be overridden by config file, env vars, or CLI flags
 func NewServerConfig() *ServerConfig {
@@ -108,15 +101,12 @@ func NewServerConfig() *ServerConfig {
 		},
 		JWT: JWTConfig{
 			Enabled:   true,
-			IssuerURL: "https://sso.redhat.com/auth/realms/redhat-external",
+			IssuerURL: "",
 			Audience:  "",
 		},
 		JWK: JWKConfig{
 			CertFile: "",
-			CertURL:  "https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/certs",
-		},
-		ACL: ACLConfig{
-			File: "",
+			CertURL:  "",
 		},
 	}
 }

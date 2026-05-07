@@ -65,9 +65,6 @@ db_password_file := ${PWD}/secrets/db.password
 db_sslmode := disable
 db_image ?= docker.io/library/postgres:14.2
 
-# Location of the JSON web key set used to verify tokens
-jwks_url := https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/certs
-
 # Test output files
 unit_test_json_output ?= ${PWD}/unit-test-results.json
 integration_test_json_output ?= ${PWD}/integration-test-results.json

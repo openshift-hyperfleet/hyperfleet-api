@@ -254,11 +254,10 @@ HTTP server settings for the API endpoint.
 | `server.tls.cert_file` | string | `""` | Path to TLS certificate file |
 | `server.tls.key_file` | string | `""` | Path to TLS key file |
 | `server.jwt.enabled` | bool | `true` | Enable JWT authentication |
-| `server.jwt.issuer_url` | string | `https://sso.redhat.com/...` | Expected JWT issuer URL for token validation (required when JWT is enabled) |
+| `server.jwt.issuer_url` | string | `""` | Expected JWT issuer URL for token validation (required when JWT is enabled) |
 | `server.jwt.audience` | string | `""` | Expected JWT audience claim (optional) |
 | `server.jwk.cert_file` | string | `""` | JWK certificate file path (optional) |
-| `server.jwk.cert_url` | string | `https://sso.redhat.com/...` | JWK certificate URL |
-| `server.acl.file` | string | `""` | **(Deprecated)** ACL file path — accepted but not enforced |
+| `server.jwk.cert_url` | string | `""` | JWK certificate URL (required when JWT is enabled and cert_file is not set) |
 
 **Example:**
 ```yaml
@@ -272,10 +271,10 @@ server:
     key_file: /etc/certs/tls.key
   jwt:
     enabled: true
-    issuer_url: https://sso.redhat.com/auth/realms/redhat-external
+    issuer_url: https://your-idp.example.com/auth/realms/your-realm
     audience: ""
   jwk:
-    cert_url: https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/certs
+    cert_url: https://your-idp.example.com/auth/realms/your-realm/protocol/openid-connect/certs
 ```
 
 </details>
@@ -348,11 +347,10 @@ Complete table of all configuration properties, their environment variables, and
 | `server.tls.cert_file` | `HYPERFLEET_SERVER_TLS_CERT_FILE` | string | `""` |
 | `server.tls.key_file` | `HYPERFLEET_SERVER_TLS_KEY_FILE` | string | `""` |
 | `server.jwt.enabled` | `HYPERFLEET_SERVER_JWT_ENABLED` | bool | `true` |
-| `server.jwt.issuer_url` | `HYPERFLEET_SERVER_JWT_ISSUER_URL` | string | `https://sso.redhat.com/...` |
+| `server.jwt.issuer_url` | `HYPERFLEET_SERVER_JWT_ISSUER_URL` | string | `""` |
 | `server.jwt.audience` | `HYPERFLEET_SERVER_JWT_AUDIENCE` | string | `""` |
 | `server.jwk.cert_file` | `HYPERFLEET_SERVER_JWK_CERT_FILE` | string | `""` |
-| `server.jwk.cert_url` | `HYPERFLEET_SERVER_JWK_CERT_URL` | string | `https://sso.redhat.com/...` |
-| `server.acl.file` *(deprecated)* | `HYPERFLEET_SERVER_ACL_FILE` | string | `""` |
+| `server.jwk.cert_url` | `HYPERFLEET_SERVER_JWK_CERT_URL` | string | `""` |
 | **Database** | | | |
 | `database.dialect` | `HYPERFLEET_DATABASE_DIALECT` | string | `postgres` |
 | `database.host` | `HYPERFLEET_DATABASE_HOST` | string | `localhost` |
@@ -414,7 +412,6 @@ All CLI flags and their corresponding configuration paths.
 | `--server-jwt-audience` | `server.jwt.audience` | string |
 | `--server-jwk-cert-file` | `server.jwk.cert_file` | string |
 | `--server-jwk-cert-url` | `server.jwk.cert_url` | string |
-| `--server-acl-file` *(deprecated)* | `server.acl.file` | string |
 | **Database** | | |
 | `--db-dialect` | `database.dialect` | string |
 | `--db-host` | `database.host` | string |
@@ -448,8 +445,12 @@ All CLI flags and their corresponding configuration paths.
 
 ### Development
 
-Minimal config for local development:
+Minimal config for local development (no authentication):
 ```yaml
+server:
+  jwt:
+    enabled: false
+
 database:
   password: devpassword
 

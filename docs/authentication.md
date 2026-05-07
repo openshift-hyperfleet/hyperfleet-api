@@ -79,8 +79,8 @@ export HYPERFLEET_SERVER_JWT_ENABLED=false
 
 # Production (with auth)
 export HYPERFLEET_SERVER_JWT_ENABLED=true
-export HYPERFLEET_SERVER_JWT_ISSUER_URL=https://sso.redhat.com/auth/realms/redhat-external
-export HYPERFLEET_SERVER_JWT_AUDIENCE=https://api.openshift.com
+export HYPERFLEET_SERVER_JWT_ISSUER_URL=https://your-idp.example.com/auth/realms/your-realm
+export HYPERFLEET_SERVER_JWT_AUDIENCE=https://your-api.example.com
 ```
 
 See [Deployment](deployment.md) for complete configuration options.
@@ -91,10 +91,12 @@ Configure via Helm values:
 
 ```yaml
 # values.yaml
-auth:
-  enabled: true
-  jwtIssuer: https://sso.redhat.com/auth/realms/redhat-external
-  jwtAudience: https://api.openshift.com
+config:
+  server:
+    jwt:
+      enabled: true
+      issuer_url: https://your-idp.example.com/auth/realms/your-realm
+      audience: https://your-api.example.com
 ```
 
 Deploy:
@@ -110,11 +112,6 @@ helm install hyperfleet-api ./charts/ --values values.yaml
 - Check token is valid and not expired
 - Verify `HYPERFLEET_SERVER_JWT_ISSUER_URL` and `HYPERFLEET_SERVER_JWT_AUDIENCE` match token claims
 - Ensure `Authorization` header is correctly formatted
-
-**403 Forbidden**
-- User authenticated but lacks permissions
-- Check resource ownership
-- Verify organizational membership
 
 **Token debugging**
 ```bash

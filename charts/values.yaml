@@ -50,13 +50,12 @@ config:
 
     jwt:
       enabled: true
+      issuer_url: ""
+      audience: ""
 
     jwk:
       cert_file: ""
-      cert_url: "https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/certs"
-
-    acl:
-      file: ""
+      cert_url: ""
 
   # Database configuration
   database:

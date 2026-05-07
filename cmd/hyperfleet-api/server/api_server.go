@@ -8,8 +8,6 @@ import (
 	"os"
 	"time"
 
-	gorillahandlers "github.com/gorilla/handlers"
-
 	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/environments"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/auth"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
@@ -53,40 +51,6 @@ func NewAPIServer(tracingEnabled bool) Server {
 		s.jwtHandler = jwtHandler
 		mainHandler = jwtHandler
 	}
-
-	// Configure CORS for Red Hat console and API access
-	mainHandler = gorillahandlers.CORS(
-		gorillahandlers.AllowedOrigins([]string{
-			// Console local development URLs
-			"https://qa.foo.redhat.com:1337",
-			"https://prod.foo.redhat.com:1337",
-			"https://ci.foo.redhat.com:1337",
-			// Production and staging console URLs
-			"https://console.redhat.com",
-			"https://qaprodauth.console.redhat.com",
-			"https://qa.console.redhat.com",
-			"https://ci.console.redhat.com",
-			"https://console.stage.redhat.com",
-			// API docs UI
-			"https://api.stage.openshift.com",
-			"https://api.openshift.com",
-			// Customer portal
-			"https://access.qa.redhat.com",
-			"https://access.stage.redhat.com",
-			"https://access.redhat.com",
-		}),
-		gorillahandlers.AllowedMethods([]string{
-			http.MethodDelete,
-			http.MethodGet,
-			http.MethodPatch,
-			http.MethodPost,
-		}),
-		gorillahandlers.AllowedHeaders([]string{
-			"Authorization",
-			"Content-Type",
-		}),
-		gorillahandlers.MaxAge(int((10 * time.Minute).Seconds())),
-	)(mainHandler)
 
 	mainHandler = removeTrailingSlash(mainHandler)
 

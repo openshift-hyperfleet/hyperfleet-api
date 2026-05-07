@@ -25,6 +25,10 @@ func TestConfigLoader_ExplicitConfigFlag(t *testing.T) {
 server:
   host: "config-file-host"
   port: 9999
+  jwt:
+    issuer_url: "https://test-idp.example.com/auth/realms/test"
+  jwk:
+    cert_url: "https://test-idp.example.com/certs"
 database:
   host: "localhost"
   port: 5432
@@ -265,6 +269,10 @@ func TestConfigLoader_CompletePriorityChain(t *testing.T) {
 server:
   host: "file-host"
   port: 7000
+  jwt:
+    issuer_url: "https://test-idp.example.com/auth/realms/test"
+  jwk:
+    cert_url: "https://test-idp.example.com/certs"
 database:
   host: "file-db"
   port: 5432

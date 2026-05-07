@@ -27,13 +27,12 @@ data:
 
       jwt:
         enabled: {{ .Values.config.server.jwt.enabled }}
+        issuer_url: {{ .Values.config.server.jwt.issuer_url | quote }}
+        audience: {{ .Values.config.server.jwt.audience | quote }}
 
       jwk:
         cert_file: {{ .Values.config.server.jwk.cert_file | quote }}
         cert_url: {{ .Values.config.server.jwk.cert_url | quote }}
-
-      acl:
-        file: {{ .Values.config.server.acl.file | quote }}
 
     database:
       dialect: {{ .Values.config.database.dialect }}

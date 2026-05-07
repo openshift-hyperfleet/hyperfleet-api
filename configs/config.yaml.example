@@ -19,13 +19,12 @@ server:
 
   jwt:
     enabled: true                   # Enable JWT authentication
+    issuer_url: ""                  # JWT issuer URL (required when jwt.enabled=true)
+    audience: ""                    # JWT audience claim (optional)
 
   jwk:
     cert_file: ""                   # JWK certificate file path
-    cert_url: "https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/certs"
-
-  acl:
-    file: ""                        # Access control list file
+    cert_url: ""                    # JWK certificate URL (required when jwt.enabled=true and cert_file is not set)
 
 # Database Configuration
 database:
@@ -146,7 +145,7 @@ adapters:
 # Sensitive values can be loaded from files using *_FILE environment variables.
 # The file content will be read and used as the configuration value.
 #
-# Note: File path fields (cert_file, key_file, acl.file, etc.) should be set
+# Note: File path fields (cert_file, key_file, etc.) should be set
 # directly via environment variables, not loaded from files, since they already
 # represent file paths. Use HYPERFLEET_SERVER_TLS_CERT_FILE=/path/to/cert.pem
 # to set the path directly.

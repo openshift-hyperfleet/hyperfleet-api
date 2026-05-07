@@ -633,9 +633,9 @@ server:
 server:
   jwt:
     enabled: true
-    issuer_url: https://sso.redhat.com/auth/realms/redhat-external
+    issuer_url: https://your-idp.example.com/auth/realms/your-realm
   jwk:
-    cert_url: https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/certs
+    cert_url: https://your-idp.example.com/auth/realms/your-realm/protocol/openid-connect/certs
 ```
 
 **Direct binary execution:**
@@ -647,8 +647,8 @@ server:
 # Production (with JWT authentication)
 ./hyperfleet-api serve \
   --server-jwt-enabled=true \
-  --server-jwt-issuer-url=https://sso.redhat.com/auth/realms/redhat-external \
-  --server-jwk-cert-url=https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/certs
+  --server-jwt-issuer-url=https://your-idp.example.com/auth/realms/your-realm \
+  --server-jwk-cert-url=https://your-idp.example.com/auth/realms/your-realm/protocol/openid-connect/certs
 ```
 
 See [Authentication Guide](authentication.md) for detailed JWT setup.
