@@ -839,7 +839,7 @@ func TestCreateHandler_MetricsRecording(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			registry := prometheus.NewRegistry()
-			recorder := metrics.NewRecorder("test-adapter", "v0.1.0", registry)
+			recorder := metrics.NewRecorder("test-adapter", "v0.1.0", "test", registry)
 
 			config := &configloader.Config{
 				Adapter:       configloader.AdapterInfo{Name: "test-adapter", Version: "v0.1.0"},
@@ -886,7 +886,7 @@ func TestCreateHandler_MetricsRecording(t *testing.T) {
 // TestCreateHandler_MetricsRecording_Failed verifies error metrics are recorded on failure
 func TestCreateHandler_MetricsRecording_Failed(t *testing.T) {
 	registry := prometheus.NewRegistry()
-	recorder := metrics.NewRecorder("test-adapter", "v0.1.0", registry)
+	recorder := metrics.NewRecorder("test-adapter", "v0.1.0", "test", registry)
 
 	config := &configloader.Config{
 		Adapter: configloader.AdapterInfo{Name: "test-adapter", Version: "v0.1.0"},
@@ -992,7 +992,7 @@ func TestWithMetrics_RecordsMetrics(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			registry := prometheus.NewRegistry()
-			recorder := metrics.NewRecorder("test-adapter", "v0.1.0", registry)
+			recorder := metrics.NewRecorder("test-adapter", "v0.1.0", "test", registry)
 
 			inner := HandlerFunc(func(_ context.Context, _ *event.Event) (*ExecutionResult, error) {
 				return tt.result, nil
@@ -1037,7 +1037,7 @@ func TestWithMetrics_HandlerPanicPropagates(t *testing.T) {
 	})
 
 	registry := prometheus.NewRegistry()
-	recorder := metrics.NewRecorder("test-adapter", "v0.1.0", registry)
+	recorder := metrics.NewRecorder("test-adapter", "v0.1.0", "test", registry)
 	handler := WithMetrics(inner, recorder, logger.NewTestLogger())
 
 	evt := event.New()

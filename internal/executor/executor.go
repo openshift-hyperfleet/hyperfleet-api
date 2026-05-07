@@ -12,6 +12,7 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/hyperfleetapi"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/transportclient"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/logger"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/metrics"
 	pkgotel "github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/telemetry"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
@@ -356,6 +357,12 @@ func (b *ExecutorBuilder) WithTransportClient(client transportclient.TransportCl
 // WithLogger sets the logger
 func (b *ExecutorBuilder) WithLogger(log logger.Logger) *ExecutorBuilder {
 	b.config.Logger = log
+	return b
+}
+
+// WithMetricsRecorder sets the optional Prometheus metrics recorder
+func (b *ExecutorBuilder) WithMetricsRecorder(recorder *metrics.Recorder) *ExecutorBuilder {
+	b.config.MetricsRecorder = recorder
 	return b
 }
 

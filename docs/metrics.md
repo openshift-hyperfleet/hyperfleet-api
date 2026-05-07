@@ -46,6 +46,25 @@ The `error_type` label on `hyperfleet_adapter_errors_total` corresponds to the e
 | `resources` | Failed to apply Kubernetes resources |
 | `post_actions` | Failed to execute post-actions (e.g., status reporting) |
 
+### Resource Deletion Metrics
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `hyperfleet_adapter_resources_deleted_total` | Counter | `component`, `version`, `adapter_name`, `resource_type`, `status` | Total resource deletion operations by Kubernetes kind |
+| `hyperfleet_adapter_resource_deletion_duration_seconds` | Histogram | `component`, `version`, `adapter_name`, `resource_type` | Duration of resource deletion operations by Kubernetes kind |
+| `hyperfleet_adapter_resource_deletions_in_progress` | Gauge | `component`, `version`, `adapter_name`, `resource_type` | Number of resource deletions currently in progress by Kubernetes kind |
+
+**ConstLabels**: `component`, `version`, and `adapter_name` are set at metric registration and remain constant for the adapter instance.
+
+**Label `resource_type`**: Kubernetes resource kind (e.g., `Namespace`, `ServiceAccount`, `Deployment`). Individual resource instances are tracked via logs/traces, not metrics, per HyperFleet observability architecture.
+
+#### Deletion Status Values
+
+| Status | Description |
+|--------|-------------|
+| `success` | Resource deleted successfully, or already deleted/not found (desired state achieved) |
+| `error` | Deletion operation failed |
+
 #### Histogram Buckets
 
 The `event_processing_duration_seconds` histogram uses the following buckets (in seconds), as recommended by the [adapter metrics standard](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/components/adapter/framework/adapter-metrics.md):

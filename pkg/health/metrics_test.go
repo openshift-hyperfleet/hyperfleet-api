@@ -105,7 +105,7 @@ func TestAdapterMetricsExposedOnMetricsEndpoint(t *testing.T) {
 	upGauge.Set(1)
 
 	// Register adapter event metrics using the same registry
-	recorder := metrics.NewRecorder("test-adapter", "v0.1.0-test", registry)
+	recorder := metrics.NewRecorder("test-adapter", "v0.1.0-test", "test", registry)
 
 	// Simulate adapter activity
 	recorder.RecordEventProcessed("success")

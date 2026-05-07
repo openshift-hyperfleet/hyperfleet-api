@@ -3,10 +3,42 @@
 package metrics
 
 import (
+	"strings"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 )
+
+// Deletion status constants per HyperFleet adapter-metrics.md standard
+const (
+	DeletionStatusSuccess = "success"
+	DeletionStatusError   = "error"
+)
+
+// Resource type constants
+const (
+	ResourceTypeUnknown = "Unknown"
+)
+
+// Propagation policy constants
+const (
+	PropagationPolicyUnknown = "unknown"
+)
+
+// ExtractAdapterName derives a short adapter name from the component name.
+// Examples: "hyperfleet-adapter-gcp" → "gcp", "adapter-validation" → "validation", "test-adapter" → "test"
+func ExtractAdapterName(component string) string {
+	switch {
+	case strings.HasPrefix(component, "hyperfleet-adapter-"):
+		return strings.TrimPrefix(component, "hyperfleet-adapter-")
+	case strings.HasPrefix(component, "adapter-"):
+		return strings.TrimPrefix(component, "adapter-")
+	case strings.HasSuffix(component, "-adapter"):
+		return strings.TrimSuffix(component, "-adapter")
+	default:
+		return component
+	}
+}
 
 // Recorder registers and records adapter-level Prometheus metrics.
 // All methods are nil-safe: calling methods on a nil *Recorder is a no-op,
@@ -15,11 +47,15 @@ type Recorder struct {
 	eventsProcessed    *prometheus.CounterVec
 	processingDuration prometheus.Observer
 	errorsTotal        *prometheus.CounterVec
+	deletionTotal      *prometheus.CounterVec
+	deletionDuration   *prometheus.HistogramVec
+	deletionInProgress *prometheus.GaugeVec
 }
 
 // NewRecorder creates a new Recorder and registers metrics with the given registerer.
 // If reg is nil, prometheus.DefaultRegisterer is used.
-func NewRecorder(component, version string, reg prometheus.Registerer) *Recorder {
+// The adapterName should be a short identifier (e.g., "gcp", "validation") derived from component.
+func NewRecorder(component, version, adapterName string, reg prometheus.Registerer) *Recorder {
 	if reg == nil {
 		reg = prometheus.DefaultRegisterer
 	}
@@ -29,8 +65,9 @@ func NewRecorder(component, version string, reg prometheus.Registerer) *Recorder
 			Name: "hyperfleet_adapter_events_processed_total",
 			Help: "Total number of CloudEvents processed by the adapter",
 			ConstLabels: prometheus.Labels{
-				"component": component,
-				"version":   version,
+				"component":    component,
+				"version":      version,
+				"adapter_name": adapterName,
 			},
 		},
 		[]string{"status"},
@@ -42,8 +79,9 @@ func NewRecorder(component, version string, reg prometheus.Registerer) *Recorder
 			Help:    "Duration of event processing in seconds",
 			Buckets: []float64{0.1, 0.5, 1, 2, 5, 10, 30, 60, 120},
 			ConstLabels: prometheus.Labels{
-				"component": component,
-				"version":   version,
+				"component":    component,
+				"version":      version,
+				"adapter_name": adapterName,
 			},
 		},
 	)
@@ -53,21 +91,68 @@ func NewRecorder(component, version string, reg prometheus.Registerer) *Recorder
 			Name: "hyperfleet_adapter_errors_total",
 			Help: "Total number of errors encountered by the adapter",
 			ConstLabels: prometheus.Labels{
-				"component": component,
-				"version":   version,
+				"component":    component,
+				"version":      version,
+				"adapter_name": adapterName,
 			},
 		},
 		[]string{"error_type"},
 	)
 
+	deletionTotal := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "hyperfleet_adapter_resources_deleted_total",
+			Help: "Total number of adapter resource deletion operations",
+			ConstLabels: prometheus.Labels{
+				"component":    component,
+				"version":      version,
+				"adapter_name": adapterName,
+			},
+		},
+		[]string{"resource_type", "status"},
+	)
+
+	deletionDuration := prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "hyperfleet_adapter_resource_deletion_duration_seconds",
+			Help:    "Duration of resource deletion operations in seconds",
+			Buckets: []float64{0.1, 0.5, 1, 2, 5, 10, 30, 60, 120},
+			ConstLabels: prometheus.Labels{
+				"component":    component,
+				"version":      version,
+				"adapter_name": adapterName,
+			},
+		},
+		[]string{"resource_type"},
+	)
+
+	deletionInProgress := prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "hyperfleet_adapter_resource_deletions_in_progress",
+			Help: "Number of resource deletions currently in progress",
+			ConstLabels: prometheus.Labels{
+				"component":    component,
+				"version":      version,
+				"adapter_name": adapterName,
+			},
+		},
+		[]string{"resource_type"},
+	)
+
 	reg.MustRegister(eventsProcessed)
 	reg.MustRegister(processingDuration)
 	reg.MustRegister(errorsTotal)
+	reg.MustRegister(deletionTotal)
+	reg.MustRegister(deletionDuration)
+	reg.MustRegister(deletionInProgress)
 
 	return &Recorder{
 		eventsProcessed:    eventsProcessed,
 		processingDuration: processingDuration,
 		errorsTotal:        errorsTotal,
+		deletionTotal:      deletionTotal,
+		deletionDuration:   deletionDuration,
+		deletionInProgress: deletionInProgress,
 	}
 }
 
@@ -96,4 +181,41 @@ func (r *Recorder) RecordError(errorType string) {
 		return
 	}
 	r.errorsTotal.WithLabelValues(errorType).Inc()
+}
+
+// RecordDeletion increments the resources_deleted_total counter for the given resource type.
+// resourceType should be the Kubernetes kind (e.g., "Namespace", "ServiceAccount").
+// Valid status values: DeletionStatusSuccess ("success"), DeletionStatusError ("error").
+func (r *Recorder) RecordDeletion(resourceType, status string) {
+	if r == nil {
+		return
+	}
+	r.deletionTotal.WithLabelValues(resourceType, status).Inc()
+}
+
+// ObserveDeletionDuration records the deletion duration for a resource type in seconds.
+// resourceType should be the Kubernetes kind (e.g., "Namespace", "ServiceAccount").
+func (r *Recorder) ObserveDeletionDuration(resourceType string, d time.Duration) {
+	if r == nil {
+		return
+	}
+	r.deletionDuration.WithLabelValues(resourceType).Observe(d.Seconds())
+}
+
+// IncDeletionInProgress increments the in-progress deletion gauge for a resource type.
+// resourceType should be the Kubernetes kind (e.g., "Namespace", "ServiceAccount").
+func (r *Recorder) IncDeletionInProgress(resourceType string) {
+	if r == nil {
+		return
+	}
+	r.deletionInProgress.WithLabelValues(resourceType).Inc()
+}
+
+// DecDeletionInProgress decrements the in-progress deletion gauge for a resource type.
+// resourceType should be the Kubernetes kind (e.g., "Namespace", "ServiceAccount").
+func (r *Recorder) DecDeletionInProgress(resourceType string) {
+	if r == nil {
+		return
+	}
+	r.deletionInProgress.WithLabelValues(resourceType).Dec()
 }
