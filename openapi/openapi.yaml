@@ -1,7 +1,7 @@
 openapi: 3.0.0
 info:
   title: HyperFleet API
-  version: 1.0.10
+  version: 1.0.12
   contact:
     name: HyperFleet Team
   license:
@@ -13,12 +13,17 @@ info:
     **Architecture**: Simple CRUD only, no business logic, no event creation.
     Sentinel operator handles all orchestration logic.
     Adapters handle the specifics of managing spec
-tags: []
+tags:
+  - name: Clusters
+  - name: Cluster statuses
+  - name: NodePool statuses
+  - name: NodePools
 paths:
   /api/hyperfleet/v1/clusters:
     get:
       operationId: getClusters
       summary: List clusters
+      description: Returns a list of all clusters.
       parameters:
         - $ref: '#/components/parameters/SearchParams'
         - $ref: '#/components/parameters/QueryParams.page'
@@ -40,6 +45,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Error'
+      tags:
+        - Clusters
       security:
         - BearerAuth: []
     post:
@@ -50,7 +57,7 @@ paths:
 
         **Note**: The `status` object in the response is read-only and computed by the service.
         It is NOT part of the request body. Initially,
-        status.conditions will include mandatory "Available", "Ready" and "Reconciled" conditions.
+        status.conditions will include mandatory "LastKnownReconciled", "Ready" and "Reconciled" conditions.
       parameters: []
       responses:
         '201':
@@ -67,6 +74,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Error'
+      tags:
+        - Clusters
       requestBody:
         required: true
         content:
@@ -79,6 +88,7 @@ paths:
     get:
       operationId: getClusterById
       summary: Get cluster by ID
+      description: Returns a single cluster by its ID.
       parameters:
         - $ref: '#/components/parameters/SearchParams'
         - name: cluster_id
@@ -101,6 +111,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Error'
+      tags:
+        - Clusters
       security:
         - BearerAuth: []
     patch:
@@ -133,6 +145,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Error'
+      tags:
+        - Clusters
       requestBody:
         required: true
         content:
@@ -175,24 +189,24 @@ paths:
                   conditions:
                     - type: Ready
                       status: 'True'
-                      reason: All adapters reported Available=True for the current generation
-                      message: All adapters reported Available=True for the current generation
+                      reason: ReconciledAll
+                      message: All required adapters reported Available=True or Finalized=True at the current generation
                       observed_generation: 2
                       created_time: '2021-01-01T10:00:00Z'
                       last_updated_time: '2021-01-01T10:00:00Z'
                       last_transition_time: '2021-01-01T10:00:00Z'
                     - type: Reconciled
                       status: 'True'
-                      reason: All required adapters reported Available=True or Finalized=True at the current generation
+                      reason: ReconciledAll
                       message: All required adapters reported Available=True or Finalized=True at the current generation
                       observed_generation: 2
                       created_time: '2021-01-01T10:00:00Z'
                       last_updated_time: '2021-01-01T10:00:00Z'
                       last_transition_time: '2021-01-01T10:00:00Z'
-                    - type: Available
+                    - type: LastKnownReconciled
                       status: 'True'
-                      reason: All adapters reported Available True for the same generation
-                      message: All adapters reported Available True for the same generation
+                      reason: AllAdaptersReconciled
+                      message: All required adapters report Available=True for the tracked generation
                       observed_generation: 2
                       created_time: '2021-01-01T10:00:00Z'
                       last_updated_time: '2021-01-01T10:00:00Z'
@@ -229,6 +243,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Error'
+      tags:
+        - Clusters
       security:
         - BearerAuth: []
   /api/hyperfleet/v1/clusters/{cluster_id}/nodepools:
@@ -263,6 +279,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Error'
+      tags:
+        - NodePools
       security:
         - BearerAuth: []
     post:
@@ -293,6 +311,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Error'
+      tags:
+        - NodePools
       requestBody:
         required: true
         content:
@@ -334,6 +354,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Error'
+      tags:
+        - NodePools
       security:
         - BearerAuth: []
     delete:
@@ -380,24 +402,24 @@ paths:
                   conditions:
                     - type: Ready
                       status: 'True'
-                      reason: All adapters reported Available=True for the current generation
-                      message: All adapters reported Available=True for the current generation
+                      reason: ReconciledAll
+                      message: All required adapters reported Available=True or Finalized=True at the current generation
                       observed_generation: 2
                       created_time: '2021-01-01T10:00:00Z'
                       last_updated_time: '2021-01-01T10:00:00Z'
                       last_transition_time: '2021-01-01T10:00:00Z'
                     - type: Reconciled
                       status: 'True'
-                      reason: All required adapters reported Available=True or Finalized=True at the current generation
+                      reason: ReconciledAll
                       message: All required adapters reported Available=True or Finalized=True at the current generation
                       observed_generation: 2
                       created_time: '2021-01-01T10:00:00Z'
                       last_updated_time: '2021-01-01T10:00:00Z'
                       last_transition_time: '2021-01-01T10:00:00Z'
-                    - type: Available
+                    - type: LastKnownReconciled
                       status: 'True'
-                      reason: All adapters reported Available True for the same generation
-                      message: All adapters reported Available True for the same generation
+                      reason: AllAdaptersReconciled
+                      message: All required adapters report Available=True for the tracked generation
                       observed_generation: 2
                       created_time: '2021-01-01T10:00:00Z'
                       last_updated_time: '2021-01-01T10:00:00Z'
@@ -434,6 +456,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Error'
+      tags:
+        - NodePools
       security:
         - BearerAuth: []
     patch:
@@ -472,6 +496,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Error'
+      tags:
+        - NodePools
       requestBody:
         required: true
         content:
@@ -516,6 +542,8 @@ paths:
           description: The server cannot find the requested resource.
         '409':
           description: The request conflicts with the current state of the server.
+      tags:
+        - NodePool statuses
       requestBody:
         required: true
         content:
@@ -527,6 +555,7 @@ paths:
     put:
       operationId: putNodePoolStatuses
       summary: Adapter creates or updates resource nodepool status
+      description: Idempotent upsert of an adapter status for this nodepool. Use instead of POST when the adapter name is known upfront.
       parameters:
         - name: cluster_id
           in: path
@@ -553,6 +582,8 @@ paths:
           description: The server cannot find the requested resource.
         '409':
           description: The request conflicts with the current state of the server.
+      tags:
+        - NodePool statuses
       requestBody:
         required: true
         content:
@@ -597,6 +628,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Error'
+      tags:
+        - NodePool statuses
   /api/hyperfleet/v1/clusters/{cluster_id}/statuses:
     post:
       operationId: postClusterStatuses
@@ -627,6 +660,8 @@ paths:
           description: The server cannot find the requested resource.
         '409':
           description: The request conflicts with the current state of the server.
+      tags:
+        - Cluster statuses
       requestBody:
         required: true
         content:
@@ -638,6 +673,7 @@ paths:
     put:
       operationId: putClusterStatuses
       summary: Adapter creates or updates resource cluster status
+      description: Idempotent upsert of an adapter status for this cluster. Use instead of POST when the adapter name is known upfront.
       parameters:
         - name: cluster_id
           in: path
@@ -658,6 +694,8 @@ paths:
           description: The server cannot find the requested resource.
         '409':
           description: The request conflicts with the current state of the server.
+      tags:
+        - Cluster statuses
       requestBody:
         required: true
         content:
@@ -693,6 +731,8 @@ paths:
           description: The server could not understand the request due to invalid syntax.
         '404':
           description: The server cannot find the requested resource.
+      tags:
+        - Cluster statuses
       security:
         - BearerAuth: []
   /api/hyperfleet/v1/nodepools:
@@ -721,6 +761,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Error'
+      tags:
+        - NodePools
       security:
         - BearerAuth: []
 components:
@@ -1132,24 +1174,24 @@ components:
           conditions:
             - type: Ready
               status: 'True'
-              reason: All adapters reported Available=True for the current generation
-              message: All adapters reported Available=True for the current generation
+              reason: ReconciledAll
+              message: All required adapters reported Available=True or Finalized=True at the current generation
               observed_generation: 1
               created_time: '2021-01-01T10:00:00Z'
               last_updated_time: '2021-01-01T10:00:00Z'
               last_transition_time: '2021-01-01T10:00:00Z'
             - type: Reconciled
               status: 'True'
-              reason: All required adapters reported Available=True or Finalized=True at the current generation
+              reason: ReconciledAll
               message: All required adapters reported Available=True or Finalized=True at the current generation
               observed_generation: 1
               created_time: '2021-01-01T10:00:00Z'
               last_updated_time: '2021-01-01T10:00:00Z'
               last_transition_time: '2021-01-01T10:00:00Z'
-            - type: Available
+            - type: LastKnownReconciled
               status: 'True'
-              reason: All adapters reported Available True for the same generation
-              message: All adapters reported Available True for the same generation
+              reason: AllAdaptersReconciled
+              message: All required adapters report Available=True for the tracked generation
               observed_generation: 1
               created_time: '2021-01-01T10:00:00Z'
               last_updated_time: '2021-01-01T10:00:00Z'
@@ -1270,7 +1312,7 @@ components:
             **Mandatory conditions**: 
             - `type: "Ready"` *(deprecated — use Reconciled)*: Whether all adapters report successfully at the current generation.
             - `type: "Reconciled"`: Whether the resource's desired state has been fully reconciled by all adapters at the current generation.
-            - `type: "Available"`: Aggregated adapter result for a common observed_generation.   
+            - `type: "LastKnownReconciled"`: Sticky cross-generation condition — stays True as long as all required adapters were reconciled at a common observed generation, even if a newer generation is being processed.
 
             These conditions are present immediately upon resource creation.
       description: |-
@@ -1323,7 +1365,7 @@ components:
           example: The cluster name field is required
         instance:
           type: string
-          format: uri
+          format: uri-reference
           description: URI reference for this specific occurrence
           example: /api/hyperfleet/v1/clusters
         code:
@@ -1431,24 +1473,24 @@ components:
           conditions:
             - type: Ready
               status: 'True'
-              reason: All adapters reported Available=True for the current generation
-              message: All adapters reported Available=True for the current generation
+              reason: ReconciledAll
+              message: All required adapters reported Available=True or Finalized=True at the current generation
               observed_generation: 1
               created_time: '2021-01-01T10:00:00Z'
               last_updated_time: '2021-01-01T10:00:00Z'
               last_transition_time: '2021-01-01T10:00:00Z'
             - type: Reconciled
               status: 'True'
-              reason: All required adapters reported Available=True or Finalized=True at the current generation
+              reason: ReconciledAll
               message: All required adapters reported Available=True or Finalized=True at the current generation
               observed_generation: 1
               created_time: '2021-01-01T10:00:00Z'
               last_updated_time: '2021-01-01T10:00:00Z'
               last_transition_time: '2021-01-01T10:00:00Z'
-            - type: Available
+            - type: LastKnownReconciled
               status: 'True'
-              reason: All adapters reported Available True for the same generation
-              message: All adapters reported Available True for the same generation
+              reason: AllAdaptersReconciled
+              message: All required adapters report Available=True for the tracked generation
               observed_generation: 1
               created_time: '2021-01-01T10:00:00Z'
               last_updated_time: '2021-01-01T10:00:00Z'
@@ -1636,7 +1678,7 @@ components:
             **Mandatory conditions**: 
             - `type: "Ready"` *(deprecated — use Reconciled)*: Whether all adapters report successfully at the current generation.
             - `type: "Reconciled"`: Whether the resource's desired state has been fully reconciled by all adapters at the current generation.
-            - `type: "Available"`: Aggregated adapter result for a common observed_generation.   
+            - `type: "LastKnownReconciled"`: Sticky cross-generation condition — stays True as long as all required adapters were reconciled at a common observed generation, even if a newer generation is being processed.
 
             These conditions are present immediately upon resource creation.
       description: |-
