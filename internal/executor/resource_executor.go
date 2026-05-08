@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/configloader"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/criteria"
@@ -12,6 +13,7 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/manifest"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/transportclient"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/logger"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/metrics"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/utils"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -20,16 +22,18 @@ import (
 
 // ResourceExecutor creates and updates Kubernetes resources
 type ResourceExecutor struct {
-	client transportclient.TransportClient
-	log    logger.Logger
+	client  transportclient.TransportClient
+	log     logger.Logger
+	metrics *metrics.Recorder
 }
 
 // newResourceExecutor creates a new resource executor
 // NOTE: Caller (NewExecutor) is responsible for config validation
 func newResourceExecutor(config *ExecutorConfig) *ResourceExecutor {
 	return &ResourceExecutor{
-		client: config.TransportClient,
-		log:    config.Logger,
+		client:  config.TransportClient,
+		log:     config.Logger,
+		metrics: config.MetricsRecorder,
 	}
 }
 
@@ -589,6 +593,19 @@ func (re *ResourceExecutor) executeResourceDelete(
 	execCtx *ExecutionContext,
 	transportTarget transportclient.TransportContext,
 ) (ResourceResult, error) {
+	// Extract resource type (Kubernetes kind) from manifest for metrics labeling.
+	// This is done early so it's available for all metric recording paths (success/failure).
+	gvk := re.resolveGVK(resource)
+	resourceType := gvk.Kind
+	if resourceType == "" {
+		resourceType = metrics.ResourceTypeUnknown
+	}
+
+	// Metrics: track deletion in-progress and duration
+	startTime := time.Now()
+	re.metrics.IncDeletionInProgress(resourceType)
+	defer re.metrics.DecDeletionInProgress(resourceType)
+
 	result := ResourceResult{
 		Name:      resource.Name,
 		Status:    StatusSuccess,
@@ -603,6 +620,8 @@ func (re *ResourceExecutor) executeResourceDelete(
 		result.Status = StatusFailed
 		result.Error = discoverErr
 		re.recordResourceError(execCtx, resource, discoverErr)
+		re.metrics.RecordDeletion(resourceType, metrics.DeletionStatusError)
+		re.metrics.ObserveDeletionDuration(resourceType, time.Since(startTime))
 		return result, NewExecutorError(
 			PhaseResources, resource.Name, "failed to discover resource for deletion", discoverErr)
 	}
@@ -612,17 +631,26 @@ func (re *ResourceExecutor) executeResourceDelete(
 		// Store nil — the key is removed from the CEL resources map, so
 		// !resources.?X.hasValue() evaluates to true in this reconciliation.
 		execCtx.Resources[resource.Name] = nil
-		result.OperationReason = "resource not found, already deleted"
-		re.log.Infof(ctx, "Resource[%s] delete: already gone (not found)", resource.Name)
+		result.OperationReason = "resource already deleted or never existed"
+		re.log.Infof(ctx, "Resource[%s] delete: already deleted or never existed", resource.Name)
+		re.metrics.RecordDeletion(resourceType, metrics.DeletionStatusSuccess)
+		re.metrics.ObserveDeletionDuration(resourceType, time.Since(startTime))
 		return result, nil
 	}
 
 	// Step 3: Extract identity from discovered resource for result reporting
-	gvk := discovered.GroupVersionKind()
+	gvk = discovered.GroupVersionKind()
 	result.Kind = gvk.Kind
 	result.Namespace = discovered.GetNamespace()
 	result.ResourceName = discovered.GetName()
 	result.DiscoveredState = discovered
+
+	// Update resourceType with authoritative kind from discovered resource.
+	// If manifest-based GVK resolution initially failed (resourceType was set to "Unknown"),
+	// we now have the correct kind from the actual K8s resource.
+	if gvk.Kind != "" {
+		resourceType = gvk.Kind
+	}
 
 	// Step 4: Build delete options
 	propagationPolicy := "Background"
@@ -641,6 +669,8 @@ func (re *ResourceExecutor) executeResourceDelete(
 		errCtx := logger.WithK8sResult(ctx, "FAILED")
 		errCtx = logger.WithErrorField(errCtx, err)
 		re.log.Errorf(errCtx, "Resource[%s] delete: FAILED", resource.Name)
+		re.metrics.RecordDeletion(resourceType, metrics.DeletionStatusError)
+		re.metrics.ObserveDeletionDuration(resourceType, time.Since(startTime))
 		return result, NewExecutorError(PhaseResources, resource.Name, "failed to delete resource", err)
 	}
 
@@ -671,6 +701,9 @@ func (re *ResourceExecutor) executeResourceDelete(
 	re.log.Infof(logger.WithK8sResult(ctx, "SUCCESS"),
 		"Resource[%s] delete: operation=delete propagationPolicy=%s",
 		resource.Name, propagationPolicy)
+
+	re.metrics.RecordDeletion(resourceType, metrics.DeletionStatusSuccess)
+	re.metrics.ObserveDeletionDuration(resourceType, time.Since(startTime))
 
 	return result, nil
 }

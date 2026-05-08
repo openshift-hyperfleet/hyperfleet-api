@@ -385,12 +385,14 @@ func buildExecutor(
 	apiClient hyperfleetapi.Client,
 	tc transportclient.TransportClient,
 	log logger.Logger,
+	metricsRecorder *metrics.Recorder,
 ) (*executor.Executor, error) {
 	return executor.NewBuilder().
 		WithConfig(config).
 		WithAPIClient(apiClient).
 		WithTransportClient(tc).
 		WithLogger(log).
+		WithMetricsRecorder(metricsRecorder).
 		Build()
 }
 
@@ -524,7 +526,8 @@ func runServe(flags *pflag.FlagSet) error {
 	}()
 
 	// Create adapter metrics recorder
-	metricsRecorder := metrics.NewRecorder(config.Adapter.Name, version.Version, nil)
+	adapterName := metrics.ExtractAdapterName(config.Adapter.Name)
+	metricsRecorder := metrics.NewRecorder(config.Adapter.Name, version.Version, adapterName, nil)
 
 	// Create real clients
 	log.Info(ctx, "Creating HyperFleet API client...")
@@ -544,7 +547,7 @@ func runServe(flags *pflag.FlagSet) error {
 
 	// Build executor
 	log.Info(ctx, "Creating event executor...")
-	exec, err := buildExecutor(config, apiClient, tc, log)
+	exec, err := buildExecutor(config, apiClient, tc, log, metricsRecorder)
 	if err != nil {
 		errCtx := logger.WithErrorField(ctx, err)
 		log.Errorf(errCtx, "Failed to create executor")
@@ -731,7 +734,7 @@ func runDryRun(flags *pflag.FlagSet) error {
 	}
 
 	// Build executor with mock clients (same builder as serve, no metrics in dry-run)
-	exec, err := buildExecutor(config, dryrunAPI, dryrunClient, log)
+	exec, err := buildExecutor(config, dryrunAPI, dryrunClient, log, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create executor: %w", err)
 	}
