@@ -49,7 +49,7 @@ config:
       key_file: ""
 
     jwt:
-      enabled: true
+      enabled: false
       issuer_url: ""
       audience: ""
 
