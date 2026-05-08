@@ -275,6 +275,15 @@ Per Helm Chart Conventions Standard section 9 (Deprecation and Migration Pattern
 {{- end }}
 
 {{/*
+Name for cluster-scoped resources (ClusterRole, ClusterRoleBinding).
+Appends the release namespace to the fullname so that two installations in
+different namespaces never collide on the same cluster-scoped resource name.
+*/}}
+{{- define "hyperfleet-adapter.clusterScopedName" -}}
+{{- printf "%s-%s" (include "hyperfleet-adapter.fullname" .) .Release.Namespace | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+{{/*
 Determine the broker type.
 Returns broker.type if explicitly set, otherwise infers from broker config objects.
 */}}
