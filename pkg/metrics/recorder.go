@@ -40,6 +40,30 @@ func ExtractAdapterName(component string) string {
 	}
 }
 
+// normalizeResourceType normalizes resource type labels to prevent cardinality issues.
+// Empty or whitespace-only values are replaced with ResourceTypeUnknown.
+func normalizeResourceType(resourceType string) string {
+	resourceType = strings.TrimSpace(resourceType)
+	if resourceType == "" {
+		return ResourceTypeUnknown
+	}
+	return resourceType
+}
+
+// normalizeDeletionStatus validates and normalizes deletion status labels.
+// Only DeletionStatusSuccess and DeletionStatusError are valid.
+// Invalid values are replaced with DeletionStatusError to prevent bad time series.
+func normalizeDeletionStatus(status string) string {
+	status = strings.TrimSpace(status)
+	switch status {
+	case DeletionStatusSuccess, DeletionStatusError:
+		return status
+	default:
+		// Invalid status values default to "error" as a safe fallback
+		return DeletionStatusError
+	}
+}
+
 // Recorder registers and records adapter-level Prometheus metrics.
 // All methods are nil-safe: calling methods on a nil *Recorder is a no-op,
 // which allows dry-run mode to skip metrics without nil checks at every call site.
@@ -186,36 +210,45 @@ func (r *Recorder) RecordError(errorType string) {
 // RecordDeletion increments the resources_deleted_total counter for the given resource type.
 // resourceType should be the Kubernetes kind (e.g., "Namespace", "ServiceAccount").
 // Valid status values: DeletionStatusSuccess ("success"), DeletionStatusError ("error").
+// Invalid inputs are normalized to prevent bad time series.
 func (r *Recorder) RecordDeletion(resourceType, status string) {
 	if r == nil {
 		return
 	}
+	resourceType = normalizeResourceType(resourceType)
+	status = normalizeDeletionStatus(status)
 	r.deletionTotal.WithLabelValues(resourceType, status).Inc()
 }
 
 // ObserveDeletionDuration records the deletion duration for a resource type in seconds.
 // resourceType should be the Kubernetes kind (e.g., "Namespace", "ServiceAccount").
+// Empty or invalid resourceType is normalized to prevent bad time series.
 func (r *Recorder) ObserveDeletionDuration(resourceType string, d time.Duration) {
 	if r == nil {
 		return
 	}
+	resourceType = normalizeResourceType(resourceType)
 	r.deletionDuration.WithLabelValues(resourceType).Observe(d.Seconds())
 }
 
 // IncDeletionInProgress increments the in-progress deletion gauge for a resource type.
 // resourceType should be the Kubernetes kind (e.g., "Namespace", "ServiceAccount").
+// Empty or invalid resourceType is normalized to prevent bad time series.
 func (r *Recorder) IncDeletionInProgress(resourceType string) {
 	if r == nil {
 		return
 	}
+	resourceType = normalizeResourceType(resourceType)
 	r.deletionInProgress.WithLabelValues(resourceType).Inc()
 }
 
 // DecDeletionInProgress decrements the in-progress deletion gauge for a resource type.
 // resourceType should be the Kubernetes kind (e.g., "Namespace", "ServiceAccount").
+// Empty or invalid resourceType is normalized to prevent bad time series.
 func (r *Recorder) DecDeletionInProgress(resourceType string) {
 	if r == nil {
 		return
 	}
+	resourceType = normalizeResourceType(resourceType)
 	r.deletionInProgress.WithLabelValues(resourceType).Dec()
 }

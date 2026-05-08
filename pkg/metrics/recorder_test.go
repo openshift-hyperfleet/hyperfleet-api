@@ -357,3 +357,90 @@ func TestExtractAdapterName(t *testing.T) {
 		})
 	}
 }
+
+func TestNormalizeResourceType(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"valid kind", "Namespace", "Namespace"},
+		{"empty string", "", "Unknown"},
+		{"whitespace only", "   ", "Unknown"},
+		{"with leading/trailing spaces", "  Deployment  ", "Deployment"},
+		{"lowercase (no change)", "pod", "pod"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := normalizeResourceType(tt.input)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestNormalizeDeletionStatus(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"valid success", "success", "success"},
+		{"valid error", "error", "error"},
+		{"invalid failed", "failed", "error"},
+		{"invalid skipped", "skipped", "error"},
+		{"empty string", "", "error"},
+		{"whitespace only", "   ", "error"},
+		{"typo in status", "sucess", "error"}, //nolint:misspell // intentional typo for testing
+		{"uppercase SUCCESS", "SUCCESS", "error"},
+		{"with spaces", " success ", "success"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := normalizeDeletionStatus(tt.input)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestRecordDeletion_Normalization(t *testing.T) {
+	registry := prometheus.NewRegistry()
+	recorder := NewRecorder("test-adapter", "v0.1.0", "test", registry)
+
+	// Record with invalid status - should normalize to "error"
+	recorder.RecordDeletion("Namespace", "invalid-status")
+	// Record with empty resourceType - should normalize to "Unknown"
+	recorder.RecordDeletion("", "success")
+	// Record with valid values
+	recorder.RecordDeletion("ServiceAccount", "success")
+
+	families, err := registry.Gather()
+	require.NoError(t, err)
+
+	var deletionFamily *dto.MetricFamily
+	for _, f := range families {
+		if f.GetName() == "hyperfleet_adapter_resources_deleted_total" {
+			deletionFamily = f
+			break
+		}
+	}
+	require.NotNil(t, deletionFamily)
+
+	counts := make(map[string]float64)
+	for _, m := range deletionFamily.GetMetric() {
+		labels := make(map[string]string)
+		for _, l := range m.GetLabel() {
+			labels[l.GetName()] = l.GetValue()
+		}
+		key := labels["resource_type"] + "/" + labels["status"]
+		counts[key] = m.GetCounter().GetValue()
+	}
+
+	// invalid-status normalized to error
+	assert.Equal(t, float64(1), counts["Namespace/error"], "Invalid status should normalize to error")
+	// empty resourceType normalized to Unknown
+	assert.Equal(t, float64(1), counts["Unknown/success"], "Empty resourceType should normalize to Unknown")
+	// valid values unchanged
+	assert.Equal(t, float64(1), counts["ServiceAccount/success"], "Valid values should be preserved")
+}

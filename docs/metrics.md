@@ -67,11 +67,13 @@ The `error_type` label on `hyperfleet_adapter_errors_total` corresponds to the e
 
 #### Histogram Buckets
 
-The `event_processing_duration_seconds` histogram uses the following buckets (in seconds), as recommended by the [adapter metrics standard](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/components/adapter/framework/adapter-metrics.md):
+Both duration histograms (`event_processing_duration_seconds` and `resource_deletion_duration_seconds`) use the following buckets (in seconds), as recommended by the [adapter metrics standard](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/components/adapter/framework/adapter-metrics.md):
 
 ```text
 0.1, 0.5, 1, 2, 5, 10, 30, 60, 120
 ```
+
+This shared bucket configuration enables consistent histogram_quantile queries across both metrics.
 
 ### Example PromQL Queries
 
