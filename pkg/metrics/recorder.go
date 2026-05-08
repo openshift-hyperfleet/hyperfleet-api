@@ -20,13 +20,16 @@ const (
 	ResourceTypeUnknown = "Unknown"
 )
 
-// Propagation policy constants
-const (
-	PropagationPolicyUnknown = "unknown"
-)
-
 // ExtractAdapterName derives a short adapter name from the component name.
-// Examples: "hyperfleet-adapter-gcp" → "gcp", "adapter-validation" → "validation", "test-adapter" → "test"
+// It strips common prefixes ("hyperfleet-adapter-", "adapter-") and suffixes ("-adapter")
+// to produce a short identifier suitable for the adapter_name metric label.
+// If no pattern matches, it returns the component name unchanged.
+//
+// Examples:
+//   - "hyperfleet-adapter-gcp" → "gcp"
+//   - "adapter-validation" → "validation"
+//   - "test-adapter" → "test"
+//   - "standalone" → "standalone"
 func ExtractAdapterName(component string) string {
 	switch {
 	case strings.HasPrefix(component, "hyperfleet-adapter-"):

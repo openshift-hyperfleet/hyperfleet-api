@@ -4,28 +4,28 @@
 
 All metrics are exposed on the `/metrics` endpoint (port 9090) in Prometheus format. No additional configuration is needed.
 
-The Helm chart includes a **ServiceMonitor** template for automatic discovery by the [Prometheus Operator](https://github.com/prometheus-operator/prometheus-operator). It is enabled by default (`serviceMonitor.enabled: true`) and scrapes the `/metrics` endpoint every 30s with `honorLabels: true` to preserve the adapter's `component` and `version` labels. The template is only rendered when the Prometheus Operator CRDs (`monitoring.coreos.com/v1/ServiceMonitor`) are available on the cluster; otherwise it is silently skipped. See the Helm `values.yaml` for configuration options (interval, scrapeTimeout, labels, namespaceSelector).
+The Helm chart includes a **ServiceMonitor** template for automatic discovery by the [Prometheus Operator](https://github.com/prometheus-operator/prometheus-operator). It is enabled by default (`serviceMonitor.enabled: true`) and scrapes the `/metrics` endpoint every 30s with `honorLabels: true` to preserve the adapter's `component`, `version`, and `adapter_name` labels. The template is only rendered when the Prometheus Operator CRDs (`monitoring.coreos.com/v1/ServiceMonitor`) are available on the cluster; otherwise it is silently skipped. See the Helm `values.yaml` for configuration options (interval, scrapeTimeout, labels, namespaceSelector).
 
 ## Adapter Metrics
 
 The adapter exposes Prometheus metrics following the [HyperFleet Metrics Standard](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/standards/metrics.md) with the `hyperfleet_adapter_` prefix.
 
-All adapter metrics include `component` and `version` as constant labels.
+All adapter metrics include `component`, `version`, and `adapter_name` as constant labels.
 
 ### Baseline Metrics
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
-| `hyperfleet_adapter_build_info` | Gauge | `component`, `version`, `commit` | Build information (always 1) |
-| `hyperfleet_adapter_up` | Gauge | `component`, `version` | Whether the adapter is up and running (1=up, 0=shutting down) |
+| `hyperfleet_adapter_build_info` | Gauge | `component`, `version`, `adapter_name`, `commit` | Build information (always 1) |
+| `hyperfleet_adapter_up` | Gauge | `component`, `version`, `adapter_name` | Whether the adapter is up and running (1=up, 0=shutting down) |
 
 ### Event Processing Metrics
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
-| `hyperfleet_adapter_events_processed_total` | Counter | `component`, `version`, `status` | Total CloudEvents processed. Status: `success`, `failed`, `skipped` |
-| `hyperfleet_adapter_event_processing_duration_seconds` | Histogram | `component`, `version` | End-to-end event processing duration |
-| `hyperfleet_adapter_errors_total` | Counter | `component`, `version`, `error_type` | Total errors by execution phase |
+| `hyperfleet_adapter_events_processed_total` | Counter | `component`, `version`, `adapter_name`, `status` | Total CloudEvents processed. Status: `success`, `failed`, `skipped` |
+| `hyperfleet_adapter_event_processing_duration_seconds` | Histogram | `component`, `version`, `adapter_name` | End-to-end event processing duration |
+| `hyperfleet_adapter_errors_total` | Counter | `component`, `version`, `adapter_name`, `error_type` | Total errors by execution phase |
 
 #### Status Values
 
