@@ -30,7 +30,7 @@ Reference: `factories/`
 
 `integration/integration_test.go` — `TestMain(m *testing.M)`:
 - Sets default adapter env vars (`HYPERFLEET_ADAPTERS_REQUIRED_CLUSTER`, `HYPERFLEET_ADAPTERS_REQUIRED_NODEPOOL`)
-- Sets `HYPERFLEET_SERVER_OPENAPI_SCHEMA_PATH` via `runtime.Caller`
+- Schema validation uses the embedded `hyperfleet-api-spec` Go module automatically — no filesystem path needed
 - 45-second timeout safeguard for CI (prevents hung Prow jobs)
 
 ## Key Environment Variables
@@ -38,4 +38,3 @@ Reference: `factories/`
 - `HYPERFLEET_ENV` — selects config environment: `unit_testing`, `integration_testing`, `development`
 - `TESTCONTAINERS_RYUK_DISABLED=true` — required for testcontainers in CI
 - `HYPERFLEET_ADAPTERS_REQUIRED_CLUSTER` / `HYPERFLEET_ADAPTERS_REQUIRED_NODEPOOL` — adapter lists for tests
-- `HYPERFLEET_SERVER_OPENAPI_SCHEMA_PATH` — OpenAPI schema path for spec validation

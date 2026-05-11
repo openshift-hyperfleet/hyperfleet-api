@@ -4,9 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -497,77 +495,6 @@ func TestClusterSchemaValidation(t *testing.T) {
 	Expect(err).NotTo(HaveOccurred(), "Empty spec should be accepted by base schema")
 	Expect(resp3.StatusCode()).To(Equal(http.StatusCreated))
 	Expect(*resp3.JSON201.Id).NotTo(BeEmpty())
-}
-
-// TestClusterSchemaValidationWithProviderSchema tests schema validation with a provider-specific schema
-// This test will only work if HYPERFLEET_SERVER_OPENAPI_SCHEMA_PATH is set to a provider schema
-// (e.g., gcp_openapi.yaml). When using the base schema, this test will be skipped.
-func TestClusterSchemaValidationWithProviderSchema(t *testing.T) {
-	RegisterTestingT(t)
-
-	// Check if we're using a provider schema or base schema
-	// If base schema, skip detailed validation tests
-	schemaPath := os.Getenv("HYPERFLEET_SERVER_OPENAPI_SCHEMA_PATH")
-	if schemaPath == "" || strings.HasSuffix(schemaPath, "openapi/openapi.yaml") {
-		t.Skip("Skipping provider schema validation test - using base schema")
-		return
-	}
-
-	h, client := test.RegisterIntegration(t)
-
-	account := h.NewRandAccount()
-	ctx := h.NewAuthenticatedContext(account)
-
-	// Test with provider-specific schema (assumes GCP schema for this example)
-	// If using a different provider, adjust the spec accordingly
-
-	// Test 1: Invalid spec - missing required field
-	invalidSpec := map[string]interface{}{
-		"gcp": map[string]interface{}{
-			// Missing required "region" field
-			"zone": "us-central1-a",
-		},
-	}
-
-	invalidInput := openapi.ClusterCreateRequest{
-		Kind: util.PtrString("Cluster"),
-		Name: "provider-schema-invalid",
-		Spec: invalidSpec,
-	}
-
-	resp, err := client.PostClusterWithResponse(
-		ctx, openapi.PostClusterJSONRequestBody(invalidInput), test.WithAuthToken(ctx),
-	)
-	Expect(err).NotTo(HaveOccurred())
-	Expect(resp.StatusCode()).To(Equal(http.StatusBadRequest),
-		"Should reject spec with missing required field")
-
-	// Parse error response to verify field-level details
-	bodyBytes, err := io.ReadAll(resp.HTTPResponse.Body)
-	if err != nil {
-		t.Fatalf("failed to read response body: %v", err)
-	}
-
-	var errorResponse openapi.Error
-	if err := json.Unmarshal(bodyBytes, &errorResponse); err != nil {
-		t.Fatalf("failed to unmarshal error response body: %v", err)
-	}
-
-	Expect(errorResponse.Code).ToNot(BeNil())
-	Expect(*errorResponse.Code).To(Equal("HYPERFLEET-VAL-000")) // Validation error code (RFC 9457 format)
-	Expect(errorResponse.Errors).ToNot(BeEmpty(), "Should include field-level error details")
-
-	// Verify errors contain field path
-	foundRegionError := false
-	if errorResponse.Errors != nil {
-		for _, detail := range *errorResponse.Errors {
-			if strings.Contains(detail.Field, "region") {
-				foundRegionError = true
-				break
-			}
-		}
-	}
-	Expect(foundRegionError).To(BeTrue(), "Error details should mention missing 'region' field")
 }
 
 // TestClusterSchemaValidationErrorDetails tests that validation errors include detailed field information

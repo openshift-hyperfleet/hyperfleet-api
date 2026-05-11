@@ -7,6 +7,7 @@ import (
 
 	gorillahandlers "github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
+	specschemas "github.com/openshift-hyperfleet/hyperfleet-api-spec/schemas"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/server/logging"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
@@ -17,6 +18,8 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/middleware"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/validators"
 )
+
+const coreSchemaPath = "core/openapi.yaml"
 
 type ServicesInterface interface {
 	GetService(name string) interface{}
@@ -107,27 +110,19 @@ func (s *apiServer) routes(tracingEnabled bool) *mux.Router {
 func registerAPIMiddleware(router *mux.Router) {
 	router.Use(MetricsMiddleware)
 
-	// Schema validation middleware (validates cluster/nodepool spec fields)
-	// Load schema path from config (follows Flag > Env > Config File > Default priority)
-	schemaPath := env().Config.Server.OpenAPISchemaPath
-
-	// Initialize schema validator (non-blocking - will warn if schema not found)
-	// Use background context for initialization logging
 	ctx := context.Background()
 
-	schemaValidator, err := validators.NewSchemaValidator(schemaPath)
+	schemaData, err := specschemas.FS.ReadFile(coreSchemaPath)
 	if err != nil {
-		// Log warning but don't fail - schema validation is optional
-		logger.With(ctx, logger.FieldSchemaPath, schemaPath).WithError(err).Warn("Failed to load schema validator")
-		logger.Warn(ctx, "Schema validation is disabled. Spec fields will not be validated.")
-		logger.Info(ctx, "To enable schema validation:")
-		logger.Info(ctx, "  - Local: Run from repo root, or use --server-openapi-schema-path=openapi/openapi.yaml")
-		logger.Info(ctx, "  - Config file: server.openapi_schema_path")
-		logger.Info(ctx, "  - Environment: HYPERFLEET_SERVER_OPENAPI_SCHEMA_PATH")
+		logger.WithError(ctx, err).Warn("Failed to read embedded OpenAPI schema; schema validation disabled")
 	} else {
-		// Apply schema validation middleware
-		logger.With(ctx, logger.FieldSchemaPath, schemaPath).Info("Schema validation enabled")
-		router.Use(middleware.SchemaValidationMiddleware(schemaValidator))
+		schemaValidator, err := validators.NewSchemaValidatorFromData(schemaData)
+		if err != nil {
+			logger.WithError(ctx, err).Warn("Failed to parse embedded OpenAPI schema; schema validation disabled")
+		} else {
+			logger.Info(ctx, "Schema validation enabled from embedded spec module")
+			router.Use(middleware.SchemaValidationMiddleware(schemaValidator))
+		}
 	}
 
 	router.Use(

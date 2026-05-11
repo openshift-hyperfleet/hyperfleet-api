@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"os"
-	"path/filepath"
 	"runtime"
 	"testing"
 	"time"
@@ -33,37 +32,6 @@ func TestMain(m *testing.M) {
 	}
 	if os.Getenv("HYPERFLEET_SERVER_JWK_CERT_URL") == "" {
 		_ = os.Setenv("HYPERFLEET_SERVER_JWK_CERT_URL", "https://test-idp.example.com/certs")
-	}
-
-	// Set OpenAPI schema path for integration tests if not already set
-	// This enables schema validation middleware during tests
-	// Uses HYPERFLEET_SERVER_OPENAPI_SCHEMA_PATH (config system standard)
-	if os.Getenv("HYPERFLEET_SERVER_OPENAPI_SCHEMA_PATH") == "" {
-		// Get the repo root directory (2 levels up from test/integration)
-		// Use runtime.Caller to find this file's path
-		_, filename, _, ok := runtime.Caller(0)
-		if !ok {
-			logger.Warn(ctx, "Failed to determine current file path via runtime.Caller, skipping schema path setup")
-		} else {
-			// filename is like: /path/to/repo/test/integration/integration_test.go
-			// Navigate up: integration_test.go -> integration -> test -> repo
-			integrationDir := filepath.Dir(filename) // /path/to/repo/test/integration
-			testDir := filepath.Dir(integrationDir)  // /path/to/repo/test
-			repoRoot := filepath.Dir(testDir)        // /path/to/repo
-
-			// Build schema path using filepath.Join for cross-platform compatibility
-			schemaPath := filepath.Join(repoRoot, "openapi", "openapi.yaml")
-
-			// Verify the schema file exists before setting the env var
-			if _, err := os.Stat(schemaPath); err != nil {
-				logger.With(ctx, logger.FieldSchemaPath, schemaPath).WithError(err).
-					Warn("Schema file not found, skipping schema path setup")
-			} else {
-				_ = os.Setenv("HYPERFLEET_SERVER_OPENAPI_SCHEMA_PATH", schemaPath)
-				logger.With(ctx, logger.FieldSchemaPath, schemaPath).
-					Info("Set HYPERFLEET_SERVER_OPENAPI_SCHEMA_PATH for integration tests")
-			}
-		}
 	}
 
 	helper := test.NewHelper(&testing.T{})

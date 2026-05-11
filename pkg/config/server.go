@@ -10,14 +10,13 @@ import (
 // ServerConfig holds HTTP/HTTPS server configuration
 // Follows HyperFleet Configuration Standard
 type ServerConfig struct {
-	Hostname          string         `mapstructure:"hostname" json:"hostname" validate:"omitempty,hostname|ip"`
-	Host              string         `mapstructure:"host" json:"host" validate:"required,hostname|ip"`
-	OpenAPISchemaPath string         `mapstructure:"openapi_schema_path" json:"openapi_schema_path"`
-	JWK               JWKConfig      `mapstructure:"jwk" json:"jwk" validate:"required"`
-	TLS               TLSConfig      `mapstructure:"tls" json:"tls" validate:"required"`
-	JWT               JWTConfig      `mapstructure:"jwt" json:"jwt" validate:"required"`
-	Timeouts          TimeoutsConfig `mapstructure:"timeouts" json:"timeouts" validate:"required"`
-	Port              int            `mapstructure:"port" json:"port" validate:"required,min=1,max=65535"`
+	Hostname string         `mapstructure:"hostname" json:"hostname" validate:"omitempty,hostname|ip"`
+	Host     string         `mapstructure:"host" json:"host" validate:"required,hostname|ip"`
+	JWK      JWKConfig      `mapstructure:"jwk" json:"jwk" validate:"required"`
+	TLS      TLSConfig      `mapstructure:"tls" json:"tls" validate:"required"`
+	JWT      JWTConfig      `mapstructure:"jwt" json:"jwt" validate:"required"`
+	Timeouts TimeoutsConfig `mapstructure:"timeouts" json:"timeouts" validate:"required"`
+	Port     int            `mapstructure:"port" json:"port" validate:"required,min=1,max=65535"`
 }
 
 // TimeoutsConfig holds HTTP timeout configuration
@@ -86,10 +85,9 @@ type JWKConfig struct {
 // These defaults can be overridden by config file, env vars, or CLI flags
 func NewServerConfig() *ServerConfig {
 	return &ServerConfig{
-		Hostname:          "",
-		Host:              "localhost",
-		Port:              8000,
-		OpenAPISchemaPath: "openapi/openapi.yaml",
+		Hostname: "",
+		Host:     "localhost",
+		Port:     8000,
 		Timeouts: TimeoutsConfig{
 			Read:  5 * time.Second,
 			Write: 30 * time.Second,
