@@ -112,6 +112,50 @@ components:
 	Expect(err.Error()).To(ContainSubstring("ClusterSpec schema not found"))
 }
 
+func TestNewSchemaValidatorFromData(t *testing.T) {
+	RegisterTestingT(t)
+
+	validator, err := NewSchemaValidatorFromData([]byte(testSchema))
+	Expect(err).To(BeNil())
+	Expect(validator).ToNot(BeNil())
+	Expect(validator.doc).ToNot(BeNil())
+	Expect(validator.schemas).ToNot(BeNil())
+	Expect(validator.schemas["cluster"]).ToNot(BeNil())
+	Expect(validator.schemas["cluster"].Schema).ToNot(BeNil())
+	Expect(validator.schemas["cluster"].TypeName).To(Equal("ClusterSpec"))
+	Expect(validator.schemas["nodepool"]).ToNot(BeNil())
+	Expect(validator.schemas["nodepool"].Schema).ToNot(BeNil())
+	Expect(validator.schemas["nodepool"].TypeName).To(Equal("NodePoolSpec"))
+}
+
+func TestNewSchemaValidatorFromData_InvalidData(t *testing.T) {
+	RegisterTestingT(t)
+
+	_, err := NewSchemaValidatorFromData([]byte("[[[invalid yaml"))
+	Expect(err).ToNot(BeNil())
+	Expect(err.Error()).To(ContainSubstring("failed to load OpenAPI schema from data"))
+}
+
+func TestNewSchemaValidatorFromData_MissingSchemas(t *testing.T) {
+	RegisterTestingT(t)
+
+	invalidSchema := `
+openapi: 3.0.0
+info:
+  title: Invalid Schema
+  version: 1.0.0
+paths: {}
+components:
+  schemas:
+    SomeOtherSchema:
+      type: object
+`
+
+	_, err := NewSchemaValidatorFromData([]byte(invalidSchema))
+	Expect(err).ToNot(BeNil())
+	Expect(err.Error()).To(ContainSubstring("ClusterSpec schema not found"))
+}
+
 func TestValidateClusterSpec_Valid(t *testing.T) {
 	RegisterTestingT(t)
 

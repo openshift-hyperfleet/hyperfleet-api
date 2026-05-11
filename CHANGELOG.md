@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- OpenAPI schema is now consumed from the `hyperfleet-api-spec` Go module (`v1.0.11`) and embedded in the binary at build time; `openapi/openapi.yaml` is extracted during `make generate` and is no longer tracked in git ([#129](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/129))
 - Replaced OCM SDK authentication handler with standalone JWT middleware, removing `ocm-sdk-go` dependency and its transitive dependencies (`glog`, `bluemonday`, `json-iterator`) ([#120](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/120))
 - Upgraded JWT library from `golang-jwt/jwt/v4` to `golang-jwt/jwt/v5` ([#120](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/120))
 - Refactored `AdapterStatusDao.Upsert()` to accept a pre-fetched existing record, moving lookup and `LastTransitionTime` preservation logic to the service layer ([#119](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/119))
@@ -42,6 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- `server.openapi_schema_path` config field, `--server-openapi-schema-path` CLI flag, and `HYPERFLEET_SERVER_OPENAPI_SCHEMA_PATH` env var — schema is now always sourced from the embedded `hyperfleet-api-spec` module ([#129](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/129))
 - OCM SDK dependency (`ocm-sdk-go`), OCM client (`pkg/client/ocm/`), OCM configuration (`pkg/config/ocm.go`), OCM logger bridge (`pkg/logger/ocm_bridge.go`), and OCM authorization mocks ([#120](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/120))
 
 ### Fixed

@@ -384,7 +384,7 @@ func setupTestValidator(t *testing.T) *validators.SchemaValidator {
 		t.Fatalf("Failed to create test schema: %v", err)
 	}
 
-	validator, err := validators.NewSchemaValidator(schemaPath)
+	validator, err := validators.NewSchemaValidator(schemaPath) //nolint:staticcheck
 	if err != nil {
 		t.Fatalf("Failed to create validator: %v", err)
 	}

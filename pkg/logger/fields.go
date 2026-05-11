@@ -49,11 +49,6 @@ const (
 	FieldServiceVersion           = "service_version"
 )
 
-// Schema related fields
-const (
-	FieldSchemaPath = "schema_path"
-)
-
 // Generic fields
 const (
 	FieldAdapter   = "adapter"

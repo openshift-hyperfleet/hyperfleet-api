@@ -43,9 +43,6 @@ WORKDIR /app
 # ubi9-micro doesn't include CA certificates; copy from builder for TLS (e.g. Google Pub/Sub)
 COPY --from=builder /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem
 COPY --from=builder /build/bin/hyperfleet-api /app/hyperfleet-api
-COPY --from=builder /build/openapi/openapi.yaml /app/openapi/openapi.yaml
-
-ENV HYPERFLEET_SERVER_OPENAPI_SCHEMA_PATH=/app/openapi/openapi.yaml
 
 USER 65532:65532
 

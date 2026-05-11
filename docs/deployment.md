@@ -145,8 +145,7 @@ HyperFleet API is configured via environment variables and configuration files.
 
 The API validates cluster and nodepool `spec` fields against an OpenAPI schema. This allows different providers (GCP, AWS, Azure) to have different spec structures.
 
-- **Configuration:** `server.openapi_schema_path` (supports config file, env var, or CLI flag)
-- **Default:** `openapi/openapi.yaml` (provider-agnostic base schema)
+The schema is embedded in the binary from the `github.com/openshift-hyperfleet/hyperfleet-api-spec` Go module — no filesystem path or external file is required. Schema validation is always active.
 
 See [Configuration Guide](config.md) for all configuration options.
 

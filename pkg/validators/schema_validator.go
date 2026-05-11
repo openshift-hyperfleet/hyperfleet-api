@@ -21,47 +21,49 @@ type SchemaValidator struct {
 	schemas map[string]*ResourceSchema
 }
 
-// NewSchemaValidator creates a new schema validator by loading an OpenAPI spec from the given path
+// NewSchemaValidator creates a new schema validator by loading an OpenAPI spec from the given path.
+//
+// Deprecated: Use NewSchemaValidatorFromData with embedded schema bytes instead.
 func NewSchemaValidator(schemaPath string) (*SchemaValidator, error) {
-	// Load OpenAPI spec
 	loader := openapi3.NewLoader()
 	doc, err := loader.LoadFromFile(schemaPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load OpenAPI schema from %s: %w", schemaPath, err)
 	}
+	return buildValidator(doc)
+}
 
-	// Validate the loaded document
+// NewSchemaValidatorFromData creates a new schema validator from raw OpenAPI spec bytes.
+func NewSchemaValidatorFromData(data []byte) (*SchemaValidator, error) {
+	loader := openapi3.NewLoader()
+	doc, err := loader.LoadFromData(data)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load OpenAPI schema from data: %w", err)
+	}
+	return buildValidator(doc)
+}
+
+func buildValidator(doc *openapi3.T) (*SchemaValidator, error) {
 	if err := doc.Validate(context.Background()); err != nil {
 		return nil, fmt.Errorf("invalid OpenAPI schema: %w", err)
 	}
 
-	// Extract ClusterSpec schema
 	clusterSpecSchema := doc.Components.Schemas["ClusterSpec"]
 	if clusterSpecSchema == nil {
 		return nil, fmt.Errorf("ClusterSpec schema not found in OpenAPI spec")
 	}
 
-	// Extract NodePoolSpec schema
 	nodePoolSpecSchema := doc.Components.Schemas["NodePoolSpec"]
 	if nodePoolSpecSchema == nil {
 		return nil, fmt.Errorf("NodePoolSpec schema not found in OpenAPI spec")
 	}
 
-	// Build schemas map
-	schemas := map[string]*ResourceSchema{
-		"cluster": {
-			TypeName: "ClusterSpec",
-			Schema:   clusterSpecSchema,
-		},
-		"nodepool": {
-			TypeName: "NodePoolSpec",
-			Schema:   nodePoolSpecSchema,
-		},
-	}
-
 	return &SchemaValidator{
-		doc:     doc,
-		schemas: schemas,
+		doc: doc,
+		schemas: map[string]*ResourceSchema{
+			"cluster":  {TypeName: "ClusterSpec", Schema: clusterSpecSchema},
+			"nodepool": {TypeName: "NodePoolSpec", Schema: nodePoolSpecSchema},
+		},
 	}, nil
 }
 
