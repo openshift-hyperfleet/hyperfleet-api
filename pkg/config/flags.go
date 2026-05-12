@@ -79,6 +79,8 @@ func AddMetricsFlags(cmd *cobra.Command) {
 	cmd.Flags().String("metrics-tls-key-file", defaults.TLS.KeyFile, "Path to TLS key file for metrics")
 	cmd.Flags().Duration("metrics-label-metrics-inclusion-duration", defaults.LabelMetricsInclusionDuration,
 		"Duration for cluster telemetry label inclusion")
+	cmd.Flags().Duration("metrics-deletion-stuck-threshold", defaults.DeletionStuckThreshold,
+		"Duration after which a pending deletion resource is considered stuck")
 }
 
 // AddHealthFlags adds health check configuration flags following standard naming
