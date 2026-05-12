@@ -52,15 +52,19 @@ From [InfoSec documentation](https://gitlab.cee.redhat.com/infosec-public/develo
 
 **One-time setup (requires VPN)**:
 
-> **Security Note**: The command below pipes a remote script directly to bash. Only execute this on a trusted network (Red Hat VPN) from a trusted source. For additional security, you can download and inspect the script before executing: `curl -o /tmp/quickstart.sh https://gitlab.cee.redhat.com/infosec-public/developer-workbench/tools/-/raw/main/rh-pre-commit/quickstart.sh && less /tmp/quickstart.sh && bash /tmp/quickstart.sh -f`
+> **Security Note**: For security, download and inspect the script before executing. Only run scripts from trusted sources on a trusted network (Red Hat VPN).
 
 ```bash
 # Connect to Red Hat VPN first
-# Then run (installs globally for all repos):
-curl -s https://gitlab.cee.redhat.com/infosec-public/developer-workbench/tools/-/raw/main/rh-pre-commit/quickstart.sh | bash -s -- -f
+# Download and inspect the script:
+curl -fsSL -o /tmp/quickstart.sh https://gitlab.cee.redhat.com/infosec-public/developer-workbench/tools/-/raw/main/rh-pre-commit/quickstart.sh
+less /tmp/quickstart.sh
+
+# After inspecting, run (installs globally for all repos):
+bash /tmp/quickstart.sh -f
 
 # OR install for specific directory only:
-# curl -s https://gitlab.cee.redhat.com/...quickstart.sh | bash -s -- -r ~/projects
+# bash /tmp/quickstart.sh -r ~/projects
 ```
 
 **Arguments**:
@@ -105,7 +109,7 @@ Keep only public hooks:
 ```yaml
 repos:
   - repo: https://github.com/openshift-hyperfleet/rh-hooks-ai
-    rev: v1.0.4
+    rev: v1.0.3
     hooks:
       - id: check-rh-precommit
       - id: validate-agents-md
@@ -150,15 +154,19 @@ git commit -m "feat: your message"
 
 **One-time installation** (requires VPN):
 
-> **Security Note**: The command below pipes a remote script directly to bash. Only execute this on a trusted network (Red Hat VPN) from a trusted source. For additional security, you can download and inspect the script before executing: `curl -o /tmp/quickstart.sh https://gitlab.cee.redhat.com/infosec-public/developer-workbench/tools/-/raw/main/rh-pre-commit/quickstart.sh && less /tmp/quickstart.sh && bash /tmp/quickstart.sh -f`
+> **Security Note**: For security, download and inspect the script before executing. Only run scripts from trusted sources on a trusted network (Red Hat VPN).
 
 ```bash
 # Connect to Red Hat VPN
-# Run quickstart script (installs globally for all repos):
-curl -s https://gitlab.cee.redhat.com/infosec-public/developer-workbench/tools/-/raw/main/rh-pre-commit/quickstart.sh | bash -s -- -f
+# Download and inspect the script:
+curl -fsSL -o /tmp/quickstart.sh https://gitlab.cee.redhat.com/infosec-public/developer-workbench/tools/-/raw/main/rh-pre-commit/quickstart.sh
+less /tmp/quickstart.sh
+
+# After inspecting, run (installs globally for all repos):
+bash /tmp/quickstart.sh -f
 
 # OR install for specific directory only:
-# curl -s https://gitlab.cee.redhat.com/...quickstart.sh | bash -s -- -r ~/projects
+# bash /tmp/quickstart.sh -r ~/projects
 
 # Verify installation:
 which rh-multi-pre-commit
