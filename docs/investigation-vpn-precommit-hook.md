@@ -51,6 +51,9 @@ From [InfoSec documentation](https://gitlab.cee.redhat.com/infosec-public/develo
 ### How It Works
 
 **One-time setup (requires VPN)**:
+
+> **Security Note**: The command below pipes a remote script directly to bash. Only execute this on a trusted network (Red Hat VPN) from a trusted source. For additional security, you can download and inspect the script before executing: `curl -o /tmp/quickstart.sh https://gitlab.cee.redhat.com/infosec-public/developer-workbench/tools/-/raw/main/rh-pre-commit/quickstart.sh && less /tmp/quickstart.sh && bash /tmp/quickstart.sh -f`
+
 ```bash
 # Connect to Red Hat VPN first
 # Then run (installs globally for all repos):
@@ -102,7 +105,7 @@ Keep only public hooks:
 ```yaml
 repos:
   - repo: https://github.com/openshift-hyperfleet/rh-hooks-ai
-    rev: v1.0.3
+    rev: v1.0.4
     hooks:
       - id: check-rh-precommit
       - id: validate-agents-md
@@ -146,6 +149,9 @@ git commit -m "feat: your message"
 ### For Red Hat Associates (With VPN Access)
 
 **One-time installation** (requires VPN):
+
+> **Security Note**: The command below pipes a remote script directly to bash. Only execute this on a trusted network (Red Hat VPN) from a trusted source. For additional security, you can download and inspect the script before executing: `curl -o /tmp/quickstart.sh https://gitlab.cee.redhat.com/infosec-public/developer-workbench/tools/-/raw/main/rh-pre-commit/quickstart.sh && less /tmp/quickstart.sh && bash /tmp/quickstart.sh -f`
+
 ```bash
 # Connect to Red Hat VPN
 # Run quickstart script (installs globally for all repos):
