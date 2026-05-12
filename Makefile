@@ -140,15 +140,19 @@ build: generate-all ## Build the hyperfleet-api binary
 install: generate-all ## Build and install binary to GOPATH/bin
 	CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=boringcrypto ${GO} install $(GOFLAGS) -ldflags="$(LDFLAGS)" ./cmd/hyperfleet-api
 
+# Common CLI flags for local database access (password loaded from secrets/ at runtime)
+DB_FLAGS = --db-host localhost --db-port $(db_port) --db-name $(db_name) \
+           --db-username $(db_user)
+
 .PHONY: run
 run: build ## Run the application
-	./bin/hyperfleet-api migrate
-	./bin/hyperfleet-api serve
+	HYPERFLEET_DATABASE_PASSWORD=$$(cat secrets/db.password) ./bin/hyperfleet-api migrate $(DB_FLAGS)
+	HYPERFLEET_DATABASE_PASSWORD=$$(cat secrets/db.password) ./bin/hyperfleet-api serve $(DB_FLAGS)
 
 .PHONY: run-no-auth
 run-no-auth: build ## Run the application without auth
-	./bin/hyperfleet-api migrate
-	./bin/hyperfleet-api serve --server-jwt-enabled=false
+	HYPERFLEET_DATABASE_PASSWORD=$$(cat secrets/db.password) HYPERFLEET_SERVER_JWT_ENABLED=false ./bin/hyperfleet-api migrate $(DB_FLAGS)
+	HYPERFLEET_DATABASE_PASSWORD=$$(cat secrets/db.password) ./bin/hyperfleet-api serve $(DB_FLAGS) --server-jwt-enabled=false
 
 .PHONY: run/docs
 run/docs: check-container-tool ## Run swagger and host the api spec
