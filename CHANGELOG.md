@@ -30,7 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - OpenAPI schema is now consumed from the `hyperfleet-api-spec` Go module (`v1.0.11`) and embedded in the binary at build time; `openapi/openapi.yaml` is extracted during `make generate` and is no longer tracked in git ([#129](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/129))
-- Replaced `hack/extract-schema.go` with a direct `cp` from the module cache (located via `go list -m`); `VARIANT` Makefile variable allows switching between `core` and `gcp` schema variants
+- `make generate` now supports a `VARIANT` Makefile variable (`core`, `gcp`) to switch between schema variants
 - Replaced OCM SDK authentication handler with standalone JWT middleware, removing `ocm-sdk-go` dependency and its transitive dependencies (`glog`, `bluemonday`, `json-iterator`) ([#120](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/120))
 - Upgraded JWT library from `golang-jwt/jwt/v4` to `golang-jwt/jwt/v5` ([#120](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/120))
 - Refactored `AdapterStatusDao.Upsert()` to accept a pre-fetched existing record, moving lookup and `LastTransitionTime` preservation logic to the service layer ([#119](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/119))
