@@ -53,10 +53,20 @@ POST   /api/hyperfleet/v1/clusters/{cluster_id}/statuses
   "status": {
     "conditions": [
       {
-        "type": "Available",
+        "type": "Reconciled",
         "status": "False",
-        "reason": "AwaitingAdapters",
-        "message": "Waiting for adapters to report status",
+        "reason": "ReconciledMissingAdapters",
+        "message": "Required adapters have not yet reported status",
+        "observed_generation": 1,
+        "created_time": "2025-01-01T00:00:00Z",
+        "last_updated_time": "2025-01-01T00:00:00Z",
+        "last_transition_time": "2025-01-01T00:00:00Z"
+      },
+      {
+        "type": "LastKnownReconciled",
+        "status": "False",
+        "reason": "AdaptersMissingReports",
+        "message": "Required adapters have not yet reported status",
         "observed_generation": 1,
         "created_time": "2025-01-01T00:00:00Z",
         "last_updated_time": "2025-01-01T00:00:00Z",
@@ -65,8 +75,8 @@ POST   /api/hyperfleet/v1/clusters/{cluster_id}/statuses
       {
         "type": "Ready",
         "status": "False",
-        "reason": "AwaitingAdapters",
-        "message": "Waiting for adapters to report status",
+        "reason": "ReconciledMissingAdapters",
+        "message": "Required adapters have not yet reported status",
         "observed_generation": 1,
         "created_time": "2025-01-01T00:00:00Z",
         "last_updated_time": "2025-01-01T00:00:00Z",
@@ -79,7 +89,7 @@ POST   /api/hyperfleet/v1/clusters/{cluster_id}/statuses
 
 </details>
 
-**Note**: Status initially has `Available=False` and `Ready=False` conditions until adapters report status.
+**Note**: Status initially has `Reconciled=False`, `LastKnownReconciled=False`, and `Ready=False` conditions until adapters report status.
 
 ### Get Cluster
 
@@ -108,10 +118,20 @@ POST   /api/hyperfleet/v1/clusters/{cluster_id}/statuses
   "status": {
     "conditions": [
       {
-        "type": "Available",
+        "type": "Reconciled",
         "status": "True",
-        "reason": "ResourceAvailable",
-        "message": "Cluster is accessible",
+        "reason": "ReconciledAll",
+        "message": "All required adapters reported Available=True or Finalized=True at the current generation",
+        "observed_generation": 1,
+        "created_time": "2025-01-01T00:00:00Z",
+        "last_updated_time": "2025-01-01T00:00:00Z",
+        "last_transition_time": "2025-01-01T00:00:00Z"
+      },
+      {
+        "type": "LastKnownReconciled",
+        "status": "True",
+        "reason": "AllAdaptersReconciled",
+        "message": "All required adapters report Available=True for the tracked generation",
         "observed_generation": 1,
         "created_time": "2025-01-01T00:00:00Z",
         "last_updated_time": "2025-01-01T00:00:00Z",
@@ -120,8 +140,8 @@ POST   /api/hyperfleet/v1/clusters/{cluster_id}/statuses
       {
         "type": "Ready",
         "status": "True",
-        "reason": "ResourceReady",
-        "message": "All adapters report ready at current generation",
+        "reason": "ReconciledAll",
+        "message": "All required adapters reported Available=True or Finalized=True at the current generation",
         "observed_generation": 1,
         "created_time": "2025-01-01T00:00:00Z",
         "last_updated_time": "2025-01-01T00:00:00Z",
@@ -304,10 +324,20 @@ POST   /api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepool_id}/statuses
   "status": {
     "conditions": [
       {
-        "type": "Available",
+        "type": "Reconciled",
         "status": "False",
-        "reason": "AwaitingAdapters",
-        "message": "Waiting for adapters to report status",
+        "reason": "ReconciledMissingAdapters",
+        "message": "Required adapters have not yet reported status",
+        "observed_generation": 1,
+        "created_time": "2025-01-01T00:00:00Z",
+        "last_updated_time": "2025-01-01T00:00:00Z",
+        "last_transition_time": "2025-01-01T00:00:00Z"
+      },
+      {
+        "type": "LastKnownReconciled",
+        "status": "False",
+        "reason": "AdaptersMissingReports",
+        "message": "Required adapters have not yet reported status",
         "observed_generation": 1,
         "created_time": "2025-01-01T00:00:00Z",
         "last_updated_time": "2025-01-01T00:00:00Z",
@@ -316,8 +346,8 @@ POST   /api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepool_id}/statuses
       {
         "type": "Ready",
         "status": "False",
-        "reason": "AwaitingAdapters",
-        "message": "Waiting for adapters to report status",
+        "reason": "ReconciledMissingAdapters",
+        "message": "Required adapters have not yet reported status",
         "observed_generation": 1,
         "created_time": "2025-01-01T00:00:00Z",
         "last_updated_time": "2025-01-01T00:00:00Z",
@@ -361,17 +391,24 @@ POST   /api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepool_id}/statuses
   "status": {
     "conditions": [
       {
-        "type": "Available",
+        "type": "Reconciled",
         "status": "True",
-        "reason": "ResourceAvailable",
-        "message": "NodePool is accessible",
+        "reason": "ReconciledAll",
+        "message": "All required adapters reported Available=True or Finalized=True at the current generation",
+        "observed_generation": 1
+      },
+      {
+        "type": "LastKnownReconciled",
+        "status": "True",
+        "reason": "AllAdaptersReconciled",
+        "message": "All required adapters report Available=True for the tracked generation",
         "observed_generation": 1
       },
       {
         "type": "Ready",
         "status": "True",
-        "reason": "ResourceReady",
-        "message": "All adapters report ready at current generation",
+        "reason": "ReconciledAll",
+        "message": "All required adapters reported Available=True or Finalized=True at the current generation",
         "observed_generation": 1
       }
     ]
@@ -420,7 +457,7 @@ All list endpoints support filtering using TSL (Tree Search Language) query synt
 
 ```bash
 curl -G http://localhost:8000/api/hyperfleet/v1/clusters \
-  --data-urlencode "search=status.conditions.Ready='True' and labels.environment='production'"
+  --data-urlencode "search=status.conditions.Reconciled='True' and labels.environment='production'"
 ```
 
 See **[search.md](search.md)** for complete documentation.
@@ -446,8 +483,9 @@ See **[search.md](search.md)** for complete documentation.
 The status object contains synthesized conditions computed from adapter reports:
 
 - `conditions` - Array of resource conditions, including:
-  - **Available** - Whether resource is running at any known good configuration
-  - **Ready** - Whether all adapters have processed current spec generation
+  - **Reconciled** - Whether all adapters have reconciled at the current spec generation
+  - **LastKnownReconciled** - Whether resource is running at any known good configuration
+  - **Ready** *(deprecated — alias of Reconciled)* - Same semantics as Reconciled; prefer `Reconciled` for new integrations
   - Additional conditions from adapters (with `observed_generation`, timestamps)
 
 ### Condition Fields
@@ -464,7 +502,7 @@ The status object contains synthesized conditions computed from adapter reports:
 - All above fields plus:
 - `observed_generation` - Generation this condition reflects
 - `created_time` - When condition was first created (API-managed)
-- `last_updated_time` - When adapter last reported (API-managed, from AdapterStatus.last_report_time)
+- `last_updated_time` - API-managed. For per-adapter conditions, taken from `AdapterStatus.last_report_time`. For aggregated conditions (`Reconciled`, `LastKnownReconciled`, `Ready`), computed as the oldest valid adapter report time within the relevant generation bucket — not the latest report time
 - `last_transition_time` - When status last changed (API-managed)
 
 ## Parameter Restrictions
