@@ -663,8 +663,8 @@ func TestExecuteAPICall(t *testing.T) {
 
 func TestPostActionWhenCondition(t *testing.T) {
 	tests := []struct {
-		name             string
 		when             *configloader.PostActionWhen
+		name             string
 		wantAPICall      bool
 		wantSkipped      bool
 		wantErr          bool
