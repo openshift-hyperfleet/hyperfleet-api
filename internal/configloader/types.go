@@ -393,8 +393,22 @@ type PostConfig struct {
 }
 
 // PostAction represents a post-processing action
+//
+//nolint:govet // fieldalignment: padding is insignificant for a config struct loaded once at startup; keeping ActionBase first maintains consistency with Precondition
 type PostAction struct {
 	ActionBase `yaml:",inline"`
+	// When defines a CEL expression that gates execution of this post-action.
+	// If the expression evaluates to false, the action is skipped (not failed).
+	// Follows the same nested pattern as lifecycle.delete.when for consistency.
+	When *PostActionWhen `yaml:"when,omitempty"`
+}
+
+// PostActionWhen defines the condition for when a post-action should execute.
+type PostActionWhen struct {
+	// Expression is a CEL expression evaluated against the execution context.
+	// The post-action executes only when the expression evaluates to true.
+	// Available variables: adapter.resourcesSkipped, adapter.skipReason, params, resources.
+	Expression string `yaml:"expression" validate:"required"`
 }
 
 // LogAction represents a logging action that can be configured in the adapter config
