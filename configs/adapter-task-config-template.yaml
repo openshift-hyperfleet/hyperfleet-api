@@ -348,8 +348,12 @@ post:
   # ============================================================================
   # Post actions are executed after resources are created/updated
   post_actions:
-    # Report cluster status to HyperFleet API (always executed)
+    # Report cluster status to HyperFleet API.
+    # Skipped when the adapter did no work (preconditions not met / resources skipped)
+    # to avoid overwriting a previously reported status with stale data.
     - name: "reportClusterStatus"
+      when:
+        expression: "!adapter.resourcesSkipped"
       api_call:
         method: "POST"
         # NOTE: API path includes /api/hyperfleet/ prefix and ends with /statuses
