@@ -8,7 +8,7 @@ The OpenAPI schemas are defined in the `hyperfleet-api-spec` repository (TypeSpe
 
 ## Two openapi.yaml Files (both generated, not in git)
 
-1. **Extracted**: `openapi/openapi.yaml` (61KB, uses `$ref`) — extracted from the Go module by `go run ./hack/extract-schema.go`. Used as input to oapi-codegen.
+1. **Extracted**: `openapi/openapi.yaml` (61KB, uses `$ref`) — copied from the module cache via `go list -m -f '{{.Dir}}'`. Used as input to oapi-codegen.
 2. **Generated**: `pkg/api/openapi/api/openapi.yaml` (44KB, fully resolved) — produced by oapi-codegen, embedded in binary via `//go:embed`
 
 **Never edit either file directly.** Both are overwritten by `make generate`.
