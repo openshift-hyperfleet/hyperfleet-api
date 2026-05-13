@@ -7,7 +7,7 @@ require (
 	github.com/Masterminds/squirrel v1.1.0
 	github.com/MicahParks/jwkset v0.11.0
 	github.com/MicahParks/keyfunc/v3 v3.8.0
-	github.com/bxcodec/faker/v3 v3.2.0
+	github.com/bxcodec/faker/v3 v3.8.1
 	github.com/getkin/kin-openapi v0.133.0
 	github.com/go-gormigrate/gormigrate/v2 v2.0.0
 	github.com/go-playground/validator/v10 v10.20.0
