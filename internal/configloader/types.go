@@ -392,9 +392,11 @@ type PostConfig struct {
 	PostActions []PostAction `yaml:"post_actions,omitempty" validate:"dive"`
 }
 
-// PostAction represents a post-processing action
+// PostAction represents a post-processing action.
+// Note: field order is intentional — ActionBase is kept first for consistency with Precondition.
+// Padding from fieldalignment is insignificant for a config struct loaded once at startup.
 //
-//nolint:govet // fieldalignment: padding is insignificant for a config struct loaded once at startup; keeping ActionBase first maintains consistency with Precondition
+//nolint:govet // fieldalignment: see doc comment above
 type PostAction struct {
 	ActionBase `yaml:",inline"`
 	// When defines a CEL expression that gates execution of this post-action.
