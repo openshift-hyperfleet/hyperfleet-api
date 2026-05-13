@@ -9,6 +9,9 @@ CGO_ENABLED ?= 1
 
 GO ?= go
 
+# Schema variant for OpenAPI generation (core, gcp)
+VARIANT ?= core
+
 # Auto-detect container tool (podman preferred when available)
 CONTAINER_TOOL ?= $(shell command -v podman 2>/dev/null || command -v docker 2>/dev/null)
 
@@ -113,10 +116,11 @@ verify-migrations: ## Verify migration files follow project conventions
 ##@ Code Generation
 
 .PHONY: generate
-generate: $(OAPI_CODEGEN) ## Generate OpenAPI types using oapi-codegen
+generate: $(OAPI_CODEGEN) download ## Generate OpenAPI types using oapi-codegen
 	rm -rf pkg/api/openapi
-	mkdir -p pkg/api/openapi
-	$(GO) run ./hack/extract-schema.go -output openapi/openapi.yaml
+	mkdir -p pkg/api/openapi openapi
+	@rm -f openapi/openapi.yaml
+	@cp "$$($(GO) list -m -f '{{.Dir}}' github.com/openshift-hyperfleet/hyperfleet-api-spec)/schemas/$(VARIANT)/openapi.yaml" openapi/openapi.yaml
 	$(OAPI_CODEGEN) --config openapi/oapi-codegen.yaml openapi/openapi.yaml
 
 .PHONY: generate-mocks
