@@ -8,7 +8,7 @@ HyperFleet API - Simple REST API for cluster lifecycle management. Provides CRUD
 
 - **Language**: Go 1.24+
 - **API Definition**: OpenAPI 3.0
-- **Code Generation**: openapi-generator-cli
+- **Code Generation**: oapi-codegen
 - **Database**: PostgreSQL with GORM ORM
 - **Container Runtime**: Podman
 - **Testing**: Gomega + Resty
