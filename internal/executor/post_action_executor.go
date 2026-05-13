@@ -252,14 +252,23 @@ func (pae *PostActionExecutor) executePostAction(
 		evalCtx.SetVariablesFromMap(execCtx.GetCELVariables())
 		evaluator, err := criteria.NewEvaluator(ctx, evalCtx, pae.log)
 		if err != nil {
-			return result, NewExecutorError(PhasePostActions, action.Name, "failed to create evaluator for when condition", err)
+			execErr := NewExecutorError(PhasePostActions, action.Name, "failed to create evaluator for when condition", err)
+			result.Status = StatusFailed
+			result.Error = execErr
+			return result, execErr
 		}
 		celResult, err := evaluator.EvaluateCEL(action.When.Expression)
 		if err != nil {
-			return result, NewExecutorError(PhasePostActions, action.Name, "failed to evaluate when condition", err)
+			execErr := NewExecutorError(PhasePostActions, action.Name, "failed to evaluate when condition", err)
+			result.Status = StatusFailed
+			result.Error = execErr
+			return result, execErr
 		}
 		if celResult.HasError() {
-			return result, NewExecutorError(PhasePostActions, action.Name, "failed to evaluate when condition", celResult.Error)
+			execErr := NewExecutorError(PhasePostActions, action.Name, "failed to evaluate when condition", celResult.Error)
+			result.Status = StatusFailed
+			result.Error = execErr
+			return result, execErr
 		}
 		if !celResult.Matched {
 			result.Skipped = true
