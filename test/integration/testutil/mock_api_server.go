@@ -35,7 +35,7 @@ type MockAPIServer struct {
 	statusResponses  []map[string]interface{}
 	mu               sync.Mutex
 	failPrecondition bool
-	failPostAction   bool // If true, POST to /status endpoint returns 500
+	failPostAction   bool // If true, post action api call returns 500
 }
 
 // NewMockAPIServer creates a new MockAPIServer for testing.
@@ -45,7 +45,7 @@ type MockAPIServer struct {
 //
 // The server simulates common HyperFleet API endpoints:
 //   - GET /clusters/{id} - Returns cluster details
-//   - POST /clusters/{id}/status - Accepts status updates
+//   - PUT /clusters/{id}/statuses - Accepts status updates
 //   - GET /validation/availability - Returns availability status
 func NewMockAPIServer(t *testing.T) *MockAPIServer {
 	mock := &MockAPIServer{
@@ -102,9 +102,9 @@ func NewMockAPIServer(t *testing.T) *MockAPIServer {
 		// Route handling
 		switch {
 		case strings.Contains(r.URL.Path, "/clusters/") && strings.HasSuffix(r.URL.Path, "/statuses"):
-			// POST /clusters/{id}/statuses - Store status and return success (or fail if configured)
-			if r.Method == http.MethodPost {
-				// Check if we should fail the post action
+			// PUT /clusters/{id}/statuses - Store status and return success (or fail if configured)
+			if r.Method == http.MethodPut {
+				// Check if fail post action is set to true
 				if mock.failPostAction {
 					w.WriteHeader(http.StatusInternalServerError)
 					if encodeErr := json.NewEncoder(w).Encode(map[string]string{
