@@ -37,6 +37,8 @@ const (
 	StatusSuccess ExecutionStatus = "success"
 	// StatusFailed indicates failed execution (process execution error: API timeout, parse error, K8s error, etc.)
 	StatusFailed ExecutionStatus = "failed"
+	// StatusSkipped indicates the action was intentionally skipped (e.g. when condition evaluated to false)
+	StatusSkipped ExecutionStatus = "skipped"
 )
 
 // ResourceRef represents a reference to a HyperFleet resource

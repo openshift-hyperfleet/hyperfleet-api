@@ -302,11 +302,13 @@ post:
       name: clusterStatusPayload
 
   post_actions:
-    - api_call:
+    - name: reportClusterStatus
+      when:
+        expression: "!adapter.resourcesSkipped"
+      api_call:
         body: '{{ .clusterStatusPayload }}'
         headers:
           - name: Content-Type
             value: application/json
         method: POST
         url: /clusters/{{ .clusterId }}/statuses
-      name: reportClusterStatus

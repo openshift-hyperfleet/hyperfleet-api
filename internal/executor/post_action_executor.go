@@ -77,7 +77,11 @@ func (pae *PostActionExecutor) ExecuteAll(
 			// Stop execution - don't run remaining post actions
 			return results, err
 		}
-		pae.log.Infof(ctx, "PostAction[%s] processed: SUCCESS - status=%s", action.Name, result.Status)
+		if result.Skipped {
+			pae.log.Infof(ctx, "PostAction[%s] processed: SKIPPED - reason=%s", action.Name, result.SkipReason)
+		} else {
+			pae.log.Infof(ctx, "PostAction[%s] processed: SUCCESS - status=%s", action.Name, result.Status)
+		}
 	}
 
 	return results, nil
@@ -240,6 +244,39 @@ func (pae *PostActionExecutor) executePostAction(
 	result := PostActionResult{
 		Name:   action.Name,
 		Status: StatusSuccess,
+	}
+
+	// Evaluate when condition if configured
+	if action.When != nil {
+		evalCtx := criteria.NewEvaluationContext()
+		evalCtx.SetVariablesFromMap(execCtx.GetCELVariables())
+		evaluator, err := criteria.NewEvaluator(ctx, evalCtx, pae.log)
+		if err != nil {
+			execErr := NewExecutorError(PhasePostActions, action.Name, "failed to create evaluator for when condition", err)
+			result.Status = StatusFailed
+			result.Error = execErr
+			return result, execErr
+		}
+		celResult, err := evaluator.EvaluateCEL(action.When.Expression)
+		if err != nil {
+			execErr := NewExecutorError(PhasePostActions, action.Name, "failed to evaluate when condition", err)
+			result.Status = StatusFailed
+			result.Error = execErr
+			return result, execErr
+		}
+		if celResult.HasError() {
+			execErr := NewExecutorError(PhasePostActions, action.Name, "failed to evaluate when condition", celResult.Error)
+			result.Status = StatusFailed
+			result.Error = execErr
+			return result, execErr
+		}
+		if !celResult.Matched {
+			result.Skipped = true
+			result.Status = StatusSkipped
+			result.SkipReason = fmt.Sprintf("when condition evaluated to false: %s", action.When.Expression)
+			pae.log.Infof(ctx, "PostAction[%s] skipped: when condition is false", action.Name)
+			return result, nil
+		}
 	}
 
 	// Execute log action if configured
