@@ -275,6 +275,7 @@ func (s *sqlNodePoolService) ForceDelete(ctx context.Context, id string, reason 
 
 	logger.With(ctx,
 		"nodepool_id", id,
+		"resource_type", "NodePool",
 		"caller", caller,
 		"reason", reason,
 		"adapter_statuses", summaries,
