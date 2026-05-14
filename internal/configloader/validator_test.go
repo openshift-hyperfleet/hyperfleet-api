@@ -60,7 +60,7 @@ func TestValidateActionBaseName(t *testing.T) {
 			PostActions: []PostAction{{
 				ActionBase: ActionBase{
 					Name:    "update-status",
-					APICall: &APICall{Method: "POST", URL: "/status"},
+					APICall: &APICall{Method: "PUT", URL: "/status"},
 				},
 			}},
 		}

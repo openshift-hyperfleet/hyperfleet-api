@@ -355,7 +355,7 @@ post:
       when:
         expression: "!adapter.resourcesSkipped"
       api_call:
-        method: "POST"
+        method: "PUT"
         # NOTE: API path includes /api/hyperfleet/ prefix and ends with /statuses
         url: "/clusters/{{ .clusterId }}/statuses"
         body: "{{ .clusterStatusPayload }}"

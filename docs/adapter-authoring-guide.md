@@ -82,7 +82,7 @@ sequenceDiagram
     Sentinel->>Adapter: CloudEvent {id, generation: N+1}
     Adapter->>API: GET /clusters/{id}
     Adapter->>Adapter: Create/update resources
-    Adapter->>API: POST status {observed_generation: N+1}
+    Adapter->>API: PUT status {observed_generation: N+1}
     API->>API: All adapters at N+1 → Reconciled=True
 ```
 
@@ -378,7 +378,7 @@ To implement time-based stability checks, you need to know how long a cluster ha
 | Field | Updates when | Use for |
 |-------|-------------|---------|
 | **`last_transition_time`** | Condition status **changes** (True→False or False→True) | **Stability windows** — "cluster has been Reconciled for N minutes" |
-| **`last_updated_time`** | Adapter **reports status** (every POST, even if unchanged) | **Liveness checks** — "adapter reported recently" |
+| **`last_updated_time`** | Adapter **reports status** (every PUT, even if unchanged) | **Liveness checks** — "adapter reported recently" |
 
 **Critical:** For stability windows, always use `last_transition_time`. The `last_updated_time` field has special aggregation behavior that makes it unsuitable for measuring state duration.
 
@@ -896,7 +896,7 @@ sequenceDiagram
     Workload->>K8s: Update status (conditions, phase)
     Adapter->>K8s: Discover resource (read status back)
     Note over Adapter: Evaluate CEL expressions against<br/>discovered resource status
-    Adapter->>API: POST /statuses {Applied, Available, Health}
+    Adapter->>API: PUT /statuses {Applied, Available, Health}
 ```
 
 The adapter does **not** wait for the workload to complete. It reads whatever status is available at discovery time and reports it. If the object is still pending, the adapter reports `Available=False`. The Sentinel will trigger another reconciliation cycle later, and the adapter will read the updated status then.
@@ -1259,7 +1259,7 @@ Mock responses matched by HTTP method and URL regex. Supports sequential respons
     },
     {
       "match": {
-        "method": "POST",
+        "method": "PUT",
         "urlPattern": "/api/hyperfleet/v1/clusters/.*/statuses"
       },
       "responses": [
@@ -1327,7 +1327,7 @@ Phase 3.5: Discovery Results ................. (available as resources.* in payl
 
 Phase 4: Post Actions ..................... SUCCESS
   [1/1] update-status                      EXECUTED
-    API Call: POST /api/hyperfleet/v1/clusters/abc123/statuses -> 200
+    API Call: PUT /api/hyperfleet/v1/clusters/abc123/statuses -> 200
 
 Result: SUCCESS
 ```
@@ -1414,7 +1414,7 @@ Post-actions target the NodePool status endpoint instead of the cluster one:
 post_actions:
   - name: "reportNodepoolStatus"
     api_call:
-      method: "POST"
+      method: "PUT"
       url: "/api/hyperfleet/v1/clusters/{{ .clusterId }}/nodepools/{{ .nodepoolId }}/statuses"
       body: "{{ .nodepoolStatusPayload }}"
 ```

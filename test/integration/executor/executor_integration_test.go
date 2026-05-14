@@ -142,7 +142,7 @@ func createTestConfig(apiBaseURL string) *configloader.Config {
 					ActionBase: configloader.ActionBase{
 						Name: "reportClusterStatus",
 						APICall: &configloader.APICall{
-							Method:  "POST",
+							Method:  "PUT",
 							URL:     "{{ .hyperfleetApiBaseUrl }}/api/{{ .hyperfleetApiVersion }}/clusters/{{ .clusterID }}/statuses",
 							Body:    "{{ .clusterStatusPayload }}",
 							Timeout: "5s",
@@ -1142,21 +1142,21 @@ func TestExecutor_PostActionAPIFailure(t *testing.T) {
 	// Verify the phase is post_actions
 	assert.Equal(t, executor.PhasePostActions, result.CurrentPhase, "Expected failure in post_actions phase")
 
-	// Verify precondition API was called, but status POST failed
+	// Verify precondition API was called, but status PUT failed
 	requests := mockAPI.GetRequests()
-	assert.GreaterOrEqual(t, len(requests), 2, "Expected at least 2 API calls (GET cluster + POST status)")
+	assert.GreaterOrEqual(t, len(requests), 2, "Expected at least 2 API calls (GET cluster + PUT status)")
 
 	// Find the status POST request
-	var statusPostFound bool
+	var statusPutFound bool
 	for _, req := range requests {
-		if req.Method == http.MethodPost && strings.Contains(req.Path, "/statuses") {
-			statusPostFound = true
-			t.Logf("Status POST was attempted: %s %s", req.Method, req.Path)
+		if req.Method == http.MethodPut && strings.Contains(req.Path, "/statuses") {
+			statusPutFound = true
+			t.Logf("Status PUT was attempted: %s %s", req.Method, req.Path)
 		}
 	}
-	assert.True(t, statusPostFound, "Expected status POST to be attempted")
+	assert.True(t, statusPutFound, "Expected status PUT to be attempted")
 
-	// No status should be successfully stored since POST failed
+	// No status should be successfully stored since PUT failed
 	statusResponses := mockAPI.GetStatusResponses()
 	assert.Empty(t, statusResponses, "Expected no successful status responses due to API failure")
 
@@ -1254,7 +1254,7 @@ func TestExecutor_ExecutionError_CELAccess(t *testing.T) {
 					ActionBase: configloader.ActionBase{
 						Name: "reportError",
 						APICall: &configloader.APICall{
-							Method:  "POST",
+							Method:  "PUT",
 							URL:     "{{ .hyperfleetApiBaseUrl }}/api/{{ .hyperfleetApiVersion }}/clusters/{{ .clusterID }}/error-report",
 							Body:    "{{ .errorReportPayload }}",
 							Timeout: "5s",
@@ -1299,7 +1299,7 @@ func TestExecutor_ExecutionError_CELAccess(t *testing.T) {
 	requests := mockAPI.GetRequests()
 	var errorReportRequest *testutil.MockRequest
 	for i := range requests {
-		if requests[i].Method == http.MethodPost && strings.Contains(requests[i].Path, "/error-report") {
+		if requests[i].Method == http.MethodPut && strings.Contains(requests[i].Path, "/error-report") {
 			errorReportRequest = &requests[i]
 			break
 		}
@@ -1391,7 +1391,7 @@ func TestExecutor_PayloadBuildFailure(t *testing.T) {
 					ActionBase: configloader.ActionBase{
 						Name: "shouldNotExecute",
 						APICall: &configloader.APICall{
-							Method:  "POST",
+							Method:  "PUT",
 							URL:     "{{ .hyperfleetApiBaseUrl }}/api/{{ .hyperfleetApiVersion }}/clusters/{{ .clusterID }}/statuses",
 							Body:    "{{ .badPayload }}",
 							Timeout: "5s",
@@ -1457,7 +1457,7 @@ func TestExecutor_PayloadBuildFailure(t *testing.T) {
 	// Verify NO API call was made to the post action endpoint (blocked)
 	requests := mockAPI.GetRequests()
 	for _, req := range requests {
-		if req.Method == http.MethodPost && strings.Contains(req.Path, "/statuses") {
+		if req.Method == http.MethodPut && strings.Contains(req.Path, "/statuses") {
 			t.Errorf("Post action API call should NOT have been made (blocked by payload build failure)")
 		}
 	}
