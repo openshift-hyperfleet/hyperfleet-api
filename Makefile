@@ -114,8 +114,11 @@ verify-migrations: ## Verify migration files follow project conventions
 
 .PHONY: generate
 generate: $(OAPI_CODEGEN) ## Generate OpenAPI types using oapi-codegen
+	$(GO) mod download
 	rm -rf pkg/api/openapi
-	mkdir -p pkg/api/openapi
+	mkdir -p pkg/api/openapi openapi
+	@rm -f openapi/openapi.yaml
+	@cp "$$($(GO) list -m -f '{{.Dir}}' github.com/openshift-hyperfleet/hyperfleet-api-spec)/schemas/core/openapi.yaml" openapi/openapi.yaml
 	$(OAPI_CODEGEN) --config openapi/oapi-codegen.yaml openapi/openapi.yaml
 
 .PHONY: generate-mocks
@@ -159,7 +162,7 @@ run/docs: check-container-tool ## Run swagger and host the api spec
 	@echo "Please open http://localhost:8081/"
 	# Port 8081 instead of 80: ports <1024 are privileged and fail with rootless Podman.
 	# Port 8080 is avoided since it's used by the health endpoint server.
-	$(CONTAINER_TOOL) run -d -p 8081:8080 -e SWAGGER_JSON=/hyperfleet.yaml -v $(PWD)/openapi/hyperfleet.yaml:/hyperfleet.yaml swaggerapi/swagger-ui
+	$(CONTAINER_TOOL) run -d -p 8081:8080 -e SWAGGER_JSON=/openapi.yaml -v $(PWD)/openapi/openapi.yaml:/openapi.yaml swaggerapi/swagger-ui
 
 .PHONY: cmds
 cmds: ## Build all binaries under cmd/
@@ -180,6 +183,7 @@ clean: ## Delete temporary generated files
 		pkg/api/openapi \
 		data/generated/openapi/*.json \
 		secrets \
+		openapi/openapi.yaml \
 
 .PHONY: secrets
 secrets: ## Initialize secrets directory with default values

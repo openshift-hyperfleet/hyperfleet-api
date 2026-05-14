@@ -8,7 +8,7 @@ HyperFleet API - Simple REST API for cluster lifecycle management. Provides CRUD
 
 - **Language**: Go 1.24+
 - **API Definition**: OpenAPI 3.0
-- **Code Generation**: openapi-generator-cli
+- **Code Generation**: oapi-codegen
 - **Database**: PostgreSQL with GORM ORM
 - **Container Runtime**: Podman
 - **Testing**: Gomega + Resty
@@ -35,7 +35,7 @@ hyperfleet-api/
 │   ├── db/                      # Database setup and migrations
 │   ├── handlers/                # HTTP request handlers
 │   └── services/                # Business logic
-├── openapi/                     # API specification source
+├── openapi/                     # Generated artifacts from hyperfleet-api-spec module
 ├── test/                        # Integration tests and factories
 ├── docs/                        # Detailed documentation
 └── Makefile                     # Build automation
@@ -171,6 +171,7 @@ This project uses [pre-commit](https://pre-commit.io/) for code quality checks. 
 - **[Deployment](docs/deployment.md)** - Container images, Kubernetes deployment, and configuration
 - **[Authentication](docs/authentication.md)** - Development and production auth
 - **[Logging](docs/logging.md)** - Structured logging, OpenTelemetry integration, and data masking
+- **[Partner Schema Validation](openapi/README.md#partner-schema-validation)** - How to supply a partner-specific OpenAPI schema for runtime `spec` field validation
 
 ### Additional Resources
 
