@@ -106,7 +106,9 @@ func (d *mockClusterDao) All(ctx context.Context) (api.ClusterList, error) {
 var _ dao.ClusterDao = &mockClusterDao{}
 
 type mockAdapterStatusDao struct {
-	statuses map[string]*api.AdapterStatus
+	statuses            map[string]*api.AdapterStatus
+	findByResourceErr   error
+	deleteByResourceErr error
 }
 
 func newMockAdapterStatusDao() *mockAdapterStatusDao {
@@ -157,6 +159,9 @@ func (d *mockAdapterStatusDao) Delete(ctx context.Context, id string) error {
 }
 
 func (d *mockAdapterStatusDao) DeleteByResource(ctx context.Context, resourceType, resourceID string) error {
+	if d.deleteByResourceErr != nil {
+		return d.deleteByResourceErr
+	}
 	for key, s := range d.statuses {
 		if s.ResourceType == resourceType && s.ResourceID == resourceID {
 			delete(d.statuses, key)
@@ -169,6 +174,9 @@ func (d *mockAdapterStatusDao) FindByResource(
 	ctx context.Context,
 	resourceType, resourceID string,
 ) (api.AdapterStatusList, error) {
+	if d.findByResourceErr != nil {
+		return nil, d.findByResourceErr
+	}
 	var result api.AdapterStatusList
 	for _, s := range d.statuses {
 		if s.ResourceType == resourceType && s.ResourceID == resourceID {
@@ -278,6 +286,9 @@ func (m *mockNodePoolService) CascadeSoftDelete(
 }
 
 func (m *mockNodePoolService) Delete(context.Context, string) *errors.ServiceError { return nil }
+func (m *mockNodePoolService) ForceDelete(context.Context, string, string) *errors.ServiceError {
+	return nil
+}
 
 func (m *mockNodePoolService) All(context.Context) (api.NodePoolList, *errors.ServiceError) {
 	return nil, nil

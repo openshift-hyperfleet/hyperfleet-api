@@ -138,6 +138,30 @@ func (h ClusterNodePoolsHandler) SoftDelete(w http.ResponseWriter, r *http.Reque
 	handleSoftDelete(w, r, cfg, http.StatusAccepted)
 }
 
+// ForceDelete permanently removes a nodepool that is in Finalizing state.
+func (h ClusterNodePoolsHandler) ForceDelete(w http.ResponseWriter, r *http.Request) {
+	var req api.ForceDeleteRequest
+	cfg := &handlerConfig{
+		MarshalInto: &req,
+		Validate: []validate{
+			validateNotEmpty(&req, "Reason", "reason"),
+		},
+		Action: func() (interface{}, *errors.ServiceError) {
+			clusterID := mux.Vars(r)["id"]
+			nodePoolID := mux.Vars(r)["nodepool_id"]
+			ctx := r.Context()
+			if _, err := h.nodePoolService.GetByIDAndOwner(ctx, nodePoolID, clusterID); err != nil {
+				return nil, err
+			}
+			if err := h.nodePoolService.ForceDelete(ctx, nodePoolID, req.Reason); err != nil {
+				return nil, err
+			}
+			return nil, nil
+		},
+	}
+	handleForceDelete(w, r, cfg)
+}
+
 // Patch patches a specific nodepool for a cluster
 func (h ClusterNodePoolsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 	var patch api.NodePoolPatchRequest
