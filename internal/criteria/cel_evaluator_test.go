@@ -370,6 +370,26 @@ func TestCELEvaluatorCustomFunctions(t *testing.T) {
 	})
 }
 
+func TestCELEvaluatorExtStrings(t *testing.T) {
+	ctx := NewEvaluationContext()
+	ctx.Set("channelGroup", "candidate")
+	ctx.Set("version", "4.22.0-ec.4")
+
+	evaluator, err := newCELEvaluator(ctx)
+	require.NoError(t, err)
+
+	// The version resolution adapter derives the Cincinnati channel name from channelGroup
+	// and the major.minor portion of version using CEL split(). This mirrors the Go logic
+	// in deriveChannel(): channelGroup + "-" + major + "." + minor
+	// e.g. channelGroup="candidate", version="4.22.0-ec.4" → "candidate-4.22"
+	t.Run("split derives cincinnati channel name from channelGroup and version", func(t *testing.T) {
+		result, err := evaluator.EvaluateSafe(`channelGroup + "-" + version.split(".")[0] + "." + version.split(".")[1]`)
+		require.NoError(t, err)
+		require.False(t, result.HasError())
+		assert.Equal(t, "candidate-4.22", result.Value)
+	})
+}
+
 // TestEvaluateSafeErrorHandling tests how EvaluateSafe handles various error scenarios
 // and how callers can use the result to make decisions at a higher level
 func TestEvaluateSafeErrorHandling(t *testing.T) {
