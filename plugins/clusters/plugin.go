@@ -79,6 +79,7 @@ func init() {
 		clustersRouter.HandleFunc("/{id}/nodepools/{nodepool_id}", clusterNodePoolsHandler.Get).Methods(http.MethodGet)
 		clustersRouter.HandleFunc("/{id}/nodepools/{nodepool_id}", clusterNodePoolsHandler.SoftDelete).Methods(http.MethodDelete)
 		clustersRouter.HandleFunc("/{id}/nodepools/{nodepool_id}", clusterNodePoolsHandler.Patch).Methods(http.MethodPatch)
+		clustersRouter.HandleFunc("/{id}/nodepools/{nodepool_id}/force-delete", clusterNodePoolsHandler.ForceDelete).Methods(http.MethodPost)
 
 		// Nested resource: nodepool statuses
 		nodepoolStatusHandler := handlers.NewNodePoolStatusHandler(adapterStatus.Service(envServices), nodePools.Service(envServices))

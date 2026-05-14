@@ -553,3 +553,125 @@ func TestClusterNodePoolsHandler_Patch(t *testing.T) {
 		})
 	}
 }
+
+func TestClusterNodePoolsHandler_ForceDelete(t *testing.T) {
+	RegisterTestingT(t)
+
+	clusterID := testClusterID
+	nodePoolID := testNodePoolID
+
+	tests := []struct {
+		setupMocks         func(ctrl *gomock.Controller) (*services.MockClusterService, *services.MockNodePoolService)
+		name               string
+		nodePoolID         string
+		body               string
+		expectedStatusCode int
+	}{
+		{
+			name:       "Success 204 - nodepool force-deleted",
+			nodePoolID: nodePoolID,
+			body:       `{"reason": "Stuck in finalizing for 2 hours"}`,
+			setupMocks: func(ctrl *gomock.Controller) (*services.MockClusterService, *services.MockNodePoolService) {
+				mockClusterSvc := services.NewMockClusterService(ctrl)
+				mockNodePoolSvc := services.NewMockNodePoolService(ctrl)
+				mockNodePoolSvc.EXPECT().
+					GetByIDAndOwner(gomock.Any(), nodePoolID, clusterID).
+					Return(&api.NodePool{}, nil)
+				mockNodePoolSvc.EXPECT().
+					ForceDelete(gomock.Any(), nodePoolID, "Stuck in finalizing for 2 hours").
+					Return(nil)
+				return mockClusterSvc, mockNodePoolSvc
+			},
+			expectedStatusCode: http.StatusNoContent,
+		},
+		{
+			name:       "Error 404 - nodepool not found",
+			nodePoolID: "non-existent-id",
+			body:       `{"reason": "some reason"}`,
+			setupMocks: func(ctrl *gomock.Controller) (*services.MockClusterService, *services.MockNodePoolService) {
+				mockClusterSvc := services.NewMockClusterService(ctrl)
+				mockNodePoolSvc := services.NewMockNodePoolService(ctrl)
+				mockNodePoolSvc.EXPECT().
+					GetByIDAndOwner(gomock.Any(), "non-existent-id", clusterID).
+					Return(nil, errors.NotFound("NodePool with id='non-existent-id' not found"))
+				return mockClusterSvc, mockNodePoolSvc
+			},
+			expectedStatusCode: http.StatusNotFound,
+		},
+		{
+			name:       "Error 409 - nodepool not in Finalizing state",
+			nodePoolID: nodePoolID,
+			body:       `{"reason": "some reason"}`,
+			setupMocks: func(ctrl *gomock.Controller) (*services.MockClusterService, *services.MockNodePoolService) {
+				mockClusterSvc := services.NewMockClusterService(ctrl)
+				mockNodePoolSvc := services.NewMockNodePoolService(ctrl)
+				mockNodePoolSvc.EXPECT().
+					GetByIDAndOwner(gomock.Any(), nodePoolID, clusterID).
+					Return(&api.NodePool{}, nil)
+				mockNodePoolSvc.EXPECT().
+					ForceDelete(gomock.Any(), nodePoolID, "some reason").
+					Return(errors.ConflictState("NodePool '%s' is not in Finalizing state", nodePoolID))
+				return mockClusterSvc, mockNodePoolSvc
+			},
+			expectedStatusCode: http.StatusConflict,
+		},
+		{
+			name:       "Error 400 - empty reason",
+			nodePoolID: nodePoolID,
+			body:       `{"reason": ""}`,
+			setupMocks: func(ctrl *gomock.Controller) (*services.MockClusterService, *services.MockNodePoolService) {
+				mockClusterSvc := services.NewMockClusterService(ctrl)
+				mockNodePoolSvc := services.NewMockNodePoolService(ctrl)
+				return mockClusterSvc, mockNodePoolSvc
+			},
+			expectedStatusCode: http.StatusBadRequest,
+		},
+		{
+			name:       "Error 400 - malformed JSON",
+			nodePoolID: nodePoolID,
+			body:       `not json`,
+			setupMocks: func(ctrl *gomock.Controller) (*services.MockClusterService, *services.MockNodePoolService) {
+				mockClusterSvc := services.NewMockClusterService(ctrl)
+				mockNodePoolSvc := services.NewMockNodePoolService(ctrl)
+				return mockClusterSvc, mockNodePoolSvc
+			},
+			expectedStatusCode: http.StatusBadRequest,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			RegisterTestingT(t)
+
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			mockClusterSvc, mockNodePoolSvc := tt.setupMocks(ctrl)
+			handler := NewClusterNodePoolsHandler(mockClusterSvc, mockNodePoolSvc)
+
+			reqURL := "/api/hyperfleet/v1/clusters/" + clusterID + "/nodepools/" + tt.nodePoolID + "/force-delete"
+			req := httptest.NewRequest(http.MethodPost, reqURL, strings.NewReader(tt.body))
+			req.Header.Set("Content-Type", "application/json")
+			req = mux.SetURLVars(req, map[string]string{
+				"id":          clusterID,
+				"nodepool_id": tt.nodePoolID,
+			})
+
+			rr := httptest.NewRecorder()
+			handler.ForceDelete(rr, req)
+
+			Expect(rr.Code).To(Equal(tt.expectedStatusCode))
+
+			if tt.expectedStatusCode == http.StatusNoContent {
+				Expect(rr.Body.Len()).To(Equal(0))
+			}
+
+			if tt.expectedStatusCode == http.StatusConflict {
+				var errResp openapi.Error
+				err := json.Unmarshal(rr.Body.Bytes(), &errResp)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(*errResp.Detail).To(ContainSubstring("not in Finalizing state"))
+			}
+		})
+	}
+}

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/auth"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/dao"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
@@ -28,6 +29,7 @@ type NodePoolService interface {
 		ctx context.Context, nodePools api.NodePoolList, deletedBy string, deletedTime time.Time,
 	) *errors.ServiceError
 	Delete(ctx context.Context, id string) *errors.ServiceError
+	ForceDelete(ctx context.Context, id string, reason string) *errors.ServiceError
 	All(ctx context.Context) (api.NodePoolList, *errors.ServiceError)
 
 	FindByIDs(ctx context.Context, ids []string) (api.NodePoolList, *errors.ServiceError)
@@ -230,6 +232,60 @@ func (s *sqlNodePoolService) CascadeSoftDelete(
 func (s *sqlNodePoolService) Delete(ctx context.Context, id string) *errors.ServiceError {
 	if err := s.nodePoolDao.Delete(ctx, id); err != nil {
 		return handleDeleteError("NodePool", errors.GeneralError("Unable to delete nodePool: %s", err))
+	}
+
+	return nil
+}
+
+func (s *sqlNodePoolService) ForceDelete(ctx context.Context, id string, reason string) *errors.ServiceError {
+	nodePool, err := s.nodePoolDao.GetForUpdate(ctx, id)
+	if err != nil {
+		return handleGetError("NodePool", "id", id, err)
+	}
+
+	if nodePool.DeletedTime == nil {
+		return errors.ConflictState("NodePool '%s' is not in Finalizing state", id)
+	}
+
+	statuses, err := s.adapterStatusDao.FindByResource(ctx, "NodePool", id)
+	if err != nil {
+		return errors.GeneralError("Failed to fetch adapter statuses for nodepool '%s': %s", id, err)
+	}
+
+	caller := auth.GetUsernameFromContext(ctx)
+	if caller == "" {
+		caller = "unknown"
+	}
+
+	type adapterSummary struct {
+		Conditions map[string]string `json:"conditions"`
+		Adapter    string            `json:"adapter"`
+	}
+	summaries := make([]adapterSummary, 0, len(statuses))
+	for _, st := range statuses {
+		conds := make(map[string]string)
+		var parsed []api.AdapterCondition
+		if err := json.Unmarshal(st.Conditions, &parsed); err == nil {
+			for _, c := range parsed {
+				conds[c.Type] = string(c.Status)
+			}
+		}
+		summaries = append(summaries, adapterSummary{Adapter: st.Adapter, Conditions: conds})
+	}
+
+	logger.With(ctx,
+		"nodepool_id", id,
+		"caller", caller,
+		"reason", reason,
+		"adapter_statuses", summaries,
+	).Info("Force-deleting nodepool")
+
+	if err := s.adapterStatusDao.DeleteByResource(ctx, "NodePool", id); err != nil {
+		return errors.GeneralError("Failed to delete adapter statuses for nodepool '%s': %s", id, err)
+	}
+
+	if err := s.nodePoolDao.Delete(ctx, id); err != nil {
+		return errors.GeneralError("Failed to force-delete nodepool '%s': %s", id, err)
 	}
 
 	return nil

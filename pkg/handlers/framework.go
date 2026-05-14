@@ -135,6 +135,42 @@ func handleList(w http.ResponseWriter, r *http.Request, cfg *handlerConfig) {
 	writeJSONResponse(w, r, http.StatusOK, results)
 }
 
+// handleForceDelete reads the request body, unmarshals it into cfg.MarshalInto,
+// runs validators, executes the action, and returns 204 No Content on success.
+func handleForceDelete(w http.ResponseWriter, r *http.Request, cfg *handlerConfig) {
+	if cfg.ErrorHandler == nil {
+		cfg.ErrorHandler = handleError
+	}
+
+	bytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		handleError(r, w, errors.MalformedRequest("Unable to read request body: %s", err))
+		return
+	}
+
+	err = json.Unmarshal(bytes, &cfg.MarshalInto)
+	if err != nil {
+		handleError(r, w, errors.MalformedRequest("Invalid request format: %s", err))
+		return
+	}
+
+	for _, v := range cfg.Validate {
+		err := v()
+		if err != nil {
+			cfg.ErrorHandler(r, w, err)
+			return
+		}
+	}
+
+	_, serviceErr := cfg.Action()
+	if serviceErr != nil {
+		cfg.ErrorHandler(r, w, serviceErr)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // handleCreateWithNoContent handles create requests that may return 204 No Content
 // If action returns (nil, nil), it means a no-op and returns 204 No Content
 // Otherwise, it returns 201 Created with the result

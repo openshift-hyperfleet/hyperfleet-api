@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"testing"
 	"time"
@@ -34,6 +35,7 @@ func testNodePoolAdapterConfig() *config.AdapterRequirementsConfig {
 
 type mockNodePoolDao struct {
 	nodePools map[string]*api.NodePool
+	deleteErr error
 }
 
 func newMockNodePoolDao() *mockNodePoolDao {
@@ -90,6 +92,9 @@ func (d *mockNodePoolDao) Save(ctx context.Context, nodePool *api.NodePool) erro
 }
 
 func (d *mockNodePoolDao) Delete(ctx context.Context, id string) error {
+	if d.deleteErr != nil {
+		return d.deleteErr
+	}
 	delete(d.nodePools, id)
 	return nil
 }
@@ -1025,6 +1030,121 @@ func TestNodePoolSoftDelete(t *testing.T) {
 		g.Expect(postReady).NotTo(BeNil())
 		g.Expect(postReady.Status).To(Equal(api.ConditionFalse))
 		g.Expect(postReady.ObservedGeneration).To(Equal(int32(2)))
+	})
+}
+
+type nodePoolTestEnv struct {
+	nodePoolDao      *mockNodePoolDao
+	adapterStatusDao *mockAdapterStatusDao
+	service          NodePoolService
+	ctx              context.Context
+}
+
+func newNodePoolTestEnv() *nodePoolTestEnv {
+	npDao := newMockNodePoolDao()
+	asDao := newMockAdapterStatusDao()
+	return &nodePoolTestEnv{
+		nodePoolDao:      npDao,
+		adapterStatusDao: asDao,
+		service:          NewNodePoolService(npDao, nil, asDao, testNodePoolAdapterConfig(), nil),
+		ctx:              context.Background(),
+	}
+}
+
+func TestNodePoolForceDelete(t *testing.T) {
+	t.Parallel()
+	deletedTime := time.Now().Add(-time.Hour)
+
+	t.Run("nodepool not found returns 404", func(t *testing.T) {
+		g := NewWithT(t)
+		env := newNodePoolTestEnv()
+
+		svcErr := env.service.ForceDelete(env.ctx, "nonexistent", "testing")
+
+		g.Expect(svcErr).NotTo(BeNil())
+		g.Expect(svcErr.HTTPCode).To(Equal(http.StatusNotFound))
+	})
+
+	t.Run("nodepool not in Finalizing state returns 409", func(t *testing.T) {
+		g := NewWithT(t)
+		env := newNodePoolTestEnv()
+		env.nodePoolDao.nodePools[testNodePoolID] = &api.NodePool{
+			Meta:       api.Meta{ID: testNodePoolID},
+			Generation: 1,
+		}
+
+		svcErr := env.service.ForceDelete(env.ctx, testNodePoolID, "testing")
+
+		g.Expect(svcErr).NotTo(BeNil())
+		g.Expect(svcErr.HTTPCode).To(Equal(http.StatusConflict))
+	})
+
+	t.Run("soft-deleted nodepool is removed along with adapter statuses", func(t *testing.T) {
+		g := NewWithT(t)
+		env := newNodePoolTestEnv()
+		env.nodePoolDao.nodePools[testNodePoolID] = &api.NodePool{
+			Meta:        api.Meta{ID: testNodePoolID},
+			Generation:  2,
+			DeletedTime: &deletedTime,
+		}
+		env.adapterStatusDao.statuses["status-1"] = &api.AdapterStatus{
+			Meta:         api.Meta{ID: "status-1"},
+			ResourceType: "NodePool",
+			ResourceID:   testNodePoolID,
+			Adapter:      "validation",
+		}
+
+		svcErr := env.service.ForceDelete(env.ctx, testNodePoolID, "stuck in finalizing")
+
+		g.Expect(svcErr).To(BeNil())
+		_, err := env.nodePoolDao.Get(env.ctx, testNodePoolID)
+		g.Expect(err).To(Equal(gorm.ErrRecordNotFound))
+		g.Expect(env.adapterStatusDao.statuses).To(BeEmpty())
+	})
+
+	t.Run("adapter status fetch failure returns 500", func(t *testing.T) {
+		g := NewWithT(t)
+		env := newNodePoolTestEnv()
+		env.adapterStatusDao.findByResourceErr = fmt.Errorf("db connection lost")
+		env.nodePoolDao.nodePools[testNodePoolID] = &api.NodePool{
+			Meta:        api.Meta{ID: testNodePoolID},
+			DeletedTime: &deletedTime,
+		}
+
+		svcErr := env.service.ForceDelete(env.ctx, testNodePoolID, "testing")
+
+		g.Expect(svcErr).NotTo(BeNil())
+		g.Expect(svcErr.HTTPCode).To(Equal(http.StatusInternalServerError))
+	})
+
+	t.Run("adapter status deletion failure returns 500", func(t *testing.T) {
+		g := NewWithT(t)
+		env := newNodePoolTestEnv()
+		env.adapterStatusDao.deleteByResourceErr = fmt.Errorf("db connection lost")
+		env.nodePoolDao.nodePools[testNodePoolID] = &api.NodePool{
+			Meta:        api.Meta{ID: testNodePoolID},
+			DeletedTime: &deletedTime,
+		}
+
+		svcErr := env.service.ForceDelete(env.ctx, testNodePoolID, "testing")
+
+		g.Expect(svcErr).NotTo(BeNil())
+		g.Expect(svcErr.HTTPCode).To(Equal(http.StatusInternalServerError))
+	})
+
+	t.Run("nodepool deletion failure returns 500", func(t *testing.T) {
+		g := NewWithT(t)
+		env := newNodePoolTestEnv()
+		env.nodePoolDao.deleteErr = fmt.Errorf("db connection lost")
+		env.nodePoolDao.nodePools[testNodePoolID] = &api.NodePool{
+			Meta:        api.Meta{ID: testNodePoolID},
+			DeletedTime: &deletedTime,
+		}
+
+		svcErr := env.service.ForceDelete(env.ctx, testNodePoolID, "testing")
+
+		g.Expect(svcErr).NotTo(BeNil())
+		g.Expect(svcErr.HTTPCode).To(Equal(http.StatusInternalServerError))
 	})
 }
 
