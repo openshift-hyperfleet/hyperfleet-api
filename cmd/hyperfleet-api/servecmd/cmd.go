@@ -18,6 +18,7 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db/db_session"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/health"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/metrics"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/telemetry"
 )
 
@@ -128,6 +129,15 @@ func runServe(cmd *cobra.Command, args []string) {
 		"log_output", environments.Environment().Config.Logging.Output,
 		"masking_enabled", environments.Environment().Config.Logging.Masking.Enabled,
 	).Info("Logger initialized")
+
+	if sf := environments.Environment().Database.SessionFactory; sf != nil {
+		if err := metrics.RegisterCollector(
+			sf.DirectDB(),
+			environments.Environment().Config.Metrics.DeletionStuckThreshold,
+		); err != nil {
+			logger.WithError(ctx, err).Error("Failed to register pending deletion collector")
+		}
+	}
 
 	apiServer := server.NewAPIServer(tracingEnabled)
 	go apiServer.Start()

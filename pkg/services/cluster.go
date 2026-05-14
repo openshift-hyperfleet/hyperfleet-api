@@ -11,6 +11,7 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/dao"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/metrics"
 )
 
 const defaultSystemUser = "system@hyperfleet.local"
@@ -149,6 +150,8 @@ func (s *sqlClusterService) SoftDelete(ctx context.Context, id string) (*api.Clu
 	if saveErr := s.clusterDao.Save(ctx, cluster); saveErr != nil {
 		return nil, handleSoftDeleteError("Cluster", saveErr)
 	}
+
+	metrics.RecordPendingDeletion("cluster")
 
 	cluster, svcErr := s.UpdateClusterStatusFromAdapters(ctx, id)
 	if svcErr != nil {
