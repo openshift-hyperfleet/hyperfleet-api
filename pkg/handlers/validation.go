@@ -38,6 +38,7 @@ func validateNotEmpty(i interface{}, fieldName string, field string) validate {
 	}
 }
 
+//nolint:unparam // fieldName is generic; currently only "Reason" but used for any field
 func validateMaxLength(i interface{}, fieldName string, field string, maxLen int) validate {
 	return func() *errors.ServiceError {
 		value := reflect.ValueOf(i).Elem().FieldByName(fieldName)
