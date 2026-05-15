@@ -11,7 +11,7 @@ GET    /api/hyperfleet/v1/clusters
 POST   /api/hyperfleet/v1/clusters
 GET    /api/hyperfleet/v1/clusters/{cluster_id}
 GET    /api/hyperfleet/v1/clusters/{cluster_id}/statuses
-POST   /api/hyperfleet/v1/clusters/{cluster_id}/statuses
+PUT   /api/hyperfleet/v1/clusters/{cluster_id}/statuses
 ```
 
 ### Create Cluster
@@ -179,7 +179,7 @@ POST   /api/hyperfleet/v1/clusters/{cluster_id}/statuses
 
 ### Report Cluster Status
 
-**POST** `/api/hyperfleet/v1/clusters/{cluster_id}/statuses`
+**PUT** `/api/hyperfleet/v1/clusters/{cluster_id}/statuses`
 
 Adapters use this endpoint to report their status.
 
@@ -277,7 +277,7 @@ GET    /api/hyperfleet/v1/clusters/{cluster_id}/nodepools
 POST   /api/hyperfleet/v1/clusters/{cluster_id}/nodepools
 GET    /api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepool_id}
 GET    /api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepool_id}/statuses
-POST   /api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepool_id}/statuses
+PUT   /api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepool_id}/statuses
 ```
 
 ### Create NodePool
@@ -420,7 +420,7 @@ POST   /api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepool_id}/statuses
 
 ### Report NodePool Status
 
-**POST** `/api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepool_id}/statuses`
+**PUT** `/api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepool_id}/statuses`
 
 Same format as cluster status reporting (see above).
 
@@ -490,7 +490,7 @@ The status object contains synthesized conditions computed from adapter reports:
 
 ### Condition Fields
 
-**In AdapterStatus POST request (ConditionRequest):**
+**In AdapterStatus PUT request (ConditionRequest):**
 
 - `type` - Condition type (Available, Applied, Health)
 - `status` - Condition status (True, False)

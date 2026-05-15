@@ -1030,13 +1030,13 @@ Every adapter status report must include:
 **Cluster status:**
 
 ```
-POST /api/hyperfleet/v1/clusters/{cluster_id}/statuses
+PUT /api/hyperfleet/v1/clusters/{cluster_id}/statuses
 ```
 
 **NodePool status:**
 
 ```
-POST /api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepool_id}/statuses
+PUT /api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepool_id}/statuses
 ```
 
 ---

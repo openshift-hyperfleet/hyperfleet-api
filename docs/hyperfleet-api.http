@@ -99,7 +99,7 @@ Accept: application/json
 
 ###
 # @name reportClusterStatus
-POST {{baseUrl}}/api/hyperfleet/v1/clusters/{{clusterId}}/statuses
+PUT {{baseUrl}}/api/hyperfleet/v1/clusters/{{clusterId}}/statuses
 Authorization: Bearer {{authToken}}
 Content-Type: application/json
 
@@ -174,7 +174,7 @@ Accept: application/json
 
 ###
 # @name reportNodePoolStatus
-POST {{baseUrl}}/api/hyperfleet/v1/clusters/{{clusterId}}/nodepools/{{nodePoolId}}/statuses
+PUT {{baseUrl}}/api/hyperfleet/v1/clusters/{{clusterId}}/nodepools/{{nodePoolId}}/statuses
 Authorization: Bearer {{authToken}}
 Content-Type: application/json
 
