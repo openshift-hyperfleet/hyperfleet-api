@@ -1163,9 +1163,9 @@ func TestClusterHardDelete(t *testing.T) {
 				},
 				nil,
 			)
-			statusResp, loopErr := client.PostClusterStatusesWithResponse(
+			statusResp, loopErr := client.PutClusterStatusesWithResponse(
 				ctx, cluster.ID,
-				openapi.PostClusterStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
+				openapi.PutClusterStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
 			)
 			Expect(loopErr).NotTo(HaveOccurred())
 			Expect(statusResp.StatusCode()).To(Equal(http.StatusCreated))
@@ -1224,9 +1224,9 @@ func TestClusterHardDelete(t *testing.T) {
 			},
 			nil,
 		)
-		statusResp, err := client.PostClusterStatusesWithResponse(
+		statusResp, err := client.PutClusterStatusesWithResponse(
 			ctx, cluster.ID,
-			openapi.PostClusterStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
+			openapi.PutClusterStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
 		)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(statusResp.StatusCode()).To(Equal(http.StatusCreated))
@@ -1295,9 +1295,9 @@ func TestClusterHardDelete(t *testing.T) {
 				},
 				nil,
 			)
-			statusResp, loopErr := client.PostClusterStatusesWithResponse(
+			statusResp, loopErr := client.PutClusterStatusesWithResponse(
 				ctx, cluster.ID,
-				openapi.PostClusterStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
+				openapi.PutClusterStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
 			)
 			Expect(loopErr).NotTo(HaveOccurred())
 			Expect(statusResp.StatusCode()).To(Equal(http.StatusCreated))
@@ -1334,9 +1334,9 @@ func TestClusterHardDelete(t *testing.T) {
 				},
 				nil,
 			)
-			_, loopErr := client.PostNodePoolStatusesWithResponse(
+			_, loopErr := client.PutNodePoolStatusesWithResponse(
 				ctx, cluster.ID, nodePool.ID,
-				openapi.PostNodePoolStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
+				openapi.PutNodePoolStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
 			)
 			Expect(loopErr).NotTo(HaveOccurred())
 		}
@@ -1371,9 +1371,9 @@ func TestClusterHardDelete(t *testing.T) {
 			},
 			nil,
 		)
-		finalResp, err := client.PostClusterStatusesWithResponse(
+		finalResp, err := client.PutClusterStatusesWithResponse(
 			ctx, cluster.ID,
-			openapi.PostClusterStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
+			openapi.PutClusterStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
 		)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(finalResp.StatusCode()).To(Equal(http.StatusCreated))
