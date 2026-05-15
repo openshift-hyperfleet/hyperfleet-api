@@ -3,6 +3,7 @@ package handlers
 import (
 	"reflect"
 	"regexp"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 
@@ -32,6 +33,23 @@ func validateNotEmpty(i interface{}, fieldName string, field string) validate {
 		}
 		if len(value.String()) == 0 {
 			return errors.Validation("%s is required", field)
+		}
+		return nil
+	}
+}
+
+//nolint:unparam // fieldName is generic; currently only "Reason" but used for any field
+func validateMaxLength(i interface{}, fieldName string, field string, maxLen int) validate {
+	return func() *errors.ServiceError {
+		value := reflect.ValueOf(i).Elem().FieldByName(fieldName)
+		if value.Kind() == reflect.Ptr {
+			if value.IsNil() {
+				return nil
+			}
+			value = value.Elem()
+		}
+		if utf8.RuneCountInString(value.String()) > maxLen {
+			return errors.Validation("%s must be at most %d characters", field, maxLen)
 		}
 		return nil
 	}
