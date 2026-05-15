@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"strings"
 	"testing"
 
 	. "github.com/onsi/gomega"
@@ -230,6 +231,57 @@ func TestValidateNodePoolName_InvalidCharacters(t *testing.T) {
 		err := validator()
 		Expect(err).ToNot(BeNil(), "Expected nodepool name '%s' to be invalid", name)
 		Expect(err.Reason).To(ContainSubstring("lowercase letters, numbers, and hyphens"))
+	}
+}
+
+func TestValidateMaxLength(t *testing.T) {
+	testCases := []struct {
+		name        string
+		reason      string
+		errContains string
+		maxLen      int
+		expectError bool
+	}{
+		{
+			name:        "valid short reason",
+			reason:      "Stuck in finalizing for 2 hours",
+			maxLen:      1024,
+			expectError: false,
+		},
+		{
+			name:        "exact limit",
+			reason:      strings.Repeat("a", 1024),
+			maxLen:      1024,
+			expectError: false,
+		},
+		{
+			name:        "exceeds limit by one",
+			reason:      strings.Repeat("a", 1025),
+			maxLen:      1024,
+			expectError: true,
+			errContains: "at most 1024 characters",
+		},
+		{
+			name:        "empty string",
+			reason:      "",
+			maxLen:      1024,
+			expectError: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			RegisterTestingT(t)
+			req := api.ForceDeleteRequest{Reason: tc.reason}
+			validator := validateMaxLength(&req, "Reason", "reason", tc.maxLen)
+			err := validator()
+			if tc.expectError {
+				Expect(err).ToNot(BeNil())
+				Expect(err.Reason).To(ContainSubstring(tc.errContains))
+			} else {
+				Expect(err).To(BeNil())
+			}
+		})
 	}
 }
 
