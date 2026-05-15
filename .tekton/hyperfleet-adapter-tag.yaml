@@ -4,18 +4,18 @@ metadata:
   annotations:
     build.appstudio.openshift.io/repo: https://github.com/openshift-hyperfleet/hyperfleet-adapter?rev={{revision}}
     build.appstudio.redhat.com/commit_sha: '{{revision}}'
-    build.appstudio.redhat.com/pull_request_number: '{{pull_request_number}}'
     build.appstudio.redhat.com/target_branch: '{{target_branch}}'
-    pipelinesascode.tekton.dev/cancel-in-progress: "true"
+    pipelinesascode.tekton.dev/cancel-in-progress: "false"
     pipelinesascode.tekton.dev/max-keep-runs: "3"
-    pipelinesascode.tekton.dev/on-cel-expression: event == "pull_request" && target_branch
-      == "main"
+    pipelinesascode.tekton.dev/on-cel-expression: |
+      event == "push"
+      && target_branch.matches("^refs/tags/v[0-9]+\\.[0-9]+\\.[0-9]+(-rc[0-9]+)?$")
   creationTimestamp: null
   labels:
     appstudio.openshift.io/application: hyperfleet
     appstudio.openshift.io/component: hyperfleet-adapter
     pipelines.appstudio.openshift.io/type: build
-  name: hyperfleet-adapter-on-pull-request
+  name: hyperfleet-adapter-on-tag
   namespace: hyperfleet-tenant
 spec:
   params:
@@ -24,9 +24,9 @@ spec:
   - name: revision
     value: '{{revision}}'
   - name: output-image
-    value: quay.io/redhat-user-workloads/hyperfleet-tenant/hyperfleet/hyperfleet-adapter:on-pr-{{revision}}
-  - name: image-expires-after
-    value: 5d
+    value: quay.io/redhat-user-workloads/hyperfleet-tenant/hyperfleet/hyperfleet-adapter:{{revision}}
+  - name: target-branch
+    value: '{{target_branch}}'
   - name: dockerfile
     value: ./Dockerfile
   - name: path-context
@@ -112,6 +112,10 @@ spec:
         VMs
       name: privileged-nested
       type: string
+    - default: ""
+      description: Git ref that triggered the build (e.g., refs/tags/v1.0.0-rc1)
+      name: target-branch
+      type: string
     results:
     - description: ""
       name: IMAGE_URL
@@ -139,6 +143,29 @@ spec:
         - name: kind
           value: task
         resolver: bundles
+    - name: extract-version
+      params:
+      - name: TAG_REF
+        value: $(params.target-branch)
+      taskSpec:
+        params:
+        - name: TAG_REF
+          type: string
+        results:
+        - name: VERSION
+          description: Semantic version extracted from git tag ref
+        steps:
+        - name: extract
+          image: registry.access.redhat.com/ubi9-minimal:latest
+          script: |
+            #!/usr/bin/env bash
+            VERSION="${TAG_REF#refs/tags/v}"
+            printf '%s' "$VERSION" > "$(results.VERSION.path)"
+          env:
+          - name: TAG_REF
+            value: $(params.TAG_REF)
+      runAfter:
+      - init
     - name: clone-repository
       params:
       - name: url
@@ -210,6 +237,7 @@ spec:
       - name: BUILD_ARGS
         value:
         - $(params.build-args[*])
+        - VERSION=$(tasks.extract-version.results.VERSION)
       - name: BUILD_ARGS_FILE
         value: $(params.build-args-file)
       - name: PRIVILEGED_NESTED
