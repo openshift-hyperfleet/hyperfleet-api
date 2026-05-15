@@ -267,6 +267,19 @@ func TestValidateMaxLength(t *testing.T) {
 			maxLen:      1024,
 			expectError: false,
 		},
+		{
+			name:        "multibyte at exact limit counts runes not bytes",
+			reason:      strings.Repeat("é", 1024),
+			maxLen:      1024,
+			expectError: false,
+		},
+		{
+			name:        "multibyte over limit counts runes not bytes",
+			reason:      strings.Repeat("é", 1025),
+			maxLen:      1024,
+			expectError: true,
+			errContains: "at most 1024 characters",
+		},
 	}
 
 	for _, tc := range testCases {
@@ -283,6 +296,29 @@ func TestValidateMaxLength(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestValidateMaxLength_PointerField(t *testing.T) {
+	type ptrReq struct {
+		Reason *string
+	}
+
+	t.Run("nil pointer skips validation", func(t *testing.T) {
+		RegisterTestingT(t)
+		req := ptrReq{Reason: nil}
+		validator := validateMaxLength(&req, "Reason", "reason", 10)
+		Expect(validator()).To(BeNil())
+	})
+
+	t.Run("pointer to too-long string returns error", func(t *testing.T) {
+		RegisterTestingT(t)
+		long := strings.Repeat("a", 11)
+		req := ptrReq{Reason: &long}
+		validator := validateMaxLength(&req, "Reason", "reason", 10)
+		err := validator()
+		Expect(err).ToNot(BeNil())
+		Expect(err.Reason).To(ContainSubstring("at most 10 characters"))
+	})
 }
 
 func TestValidateSpec_Valid(t *testing.T) {
