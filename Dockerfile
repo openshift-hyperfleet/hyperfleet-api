@@ -51,7 +51,7 @@ CMD ["serve"]
 
 ARG APP_VERSION="0.0.0-dev"
 LABEL name="hyperfleet-adapter" \
-      vendor="Red Hat" \
+      vendor="Red Hat, Inc." \
       version="${APP_VERSION}" \
       summary="HyperFleet Adapter - Event-driven adapter services for HyperFleet cluster provisioning" \
       description="Handles CloudEvents consumption, AdapterConfig CRD integration, precondition evaluation, Kubernetes Job creation/monitoring, and status reporting via API"
