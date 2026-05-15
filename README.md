@@ -98,7 +98,7 @@ Kubernetes clusters with provider-specific configurations, labels, and adapter-b
 **Main endpoints:**
 - `GET/POST /api/hyperfleet/v1/clusters`
 - `GET /api/hyperfleet/v1/clusters/{id}`
-- `GET/POST /api/hyperfleet/v1/clusters/{id}/statuses`
+- `GET/PUT /api/hyperfleet/v1/clusters/{id}/statuses`
 
 ### NodePools
 
@@ -108,7 +108,7 @@ Groups of compute nodes within clusters.
 - `GET /api/hyperfleet/v1/nodepools`
 - `GET/POST /api/hyperfleet/v1/clusters/{cluster_id}/nodepools`
 - `GET /api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepool_id}`
-- `GET/POST /api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepool_id}/statuses`
+- `GET/PUT /api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepool_id}/statuses`
 
 Both resources support pagination, label-based search, and adapter status reporting. See [docs/api-resources.md](docs/api-resources.md) for complete API documentation.
 
