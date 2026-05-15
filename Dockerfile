@@ -54,7 +54,7 @@ CMD ["serve"]
 
 ARG APP_VERSION="0.0.0-dev"
 LABEL name="hyperfleet-api" \
-      vendor="Red Hat" \
+      vendor="Red Hat, Inc." \
       version="${APP_VERSION}" \
       summary="HyperFleet API - Cluster Lifecycle Management Service" \
       description="HyperFleet API for cluster lifecycle management"
