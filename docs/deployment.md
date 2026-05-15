@@ -145,8 +145,7 @@ HyperFleet API is configured via environment variables and configuration files.
 
 The API validates cluster and nodepool `spec` fields against an OpenAPI schema. This allows different providers (GCP, AWS, Azure) to have different spec structures.
 
-- **Configuration:** `server.openapi_schema_path` (supports config file, env var, or CLI flag)
-- **Default:** `openapi/openapi.yaml` (provider-agnostic base schema)
+Schema validation is optional and file-path based. Set `--server-openapi-schema-path` (or `HYPERFLEET_SERVER_OPENAPI_SCHEMA_PATH`) to a provider-specific OpenAPI schema file to enable it. If the path is missing or the file is unreadable, the API logs a warning and starts without validation — startup is non-blocking.
 
 See [Configuration Guide](config.md) for all configuration options.
 

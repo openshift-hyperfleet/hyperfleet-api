@@ -6,7 +6,7 @@ HyperFleet API is a **stateless REST API** serving as the pure CRUD data layer f
 
 - **Language**: Go 1.24+ with FIPS crypto (`CGO_ENABLED=1 GOEXPERIMENT=boringcrypto`)
 - **Database**: PostgreSQL 14.2 with GORM ORM
-- **API Spec**: TypeSpec → OpenAPI 3.0.3 → oapi-codegen → Go models
+- **API Spec**: TypeSpec → `hyperfleet-api-spec` Go module → oapi-codegen → Go models
 - **Architecture**: Plugin-based route registration, transaction-per-request middleware
 
 ## Critical First Steps
@@ -100,15 +100,9 @@ Each resource registers via `init()` function:
 
 - Transaction middleware creates GORM transactions for **write requests only** (POST/PUT/PATCH/DELETE): `pkg/db/transaction_middleware.go`
 - Read requests (GET) skip transaction creation for performance
-- OpenAPI source spec: `openapi/openapi.yaml` (TypeSpec-generated, uses `$ref`)
-- Generated code: `pkg/api/openapi/` (models + embedded spec) — **never edit**
-- Codegen config: `openapi/oapi-codegen.yaml` — uses oapi-codegen (not openapi-generator-cli)
+- OpenAPI spec and code generation: see [openapi/README.md](openapi/README.md) — run `make generate` before building; generated files in `pkg/api/openapi/` are **never edited**
 - Status aggregation: Service layer synthesizes `Available` and `Ready` conditions from adapter reports
 - Plugin-based: each resource type registers routes/services in `plugins/*/plugin.go`
-
-Two `openapi.yaml` files exist:
-- `openapi/openapi.yaml` — source (32KB, has `$ref`)
-- `pkg/api/openapi/api/openapi.yaml` — generated (44KB, fully resolved, embedded in binary)
 
 ## Boundaries
 
@@ -117,7 +111,7 @@ Two `openapi.yaml` files exist:
 - **Never set** `status.phase` manually — it is calculated from adapter conditions
 - **Never create** direct DB connections — use `SessionFactory.New(ctx)` for transaction participation
 - **FIPS required**: always build with `CGO_ENABLED=1 GOEXPERIMENT=boringcrypto`
-- **Spec source of truth**: `openapi/openapi.yaml` (TypeSpec output); don't modify generated spec
+- **OpenAPI spec**: not tracked in git — see [openapi/README.md](openapi/README.md) for spec versioning and generation details
 
 ## Related CLAUDE.md Files
 
@@ -131,4 +125,4 @@ Subdirectories contain context-specific guidance that loads when you work in tho
 - `plugins/CLAUDE.md` — Plugin registration (init-based)
 - `test/CLAUDE.md` — Test conventions, factories, and environment variables
 - `charts/CLAUDE.md` — Helm chart testing and configuration
-- `openapi/CLAUDE.md` — OpenAPI spec, code generation, and oapi-codegen config
+- `openapi/README.md` — OpenAPI schema import, code generation, schema validation, and oapi-codegen config
