@@ -15,7 +15,6 @@ const (
 	FieldLogLevel    = "level"
 	FieldLogFormat   = "format"
 	FieldLogOutput   = "output"
-	FieldSchemaPath  = "schema_path"
 )
 
 // Resource related fields
@@ -48,6 +47,11 @@ const (
 	FieldProtocol                 = "protocol"
 	FieldSampler                  = "sampler"
 	FieldServiceVersion           = "service_version"
+)
+
+// Schema related fields
+const (
+	FieldSchemaPath = "schema_path"
 )
 
 // Generic fields
