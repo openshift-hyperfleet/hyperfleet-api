@@ -35,8 +35,7 @@ chart/
 charts/
 deployments/
 
-# License and owners
-LICENSE
+# Owners
 OWNERS
 CONTRIBUTING.md
 
