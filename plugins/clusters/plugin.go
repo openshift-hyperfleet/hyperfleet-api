@@ -66,7 +66,6 @@ func init() {
 		// Nested resource: cluster statuses
 		clusterStatusHandler := handlers.NewClusterStatusHandler(adapterStatus.Service(envServices), Service(envServices))
 		clustersRouter.HandleFunc("/{id}/statuses", clusterStatusHandler.List).Methods(http.MethodGet)
-		clustersRouter.HandleFunc("/{id}/statuses", clusterStatusHandler.Create).Methods(http.MethodPost)
 		clustersRouter.HandleFunc("/{id}/statuses", clusterStatusHandler.Create).Methods(http.MethodPut)
 
 		// Nested resource: cluster nodepools
@@ -84,7 +83,6 @@ func init() {
 		// Nested resource: nodepool statuses
 		nodepoolStatusHandler := handlers.NewNodePoolStatusHandler(adapterStatus.Service(envServices), nodePools.Service(envServices))
 		clustersRouter.HandleFunc("/{id}/nodepools/{nodepool_id}/statuses", nodepoolStatusHandler.List).Methods(http.MethodGet)
-		clustersRouter.HandleFunc("/{id}/nodepools/{nodepool_id}/statuses", nodepoolStatusHandler.Create).Methods(http.MethodPost)
 		clustersRouter.HandleFunc("/{id}/nodepools/{nodepool_id}/statuses", nodepoolStatusHandler.Create).Methods(http.MethodPut)
 
 		clustersRouter.Use(authMiddleware.AuthenticateAccountJWT)

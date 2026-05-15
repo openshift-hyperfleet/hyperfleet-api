@@ -754,9 +754,9 @@ func TestNodePoolHardDelete(t *testing.T) {
 				},
 				nil,
 			)
-			statusResp, loopErr := client.PostNodePoolStatusesWithResponse(
+			statusResp, loopErr := client.PutNodePoolStatusesWithResponse(
 				ctx, cluster.ID, nodePool.ID,
-				openapi.PostNodePoolStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
+				openapi.PutNodePoolStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
 			)
 			Expect(loopErr).NotTo(HaveOccurred())
 			Expect(statusResp.StatusCode()).To(Equal(http.StatusCreated))
@@ -815,9 +815,9 @@ func TestNodePoolHardDelete(t *testing.T) {
 			},
 			nil,
 		)
-		statusResp, err := client.PostNodePoolStatusesWithResponse(
+		statusResp, err := client.PutNodePoolStatusesWithResponse(
 			ctx, cluster.ID, nodePool.ID,
-			openapi.PostNodePoolStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
+			openapi.PutNodePoolStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
 		)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(statusResp.StatusCode()).To(Equal(http.StatusCreated))
@@ -870,9 +870,9 @@ func TestNodePoolHardDelete(t *testing.T) {
 			},
 			nil,
 		)
-		statusResp, err := client.PostNodePoolStatusesWithResponse(
+		statusResp, err := client.PutNodePoolStatusesWithResponse(
 			ctx, cluster.ID, nodePool.ID,
-			openapi.PostNodePoolStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
+			openapi.PutNodePoolStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
 		)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(statusResp.StatusCode()).To(Equal(http.StatusCreated))
@@ -923,9 +923,9 @@ func TestNodePoolHardDelete(t *testing.T) {
 				},
 				nil,
 			)
-			statusResp, loopErr := client.PostNodePoolStatusesWithResponse(
+			statusResp, loopErr := client.PutNodePoolStatusesWithResponse(
 				ctx, cluster.ID, nodePool.ID,
-				openapi.PostNodePoolStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
+				openapi.PutNodePoolStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
 			)
 			Expect(loopErr).NotTo(HaveOccurred())
 			Expect(statusResp.StatusCode()).To(Equal(http.StatusCreated))
