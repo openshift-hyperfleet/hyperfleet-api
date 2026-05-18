@@ -48,7 +48,7 @@ EXPOSE 6443
 
 # Label the image
 LABEL name="hyperfleet-integration-test" \
-      vendor="Red Hat" \
+      vendor="Red Hat, Inc." \
       summary="Integration test image with Kubernetes envtest binaries" \
       description="Pre-built envtest environment for HyperFleet adapter integration tests" \
       kubernetes.version="1.30.x"
