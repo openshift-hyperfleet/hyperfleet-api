@@ -260,5 +260,5 @@ post:
         headers:
           - name: Content-Type
             value: application/json
-        method: POST
+        method: PUT
         url: /clusters/{{ .clusterId }}/statuses
