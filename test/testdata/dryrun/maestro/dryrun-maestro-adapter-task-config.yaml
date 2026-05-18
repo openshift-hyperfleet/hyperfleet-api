@@ -311,6 +311,6 @@ post:
   post_actions:
     - api_call:
         body: '{{ .statusPayload }}'
-        method: POST
+        method: PUT
         url: /api/hyperfleet/v1/clusters/{{ .clusterId }}/statuses
       name: updateStatus

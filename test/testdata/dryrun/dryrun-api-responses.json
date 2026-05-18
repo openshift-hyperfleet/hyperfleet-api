@@ -38,8 +38,8 @@
     },
     {
       "match": {
-        "method": "PATCH",
-        "urlPattern": "/api/hyperfleet/v1/clusters/.*/status"
+        "method": "PUT",
+        "urlPattern": "/api/hyperfleet/v1/clusters/.*/statuses"
       },
       "responses": [
         {

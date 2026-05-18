@@ -363,6 +363,6 @@ post:
   post_actions:
     - name: "updateStatus"
       api_call:
-        method: "PATCH"
+        method: "PUT"
         url: "/api/hyperfleet/v1/clusters/{{ .clusterId }}/statuses"
         body: "{{ .statusPayload }}"

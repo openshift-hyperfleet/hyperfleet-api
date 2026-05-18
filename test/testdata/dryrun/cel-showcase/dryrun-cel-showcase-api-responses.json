@@ -75,7 +75,7 @@
     },
     {
       "match": {
-        "method": "PATCH",
+        "method": "PUT",
         "urlPattern": "/api/hyperfleet/v1/clusters/.*/statuses"
       },
       "responses": [
