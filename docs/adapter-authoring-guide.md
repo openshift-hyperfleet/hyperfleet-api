@@ -1099,7 +1099,7 @@ post:
   post_actions:
     - name: "reportStatus"
       api_call:
-        method: "POST"
+        method: "PUT"
         url: "/api/hyperfleet/v1/clusters/{{ .clusterId }}/statuses"
         body: "{{ .statusPayload }}"
 ```
