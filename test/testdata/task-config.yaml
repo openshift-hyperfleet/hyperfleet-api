@@ -111,6 +111,6 @@ post:
   post_actions:
     - api_call:
         body: '{{ .clusterStatusPayload }}'
-        method: POST
+        method: PUT
         url: /clusters/{{ .clusterId }}/statuses
       name: updateStatus

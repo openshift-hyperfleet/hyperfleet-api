@@ -176,6 +176,7 @@ func TestDo_WildcardMethod(t *testing.T) {
 		{"POST matches wildcard", "POST"},
 		{"DELETE matches wildcard", "DELETE"},
 		{"PATCH matches wildcard", "PATCH"},
+		{"PUT matches wildcard", "PUT"},
 	}
 
 	for _, tc := range tests {
