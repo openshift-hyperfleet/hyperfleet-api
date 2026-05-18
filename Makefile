@@ -107,11 +107,14 @@ test-helm: ## Test Helm charts (lint, template, validate)
 		--set image.repository=openshift-hyperfleet/hyperfleet-adapter \
 		--set image.tag=test \
 		--set adapterConfig.yaml="apiVersion: hyperfleet.redhat.com/v1alpha1" \
-		--set adapterTaskConfig.yaml="apiVersion: hyperfleet.redhat.com/v1alpha1" > /dev/null
+		--set adapterTaskConfig.yaml="apiVersion: hyperfleet.redhat.com/v1alpha1" \
+		--set broker.type=googlepubsub \
+		--set broker.googlepubsub.subscriptionId=test-sub \
+		--set broker.googlepubsub.topic=test-topic > /dev/null
 	@echo "Minimal required values template OK"
 	@echo ""
 	@echo "Testing template with broker enabled..."
-	helm template test-release charts/ \
+	@output=$$(helm template test-release charts/ \
 		--set image.registry=quay.io \
 		--set image.repository=openshift-hyperfleet/hyperfleet-adapter \
 		--set image.tag=test \
@@ -120,7 +123,9 @@ test-helm: ## Test Helm charts (lint, template, validate)
 		--set broker.create=true \
 		--set broker.googlepubsub.subscriptionId=test-sub \
 		--set broker.googlepubsub.topic=test-topic \
-		--set broker.type=googlepubsub > /dev/null
+		--set broker.type=googlepubsub) \
+		&& echo "$$output" | grep -q 'type: googlepubsub' \
+		|| { echo "ERROR: expected googlepubsub broker type in rendered output"; exit 1; }
 	@echo "Broker config template OK"
 	@echo ""
 	@echo "Testing template with HyperFleet API config..."
@@ -130,6 +135,9 @@ test-helm: ## Test Helm charts (lint, template, validate)
 		--set image.tag=test \
 		--set adapterConfig.yaml="apiVersion: hyperfleet.redhat.com/v1alpha1" \
 		--set adapterTaskConfig.yaml="apiVersion: hyperfleet.redhat.com/v1alpha1" \
+		--set broker.type=googlepubsub \
+		--set broker.googlepubsub.subscriptionId=test-sub \
+		--set broker.googlepubsub.topic=test-topic \
 		--set adapterConfig.hyperfleetApi.baseUrl=http://localhost:8000 \
 		--set adapterConfig.hyperfleetApi.version=v1 > /dev/null
 	@echo "HyperFleet API config template OK"
@@ -141,6 +149,9 @@ test-helm: ## Test Helm charts (lint, template, validate)
 		--set image.tag=test \
 		--set adapterConfig.yaml="apiVersion: hyperfleet.redhat.com/v1alpha1" \
 		--set adapterTaskConfig.yaml="apiVersion: hyperfleet.redhat.com/v1alpha1" \
+		--set broker.type=googlepubsub \
+		--set broker.googlepubsub.subscriptionId=test-sub \
+		--set broker.googlepubsub.topic=test-topic \
 		--set podDisruptionBudget.enabled=true \
 		--set podDisruptionBudget.minAvailable=1 \
 		--set podDisruptionBudget.maxUnavailable=null > /dev/null
@@ -153,6 +164,9 @@ test-helm: ## Test Helm charts (lint, template, validate)
 		--set image.tag=test \
 		--set adapterConfig.yaml="apiVersion: hyperfleet.redhat.com/v1alpha1" \
 		--set adapterTaskConfig.yaml="apiVersion: hyperfleet.redhat.com/v1alpha1" \
+		--set broker.type=googlepubsub \
+		--set broker.googlepubsub.subscriptionId=test-sub \
+		--set broker.googlepubsub.topic=test-topic \
 		--set autoscaling.enabled=true \
 		--set autoscaling.minReplicas=2 \
 		--set autoscaling.maxReplicas=5 > /dev/null
@@ -165,6 +179,9 @@ test-helm: ## Test Helm charts (lint, template, validate)
 		--set image.tag=test \
 		--set adapterConfig.yaml="apiVersion: hyperfleet.redhat.com/v1alpha1" \
 		--set adapterTaskConfig.yaml="apiVersion: hyperfleet.redhat.com/v1alpha1" \
+		--set broker.type=googlepubsub \
+		--set broker.googlepubsub.subscriptionId=test-sub \
+		--set broker.googlepubsub.topic=test-topic \
 		--set livenessProbe.enabled=true \
 		--set readinessProbe.enabled=true \
 		--set startupProbe.enabled=true > /dev/null
@@ -177,6 +194,9 @@ test-helm: ## Test Helm charts (lint, template, validate)
 		--set image.tag=test \
 		--set adapterConfig.yaml="apiVersion: hyperfleet.redhat.com/v1alpha1" \
 		--set adapterTaskConfig.yaml="apiVersion: hyperfleet.redhat.com/v1alpha1" \
+		--set broker.type=googlepubsub \
+		--set broker.googlepubsub.subscriptionId=test-sub \
+		--set broker.googlepubsub.topic=test-topic \
 		--set serviceMonitor.enabled=true \
 		--api-versions monitoring.coreos.com/v1/ServiceMonitor | grep -q 'kind: ServiceMonitor' \
 		|| { echo "ERROR: ServiceMonitor not rendered"; exit 1; }
@@ -189,6 +209,9 @@ test-helm: ## Test Helm charts (lint, template, validate)
 		--set image.tag=test \
 		--set adapterConfig.yaml="apiVersion: hyperfleet.redhat.com/v1alpha1" \
 		--set adapterTaskConfig.yaml="apiVersion: hyperfleet.redhat.com/v1alpha1" \
+		--set broker.type=googlepubsub \
+		--set broker.googlepubsub.subscriptionId=test-sub \
+		--set broker.googlepubsub.topic=test-topic \
 		--set serviceMonitor.enabled=true) \
 		&& ! echo "$$output" | grep -q 'kind: ServiceMonitor' \
 		|| { echo "ERROR: ServiceMonitor rendered without CRD"; exit 1; }
@@ -201,11 +224,96 @@ test-helm: ## Test Helm charts (lint, template, validate)
 		--set image.tag=test \
 		--set adapterConfig.yaml="apiVersion: hyperfleet.redhat.com/v1alpha1" \
 		--set adapterTaskConfig.yaml="apiVersion: hyperfleet.redhat.com/v1alpha1" \
+		--set broker.type=googlepubsub \
+		--set broker.googlepubsub.subscriptionId=test-sub \
+		--set broker.googlepubsub.topic=test-topic \
 		--set serviceMonitor.enabled=false \
 		--api-versions monitoring.coreos.com/v1/ServiceMonitor) \
 		&& ! echo "$$output" | grep -q 'kind: ServiceMonitor' \
 		|| { echo "ERROR: ServiceMonitor rendered while disabled"; exit 1; }
 	@echo "ServiceMonitor disabled template OK"
+	@echo ""
+	@echo "Testing template with RabbitMQ broker..."
+	@output=$$(helm template test-release charts/ \
+		--set image.registry=quay.io \
+		--set image.repository=openshift-hyperfleet/hyperfleet-adapter \
+		--set image.tag=test \
+		--set adapterConfig.yaml="apiVersion: hyperfleet.redhat.com/v1alpha1" \
+		--set adapterTaskConfig.yaml="apiVersion: hyperfleet.redhat.com/v1alpha1" \
+		--set broker.create=true \
+		--set broker.type=rabbitmq \
+		--set broker.rabbitmq.url=amqp://guest:guest@rabbitmq:5672/ \
+		--set broker.rabbitmq.queue=test-queue \
+		--set broker.rabbitmq.exchange=test-exchange \
+		--set broker.rabbitmq.routingKey=test-key) \
+		&& echo "$$output" | grep -q 'type: rabbitmq' \
+		|| { echo "ERROR: expected rabbitmq broker type in rendered output"; exit 1; }
+	@echo "RabbitMQ broker template OK"
+	@echo ""
+	@echo "Testing that rabbitmq broker.type with both sections set selects rabbitmq..."
+	@output=$$(helm template test-release charts/ \
+		--set image.registry=quay.io \
+		--set image.repository=openshift-hyperfleet/hyperfleet-adapter \
+		--set image.tag=test \
+		--set adapterConfig.yaml="apiVersion: hyperfleet.redhat.com/v1alpha1" \
+		--set adapterTaskConfig.yaml="apiVersion: hyperfleet.redhat.com/v1alpha1" \
+		--set broker.create=true \
+		--set broker.type=rabbitmq \
+		--set broker.rabbitmq.url=amqp://guest:guest@rabbitmq:5672/ \
+		--set broker.rabbitmq.queue=test-queue \
+		--set broker.rabbitmq.exchange=test-exchange \
+		--set broker.rabbitmq.routingKey=test-key \
+		--set broker.googlepubsub.projectId=my-project \
+		--set broker.googlepubsub.topic=my-topic \
+		--set broker.googlepubsub.subscriptionId=my-sub) \
+		&& echo "$$output" | grep -q 'type: rabbitmq' \
+		|| { echo "ERROR: expected rabbitmq broker type in output"; exit 1; }
+	@echo "RabbitMQ broker type selection OK"
+	@echo ""
+	@echo "Testing that rabbitmq without queue fails validation..."
+	@if helm template test-release charts/ \
+		--set image.registry=quay.io \
+		--set image.repository=openshift-hyperfleet/hyperfleet-adapter \
+		--set image.tag=test \
+		--set adapterConfig.yaml="apiVersion: hyperfleet.redhat.com/v1alpha1" \
+		--set adapterTaskConfig.yaml="apiVersion: hyperfleet.redhat.com/v1alpha1" \
+		--set broker.create=true \
+		--set broker.type=rabbitmq \
+		--set broker.rabbitmq.url=amqp://guest:guest@rabbitmq:5672/ > /dev/null 2>&1; then \
+		echo "ERROR: expected helm template to fail when broker.rabbitmq.queue is missing"; exit 1; \
+	fi
+	@echo "RabbitMQ missing queue validation OK"
+	@echo ""
+	@echo "Testing that rabbitmq without exchange fails validation..."
+	@if helm template test-release charts/ \
+		--set image.registry=quay.io \
+		--set image.repository=openshift-hyperfleet/hyperfleet-adapter \
+		--set image.tag=test \
+		--set adapterConfig.yaml="apiVersion: hyperfleet.redhat.com/v1alpha1" \
+		--set adapterTaskConfig.yaml="apiVersion: hyperfleet.redhat.com/v1alpha1" \
+		--set broker.create=true \
+		--set broker.type=rabbitmq \
+		--set broker.rabbitmq.url=amqp://guest:guest@rabbitmq:5672/ \
+		--set broker.rabbitmq.queue=test-queue > /dev/null 2>&1; then \
+		echo "ERROR: expected helm template to fail when broker.rabbitmq.exchange is missing"; exit 1; \
+	fi
+	@echo "RabbitMQ missing exchange validation OK"
+	@echo ""
+	@echo "Testing that rabbitmq without routingKey fails validation..."
+	@if helm template test-release charts/ \
+		--set image.registry=quay.io \
+		--set image.repository=openshift-hyperfleet/hyperfleet-adapter \
+		--set image.tag=test \
+		--set adapterConfig.yaml="apiVersion: hyperfleet.redhat.com/v1alpha1" \
+		--set adapterTaskConfig.yaml="apiVersion: hyperfleet.redhat.com/v1alpha1" \
+		--set broker.create=true \
+		--set broker.type=rabbitmq \
+		--set broker.rabbitmq.url=amqp://guest:guest@rabbitmq:5672/ \
+		--set broker.rabbitmq.queue=test-queue \
+		--set broker.rabbitmq.exchange=test-exchange > /dev/null 2>&1; then \
+		echo "ERROR: expected helm template to fail when broker.rabbitmq.routingKey is missing"; exit 1; \
+	fi
+	@echo "RabbitMQ missing routingKey validation OK"
 
 ##@ Code Quality
 

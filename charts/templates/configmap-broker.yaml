@@ -4,6 +4,9 @@
 {{- if and $brokerType (not (has $brokerType $allowedTypes)) }}
   {{- fail (printf "broker.type must be one of %s (got %q)" (join ", " $allowedTypes) $brokerType) }}
 {{- end }}
+{{- if not .Values.broker.yaml }}
+{{- include "hyperfleet-adapter.validateBrokerConfig" . }}
+{{- end }}
 apiVersion: v1
 kind: ConfigMap
 metadata:

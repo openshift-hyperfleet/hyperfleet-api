@@ -73,8 +73,8 @@ broker:
   # option2
   # yaml: ""
 
-  # option3: Broker type identifier (googlepubsub, rabbitmq, etc.) - used as label
-  # Subscription/topic are used to set adapter broker config overrides
+  # option3: required broker type — must be set to "googlepubsub" or "rabbitmq".
+  type: ""
   googlepubsub:
     projectId: ""
     topic: ""
@@ -84,13 +84,12 @@ broker:
     # Set to true for development/testing; use false in production with pre-provisioned resources
     createTopicIfMissing: false
     createSubscriptionIfMissing: false
-  # option3: for rabbitmq
-  #rabbitmq:
-  #  url: ""
-  #  queue: ""
-  #  exchange: ""
-  #  exchangeType: "topic"
-  #  routingKey: ""
+  rabbitmq:
+    url: ""
+    queue: ""
+    exchange: ""
+    exchangeType: "topic"
+    routingKey: ""
 # Override default command
 command:
   - /app/adapter
