@@ -115,9 +115,9 @@ func TestParsePrevConditions(t *testing.T) {
 		b, _ := json.Marshal(conds)
 		return b
 	}
-	readyCond := api.ResourceCondition{Type: api.AdapterConditionTypeReady, Status: api.ConditionTrue}
+	readyCond := api.ResourceCondition{Type: api.ResourceConditionTypeReady, Status: api.ConditionTrue}
 	availCond := api.ResourceCondition{Type: api.ResourceConditionTypeLastKnownReconciled, Status: api.ConditionFalse}
-	reconciledCond := api.ResourceCondition{Type: api.AdapterConditionTypeReconciled, Status: api.ConditionFalse}
+	reconciledCond := api.ResourceCondition{Type: api.ResourceConditionTypeReconciled, Status: api.ConditionFalse}
 	adapterCond := api.ResourceCondition{Type: "Adapter1Successful", Status: api.ConditionTrue}
 
 	t.Run("nil input", func(t *testing.T) {
