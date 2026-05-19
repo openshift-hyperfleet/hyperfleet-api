@@ -186,17 +186,17 @@ func TestNodePoolProcessAdapterStatus_FirstUnknownCondition(t *testing.T) {
 	// Create first adapter status with all mandatory conditions but Available=Unknown
 	conditions := []api.AdapterCondition{
 		{
-			Type:               api.ConditionTypeAvailable,
+			Type:               api.AdapterConditionTypeAvailable,
 			Status:             api.AdapterConditionUnknown,
 			LastTransitionTime: time.Now(),
 		},
 		{
-			Type:               api.ConditionTypeApplied,
+			Type:               api.AdapterConditionTypeApplied,
 			Status:             api.AdapterConditionTrue,
 			LastTransitionTime: time.Now(),
 		},
 		{
-			Type:               api.ConditionTypeHealth,
+			Type:               api.AdapterConditionTypeHealth,
 			Status:             api.AdapterConditionTrue,
 			LastTransitionTime: time.Now(),
 		},
@@ -204,7 +204,7 @@ func TestNodePoolProcessAdapterStatus_FirstUnknownCondition(t *testing.T) {
 	conditionsJSON, _ := json.Marshal(conditions)
 
 	adapterStatus := &api.AdapterStatus{
-		ResourceType:       "NodePool",
+		ResourceType:       api.ResourceTypeNodePool,
 		ResourceID:         nodePoolID,
 		Adapter:            "test-adapter",
 		Conditions:         conditionsJSON,
@@ -220,7 +220,7 @@ func TestNodePoolProcessAdapterStatus_FirstUnknownCondition(t *testing.T) {
 	g.Expect(result.Adapter).To(Equal("test-adapter"))
 
 	// Verify the status was stored
-	storedStatuses, _ := adapterStatusDao.FindByResource(ctx, "NodePool", nodePoolID)
+	storedStatuses, _ := adapterStatusDao.FindByResource(ctx, api.ResourceTypeNodePool, nodePoolID)
 	g.Expect(len(storedStatuses)).To(Equal(1), "First Unknown status should be stored")
 }
 
@@ -246,14 +246,14 @@ func TestNodePoolProcessAdapterStatus_SubsequentUnknownCondition(t *testing.T) {
 
 	// Pre-populate an existing adapter status
 	conditions := []api.AdapterCondition{
-		{Type: api.ConditionTypeAvailable, Status: api.AdapterConditionUnknown, LastTransitionTime: time.Now()},
-		{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
-		{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeAvailable, Status: api.AdapterConditionUnknown, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
 	}
 	conditionsJSON, _ := json.Marshal(conditions)
 
 	existingStatus := &api.AdapterStatus{
-		ResourceType:       "NodePool",
+		ResourceType:       api.ResourceTypeNodePool,
 		ResourceID:         nodePoolID,
 		Adapter:            "test-adapter",
 		Conditions:         conditionsJSON,
@@ -265,7 +265,7 @@ func TestNodePoolProcessAdapterStatus_SubsequentUnknownCondition(t *testing.T) {
 
 	// Now send another Unknown status report
 	newAdapterStatus := &api.AdapterStatus{
-		ResourceType:       "NodePool",
+		ResourceType:       api.ResourceTypeNodePool,
 		ResourceID:         nodePoolID,
 		Adapter:            "test-adapter",
 		Conditions:         conditionsJSON,
@@ -301,13 +301,13 @@ func TestNodePoolProcessAdapterStatus_InvalidStatusReturnsValidationError(t *tes
 	}
 
 	conditions := []api.AdapterCondition{
-		{Type: api.ConditionTypeAvailable, Status: "Pending", LastTransitionTime: time.Now()},
-		{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
-		{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeAvailable, Status: "Pending", LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
 	}
 	conditionsJSON, _ := json.Marshal(conditions)
 	adapterStatus := &api.AdapterStatus{
-		ResourceType:       "NodePool",
+		ResourceType:       api.ResourceTypeNodePool,
 		ResourceID:         nodePoolID,
 		Adapter:            "test-adapter",
 		Conditions:         conditionsJSON,
@@ -344,13 +344,13 @@ func TestNodePoolProcessAdapterStatus_EmptyStatusReturnsValidationError(t *testi
 	}
 
 	conditions := []api.AdapterCondition{
-		{Type: api.ConditionTypeAvailable, Status: "", LastTransitionTime: time.Now()},
-		{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
-		{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeAvailable, Status: "", LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
 	}
 	conditionsJSON, _ := json.Marshal(conditions)
 	adapterStatus := &api.AdapterStatus{
-		ResourceType:       "NodePool",
+		ResourceType:       api.ResourceTypeNodePool,
 		ResourceID:         nodePoolID,
 		Adapter:            "test-adapter",
 		Conditions:         conditionsJSON,
@@ -391,17 +391,17 @@ func TestNodePoolProcessAdapterStatus_TrueCondition(t *testing.T) {
 	// Create adapter status with all mandatory conditions
 	conditions := []api.AdapterCondition{
 		{
-			Type:               api.ConditionTypeAvailable,
+			Type:               api.AdapterConditionTypeAvailable,
 			Status:             api.AdapterConditionTrue,
 			LastTransitionTime: time.Now(),
 		},
 		{
-			Type:               api.ConditionTypeApplied,
+			Type:               api.AdapterConditionTypeApplied,
 			Status:             api.AdapterConditionTrue,
 			LastTransitionTime: time.Now(),
 		},
 		{
-			Type:               api.ConditionTypeHealth,
+			Type:               api.AdapterConditionTypeHealth,
 			Status:             api.AdapterConditionTrue,
 			LastTransitionTime: time.Now(),
 		},
@@ -410,7 +410,7 @@ func TestNodePoolProcessAdapterStatus_TrueCondition(t *testing.T) {
 
 	now := time.Now()
 	adapterStatus := &api.AdapterStatus{
-		ResourceType:   "NodePool",
+		ResourceType:   api.ResourceTypeNodePool,
 		ResourceID:     nodePoolID,
 		Adapter:        "test-adapter",
 		Conditions:     conditionsJSON,
@@ -425,7 +425,7 @@ func TestNodePoolProcessAdapterStatus_TrueCondition(t *testing.T) {
 	g.Expect(result.Adapter).To(Equal("test-adapter"))
 
 	// Verify the status was stored
-	storedStatuses, _ := adapterStatusDao.FindByResource(ctx, "NodePool", nodePoolID)
+	storedStatuses, _ := adapterStatusDao.FindByResource(ctx, api.ResourceTypeNodePool, nodePoolID)
 	g.Expect(len(storedStatuses)).To(Equal(1), "Status should be stored for True condition")
 }
 
@@ -453,22 +453,22 @@ func TestNodePoolProcessAdapterStatus_FirstMultipleConditions_AvailableUnknown(t
 	// Create first adapter status with all mandatory conditions but Available=Unknown
 	conditions := []api.AdapterCondition{
 		{
-			Type:               api.ConditionTypeAvailable,
+			Type:               api.AdapterConditionTypeAvailable,
 			Status:             api.AdapterConditionUnknown,
 			LastTransitionTime: time.Now(),
 		},
 		{
-			Type:               api.ConditionTypeApplied,
+			Type:               api.AdapterConditionTypeApplied,
 			Status:             api.AdapterConditionTrue,
 			LastTransitionTime: time.Now(),
 		},
 		{
-			Type:               api.ConditionTypeHealth,
+			Type:               api.AdapterConditionTypeHealth,
 			Status:             api.AdapterConditionTrue,
 			LastTransitionTime: time.Now(),
 		},
 		{
-			Type:               api.ConditionTypeReady,
+			Type:               api.AdapterConditionTypeReady,
 			Status:             api.AdapterConditionTrue,
 			LastTransitionTime: time.Now(),
 		},
@@ -476,7 +476,7 @@ func TestNodePoolProcessAdapterStatus_FirstMultipleConditions_AvailableUnknown(t
 	conditionsJSON, _ := json.Marshal(conditions)
 
 	adapterStatus := &api.AdapterStatus{
-		ResourceType:       "NodePool",
+		ResourceType:       api.ResourceTypeNodePool,
 		ResourceID:         nodePoolID,
 		Adapter:            "test-adapter",
 		Conditions:         conditionsJSON,
@@ -491,7 +491,7 @@ func TestNodePoolProcessAdapterStatus_FirstMultipleConditions_AvailableUnknown(t
 	g.Expect(result).ToNot(BeNil(), "First report with Available=Unknown should be accepted")
 
 	// Verify the status was stored
-	storedStatuses, _ := adapterStatusDao.FindByResource(ctx, "NodePool", nodePoolID)
+	storedStatuses, _ := adapterStatusDao.FindByResource(ctx, api.ResourceTypeNodePool, nodePoolID)
 	g.Expect(len(storedStatuses)).To(Equal(1), "First status with Available=Unknown should be stored")
 }
 
@@ -518,14 +518,14 @@ func TestNodePoolProcessAdapterStatus_SubsequentMultipleConditions_AvailableUnkn
 
 	// Pre-populate an existing adapter status
 	existingConditions := []api.AdapterCondition{
-		{Type: api.ConditionTypeAvailable, Status: api.AdapterConditionUnknown, LastTransitionTime: time.Now()},
-		{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
-		{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeAvailable, Status: api.AdapterConditionUnknown, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
 	}
 	existingConditionsJSON, _ := json.Marshal(existingConditions)
 
 	existingStatus := &api.AdapterStatus{
-		ResourceType:       "NodePool",
+		ResourceType:       api.ResourceTypeNodePool,
 		ResourceID:         nodePoolID,
 		Adapter:            "test-adapter",
 		Conditions:         existingConditionsJSON,
@@ -537,16 +537,16 @@ func TestNodePoolProcessAdapterStatus_SubsequentMultipleConditions_AvailableUnkn
 
 	// Now send another report with multiple conditions including Available=Unknown
 	conditions := []api.AdapterCondition{
-		{Type: api.ConditionTypeAvailable, Status: api.AdapterConditionUnknown, LastTransitionTime: time.Now()},
-		{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
-		{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
-		{Type: api.ConditionTypeReady, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeAvailable, Status: api.AdapterConditionUnknown, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeReady, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
 		{Type: "Progressing", Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
 	}
 	conditionsJSON, _ := json.Marshal(conditions)
 
 	adapterStatus := &api.AdapterStatus{
-		ResourceType:       "NodePool",
+		ResourceType:       api.ResourceTypeNodePool,
 		ResourceID:         nodePoolID,
 		Adapter:            "test-adapter",
 		Conditions:         conditionsJSON,
@@ -592,11 +592,11 @@ func TestNodePoolAvailableReadyTransitions(t *testing.T) {
 		var available, ready, reconciled *api.ResourceCondition
 		for i := range conds {
 			switch conds[i].Type {
-			case api.ConditionTypeLastKnownReconciled:
+			case api.ResourceConditionTypeLastKnownReconciled:
 				available = &conds[i]
-			case api.ConditionTypeReady:
+			case api.AdapterConditionTypeReady:
 				ready = &conds[i]
-			case api.ConditionTypeReconciled:
+			case api.AdapterConditionTypeReconciled:
 				reconciled = &conds[i]
 			}
 		}
@@ -608,15 +608,15 @@ func TestNodePoolAvailableReadyTransitions(t *testing.T) {
 
 	upsert := func(adapter string, available api.AdapterConditionStatus, observedGen int32) {
 		conditions := []api.AdapterCondition{
-			{Type: api.ConditionTypeAvailable, Status: available, LastTransitionTime: time.Now()},
-			{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
-			{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+			{Type: api.AdapterConditionTypeAvailable, Status: available, LastTransitionTime: time.Now()},
+			{Type: api.AdapterConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+			{Type: api.AdapterConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
 		}
 		conditionsJSON, _ := json.Marshal(conditions)
 		now := time.Now()
 
 		adapterStatus := &api.AdapterStatus{
-			ResourceType:       "NodePool",
+			ResourceType:       api.ResourceTypeNodePool,
 			ResourceID:         nodePoolID,
 			Adapter:            adapter,
 			ObservedGeneration: observedGen,
@@ -686,12 +686,12 @@ func TestNodePoolAvailableReadyTransitions(t *testing.T) {
 	prevStatus := api.NodePool{}.StatusConditions
 	prevStatus = append(prevStatus, nodePoolDao.nodePools[nodePoolID].StatusConditions...)
 	nonAvailableConds := []api.AdapterCondition{
-		{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
 	}
 	nonAvailableJSON, _ := json.Marshal(nonAvailableConds)
 	naNow := time.Now()
 	nonAvailableStatus := &api.AdapterStatus{
-		ResourceType:       "NodePool",
+		ResourceType:       api.ResourceTypeNodePool,
 		ResourceID:         nodePoolID,
 		Adapter:            "hypershift",
 		ObservedGeneration: 2,
@@ -710,14 +710,14 @@ func TestNodePoolAvailableReadyTransitions(t *testing.T) {
 	prevStatus = api.NodePool{}.StatusConditions
 	prevStatus = append(prevStatus, nodePoolDao.nodePools[nodePoolID].StatusConditions...)
 	unknownConds := []api.AdapterCondition{
-		{Type: api.ConditionTypeAvailable, Status: api.AdapterConditionUnknown, LastTransitionTime: time.Now()},
-		{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
-		{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeAvailable, Status: api.AdapterConditionUnknown, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
 	}
 	unknownJSON, _ := json.Marshal(unknownConds)
 	unknownNow := time.Now()
 	unknownStatus := &api.AdapterStatus{
-		ResourceType:       "NodePool",
+		ResourceType:       api.ResourceTypeNodePool,
 		ResourceID:         nodePoolID,
 		Adapter:            "hypershift",
 		Conditions:         unknownJSON,
@@ -758,7 +758,7 @@ func TestNodePoolStaleAdapterStatusUpdatePolicy(t *testing.T) {
 		var conds []api.ResourceCondition
 		g.Expect(json.Unmarshal(stored.StatusConditions, &conds)).To(Succeed())
 		for i := range conds {
-			if conds[i].Type == api.ConditionTypeLastKnownReconciled {
+			if conds[i].Type == api.ResourceConditionTypeLastKnownReconciled {
 				return conds[i]
 			}
 		}
@@ -768,15 +768,15 @@ func TestNodePoolStaleAdapterStatusUpdatePolicy(t *testing.T) {
 
 	upsert := func(adapter string, available api.AdapterConditionStatus, observedGen int32) {
 		conditions := []api.AdapterCondition{
-			{Type: api.ConditionTypeAvailable, Status: available, LastTransitionTime: time.Now()},
-			{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
-			{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+			{Type: api.AdapterConditionTypeAvailable, Status: available, LastTransitionTime: time.Now()},
+			{Type: api.AdapterConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+			{Type: api.AdapterConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
 		}
 		conditionsJSON, _ := json.Marshal(conditions)
 		now := time.Now()
 
 		adapterStatus := &api.AdapterStatus{
-			ResourceType:       "NodePool",
+			ResourceType:       api.ResourceTypeNodePool,
 			ResourceID:         nodePoolID,
 			Adapter:            adapter,
 			ObservedGeneration: observedGen,
@@ -827,7 +827,7 @@ func TestNodePoolSyntheticTimestampsStableWithoutAdapterStatus(t *testing.T) {
 	fixedNow := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
 	initialConditions := []api.ResourceCondition{
 		{
-			Type:               api.ConditionTypeLastKnownReconciled,
+			Type:               api.ResourceConditionTypeLastKnownReconciled,
 			Status:             api.ConditionFalse,
 			ObservedGeneration: 1,
 			LastTransitionTime: fixedNow,
@@ -835,7 +835,7 @@ func TestNodePoolSyntheticTimestampsStableWithoutAdapterStatus(t *testing.T) {
 			LastUpdatedTime:    fixedNow,
 		},
 		{
-			Type:               api.ConditionTypeReady,
+			Type:               api.AdapterConditionTypeReady,
 			Status:             api.ConditionFalse,
 			ObservedGeneration: 1,
 			LastTransitionTime: fixedNow,
@@ -862,11 +862,11 @@ func TestNodePoolSyntheticTimestampsStableWithoutAdapterStatus(t *testing.T) {
 	var createdAvailable, createdReady, createdReconciled *api.ResourceCondition
 	for i := range createdConds {
 		switch createdConds[i].Type {
-		case api.ConditionTypeLastKnownReconciled:
+		case api.ResourceConditionTypeLastKnownReconciled:
 			createdAvailable = &createdConds[i]
-		case api.ConditionTypeReady:
+		case api.AdapterConditionTypeReady:
 			createdReady = &createdConds[i]
-		case api.ConditionTypeReconciled:
+		case api.AdapterConditionTypeReconciled:
 			createdReconciled = &createdConds[i]
 		}
 	}
@@ -893,11 +893,11 @@ func TestNodePoolSyntheticTimestampsStableWithoutAdapterStatus(t *testing.T) {
 	var updatedAvailable, updatedReady, updatedReconciled *api.ResourceCondition
 	for i := range updatedConds {
 		switch updatedConds[i].Type {
-		case api.ConditionTypeLastKnownReconciled:
+		case api.ResourceConditionTypeLastKnownReconciled:
 			updatedAvailable = &updatedConds[i]
-		case api.ConditionTypeReady:
+		case api.AdapterConditionTypeReady:
 			updatedReady = &updatedConds[i]
-		case api.ConditionTypeReconciled:
+		case api.AdapterConditionTypeReconciled:
 			updatedReconciled = &updatedConds[i]
 		}
 	}
@@ -987,14 +987,14 @@ func TestNodePoolSoftDelete(t *testing.T) {
 
 		nodePoolDao.nodePools[nodePoolID] = &api.NodePool{Meta: api.Meta{ID: nodePoolID}, Generation: 1}
 		conditions := []api.AdapterCondition{
-			{Type: api.ConditionTypeAvailable, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
-			{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
-			{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+			{Type: api.AdapterConditionTypeAvailable, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+			{Type: api.AdapterConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+			{Type: api.AdapterConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
 		}
 		condJSON, _ := json.Marshal(conditions)
 		now := time.Now()
 		_, svcErr := service.ProcessAdapterStatus(ctx, nodePoolID, &api.AdapterStatus{
-			ResourceType: "NodePool", ResourceID: nodePoolID, Adapter: "validation",
+			ResourceType: api.ResourceTypeNodePool, ResourceID: nodePoolID, Adapter: "validation",
 			ObservedGeneration: 1, Conditions: condJSON, CreatedTime: now, LastReportTime: now,
 		})
 		g.Expect(svcErr).To(BeNil())
@@ -1005,7 +1005,7 @@ func TestNodePoolSoftDelete(t *testing.T) {
 		g.Expect(json.Unmarshal(stored.StatusConditions, &preConds)).To(Succeed())
 		var preReady *api.ResourceCondition
 		for i := range preConds {
-			if preConds[i].Type == api.ConditionTypeReady {
+			if preConds[i].Type == api.AdapterConditionTypeReady {
 				preReady = &preConds[i]
 			}
 		}
@@ -1023,7 +1023,7 @@ func TestNodePoolSoftDelete(t *testing.T) {
 		g.Expect(json.Unmarshal(stored.StatusConditions, &postConds)).To(Succeed())
 		var postReady *api.ResourceCondition
 		for i := range postConds {
-			if postConds[i].Type == api.ConditionTypeReady {
+			if postConds[i].Type == api.AdapterConditionTypeReady {
 				postReady = &postConds[i]
 			}
 		}
@@ -1089,7 +1089,7 @@ func TestNodePoolForceDelete(t *testing.T) {
 		}
 		env.adapterStatusDao.statuses["status-1"] = &api.AdapterStatus{
 			Meta:         api.Meta{ID: "status-1"},
-			ResourceType: "NodePool",
+			ResourceType: api.ResourceTypeNodePool,
 			ResourceID:   testNodePoolID,
 			Adapter:      "validation",
 		}

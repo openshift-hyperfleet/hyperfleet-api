@@ -107,7 +107,7 @@ func NewNodePoolWithStatusAtTime(
 
 	conditions := []api.ResourceCondition{
 		{
-			Type:               "Available",
+			Type:               api.ResourceConditionTypeAvailable,
 			Status:             availableStatus,
 			ObservedGeneration: nodePool.Generation,
 			LastTransitionTime: conditionTime,
@@ -115,7 +115,7 @@ func NewNodePoolWithStatusAtTime(
 			LastUpdatedTime:    conditionTime,
 		},
 		{
-			Type:               "Ready",
+			Type:               api.ResourceConditionTypeReady,
 			Status:             readyStatus,
 			ObservedGeneration: nodePool.Generation,
 			LastTransitionTime: conditionTime,

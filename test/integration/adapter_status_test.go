@@ -47,22 +47,22 @@ func TestClusterStatusPut(t *testing.T) {
 		cluster.Generation,
 		[]openapi.ConditionRequest{
 			{
-				Type:   api.ConditionTypeAvailable,
+				Type:   api.AdapterConditionTypeAvailable,
 				Status: openapi.AdapterConditionStatusTrue,
 				Reason: util.PtrString("ClusterAvailable"),
 			},
 			{
-				Type:   api.ConditionTypeApplied,
+				Type:   api.AdapterConditionTypeApplied,
 				Status: openapi.AdapterConditionStatusTrue,
 				Reason: util.PtrString("ConfigurationApplied"),
 			},
 			{
-				Type:   api.ConditionTypeHealth,
+				Type:   api.AdapterConditionTypeHealth,
 				Status: openapi.AdapterConditionStatusTrue,
 				Reason: util.PtrString("HealthyCluster"),
 			},
 			{
-				Type:   api.ConditionTypeReady,
+				Type:   api.AdapterConditionTypeReady,
 				Status: openapi.AdapterConditionStatusTrue,
 				Reason: util.PtrString("AdapterReady"),
 			},
@@ -100,19 +100,19 @@ func TestClusterStatusGet(t *testing.T) {
 			cluster.Generation,
 			[]openapi.ConditionRequest{
 				{
-					Type:   api.ConditionTypeAvailable,
+					Type:   api.AdapterConditionTypeAvailable,
 					Status: openapi.AdapterConditionStatusTrue,
 				},
 				{
-					Type:   api.ConditionTypeApplied,
+					Type:   api.AdapterConditionTypeApplied,
 					Status: openapi.AdapterConditionStatusTrue,
 				},
 				{
-					Type:   api.ConditionTypeHealth,
+					Type:   api.AdapterConditionTypeHealth,
 					Status: openapi.AdapterConditionStatusTrue,
 				},
 				{
-					Type:   api.ConditionTypeReady,
+					Type:   api.AdapterConditionTypeReady,
 					Status: openapi.AdapterConditionStatusTrue,
 				},
 			},
@@ -172,22 +172,22 @@ func TestNodePoolStatusPut(t *testing.T) {
 		1,
 		[]openapi.ConditionRequest{
 			{
-				Type:   api.ConditionTypeAvailable,
+				Type:   api.AdapterConditionTypeAvailable,
 				Status: openapi.AdapterConditionStatusFalse,
 				Reason: util.PtrString("Initializing"),
 			},
 			{
-				Type:   api.ConditionTypeApplied,
+				Type:   api.AdapterConditionTypeApplied,
 				Status: openapi.AdapterConditionStatusTrue,
 				Reason: util.PtrString("ConfigurationApplied"),
 			},
 			{
-				Type:   api.ConditionTypeHealth,
+				Type:   api.AdapterConditionTypeHealth,
 				Status: openapi.AdapterConditionStatusFalse,
 				Reason: util.PtrString("Initializing"),
 			},
 			{
-				Type:   api.ConditionTypeReady,
+				Type:   api.AdapterConditionTypeReady,
 				Status: openapi.AdapterConditionStatusFalse,
 				Reason: util.PtrString("Initializing"),
 			},
@@ -225,19 +225,19 @@ func TestNodePoolStatusGet(t *testing.T) {
 			1,
 			[]openapi.ConditionRequest{
 				{
-					Type:   api.ConditionTypeAvailable,
+					Type:   api.AdapterConditionTypeAvailable,
 					Status: openapi.AdapterConditionStatusTrue,
 				},
 				{
-					Type:   api.ConditionTypeApplied,
+					Type:   api.AdapterConditionTypeApplied,
 					Status: openapi.AdapterConditionStatusTrue,
 				},
 				{
-					Type:   api.ConditionTypeHealth,
+					Type:   api.AdapterConditionTypeHealth,
 					Status: openapi.AdapterConditionStatusTrue,
 				},
 				{
-					Type:   api.ConditionTypeReady,
+					Type:   api.AdapterConditionTypeReady,
 					Status: openapi.AdapterConditionStatusTrue,
 				},
 			},
@@ -277,19 +277,19 @@ func TestAdapterStatusPaging(t *testing.T) {
 			cluster.Generation,
 			[]openapi.ConditionRequest{
 				{
-					Type:   api.ConditionTypeAvailable,
+					Type:   api.AdapterConditionTypeAvailable,
 					Status: openapi.AdapterConditionStatusTrue,
 				},
 				{
-					Type:   api.ConditionTypeApplied,
+					Type:   api.AdapterConditionTypeApplied,
 					Status: openapi.AdapterConditionStatusTrue,
 				},
 				{
-					Type:   api.ConditionTypeHealth,
+					Type:   api.AdapterConditionTypeHealth,
 					Status: openapi.AdapterConditionStatusTrue,
 				},
 				{
-					Type:   api.ConditionTypeReady,
+					Type:   api.AdapterConditionTypeReady,
 					Status: openapi.AdapterConditionStatusTrue,
 				},
 			},
@@ -336,22 +336,22 @@ func TestAdapterStatusIdempotency(t *testing.T) {
 		cluster.Generation,
 		[]openapi.ConditionRequest{
 			{
-				Type:   api.ConditionTypeAvailable,
+				Type:   api.AdapterConditionTypeAvailable,
 				Status: openapi.AdapterConditionStatusFalse,
 				Reason: util.PtrString("Initializing"),
 			},
 			{
-				Type:   api.ConditionTypeApplied,
+				Type:   api.AdapterConditionTypeApplied,
 				Status: openapi.AdapterConditionStatusTrue,
 				Reason: util.PtrString("ConfigurationApplied"),
 			},
 			{
-				Type:   api.ConditionTypeHealth,
+				Type:   api.AdapterConditionTypeHealth,
 				Status: openapi.AdapterConditionStatusFalse,
 				Reason: util.PtrString("Initializing"),
 			},
 			{
-				Type:   api.ConditionTypeReady,
+				Type:   api.AdapterConditionTypeReady,
 				Status: openapi.AdapterConditionStatusFalse,
 				Reason: util.PtrString("Initializing"),
 			},
@@ -378,22 +378,22 @@ func TestAdapterStatusIdempotency(t *testing.T) {
 		cluster.Generation,
 		[]openapi.ConditionRequest{
 			{
-				Type:   api.ConditionTypeAvailable,
+				Type:   api.AdapterConditionTypeAvailable,
 				Status: openapi.AdapterConditionStatusTrue,
 				Reason: util.PtrString("ClusterAvailable"),
 			},
 			{
-				Type:   api.ConditionTypeApplied,
+				Type:   api.AdapterConditionTypeApplied,
 				Status: openapi.AdapterConditionStatusTrue,
 				Reason: util.PtrString("ConfigurationApplied"),
 			},
 			{
-				Type:   api.ConditionTypeHealth,
+				Type:   api.AdapterConditionTypeHealth,
 				Status: openapi.AdapterConditionStatusTrue,
 				Reason: util.PtrString("HealthyCluster"),
 			},
 			{
-				Type:   api.ConditionTypeReady,
+				Type:   api.AdapterConditionTypeReady,
 				Status: openapi.AdapterConditionStatusTrue,
 				Reason: util.PtrString("AdapterReady"),
 			},
@@ -450,17 +450,17 @@ func TestClusterStatusPut_FirstUnknownAccepted(t *testing.T) {
 		cluster.Generation,
 		[]openapi.ConditionRequest{
 			{
-				Type:   api.ConditionTypeAvailable,
+				Type:   api.AdapterConditionTypeAvailable,
 				Status: openapi.AdapterConditionStatusUnknown,
 				Reason: util.PtrString("StartupPending"),
 			},
 			{
-				Type:   api.ConditionTypeApplied,
+				Type:   api.AdapterConditionTypeApplied,
 				Status: openapi.AdapterConditionStatusTrue,
 				Reason: util.PtrString("ConfigurationApplied"),
 			},
 			{
-				Type:   api.ConditionTypeHealth,
+				Type:   api.AdapterConditionTypeHealth,
 				Status: openapi.AdapterConditionStatusTrue,
 				Reason: util.PtrString("HealthyCluster"),
 			},
@@ -519,17 +519,17 @@ func TestNodePoolStatusPut_FirstUnknownAccepted(t *testing.T) {
 		1,
 		[]openapi.ConditionRequest{
 			{
-				Type:   api.ConditionTypeAvailable,
+				Type:   api.AdapterConditionTypeAvailable,
 				Status: openapi.AdapterConditionStatusUnknown,
 				Reason: util.PtrString("StartupPending"),
 			},
 			{
-				Type:   api.ConditionTypeApplied,
+				Type:   api.AdapterConditionTypeApplied,
 				Status: openapi.AdapterConditionStatusTrue,
 				Reason: util.PtrString("ConfigurationApplied"),
 			},
 			{
-				Type:   api.ConditionTypeHealth,
+				Type:   api.AdapterConditionTypeHealth,
 				Status: openapi.AdapterConditionStatusTrue,
 				Reason: util.PtrString("HealthyCluster"),
 			},
@@ -590,22 +590,22 @@ func TestClusterStatusPut_MultipleConditionsWithUnknownAvailable(t *testing.T) {
 		cluster.Generation,
 		[]openapi.ConditionRequest{
 			{
-				Type:   api.ConditionTypeAvailable,
+				Type:   api.AdapterConditionTypeAvailable,
 				Status: openapi.AdapterConditionStatusUnknown,
 				Reason: util.PtrString("StartupPending"),
 			},
 			{
-				Type:   api.ConditionTypeApplied,
+				Type:   api.AdapterConditionTypeApplied,
 				Status: openapi.AdapterConditionStatusTrue,
 				Reason: util.PtrString("ConfigurationApplied"),
 			},
 			{
-				Type:   api.ConditionTypeHealth,
+				Type:   api.AdapterConditionTypeHealth,
 				Status: openapi.AdapterConditionStatusTrue,
 				Reason: util.PtrString("HealthyCluster"),
 			},
 			{
-				Type:   api.ConditionTypeReady,
+				Type:   api.AdapterConditionTypeReady,
 				Status: openapi.AdapterConditionStatusTrue,
 			},
 			{
@@ -653,19 +653,19 @@ func TestAdapterStatusPagingEdgeCases(t *testing.T) {
 			cluster.Generation,
 			[]openapi.ConditionRequest{
 				{
-					Type:   api.ConditionTypeAvailable,
+					Type:   api.AdapterConditionTypeAvailable,
 					Status: openapi.AdapterConditionStatusTrue,
 				},
 				{
-					Type:   api.ConditionTypeApplied,
+					Type:   api.AdapterConditionTypeApplied,
 					Status: openapi.AdapterConditionStatusTrue,
 				},
 				{
-					Type:   api.ConditionTypeHealth,
+					Type:   api.AdapterConditionTypeHealth,
 					Status: openapi.AdapterConditionStatusTrue,
 				},
 				{
-					Type:   api.ConditionTypeReady,
+					Type:   api.AdapterConditionTypeReady,
 					Status: openapi.AdapterConditionStatusTrue,
 				},
 			},
@@ -710,19 +710,19 @@ func TestAdapterStatusPagingEdgeCases(t *testing.T) {
 		singleCluster.Generation,
 		[]openapi.ConditionRequest{
 			{
-				Type:   api.ConditionTypeAvailable,
+				Type:   api.AdapterConditionTypeAvailable,
 				Status: openapi.AdapterConditionStatusTrue,
 			},
 			{
-				Type:   api.ConditionTypeApplied,
+				Type:   api.AdapterConditionTypeApplied,
 				Status: openapi.AdapterConditionStatusTrue,
 			},
 			{
-				Type:   api.ConditionTypeHealth,
+				Type:   api.AdapterConditionTypeHealth,
 				Status: openapi.AdapterConditionStatusTrue,
 			},
 			{
-				Type:   api.ConditionTypeReady,
+				Type:   api.AdapterConditionTypeReady,
 				Status: openapi.AdapterConditionStatusTrue,
 			},
 		},
@@ -793,19 +793,19 @@ func TestClusterStatusPut_MissingMandatoryConditionsRejected(t *testing.T) {
 		cluster.Generation,
 		[]openapi.ConditionRequest{
 			{
-				Type:    api.ConditionTypeAvailable,
+				Type:    api.AdapterConditionTypeAvailable,
 				Status:  openapi.AdapterConditionStatusFalse,
 				Reason:  util.PtrString("ConfigMap data not yet available"),
 				Message: util.PtrString("ConfigMap data not yet available"),
 			},
 			{
-				Type:    api.ConditionTypeApplied,
+				Type:    api.AdapterConditionTypeApplied,
 				Status:  openapi.AdapterConditionStatusTrue,
 				Reason:  util.PtrString("ConfigMapApplied"),
 				Message: util.PtrString("ConfigMap has been applied correctly"),
 			},
 			{
-				Type:    api.ConditionTypeHealth,
+				Type:    api.AdapterConditionTypeHealth,
 				Status:  openapi.AdapterConditionStatusFalse,
 				Reason:  util.PtrString("ConfigMap data not yet available"),
 				Message: util.PtrString("ConfigMap data not yet available"),
@@ -828,9 +828,9 @@ func TestClusterStatusPut_MissingMandatoryConditionsRejected(t *testing.T) {
 	for _, cond := range resp1.JSON201.Conditions {
 		conditionTypes[cond.Type] = true
 	}
-	Expect(conditionTypes[api.ConditionTypeAvailable]).To(BeTrue())
-	Expect(conditionTypes[api.ConditionTypeApplied]).To(BeTrue())
-	Expect(conditionTypes[api.ConditionTypeHealth]).To(BeTrue())
+	Expect(conditionTypes[api.AdapterConditionTypeAvailable]).To(BeTrue())
+	Expect(conditionTypes[api.AdapterConditionTypeApplied]).To(BeTrue())
+	Expect(conditionTypes[api.AdapterConditionTypeHealth]).To(BeTrue())
 
 	// Now send an incomplete update (missing mandatory conditions) - this is the bug scenario
 	incompleteStatus := newAdapterStatusRequest(
@@ -878,9 +878,9 @@ func TestClusterStatusPut_MissingMandatoryConditionsRejected(t *testing.T) {
 	for _, cond := range respGet.JSON200.Items[0].Conditions {
 		storedConditionTypes[cond.Type] = true
 	}
-	Expect(storedConditionTypes[api.ConditionTypeAvailable]).To(BeTrue(), "Available condition should be preserved")
-	Expect(storedConditionTypes[api.ConditionTypeApplied]).To(BeTrue(), "Applied condition should be preserved")
-	Expect(storedConditionTypes[api.ConditionTypeHealth]).To(BeTrue(), "Health condition should be preserved")
+	Expect(storedConditionTypes[api.AdapterConditionTypeAvailable]).To(BeTrue(), "Available condition should be preserved")
+	Expect(storedConditionTypes[api.AdapterConditionTypeApplied]).To(BeTrue(), "Applied condition should be preserved")
+	Expect(storedConditionTypes[api.AdapterConditionTypeHealth]).To(BeTrue(), "Health condition should be preserved")
 	Expect(storedConditionTypes["Available2"]).To(BeFalse(), "Available2 should not be present")
 	Expect(storedConditionTypes["Health2"]).To(BeFalse(), "Health2 should not be present")
 }
@@ -903,19 +903,19 @@ func TestClusterStatusPut_FirstUnknownAcceptedSubsequentRejected(t *testing.T) {
 		cluster.Generation,
 		[]openapi.ConditionRequest{
 			{
-				Type:    api.ConditionTypeAvailable,
+				Type:    api.AdapterConditionTypeAvailable,
 				Status:  openapi.AdapterConditionStatusUnknown,
 				Reason:  util.PtrString("Checking"),
 				Message: util.PtrString("Checking availability"),
 			},
 			{
-				Type:    api.ConditionTypeApplied,
+				Type:    api.AdapterConditionTypeApplied,
 				Status:  openapi.AdapterConditionStatusTrue,
 				Reason:  util.PtrString("Applied"),
 				Message: util.PtrString("Configuration applied"),
 			},
 			{
-				Type:    api.ConditionTypeHealth,
+				Type:    api.AdapterConditionTypeHealth,
 				Status:  openapi.AdapterConditionStatusTrue,
 				Reason:  util.PtrString("Healthy"),
 				Message: util.PtrString("Cluster is healthy"),
@@ -967,25 +967,25 @@ func TestClusterStatusPut_DuplicateConditionsRejected(t *testing.T) {
 		cluster.Generation,
 		[]openapi.ConditionRequest{
 			{
-				Type:    api.ConditionTypeAvailable,
+				Type:    api.AdapterConditionTypeAvailable,
 				Status:  openapi.AdapterConditionStatusTrue,
 				Reason:  util.PtrString("FirstAvailable"),
 				Message: util.PtrString("First Available condition"),
 			},
 			{
-				Type:    api.ConditionTypeApplied,
+				Type:    api.AdapterConditionTypeApplied,
 				Status:  openapi.AdapterConditionStatusTrue,
 				Reason:  util.PtrString("Applied"),
 				Message: util.PtrString("Configuration applied"),
 			},
 			{
-				Type:    api.ConditionTypeHealth,
+				Type:    api.AdapterConditionTypeHealth,
 				Status:  openapi.AdapterConditionStatusTrue,
 				Reason:  util.PtrString("Healthy"),
 				Message: util.PtrString("Cluster is healthy"),
 			},
 			{
-				Type:    api.ConditionTypeAvailable, // Duplicate!
+				Type:    api.AdapterConditionTypeAvailable, // Duplicate!
 				Status:  openapi.AdapterConditionStatusFalse,
 				Reason:  util.PtrString("SecondAvailable"),
 				Message: util.PtrString("Second Available condition"),
@@ -1024,13 +1024,13 @@ func TestClusterStatusPut_EmptyConditionTypeRejected(t *testing.T) {
 		cluster.Generation,
 		[]openapi.ConditionRequest{
 			{
-				Type:    api.ConditionTypeAvailable,
+				Type:    api.AdapterConditionTypeAvailable,
 				Status:  openapi.AdapterConditionStatusTrue,
 				Reason:  util.PtrString("Available"),
 				Message: util.PtrString("Cluster is available"),
 			},
 			{
-				Type:    api.ConditionTypeApplied,
+				Type:    api.AdapterConditionTypeApplied,
 				Status:  openapi.AdapterConditionStatusTrue,
 				Reason:  util.PtrString("Applied"),
 				Message: util.PtrString("Configuration applied"),
@@ -1042,7 +1042,7 @@ func TestClusterStatusPut_EmptyConditionTypeRejected(t *testing.T) {
 				Message: util.PtrString("Condition with empty type"),
 			},
 			{
-				Type:    api.ConditionTypeHealth,
+				Type:    api.AdapterConditionTypeHealth,
 				Status:  openapi.AdapterConditionStatusTrue,
 				Reason:  util.PtrString("Healthy"),
 				Message: util.PtrString("Cluster is healthy"),
@@ -1090,7 +1090,7 @@ func TestClusterStatusPut_InvalidStatusRejected(t *testing.T) {
 			cluster.Generation,
 			[]openapi.ConditionRequest{
 				{
-					Type:   api.ConditionTypeAvailable,
+					Type:   api.AdapterConditionTypeAvailable,
 					Status: tc.invalidStatus,
 				},
 			},
@@ -1135,7 +1135,7 @@ func TestNodePoolStatusPut_InvalidStatusRejected(t *testing.T) {
 			1,
 			[]openapi.ConditionRequest{
 				{
-					Type:   api.ConditionTypeAvailable,
+					Type:   api.AdapterConditionTypeAvailable,
 					Status: tc.invalidStatus,
 				},
 			},
@@ -1177,19 +1177,19 @@ func TestClusterStatusPut_ValidStatusesStillWork(t *testing.T) {
 			cluster.Generation,
 			[]openapi.ConditionRequest{
 				{
-					Type:   api.ConditionTypeAvailable,
+					Type:   api.AdapterConditionTypeAvailable,
 					Status: status,
 				},
 				{
-					Type:   api.ConditionTypeApplied,
+					Type:   api.AdapterConditionTypeApplied,
 					Status: openapi.AdapterConditionStatusTrue,
 				},
 				{
-					Type:   api.ConditionTypeHealth,
+					Type:   api.AdapterConditionTypeHealth,
 					Status: openapi.AdapterConditionStatusTrue,
 				},
 				{
-					Type:   api.ConditionTypeReady,
+					Type:   api.AdapterConditionTypeReady,
 					Status: openapi.AdapterConditionStatusTrue,
 				},
 			},

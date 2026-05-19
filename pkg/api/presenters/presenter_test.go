@@ -5,6 +5,7 @@ import (
 	"time"
 
 	. "github.com/onsi/gomega"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 )
@@ -42,7 +43,7 @@ func createTestClusterList() openapi.ClusterList {
 	msg2 := "Some components unavailable"
 	conditions := []openapi.ResourceCondition{
 		{
-			Type:               "Ready",
+			Type:               api.AdapterConditionTypeReady,
 			Status:             openapi.ResourceConditionStatus("True"),
 			Message:            &msg1,
 			CreatedTime:        time.Date(2026, 1, 25, 0, 0, 0, 0, time.UTC),
@@ -242,7 +243,7 @@ func TestSliceFilter(t *testing.T) {
 				Expect(conditions).To(HaveLen(2))
 
 				elem0 := conditions[0].(map[string]interface{})
-				Expect(elem0["type"]).To(Equal("Ready"))
+				Expect(elem0["type"]).To(Equal(api.AdapterConditionTypeReady))
 				Expect(elem0).ToNot(HaveKey("message"))
 
 				elem1 := conditions[1].(map[string]interface{})
@@ -263,7 +264,7 @@ func TestSliceFilter(t *testing.T) {
 				Expect(conditions).To(HaveLen(2))
 
 				elem0 := conditions[0].(map[string]interface{})
-				Expect(elem0["type"]).To(Equal("Ready"))
+				Expect(elem0["type"]).To(Equal(api.AdapterConditionTypeReady))
 				Expect(elem0["status"]).To(Equal(openapi.ResourceConditionStatus("True")))
 				Expect(elem0).ToNot(HaveKey("message"))
 				Expect(elem0).ToNot(HaveKey("last_transition_time"))
@@ -348,7 +349,7 @@ func TestSliceFilter(t *testing.T) {
 
 				elem0 := conditions[0].(map[string]interface{})
 				Expect(elem0).To(HaveLen(8))
-				Expect(elem0["type"]).To(Equal("Ready"))
+				Expect(elem0["type"]).To(Equal(api.AdapterConditionTypeReady))
 				Expect(elem0["status"]).To(Equal(openapi.ResourceConditionStatus("True")))
 			},
 		},
@@ -367,7 +368,7 @@ func TestSliceFilter(t *testing.T) {
 				// All fields of ResourceCondition must be present
 				elem0 := conditions[0].(map[string]interface{})
 				Expect(elem0).To(HaveLen(8))
-				Expect(elem0["type"]).To(Equal("Ready"))
+				Expect(elem0["type"]).To(Equal(api.AdapterConditionTypeReady))
 				Expect(elem0["status"]).To(Equal(openapi.ResourceConditionStatus("True")))
 				Expect(elem0).To(HaveKey("message"))
 

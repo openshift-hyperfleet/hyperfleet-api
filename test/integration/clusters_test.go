@@ -171,7 +171,7 @@ func TestClusterPatch_SetReadyFalse(t *testing.T) {
 
 	var readyCond *openapi.ResourceCondition
 	for i := range updated.Status.Conditions {
-		if updated.Status.Conditions[i].Type == api.ConditionTypeReady {
+		if updated.Status.Conditions[i].Type == api.AdapterConditionTypeReady {
 			readyCond = &updated.Status.Conditions[i]
 			break
 		}
@@ -1014,7 +1014,7 @@ func TestClusterSoftDelete(t *testing.T) {
 			"Generation should be incremented after soft-delete")
 		var readyCond *openapi.ResourceCondition
 		for i := range delResp.JSON202.Status.Conditions {
-			if delResp.JSON202.Status.Conditions[i].Type == api.ConditionTypeReady {
+			if delResp.JSON202.Status.Conditions[i].Type == api.AdapterConditionTypeReady {
 				readyCond = &delResp.JSON202.Status.Conditions[i]
 				break
 			}
@@ -1046,7 +1046,7 @@ func TestClusterSoftDelete(t *testing.T) {
 			"Cluster generation should increment on soft-delete")
 		var clusterReadyCond *openapi.ResourceCondition
 		for i := range delResp.JSON202.Status.Conditions {
-			if delResp.JSON202.Status.Conditions[i].Type == api.ConditionTypeReady {
+			if delResp.JSON202.Status.Conditions[i].Type == api.AdapterConditionTypeReady {
 				clusterReadyCond = &delResp.JSON202.Status.Conditions[i]
 				break
 			}
@@ -1064,7 +1064,7 @@ func TestClusterSoftDelete(t *testing.T) {
 		Expect(err).NotTo(HaveOccurred(), "should be able to unmarshal nodepool status conditions")
 		var readyCond *api.ResourceCondition
 		for i := range conditions {
-			if conditions[i].Type == api.ConditionTypeReady {
+			if conditions[i].Type == api.AdapterConditionTypeReady {
 				readyCond = &conditions[i]
 				break
 			}
@@ -1145,18 +1145,22 @@ func TestClusterHardDelete(t *testing.T) {
 				newGeneration,
 				[]openapi.ConditionRequest{
 					{
-						Type:   api.ConditionTypeApplied,
+						Type:   api.AdapterConditionTypeApplied,
 						Status: openapi.AdapterConditionStatusFalse,
 						Reason: util.PtrString("ManifestWorkNotDiscovered"),
 					},
 					{
-						Type:   api.ConditionTypeAvailable,
+						Type:   api.AdapterConditionTypeAvailable,
 						Status: openapi.AdapterConditionStatusFalse,
 						Reason: util.PtrString("NamespaceNotDiscovered"),
 					},
-					{Type: api.ConditionTypeHealth, Status: openapi.AdapterConditionStatusTrue, Reason: util.PtrString("Healthy")},
 					{
-						Type:   api.ConditionTypeFinalized,
+						Type:   api.AdapterConditionTypeHealth,
+						Status: openapi.AdapterConditionStatusTrue,
+						Reason: util.PtrString("Healthy"),
+					},
+					{
+						Type:   api.AdapterConditionTypeFinalized,
 						Status: openapi.AdapterConditionStatusTrue,
 						Reason: util.PtrString("CleanupConfirmed"),
 					},
@@ -1177,7 +1181,8 @@ func TestClusterHardDelete(t *testing.T) {
 		Expect(dbErr.Error()).To(ContainSubstring("record not found"))
 
 		var adapterStatuses []api.AdapterStatus
-		err = dbSession.Where("resource_type = ? AND resource_id = ?", "Cluster", cluster.ID).Find(&adapterStatuses).Error
+		err = dbSession.Where("resource_type = ? AND resource_id = ?", api.ResourceTypeCluster, cluster.ID).
+			Find(&adapterStatuses).Error
 		Expect(err).NotTo(HaveOccurred())
 		Expect(adapterStatuses).To(BeEmpty(), "Adapter statuses should be hard-deleted")
 	})
@@ -1206,18 +1211,22 @@ func TestClusterHardDelete(t *testing.T) {
 			newGeneration,
 			[]openapi.ConditionRequest{
 				{
-					Type:   api.ConditionTypeApplied,
+					Type:   api.AdapterConditionTypeApplied,
 					Status: openapi.AdapterConditionStatusFalse,
 					Reason: util.PtrString("ManifestWorkNotDiscovered"),
 				},
 				{
-					Type:   api.ConditionTypeAvailable,
+					Type:   api.AdapterConditionTypeAvailable,
 					Status: openapi.AdapterConditionStatusFalse,
 					Reason: util.PtrString("NamespaceNotDiscovered"),
 				},
-				{Type: api.ConditionTypeHealth, Status: openapi.AdapterConditionStatusTrue, Reason: util.PtrString("Healthy")},
 				{
-					Type:   api.ConditionTypeFinalized,
+					Type:   api.AdapterConditionTypeHealth,
+					Status: openapi.AdapterConditionStatusTrue,
+					Reason: util.PtrString("Healthy"),
+				},
+				{
+					Type:   api.AdapterConditionTypeFinalized,
 					Status: openapi.AdapterConditionStatusTrue,
 					Reason: util.PtrString("CleanupConfirmed"),
 				},
@@ -1233,7 +1242,7 @@ func TestClusterHardDelete(t *testing.T) {
 
 		var adapterStatus api.AdapterStatus
 		err = dbSession.Where("resource_type = ? AND resource_id = ? AND adapter = ?",
-			"Cluster", cluster.ID, "validation").First(&adapterStatus).Error
+			api.ResourceTypeCluster, cluster.ID, "validation").First(&adapterStatus).Error
 		Expect(err).NotTo(HaveOccurred())
 
 		var clusterCheck api.Cluster
@@ -1277,18 +1286,22 @@ func TestClusterHardDelete(t *testing.T) {
 				clusterNewGeneration,
 				[]openapi.ConditionRequest{
 					{
-						Type:   api.ConditionTypeApplied,
+						Type:   api.AdapterConditionTypeApplied,
 						Status: openapi.AdapterConditionStatusFalse,
 						Reason: util.PtrString("ManifestWorkNotDiscovered"),
 					},
 					{
-						Type:   api.ConditionTypeAvailable,
+						Type:   api.AdapterConditionTypeAvailable,
 						Status: openapi.AdapterConditionStatusFalse,
 						Reason: util.PtrString("NamespaceNotDiscovered"),
 					},
-					{Type: api.ConditionTypeHealth, Status: openapi.AdapterConditionStatusTrue, Reason: util.PtrString("Healthy")},
 					{
-						Type:   api.ConditionTypeFinalized,
+						Type:   api.AdapterConditionTypeHealth,
+						Status: openapi.AdapterConditionStatusTrue,
+						Reason: util.PtrString("Healthy"),
+					},
+					{
+						Type:   api.AdapterConditionTypeFinalized,
 						Status: openapi.AdapterConditionStatusTrue,
 						Reason: util.PtrString("CleanupConfirmed"),
 					},
@@ -1316,18 +1329,22 @@ func TestClusterHardDelete(t *testing.T) {
 				nodePoolNewGeneration,
 				[]openapi.ConditionRequest{
 					{
-						Type:   api.ConditionTypeApplied,
+						Type:   api.AdapterConditionTypeApplied,
 						Status: openapi.AdapterConditionStatusFalse,
 						Reason: util.PtrString("ManifestWorkNotDiscovered"),
 					},
 					{
-						Type:   api.ConditionTypeAvailable,
+						Type:   api.AdapterConditionTypeAvailable,
 						Status: openapi.AdapterConditionStatusFalse,
 						Reason: util.PtrString("NamespaceNotDiscovered"),
 					},
-					{Type: api.ConditionTypeHealth, Status: openapi.AdapterConditionStatusTrue, Reason: util.PtrString("Healthy")},
 					{
-						Type:   api.ConditionTypeFinalized,
+						Type:   api.AdapterConditionTypeHealth,
+						Status: openapi.AdapterConditionStatusTrue,
+						Reason: util.PtrString("Healthy"),
+					},
+					{
+						Type:   api.AdapterConditionTypeFinalized,
 						Status: openapi.AdapterConditionStatusTrue,
 						Reason: util.PtrString("CleanupConfirmed"),
 					},
@@ -1353,18 +1370,22 @@ func TestClusterHardDelete(t *testing.T) {
 			clusterNewGeneration,
 			[]openapi.ConditionRequest{
 				{
-					Type:   api.ConditionTypeApplied,
+					Type:   api.AdapterConditionTypeApplied,
 					Status: openapi.AdapterConditionStatusFalse,
 					Reason: util.PtrString("ManifestWorkNotDiscovered"),
 				},
 				{
-					Type:   api.ConditionTypeAvailable,
+					Type:   api.AdapterConditionTypeAvailable,
 					Status: openapi.AdapterConditionStatusFalse,
 					Reason: util.PtrString("NamespaceNotDiscovered"),
 				},
-				{Type: api.ConditionTypeHealth, Status: openapi.AdapterConditionStatusTrue, Reason: util.PtrString("Healthy")},
 				{
-					Type:   api.ConditionTypeFinalized,
+					Type:   api.AdapterConditionTypeHealth,
+					Status: openapi.AdapterConditionStatusTrue,
+					Reason: util.PtrString("Healthy"),
+				},
+				{
+					Type:   api.AdapterConditionTypeFinalized,
 					Status: openapi.AdapterConditionStatusTrue,
 					Reason: util.PtrString("CleanupConfirmed"),
 				},
@@ -1383,10 +1404,12 @@ func TestClusterHardDelete(t *testing.T) {
 		Expect(clusterErr.Error()).To(ContainSubstring("record not found"))
 
 		var adapterStatuses []api.AdapterStatus
-		err = dbSession.Where("resource_type = ? AND resource_id = ?", "Cluster", cluster.ID).Find(&adapterStatuses).Error
+		err = dbSession.Where("resource_type = ? AND resource_id = ?", api.ResourceTypeCluster, cluster.ID).
+			Find(&adapterStatuses).Error
 		Expect(err).NotTo(HaveOccurred())
 		Expect(adapterStatuses).To(BeEmpty())
-		err = dbSession.Where("resource_type = ? AND resource_id = ?", "NodePool", nodePool.ID).Find(&adapterStatuses).Error
+		err = dbSession.Where("resource_type = ? AND resource_id = ?", api.ResourceTypeNodePool, nodePool.ID).
+			Find(&adapterStatuses).Error
 		Expect(err).NotTo(HaveOccurred())
 		Expect(adapterStatuses).To(BeEmpty())
 	})

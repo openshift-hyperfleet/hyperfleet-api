@@ -62,7 +62,7 @@ func (as *AdapterStatus) IsFinalized() bool {
 		return false
 	}
 	for _, cond := range conditions {
-		if cond.Type == ConditionTypeFinalized && cond.Status == AdapterConditionTrue {
+		if cond.Type == AdapterConditionTypeFinalized && cond.Status == AdapterConditionTrue {
 			return true
 		}
 	}

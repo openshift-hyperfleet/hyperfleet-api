@@ -30,19 +30,19 @@ func marshalConds(conds []api.AdapterCondition) []byte {
 // availConds returns minimal conditions JSON with the given Available status.
 func availConds(status api.AdapterConditionStatus) []byte {
 	return marshalConds([]api.AdapterCondition{
-		{Type: api.ConditionTypeAvailable, Status: status},
-		{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue},
-		{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue},
+		{Type: api.AdapterConditionTypeAvailable, Status: status},
+		{Type: api.AdapterConditionTypeApplied, Status: api.AdapterConditionTrue},
+		{Type: api.AdapterConditionTypeHealth, Status: api.AdapterConditionTrue},
 	})
 }
 
 // finalizedConds returns minimal conditions JSON with the given Finalized status.
 func finalizedConds(status api.AdapterConditionStatus) []byte {
 	return marshalConds([]api.AdapterCondition{
-		{Type: api.ConditionTypeFinalized, Status: status},
-		{Type: api.ConditionTypeAvailable, Status: api.AdapterConditionTrue},
-		{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue},
-		{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue},
+		{Type: api.AdapterConditionTypeFinalized, Status: status},
+		{Type: api.AdapterConditionTypeAvailable, Status: api.AdapterConditionTrue},
+		{Type: api.AdapterConditionTypeApplied, Status: api.AdapterConditionTrue},
+		{Type: api.AdapterConditionTypeHealth, Status: api.AdapterConditionTrue},
 	})
 }
 
@@ -63,7 +63,7 @@ func mkPrevReady(
 	status api.ResourceConditionStatus, obsGen int32, lastTransition, lastUpdated time.Time,
 ) *api.ResourceCondition {
 	return &api.ResourceCondition{
-		Type:               api.ConditionTypeReady,
+		Type:               api.AdapterConditionTypeReady,
 		Status:             status,
 		ObservedGeneration: obsGen,
 		LastTransitionTime: lastTransition,
@@ -77,7 +77,7 @@ func mkPrevReconciled(
 	status api.ResourceConditionStatus, obsGen int32, lastTransition, lastUpdated time.Time,
 ) *api.ResourceCondition {
 	return &api.ResourceCondition{
-		Type:               api.ConditionTypeReconciled,
+		Type:               api.AdapterConditionTypeReconciled,
 		Status:             status,
 		ObservedGeneration: obsGen,
 		LastTransitionTime: lastTransition,
@@ -91,7 +91,7 @@ func mkPrevAvail(
 	status api.ResourceConditionStatus, obsGen int32, lastTransition, lastUpdated time.Time,
 ) *api.ResourceCondition {
 	return &api.ResourceCondition{
-		Type:               api.ConditionTypeLastKnownReconciled,
+		Type:               api.ResourceConditionTypeLastKnownReconciled,
 		Status:             status,
 		ObservedGeneration: obsGen,
 		LastTransitionTime: lastTransition,
@@ -115,9 +115,9 @@ func TestParsePrevConditions(t *testing.T) {
 		b, _ := json.Marshal(conds)
 		return b
 	}
-	readyCond := api.ResourceCondition{Type: api.ConditionTypeReady, Status: api.ConditionTrue}
-	availCond := api.ResourceCondition{Type: api.ConditionTypeLastKnownReconciled, Status: api.ConditionFalse}
-	reconciledCond := api.ResourceCondition{Type: api.ConditionTypeReconciled, Status: api.ConditionFalse}
+	readyCond := api.ResourceCondition{Type: api.AdapterConditionTypeReady, Status: api.ConditionTrue}
+	availCond := api.ResourceCondition{Type: api.ResourceConditionTypeLastKnownReconciled, Status: api.ConditionFalse}
+	reconciledCond := api.ResourceCondition{Type: api.AdapterConditionTypeReconciled, Status: api.ConditionFalse}
 	adapterCond := api.ResourceCondition{Type: "Adapter1Successful", Status: api.ConditionTrue}
 
 	t.Run("nil input", func(t *testing.T) {
@@ -147,10 +147,10 @@ func TestParsePrevConditions(t *testing.T) {
 	t.Run("both Reconciled and LastKnownReconciled", func(t *testing.T) {
 		t.Parallel()
 		r, a, _ := parsePrevConditions(context.Background(), encode(reconciledCond, availCond))
-		if r == nil || r.Type != api.ConditionTypeReconciled {
+		if r == nil || r.Type != api.AdapterConditionTypeReconciled {
 			t.Fatalf("expected Reconciled condition, got %v", r)
 		}
-		if a == nil || a.Type != api.ConditionTypeLastKnownReconciled {
+		if a == nil || a.Type != api.ResourceConditionTypeLastKnownReconciled {
 			t.Fatalf("expected LastKnownReconciled condition, got %v", a)
 		}
 	})
@@ -158,7 +158,7 @@ func TestParsePrevConditions(t *testing.T) {
 	t.Run("only Reconciled", func(t *testing.T) {
 		t.Parallel()
 		r, a, _ := parsePrevConditions(context.Background(), encode(reconciledCond))
-		if r == nil || r.Type != api.ConditionTypeReconciled {
+		if r == nil || r.Type != api.AdapterConditionTypeReconciled {
 			t.Fatalf("expected Reconciled, got %v", r)
 		}
 		if a != nil {
@@ -172,7 +172,7 @@ func TestParsePrevConditions(t *testing.T) {
 		if r != nil {
 			t.Fatalf("expected nil Reconciled, got %v", r)
 		}
-		if a == nil || a.Type != api.ConditionTypeLastKnownReconciled {
+		if a == nil || a.Type != api.ResourceConditionTypeLastKnownReconciled {
 			t.Fatalf("expected LastKnownReconciled, got %v", a)
 		}
 	})
@@ -201,7 +201,7 @@ func TestParsePrevConditions(t *testing.T) {
 	t.Run("Ready used as prevReconciled fallback when no Reconciled stored", func(t *testing.T) {
 		t.Parallel()
 		rc, _, _ := parsePrevConditions(context.Background(), encode(readyCond))
-		if rc == nil || rc.Type != api.ConditionTypeReady {
+		if rc == nil || rc.Type != api.AdapterConditionTypeReady {
 			t.Fatal("expected Ready to be used as prevReconciled fallback")
 		}
 	})
@@ -209,7 +209,7 @@ func TestParsePrevConditions(t *testing.T) {
 	t.Run("Reconciled takes precedence over Ready for prevReconciled", func(t *testing.T) {
 		t.Parallel()
 		rc, _, _ := parsePrevConditions(context.Background(), encode(readyCond, reconciledCond))
-		if rc == nil || rc.Type != api.ConditionTypeReconciled {
+		if rc == nil || rc.Type != api.AdapterConditionTypeReconciled {
 			t.Fatalf("expected Reconciled to take precedence, got %v", rc)
 		}
 	})
@@ -272,8 +272,8 @@ func TestNormalizeAdapterReportsForAggregation(t *testing.T) {
 	t.Run("missing Available condition is skipped", func(t *testing.T) {
 		t.Parallel()
 		conds := marshalConds([]api.AdapterCondition{
-			{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue},
-			{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue},
+			{Type: api.AdapterConditionTypeApplied, Status: api.AdapterConditionTrue},
+			{Type: api.AdapterConditionTypeHealth, Status: api.AdapterConditionTrue},
 		})
 		list := api.AdapterStatusList{makeAdapterStatus("alpha", aggT1, 2, conds)}
 		out := normalizeAdapterReportsForAggregation(context.Background(), list, required, resourceGen)
@@ -512,7 +512,7 @@ func TestComputeReconciled(t *testing.T) {
 	t.Run("Type is Reconciled", func(t *testing.T) {
 		t.Parallel()
 		cond := computeReconciled(1, aggTRef, nil, nil, nil, map[string]adapterAvailableSnapshot{}, false)
-		if cond.Type != api.ConditionTypeReconciled {
+		if cond.Type != api.AdapterConditionTypeReconciled {
 			t.Errorf("type got %v, want Reconciled", cond.Type)
 		}
 	})
@@ -1155,7 +1155,7 @@ func TestAggregateResourceStatus(t *testing.T) {
 		required := []string{"a", "b"}
 		prevConds := encodePrev(
 			api.ResourceCondition{
-				Type: api.ConditionTypeLastKnownReconciled, Status: api.ConditionTrue, ObservedGeneration: 1,
+				Type: api.ResourceConditionTypeLastKnownReconciled, Status: api.ConditionTrue, ObservedGeneration: 1,
 				CreatedTime: aggT0, LastUpdatedTime: aggT0, LastTransitionTime: aggT0,
 			},
 		)
@@ -1181,7 +1181,7 @@ func TestAggregateResourceStatus(t *testing.T) {
 		required := []string{"a"}
 		prevConds := encodePrev(
 			api.ResourceCondition{
-				Type: api.ConditionTypeReady, Status: api.ConditionTrue, ObservedGeneration: 1,
+				Type: api.AdapterConditionTypeReady, Status: api.ConditionTrue, ObservedGeneration: 1,
 				CreatedTime: aggT0, LastUpdatedTime: aggT1, LastTransitionTime: aggT1,
 			},
 		)
@@ -1209,7 +1209,7 @@ func TestAggregateResourceStatus(t *testing.T) {
 		required := []string{"a", "b"}
 		prevConds := encodePrev(
 			api.ResourceCondition{
-				Type: api.ConditionTypeLastKnownReconciled, Status: api.ConditionTrue, ObservedGeneration: 1,
+				Type: api.ResourceConditionTypeLastKnownReconciled, Status: api.ConditionTrue, ObservedGeneration: 1,
 				CreatedTime: aggT0, LastUpdatedTime: aggT0, LastTransitionTime: aggT0,
 			},
 		)
@@ -1233,11 +1233,11 @@ func TestAggregateResourceStatus(t *testing.T) {
 		t.Parallel()
 		in := AggregateResourceStatusInput{ResourceGeneration: 1, RefTime: aggTRef}
 		reconciled, avail, _ := AggregateResourceStatus(context.Background(), in)
-		if reconciled.Type != api.ConditionTypeReconciled {
-			t.Errorf("reconciled.Type=%q, want %q", reconciled.Type, api.ConditionTypeReconciled)
+		if reconciled.Type != api.AdapterConditionTypeReconciled {
+			t.Errorf("reconciled.Type=%q, want %q", reconciled.Type, api.AdapterConditionTypeReconciled)
 		}
-		if avail.Type != api.ConditionTypeLastKnownReconciled {
-			t.Errorf("avail.Type=%q, want %q", avail.Type, api.ConditionTypeLastKnownReconciled)
+		if avail.Type != api.ResourceConditionTypeLastKnownReconciled {
+			t.Errorf("avail.Type=%q, want %q", avail.Type, api.ResourceConditionTypeLastKnownReconciled)
 		}
 	})
 
@@ -1280,16 +1280,16 @@ func TestAggregateResourceStatus(t *testing.T) {
 			RequiredAdapters:   required,
 			AdapterStatuses: api.AdapterStatusList{
 				makeAdapterStatus("a", aggT1, 2, marshalConds([]api.AdapterCondition{
-					{Type: api.ConditionTypeFinalized, Status: api.AdapterConditionTrue},
-					{Type: api.ConditionTypeAvailable, Status: api.AdapterConditionFalse},
-					{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue},
-					{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue},
+					{Type: api.AdapterConditionTypeFinalized, Status: api.AdapterConditionTrue},
+					{Type: api.AdapterConditionTypeAvailable, Status: api.AdapterConditionFalse},
+					{Type: api.AdapterConditionTypeApplied, Status: api.AdapterConditionTrue},
+					{Type: api.AdapterConditionTypeHealth, Status: api.AdapterConditionTrue},
 				})),
 				makeAdapterStatus("b", aggT2, 2, marshalConds([]api.AdapterCondition{
-					{Type: api.ConditionTypeFinalized, Status: api.AdapterConditionTrue},
-					{Type: api.ConditionTypeAvailable, Status: api.AdapterConditionFalse},
-					{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue},
-					{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue},
+					{Type: api.AdapterConditionTypeFinalized, Status: api.AdapterConditionTrue},
+					{Type: api.AdapterConditionTypeAvailable, Status: api.AdapterConditionFalse},
+					{Type: api.AdapterConditionTypeApplied, Status: api.AdapterConditionTrue},
+					{Type: api.AdapterConditionTypeHealth, Status: api.AdapterConditionTrue},
 				})),
 			},
 		}
@@ -1527,9 +1527,9 @@ func TestMapAdapterToConditionType_DefaultSuffix(t *testing.T) {
 func TestValidateMandatoryConditions_AllPresent(t *testing.T) {
 	t.Parallel()
 	conditions := []api.AdapterCondition{
-		{Type: api.ConditionTypeAvailable, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
-		{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
-		{Type: api.ConditionTypeHealth, Status: api.AdapterConditionFalse, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeAvailable, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeHealth, Status: api.AdapterConditionFalse, LastTransitionTime: time.Now()},
 	}
 
 	errorType, conditionName := ValidateMandatoryConditions(conditions)
@@ -1541,16 +1541,16 @@ func TestValidateMandatoryConditions_AllPresent(t *testing.T) {
 func TestValidateMandatoryConditions_MissingAvailable(t *testing.T) {
 	t.Parallel()
 	conditions := []api.AdapterCondition{
-		{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
-		{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
 	}
 
 	errorType, conditionName := ValidateMandatoryConditions(conditions)
 	if errorType != ConditionValidationErrorMissing {
 		t.Errorf("Expected errorType ConditionValidationErrorMissing, got: %s", errorType)
 	}
-	if conditionName != api.ConditionTypeAvailable {
-		t.Errorf("Expected missing condition %s, got: %s", api.ConditionTypeAvailable, conditionName)
+	if conditionName != api.AdapterConditionTypeAvailable {
+		t.Errorf("Expected missing condition %s, got: %s", api.AdapterConditionTypeAvailable, conditionName)
 	}
 }
 
@@ -1558,9 +1558,9 @@ func TestValidateMandatoryConditions_MandatoryConditionUnknown(t *testing.T) {
 	t.Parallel()
 	// Unknown status in Applied/Health is allowed; only Available=Unknown has special handling elsewhere.
 	conditions := []api.AdapterCondition{
-		{Type: api.ConditionTypeAvailable, Status: api.AdapterConditionUnknown, LastTransitionTime: time.Now()},
-		{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
-		{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeAvailable, Status: api.AdapterConditionUnknown, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
 	}
 
 	errorType, conditionName := ValidateMandatoryConditions(conditions)
@@ -1572,11 +1572,11 @@ func TestValidateMandatoryConditions_MandatoryConditionUnknown(t *testing.T) {
 func TestValidateMandatoryConditions_WithCustomConditions(t *testing.T) {
 	t.Parallel()
 	conditions := []api.AdapterCondition{
-		{Type: api.ConditionTypeAvailable, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
-		{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
-		{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeAvailable, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
 		{Type: "CustomCondition", Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
-		{Type: api.ConditionTypeReady, Status: api.AdapterConditionFalse, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeReady, Status: api.AdapterConditionFalse, LastTransitionTime: time.Now()},
 	}
 
 	errorType, conditionName := ValidateMandatoryConditions(conditions)
@@ -1593,8 +1593,8 @@ func TestValidateMandatoryConditions_EmptyConditions(t *testing.T) {
 	if errorType != ConditionValidationErrorMissing {
 		t.Errorf("Expected errorType ConditionValidationErrorMissing, got: %s", errorType)
 	}
-	if conditionName != api.ConditionTypeAvailable {
-		t.Errorf("Expected missing condition %s, got: %s", api.ConditionTypeAvailable, conditionName)
+	if conditionName != api.AdapterConditionTypeAvailable {
+		t.Errorf("Expected missing condition %s, got: %s", api.AdapterConditionTypeAvailable, conditionName)
 	}
 }
 
@@ -1604,7 +1604,7 @@ func TestValidateMandatoryConditions_MissingMultiple(t *testing.T) {
 	t.Parallel()
 	// Test: Only Available present, missing Applied and Health.
 	conditions := []api.AdapterCondition{
-		{Type: api.ConditionTypeAvailable, Status: api.AdapterConditionUnknown, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeAvailable, Status: api.AdapterConditionUnknown, LastTransitionTime: time.Now()},
 	}
 
 	errorType, conditionName := ValidateMandatoryConditions(conditions)
@@ -1613,7 +1613,7 @@ func TestValidateMandatoryConditions_MissingMultiple(t *testing.T) {
 	if errorType != ConditionValidationErrorMissing {
 		t.Errorf("Expected errorType ConditionValidationErrorMissing, got: %s", errorType)
 	}
-	if conditionName != api.ConditionTypeApplied && conditionName != api.ConditionTypeHealth {
+	if conditionName != api.AdapterConditionTypeApplied && conditionName != api.AdapterConditionTypeHealth {
 		t.Errorf("Expected missing condition to be Applied or Health, got: %s", conditionName)
 	}
 }

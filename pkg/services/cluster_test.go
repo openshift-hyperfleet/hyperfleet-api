@@ -338,14 +338,14 @@ func TestProcessAdapterStatus_FirstUnknownCondition(t *testing.T) {
 
 	// Send first status with Available=Unknown
 	conditions := []api.AdapterCondition{
-		{Type: api.ConditionTypeAvailable, Status: api.AdapterConditionUnknown, LastTransitionTime: time.Now()},
-		{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
-		{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeAvailable, Status: api.AdapterConditionUnknown, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
 	}
 	conditionsJSON, _ := json.Marshal(conditions)
 	now := time.Now()
 	adapterStatus := &api.AdapterStatus{
-		ResourceType:       "Cluster",
+		ResourceType:       api.ResourceTypeCluster,
 		ResourceID:         clusterID,
 		Adapter:            "test-adapter",
 		Conditions:         conditionsJSON,
@@ -362,7 +362,7 @@ func TestProcessAdapterStatus_FirstUnknownCondition(t *testing.T) {
 	g.Expect(result.Adapter).To(Equal("test-adapter"))
 
 	// Verify the status was stored
-	storedStatuses, _ := adapterStatusDao.FindByResource(ctx, "Cluster", clusterID)
+	storedStatuses, _ := adapterStatusDao.FindByResource(ctx, api.ResourceTypeCluster, clusterID)
 	g.Expect(len(storedStatuses)).To(Equal(1), "First Unknown status should be stored")
 }
 
@@ -388,14 +388,14 @@ func TestProcessAdapterStatus_SubsequentUnknownCondition(t *testing.T) {
 
 	// Pre-populate an existing adapter status to simulate a previously stored report
 	conditions := []api.AdapterCondition{
-		{Type: api.ConditionTypeAvailable, Status: api.AdapterConditionUnknown, LastTransitionTime: time.Now()},
-		{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
-		{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeAvailable, Status: api.AdapterConditionUnknown, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
 	}
 	conditionsJSON, _ := json.Marshal(conditions)
 
 	existingStatus := &api.AdapterStatus{
-		ResourceType:       "Cluster",
+		ResourceType:       api.ResourceTypeCluster,
 		ResourceID:         clusterID,
 		Adapter:            "test-adapter",
 		Conditions:         conditionsJSON,
@@ -407,7 +407,7 @@ func TestProcessAdapterStatus_SubsequentUnknownCondition(t *testing.T) {
 
 	// Now send another Unknown status report
 	newAdapterStatus := &api.AdapterStatus{
-		ResourceType:       "Cluster",
+		ResourceType:       api.ResourceTypeCluster,
 		ResourceID:         clusterID,
 		Adapter:            "test-adapter",
 		Conditions:         conditionsJSON,
@@ -442,14 +442,14 @@ func TestProcessAdapterStatus_InvalidStatusReturnsValidationError(t *testing.T) 
 	g.Expect(svcErr).To(BeNil())
 
 	conditions := []api.AdapterCondition{
-		{Type: api.ConditionTypeAvailable, Status: "Pending", LastTransitionTime: time.Now()},
-		{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
-		{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeAvailable, Status: "Pending", LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
 	}
 	conditionsJSON, _ := json.Marshal(conditions)
 	now := time.Now()
 	adapterStatus := &api.AdapterStatus{
-		ResourceType:       "Cluster",
+		ResourceType:       api.ResourceTypeCluster,
 		ResourceID:         clusterID,
 		Adapter:            "test-adapter",
 		Conditions:         conditionsJSON,
@@ -485,14 +485,14 @@ func TestProcessAdapterStatus_EmptyStatusReturnsValidationError(t *testing.T) {
 	g.Expect(svcErr).To(BeNil())
 
 	conditions := []api.AdapterCondition{
-		{Type: api.ConditionTypeAvailable, Status: "", LastTransitionTime: time.Now()},
-		{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
-		{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeAvailable, Status: "", LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
 	}
 	conditionsJSON, _ := json.Marshal(conditions)
 	now := time.Now()
 	adapterStatus := &api.AdapterStatus{
-		ResourceType:       "Cluster",
+		ResourceType:       api.ResourceTypeCluster,
 		ResourceID:         clusterID,
 		Adapter:            "test-adapter",
 		Conditions:         conditionsJSON,
@@ -533,17 +533,17 @@ func TestProcessAdapterStatus_TrueCondition(t *testing.T) {
 	// Create adapter status with all mandatory conditions
 	conditions := []api.AdapterCondition{
 		{
-			Type:               api.ConditionTypeAvailable,
+			Type:               api.AdapterConditionTypeAvailable,
 			Status:             api.AdapterConditionTrue,
 			LastTransitionTime: time.Now(),
 		},
 		{
-			Type:               api.ConditionTypeApplied,
+			Type:               api.AdapterConditionTypeApplied,
 			Status:             api.AdapterConditionTrue,
 			LastTransitionTime: time.Now(),
 		},
 		{
-			Type:               api.ConditionTypeHealth,
+			Type:               api.AdapterConditionTypeHealth,
 			Status:             api.AdapterConditionTrue,
 			LastTransitionTime: time.Now(),
 		},
@@ -552,7 +552,7 @@ func TestProcessAdapterStatus_TrueCondition(t *testing.T) {
 
 	now := time.Now()
 	adapterStatus := &api.AdapterStatus{
-		ResourceType:   "Cluster",
+		ResourceType:   api.ResourceTypeCluster,
 		ResourceID:     clusterID,
 		Adapter:        "test-adapter",
 		Conditions:     conditionsJSON,
@@ -567,7 +567,7 @@ func TestProcessAdapterStatus_TrueCondition(t *testing.T) {
 	g.Expect(result.Adapter).To(Equal("test-adapter"))
 
 	// Verify the status was stored
-	storedStatuses, _ := adapterStatusDao.FindByResource(ctx, "Cluster", clusterID)
+	storedStatuses, _ := adapterStatusDao.FindByResource(ctx, api.ResourceTypeCluster, clusterID)
 	g.Expect(len(storedStatuses)).To(Equal(1), "Status should be stored for True condition")
 }
 
@@ -596,17 +596,17 @@ func TestProcessAdapterStatus_FalseCondition(t *testing.T) {
 	// Create adapter status with all mandatory conditions
 	conditions := []api.AdapterCondition{
 		{
-			Type:               api.ConditionTypeAvailable,
+			Type:               api.AdapterConditionTypeAvailable,
 			Status:             api.AdapterConditionFalse,
 			LastTransitionTime: time.Now(),
 		},
 		{
-			Type:               api.ConditionTypeApplied,
+			Type:               api.AdapterConditionTypeApplied,
 			Status:             api.AdapterConditionTrue,
 			LastTransitionTime: time.Now(),
 		},
 		{
-			Type:               api.ConditionTypeHealth,
+			Type:               api.AdapterConditionTypeHealth,
 			Status:             api.AdapterConditionFalse,
 			LastTransitionTime: time.Now(),
 		},
@@ -615,7 +615,7 @@ func TestProcessAdapterStatus_FalseCondition(t *testing.T) {
 
 	now := time.Now()
 	adapterStatus := &api.AdapterStatus{
-		ResourceType:   "Cluster",
+		ResourceType:   api.ResourceTypeCluster,
 		ResourceID:     clusterID,
 		Adapter:        "test-adapter",
 		Conditions:     conditionsJSON,
@@ -629,7 +629,7 @@ func TestProcessAdapterStatus_FalseCondition(t *testing.T) {
 	g.Expect(result).ToNot(BeNil(), "ProcessAdapterStatus should return the upserted status")
 
 	// Verify the status was stored
-	storedStatuses, _ := adapterStatusDao.FindByResource(ctx, "Cluster", clusterID)
+	storedStatuses, _ := adapterStatusDao.FindByResource(ctx, api.ResourceTypeCluster, clusterID)
 	g.Expect(len(storedStatuses)).To(Equal(1), "Status should be stored for False condition")
 }
 
@@ -657,22 +657,22 @@ func TestProcessAdapterStatus_FirstMultipleConditions_AvailableUnknown(t *testin
 	// Create first adapter status with all mandatory conditions but Available=Unknown
 	conditions := []api.AdapterCondition{
 		{
-			Type:               api.ConditionTypeAvailable,
+			Type:               api.AdapterConditionTypeAvailable,
 			Status:             api.AdapterConditionUnknown,
 			LastTransitionTime: time.Now(),
 		},
 		{
-			Type:               api.ConditionTypeApplied,
+			Type:               api.AdapterConditionTypeApplied,
 			Status:             api.AdapterConditionTrue,
 			LastTransitionTime: time.Now(),
 		},
 		{
-			Type:               api.ConditionTypeHealth,
+			Type:               api.AdapterConditionTypeHealth,
 			Status:             api.AdapterConditionTrue,
 			LastTransitionTime: time.Now(),
 		},
 		{
-			Type:               api.ConditionTypeReady,
+			Type:               api.AdapterConditionTypeReady,
 			Status:             api.AdapterConditionTrue,
 			LastTransitionTime: time.Now(),
 		},
@@ -681,7 +681,7 @@ func TestProcessAdapterStatus_FirstMultipleConditions_AvailableUnknown(t *testin
 
 	now := time.Now()
 	adapterStatus := &api.AdapterStatus{
-		ResourceType:   "Cluster",
+		ResourceType:   api.ResourceTypeCluster,
 		ResourceID:     clusterID,
 		Adapter:        "test-adapter",
 		Conditions:     conditionsJSON,
@@ -695,7 +695,7 @@ func TestProcessAdapterStatus_FirstMultipleConditions_AvailableUnknown(t *testin
 	g.Expect(result).ToNot(BeNil(), "First report with Available=Unknown should be accepted")
 
 	// Verify the status was stored
-	storedStatuses, _ := adapterStatusDao.FindByResource(ctx, "Cluster", clusterID)
+	storedStatuses, _ := adapterStatusDao.FindByResource(ctx, api.ResourceTypeCluster, clusterID)
 	g.Expect(len(storedStatuses)).To(Equal(1), "First status with Available=Unknown should be stored")
 }
 
@@ -722,14 +722,14 @@ func TestProcessAdapterStatus_SubsequentMultipleConditions_AvailableUnknown(t *t
 
 	// Pre-populate an existing adapter status
 	existingConditions := []api.AdapterCondition{
-		{Type: api.ConditionTypeAvailable, Status: api.AdapterConditionUnknown, LastTransitionTime: time.Now()},
-		{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
-		{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeAvailable, Status: api.AdapterConditionUnknown, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
 	}
 	existingConditionsJSON, _ := json.Marshal(existingConditions)
 
 	existingStatus := &api.AdapterStatus{
-		ResourceType:       "Cluster",
+		ResourceType:       api.ResourceTypeCluster,
 		ResourceID:         clusterID,
 		Adapter:            "test-adapter",
 		Conditions:         existingConditionsJSON,
@@ -741,16 +741,16 @@ func TestProcessAdapterStatus_SubsequentMultipleConditions_AvailableUnknown(t *t
 
 	// Now send another report with multiple conditions including Available=Unknown
 	conditions := []api.AdapterCondition{
-		{Type: api.ConditionTypeAvailable, Status: api.AdapterConditionUnknown, LastTransitionTime: time.Now()},
-		{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
-		{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
-		{Type: api.ConditionTypeReady, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeAvailable, Status: api.AdapterConditionUnknown, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeReady, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
 		{Type: "Progressing", Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
 	}
 	conditionsJSON, _ := json.Marshal(conditions)
 
 	adapterStatus := &api.AdapterStatus{
-		ResourceType:       "Cluster",
+		ResourceType:       api.ResourceTypeCluster,
 		ResourceID:         clusterID,
 		Adapter:            "test-adapter",
 		Conditions:         conditionsJSON,
@@ -798,11 +798,11 @@ func TestClusterAvailableReadyTransitions(t *testing.T) {
 		var available, ready, reconciled *api.ResourceCondition
 		for i := range conds {
 			switch conds[i].Type {
-			case api.ConditionTypeLastKnownReconciled:
+			case api.ResourceConditionTypeLastKnownReconciled:
 				available = &conds[i]
-			case api.ConditionTypeReady:
+			case api.AdapterConditionTypeReady:
 				ready = &conds[i]
-			case api.ConditionTypeReconciled:
+			case api.AdapterConditionTypeReconciled:
 				reconciled = &conds[i]
 			}
 		}
@@ -814,15 +814,15 @@ func TestClusterAvailableReadyTransitions(t *testing.T) {
 
 	upsert := func(adapter string, available api.AdapterConditionStatus, observedGen int32) {
 		conditions := []api.AdapterCondition{
-			{Type: api.ConditionTypeAvailable, Status: available, LastTransitionTime: time.Now()},
-			{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
-			{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+			{Type: api.AdapterConditionTypeAvailable, Status: available, LastTransitionTime: time.Now()},
+			{Type: api.AdapterConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+			{Type: api.AdapterConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
 		}
 		conditionsJSON, _ := json.Marshal(conditions)
 		now := time.Now()
 
 		adapterStatus := &api.AdapterStatus{
-			ResourceType:       "Cluster",
+			ResourceType:       api.ResourceTypeCluster,
 			ResourceID:         clusterID,
 			Adapter:            adapter,
 			ObservedGeneration: observedGen,
@@ -907,13 +907,13 @@ func TestClusterAvailableReadyTransitions(t *testing.T) {
 	prevStatus := api.Cluster{}.StatusConditions
 	prevStatus = append(prevStatus, clusterDao.clusters[clusterID].StatusConditions...)
 	unknownConds := []api.AdapterCondition{
-		{Type: api.ConditionTypeAvailable, Status: api.AdapterConditionUnknown, LastTransitionTime: time.Now()},
-		{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
-		{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeAvailable, Status: api.AdapterConditionUnknown, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
 	}
 	unknownJSON, _ := json.Marshal(unknownConds)
 	unknownStatus := &api.AdapterStatus{
-		ResourceType: "Cluster",
+		ResourceType: api.ResourceTypeCluster,
 		ResourceID:   clusterID,
 		Adapter:      "dns",
 		Conditions:   unknownJSON,
@@ -952,7 +952,7 @@ func TestClusterStaleAdapterStatusUpdatePolicy(t *testing.T) {
 		var conds []api.ResourceCondition
 		g.Expect(json.Unmarshal(stored.StatusConditions, &conds)).To(Succeed())
 		for i := range conds {
-			if conds[i].Type == api.ConditionTypeLastKnownReconciled {
+			if conds[i].Type == api.ResourceConditionTypeLastKnownReconciled {
 				return conds[i]
 			}
 		}
@@ -962,15 +962,15 @@ func TestClusterStaleAdapterStatusUpdatePolicy(t *testing.T) {
 
 	upsert := func(adapter string, available api.AdapterConditionStatus, observedGen int32) {
 		conditions := []api.AdapterCondition{
-			{Type: api.ConditionTypeAvailable, Status: available, LastTransitionTime: time.Now()},
-			{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
-			{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+			{Type: api.AdapterConditionTypeAvailable, Status: available, LastTransitionTime: time.Now()},
+			{Type: api.AdapterConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+			{Type: api.AdapterConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
 		}
 		conditionsJSON, _ := json.Marshal(conditions)
 		now := time.Now()
 
 		adapterStatus := &api.AdapterStatus{
-			ResourceType:       "Cluster",
+			ResourceType:       api.ResourceTypeCluster,
 			ResourceID:         clusterID,
 			Adapter:            adapter,
 			ObservedGeneration: observedGen,
@@ -1022,7 +1022,7 @@ func TestClusterSyntheticTimestampsStableWithoutAdapterStatus(t *testing.T) {
 	fixedNow := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
 	initialConditions := []api.ResourceCondition{
 		{
-			Type:               api.ConditionTypeLastKnownReconciled,
+			Type:               api.ResourceConditionTypeLastKnownReconciled,
 			Status:             api.ConditionFalse,
 			ObservedGeneration: 1,
 			LastTransitionTime: fixedNow,
@@ -1030,7 +1030,7 @@ func TestClusterSyntheticTimestampsStableWithoutAdapterStatus(t *testing.T) {
 			LastUpdatedTime:    fixedNow,
 		},
 		{
-			Type:               api.ConditionTypeReady,
+			Type:               api.AdapterConditionTypeReady,
 			Status:             api.ConditionFalse,
 			ObservedGeneration: 1,
 			LastTransitionTime: fixedNow,
@@ -1057,11 +1057,11 @@ func TestClusterSyntheticTimestampsStableWithoutAdapterStatus(t *testing.T) {
 	var createdAvailable, createdReady, createdReconciled *api.ResourceCondition
 	for i := range createdConds {
 		switch createdConds[i].Type {
-		case api.ConditionTypeLastKnownReconciled:
+		case api.ResourceConditionTypeLastKnownReconciled:
 			createdAvailable = &createdConds[i]
-		case api.ConditionTypeReady:
+		case api.AdapterConditionTypeReady:
 			createdReady = &createdConds[i]
-		case api.ConditionTypeReconciled:
+		case api.AdapterConditionTypeReconciled:
 			createdReconciled = &createdConds[i]
 		}
 	}
@@ -1088,11 +1088,11 @@ func TestClusterSyntheticTimestampsStableWithoutAdapterStatus(t *testing.T) {
 	var updatedAvailable, updatedReady, updatedReconciled *api.ResourceCondition
 	for i := range updatedConds {
 		switch updatedConds[i].Type {
-		case api.ConditionTypeLastKnownReconciled:
+		case api.ResourceConditionTypeLastKnownReconciled:
 			updatedAvailable = &updatedConds[i]
-		case api.ConditionTypeReady:
+		case api.AdapterConditionTypeReady:
 			updatedReady = &updatedConds[i]
-		case api.ConditionTypeReconciled:
+		case api.AdapterConditionTypeReconciled:
 			updatedReconciled = &updatedConds[i]
 		}
 	}
@@ -1131,14 +1131,14 @@ func TestProcessAdapterStatus_MissingMandatoryCondition_Available(t *testing.T) 
 
 	// First, send a valid status
 	validConditions := []api.AdapterCondition{
-		{Type: api.ConditionTypeAvailable, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
-		{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
-		{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeAvailable, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
 	}
 	validConditionsJSON, _ := json.Marshal(validConditions)
 	now := time.Now()
 	validStatus := &api.AdapterStatus{
-		ResourceType:       "Cluster",
+		ResourceType:       api.ResourceTypeCluster,
 		ResourceID:         clusterID,
 		Adapter:            "test-adapter",
 		Conditions:         validConditionsJSON,
@@ -1152,13 +1152,13 @@ func TestProcessAdapterStatus_MissingMandatoryCondition_Available(t *testing.T) 
 
 	// Now send an update without Available condition
 	invalidConditions := []api.AdapterCondition{
-		{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
-		{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
 		{Type: "CustomCondition", Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
 	}
 	invalidConditionsJSON, _ := json.Marshal(invalidConditions)
 	invalidStatus := &api.AdapterStatus{
-		ResourceType:       "Cluster",
+		ResourceType:       api.ResourceTypeCluster,
 		ResourceID:         clusterID,
 		Adapter:            "test-adapter",
 		Conditions:         invalidConditionsJSON,
@@ -1176,7 +1176,7 @@ func TestProcessAdapterStatus_MissingMandatoryCondition_Available(t *testing.T) 
 	g.Expect(result).To(BeNil(), "Update missing Available condition should be rejected")
 
 	// Verify old status is preserved
-	storedStatus, _ := adapterStatusDao.FindByResourceAndAdapter(ctx, "Cluster", clusterID, "test-adapter")
+	storedStatus, _ := adapterStatusDao.FindByResourceAndAdapter(ctx, api.ResourceTypeCluster, clusterID, "test-adapter")
 	g.Expect(storedStatus).ToNot(BeNil())
 	g.Expect(storedStatus.ObservedGeneration).To(Equal(int32(1)), "Old status should be preserved")
 
@@ -1187,7 +1187,7 @@ func TestProcessAdapterStatus_MissingMandatoryCondition_Available(t *testing.T) 
 	// Verify Available is still there
 	hasAvailable := false
 	for _, cond := range storedConditions {
-		if cond.Type == api.ConditionTypeAvailable {
+		if cond.Type == api.AdapterConditionTypeAvailable {
 			hasAvailable = true
 			break
 		}
@@ -1217,15 +1217,15 @@ func TestProcessAdapterStatus_AllMandatoryConditions_WithCustom(t *testing.T) {
 
 	// Send status with all mandatory conditions + custom condition
 	conditions := []api.AdapterCondition{
-		{Type: api.ConditionTypeAvailable, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
-		{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
-		{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeAvailable, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
 		{Type: "CustomCondition", Status: api.AdapterConditionFalse, LastTransitionTime: time.Now()},
 	}
 	conditionsJSON, _ := json.Marshal(conditions)
 	now := time.Now()
 	adapterStatus := &api.AdapterStatus{
-		ResourceType:       "Cluster",
+		ResourceType:       api.ResourceTypeCluster,
 		ResourceID:         clusterID,
 		Adapter:            "test-adapter",
 		Conditions:         conditionsJSON,
@@ -1251,9 +1251,9 @@ func TestProcessAdapterStatus_AllMandatoryConditions_WithCustom(t *testing.T) {
 	for _, cond := range storedConditions {
 		conditionTypes[cond.Type] = true
 	}
-	g.Expect(conditionTypes[api.ConditionTypeAvailable]).To(BeTrue())
-	g.Expect(conditionTypes[api.ConditionTypeApplied]).To(BeTrue())
-	g.Expect(conditionTypes[api.ConditionTypeHealth]).To(BeTrue())
+	g.Expect(conditionTypes[api.AdapterConditionTypeAvailable]).To(BeTrue())
+	g.Expect(conditionTypes[api.AdapterConditionTypeApplied]).To(BeTrue())
+	g.Expect(conditionTypes[api.AdapterConditionTypeHealth]).To(BeTrue())
 	g.Expect(conditionTypes["CustomCondition"]).To(BeTrue())
 }
 
@@ -1278,15 +1278,15 @@ func TestProcessAdapterStatus_CustomConditionRemoval(t *testing.T) {
 
 	// First update: send all mandatory + custom condition
 	conditions1 := []api.AdapterCondition{
-		{Type: api.ConditionTypeAvailable, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
-		{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
-		{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeAvailable, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
 		{Type: "CustomCondition", Status: api.AdapterConditionFalse, LastTransitionTime: time.Now()},
 	}
 	conditionsJSON1, _ := json.Marshal(conditions1)
 	now := time.Now()
 	adapterStatus1 := &api.AdapterStatus{
-		ResourceType:       "Cluster",
+		ResourceType:       api.ResourceTypeCluster,
 		ResourceID:         clusterID,
 		Adapter:            "test-adapter",
 		Conditions:         conditionsJSON1,
@@ -1308,13 +1308,13 @@ func TestProcessAdapterStatus_CustomConditionRemoval(t *testing.T) {
 
 	// Second update: remove custom condition (only send mandatory conditions)
 	conditions2 := []api.AdapterCondition{
-		{Type: api.ConditionTypeAvailable, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
-		{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
-		{Type: api.ConditionTypeHealth, Status: api.AdapterConditionFalse, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeAvailable, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeHealth, Status: api.AdapterConditionFalse, LastTransitionTime: time.Now()},
 	}
 	conditionsJSON2, _ := json.Marshal(conditions2)
 	adapterStatus2 := &api.AdapterStatus{
-		ResourceType:       "Cluster",
+		ResourceType:       api.ResourceTypeCluster,
 		ResourceID:         clusterID,
 		Adapter:            "test-adapter",
 		Conditions:         conditionsJSON2,
@@ -1336,9 +1336,9 @@ func TestProcessAdapterStatus_CustomConditionRemoval(t *testing.T) {
 	for _, cond := range storedConditions2 {
 		conditionTypes[cond.Type] = true
 	}
-	g.Expect(conditionTypes[api.ConditionTypeAvailable]).To(BeTrue())
-	g.Expect(conditionTypes[api.ConditionTypeApplied]).To(BeTrue())
-	g.Expect(conditionTypes[api.ConditionTypeHealth]).To(BeTrue())
+	g.Expect(conditionTypes[api.AdapterConditionTypeAvailable]).To(BeTrue())
+	g.Expect(conditionTypes[api.AdapterConditionTypeApplied]).To(BeTrue())
+	g.Expect(conditionTypes[api.AdapterConditionTypeHealth]).To(BeTrue())
 	g.Expect(conditionTypes["CustomCondition"]).To(BeFalse(), "CustomCondition should not be present")
 }
 
@@ -1429,13 +1429,13 @@ func TestClusterSoftDelete(t *testing.T) {
 
 		now := time.Now()
 		adapterConds := []api.AdapterCondition{
-			{Type: api.ConditionTypeAvailable, Status: api.AdapterConditionTrue, LastTransitionTime: now},
-			{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: now},
-			{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: now},
+			{Type: api.AdapterConditionTypeAvailable, Status: api.AdapterConditionTrue, LastTransitionTime: now},
+			{Type: api.AdapterConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: now},
+			{Type: api.AdapterConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: now},
 		}
 		condJSON, _ := json.Marshal(adapterConds)
 		adapterStatusDao.statuses["NodePool:np-1:validation"] = &api.AdapterStatus{
-			ResourceType: "NodePool", ResourceID: "np-1", Adapter: "validation",
+			ResourceType: api.ResourceTypeNodePool, ResourceID: "np-1", Adapter: "validation",
 			ObservedGeneration: 1, Conditions: condJSON,
 			CreatedTime: now, LastReportTime: now,
 		}
@@ -1453,9 +1453,9 @@ func TestClusterSoftDelete(t *testing.T) {
 		var reconciled, lastKnownReconciled *api.ResourceCondition
 		for i := range conds {
 			switch conds[i].Type {
-			case api.ConditionTypeReconciled:
+			case api.AdapterConditionTypeReconciled:
 				reconciled = &conds[i]
-			case api.ConditionTypeLastKnownReconciled:
+			case api.ResourceConditionTypeLastKnownReconciled:
 				lastKnownReconciled = &conds[i]
 			}
 		}
@@ -1560,14 +1560,14 @@ func TestClusterSoftDelete(t *testing.T) {
 
 		clusterDao.clusters[clusterID] = &api.Cluster{Meta: api.Meta{ID: clusterID}, Generation: 1}
 		conditions := []api.AdapterCondition{
-			{Type: api.ConditionTypeAvailable, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
-			{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
-			{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+			{Type: api.AdapterConditionTypeAvailable, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+			{Type: api.AdapterConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+			{Type: api.AdapterConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
 		}
 		condJSON, _ := json.Marshal(conditions)
 		now := time.Now()
 		_, svcErr := service.ProcessAdapterStatus(ctx, clusterID, &api.AdapterStatus{
-			ResourceType: "Cluster", ResourceID: clusterID, Adapter: "validation",
+			ResourceType: api.ResourceTypeCluster, ResourceID: clusterID, Adapter: "validation",
 			ObservedGeneration: 1, Conditions: condJSON, CreatedTime: now, LastReportTime: now,
 		})
 		g.Expect(svcErr).To(BeNil())
@@ -1578,7 +1578,7 @@ func TestClusterSoftDelete(t *testing.T) {
 		g.Expect(json.Unmarshal(stored.StatusConditions, &preConds)).To(Succeed())
 		var preReady *api.ResourceCondition
 		for i := range preConds {
-			if preConds[i].Type == api.ConditionTypeReady {
+			if preConds[i].Type == api.AdapterConditionTypeReady {
 				preReady = &preConds[i]
 			}
 		}
@@ -1596,7 +1596,7 @@ func TestClusterSoftDelete(t *testing.T) {
 		g.Expect(json.Unmarshal(stored.StatusConditions, &postConds)).To(Succeed())
 		var postReady *api.ResourceCondition
 		for i := range postConds {
-			if postConds[i].Type == api.ConditionTypeReady {
+			if postConds[i].Type == api.AdapterConditionTypeReady {
 				postReady = &postConds[i]
 			}
 		}
@@ -1626,10 +1626,10 @@ func TestReconciled_DuringDeletion_ChildResources(t *testing.T) {
 	finalizedConditions := func() []byte {
 		now := time.Now()
 		conds := []api.AdapterCondition{
-			{Type: api.ConditionTypeAvailable, Status: api.AdapterConditionTrue, LastTransitionTime: now},
-			{Type: api.ConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: now},
-			{Type: api.ConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: now},
-			{Type: api.ConditionTypeFinalized, Status: api.AdapterConditionTrue, LastTransitionTime: now},
+			{Type: api.AdapterConditionTypeAvailable, Status: api.AdapterConditionTrue, LastTransitionTime: now},
+			{Type: api.AdapterConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: now},
+			{Type: api.AdapterConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: now},
+			{Type: api.AdapterConditionTypeFinalized, Status: api.AdapterConditionTrue, LastTransitionTime: now},
 		}
 		b, _ := json.Marshal(conds)
 		return b
@@ -1655,7 +1655,7 @@ func TestReconciled_DuringDeletion_ChildResources(t *testing.T) {
 		now := time.Now()
 		condJSON := finalizedConditions()
 		adapterStatusDao.statuses["Cluster:"+clusterID+":validation"] = &api.AdapterStatus{
-			ResourceType: "Cluster", ResourceID: clusterID, Adapter: "validation",
+			ResourceType: api.ResourceTypeCluster, ResourceID: clusterID, Adapter: "validation",
 			ObservedGeneration: 2, Conditions: condJSON,
 			CreatedTime: now, LastReportTime: now,
 		}
@@ -1669,9 +1669,9 @@ func TestReconciled_DuringDeletion_ChildResources(t *testing.T) {
 		var reconciled, ready *api.ResourceCondition
 		for i := range conds {
 			switch conds[i].Type {
-			case api.ConditionTypeReconciled:
+			case api.AdapterConditionTypeReconciled:
 				reconciled = &conds[i]
-			case api.ConditionTypeReady:
+			case api.AdapterConditionTypeReady:
 				ready = &conds[i]
 			}
 		}
@@ -1701,7 +1701,7 @@ func TestReconciled_DuringDeletion_ChildResources(t *testing.T) {
 		now := time.Now()
 		condJSON := finalizedConditions()
 		adapterStatusDao.statuses["Cluster:"+clusterID+":validation"] = &api.AdapterStatus{
-			ResourceType: "Cluster", ResourceID: clusterID, Adapter: "validation",
+			ResourceType: api.ResourceTypeCluster, ResourceID: clusterID, Adapter: "validation",
 			ObservedGeneration: 2, Conditions: condJSON,
 			CreatedTime: now, LastReportTime: now,
 		}
@@ -1715,9 +1715,9 @@ func TestReconciled_DuringDeletion_ChildResources(t *testing.T) {
 		var reconciled, ready *api.ResourceCondition
 		for i := range conds {
 			switch conds[i].Type {
-			case api.ConditionTypeReconciled:
+			case api.AdapterConditionTypeReconciled:
 				reconciled = &conds[i]
-			case api.ConditionTypeReady:
+			case api.AdapterConditionTypeReady:
 				ready = &conds[i]
 			}
 		}

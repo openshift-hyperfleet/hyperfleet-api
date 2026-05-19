@@ -16,7 +16,7 @@ import (
 // mandatoryConditions returns the condition types that must be present in all adapter status updates.
 // Returned as a new slice each call to prevent accidental mutation of a shared package-level value.
 func mandatoryConditions() []string {
-	return []string{api.ConditionTypeAvailable, api.ConditionTypeApplied, api.ConditionTypeHealth}
+	return []string{api.AdapterConditionTypeAvailable, api.AdapterConditionTypeApplied, api.AdapterConditionTypeHealth}
 }
 
 // Condition validation error type
@@ -162,13 +162,13 @@ func parsePrevConditions(ctx context.Context, raw []byte) (
 	for i := range conditions {
 		c := conditions[i]
 		switch c.Type {
-		case api.ConditionTypeReady:
+		case api.ResourceConditionTypeReady:
 			if prevReconciled == nil {
 				prevReconciled = &c
 			}
-		case api.ConditionTypeReconciled:
+		case api.ResourceConditionTypeReconciled:
 			prevReconciled = &c
-		case api.ConditionTypeLastKnownReconciled:
+		case api.ResourceConditionTypeLastKnownReconciled:
 			prevAvail = &c
 		default:
 			prevAdapterByType[c.Type] = &c
@@ -222,7 +222,7 @@ func normalizeAdapterReportsForAggregation(
 
 		var avail *api.AdapterCondition
 		for i := range conditions {
-			if conditions[i].Type == api.ConditionTypeAvailable {
+			if conditions[i].Type == api.AdapterConditionTypeAvailable {
 				avail = &conditions[i]
 				break
 			}
@@ -237,7 +237,7 @@ func normalizeAdapterReportsForAggregation(
 
 		var finalized *api.AdapterCondition
 		for i := range conditions {
-			if conditions[i].Type == api.ConditionTypeFinalized {
+			if conditions[i].Type == api.AdapterConditionTypeFinalized {
 				finalized = &conditions[i]
 				break
 			}
@@ -372,7 +372,7 @@ func computeReconciled(
 	}
 
 	return api.ResourceCondition{
-		Type:               api.ConditionTypeReconciled,
+		Type:               api.ResourceConditionTypeReconciled,
 		Status:             status,
 		ObservedGeneration: resourceGen,
 		Reason:             strPtr(reason),
@@ -513,7 +513,7 @@ func computeLastKnownReconciled(
 	}
 
 	return api.ResourceCondition{
-		Type:               api.ConditionTypeLastKnownReconciled,
+		Type:               api.ResourceConditionTypeLastKnownReconciled,
 		Status:             status,
 		ObservedGeneration: obsGen,
 		Reason:             strPtr(reason),

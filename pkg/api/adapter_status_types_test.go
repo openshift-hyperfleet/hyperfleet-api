@@ -58,7 +58,7 @@ func TestAdapterStatus_BeforeCreate_IDGeneration(t *testing.T) {
 	RegisterTestingT(t)
 
 	status := &AdapterStatus{
-		ResourceType:       "Cluster",
+		ResourceType:       ResourceTypeCluster,
 		ResourceID:         "cluster-123",
 		Adapter:            "test-adapter",
 		ObservedGeneration: 1,
@@ -76,7 +76,7 @@ func TestAdapterStatus_BeforeCreate_NoOtherDefaults(t *testing.T) {
 
 	// Create status with all fields explicitly set
 	status := &AdapterStatus{
-		ResourceType:       "NodePool",
+		ResourceType:       ResourceTypeNodePool,
 		ResourceID:         "nodepool-456",
 		Adapter:            "custom-adapter",
 		ObservedGeneration: 5,
@@ -87,7 +87,7 @@ func TestAdapterStatus_BeforeCreate_NoOtherDefaults(t *testing.T) {
 
 	// Verify only ID was set, other fields preserved
 	Expect(status.ID).ToNot(BeEmpty())
-	Expect(status.ResourceType).To(Equal("NodePool"))
+	Expect(status.ResourceType).To(Equal(ResourceTypeNodePool))
 	Expect(status.ResourceID).To(Equal("nodepool-456"))
 	Expect(status.Adapter).To(Equal("custom-adapter"))
 	Expect(status.ObservedGeneration).To(Equal(int32(5)))

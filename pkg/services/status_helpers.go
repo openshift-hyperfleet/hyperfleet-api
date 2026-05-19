@@ -29,7 +29,7 @@ func computeNodePoolConditionsJSON(
 
 	// Ready mirrors Reconciled for backward compatibility (deprecated)
 	ready := reconciled
-	ready.Type = api.ConditionTypeReady
+	ready.Type = api.ResourceConditionTypeReady
 
 	allConditions := make([]api.ResourceCondition, 0, fixedConditionCount+len(adapterConditions))
 	allConditions = append(allConditions, ready, reconciled, lastKnownReconciled)
@@ -59,10 +59,10 @@ func updateNodePoolStatusFromAdapters(
 ) (*api.NodePool, *errors.ServiceError) {
 	nodePool, err := nodePoolDao.Get(ctx, nodePoolID)
 	if err != nil {
-		return nil, handleGetError("NodePool", "id", nodePoolID, err)
+		return nil, handleGetError(api.ResourceTypeNodePool, "id", nodePoolID, err)
 	}
 
-	adapterStatuses, err := adapterStatusDao.FindByResource(ctx, "NodePool", nodePoolID)
+	adapterStatuses, err := adapterStatusDao.FindByResource(ctx, api.ResourceTypeNodePool, nodePoolID)
 	if err != nil {
 		return nil, errors.GeneralError("Failed to get adapter statuses: %s", err)
 	}
@@ -81,7 +81,7 @@ func updateNodePoolStatusFromAdapters(
 
 	nodePool.StatusConditions = conditionsJSON
 	if err = nodePoolDao.Save(ctx, nodePool); err != nil {
-		return nil, handleUpdateError("NodePool", err)
+		return nil, handleUpdateError(api.ResourceTypeNodePool, err)
 	}
 
 	return nodePool, nil
@@ -104,7 +104,7 @@ func recomputeNodePoolConditions(
 		nodePoolIDs[i] = np.ID
 	}
 
-	allStatuses, err := adapterStatusDao.FindByResourceIDs(ctx, "NodePool", nodePoolIDs)
+	allStatuses, err := adapterStatusDao.FindByResourceIDs(ctx, api.ResourceTypeNodePool, nodePoolIDs)
 	if err != nil {
 		return errors.GeneralError("Failed to get adapter statuses: %s", err)
 	}

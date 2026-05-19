@@ -34,7 +34,7 @@ func createTestAdapterStatusRequest() *openapi.AdapterStatusCreateRequest {
 		},
 		Conditions: []openapi.ConditionRequest{
 			{
-				Type:    "Ready",
+				Type:    api.AdapterConditionTypeReady,
 				Status:  openapi.AdapterConditionStatusTrue,
 				Reason:  &reason,
 				Message: &message,
@@ -70,7 +70,7 @@ func TestConvertAdapterStatus_Complete(t *testing.T) {
 	err = json.Unmarshal(result.Conditions, &conditions)
 	Expect(err).To(BeNil())
 	Expect(len(conditions)).To(Equal(1))
-	Expect(conditions[0].Type).To(Equal("Ready"))
+	Expect(conditions[0].Type).To(Equal(api.AdapterConditionTypeReady))
 	Expect(conditions[0].Status).To(Equal(api.AdapterConditionTrue))
 	Expect(*conditions[0].Reason).To(Equal("TestReason"))
 	Expect(*conditions[0].Message).To(Equal("Test message"))
@@ -244,7 +244,7 @@ func TestPresentAdapterStatus_Complete(t *testing.T) {
 	// Create domain AdapterCondition
 	conditions := []api.AdapterCondition{
 		{
-			Type:               "Ready",
+			Type:               api.AdapterConditionTypeReady,
 			Status:             api.AdapterConditionTrue,
 			Reason:             &reason,
 			Message:            &message,
@@ -291,7 +291,7 @@ func TestPresentAdapterStatus_Complete(t *testing.T) {
 
 	// Verify conditions converted correctly
 	Expect(len(result.Conditions)).To(Equal(1))
-	Expect(result.Conditions[0].Type).To(Equal("Ready"))
+	Expect(result.Conditions[0].Type).To(Equal(api.AdapterConditionTypeReady))
 	Expect(result.Conditions[0].Status).To(Equal(openapi.AdapterConditionStatusTrue))
 	Expect(*result.Conditions[0].Reason).To(Equal("Success"))
 
@@ -468,13 +468,16 @@ func TestPresentAdapterStatus_FiltersInvalidConditionStatus(t *testing.T) {
 
 	conditions := []api.AdapterCondition{
 		// Valid — should be kept
-		{Type: "Health", Status: api.AdapterConditionTrue, Reason: &reason, Message: &message, LastTransitionTime: now},
-		{Type: "Available", Status: api.AdapterConditionFalse, LastTransitionTime: now},
-		{Type: "Ready", Status: api.AdapterConditionUnknown, LastTransitionTime: now},
+		{
+			Type: api.AdapterConditionTypeHealth, Status: api.AdapterConditionTrue,
+			Reason: &reason, Message: &message, LastTransitionTime: now,
+		},
+		{Type: api.AdapterConditionTypeAvailable, Status: api.AdapterConditionFalse, LastTransitionTime: now},
+		{Type: api.AdapterConditionTypeReady, Status: api.AdapterConditionUnknown, LastTransitionTime: now},
 
 		// Invalid — should be filtered out (legacy data)
-		{Type: "Applied", Status: "", LastTransitionTime: now},
-		{Type: "Reconciled", Status: "garbage", LastTransitionTime: now},
+		{Type: api.AdapterConditionTypeApplied, Status: "", LastTransitionTime: now},
+		{Type: api.AdapterConditionTypeReconciled, Status: "garbage", LastTransitionTime: now},
 	}
 	conditionsJSON, _ := json.Marshal(conditions)
 
