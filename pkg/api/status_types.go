@@ -45,6 +45,7 @@ const (
 // Resource condition type constants (used in resource.status.conditions aggregated from adapters)
 const (
 	ResourceConditionTypeAvailable           = "Available"
+	ResourceConditionTypeHealth              = "Health"
 	ResourceConditionTypeReady               = "Ready"
 	ResourceConditionTypeReconciled          = "Reconciled"
 	ResourceConditionTypeFinalized           = "Finalized"

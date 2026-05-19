@@ -800,9 +800,9 @@ func TestClusterAvailableReadyTransitions(t *testing.T) {
 			switch conds[i].Type {
 			case api.ResourceConditionTypeLastKnownReconciled:
 				available = &conds[i]
-			case api.AdapterConditionTypeReady:
+			case api.ResourceConditionTypeReady:
 				ready = &conds[i]
-			case api.AdapterConditionTypeReconciled:
+			case api.ResourceConditionTypeReconciled:
 				reconciled = &conds[i]
 			}
 		}
@@ -1030,7 +1030,7 @@ func TestClusterSyntheticTimestampsStableWithoutAdapterStatus(t *testing.T) {
 			LastUpdatedTime:    fixedNow,
 		},
 		{
-			Type:               api.AdapterConditionTypeReady,
+			Type:               api.ResourceConditionTypeReady,
 			Status:             api.ConditionFalse,
 			ObservedGeneration: 1,
 			LastTransitionTime: fixedNow,
@@ -1059,9 +1059,9 @@ func TestClusterSyntheticTimestampsStableWithoutAdapterStatus(t *testing.T) {
 		switch createdConds[i].Type {
 		case api.ResourceConditionTypeLastKnownReconciled:
 			createdAvailable = &createdConds[i]
-		case api.AdapterConditionTypeReady:
+		case api.ResourceConditionTypeReady:
 			createdReady = &createdConds[i]
-		case api.AdapterConditionTypeReconciled:
+		case api.ResourceConditionTypeReconciled:
 			createdReconciled = &createdConds[i]
 		}
 	}
@@ -1090,9 +1090,9 @@ func TestClusterSyntheticTimestampsStableWithoutAdapterStatus(t *testing.T) {
 		switch updatedConds[i].Type {
 		case api.ResourceConditionTypeLastKnownReconciled:
 			updatedAvailable = &updatedConds[i]
-		case api.AdapterConditionTypeReady:
+		case api.ResourceConditionTypeReady:
 			updatedReady = &updatedConds[i]
-		case api.AdapterConditionTypeReconciled:
+		case api.ResourceConditionTypeReconciled:
 			updatedReconciled = &updatedConds[i]
 		}
 	}
@@ -1453,7 +1453,7 @@ func TestClusterSoftDelete(t *testing.T) {
 		var reconciled, lastKnownReconciled *api.ResourceCondition
 		for i := range conds {
 			switch conds[i].Type {
-			case api.AdapterConditionTypeReconciled:
+			case api.ResourceConditionTypeReconciled:
 				reconciled = &conds[i]
 			case api.ResourceConditionTypeLastKnownReconciled:
 				lastKnownReconciled = &conds[i]
@@ -1578,7 +1578,7 @@ func TestClusterSoftDelete(t *testing.T) {
 		g.Expect(json.Unmarshal(stored.StatusConditions, &preConds)).To(Succeed())
 		var preReady *api.ResourceCondition
 		for i := range preConds {
-			if preConds[i].Type == api.AdapterConditionTypeReady {
+			if preConds[i].Type == api.ResourceConditionTypeReady {
 				preReady = &preConds[i]
 			}
 		}
@@ -1596,7 +1596,7 @@ func TestClusterSoftDelete(t *testing.T) {
 		g.Expect(json.Unmarshal(stored.StatusConditions, &postConds)).To(Succeed())
 		var postReady *api.ResourceCondition
 		for i := range postConds {
-			if postConds[i].Type == api.AdapterConditionTypeReady {
+			if postConds[i].Type == api.ResourceConditionTypeReady {
 				postReady = &postConds[i]
 			}
 		}
@@ -1669,9 +1669,9 @@ func TestReconciled_DuringDeletion_ChildResources(t *testing.T) {
 		var reconciled, ready *api.ResourceCondition
 		for i := range conds {
 			switch conds[i].Type {
-			case api.AdapterConditionTypeReconciled:
+			case api.ResourceConditionTypeReconciled:
 				reconciled = &conds[i]
-			case api.AdapterConditionTypeReady:
+			case api.ResourceConditionTypeReady:
 				ready = &conds[i]
 			}
 		}
@@ -1715,9 +1715,9 @@ func TestReconciled_DuringDeletion_ChildResources(t *testing.T) {
 		var reconciled, ready *api.ResourceCondition
 		for i := range conds {
 			switch conds[i].Type {
-			case api.AdapterConditionTypeReconciled:
+			case api.ResourceConditionTypeReconciled:
 				reconciled = &conds[i]
-			case api.AdapterConditionTypeReady:
+			case api.ResourceConditionTypeReady:
 				ready = &conds[i]
 			}
 		}

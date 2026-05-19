@@ -41,10 +41,10 @@ type sqlGenericService struct {
 
 var (
 	SearchDisallowedFields = map[string]map[string]string{
-		"Cluster": {
+		api.ResourceTypeCluster: {
 			"spec": "spec", // Provider-specific field, not searchable
 		},
-		"NodePool": {
+		api.ResourceTypeNodePool: {
 			"spec": "spec", // Provider-specific field, not searchable
 		},
 	}

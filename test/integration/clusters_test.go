@@ -171,7 +171,7 @@ func TestClusterPatch_SetReadyFalse(t *testing.T) {
 
 	var readyCond *openapi.ResourceCondition
 	for i := range updated.Status.Conditions {
-		if updated.Status.Conditions[i].Type == api.AdapterConditionTypeReady {
+		if updated.Status.Conditions[i].Type == api.ResourceConditionTypeReady {
 			readyCond = &updated.Status.Conditions[i]
 			break
 		}
@@ -1014,7 +1014,7 @@ func TestClusterSoftDelete(t *testing.T) {
 			"Generation should be incremented after soft-delete")
 		var readyCond *openapi.ResourceCondition
 		for i := range delResp.JSON202.Status.Conditions {
-			if delResp.JSON202.Status.Conditions[i].Type == api.AdapterConditionTypeReady {
+			if delResp.JSON202.Status.Conditions[i].Type == api.ResourceConditionTypeReady {
 				readyCond = &delResp.JSON202.Status.Conditions[i]
 				break
 			}
@@ -1046,7 +1046,7 @@ func TestClusterSoftDelete(t *testing.T) {
 			"Cluster generation should increment on soft-delete")
 		var clusterReadyCond *openapi.ResourceCondition
 		for i := range delResp.JSON202.Status.Conditions {
-			if delResp.JSON202.Status.Conditions[i].Type == api.AdapterConditionTypeReady {
+			if delResp.JSON202.Status.Conditions[i].Type == api.ResourceConditionTypeReady {
 				clusterReadyCond = &delResp.JSON202.Status.Conditions[i]
 				break
 			}
@@ -1064,7 +1064,7 @@ func TestClusterSoftDelete(t *testing.T) {
 		Expect(err).NotTo(HaveOccurred(), "should be able to unmarshal nodepool status conditions")
 		var readyCond *api.ResourceCondition
 		for i := range conditions {
-			if conditions[i].Type == api.AdapterConditionTypeReady {
+			if conditions[i].Type == api.ResourceConditionTypeReady {
 				readyCond = &conditions[i]
 				break
 			}

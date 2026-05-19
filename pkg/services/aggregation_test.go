@@ -63,7 +63,7 @@ func mkPrevReady(
 	status api.ResourceConditionStatus, obsGen int32, lastTransition, lastUpdated time.Time,
 ) *api.ResourceCondition {
 	return &api.ResourceCondition{
-		Type:               api.AdapterConditionTypeReady,
+		Type:               api.ResourceConditionTypeReady,
 		Status:             status,
 		ObservedGeneration: obsGen,
 		LastTransitionTime: lastTransition,
@@ -77,7 +77,7 @@ func mkPrevReconciled(
 	status api.ResourceConditionStatus, obsGen int32, lastTransition, lastUpdated time.Time,
 ) *api.ResourceCondition {
 	return &api.ResourceCondition{
-		Type:               api.AdapterConditionTypeReconciled,
+		Type:               api.ResourceConditionTypeReconciled,
 		Status:             status,
 		ObservedGeneration: obsGen,
 		LastTransitionTime: lastTransition,
@@ -147,7 +147,7 @@ func TestParsePrevConditions(t *testing.T) {
 	t.Run("both Reconciled and LastKnownReconciled", func(t *testing.T) {
 		t.Parallel()
 		r, a, _ := parsePrevConditions(context.Background(), encode(reconciledCond, availCond))
-		if r == nil || r.Type != api.AdapterConditionTypeReconciled {
+		if r == nil || r.Type != api.ResourceConditionTypeReconciled {
 			t.Fatalf("expected Reconciled condition, got %v", r)
 		}
 		if a == nil || a.Type != api.ResourceConditionTypeLastKnownReconciled {
@@ -158,7 +158,7 @@ func TestParsePrevConditions(t *testing.T) {
 	t.Run("only Reconciled", func(t *testing.T) {
 		t.Parallel()
 		r, a, _ := parsePrevConditions(context.Background(), encode(reconciledCond))
-		if r == nil || r.Type != api.AdapterConditionTypeReconciled {
+		if r == nil || r.Type != api.ResourceConditionTypeReconciled {
 			t.Fatalf("expected Reconciled, got %v", r)
 		}
 		if a != nil {
@@ -201,7 +201,7 @@ func TestParsePrevConditions(t *testing.T) {
 	t.Run("Ready used as prevReconciled fallback when no Reconciled stored", func(t *testing.T) {
 		t.Parallel()
 		rc, _, _ := parsePrevConditions(context.Background(), encode(readyCond))
-		if rc == nil || rc.Type != api.AdapterConditionTypeReady {
+		if rc == nil || rc.Type != api.ResourceConditionTypeReady {
 			t.Fatal("expected Ready to be used as prevReconciled fallback")
 		}
 	})
@@ -209,7 +209,7 @@ func TestParsePrevConditions(t *testing.T) {
 	t.Run("Reconciled takes precedence over Ready for prevReconciled", func(t *testing.T) {
 		t.Parallel()
 		rc, _, _ := parsePrevConditions(context.Background(), encode(readyCond, reconciledCond))
-		if rc == nil || rc.Type != api.AdapterConditionTypeReconciled {
+		if rc == nil || rc.Type != api.ResourceConditionTypeReconciled {
 			t.Fatalf("expected Reconciled to take precedence, got %v", rc)
 		}
 	})
@@ -512,7 +512,7 @@ func TestComputeReconciled(t *testing.T) {
 	t.Run("Type is Reconciled", func(t *testing.T) {
 		t.Parallel()
 		cond := computeReconciled(1, aggTRef, nil, nil, nil, map[string]adapterAvailableSnapshot{}, false)
-		if cond.Type != api.AdapterConditionTypeReconciled {
+		if cond.Type != api.ResourceConditionTypeReconciled {
 			t.Errorf("type got %v, want Reconciled", cond.Type)
 		}
 	})
@@ -1181,7 +1181,7 @@ func TestAggregateResourceStatus(t *testing.T) {
 		required := []string{"a"}
 		prevConds := encodePrev(
 			api.ResourceCondition{
-				Type: api.AdapterConditionTypeReady, Status: api.ConditionTrue, ObservedGeneration: 1,
+				Type: api.ResourceConditionTypeReady, Status: api.ConditionTrue, ObservedGeneration: 1,
 				CreatedTime: aggT0, LastUpdatedTime: aggT1, LastTransitionTime: aggT1,
 			},
 		)
@@ -1233,8 +1233,8 @@ func TestAggregateResourceStatus(t *testing.T) {
 		t.Parallel()
 		in := AggregateResourceStatusInput{ResourceGeneration: 1, RefTime: aggTRef}
 		reconciled, avail, _ := AggregateResourceStatus(context.Background(), in)
-		if reconciled.Type != api.AdapterConditionTypeReconciled {
-			t.Errorf("reconciled.Type=%q, want %q", reconciled.Type, api.AdapterConditionTypeReconciled)
+		if reconciled.Type != api.ResourceConditionTypeReconciled {
+			t.Errorf("reconciled.Type=%q, want %q", reconciled.Type, api.ResourceConditionTypeReconciled)
 		}
 		if avail.Type != api.ResourceConditionTypeLastKnownReconciled {
 			t.Errorf("avail.Type=%q, want %q", avail.Type, api.ResourceConditionTypeLastKnownReconciled)

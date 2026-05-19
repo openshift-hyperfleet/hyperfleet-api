@@ -211,7 +211,7 @@ func TestNodePoolPatch_SetReadyFalse(t *testing.T) {
 
 	var readyCond *openapi.ResourceCondition
 	for i := range updated.Status.Conditions {
-		if updated.Status.Conditions[i].Type == api.AdapterConditionTypeReady {
+		if updated.Status.Conditions[i].Type == api.ResourceConditionTypeReady {
 			readyCond = &updated.Status.Conditions[i]
 			break
 		}
@@ -627,7 +627,7 @@ func TestNodePoolSoftDelete(t *testing.T) {
 			"Generation should be incremented after soft-delete")
 		var readyCond *openapi.ResourceCondition
 		for i := range resp.JSON202.Status.Conditions {
-			if resp.JSON202.Status.Conditions[i].Type == api.AdapterConditionTypeReady {
+			if resp.JSON202.Status.Conditions[i].Type == api.ResourceConditionTypeReady {
 				readyCond = &resp.JSON202.Status.Conditions[i]
 				break
 			}
