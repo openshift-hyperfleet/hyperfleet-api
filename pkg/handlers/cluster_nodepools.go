@@ -140,7 +140,7 @@ func (h ClusterNodePoolsHandler) SoftDelete(w http.ResponseWriter, r *http.Reque
 
 // ForceDelete permanently removes a nodepool that is in Finalizing state.
 func (h ClusterNodePoolsHandler) ForceDelete(w http.ResponseWriter, r *http.Request) {
-	var req api.ForceDeleteRequest
+	var req openapi.ForceDeleteRequest
 	cfg := &handlerConfig{
 		MarshalInto: &req,
 		Validate: []validate{
