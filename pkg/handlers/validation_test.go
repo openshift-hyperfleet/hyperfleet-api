@@ -285,7 +285,7 @@ func TestValidateMaxLength(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			RegisterTestingT(t)
-			req := api.ForceDeleteRequest{Reason: tc.reason}
+			req := openapi.ForceDeleteRequest{Reason: tc.reason}
 			validator := validateMaxLength(&req, "Reason", "reason", tc.maxLen)
 			err := validator()
 			if tc.expectError {
