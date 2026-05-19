@@ -145,7 +145,46 @@ HyperFleet API is configured via environment variables and configuration files.
 
 The API validates cluster and nodepool `spec` fields against an OpenAPI schema. This allows different providers (GCP, AWS, Azure) to have different spec structures.
 
-Schema validation is optional and file-path based. Set `--server-openapi-schema-path` (or `HYPERFLEET_SERVER_OPENAPI_SCHEMA_PATH`) to a provider-specific OpenAPI schema file to enable it. If the path is missing or the file is unreadable, the API logs a warning and starts without validation — startup is non-blocking.
+The schema path is configured via `--server-openapi-schema-path` (or `HYPERFLEET_SERVER_OPENAPI_SCHEMA_PATH`). The default is `openapi/openapi.yaml`. The API **will fail to start** if the configured schema file is missing, unreadable, or invalid — this ensures misconfigured deployments are caught immediately rather than silently accepting invalid data.
+
+#### Validation Schema via Helm
+
+Partners can supply a custom OpenAPI schema using the Helm chart:
+
+```yaml
+validationSchema:
+  enabled: true
+  content: |
+    openapi: 3.0.0
+    info:
+      title: My Validation Schema
+      version: 1.0.0
+    paths: {}
+    components:
+      schemas:
+        ClusterSpec:
+          type: object
+          required: [region]
+          properties:
+            region:
+              type: string
+        NodePoolSpec:
+          type: object
+          required: [machine_type]
+          properties:
+            machine_type:
+              type: string
+```
+
+When `validationSchema.enabled` is `true`, the chart creates a ConfigMap with the schema content, mounts it into the container, and sets `server.openapi_schema_path` in the generated config file to point to it.
+
+Alternatively, reference an existing ConfigMap (must contain an `openapi.yaml` key):
+
+```yaml
+validationSchema:
+  enabled: true
+  existingConfigMap: my-validation-schema
+```
 
 See [Configuration Guide](config.md) for all configuration options.
 

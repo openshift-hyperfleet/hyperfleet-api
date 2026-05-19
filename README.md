@@ -171,7 +171,7 @@ This project uses [pre-commit](https://pre-commit.io/) for code quality checks. 
 - **[Deployment](docs/deployment.md)** - Container images, Kubernetes deployment, and configuration
 - **[Authentication](docs/authentication.md)** - Development and production auth
 - **[Logging](docs/logging.md)** - Structured logging, OpenTelemetry integration, and data masking
-- **[Partner Schema Validation](openapi/README.md#partner-schema-validation)** - How to supply a partner-specific OpenAPI schema for runtime `spec` field validation
+- **[Validation Schema](openapi/README.md#validation-schema)** - How to supply a custom OpenAPI schema for runtime `spec` field validation
 
 ### Additional Resources
 

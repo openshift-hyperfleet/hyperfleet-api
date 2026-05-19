@@ -22,7 +22,7 @@ func AddServerFlags(cmd *cobra.Command) {
 	cmd.Flags().String("server-host", defaults.Host, "Server bind host")
 	cmd.Flags().Int("server-port", defaults.Port, "Server bind port")
 	cmd.Flags().String("server-openapi-schema-path", defaults.OpenAPISchemaPath,
-		"Path to OpenAPI schema for spec validation")
+		"Path to OpenAPI schema for spec validation (API will fail to start if file is missing or invalid)")
 	cmd.Flags().Duration("server-read-timeout", defaults.Timeouts.Read, "HTTP server read timeout")
 	cmd.Flags().Duration("server-write-timeout", defaults.Timeouts.Write, "HTTP server write timeout")
 	cmd.Flags().String("server-https-cert-file", defaults.TLS.CertFile, "Path to TLS certificate file")

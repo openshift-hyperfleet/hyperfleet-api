@@ -1,0 +1,21 @@
+HyperFleet API has been deployed.
+
+Check deployment status:
+  kubectl get pods -l app.kubernetes.io/instance={{ .Release.Name }}
+
+Access the API:
+  kubectl port-forward svc/{{ include "hyperfleet-api.fullname" . }} {{ .Values.ports.api | default 8000 }}:{{ .Values.ports.api | default 8000 }}
+
+{{- if .Values.validationSchema.enabled }}
+
+Validation schema validation is ENABLED.
+{{- if .Values.validationSchema.existingConfigMap }}
+  Schema source: ConfigMap "{{ .Values.validationSchema.existingConfigMap }}"
+{{- else }}
+  Schema source: inline content (generated ConfigMap)
+{{- end }}
+  The API will fail to start if the schema is missing or invalid.
+{{- end }}
+
+Documentation:
+  https://github.com/openshift-hyperfleet/hyperfleet-api/blob/main/docs/deployment.md
