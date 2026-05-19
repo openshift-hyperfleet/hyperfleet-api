@@ -155,7 +155,7 @@ func TestPresentNodePool_Complete(t *testing.T) {
 			ObservedGeneration: 5,
 			CreatedTime:        now,
 			LastUpdatedTime:    now,
-			Type:               "Available",
+			Type:               api.ResourceConditionTypeAvailable,
 			Status:             api.ConditionTrue,
 			Reason:             &reason,
 			Message:            &message,
@@ -211,7 +211,7 @@ func TestPresentNodePool_Complete(t *testing.T) {
 
 	// Verify Status
 	Expect(len(result.Status.Conditions)).To(Equal(1))
-	Expect(result.Status.Conditions[0].Type).To(Equal("Available"))
+	Expect(result.Status.Conditions[0].Type).To(Equal(api.ResourceConditionTypeAvailable))
 	Expect(result.Status.Conditions[0].Status).To(Equal(openapi.ResourceConditionStatusTrue))
 
 	// Verify timestamps
@@ -312,7 +312,7 @@ func TestPresentNodePool_StatusConditionsConversion(t *testing.T) {
 			ObservedGeneration: 2,
 			CreatedTime:        now,
 			LastUpdatedTime:    now,
-			Type:               "Healthy",
+			Type:               api.ResourceConditionTypeHealth,
 			Status:             api.ConditionTrue,
 			Reason:             &reason2,
 			Message:            &message2,
@@ -346,7 +346,7 @@ func TestPresentNodePool_StatusConditionsConversion(t *testing.T) {
 	Expect(*result.Status.Conditions[0].Message).To(Equal("Scaling in progress"))
 
 	// Second condition
-	Expect(result.Status.Conditions[1].Type).To(Equal("Healthy"))
+	Expect(result.Status.Conditions[1].Type).To(Equal(api.ResourceConditionTypeHealth))
 	Expect(result.Status.Conditions[1].Status).To(Equal(openapi.ResourceConditionStatusTrue))
 	Expect(*result.Status.Conditions[1].Reason).To(Equal("Healthy"))
 	Expect(*result.Status.Conditions[1].Message).To(Equal("All nodes healthy"))

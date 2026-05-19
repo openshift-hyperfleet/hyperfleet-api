@@ -88,7 +88,7 @@ func NewClusterWithStatusAtTime(
 
 	conditions := []api.ResourceCondition{
 		{
-			Type:               "Available",
+			Type:               api.ResourceConditionTypeAvailable,
 			Status:             availableStatus,
 			ObservedGeneration: cluster.Generation,
 			LastTransitionTime: conditionTime,
@@ -96,7 +96,7 @@ func NewClusterWithStatusAtTime(
 			LastUpdatedTime:    conditionTime,
 		},
 		{
-			Type:               "Ready",
+			Type:               api.ResourceConditionTypeReady,
 			Status:             readyStatus,
 			ObservedGeneration: cluster.Generation,
 			LastTransitionTime: conditionTime,
@@ -145,7 +145,7 @@ func NewClusterWithObservedGeneration(
 
 	conditions := []api.ResourceCondition{
 		{
-			Type:               "Available",
+			Type:               api.ResourceConditionTypeAvailable,
 			Status:             availableStatus,
 			ObservedGeneration: observedGeneration,
 			LastTransitionTime: now,
@@ -153,7 +153,7 @@ func NewClusterWithObservedGeneration(
 			LastUpdatedTime:    now,
 		},
 		{
-			Type:               "Ready",
+			Type:               api.ResourceConditionTypeReady,
 			Status:             readyStatus,
 			ObservedGeneration: observedGeneration,
 			LastTransitionTime: now,

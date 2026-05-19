@@ -5,6 +5,7 @@ import (
 
 	"github.com/gorilla/mux"
 
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/presenters"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
@@ -41,7 +42,8 @@ func (h ClusterStatusHandler) List(w http.ResponseWriter, r *http.Request) {
 			}
 
 			// Fetch adapter statuses with pagination
-			adapterStatuses, total, err := h.adapterStatusService.FindByResourcePaginated(ctx, "Cluster", clusterID, listArgs)
+			adapterStatuses, total, err := h.adapterStatusService.FindByResourcePaginated(
+				ctx, api.ResourceTypeCluster, clusterID, listArgs)
 			if err != nil {
 				return nil, err
 			}
@@ -94,7 +96,7 @@ func (h ClusterStatusHandler) Create(w http.ResponseWriter, r *http.Request) {
 			}
 
 			// Create adapter status from request
-			newStatus, convErr := presenters.ConvertAdapterStatus("Cluster", clusterID, &req)
+			newStatus, convErr := presenters.ConvertAdapterStatus(api.ResourceTypeCluster, clusterID, &req)
 			if convErr != nil {
 				return nil, errors.GeneralError("Failed to convert adapter status: %v", convErr)
 			}

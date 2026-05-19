@@ -414,7 +414,7 @@ func TestValidateConditions_Valid(t *testing.T) {
 		req := openapi.AdapterStatusCreateRequest{
 			Conditions: []openapi.ConditionRequest{
 				{
-					Type:   "Ready",
+					Type:   api.AdapterConditionTypeReady,
 					Status: status,
 				},
 			},
@@ -444,7 +444,7 @@ func TestValidateConditions_InvalidStatusValues(t *testing.T) {
 		req := openapi.AdapterStatusCreateRequest{
 			Conditions: []openapi.ConditionRequest{
 				{
-					Type:   "Available",
+					Type:   api.AdapterConditionTypeAvailable,
 					Status: tc.invalidStatus,
 				},
 			},
@@ -482,15 +482,15 @@ func TestValidateConditions_DuplicateType(t *testing.T) {
 	req := openapi.AdapterStatusCreateRequest{
 		Conditions: []openapi.ConditionRequest{
 			{
-				Type:   "Available",
+				Type:   api.AdapterConditionTypeAvailable,
 				Status: openapi.AdapterConditionStatusTrue,
 			},
 			{
-				Type:   "Applied",
+				Type:   api.AdapterConditionTypeApplied,
 				Status: openapi.AdapterConditionStatusTrue,
 			},
 			{
-				Type:   "Available", // Duplicate
+				Type:   api.AdapterConditionTypeAvailable, // Duplicate
 				Status: openapi.AdapterConditionStatusFalse,
 			},
 		},
@@ -499,7 +499,7 @@ func TestValidateConditions_DuplicateType(t *testing.T) {
 	err := validator()
 	Expect(err).ToNot(BeNil())
 	Expect(err.Reason).To(ContainSubstring("duplicate condition type"))
-	Expect(err.Reason).To(ContainSubstring("Available"))
+	Expect(err.Reason).To(ContainSubstring(api.AdapterConditionTypeAvailable))
 	Expect(err.Reason).To(ContainSubstring("index 2"))
 }
 
@@ -509,11 +509,11 @@ func TestValidateConditions_MultipleIssues(t *testing.T) {
 	req := openapi.AdapterStatusCreateRequest{
 		Conditions: []openapi.ConditionRequest{
 			{
-				Type:   "Ready",
+				Type:   api.AdapterConditionTypeReady,
 				Status: openapi.AdapterConditionStatusTrue,
 			},
 			{
-				Type:   "Available",
+				Type:   api.AdapterConditionTypeAvailable,
 				Status: "", // Invalid status - should be caught first at this index
 			},
 			{
@@ -526,8 +526,8 @@ func TestValidateConditions_MultipleIssues(t *testing.T) {
 	validator := validateConditions(&req, "Conditions")
 	err := validator()
 	Expect(err).ToNot(BeNil())
-	Expect(err.Reason).To(ContainSubstring("index 1"))   // Second condition (index 1)
-	Expect(err.Reason).To(ContainSubstring("Available")) // Type of the invalid condition
+	Expect(err.Reason).To(ContainSubstring("index 1"))                         // Second condition (index 1)
+	Expect(err.Reason).To(ContainSubstring(api.AdapterConditionTypeAvailable)) // Type of the invalid condition
 }
 
 func TestValidateConditions_EmptyConditions(t *testing.T) {

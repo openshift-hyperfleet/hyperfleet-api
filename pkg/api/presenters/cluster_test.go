@@ -167,7 +167,7 @@ func TestPresentCluster_Complete(t *testing.T) {
 			ObservedGeneration: 5,
 			CreatedTime:        now,
 			LastUpdatedTime:    now,
-			Type:               "Available",
+			Type:               api.ResourceConditionTypeAvailable,
 			Status:             api.ConditionTrue,
 			Reason:             &reason,
 			Message:            &message,
@@ -217,7 +217,7 @@ func TestPresentCluster_Complete(t *testing.T) {
 
 	// Verify Status
 	Expect(len(result.Status.Conditions)).To(Equal(1))
-	Expect(result.Status.Conditions[0].Type).To(Equal("Available"))
+	Expect(result.Status.Conditions[0].Type).To(Equal(api.ResourceConditionTypeAvailable))
 	Expect(result.Status.Conditions[0].Status).To(Equal(openapi.ResourceConditionStatusTrue))
 	Expect(*result.Status.Conditions[0].Reason).To(Equal(testConditionReady))
 
@@ -262,7 +262,7 @@ func TestPresentCluster_StatusConditionsConversion(t *testing.T) {
 			ObservedGeneration: 3,
 			CreatedTime:        now,
 			LastUpdatedTime:    now,
-			Type:               "Available",
+			Type:               api.ResourceConditionTypeAvailable,
 			Status:             api.ConditionTrue,
 			Reason:             &reason1,
 			Message:            &message1,
@@ -299,7 +299,7 @@ func TestPresentCluster_StatusConditionsConversion(t *testing.T) {
 	Expect(len(result.Status.Conditions)).To(Equal(2))
 
 	// First condition
-	Expect(result.Status.Conditions[0].Type).To(Equal("Available"))
+	Expect(result.Status.Conditions[0].Type).To(Equal(api.ResourceConditionTypeAvailable))
 	Expect(result.Status.Conditions[0].Status).To(Equal(openapi.ResourceConditionStatusTrue))
 	Expect(*result.Status.Conditions[0].Reason).To(Equal(testConditionReady))
 	Expect(*result.Status.Conditions[0].Message).To(Equal("All systems operational"))

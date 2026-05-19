@@ -62,7 +62,7 @@ type sqlClusterService struct {
 func (s *sqlClusterService) Get(ctx context.Context, id string) (*api.Cluster, *errors.ServiceError) {
 	cluster, err := s.clusterDao.Get(ctx, id)
 	if err != nil {
-		return nil, handleGetError("Cluster", "id", id, err)
+		return nil, handleGetError(api.ResourceTypeCluster, "id", id, err)
 	}
 	return cluster, nil
 }
@@ -80,7 +80,7 @@ func (s *sqlClusterService) Create(ctx context.Context, cluster *api.Cluster) (*
 
 	cluster, err := s.clusterDao.Create(ctx, cluster)
 	if err != nil {
-		return nil, handleCreateError("Cluster", err)
+		return nil, handleCreateError(api.ResourceTypeCluster, err)
 	}
 
 	updatedCluster, svcErr := s.UpdateClusterStatusFromAdapters(ctx, cluster.ID)
@@ -96,7 +96,7 @@ func (s *sqlClusterService) Patch(
 ) (*api.Cluster, *errors.ServiceError) {
 	cluster, err := s.clusterDao.GetForUpdate(ctx, id)
 	if err != nil {
-		return nil, handleGetError("Cluster", "id", id, err)
+		return nil, handleGetError(api.ResourceTypeCluster, "id", id, err)
 	}
 
 	if cluster.DeletedTime != nil {
@@ -117,7 +117,7 @@ func (s *sqlClusterService) Patch(
 	cluster.IncrementGeneration()
 
 	if saveErr := s.clusterDao.Save(ctx, cluster); saveErr != nil {
-		return nil, handleUpdateError("Cluster", saveErr)
+		return nil, handleUpdateError(api.ResourceTypeCluster, saveErr)
 	}
 
 	updated, svcErr := s.UpdateClusterStatusFromAdapters(ctx, cluster.ID)
@@ -134,7 +134,7 @@ func (s *sqlClusterService) Patch(
 func (s *sqlClusterService) SoftDelete(ctx context.Context, id string) (*api.Cluster, *errors.ServiceError) {
 	cluster, err := s.clusterDao.GetForUpdate(ctx, id)
 	if err != nil {
-		return nil, handleSoftDeleteError("Cluster", err)
+		return nil, handleSoftDeleteError(api.ResourceTypeCluster, err)
 	}
 
 	// Already marked for deletion — skip cascade to avoid unnecessary DB roundtrips.
@@ -148,7 +148,7 @@ func (s *sqlClusterService) SoftDelete(ctx context.Context, id string) (*api.Clu
 	cluster.IncrementGeneration()
 
 	if saveErr := s.clusterDao.Save(ctx, cluster); saveErr != nil {
-		return nil, handleSoftDeleteError("Cluster", saveErr)
+		return nil, handleSoftDeleteError(api.ResourceTypeCluster, saveErr)
 	}
 
 	metrics.RecordPendingDeletion("cluster")
@@ -239,10 +239,10 @@ func (s *sqlClusterService) UpdateClusterStatusFromAdapters(
 ) (*api.Cluster, *errors.ServiceError) {
 	cluster, err := s.clusterDao.Get(ctx, clusterID)
 	if err != nil {
-		return nil, handleGetError("Cluster", "id", clusterID, err)
+		return nil, handleGetError(api.ResourceTypeCluster, "id", clusterID, err)
 	}
 
-	adapterStatuses, err := s.adapterStatusDao.FindByResource(ctx, "Cluster", clusterID)
+	adapterStatuses, err := s.adapterStatusDao.FindByResource(ctx, api.ResourceTypeCluster, clusterID)
 	if err != nil {
 		return nil, errors.GeneralError("Failed to get adapter statuses: %s", err)
 	}
@@ -278,7 +278,7 @@ func (s *sqlClusterService) recomputeAndSaveClusterStatus(
 
 	// Ready mirrors Reconciled for backward compatibility (deprecated)
 	ready := reconciled
-	ready.Type = api.ConditionTypeReady
+	ready.Type = api.ResourceConditionTypeReady
 
 	allConditions := make([]api.ResourceCondition, 0, fixedConditionCount+len(adapterConditions))
 	allConditions = append(allConditions, ready, reconciled, lastKnownReconciled)
@@ -294,7 +294,7 @@ func (s *sqlClusterService) recomputeAndSaveClusterStatus(
 	}
 
 	if err := s.clusterDao.SaveStatusConditions(ctx, cluster.ID, conditionsJSON); err != nil {
-		return nil, handleUpdateError("Cluster", err)
+		return nil, handleUpdateError(api.ResourceTypeCluster, err)
 	}
 
 	cluster.StatusConditions = conditionsJSON
@@ -318,10 +318,10 @@ func (s *sqlClusterService) ProcessAdapterStatus(
 	// the aggregation step always reads a fully up-to-date set of adapter statuses.
 	cluster, err := s.clusterDao.GetForUpdate(ctx, clusterID)
 	if err != nil {
-		return nil, handleGetError("Cluster", "id", clusterID, err)
+		return nil, handleGetError(api.ResourceTypeCluster, "id", clusterID, err)
 	}
 
-	allStatuses, err := s.adapterStatusDao.FindByResource(ctx, "Cluster", clusterID)
+	allStatuses, err := s.adapterStatusDao.FindByResource(ctx, api.ResourceTypeCluster, clusterID)
 	if err != nil {
 		return nil, errors.GeneralError("Failed to get adapter statuses: %s", err)
 	}
@@ -338,7 +338,7 @@ func (s *sqlClusterService) ProcessAdapterStatus(
 		return nil, nil
 	}
 
-	adapterStatus.ResourceType = "Cluster"
+	adapterStatus.ResourceType = api.ResourceTypeCluster
 	adapterStatus.ResourceID = clusterID
 	setConditionTransitionTimes(adapterStatus, existingStatus)
 
@@ -425,7 +425,7 @@ func (s *sqlClusterService) validateAndClassify(
 
 	triggerAggregation := false
 	for _, cond := range conditions {
-		if cond.Type != api.ConditionTypeAvailable {
+		if cond.Type != api.AdapterConditionTypeAvailable {
 			continue
 		}
 
@@ -480,7 +480,7 @@ func (s *sqlClusterService) tryHardDeleteCluster(
 		return false, nil
 	}
 
-	if err := s.adapterStatusDao.DeleteByResource(ctx, "Cluster", cluster.ID); err != nil {
+	if err := s.adapterStatusDao.DeleteByResource(ctx, api.ResourceTypeCluster, cluster.ID); err != nil {
 		return false, errors.GeneralError("Failed to delete adapter statuses during hard-delete: %s", err)
 	}
 	if err := s.clusterDao.Delete(ctx, cluster.ID); err != nil {
@@ -525,7 +525,7 @@ func replaceAdapterStatusInList(statuses api.AdapterStatusList, updated *api.Ada
 // incomingReportedFinalized returns true when the adapter conditions contain Finalized=True.
 func incomingReportedFinalized(conditions []api.AdapterCondition) bool {
 	for _, cond := range conditions {
-		if cond.Type == api.ConditionTypeFinalized && cond.Status == api.AdapterConditionTrue {
+		if cond.Type == api.AdapterConditionTypeFinalized && cond.Status == api.AdapterConditionTrue {
 			return true
 		}
 	}

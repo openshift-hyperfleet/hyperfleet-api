@@ -211,7 +211,7 @@ func TestNodePoolPatch_SetReadyFalse(t *testing.T) {
 
 	var readyCond *openapi.ResourceCondition
 	for i := range updated.Status.Conditions {
-		if updated.Status.Conditions[i].Type == api.ConditionTypeReady {
+		if updated.Status.Conditions[i].Type == api.ResourceConditionTypeReady {
 			readyCond = &updated.Status.Conditions[i]
 			break
 		}
@@ -627,7 +627,7 @@ func TestNodePoolSoftDelete(t *testing.T) {
 			"Generation should be incremented after soft-delete")
 		var readyCond *openapi.ResourceCondition
 		for i := range resp.JSON202.Status.Conditions {
-			if resp.JSON202.Status.Conditions[i].Type == api.ConditionTypeReady {
+			if resp.JSON202.Status.Conditions[i].Type == api.ResourceConditionTypeReady {
 				readyCond = &resp.JSON202.Status.Conditions[i]
 				break
 			}
@@ -736,18 +736,22 @@ func TestNodePoolHardDelete(t *testing.T) {
 				newGeneration,
 				[]openapi.ConditionRequest{
 					{
-						Type:   api.ConditionTypeApplied,
+						Type:   api.AdapterConditionTypeApplied,
 						Status: openapi.AdapterConditionStatusFalse,
 						Reason: util.PtrString("ManifestWorkNotDiscovered"),
 					},
 					{
-						Type:   api.ConditionTypeAvailable,
+						Type:   api.AdapterConditionTypeAvailable,
 						Status: openapi.AdapterConditionStatusFalse,
 						Reason: util.PtrString("NamespaceNotDiscovered"),
 					},
-					{Type: api.ConditionTypeHealth, Status: openapi.AdapterConditionStatusTrue, Reason: util.PtrString("Healthy")},
 					{
-						Type:   api.ConditionTypeFinalized,
+						Type:   api.AdapterConditionTypeHealth,
+						Status: openapi.AdapterConditionStatusTrue,
+						Reason: util.PtrString("Healthy"),
+					},
+					{
+						Type:   api.AdapterConditionTypeFinalized,
 						Status: openapi.AdapterConditionStatusTrue,
 						Reason: util.PtrString("CleanupConfirmed"),
 					},
@@ -768,7 +772,8 @@ func TestNodePoolHardDelete(t *testing.T) {
 		Expect(dbErr.Error()).To(ContainSubstring("record not found"))
 
 		var adapterStatuses []api.AdapterStatus
-		err = dbSession.Where("resource_type = ? AND resource_id = ?", "NodePool", nodePool.ID).Find(&adapterStatuses).Error
+		err = dbSession.Where("resource_type = ? AND resource_id = ?", api.ResourceTypeNodePool, nodePool.ID).
+			Find(&adapterStatuses).Error
 		Expect(err).NotTo(HaveOccurred())
 		Expect(adapterStatuses).To(BeEmpty(), "Adapter statuses should be hard-deleted")
 
@@ -801,17 +806,21 @@ func TestNodePoolHardDelete(t *testing.T) {
 			newGeneration,
 			[]openapi.ConditionRequest{
 				{
-					Type:   api.ConditionTypeApplied,
+					Type:   api.AdapterConditionTypeApplied,
 					Status: openapi.AdapterConditionStatusFalse,
 					Reason: util.PtrString("CleanupInProgress"),
 				},
 				{
-					Type:   api.ConditionTypeAvailable,
+					Type:   api.AdapterConditionTypeAvailable,
 					Status: openapi.AdapterConditionStatusFalse,
 					Reason: util.PtrString("ResourcesStillExist"),
 				},
-				{Type: api.ConditionTypeHealth, Status: openapi.AdapterConditionStatusTrue, Reason: util.PtrString("Healthy")},
-				{Type: api.ConditionTypeFinalized, Status: openapi.AdapterConditionStatusFalse, Reason: util.PtrString("")},
+				{
+					Type:   api.AdapterConditionTypeHealth,
+					Status: openapi.AdapterConditionStatusTrue,
+					Reason: util.PtrString("Healthy"),
+				},
+				{Type: api.AdapterConditionTypeFinalized, Status: openapi.AdapterConditionStatusFalse, Reason: util.PtrString("")},
 			},
 			nil,
 		)
@@ -852,18 +861,22 @@ func TestNodePoolHardDelete(t *testing.T) {
 			newGeneration,
 			[]openapi.ConditionRequest{
 				{
-					Type:   api.ConditionTypeApplied,
+					Type:   api.AdapterConditionTypeApplied,
 					Status: openapi.AdapterConditionStatusFalse,
 					Reason: util.PtrString("ManifestWorkNotDiscovered"),
 				},
 				{
-					Type:   api.ConditionTypeAvailable,
+					Type:   api.AdapterConditionTypeAvailable,
 					Status: openapi.AdapterConditionStatusFalse,
 					Reason: util.PtrString("NamespaceNotDiscovered"),
 				},
-				{Type: api.ConditionTypeHealth, Status: openapi.AdapterConditionStatusTrue, Reason: util.PtrString("Healthy")},
 				{
-					Type:   api.ConditionTypeFinalized,
+					Type:   api.AdapterConditionTypeHealth,
+					Status: openapi.AdapterConditionStatusTrue,
+					Reason: util.PtrString("Healthy"),
+				},
+				{
+					Type:   api.AdapterConditionTypeFinalized,
 					Status: openapi.AdapterConditionStatusTrue,
 					Reason: util.PtrString("CleanupConfirmed"),
 				},
@@ -883,7 +896,7 @@ func TestNodePoolHardDelete(t *testing.T) {
 
 		var adapterStatus api.AdapterStatus
 		err = dbSession.Where("resource_type = ? AND resource_id = ? AND adapter = ?",
-			"NodePool", nodePool.ID, "validation").First(&adapterStatus).Error
+			api.ResourceTypeNodePool, nodePool.ID, "validation").First(&adapterStatus).Error
 		Expect(err).NotTo(HaveOccurred())
 		Expect(adapterStatus.Adapter).To(Equal("validation"), "Adapter status should be stored")
 	})
@@ -909,17 +922,21 @@ func TestNodePoolHardDelete(t *testing.T) {
 				nodePool.Generation,
 				[]openapi.ConditionRequest{
 					{
-						Type:   api.ConditionTypeApplied,
+						Type:   api.AdapterConditionTypeApplied,
 						Status: openapi.AdapterConditionStatusTrue,
 						Reason: util.PtrString("AppliedManifestWorkComplete"),
 					},
 					{
-						Type:   api.ConditionTypeAvailable,
+						Type:   api.AdapterConditionTypeAvailable,
 						Status: openapi.AdapterConditionStatusTrue,
 						Reason: util.PtrString("AllResourcesAvailable"),
 					},
-					{Type: api.ConditionTypeHealth, Status: openapi.AdapterConditionStatusTrue, Reason: util.PtrString("Healthy")},
-					{Type: api.ConditionTypeFinalized, Status: openapi.AdapterConditionStatusTrue, Reason: util.PtrString("")},
+					{
+						Type:   api.AdapterConditionTypeHealth,
+						Status: openapi.AdapterConditionStatusTrue,
+						Reason: util.PtrString("Healthy"),
+					},
+					{Type: api.AdapterConditionTypeFinalized, Status: openapi.AdapterConditionStatusTrue, Reason: util.PtrString("")},
 				},
 				nil,
 			)
@@ -937,7 +954,8 @@ func TestNodePoolHardDelete(t *testing.T) {
 		Expect(nodePoolCheck.DeletedTime).To(BeNil(), "Nodepool should not be soft-deleted")
 
 		var adapterStatuses []api.AdapterStatus
-		err = dbSession.Where("resource_type = ? AND resource_id = ?", "NodePool", nodePool.ID).Find(&adapterStatuses).Error
+		err = dbSession.Where("resource_type = ? AND resource_id = ?", api.ResourceTypeNodePool, nodePool.ID).
+			Find(&adapterStatuses).Error
 		Expect(err).NotTo(HaveOccurred())
 		Expect(adapterStatuses).To(HaveLen(2))
 	})

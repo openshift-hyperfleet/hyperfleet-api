@@ -26,15 +26,30 @@ func (s AdapterConditionStatus) IsValid() bool {
 	return s == AdapterConditionTrue || s == AdapterConditionFalse || s == AdapterConditionUnknown
 }
 
-// Condition type constants
+// Resource type constants
 const (
-	ConditionTypeAvailable           = "Available"
-	ConditionTypeLastKnownReconciled = "LastKnownReconciled"
-	ConditionTypeApplied             = "Applied"
-	ConditionTypeHealth              = "Health"
-	ConditionTypeReady               = "Ready"
-	ConditionTypeReconciled          = "Reconciled"
-	ConditionTypeFinalized           = "Finalized"
+	ResourceTypeCluster  = "Cluster"
+	ResourceTypeNodePool = "NodePool"
+)
+
+// Adapter condition type constants (used in adapter.conditions reported by adapters)
+const (
+	AdapterConditionTypeAvailable  = "Available"
+	AdapterConditionTypeApplied    = "Applied"
+	AdapterConditionTypeHealth     = "Health"
+	AdapterConditionTypeReady      = "Ready"
+	AdapterConditionTypeReconciled = "Reconciled"
+	AdapterConditionTypeFinalized  = "Finalized"
+)
+
+// Resource condition type constants (used in resource.status.conditions aggregated from adapters)
+const (
+	ResourceConditionTypeAvailable           = "Available"
+	ResourceConditionTypeHealth              = "Health"
+	ResourceConditionTypeReady               = "Ready"
+	ResourceConditionTypeReconciled          = "Reconciled"
+	ResourceConditionTypeFinalized           = "Finalized"
+	ResourceConditionTypeLastKnownReconciled = "LastKnownReconciled"
 )
 
 // ResourceCondition represents a condition of a resource

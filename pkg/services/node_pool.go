@@ -74,7 +74,7 @@ type sqlNodePoolService struct {
 func (s *sqlNodePoolService) Get(ctx context.Context, id string) (*api.NodePool, *errors.ServiceError) {
 	nodePool, err := s.nodePoolDao.Get(ctx, id)
 	if err != nil {
-		return nil, handleGetError("NodePool", "id", id, err)
+		return nil, handleGetError(api.ResourceTypeNodePool, "id", id, err)
 	}
 	return nodePool, nil
 }
@@ -92,7 +92,7 @@ func (s *sqlNodePoolService) Create(ctx context.Context, nodePool *api.NodePool)
 
 	nodePool, err := s.nodePoolDao.Create(ctx, nodePool)
 	if err != nil {
-		return nil, handleCreateError("NodePool", err)
+		return nil, handleCreateError(api.ResourceTypeNodePool, err)
 	}
 
 	updatedNodePool, svcErr := s.UpdateNodePoolStatusFromAdapters(ctx, nodePool.ID)
@@ -108,7 +108,7 @@ func (s *sqlNodePoolService) Patch(
 ) (*api.NodePool, *errors.ServiceError) {
 	nodePool, err := s.nodePoolDao.GetForUpdate(ctx, nodePoolID)
 	if err != nil {
-		return nil, handleGetError("NodePool", "id", nodePoolID, err)
+		return nil, handleGetError(api.ResourceTypeNodePool, "id", nodePoolID, err)
 	}
 
 	if nodePool.DeletedTime != nil {
@@ -129,7 +129,7 @@ func (s *sqlNodePoolService) Patch(
 	nodePool.IncrementGeneration()
 
 	if saveErr := s.nodePoolDao.Save(ctx, nodePool); saveErr != nil {
-		return nil, handleUpdateError("NodePool", saveErr)
+		return nil, handleUpdateError(api.ResourceTypeNodePool, saveErr)
 	}
 
 	updated, svcErr := s.UpdateNodePoolStatusFromAdapters(ctx, nodePool.ID)
@@ -144,7 +144,7 @@ func (s *sqlNodePoolService) GetByIDAndOwner(
 ) (*api.NodePool, *errors.ServiceError) {
 	nodePool, err := s.nodePoolDao.GetByIDAndOwner(ctx, nodePoolID, clusterID)
 	if err != nil {
-		return nil, handleGetError("NodePool", "id", nodePoolID, err)
+		return nil, handleGetError(api.ResourceTypeNodePool, "id", nodePoolID, err)
 	}
 	return nodePool, nil
 }
@@ -153,7 +153,7 @@ func (s *sqlNodePoolService) ListByCluster(
 	ctx context.Context, clusterID string, args *ListArguments,
 ) (api.NodePoolList, *api.PagingMeta, *errors.ServiceError) {
 	if _, err := s.clusterDao.Get(ctx, clusterID); err != nil {
-		return nil, nil, handleGetError("Cluster", "id", clusterID, err)
+		return nil, nil, handleGetError(api.ResourceTypeCluster, "id", clusterID, err)
 	}
 
 	if args.Search == "" {
@@ -178,7 +178,7 @@ func (s *sqlNodePoolService) ListByCluster(
 func (s *sqlNodePoolService) SoftDelete(ctx context.Context, nodePoolID string) (*api.NodePool, *errors.ServiceError) {
 	nodePool, err := s.nodePoolDao.GetForUpdate(ctx, nodePoolID)
 	if err != nil {
-		return nil, handleSoftDeleteError("NodePool", err)
+		return nil, handleSoftDeleteError(api.ResourceTypeNodePool, err)
 	}
 
 	if nodePool.DeletedTime != nil {
@@ -191,7 +191,7 @@ func (s *sqlNodePoolService) SoftDelete(ctx context.Context, nodePoolID string) 
 	nodePool.IncrementGeneration()
 
 	if err := s.nodePoolDao.Save(ctx, nodePool); err != nil {
-		return nil, handleSoftDeleteError("NodePool", err)
+		return nil, handleSoftDeleteError(api.ResourceTypeNodePool, err)
 	}
 
 	metrics.RecordPendingDeletion("nodepool")
@@ -228,7 +228,7 @@ func (s *sqlNodePoolService) CascadeSoftDelete(
 	}
 
 	if err := s.nodePoolDao.SaveAll(ctx, nodePools); err != nil {
-		return handleSoftDeleteError("NodePool", err)
+		return handleSoftDeleteError(api.ResourceTypeNodePool, err)
 	}
 
 	for range newlyDeleted {
@@ -240,7 +240,7 @@ func (s *sqlNodePoolService) CascadeSoftDelete(
 
 func (s *sqlNodePoolService) Delete(ctx context.Context, id string) *errors.ServiceError {
 	if err := s.nodePoolDao.Delete(ctx, id); err != nil {
-		return handleDeleteError("NodePool", errors.GeneralError("Unable to delete nodePool: %s", err))
+		return handleDeleteError(api.ResourceTypeNodePool, errors.GeneralError("Unable to delete nodePool: %s", err))
 	}
 
 	return nil
@@ -249,14 +249,14 @@ func (s *sqlNodePoolService) Delete(ctx context.Context, id string) *errors.Serv
 func (s *sqlNodePoolService) ForceDelete(ctx context.Context, id string, reason string) *errors.ServiceError {
 	nodePool, err := s.nodePoolDao.GetForUpdate(ctx, id)
 	if err != nil {
-		return handleGetError("NodePool", "id", id, err)
+		return handleGetError(api.ResourceTypeNodePool, "id", id, err)
 	}
 
 	if nodePool.DeletedTime == nil {
 		return errors.ConflictState("NodePool '%s' is not in Finalizing state", id)
 	}
 
-	statuses, err := s.adapterStatusDao.FindByResource(ctx, "NodePool", id)
+	statuses, err := s.adapterStatusDao.FindByResource(ctx, api.ResourceTypeNodePool, id)
 	if err != nil {
 		return errors.GeneralError("Failed to fetch adapter statuses for nodepool '%s': %s", id, err)
 	}
@@ -284,13 +284,13 @@ func (s *sqlNodePoolService) ForceDelete(ctx context.Context, id string, reason 
 
 	logger.With(ctx,
 		"nodepool_id", id,
-		"resource_type", "NodePool",
+		"resource_type", api.ResourceTypeNodePool,
 		"caller", caller,
 		"reason", reason,
 		"adapter_statuses", summaries,
 	).Info("Force-deleting nodepool")
 
-	if err := s.adapterStatusDao.DeleteByResource(ctx, "NodePool", id); err != nil {
+	if err := s.adapterStatusDao.DeleteByResource(ctx, api.ResourceTypeNodePool, id); err != nil {
 		return errors.GeneralError("Failed to delete adapter statuses for nodepool '%s': %s", id, err)
 	}
 
@@ -394,7 +394,7 @@ func (s *sqlNodePoolService) recomputeAndSaveNodePoolStatus(
 	}
 
 	if err := s.nodePoolDao.SaveStatusConditions(ctx, nodePool.ID, conditionsJSON); err != nil {
-		return nil, handleUpdateError("NodePool", err)
+		return nil, handleUpdateError(api.ResourceTypeNodePool, err)
 	}
 
 	nodePool.StatusConditions = conditionsJSON
@@ -418,12 +418,12 @@ func (s *sqlNodePoolService) ProcessAdapterStatus(
 	// the aggregation step always reads a fully up-to-date set of adapter statuses.
 	nodePool, err := s.nodePoolDao.GetForUpdate(ctx, nodePoolID)
 	if err != nil {
-		return nil, handleGetError("NodePool", "id", nodePoolID, err)
+		return nil, handleGetError(api.ResourceTypeNodePool, "id", nodePoolID, err)
 	}
 
 	// 2. Fetch all adapter statuses for this node pool in one query. This replaces the
 	// individual FindByResourceAndAdapter and later FindByResource calls.
-	allStatuses, err := s.adapterStatusDao.FindByResource(ctx, "NodePool", nodePoolID)
+	allStatuses, err := s.adapterStatusDao.FindByResource(ctx, api.ResourceTypeNodePool, nodePoolID)
 	if err != nil {
 		return nil, errors.GeneralError("Failed to get adapter statuses: %s", err)
 	}
@@ -441,7 +441,7 @@ func (s *sqlNodePoolService) ProcessAdapterStatus(
 	}
 
 	// 3. Upsert using the already-fetched existing status to skip a redundant lookup.
-	adapterStatus.ResourceType = "NodePool"
+	adapterStatus.ResourceType = api.ResourceTypeNodePool
 	adapterStatus.ResourceID = nodePoolID
 	setConditionTransitionTimes(adapterStatus, existingStatus)
 
@@ -528,7 +528,7 @@ func (s *sqlNodePoolService) validateAndClassifyNodePool(
 
 	triggerAggregation := false
 	for _, cond := range conditions {
-		if cond.Type != api.ConditionTypeAvailable {
+		if cond.Type != api.AdapterConditionTypeAvailable {
 			continue
 		}
 
@@ -577,7 +577,7 @@ func (s *sqlNodePoolService) tryHardDeleteNodePool(
 		return false, nil
 	}
 
-	if err := s.adapterStatusDao.DeleteByResource(ctx, "NodePool", nodePool.ID); err != nil {
+	if err := s.adapterStatusDao.DeleteByResource(ctx, api.ResourceTypeNodePool, nodePool.ID); err != nil {
 		return false, errors.GeneralError("Failed to delete adapter statuses during hard-delete: %s", err)
 	}
 	if err := s.nodePoolDao.Delete(ctx, nodePool.ID); err != nil {

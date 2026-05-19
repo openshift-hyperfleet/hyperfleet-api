@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Replaced magic strings for resource types and condition types with constants from `pkg/api/status_types.go` across service, handler, presenter, and factory files; separated condition type constants into `AdapterConditionType*` (for `adapter.conditions`) and `ResourceConditionType*` (for `resource.status.conditions`) to clarify usage context ([#172](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/172))
 - OpenAPI schema is now consumed from the `hyperfleet-api-spec` Go module (`v1.0.12`) for code generation; `openapi/openapi.yaml` is extracted during `make generate` and is no longer tracked in git ([#155](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/155))
 - Replaced OCM SDK authentication handler with standalone JWT middleware, removing `ocm-sdk-go` dependency and its transitive dependencies (`glog`, `bluemonday`, `json-iterator`) ([#120](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/120))
 - Upgraded JWT library from `golang-jwt/jwt/v4` to `golang-jwt/jwt/v5` ([#120](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/120))

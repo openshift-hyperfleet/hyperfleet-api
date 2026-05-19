@@ -5,6 +5,7 @@ import (
 
 	"github.com/gorilla/mux"
 
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/presenters"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
@@ -36,7 +37,8 @@ func (h NodePoolStatusHandler) List(w http.ResponseWriter, r *http.Request) {
 			listArgs := services.NewListArguments(r.URL.Query())
 
 			// Fetch adapter statuses with pagination
-			adapterStatuses, total, err := h.adapterStatusService.FindByResourcePaginated(ctx, "NodePool", nodePoolID, listArgs)
+			adapterStatuses, total, err := h.adapterStatusService.FindByResourcePaginated(
+				ctx, api.ResourceTypeNodePool, nodePoolID, listArgs)
 			if err != nil {
 				return nil, err
 			}
@@ -89,7 +91,7 @@ func (h NodePoolStatusHandler) Create(w http.ResponseWriter, r *http.Request) {
 			}
 
 			// Create adapter status from request
-			newStatus, convErr := presenters.ConvertAdapterStatus("NodePool", nodePoolID, &req)
+			newStatus, convErr := presenters.ConvertAdapterStatus(api.ResourceTypeNodePool, nodePoolID, &req)
 			if convErr != nil {
 				return nil, errors.GeneralError("Failed to convert adapter status: %v", convErr)
 			}
