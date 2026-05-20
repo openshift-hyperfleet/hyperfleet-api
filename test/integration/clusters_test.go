@@ -1496,54 +1496,38 @@ func TestClusterForceDelete(t *testing.T) {
 		Expect(adapterStatuses).To(BeEmpty())
 	})
 
-	t.Run("given a missing reason, when force-deleted, then returns 400", func(t *testing.T) {
-		RegisterTestingT(t)
-		h, client := test.RegisterIntegration(t)
-		account := h.NewRandAccount()
-		ctx := h.NewAuthenticatedContext(account)
+	errorCases := []struct {
+		name           string
+		reason         string
+		expectedStatus int
+		createCluster  bool
+	}{
+		{"missing reason returns 400", "", http.StatusBadRequest, true},
+		{"non-existent cluster returns 404", "should fail", http.StatusNotFound, false},
+		{"cluster not in Finalizing returns 409", "should fail", http.StatusConflict, true},
+	}
 
-		cluster, err := h.Factories.NewClusters(h.NewID())
-		Expect(err).NotTo(HaveOccurred())
+	for _, tc := range errorCases {
+		t.Run(tc.name, func(t *testing.T) {
+			RegisterTestingT(t)
+			h, client := test.RegisterIntegration(t)
+			account := h.NewRandAccount()
+			ctx := h.NewAuthenticatedContext(account)
 
-		forceDeleteResp, err := client.ForceDeleteClusterWithResponse(
-			ctx, cluster.ID,
-			openapi.ForceDeleteClusterJSONRequestBody{Reason: ""},
-			test.WithAuthToken(ctx),
-		)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(forceDeleteResp.StatusCode()).To(Equal(http.StatusBadRequest))
-	})
+			clusterID := h.NewID()
+			if tc.createCluster {
+				cluster, err := h.Factories.NewClusters(h.NewID())
+				Expect(err).NotTo(HaveOccurred())
+				clusterID = cluster.ID
+			}
 
-	t.Run("given a non-existent cluster, when force-deleted, then returns 404", func(t *testing.T) {
-		RegisterTestingT(t)
-		h, client := test.RegisterIntegration(t)
-		account := h.NewRandAccount()
-		ctx := h.NewAuthenticatedContext(account)
-
-		forceDeleteResp, err := client.ForceDeleteClusterWithResponse(
-			ctx, h.NewID(),
-			openapi.ForceDeleteClusterJSONRequestBody{Reason: "should fail"},
-			test.WithAuthToken(ctx),
-		)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(forceDeleteResp.StatusCode()).To(Equal(http.StatusNotFound))
-	})
-
-	t.Run("given a cluster not in Finalizing state, when force-deleted, then returns 409", func(t *testing.T) {
-		RegisterTestingT(t)
-		h, client := test.RegisterIntegration(t)
-		account := h.NewRandAccount()
-		ctx := h.NewAuthenticatedContext(account)
-
-		cluster, err := h.Factories.NewClusters(h.NewID())
-		Expect(err).NotTo(HaveOccurred())
-
-		forceDeleteResp, err := client.ForceDeleteClusterWithResponse(
-			ctx, cluster.ID,
-			openapi.ForceDeleteClusterJSONRequestBody{Reason: "should fail"},
-			test.WithAuthToken(ctx),
-		)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(forceDeleteResp.StatusCode()).To(Equal(http.StatusConflict))
-	})
+			forceDeleteResp, err := client.ForceDeleteClusterWithResponse(
+				ctx, clusterID,
+				openapi.ForceDeleteClusterJSONRequestBody{Reason: tc.reason},
+				test.WithAuthToken(ctx),
+			)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(forceDeleteResp.StatusCode()).To(Equal(tc.expectedStatus))
+		})
+	}
 }

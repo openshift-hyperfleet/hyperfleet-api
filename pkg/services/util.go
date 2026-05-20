@@ -98,12 +98,15 @@ func buildAdapterSummaries(ctx context.Context, statuses api.AdapterStatusList) 
 	summaries := make([]adapterSummary, 0, len(statuses))
 	for _, st := range statuses {
 		conds := make(map[string]string)
-		var parsed []api.AdapterCondition
-		if err := json.Unmarshal(st.Conditions, &parsed); err != nil {
-			logger.With(ctx, "adapter", st.Adapter).WithError(err).Warn("Failed to parse adapter conditions for summary")
-		} else {
-			for _, c := range parsed {
-				conds[c.Type] = string(c.Status)
+		if len(st.Conditions) > 0 {
+			var parsed []api.AdapterCondition
+			if err := json.Unmarshal(st.Conditions, &parsed); err != nil {
+				logger.With(ctx, "adapter", st.Adapter).
+					WithError(err).Warn("Failed to parse adapter conditions for summary")
+			} else {
+				for _, c := range parsed {
+					conds[c.Type] = string(c.Status)
+				}
 			}
 		}
 		summaries = append(summaries, adapterSummary{Adapter: st.Adapter, Conditions: conds})
