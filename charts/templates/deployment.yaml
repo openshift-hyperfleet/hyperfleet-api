@@ -56,7 +56,7 @@ spec:
       - name: db-migrate
         image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}"
         imagePullPolicy: {{ .Values.image.pullPolicy }}
-        command: ["/app/hyperfleet-api", "migrate"]
+        command: ["/app/hyperfleet-api", "migrate", "--db-sslmode={{ .Values.database.sslMode | default "prefer" }}"]
         env:
         # Config file from ConfigMap
         - name: HYPERFLEET_CONFIG
@@ -79,6 +79,7 @@ spec:
         # Simple command - configuration via ConfigMap and environment variables
         args:
         - serve
+        - --db-sslmode={{ .Values.database.sslMode | default "prefer" }}
         ports:
         - name: http
           containerPort: {{ .Values.ports.api | default 8000 }}
