@@ -15,6 +15,7 @@ data:
       hostname: {{ .Values.config.server.hostname | quote }}
       host: {{ .Values.config.server.host | default "0.0.0.0" | quote }}
       port: {{ .Values.config.server.port | default 8000 }}
+      openapi_schema_path: {{ ternary "/etc/hyperfleet/validation-schema/openapi.yaml" "openapi/openapi.yaml" .Values.validationSchema.enabled }}
 
       timeouts:
         read: {{ .Values.config.server.timeouts.read }}

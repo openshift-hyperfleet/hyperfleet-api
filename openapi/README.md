@@ -29,15 +29,15 @@ OpenAPI schemas are **not authored here**. They are defined in the [`hyperfleet-
 
 **Never edit `openapi.yaml` or `openapi.gen.go` directly.** Both are overwritten by `make generate`.
 
-## Partner Schema Validation
+## Validation Schema
 
 ### Why this exists
 
-HyperFleet API is intentionally schema-agnostic at its core: it stores clusters and nodepools as long as the `spec` field is present and non-null, without caring what is inside it. This is by design — the API serves multiple partners with different provider-specific payloads.
+HyperFleet API is intentionally schema-agnostic at its core: it stores clusters and nodepools as long as the `spec` field is present and non-null, without caring what is inside it. This is by design — the API serves multiple deployments with different provider-specific payloads.
 
-Partners, however, **do** care. A GCP partner might require a `region` field inside `spec`; an AWS partner might require an `instanceType`. Without validation, invalid or incomplete specs silently end up in the database and only fail later when a downstream component tries to use them.
+Deployers, however, **do** care. A GCP deployment might require a `region` field inside `spec`; an AWS deployment might require an `instanceType`. Without validation, invalid or incomplete specs silently end up in the database and only fail later when a downstream component tries to use them.
 
-The `--server-openapi-schema-path` flag solves this: at deploy time, the operator points the API at a partner-specific OpenAPI schema file. The API then validates every `POST`/`PATCH` request's `spec` payload against that schema in HTTP middleware — before any service or database code runs.
+The `--server-openapi-schema-path` flag solves this: at deploy time, the operator points the API at a deployment-specific OpenAPI schema file. The API then validates every `POST`/`PATCH` request's `spec` payload against that schema in HTTP middleware — before any service or database code runs.
 
 ### What the schema file must contain
 
@@ -48,12 +48,12 @@ The schema file must be a valid OpenAPI 3.0 document. The API looks up two speci
 | `cluster` | `components.schemas.ClusterSpec` |
 | `nodepool` | `components.schemas.NodePoolSpec` |
 
-A minimal example for a GCP partner:
+A minimal example for a GCP deployment:
 
 ```yaml
 openapi: 3.0.0
 info:
-  title: HyperFleet GCP Partner Schema
+  title: HyperFleet GCP Validation Schema
   version: 1.0.0
 paths: {}
 components:

@@ -1,0 +1,16 @@
+{{- if and .Values.validationSchema.enabled (not .Values.validationSchema.existingConfigMap) }}
+{{- if not (trim (default "" .Values.validationSchema.content)) }}
+{{- fail "validationSchema.content is required when validationSchema.enabled is true and validationSchema.existingConfigMap is not set" }}
+{{- end }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "hyperfleet-api.fullname" . }}-validation-schema
+  labels:
+    {{- include "hyperfleet-api.labels" . | nindent 4 }}
+    app.kubernetes.io/component: validation-schema
+data:
+  openapi.yaml: |
+{{ .Values.validationSchema.content | indent 4 }}
+{{- end }}

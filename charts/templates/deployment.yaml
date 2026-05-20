@@ -23,6 +23,13 @@ spec:
         # Checksum of generated ConfigMap
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
         {{- end }}
+        {{- if .Values.validationSchema.enabled }}
+        {{- if .Values.validationSchema.existingConfigMap }}
+        checksum/validation-schema: {{ (lookup "v1" "ConfigMap" .Release.Namespace .Values.validationSchema.existingConfigMap).data | toYaml | sha256sum }}
+        {{- else }}
+        checksum/validation-schema: {{ include (print $.Template.BasePath "/validation-schema-configmap.yaml") . | sha256sum }}
+        {{- end }}
+        {{- end }}
         {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -150,6 +157,12 @@ spec:
           mountPath: /etc/hyperfleet
           readOnly: true
 
+        {{- if .Values.validationSchema.enabled }}
+        - name: validation-schema
+          mountPath: /etc/hyperfleet/validation-schema
+          readOnly: true
+        {{- end }}
+
         # Temp directory for writable filesystem
         - name: tmp
           mountPath: /tmp
@@ -172,6 +185,16 @@ spec:
 
       - name: tmp
         emptyDir: {}
+
+      {{- if .Values.validationSchema.enabled }}
+      - name: validation-schema
+        configMap:
+          {{- if .Values.validationSchema.existingConfigMap }}
+          name: {{ .Values.validationSchema.existingConfigMap }}
+          {{- else }}
+          name: {{ include "hyperfleet-api.fullname" . }}-validation-schema
+          {{- end }}
+      {{- end }}
 
       {{- with .Values.extraVolumes }}
       {{- toYaml . | nindent 6 }}
