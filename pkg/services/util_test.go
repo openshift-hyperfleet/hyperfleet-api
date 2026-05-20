@@ -105,7 +105,7 @@ func TestBuildAdapterSummaries(t *testing.T) {
 			name: "valid conditions",
 			statuses: api.AdapterStatusList{
 				{
-					Adapter:    "validation",
+					Adapter: "validation",
 					Conditions: mustMarshal([]api.AdapterCondition{
 						{Type: "Applied", Status: "True"},
 						{Type: "Available", Status: "False"},
