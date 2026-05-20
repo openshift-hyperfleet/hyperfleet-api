@@ -266,36 +266,23 @@ func (s *sqlNodePoolService) ForceDelete(ctx context.Context, id string, reason 
 		caller = "unknown"
 	}
 
-	type adapterSummary struct {
-		Conditions map[string]string `json:"conditions"`
-		Adapter    string            `json:"adapter"`
-	}
-	summaries := make([]adapterSummary, 0, len(statuses))
-	for _, st := range statuses {
-		conds := make(map[string]string)
-		var parsed []api.AdapterCondition
-		if err := json.Unmarshal(st.Conditions, &parsed); err == nil {
-			for _, c := range parsed {
-				conds[c.Type] = string(c.Status)
-			}
-		}
-		summaries = append(summaries, adapterSummary{Adapter: st.Adapter, Conditions: conds})
-	}
-
 	logger.With(ctx,
 		"nodepool_id", id,
+		"cluster_id", nodePool.OwnerID,
 		"resource_type", api.ResourceTypeNodePool,
 		"caller", caller,
 		"reason", reason,
-		"adapter_statuses", summaries,
+		"adapter_statuses", buildAdapterSummaries(ctx, statuses),
 	).Info("Force-deleting nodepool")
 
 	if err := s.adapterStatusDao.DeleteByResource(ctx, api.ResourceTypeNodePool, id); err != nil {
-		return errors.GeneralError("Failed to delete adapter statuses for nodepool '%s': %s", id, err)
+		logger.With(ctx, "nodepool_id", id).WithError(err).Error("Failed to delete adapter statuses for nodepool")
+		return errors.GeneralError("Failed to delete adapter statuses for nodepool '%s'", id)
 	}
 
 	if err := s.nodePoolDao.Delete(ctx, id); err != nil {
-		return errors.GeneralError("Failed to force-delete nodepool '%s': %s", id, err)
+		logger.With(ctx, "nodepool_id", id).WithError(err).Error("Failed to force-delete nodepool")
+		return handleDeleteError(api.ResourceTypeNodePool, err)
 	}
 
 	return nil

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/auth"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/dao"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
@@ -27,6 +28,7 @@ type ClusterService interface {
 	FindByIDs(ctx context.Context, ids []string) (api.ClusterList, *errors.ServiceError)
 	UpdateClusterStatusFromAdapters(ctx context.Context, clusterID string) (*api.Cluster, *errors.ServiceError)
 	ProcessAdapterStatus(ctx context.Context, clusterID string, adapterStatus *api.AdapterStatus) (*api.AdapterStatus, *errors.ServiceError) // nolint:lll
+	ForceDelete(ctx context.Context, id, reason string) *errors.ServiceError
 
 	// idempotent functions for the control plane, but can also be called synchronously by any actor
 	OnUpsert(ctx context.Context, id string) error
@@ -491,6 +493,85 @@ func (s *sqlClusterService) tryHardDeleteCluster(
 		Info("Hard-deleted cluster after all required adapters reported Finalized=True and no nodepools exist")
 
 	return true, nil
+}
+
+func (s *sqlClusterService) ForceDelete(ctx context.Context, id, reason string) *errors.ServiceError {
+	cluster, err := s.clusterDao.GetForUpdate(ctx, id)
+	if err != nil {
+		return handleGetError(api.ResourceTypeCluster, "id", id, err)
+	}
+
+	if cluster.DeletedTime == nil {
+		return errors.ConflictState("Cluster '%s' is not in Finalizing state", id)
+	}
+
+	clusterStatuses, err := s.adapterStatusDao.FindByResource(ctx, api.ResourceTypeCluster, id)
+	if err != nil {
+		logger.With(ctx, "cluster_id", id).WithError(err).Error("Failed to fetch adapter statuses for cluster")
+		return errors.GeneralError("Failed to fetch adapter statuses for cluster '%s'", id)
+	}
+
+	nodePools, err := s.nodePoolDao.FindByOwner(ctx, id)
+	if err != nil {
+		logger.With(ctx, "cluster_id", id).WithError(err).Error("Failed to fetch nodepools for cluster")
+		return errors.GeneralError("Failed to fetch nodepools for cluster '%s'", id)
+	}
+
+	logForceDeleteAudit(ctx, id, reason, clusterStatuses, nodePools)
+
+	return s.cascadeDeleteCluster(ctx, id, nodePools)
+}
+
+func logForceDeleteAudit(
+	ctx context.Context, clusterID, reason string,
+	statuses api.AdapterStatusList, nodePools api.NodePoolList,
+) {
+	caller := auth.GetUsernameFromContext(ctx)
+	if caller == "" {
+		caller = "unknown"
+	}
+
+	nodePoolIDs := make([]string, 0, len(nodePools))
+	for _, np := range nodePools {
+		nodePoolIDs = append(nodePoolIDs, np.ID)
+	}
+
+	logger.With(ctx,
+		"cluster_id", clusterID,
+		"resource_type", api.ResourceTypeCluster,
+		"caller", caller,
+		"reason", reason,
+		"adapter_statuses", buildAdapterSummaries(ctx, statuses),
+		"child_nodepools", nodePoolIDs,
+	).Info("Force-deleting cluster")
+}
+
+func (s *sqlClusterService) cascadeDeleteCluster(
+	ctx context.Context, id string, nodePools api.NodePoolList,
+) *errors.ServiceError {
+	for _, np := range nodePools {
+		if err := s.adapterStatusDao.DeleteByResource(ctx, api.ResourceTypeNodePool, np.ID); err != nil {
+			logger.With(ctx, "cluster_id", id, "nodepool_id", np.ID).
+				WithError(err).Error("Failed to delete adapter statuses for nodepool")
+			return errors.GeneralError("Failed to delete adapter statuses for nodepool '%s'", np.ID)
+		}
+		if err := s.nodePoolDao.Delete(ctx, np.ID); err != nil {
+			logger.With(ctx, "cluster_id", id, "nodepool_id", np.ID).WithError(err).Error("Failed to force-delete nodepool")
+			return handleDeleteError(api.ResourceTypeNodePool, err)
+		}
+	}
+
+	if err := s.adapterStatusDao.DeleteByResource(ctx, api.ResourceTypeCluster, id); err != nil {
+		logger.With(ctx, "cluster_id", id).WithError(err).Error("Failed to delete adapter statuses for cluster")
+		return errors.GeneralError("Failed to delete adapter statuses for cluster '%s'", id)
+	}
+
+	if err := s.clusterDao.Delete(ctx, id); err != nil {
+		logger.With(ctx, "cluster_id", id).WithError(err).Error("Failed to force-delete cluster")
+		return handleDeleteError(api.ResourceTypeCluster, err)
+	}
+
+	return nil
 }
 
 func findAdapterStatusInList(statuses api.AdapterStatusList, adapter string) *api.AdapterStatus {

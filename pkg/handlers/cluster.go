@@ -171,3 +171,24 @@ func (h ClusterHandler) SoftDelete(w http.ResponseWriter, r *http.Request) {
 	}
 	handleSoftDelete(w, r, cfg, http.StatusAccepted)
 }
+
+// ForceDelete permanently removes a cluster that is in Finalizing state.
+func (h ClusterHandler) ForceDelete(w http.ResponseWriter, r *http.Request) {
+	var req openapi.ForceDeleteRequest
+	cfg := &handlerConfig{
+		MarshalInto: &req,
+		Validate: []validate{
+			validateNotEmpty(&req, "Reason", "reason"),
+			validateMaxLength(&req, "Reason", "reason", maxReasonLength),
+		},
+		Action: func() (interface{}, *errors.ServiceError) {
+			id := mux.Vars(r)["id"]
+			ctx := r.Context()
+			if err := h.cluster.ForceDelete(ctx, id, req.Reason); err != nil {
+				return nil, err
+			}
+			return nil, nil
+		},
+	}
+	handleForceDelete(w, r, cfg)
+}

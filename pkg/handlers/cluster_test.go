@@ -126,3 +126,125 @@ func TestClusterHandler_Patch(t *testing.T) {
 		})
 	}
 }
+
+func TestClusterHandler_ForceDelete(t *testing.T) {
+	RegisterTestingT(t)
+
+	clusterID := testClusterID
+
+	tests := []struct {
+		setupMocks         func(ctrl *gomock.Controller) (*services.MockClusterService, *services.MockGenericService)
+		name               string
+		body               string
+		expectedStatusCode int
+	}{
+		{
+			name: "Success 204 - cluster force-deleted",
+			body: `{"reason": "Stuck in finalizing for 2 hours"}`,
+			setupMocks: func(ctrl *gomock.Controller) (*services.MockClusterService, *services.MockGenericService) {
+				mockClusterSvc := services.NewMockClusterService(ctrl)
+				mockGenericSvc := services.NewMockGenericService(ctrl)
+				mockClusterSvc.EXPECT().
+					ForceDelete(gomock.Any(), clusterID, "Stuck in finalizing for 2 hours").
+					Return(nil)
+				return mockClusterSvc, mockGenericSvc
+			},
+			expectedStatusCode: http.StatusNoContent,
+		},
+		{
+			name: "Error 400 - malformed JSON",
+			body: `not json`,
+			setupMocks: func(ctrl *gomock.Controller) (*services.MockClusterService, *services.MockGenericService) {
+				mockClusterSvc := services.NewMockClusterService(ctrl)
+				mockGenericSvc := services.NewMockGenericService(ctrl)
+				return mockClusterSvc, mockGenericSvc
+			},
+			expectedStatusCode: http.StatusBadRequest,
+		},
+		{
+			name: "Error 400 - empty reason",
+			body: `{"reason": ""}`,
+			setupMocks: func(ctrl *gomock.Controller) (*services.MockClusterService, *services.MockGenericService) {
+				mockClusterSvc := services.NewMockClusterService(ctrl)
+				mockGenericSvc := services.NewMockGenericService(ctrl)
+				return mockClusterSvc, mockGenericSvc
+			},
+			expectedStatusCode: http.StatusBadRequest,
+		},
+		{
+			name: "Error 400 - reason exceeds max length",
+			body: `{"reason": "` + strings.Repeat("x", 1025) + `"}`,
+			setupMocks: func(ctrl *gomock.Controller) (*services.MockClusterService, *services.MockGenericService) {
+				mockClusterSvc := services.NewMockClusterService(ctrl)
+				mockGenericSvc := services.NewMockGenericService(ctrl)
+				return mockClusterSvc, mockGenericSvc
+			},
+			expectedStatusCode: http.StatusBadRequest,
+		},
+		{
+			name: "Error 404 - cluster not found",
+			body: `{"reason": "some reason"}`,
+			setupMocks: func(ctrl *gomock.Controller) (*services.MockClusterService, *services.MockGenericService) {
+				mockClusterSvc := services.NewMockClusterService(ctrl)
+				mockGenericSvc := services.NewMockGenericService(ctrl)
+				mockClusterSvc.EXPECT().
+					ForceDelete(gomock.Any(), clusterID, "some reason").
+					Return(errors.NotFound("Cluster with id='%s' not found", clusterID))
+				return mockClusterSvc, mockGenericSvc
+			},
+			expectedStatusCode: http.StatusNotFound,
+		},
+		{
+			name: "Error 409 - cluster not in Finalizing state",
+			body: `{"reason": "some reason"}`,
+			setupMocks: func(ctrl *gomock.Controller) (*services.MockClusterService, *services.MockGenericService) {
+				mockClusterSvc := services.NewMockClusterService(ctrl)
+				mockGenericSvc := services.NewMockGenericService(ctrl)
+				mockClusterSvc.EXPECT().
+					ForceDelete(gomock.Any(), clusterID, "some reason").
+					Return(errors.ConflictState("Cluster '%s' is not in Finalizing state", clusterID))
+				return mockClusterSvc, mockGenericSvc
+			},
+			expectedStatusCode: http.StatusConflict,
+		},
+		{
+			name: "Error 500 - service internal error",
+			body: `{"reason": "some reason"}`,
+			setupMocks: func(ctrl *gomock.Controller) (*services.MockClusterService, *services.MockGenericService) {
+				mockClusterSvc := services.NewMockClusterService(ctrl)
+				mockGenericSvc := services.NewMockGenericService(ctrl)
+				mockClusterSvc.EXPECT().
+					ForceDelete(gomock.Any(), clusterID, "some reason").
+					Return(errors.GeneralError("database connection lost"))
+				return mockClusterSvc, mockGenericSvc
+			},
+			expectedStatusCode: http.StatusInternalServerError,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			RegisterTestingT(t)
+
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			mockClusterSvc, mockGenericSvc := tt.setupMocks(ctrl)
+			handler := NewClusterHandler(mockClusterSvc, mockGenericSvc)
+
+			reqURL := "/api/hyperfleet/v1/clusters/" + clusterID + "/force-delete"
+			req := httptest.NewRequest(http.MethodPost, reqURL, strings.NewReader(tt.body))
+			req.Header.Set("Content-Type", "application/json")
+			req = mux.SetURLVars(req, map[string]string{"id": clusterID})
+
+			rr := httptest.NewRecorder()
+			handler.ForceDelete(rr, req)
+
+			Expect(rr.Code).To(Equal(tt.expectedStatusCode))
+
+			if tt.expectedStatusCode == http.StatusNoContent {
+				Expect(rr.Body.Len()).To(Equal(0))
+			}
+		})
+	}
+}

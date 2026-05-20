@@ -1,9 +1,13 @@
 package services
 
 import (
+	"context"
+	"encoding/json"
 	"testing"
 
 	. "github.com/onsi/gomega"
+
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 )
 
 func TestJSONEqual(t *testing.T) {
@@ -82,4 +86,86 @@ func TestJSONEqual(t *testing.T) {
 			Expect(jsonEqual(tt.a, tt.b)).To(Equal(tt.expected))
 		})
 	}
+}
+
+func TestBuildAdapterSummaries(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		statuses api.AdapterStatusList
+		expected []adapterSummary
+	}{
+		{
+			name:     "empty input",
+			statuses: api.AdapterStatusList{},
+			expected: []adapterSummary{},
+		},
+		{
+			name: "valid conditions",
+			statuses: api.AdapterStatusList{
+				{
+					Adapter: "validation",
+					Conditions: mustMarshal([]api.AdapterCondition{
+						{Type: "Applied", Status: "True"},
+						{Type: "Available", Status: "False"},
+					}),
+				},
+			},
+			expected: []adapterSummary{
+				{Adapter: "validation", Conditions: map[string]string{"Applied": "True", "Available": "False"}},
+			},
+		},
+		{
+			name: "empty conditions field",
+			statuses: api.AdapterStatusList{
+				{Adapter: "provisioning", Conditions: nil},
+			},
+			expected: []adapterSummary{
+				{Adapter: "provisioning", Conditions: map[string]string{}},
+			},
+		},
+		{
+			name: "malformed JSON falls back to empty map",
+			statuses: api.AdapterStatusList{
+				{Adapter: "broken", Conditions: []byte(`not valid json`)},
+			},
+			expected: []adapterSummary{
+				{Adapter: "broken", Conditions: map[string]string{}},
+			},
+		},
+		{
+			name: "multiple adapters",
+			statuses: api.AdapterStatusList{
+				{
+					Adapter:    "validation",
+					Conditions: mustMarshal([]api.AdapterCondition{{Type: "Applied", Status: "True"}}),
+				},
+				{
+					Adapter:    "provisioning",
+					Conditions: mustMarshal([]api.AdapterCondition{{Type: "Ready", Status: "False"}}),
+				},
+			},
+			expected: []adapterSummary{
+				{Adapter: "validation", Conditions: map[string]string{"Applied": "True"}},
+				{Adapter: "provisioning", Conditions: map[string]string{"Ready": "False"}},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			RegisterTestingT(t)
+			result := buildAdapterSummaries(context.Background(), tt.statuses)
+			Expect(result).To(Equal(tt.expected))
+		})
+	}
+}
+
+func mustMarshal(v interface{}) []byte {
+	b, err := json.Marshal(v)
+	if err != nil {
+		panic(err)
+	}
+	return b
 }
