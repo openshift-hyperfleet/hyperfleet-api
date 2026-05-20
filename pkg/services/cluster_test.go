@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"testing"
 	"time"
@@ -34,7 +35,8 @@ func testAdapterConfig() *config.AdapterRequirementsConfig {
 // Mock implementations for testing ProcessAdapterStatus
 
 type mockClusterDao struct {
-	clusters map[string]*api.Cluster
+	clusters  map[string]*api.Cluster
+	deleteErr error
 }
 
 func newMockClusterDao() *mockClusterDao {
@@ -81,6 +83,9 @@ func (d *mockClusterDao) SaveStatusConditions(ctx context.Context, id string, st
 }
 
 func (d *mockClusterDao) Delete(ctx context.Context, id string) error {
+	if d.deleteErr != nil {
+		return d.deleteErr
+	}
 	delete(d.clusters, id)
 	return nil
 }
@@ -1873,5 +1878,218 @@ func TestClusterPatch(t *testing.T) {
 
 		g.Expect(svcErr).NotTo(BeNil())
 		g.Expect(svcErr.HTTPCode).To(Equal(404))
+	})
+}
+
+type forceDeleteEnv struct {
+	clusterDao       *mockClusterDao
+	nodePoolDao      *mockNodePoolDao
+	adapterStatusDao *mockAdapterStatusDao
+	service          ClusterService
+}
+
+func newForceDeleteEnv() *forceDeleteEnv {
+	cd := newMockClusterDao()
+	npd := newMockNodePoolDao()
+	asd := newMockAdapterStatusDao()
+	return &forceDeleteEnv{
+		clusterDao:       cd,
+		nodePoolDao:      npd,
+		adapterStatusDao: asd,
+		service:          NewClusterService(cd, npd, newMockNodePoolService(), asd, testAdapterConfig()),
+	}
+}
+
+func TestClusterForceDelete(t *testing.T) {
+	t.Parallel()
+	deletedTime := time.Now().Add(-time.Hour)
+
+	t.Run("cluster not found returns 404", func(t *testing.T) {
+		t.Parallel()
+		g := NewWithT(t)
+		env := newForceDeleteEnv()
+
+		svcErr := env.service.ForceDelete(context.Background(), "nonexistent", "testing")
+
+		g.Expect(svcErr).NotTo(BeNil())
+		g.Expect(svcErr.HTTPCode).To(Equal(http.StatusNotFound))
+	})
+
+	t.Run("cluster not in Finalizing state returns 409", func(t *testing.T) {
+		t.Parallel()
+		g := NewWithT(t)
+		env := newForceDeleteEnv()
+		env.clusterDao.clusters[testClusterID] = &api.Cluster{
+			Meta:       api.Meta{ID: testClusterID},
+			Generation: 1,
+		}
+
+		svcErr := env.service.ForceDelete(context.Background(), testClusterID, "testing")
+
+		g.Expect(svcErr).NotTo(BeNil())
+		g.Expect(svcErr.HTTPCode).To(Equal(http.StatusConflict))
+	})
+
+	t.Run("cluster in Finalizing is removed with adapter statuses", func(t *testing.T) {
+		t.Parallel()
+		g := NewWithT(t)
+		env := newForceDeleteEnv()
+		env.clusterDao.clusters[testClusterID] = &api.Cluster{
+			Meta:        api.Meta{ID: testClusterID},
+			Generation:  2,
+			DeletedTime: &deletedTime,
+		}
+		env.adapterStatusDao.statuses["cs-1"] = &api.AdapterStatus{
+			Meta:         api.Meta{ID: "cs-1"},
+			ResourceType: api.ResourceTypeCluster,
+			ResourceID:   testClusterID,
+			Adapter:      "validation",
+		}
+
+		svcErr := env.service.ForceDelete(context.Background(), testClusterID, "stuck in finalizing")
+
+		g.Expect(svcErr).To(BeNil())
+		_, err := env.clusterDao.Get(context.Background(), testClusterID)
+		g.Expect(err).To(Equal(gorm.ErrRecordNotFound))
+		g.Expect(env.adapterStatusDao.statuses).To(BeEmpty())
+	})
+
+	t.Run("cascade removes child nodepools and their adapter statuses", func(t *testing.T) {
+		t.Parallel()
+		g := NewWithT(t)
+		env := newForceDeleteEnv()
+		env.clusterDao.clusters[testClusterID] = &api.Cluster{
+			Meta:        api.Meta{ID: testClusterID},
+			Generation:  2,
+			DeletedTime: &deletedTime,
+		}
+		env.nodePoolDao.nodePools["np-1"] = &api.NodePool{
+			Meta: api.Meta{ID: "np-1"}, OwnerID: testClusterID, Generation: 1,
+		}
+		env.nodePoolDao.nodePools["np-2"] = &api.NodePool{
+			Meta: api.Meta{ID: "np-2"}, OwnerID: testClusterID, Generation: 1,
+		}
+		env.adapterStatusDao.statuses["cs-1"] = &api.AdapterStatus{
+			Meta: api.Meta{ID: "cs-1"}, ResourceType: api.ResourceTypeCluster,
+			ResourceID: testClusterID, Adapter: "validation",
+		}
+		env.adapterStatusDao.statuses["ns-1"] = &api.AdapterStatus{
+			Meta: api.Meta{ID: "ns-1"}, ResourceType: api.ResourceTypeNodePool,
+			ResourceID: "np-1", Adapter: "validation",
+		}
+		env.adapterStatusDao.statuses["ns-2"] = &api.AdapterStatus{
+			Meta: api.Meta{ID: "ns-2"}, ResourceType: api.ResourceTypeNodePool,
+			ResourceID: "np-2", Adapter: "hypershift",
+		}
+
+		svcErr := env.service.ForceDelete(context.Background(), testClusterID, "adapter stuck")
+
+		g.Expect(svcErr).To(BeNil())
+		_, err := env.clusterDao.Get(context.Background(), testClusterID)
+		g.Expect(err).To(Equal(gorm.ErrRecordNotFound))
+		g.Expect(env.nodePoolDao.nodePools).To(BeEmpty())
+		g.Expect(env.adapterStatusDao.statuses).To(BeEmpty())
+	})
+
+	t.Run("adapter status fetch failure returns 500", func(t *testing.T) {
+		t.Parallel()
+		g := NewWithT(t)
+		env := newForceDeleteEnv()
+		env.adapterStatusDao.findByResourceErr = fmt.Errorf("db connection lost")
+		env.clusterDao.clusters[testClusterID] = &api.Cluster{
+			Meta:        api.Meta{ID: testClusterID},
+			DeletedTime: &deletedTime,
+		}
+
+		svcErr := env.service.ForceDelete(context.Background(), testClusterID, "testing")
+
+		g.Expect(svcErr).NotTo(BeNil())
+		g.Expect(svcErr.HTTPCode).To(Equal(http.StatusInternalServerError))
+	})
+
+	t.Run("nodepool fetch failure returns 500", func(t *testing.T) {
+		t.Parallel()
+		g := NewWithT(t)
+		env := newForceDeleteEnv()
+		env.nodePoolDao.findByOwnerErr = fmt.Errorf("db connection lost")
+		env.clusterDao.clusters[testClusterID] = &api.Cluster{
+			Meta:        api.Meta{ID: testClusterID},
+			DeletedTime: &deletedTime,
+		}
+
+		svcErr := env.service.ForceDelete(context.Background(), testClusterID, "testing")
+
+		g.Expect(svcErr).NotTo(BeNil())
+		g.Expect(svcErr.HTTPCode).To(Equal(http.StatusInternalServerError))
+	})
+
+	t.Run("cascade adapter status deletion failure returns 500", func(t *testing.T) {
+		t.Parallel()
+		g := NewWithT(t)
+		env := newForceDeleteEnv()
+		env.adapterStatusDao.deleteByResourceErr = fmt.Errorf("db write error")
+		env.clusterDao.clusters[testClusterID] = &api.Cluster{
+			Meta:        api.Meta{ID: testClusterID},
+			DeletedTime: &deletedTime,
+		}
+		env.nodePoolDao.nodePools["np-1"] = &api.NodePool{
+			Meta: api.Meta{ID: "np-1"}, OwnerID: testClusterID, Generation: 1,
+		}
+
+		svcErr := env.service.ForceDelete(context.Background(), testClusterID, "testing")
+
+		g.Expect(svcErr).NotTo(BeNil())
+		g.Expect(svcErr.HTTPCode).To(Equal(http.StatusInternalServerError))
+	})
+
+	t.Run("cascade nodepool deletion failure returns 500", func(t *testing.T) {
+		t.Parallel()
+		g := NewWithT(t)
+		env := newForceDeleteEnv()
+		env.nodePoolDao.deleteErr = fmt.Errorf("db write error")
+		env.clusterDao.clusters[testClusterID] = &api.Cluster{
+			Meta:        api.Meta{ID: testClusterID},
+			DeletedTime: &deletedTime,
+		}
+		env.nodePoolDao.nodePools["np-1"] = &api.NodePool{
+			Meta: api.Meta{ID: "np-1"}, OwnerID: testClusterID, Generation: 1,
+		}
+
+		svcErr := env.service.ForceDelete(context.Background(), testClusterID, "testing")
+
+		g.Expect(svcErr).NotTo(BeNil())
+		g.Expect(svcErr.HTTPCode).To(Equal(http.StatusInternalServerError))
+	})
+
+	t.Run("cascade cluster adapter status deletion failure returns 500", func(t *testing.T) {
+		t.Parallel()
+		g := NewWithT(t)
+		env := newForceDeleteEnv()
+		env.adapterStatusDao.deleteByResourceErr = fmt.Errorf("db write error")
+		env.clusterDao.clusters[testClusterID] = &api.Cluster{
+			Meta:        api.Meta{ID: testClusterID},
+			DeletedTime: &deletedTime,
+		}
+
+		svcErr := env.service.ForceDelete(context.Background(), testClusterID, "testing")
+
+		g.Expect(svcErr).NotTo(BeNil())
+		g.Expect(svcErr.HTTPCode).To(Equal(http.StatusInternalServerError))
+	})
+
+	t.Run("cascade cluster deletion failure returns 500", func(t *testing.T) {
+		t.Parallel()
+		g := NewWithT(t)
+		env := newForceDeleteEnv()
+		env.clusterDao.deleteErr = fmt.Errorf("db write error")
+		env.clusterDao.clusters[testClusterID] = &api.Cluster{
+			Meta:        api.Meta{ID: testClusterID},
+			DeletedTime: &deletedTime,
+		}
+
+		svcErr := env.service.ForceDelete(context.Background(), testClusterID, "testing")
+
+		g.Expect(svcErr).NotTo(BeNil())
+		g.Expect(svcErr.HTTPCode).To(Equal(http.StatusInternalServerError))
 	})
 }

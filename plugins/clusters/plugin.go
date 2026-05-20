@@ -62,6 +62,7 @@ func init() {
 		clustersRouter.HandleFunc("", clusterHandler.Create).Methods(http.MethodPost)
 		clustersRouter.HandleFunc("/{id}", clusterHandler.Patch).Methods(http.MethodPatch)
 		clustersRouter.HandleFunc("/{id}", clusterHandler.SoftDelete).Methods(http.MethodDelete)
+		clustersRouter.HandleFunc("/{id}/force-delete", clusterHandler.ForceDelete).Methods(http.MethodPost)
 
 		// Nested resource: cluster statuses
 		clusterStatusHandler := handlers.NewClusterStatusHandler(adapterStatus.Service(envServices), Service(envServices))

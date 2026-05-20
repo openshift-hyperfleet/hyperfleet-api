@@ -145,7 +145,7 @@ func (h ClusterNodePoolsHandler) ForceDelete(w http.ResponseWriter, r *http.Requ
 		MarshalInto: &req,
 		Validate: []validate{
 			validateNotEmpty(&req, "Reason", "reason"),
-			validateMaxLength(&req, "Reason", "reason", 1024),
+			validateMaxLength(&req, "Reason", "reason", maxReasonLength),
 		},
 		Action: func() (interface{}, *errors.ServiceError) {
 			clusterID := mux.Vars(r)["id"]
