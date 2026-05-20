@@ -34,8 +34,9 @@ func testNodePoolAdapterConfig() *config.AdapterRequirementsConfig {
 // Mock implementations for testing NodePool ProcessAdapterStatus
 
 type mockNodePoolDao struct {
-	nodePools map[string]*api.NodePool
-	deleteErr error
+	nodePools      map[string]*api.NodePool
+	deleteErr      error
+	findByOwnerErr error
 }
 
 func newMockNodePoolDao() *mockNodePoolDao {
@@ -110,6 +111,9 @@ func (d *mockNodePoolDao) FindByIDs(ctx context.Context, ids []string) (api.Node
 }
 
 func (d *mockNodePoolDao) FindByOwner(ctx context.Context, ownerID string) (api.NodePoolList, error) {
+	if d.findByOwnerErr != nil {
+		return nil, d.findByOwnerErr
+	}
 	var result api.NodePoolList
 	for _, np := range d.nodePools {
 		if np.OwnerID == ownerID {

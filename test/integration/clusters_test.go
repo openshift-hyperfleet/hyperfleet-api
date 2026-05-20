@@ -1414,3 +1414,136 @@ func TestClusterHardDelete(t *testing.T) {
 		Expect(adapterStatuses).To(BeEmpty())
 	})
 }
+
+func TestClusterForceDelete(t *testing.T) {
+	t.Run("force-delete cascade removes cluster, nodepools, and adapter statuses", func(t *testing.T) {
+		RegisterTestingT(t)
+		h, client := test.RegisterIntegration(t)
+		account := h.NewRandAccount()
+		ctx := h.NewAuthenticatedContext(account)
+
+		cluster, err := h.Factories.NewClusters(h.NewID())
+		Expect(err).NotTo(HaveOccurred())
+
+		nodePool, err := h.Factories.NewNodePools(h.NewID())
+		Expect(err).NotTo(HaveOccurred())
+		dbSession := h.DBFactory.New(ctx)
+		err = dbSession.Model(nodePool).Update("owner_id", cluster.ID).Error
+		Expect(err).NotTo(HaveOccurred())
+
+		// Soft-delete the cluster to put it in Finalizing state
+		delResp, err := client.DeleteClusterByIdWithResponse(ctx, cluster.ID, test.WithAuthToken(ctx))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(delResp.StatusCode()).To(Equal(http.StatusAccepted))
+
+		// Report adapter statuses so there are records to cascade-delete
+		newGeneration := delResp.JSON202.Generation
+		statusInput := newAdapterStatusRequest(
+			"validation",
+			newGeneration,
+			[]openapi.ConditionRequest{
+				{
+					Type:   api.AdapterConditionTypeApplied,
+					Status: openapi.AdapterConditionStatusFalse,
+					Reason: util.PtrString("Stuck"),
+				},
+				{
+					Type:   api.AdapterConditionTypeAvailable,
+					Status: openapi.AdapterConditionStatusFalse,
+					Reason: util.PtrString("Stuck"),
+				},
+				{
+					Type:   api.AdapterConditionTypeHealth,
+					Status: openapi.AdapterConditionStatusTrue,
+					Reason: util.PtrString("Healthy"),
+				},
+			},
+			nil,
+		)
+		statusResp, err := client.PutClusterStatusesWithResponse(
+			ctx, cluster.ID,
+			openapi.PutClusterStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
+		)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(statusResp.StatusCode()).To(Equal(http.StatusCreated))
+
+		// Force-delete the cluster
+		forceDeleteResp, err := client.ForceDeleteClusterWithResponse(
+			ctx, cluster.ID,
+			openapi.ForceDeleteClusterJSONRequestBody{Reason: "integration test - adapter stuck"},
+			test.WithAuthToken(ctx),
+		)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(forceDeleteResp.StatusCode()).To(Equal(http.StatusNoContent))
+
+		// Verify cluster is gone
+		var clusterCheck api.Cluster
+		dbErr := dbSession.First(&clusterCheck, "id = ?", cluster.ID).Error
+		Expect(dbErr).To(HaveOccurred())
+		Expect(dbErr.Error()).To(ContainSubstring("record not found"))
+
+		// Verify nodepools are gone
+		var nodePoolCheck api.NodePool
+		dbErr = dbSession.First(&nodePoolCheck, "id = ?", nodePool.ID).Error
+		Expect(dbErr).To(HaveOccurred())
+		Expect(dbErr.Error()).To(ContainSubstring("record not found"))
+
+		// Verify adapter statuses are gone
+		var adapterStatuses []api.AdapterStatus
+		err = dbSession.Where("resource_type = ? AND resource_id = ?", api.ResourceTypeCluster, cluster.ID).
+			Find(&adapterStatuses).Error
+		Expect(err).NotTo(HaveOccurred())
+		Expect(adapterStatuses).To(BeEmpty())
+	})
+
+	t.Run("given a missing reason, when force-deleted, then returns 400", func(t *testing.T) {
+		RegisterTestingT(t)
+		h, client := test.RegisterIntegration(t)
+		account := h.NewRandAccount()
+		ctx := h.NewAuthenticatedContext(account)
+
+		cluster, err := h.Factories.NewClusters(h.NewID())
+		Expect(err).NotTo(HaveOccurred())
+
+		forceDeleteResp, err := client.ForceDeleteClusterWithResponse(
+			ctx, cluster.ID,
+			openapi.ForceDeleteClusterJSONRequestBody{Reason: ""},
+			test.WithAuthToken(ctx),
+		)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(forceDeleteResp.StatusCode()).To(Equal(http.StatusBadRequest))
+	})
+
+	t.Run("given a non-existent cluster, when force-deleted, then returns 404", func(t *testing.T) {
+		RegisterTestingT(t)
+		h, client := test.RegisterIntegration(t)
+		account := h.NewRandAccount()
+		ctx := h.NewAuthenticatedContext(account)
+
+		forceDeleteResp, err := client.ForceDeleteClusterWithResponse(
+			ctx, h.NewID(),
+			openapi.ForceDeleteClusterJSONRequestBody{Reason: "should fail"},
+			test.WithAuthToken(ctx),
+		)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(forceDeleteResp.StatusCode()).To(Equal(http.StatusNotFound))
+	})
+
+	t.Run("given a cluster not in Finalizing state, when force-deleted, then returns 409", func(t *testing.T) {
+		RegisterTestingT(t)
+		h, client := test.RegisterIntegration(t)
+		account := h.NewRandAccount()
+		ctx := h.NewAuthenticatedContext(account)
+
+		cluster, err := h.Factories.NewClusters(h.NewID())
+		Expect(err).NotTo(HaveOccurred())
+
+		forceDeleteResp, err := client.ForceDeleteClusterWithResponse(
+			ctx, cluster.ID,
+			openapi.ForceDeleteClusterJSONRequestBody{Reason: "should fail"},
+			test.WithAuthToken(ctx),
+		)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(forceDeleteResp.StatusCode()).To(Equal(http.StatusConflict))
+	})
+}

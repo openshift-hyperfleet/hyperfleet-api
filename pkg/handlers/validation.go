@@ -11,6 +11,8 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 )
 
+const maxReasonLength = 1024
+
 func validatePathID(id, name string) *errors.ServiceError {
 	if _, err := uuid.Parse(id); err != nil {
 		return errors.Validation("invalid %s format", name)
