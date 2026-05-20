@@ -2061,6 +2061,22 @@ func TestClusterForceDelete(t *testing.T) {
 		g.Expect(svcErr.HTTPCode).To(Equal(http.StatusInternalServerError))
 	})
 
+	t.Run("cascade cluster adapter status deletion failure returns 500", func(t *testing.T) {
+		t.Parallel()
+		g := NewWithT(t)
+		env := newForceDeleteEnv()
+		env.adapterStatusDao.deleteByResourceErr = fmt.Errorf("db write error")
+		env.clusterDao.clusters[testClusterID] = &api.Cluster{
+			Meta:        api.Meta{ID: testClusterID},
+			DeletedTime: &deletedTime,
+		}
+
+		svcErr := env.service.ForceDelete(context.Background(), testClusterID, "testing")
+
+		g.Expect(svcErr).NotTo(BeNil())
+		g.Expect(svcErr.HTTPCode).To(Equal(http.StatusInternalServerError))
+	})
+
 	t.Run("cascade cluster deletion failure returns 500", func(t *testing.T) {
 		t.Parallel()
 		g := NewWithT(t)
