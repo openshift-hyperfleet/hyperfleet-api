@@ -551,7 +551,8 @@ func (s *sqlClusterService) cascadeDeleteCluster(
 ) *errors.ServiceError {
 	for _, np := range nodePools {
 		if err := s.adapterStatusDao.DeleteByResource(ctx, api.ResourceTypeNodePool, np.ID); err != nil {
-			logger.With(ctx, "cluster_id", id, "nodepool_id", np.ID).WithError(err).Error("Failed to delete adapter statuses for nodepool")
+			logger.With(ctx, "cluster_id", id, "nodepool_id", np.ID).
+				WithError(err).Error("Failed to delete adapter statuses for nodepool")
 			return errors.GeneralError("Failed to delete adapter statuses for nodepool '%s'", np.ID)
 		}
 		if err := s.nodePoolDao.Delete(ctx, np.ID); err != nil {
