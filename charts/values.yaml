@@ -223,7 +223,7 @@ database:
   # Built-in PostgreSQL for development/testing
   postgresql:
     enabled: true
-    image: docker.io/library/postgres:14.2
+    image: docker.io/library/postgres:18.4
     database: hyperfleet
     user: hyperfleet
     password: hyperfleet-dev-password
