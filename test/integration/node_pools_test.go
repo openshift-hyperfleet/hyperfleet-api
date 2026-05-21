@@ -960,3 +960,124 @@ func TestNodePoolHardDelete(t *testing.T) {
 		Expect(adapterStatuses).To(HaveLen(2))
 	})
 }
+
+func TestNodePoolForceDelete(t *testing.T) {
+	t.Run("given a soft-deleted nodepool, when force-deleted, then nodepool and adapter statuses are removed", func(t *testing.T) { //nolint:lll
+		RegisterTestingT(t)
+		h, client := test.RegisterIntegration(t)
+		account := h.NewRandAccount()
+		ctx := h.NewAuthenticatedContext(account)
+
+		cluster, err := h.Factories.NewClusters(h.NewID())
+		Expect(err).NotTo(HaveOccurred())
+
+		nodePool, err := h.Factories.NewNodePools(h.NewID())
+		Expect(err).NotTo(HaveOccurred())
+		dbSession := h.DBFactory.New(ctx)
+		err = dbSession.Model(nodePool).Update("owner_id", cluster.ID).Error
+		Expect(err).NotTo(HaveOccurred())
+
+		// Soft-delete the nodepool to put it in Finalizing state
+		delResp, err := client.DeleteNodePoolByIdWithResponse(ctx, cluster.ID, nodePool.ID, test.WithAuthToken(ctx))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(delResp.StatusCode()).To(Equal(http.StatusAccepted))
+
+		// Report adapter statuses so there are records to cascade-delete
+		newGeneration := delResp.JSON202.Generation
+		statusInput := newAdapterStatusRequest(
+			"validation",
+			newGeneration,
+			[]openapi.ConditionRequest{
+				{
+					Type:   api.AdapterConditionTypeApplied,
+					Status: openapi.AdapterConditionStatusFalse,
+					Reason: util.PtrString("Stuck"),
+				},
+				{
+					Type:   api.AdapterConditionTypeAvailable,
+					Status: openapi.AdapterConditionStatusFalse,
+					Reason: util.PtrString("Stuck"),
+				},
+				{
+					Type:   api.AdapterConditionTypeHealth,
+					Status: openapi.AdapterConditionStatusTrue,
+					Reason: util.PtrString("Healthy"),
+				},
+			},
+			nil,
+		)
+		statusResp, err := client.PutNodePoolStatusesWithResponse(
+			ctx, cluster.ID, nodePool.ID,
+			openapi.PutNodePoolStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
+		)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(statusResp.StatusCode()).To(Equal(http.StatusCreated))
+
+		// Force-delete the nodepool
+		forceDeleteResp, err := client.ForceDeleteNodePoolWithResponse(
+			ctx, cluster.ID, nodePool.ID,
+			openapi.ForceDeleteNodePoolJSONRequestBody{Reason: "integration test - adapter stuck"},
+			test.WithAuthToken(ctx),
+		)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(forceDeleteResp.StatusCode()).To(Equal(http.StatusNoContent))
+
+		// Verify nodepool is gone
+		var nodePoolCheck api.NodePool
+		dbErr := dbSession.First(&nodePoolCheck, "id = ?", nodePool.ID).Error
+		Expect(dbErr).To(HaveOccurred(), "Nodepool should be hard-deleted from DB after force-delete")
+		Expect(dbErr.Error()).To(ContainSubstring("record not found"))
+
+		// Verify adapter statuses are gone
+		var adapterStatuses []api.AdapterStatus
+		err = dbSession.Where("resource_type = ? AND resource_id = ?", api.ResourceTypeNodePool, nodePool.ID).
+			Find(&adapterStatuses).Error
+		Expect(err).NotTo(HaveOccurred())
+		Expect(adapterStatuses).To(BeEmpty())
+
+		// Verify parent cluster still exists
+		var clusterCheck api.Cluster
+		err = dbSession.First(&clusterCheck, "id = ?", cluster.ID).Error
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	errorCases := []struct {
+		name           string
+		reason         string
+		expectedStatus int
+		createNodePool bool
+	}{
+		{"given empty reason, when force-deleted, then returns 400", "", http.StatusBadRequest, true},
+		{"given non-existent nodepool, when force-deleted, then returns 404", "should fail", http.StatusNotFound, false},
+		{"given nodepool not in Finalizing, when force-deleted, then returns 409", "should fail", http.StatusConflict, true},
+	}
+
+	for _, tc := range errorCases {
+		t.Run(tc.name, func(t *testing.T) {
+			RegisterTestingT(t)
+			h, client := test.RegisterIntegration(t)
+			account := h.NewRandAccount()
+			ctx := h.NewAuthenticatedContext(account)
+
+			cluster, err := h.Factories.NewClusters(h.NewID())
+			Expect(err).NotTo(HaveOccurred())
+
+			nodePoolID := h.NewID()
+			if tc.createNodePool {
+				nodePool, npErr := h.Factories.NewNodePools(h.NewID())
+				Expect(npErr).NotTo(HaveOccurred())
+				dbSession := h.DBFactory.New(ctx)
+				Expect(dbSession.Model(nodePool).Update("owner_id", cluster.ID).Error).NotTo(HaveOccurred())
+				nodePoolID = nodePool.ID
+			}
+
+			forceDeleteResp, err := client.ForceDeleteNodePoolWithResponse(
+				ctx, cluster.ID, nodePoolID,
+				openapi.ForceDeleteNodePoolJSONRequestBody{Reason: tc.reason},
+				test.WithAuthToken(ctx),
+			)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(forceDeleteResp.StatusCode()).To(Equal(tc.expectedStatus))
+		})
+	}
+}

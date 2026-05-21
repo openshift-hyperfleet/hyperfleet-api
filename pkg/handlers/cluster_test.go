@@ -173,7 +173,7 @@ func TestClusterHandler_ForceDelete(t *testing.T) {
 		},
 		{
 			name: "Error 400 - reason exceeds max length",
-			body: `{"reason": "` + strings.Repeat("x", 1025) + `"}`,
+			body: `{"reason": "` + strings.Repeat("x", maxReasonLength+1) + `"}`,
 			setupMocks: func(ctrl *gomock.Controller) (*services.MockClusterService, *services.MockGenericService) {
 				mockClusterSvc := services.NewMockClusterService(ctrl)
 				mockGenericSvc := services.NewMockGenericService(ctrl)
