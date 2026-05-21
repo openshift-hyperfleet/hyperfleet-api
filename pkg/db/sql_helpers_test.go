@@ -652,6 +652,75 @@ func TestConditionTypeValidation(t *testing.T) {
 	}
 }
 
+func TestGetField_SpecMapping(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       string
+		expected    string
+		expectError bool
+	}{
+		{
+			name:     "valid snake_case key",
+			input:    "spec.is_default",
+			expected: "spec->>'is_default'",
+		},
+		{
+			name:     "valid single word key",
+			input:    "spec.region",
+			expected: "spec->>'region'",
+		},
+		{
+			name:     "valid key with digits",
+			input:    "spec.release_image_v2",
+			expected: "spec->>'release_image_v2'",
+		},
+		{
+			name:        "invalid key with uppercase",
+			input:       "spec.ReleaseImage",
+			expectError: true,
+		},
+		{
+			name:        "invalid key with hyphens",
+			input:       "spec.release-image",
+			expectError: true,
+		},
+		{
+			name:        "empty key",
+			input:       "spec.",
+			expectError: true,
+		},
+		{
+			name:        "injection attempt",
+			input:       "spec.'; DROP TABLE resources;--",
+			expectError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			RegisterTestingT(t)
+
+			field, err := getField(tt.input, map[string]string{})
+			if tt.expectError {
+				Expect(err).ToNot(BeNil())
+			} else {
+				Expect(err).To(BeNil())
+				Expect(field).To(Equal(tt.expected))
+			}
+		})
+	}
+}
+
+func TestGetField_SpecDisallowed(t *testing.T) {
+	RegisterTestingT(t)
+
+	disallowed := map[string]string{"spec": "spec"}
+
+	_, err := getField("spec.is_default", disallowed)
+	Expect(err).ToNot(BeNil())
+	Expect(err.Reason).To(ContainSubstring("not a valid field name"))
+}
+
 func TestConditionStatusValidation(t *testing.T) {
 	tests := []struct {
 		status      string
