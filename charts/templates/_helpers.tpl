@@ -285,14 +285,29 @@ different namespaces never collide on the same cluster-scoped resource name.
 
 {{/*
 Determine the broker type.
-Returns broker.type if explicitly set, otherwise infers from broker config objects.
+broker.type must be set explicitly — inference from sub-keys is not supported.
 */}}
 {{- define "hyperfleet-adapter.brokerType" -}}
-{{- if .Values.broker.type -}}
-{{- .Values.broker.type -}}
-{{- else if .Values.broker.googlepubsub -}}
-googlepubsub
-{{- else if .Values.broker.rabbitmq -}}
-rabbitmq
+{{- required "broker.type must be set to one of: googlepubsub, rabbitmq" .Values.broker.type -}}
+{{- end }}
+
+{{/*
+Validate that required fields are set for the resolved broker type.
+*/}}
+{{- define "hyperfleet-adapter.validateBrokerConfig" -}}
+{{- $brokerType := include "hyperfleet-adapter.brokerType" . -}}
+{{- if eq $brokerType "rabbitmq" -}}
+  {{- if not .Values.broker.rabbitmq.url -}}
+    {{- fail "broker.rabbitmq.url is required when broker type is rabbitmq" -}}
+  {{- end -}}
+  {{- if not .Values.broker.rabbitmq.queue -}}
+    {{- fail "broker.rabbitmq.queue is required when broker type is rabbitmq" -}}
+  {{- end -}}
+  {{- if not .Values.broker.rabbitmq.exchange -}}
+    {{- fail "broker.rabbitmq.exchange is required when broker type is rabbitmq" -}}
+  {{- end -}}
+  {{- if not .Values.broker.rabbitmq.routingKey -}}
+    {{- fail "broker.rabbitmq.routingKey is required when broker type is rabbitmq" -}}
+  {{- end -}}
 {{- end -}}
 {{- end }}
