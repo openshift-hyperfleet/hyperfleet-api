@@ -585,6 +585,39 @@ func TestClusterNodePoolsHandler_ForceDelete(t *testing.T) {
 			expectedStatusCode: http.StatusNoContent,
 		},
 		{
+			name:       "Error 400 - malformed JSON",
+			nodePoolID: nodePoolID,
+			body:       `not json`,
+			setupMocks: func(ctrl *gomock.Controller) (*services.MockClusterService, *services.MockNodePoolService) {
+				mockClusterSvc := services.NewMockClusterService(ctrl)
+				mockNodePoolSvc := services.NewMockNodePoolService(ctrl)
+				return mockClusterSvc, mockNodePoolSvc
+			},
+			expectedStatusCode: http.StatusBadRequest,
+		},
+		{
+			name:       "Error 400 - empty reason",
+			nodePoolID: nodePoolID,
+			body:       `{"reason": ""}`,
+			setupMocks: func(ctrl *gomock.Controller) (*services.MockClusterService, *services.MockNodePoolService) {
+				mockClusterSvc := services.NewMockClusterService(ctrl)
+				mockNodePoolSvc := services.NewMockNodePoolService(ctrl)
+				return mockClusterSvc, mockNodePoolSvc
+			},
+			expectedStatusCode: http.StatusBadRequest,
+		},
+		{
+			name:       "Error 400 - reason exceeds max length",
+			nodePoolID: nodePoolID,
+			body:       `{"reason": "` + strings.Repeat("x", maxReasonLength+1) + `"}`,
+			setupMocks: func(ctrl *gomock.Controller) (*services.MockClusterService, *services.MockNodePoolService) {
+				mockClusterSvc := services.NewMockClusterService(ctrl)
+				mockNodePoolSvc := services.NewMockNodePoolService(ctrl)
+				return mockClusterSvc, mockNodePoolSvc
+			},
+			expectedStatusCode: http.StatusBadRequest,
+		},
+		{
 			name:       "Error 404 - nodepool not found",
 			nodePoolID: "non-existent-id",
 			body:       `{"reason": "some reason"}`,
@@ -616,26 +649,35 @@ func TestClusterNodePoolsHandler_ForceDelete(t *testing.T) {
 			expectedStatusCode: http.StatusConflict,
 		},
 		{
-			name:       "Error 400 - empty reason",
+			name:       "Error 500 - ownership lookup fails",
 			nodePoolID: nodePoolID,
-			body:       `{"reason": ""}`,
+			body:       `{"reason": "some reason"}`,
 			setupMocks: func(ctrl *gomock.Controller) (*services.MockClusterService, *services.MockNodePoolService) {
 				mockClusterSvc := services.NewMockClusterService(ctrl)
 				mockNodePoolSvc := services.NewMockNodePoolService(ctrl)
+				mockNodePoolSvc.EXPECT().
+					GetByIDAndOwner(gomock.Any(), nodePoolID, clusterID).
+					Return(nil, errors.GeneralError("database connection lost"))
 				return mockClusterSvc, mockNodePoolSvc
 			},
-			expectedStatusCode: http.StatusBadRequest,
+			expectedStatusCode: http.StatusInternalServerError,
 		},
 		{
-			name:       "Error 400 - malformed JSON",
+			name:       "Error 500 - force-delete service error",
 			nodePoolID: nodePoolID,
-			body:       `not json`,
+			body:       `{"reason": "some reason"}`,
 			setupMocks: func(ctrl *gomock.Controller) (*services.MockClusterService, *services.MockNodePoolService) {
 				mockClusterSvc := services.NewMockClusterService(ctrl)
 				mockNodePoolSvc := services.NewMockNodePoolService(ctrl)
+				mockNodePoolSvc.EXPECT().
+					GetByIDAndOwner(gomock.Any(), nodePoolID, clusterID).
+					Return(&api.NodePool{}, nil)
+				mockNodePoolSvc.EXPECT().
+					ForceDelete(gomock.Any(), nodePoolID, "some reason").
+					Return(errors.GeneralError("failed to delete adapter statuses"))
 				return mockClusterSvc, mockNodePoolSvc
 			},
-			expectedStatusCode: http.StatusBadRequest,
+			expectedStatusCode: http.StatusInternalServerError,
 		},
 	}
 
