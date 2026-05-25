@@ -94,7 +94,7 @@ config:
     # Configuration via standard environment variables.
     # See: https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/standards/tracing.md#configuration
     otel:
-      enabled: true
+      enabled: false
 
     masking:
       enabled: true
@@ -264,7 +264,7 @@ serviceMonitor:
   namespace: ""
 
 tracing:
-  enabled: true
+  enabled: false
   serviceName: "hyperfleet-api"
   # OTLP exporter endpoint (traces go to stdout if not set)
   otlpEndpoint: ""
