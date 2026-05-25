@@ -281,7 +281,7 @@ serviceMonitor:
   namespace: ""
 
 tracing:
-  enabled: true
+  enabled: false
   serviceName: "hyperfleet-adapter"
   # OTLP exporter endpoint (traces go to stdout if not set)
   otlpEndpoint: ""
