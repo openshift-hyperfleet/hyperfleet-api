@@ -7,7 +7,7 @@ Used in precondition expressions, lifecycle delete conditions, and post-action `
 Extracted params are injected as **top-level** names — write `clusterID`, not `params.clusterID`.
 
 - `resources.*` — discovered resources by alias (e.g., `resources.myCluster`)
-- `adapter.*` — adapter metadata (name, status, errorMessage, resourcesSkipped, skipReason)
+- `adapter.*` — adapter metadata (executionStatus, resourcesSkipped, skipReason, errorReason, errorMessage, executionError, resourceErrors). See `adapterMetadataToMap()` in `internal/executor/utils.go` for current fields.
 
 ## Custom Functions
 
@@ -27,11 +27,11 @@ Extracted params are injected as **top-level** names — write `clusterID`, not 
 // Precondition: check cluster is ready
 resources.managedCluster.status.conditions.exists(c, c.type == "Ready" && c.status == "True")
 
-// Lifecycle delete: delete when deprovisioning
-adapter.status == "deprovisioning"
+// Post-action gate: check execution status
+adapter.?executionStatus.orValue("") == "success"
 
 // Post-action gate: skip when resources were skipped
-!adapter.resourcesSkipped
+adapter.?resourcesSkipped.orValue(false)
 ```
 
 ## Reference
