@@ -85,6 +85,19 @@ func TestNewSchemaValidator_InvalidPath(t *testing.T) {
 	Expect(err.Error()).To(ContainSubstring("failed to load OpenAPI schema"))
 }
 
+func TestNewSchemaValidator_MalformedContent(t *testing.T) {
+	RegisterTestingT(t)
+
+	tmpDir := t.TempDir()
+	schemaPath := filepath.Join(tmpDir, "bad-schema.yaml")
+	err := os.WriteFile(schemaPath, []byte("not: valid: openapi: {{{"), 0600)
+	Expect(err).To(BeNil())
+
+	_, err = NewSchemaValidator(schemaPath)
+	Expect(err).ToNot(BeNil())
+	Expect(err.Error()).To(ContainSubstring("failed to load OpenAPI schema"))
+}
+
 func TestNewSchemaValidator_MissingSchemas(t *testing.T) {
 	RegisterTestingT(t)
 

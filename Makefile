@@ -388,6 +388,75 @@ test-helm: ## Test Helm charts (lint, template, validate)
 		--set-json 'adapters.nodepool=["validation","hypershift"]' > /dev/null
 	@echo "Full adapter config template OK"
 	@echo ""
+	@echo "Testing template with validation schema enabled..."
+	@OUTPUT=$$(helm template test-release charts/ \
+		--set image.registry=quay.io \
+		--set image.repository=openshift-hyperfleet/hyperfleet-api \
+		--set image.tag=test \
+		--set 'adapters.cluster=["validation"]' \
+		--set 'adapters.nodepool=["validation"]' \
+		--set validationSchema.enabled=true \
+		--set-string 'validationSchema.content=openapi: 3.0.0'); \
+		echo "$$OUTPUT" | grep -q 'app.kubernetes.io/component: validation-schema' || { echo "FAIL: validation-schema ConfigMap not found"; exit 1; }; \
+		echo "$$OUTPUT" | grep -q '/etc/hyperfleet/validation-schema' || { echo "FAIL: validation schema volume mount not found"; exit 1; }
+	@echo "Validation schema enabled config template OK"
+	@echo ""
+	@echo "Testing template with validation schema disabled (default)..."
+	@OUTPUT=$$(helm template test-release charts/ \
+		--set image.registry=quay.io \
+		--set image.repository=openshift-hyperfleet/hyperfleet-api \
+		--set image.tag=test \
+		--set 'adapters.cluster=["validation"]' \
+		--set 'adapters.nodepool=["validation"]'); \
+		if echo "$$OUTPUT" | grep -q 'validation-schema'; then echo "FAIL: validation-schema should not appear when disabled"; exit 1; fi
+	@echo "Validation schema disabled config template OK"
+	@echo ""
+	@echo "Testing template with validation schema existingConfigMap..."
+	@OUTPUT=$$(helm template test-release charts/ \
+		--set image.registry=quay.io \
+		--set image.repository=openshift-hyperfleet/hyperfleet-api \
+		--set image.tag=test \
+		--set 'adapters.cluster=["validation"]' \
+		--set 'adapters.nodepool=["validation"]' \
+		--set validationSchema.enabled=true \
+		--set validationSchema.existingConfigMap=my-validation-schema); \
+		echo "$$OUTPUT" | grep -q 'my-validation-schema' || { echo "FAIL: existingConfigMap name not found"; exit 1; }; \
+		if echo "$$OUTPUT" | grep -q 'app.kubernetes.io/component: validation-schema'; then echo "FAIL: generated ConfigMap should not appear with existingConfigMap"; exit 1; fi
+	@echo "Validation schema existingConfigMap config template OK"
+	@echo ""
+	@echo "Testing validation schema fails without content or existingConfigMap..."
+	@OUTPUT=$$(helm template test-release charts/ \
+		--set image.registry=quay.io \
+		--set image.repository=openshift-hyperfleet/hyperfleet-api \
+		--set image.tag=test \
+		--set 'adapters.cluster=["validation"]' \
+		--set 'adapters.nodepool=["validation"]' \
+		--set validationSchema.enabled=true 2>&1); \
+		if [ $$? -eq 0 ]; then \
+			echo "FAIL: should fail when validationSchema.enabled=true without content or existingConfigMap"; exit 1; \
+		fi; \
+		echo "$$OUTPUT" | grep -q 'validationSchema.content is required' || { \
+			echo "FAIL: expected validationSchema validation error message"; echo "$$OUTPUT"; exit 1; \
+		}
+	@echo "Validation schema validation (no content) OK"
+	@echo ""
+	@echo "Testing validation schema fails with whitespace-only content..."
+	@OUTPUT=$$(helm template test-release charts/ \
+		--set image.registry=quay.io \
+		--set image.repository=openshift-hyperfleet/hyperfleet-api \
+		--set image.tag=test \
+		--set 'adapters.cluster=["validation"]' \
+		--set 'adapters.nodepool=["validation"]' \
+		--set validationSchema.enabled=true \
+		--set-string 'validationSchema.content=   ' 2>&1); \
+		if [ $$? -eq 0 ]; then \
+			echo "FAIL: should fail when validationSchema.content is whitespace-only"; exit 1; \
+		fi; \
+		echo "$$OUTPUT" | grep -q 'validationSchema.content is required' || { \
+			echo "FAIL: expected validationSchema validation error message"; echo "$$OUTPUT"; exit 1; \
+		}
+	@echo "Validation schema validation (whitespace-only content) OK"
+	@echo ""
 	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 	@echo "All Helm chart tests passed!"
 	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

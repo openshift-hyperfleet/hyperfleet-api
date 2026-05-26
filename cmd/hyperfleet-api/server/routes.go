@@ -96,7 +96,8 @@ func (s *apiServer) routes(tracingEnabled bool) *mux.Router {
 	apiV1Router.HandleFunc("/openapi.html", openapiHandler.GetOpenAPIUI).Methods(http.MethodGet)
 	apiV1Router.HandleFunc("/openapi", openapiHandler.GetOpenAPI).Methods(http.MethodGet)
 
-	registerAPIMiddleware(apiV1Router)
+	err = registerAPIMiddleware(apiV1Router)
+	check(err, "Failed to initialize API middleware")
 
 	// Auto-discovered routes (no manual editing needed)
 	LoadDiscoveredRoutes(apiV1Router, services, authMiddleware)
@@ -104,31 +105,19 @@ func (s *apiServer) routes(tracingEnabled bool) *mux.Router {
 	return mainRouter
 }
 
-func registerAPIMiddleware(router *mux.Router) {
+func registerAPIMiddleware(router *mux.Router) error {
 	router.Use(MetricsMiddleware)
 
-	// Schema validation middleware (validates cluster/nodepool spec fields)
-	// Load schema path from config (follows Flag > Env > Config File > Default priority)
 	schemaPath := env().Config.Server.OpenAPISchemaPath
-
-	// Initialize schema validator (non-blocking - will warn if schema not found)
-	// Use background context for initialization logging
 	ctx := context.Background()
 
 	schemaValidator, err := validators.NewSchemaValidator(schemaPath)
 	if err != nil {
-		// Log warning but don't fail - schema validation is optional
-		logger.With(ctx, logger.FieldSchemaPath, schemaPath).WithError(err).Warn("Failed to load schema validator")
-		logger.Warn(ctx, "Schema validation is disabled. Spec fields will not be validated.")
-		logger.Info(ctx, "To enable schema validation:")
-		logger.Info(ctx, "  - Local: Run from repo root, or use --server-openapi-schema-path=openapi/openapi.yaml")
-		logger.Info(ctx, "  - Config file: server.openapi_schema_path")
-		logger.Info(ctx, "  - Environment: HYPERFLEET_SERVER_OPENAPI_SCHEMA_PATH")
-	} else {
-		// Apply schema validation middleware
-		logger.With(ctx, logger.FieldSchemaPath, schemaPath).Info("Schema validation enabled")
-		router.Use(middleware.SchemaValidationMiddleware(schemaValidator))
+		return fmt.Errorf("schema validation required but failed to load from %s: %w", schemaPath, err)
 	}
+
+	logger.With(ctx, logger.FieldSchemaPath, schemaPath).Info("Schema validation enabled")
+	router.Use(middleware.SchemaValidationMiddleware(schemaValidator))
 
 	router.Use(
 		func(next http.Handler) http.Handler {
@@ -137,4 +126,6 @@ func registerAPIMiddleware(router *mux.Router) {
 	)
 
 	router.Use(gorillahandlers.CompressHandler)
+
+	return nil
 }

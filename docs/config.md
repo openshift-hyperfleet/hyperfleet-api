@@ -248,6 +248,7 @@ HTTP server settings for the API endpoint.
 | `server.hostname` | string | `""` | Public hostname for logging (optional) |
 | `server.host` | string | `localhost` | Server bind host (`0.0.0.0` for Kubernetes) |
 | `server.port` | int | `8000` | Server bind port |
+| `server.openapi_schema_path` | string | `openapi/openapi.yaml` | Path to OpenAPI schema for spec validation. API fails to start if missing or invalid. |
 | `server.timeouts.read` | duration | `5s` | HTTP read timeout |
 | `server.timeouts.write` | duration | `30s` | HTTP write timeout |
 | `server.tls.enabled` | bool | `false` | Enable HTTPS/TLS |
@@ -341,6 +342,7 @@ Complete table of all configuration properties, their environment variables, and
 | `server.hostname` | `HYPERFLEET_SERVER_HOSTNAME` | string | `""` |
 | `server.host` | `HYPERFLEET_SERVER_HOST` | string | `localhost` |
 | `server.port` | `HYPERFLEET_SERVER_PORT` | int | `8000` |
+| `server.openapi_schema_path` | `HYPERFLEET_SERVER_OPENAPI_SCHEMA_PATH` | string | `openapi/openapi.yaml` |
 | `server.timeouts.read` | `HYPERFLEET_SERVER_TIMEOUTS_READ` | duration | `5s` |
 | `server.timeouts.write` | `HYPERFLEET_SERVER_TIMEOUTS_WRITE` | duration | `30s` |
 | `server.tls.enabled` | `HYPERFLEET_SERVER_TLS_ENABLED` | bool | `false` |
@@ -402,6 +404,7 @@ All CLI flags and their corresponding configuration paths.
 | `--server-hostname` | `server.hostname` | string |
 | `--server-host` | `server.host` | string |
 | `--server-port` | `server.port` | int |
+| `--server-openapi-schema-path` | `server.openapi_schema_path` | string |
 | `--server-read-timeout` | `server.timeouts.read` | duration |
 | `--server-write-timeout` | `server.timeouts.write` | duration |
 | `--server-https-enabled` | `server.tls.enabled` | bool |

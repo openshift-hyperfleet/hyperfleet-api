@@ -361,6 +361,45 @@ sidecars: []
 #         memory: 64Mi
 
 # ============================================================
+# Validation Schema Configuration
+# ============================================================
+# Supply a custom OpenAPI schema for cluster/nodepool spec
+# validation. When enabled, the schema content is mounted into
+# the container and the API validates specs against it on every
+# create/update request. The API will fail to start if the
+# schema is invalid.
+validationSchema:
+  enabled: false
+  # Use an existing ConfigMap instead of generating one from content.
+  # The ConfigMap must contain an "openapi.yaml" key with the schema.
+  # If set, validationSchema.content is ignored.
+  existingConfigMap: ""
+  # Inline OpenAPI 3.0 schema content. Must define ClusterSpec and
+  # NodePoolSpec under components.schemas.
+  # Example:
+  #   content: |
+  #     openapi: 3.0.0
+  #     info:
+  #       title: My Validation Schema
+  #       version: 1.0.0
+  #     paths: {}
+  #     components:
+  #       schemas:
+  #         ClusterSpec:
+  #           type: object
+  #           required: [region]
+  #           properties:
+  #             region:
+  #               type: string
+  #         NodePoolSpec:
+  #           type: object
+  #           required: [machine_type]
+  #           properties:
+  #             machine_type:
+  #               type: string
+  content: ""
+
+# ============================================================
 # Advanced Overrides (Escape Hatch)
 # ============================================================
 # Additional environment variables to override ConfigMap values.
