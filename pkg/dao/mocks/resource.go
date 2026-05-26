@@ -73,7 +73,7 @@ func (d *resourceDaoMock) CountByOwner(_ context.Context, kind, ownerID string) 
 	return count, nil
 }
 
-func (d *resourceDaoMock) FindByType(_ context.Context, kind string) (api.ResourceList, error) {
+func (d *resourceDaoMock) FindByKind(_ context.Context, kind string) (api.ResourceList, error) {
 	var result api.ResourceList
 	for _, r := range d.resources {
 		if r.Kind == kind {
@@ -83,7 +83,7 @@ func (d *resourceDaoMock) FindByType(_ context.Context, kind string) (api.Resour
 	return result, nil
 }
 
-func (d *resourceDaoMock) FindByTypeAndOwner(_ context.Context, kind, ownerID string) (api.ResourceList, error) {
+func (d *resourceDaoMock) FindByKindAndOwner(_ context.Context, kind, ownerID string) (api.ResourceList, error) {
 	var result api.ResourceList
 	for _, r := range d.resources {
 		if r.Kind == kind && r.OwnerID != nil && *r.OwnerID == ownerID {

@@ -18,8 +18,8 @@ type ResourceDao interface {
 	Save(ctx context.Context, resource *api.Resource) error
 	Delete(ctx context.Context, kind, id string) error
 	CountByOwner(ctx context.Context, kind, ownerID string) (int64, error)
-	FindByType(ctx context.Context, kind string) (api.ResourceList, error)
-	FindByTypeAndOwner(ctx context.Context, kind, ownerID string) (api.ResourceList, error)
+	FindByKind(ctx context.Context, kind string) (api.ResourceList, error)
+	FindByKindAndOwner(ctx context.Context, kind, ownerID string) (api.ResourceList, error)
 	FindByIDs(ctx context.Context, kind string, ids []string) (api.ResourceList, error)
 }
 
@@ -109,7 +109,7 @@ func (d *sqlResourceDao) CountByOwner(ctx context.Context, kind, ownerID string)
 	return count, nil
 }
 
-func (d *sqlResourceDao) FindByType(ctx context.Context, kind string) (api.ResourceList, error) {
+func (d *sqlResourceDao) FindByKind(ctx context.Context, kind string) (api.ResourceList, error) {
 	g2 := d.sessionFactory.New(ctx)
 	var resources api.ResourceList
 	if err := g2.Where("kind = ?", kind).Find(&resources).Error; err != nil {
@@ -118,7 +118,7 @@ func (d *sqlResourceDao) FindByType(ctx context.Context, kind string) (api.Resou
 	return resources, nil
 }
 
-func (d *sqlResourceDao) FindByTypeAndOwner(ctx context.Context, kind, ownerID string) (api.ResourceList, error) {
+func (d *sqlResourceDao) FindByKindAndOwner(ctx context.Context, kind, ownerID string) (api.ResourceList, error) {
 	g2 := d.sessionFactory.New(ctx)
 	var resources api.ResourceList
 	if err := g2.Where("kind = ? AND owner_id = ?", kind, ownerID).Find(&resources).Error; err != nil {

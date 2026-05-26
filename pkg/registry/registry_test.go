@@ -131,14 +131,12 @@ func TestValidate_DuplicatePlural_Panics(t *testing.T) {
 	}).To(PanicWith(ContainSubstring("duplicate plural")))
 }
 
-func TestValidate_EmptyPlural_Panics(t *testing.T) {
+func TestRegister_EmptyPlural_Panics(t *testing.T) {
 	RegisterTestingT(t)
 	Reset()
 
-	Register(EntityDescriptor{Kind: "Channel", Plural: ""})
-
 	Expect(func() {
-		Validate()
+		Register(EntityDescriptor{Kind: "Channel", Plural: ""})
 	}).To(PanicWith(ContainSubstring("has empty plural")))
 }
 

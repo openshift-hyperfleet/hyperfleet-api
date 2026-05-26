@@ -1,22 +1,16 @@
 package registry
 
-import (
-	"fmt"
-	"sync"
-)
+import "fmt"
 
-var (
-	mu          sync.RWMutex
-	descriptors = make(map[string]EntityDescriptor)
-)
+var descriptors = make(map[string]EntityDescriptor)
 
 // Register adds a descriptor to the global registry. Panics on empty Kind or duplicate Kind.
 func Register(d EntityDescriptor) {
-	mu.Lock()
-	defer mu.Unlock()
-
 	if d.Kind == "" {
 		panic("entity kind cannot be empty")
+	}
+	if d.Plural == "" {
+		panic(fmt.Sprintf("entity kind %q has empty plural", d.Kind))
 	}
 	if _, exists := descriptors[d.Kind]; exists {
 		panic(fmt.Sprintf("entity kind %q already registered", d.Kind))
@@ -26,9 +20,6 @@ func Register(d EntityDescriptor) {
 
 // Get returns a descriptor by Kind, or (zero, false) if not found.
 func Get(entityKind string) (EntityDescriptor, bool) {
-	mu.RLock()
-	defer mu.RUnlock()
-
 	d, ok := descriptors[entityKind]
 	return d, ok
 }
@@ -44,9 +35,6 @@ func MustGet(entityKind string) EntityDescriptor {
 
 // All returns a snapshot of all registered descriptors.
 func All() []EntityDescriptor {
-	mu.RLock()
-	defer mu.RUnlock()
-
 	result := make([]EntityDescriptor, 0, len(descriptors))
 	for _, d := range descriptors {
 		result = append(result, d)
@@ -56,9 +44,6 @@ func All() []EntityDescriptor {
 
 // ChildrenOf returns descriptors whose ParentKind matches the given kind.
 func ChildrenOf(parentKind string) []EntityDescriptor {
-	mu.RLock()
-	defer mu.RUnlock()
-
 	var children []EntityDescriptor
 	for _, d := range descriptors {
 		if d.ParentKind == parentKind {
@@ -74,9 +59,6 @@ func ChildrenOf(parentKind string) []EntityDescriptor {
 //   - NameMinLen > NameMaxLen (when NameMaxLen is set)
 //   - duplicate Plural values across descriptors
 func Validate() {
-	mu.RLock()
-	defer mu.RUnlock()
-
 	plurals := make(map[string]string, len(descriptors))
 
 	for _, d := range descriptors {
@@ -115,8 +97,5 @@ func Validate() {
 
 // Reset clears all registrations. Only for use in tests.
 func Reset() {
-	mu.Lock()
-	defer mu.Unlock()
-
 	descriptors = make(map[string]EntityDescriptor)
 }
