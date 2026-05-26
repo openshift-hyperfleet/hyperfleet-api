@@ -36,7 +36,8 @@ type (
 	ResourceIndex map[string]*Resource
 )
 
-// TODO: Evaluate the need for this method as part of https://redhat.atlassian.net/browse/HYPERFLEET-1085 and remove if not needed
+// TODO: Evaluate the need for this method as part of
+// https://redhat.atlassian.net/browse/HYPERFLEET-1085 and remove if not needed
 func (l ResourceList) Index() ResourceIndex {
 	index := ResourceIndex{}
 	for _, o := range l {
