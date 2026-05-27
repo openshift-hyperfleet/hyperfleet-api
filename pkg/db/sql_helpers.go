@@ -73,6 +73,24 @@ func getField(name string, disallowedFields map[string]string) (field string, er
 		return
 	}
 
+	// Map user-friendly spec.xxx syntax to JSONB query: spec->>'xxx'
+	if strings.HasPrefix(trimmedName, "spec.") {
+		if _, disallowed := disallowedFields["spec"]; disallowed {
+			err = errors.BadRequest("%s is not a valid field name", name)
+			return
+		}
+
+		key := strings.TrimPrefix(trimmedName, "spec.")
+
+		if validationErr := validateLabelKey(key); validationErr != nil {
+			err = validationErr
+			return
+		}
+
+		field = fmt.Sprintf("spec->>'%s'", key)
+		return
+	}
+
 	// Map user-friendly labels.xxx syntax to JSONB query: labels->>'xxx'
 	if strings.HasPrefix(trimmedName, "labels.") {
 		key := strings.TrimPrefix(trimmedName, "labels.")
