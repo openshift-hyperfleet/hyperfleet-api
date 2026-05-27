@@ -156,3 +156,10 @@ func IsAPIError(err error) (*APIError, bool) {
 	}
 	return nil, false
 }
+
+// IsNotFoundError checks whether err (or any error in its chain) is
+// an APIError with a 404 status code.
+func IsNotFoundError(err error) bool {
+	apiErr, ok := IsAPIError(err)
+	return ok && apiErr.IsNotFound()
+}

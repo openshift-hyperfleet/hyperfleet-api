@@ -118,11 +118,16 @@ func (t *ExecutionTrace) FormatText() string {
 	// Phase 2: Preconditions
 	precondStatus := statusSuccess
 	precondDetail := ""
-	if _, ok := result.Errors[executor.PhasePreconditions]; ok {
+	_, hasPrecondErr := result.Errors[executor.PhasePreconditions]
+	switch {
+	case hasPrecondErr:
 		precondStatus = statusFailed
-	} else if result.ResourcesSkipped && result.SkipReason != "" {
+	case result.ResourcesSkipped && result.SkipReason == executor.ResourceGoneReason &&
+		len(result.PostActionResults) == 0:
+		precondDetail = " (RESOURCE GONE)"
+	case result.ResourcesSkipped && result.SkipReason != "" && result.SkipReason != executor.ResourceGoneReason:
 		precondDetail = " (NOT MET)"
-	} else if len(result.PreconditionResults) > 0 {
+	case len(result.PreconditionResults) > 0:
 		precondDetail = " (MET)"
 	}
 	fmt.Fprintf(&b, "Phase 2: Preconditions ..................... %s%s\n", precondStatus, precondDetail)
@@ -235,10 +240,14 @@ func (t *ExecutionTrace) FormatText() string {
 
 	// Phase 4: Post Actions
 	postStatus := statusSuccess
+	postDetail := ""
 	if _, ok := result.Errors[executor.PhasePostActions]; ok {
 		postStatus = statusFailed
+	} else if result.ResourcesSkipped && result.SkipReason == executor.ResourceGoneReason &&
+		len(result.PostActionResults) > 0 {
+		postDetail = " (RESOURCE GONE)"
 	}
-	fmt.Fprintf(&b, "Phase 4: Post Actions ..................... %s\n", postStatus)
+	fmt.Fprintf(&b, "Phase 4: Post Actions ..................... %s%s\n", postStatus, postDetail)
 
 	for i, pa := range result.PostActionResults {
 		status := "EXECUTED"

@@ -4,24 +4,67 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"testing"
 
 	"github.com/cloudevents/sdk-go/v2/event"
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/configloader"
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/criteria"
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/hyperfleetapi"
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/k8sclient"
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/logger"
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/metrics"
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/configloader"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/criteria"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/hyperfleetapi"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/k8sclient"
+	apierrors "github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/errors"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/logger"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/metrics"
 )
 
 // newMockAPIClient creates a new mock API client for convenience
 func newMockAPIClient() *hyperfleetapi.MockClient {
 	return hyperfleetapi.NewMockClient()
+}
+
+func mockErrorResponse(statusCode int) (*hyperfleetapi.Response, error) {
+	status := fmt.Sprintf("%d %s", statusCode, http.StatusText(statusCode))
+	body := []byte(fmt.Sprintf(`{"error":"%d"}`, statusCode))
+	resp := &hyperfleetapi.Response{
+		StatusCode: statusCode,
+		Status:     status,
+		Body:       body,
+		Attempts:   1,
+	}
+	apiErr := apierrors.NewAPIError("MOCK", "/mock", statusCode, status, body, 1, 0,
+		fmt.Errorf("HTTP %d", statusCode))
+	return resp, apiErr
+}
+
+// mock404Response returns a 404 response without an error. The MockClient only
+// returns (nil, error) when an error is set, so using mockErrorResponse for 404
+// tests causes ExecuteAPICall to wrap the error in a new APIError with StatusCode=0,
+// which breaks IsNotFoundError detection. Setting only the response lets
+// ValidateAPIResponse create the correct APIError{StatusCode:404}.
+func mock404Response() *hyperfleetapi.Response {
+	return &hyperfleetapi.Response{
+		StatusCode: 404,
+		Status:     "404 Not Found",
+		Body:       []byte(`{"error":"not found"}`),
+		Attempts:   1,
+	}
+}
+
+func build404TestExecutor(t *testing.T, config *configloader.Config, mockClient *hyperfleetapi.MockClient) *Executor {
+	t.Helper()
+	exec, err := NewBuilder().
+		WithConfig(config).
+		WithAPIClient(mockClient).
+		WithTransportClient(k8sclient.NewMockK8sClient()).
+		WithLogger(logger.NewTestLogger()).
+		Build()
+	require.NoError(t, err)
+	return exec
 }
 
 // TestNewExecutor tests the NewExecutor function
@@ -1408,6 +1451,181 @@ func findFamily(families []*dto.MetricFamily, name string) *dto.MetricFamily {
 		}
 	}
 	return nil
+}
+
+// TestPrecondition404_GracefulStop verifies that when a precondition API call returns 404
+// (resource force-deleted), the executor stops gracefully: status remains "success",
+// resources are skipped, and no error state is set.
+func new404PreconditionConfig() *configloader.Config {
+	return &configloader.Config{
+		Adapter: configloader.AdapterInfo{
+			Name:    "test-adapter",
+			Version: "1.0.0",
+		},
+		Clients: configloader.ClientsConfig{
+			HyperfleetAPI: configloader.HyperfleetAPIConfig{
+				BaseURL: "http://mock-api:8000",
+				Version: "v1",
+			},
+		},
+		Params: []configloader.Parameter{
+			{Name: "clusterId", Source: "event.id", Required: true},
+		},
+		Preconditions: []configloader.Precondition{
+			{
+				ActionBase: configloader.ActionBase{
+					Name: "clusterStatus",
+					APICall: &configloader.APICall{
+						Method:  "GET",
+						URL:     "/clusters/{{ .clusterId }}",
+						Timeout: "2s",
+					},
+				},
+			},
+		},
+	}
+}
+
+func new404PostActionConfig() *configloader.Config {
+	cfg := new404PreconditionConfig()
+	cfg.Post = &configloader.PostConfig{
+		PostActions: []configloader.PostAction{
+			{
+				ActionBase: configloader.ActionBase{
+					Name: "reportStatus",
+					APICall: &configloader.APICall{
+						Method:  "PUT",
+						URL:     "/clusters/{{ .clusterId }}/statuses",
+						Body:    `{"status":"done"}`,
+						Timeout: "2s",
+					},
+				},
+			},
+		},
+	}
+	return cfg
+}
+
+func TestPrecondition404_GracefulStop(t *testing.T) {
+	mockClient := newMockAPIClient()
+	mockClient.GetResponse = mock404Response()
+
+	config := new404PreconditionConfig()
+	exec := build404TestExecutor(t, config, mockClient)
+
+	ctx := logger.WithEventID(context.Background(), "test-precond-404")
+	result := exec.Execute(ctx, map[string]interface{}{"id": "cluster-gone"})
+
+	assert.Equal(t, StatusSuccess, result.Status,
+		"404 on resource should not mark execution as failed")
+
+	assert.True(t, result.ResourcesSkipped, "resources should be skipped")
+	assert.Equal(t, ResourceGoneReason, result.SkipReason,
+		"skip reason should be ResourceGoneReason")
+
+	assert.Empty(t, result.Errors, "no errors should be recorded for a 404")
+	assert.Equal(t, "", result.ExecutionContext.Adapter.ErrorReason,
+		"adapter.errorReason should be empty for a 404")
+	assert.Equal(t, "", result.ExecutionContext.Adapter.ErrorMessage,
+		"adapter.errorMessage should be empty for a 404")
+	assert.Nil(t, result.ExecutionContext.Adapter.ExecutionError,
+		"adapter.executionError should be nil for a 404")
+}
+
+// TestPostAction404_GracefulHandling verifies that when a post-action API call returns 404
+// (resource force-deleted), the executor does not mark the execution as failed.
+func TestPostAction404_GracefulHandling(t *testing.T) {
+	mockClient := newMockAPIClient()
+	mockClient.GetResponse = &hyperfleetapi.Response{
+		StatusCode: 200,
+		Body:       []byte(`{"id":"cluster-456","status":{"conditions":[{"type":"Reconciled","status":"False"}]}}`),
+	}
+	mockClient.PutResponse = mock404Response()
+
+	config := new404PostActionConfig()
+	exec := build404TestExecutor(t, config, mockClient)
+
+	ctx := logger.WithEventID(context.Background(), "test-postaction-404")
+	result := exec.Execute(ctx, map[string]interface{}{"id": "cluster-gone"})
+
+	// Status should be success; 404 in post-actions is gracefully handled
+	assert.Equal(t, StatusSuccess, result.Status,
+		"404 in post-actions should result in success, not failure")
+
+	// No post-action errors should be recorded
+	assert.Nil(t, result.Errors[PhasePostActions],
+		"no post_actions error should be recorded for a 404")
+
+	// Verify adapter metadata is consistent
+	require.NotNil(t, result.ExecutionContext)
+	assert.Equal(t, string(StatusSuccess), result.ExecutionContext.Adapter.ExecutionStatus,
+		"adapter.executionStatus should be success for a post-action 404")
+	assert.True(t, result.ExecutionContext.Adapter.ResourcesSkipped,
+		"adapter.resourcesSkipped should be true")
+	assert.Equal(t, ResourceGoneReason, result.SkipReason,
+		"skip reason should be ResourceGone")
+	assert.Nil(t, result.ExecutionContext.Adapter.ExecutionError,
+		"adapter.executionError should be nil for a post-action 404")
+}
+
+// TestPrecondition404_SkipsPostActions verifies that when a precondition returns 404,
+// post-actions are never attempted (no PUT/POST requests after the 404 GET).
+func TestPrecondition404_SkipsPostActions(t *testing.T) {
+	mockClient := newMockAPIClient()
+	mockClient.GetResponse = mock404Response()
+
+	config := new404PostActionConfig()
+	exec := build404TestExecutor(t, config, mockClient)
+
+	ctx := logger.WithEventID(context.Background(), "test-precond-404-skips-post")
+	_ = exec.Execute(ctx, map[string]interface{}{"id": "cluster-gone"})
+
+	// Only the precondition GET should have been made; no PUT for post-actions
+	var getCalls, putCalls int
+	for _, req := range mockClient.Requests {
+		switch req.Method {
+		case "GET":
+			getCalls++
+		case "PUT":
+			putCalls++
+		}
+	}
+	assert.Equal(t, 1, getCalls,
+		"expected exactly 1 GET call (precondition)")
+	assert.Equal(t, 0, putCalls,
+		"expected 0 PUT calls (post-actions should not run after precondition 404)")
+}
+
+// TestPreconditionFail_PostAction404 verifies that when preconditions fail with a non-404 error
+// and post-actions also return 404, the execution status remains failed (not masked by ResourceGone)
+// and the original error context is preserved.
+func TestPreconditionFail_PostAction404(t *testing.T) {
+	mockClient := newMockAPIClient()
+	mockClient.GetResponse, mockClient.GetError = mockErrorResponse(500)
+	mockClient.PutResponse = mock404Response()
+
+	config := new404PostActionConfig()
+	exec := build404TestExecutor(t, config, mockClient)
+
+	ctx := logger.WithEventID(context.Background(), "test-precond-fail-post-404")
+	result := exec.Execute(ctx, map[string]interface{}{"id": "cluster-gone"})
+
+	// Status stays failed (precondition error is the primary failure)
+	assert.Equal(t, StatusFailed, result.Status,
+		"status should remain failed from precondition error")
+
+	// SkipReason gets overwritten to ResourceGone (resource is gone, overrides PreconditionFailed)
+	assert.Equal(t, ResourceGoneReason, result.SkipReason,
+		"skip reason should be ResourceGone when post-action 404 overwrites it")
+	assert.True(t, result.ResourcesSkipped, "resources should be skipped")
+
+	// The precondition error should still be recorded
+	assert.NotNil(t, result.Errors[PhasePreconditions],
+		"precondition error should still be recorded")
+
+	// No post-action error recorded (404 is handled gracefully)
+	assert.Nil(t, result.Errors[PhasePostActions],
+		"post-action 404 should not add an error")
 }
 
 func getCounterValue(t *testing.T, families []*dto.MetricFamily, metricName, labelName, labelValue string) float64 {

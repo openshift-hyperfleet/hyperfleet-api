@@ -11,12 +11,16 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/configloader"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/hyperfleetapi"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/transportclient"
+	apierrors "github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/errors"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/logger"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/metrics"
 	pkgotel "github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/telemetry"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
 )
+
+// ResourceGoneReason indicates the target resource was force-deleted (API returned 404).
+const ResourceGoneReason = "ResourceGone"
 
 // NewExecutor creates a new Executor with the given configuration
 func NewExecutor(config *ExecutorConfig) (*Executor, error) {
@@ -125,6 +129,18 @@ func (e *Executor) Execute(ctx context.Context, data interface{}) *ExecutionResu
 	result.PreconditionResults = precondOutcome.Results
 
 	switch {
+	case precondOutcome.Error != nil && apierrors.IsNotFoundError(precondOutcome.Error):
+		// Resource was force-deleted: API returned 404. Log and stop processing gracefully.
+		// No point running resources or post-actions for a resource that no longer exists.
+		e.log.Infof(ctx, "Phase %s: resource not found, stopping processing gracefully",
+			result.CurrentPhase)
+		result.ResourcesSkipped = true
+		result.SkipReason = ResourceGoneReason
+		execCtx.SetSkipped(ResourceGoneReason, "")
+		execCtx.Adapter.ExecutionError = nil
+		result.ExecutionContext = execCtx
+		result.Params = execCtx.Params
+		return result
 	case precondOutcome.Error != nil:
 		// Process execution error: precondition evaluation failed
 		result.Status = StatusFailed
@@ -187,11 +203,35 @@ func (e *Executor) Execute(ctx context.Context, data interface{}) *ExecutionResu
 	result.PostActionResults = postResults
 
 	if err != nil {
-		result.Status = StatusFailed
-		postErr := fmt.Errorf("post action execution failed: %w", err)
-		result.Errors[result.CurrentPhase] = postErr
-		errCtx := logger.WithErrorField(ctx, err)
-		e.log.Errorf(errCtx, "Phase %s: FAILED", result.CurrentPhase)
+		if apierrors.IsNotFoundError(err) {
+			// Resource was force-deleted mid-execution. Log and continue, don't fail.
+			e.log.Infof(ctx, "Phase %s: resource not found, skipping remaining post-actions",
+				result.CurrentPhase)
+			result.ResourcesSkipped = true
+			// ResourceGone takes precedence: the resource no longer exists,
+			// making the original skip reason moot.
+			result.SkipReason = ResourceGoneReason
+			// The PostActionExecutor set the step to StatusFailed before the error
+			// reached us. Now that we've decided this 404 is a graceful stop (not a
+			// real failure), correct the step to match that decision.
+			if len(result.PostActionResults) > 0 {
+				last := &result.PostActionResults[len(result.PostActionResults)-1]
+				last.Status = StatusSkipped
+				last.Skipped = true
+				last.SkipReason = ResourceGoneReason
+				last.Error = nil
+			}
+			if result.Status == StatusSuccess {
+				execCtx.SetSkipped(ResourceGoneReason, "")
+				execCtx.Adapter.ExecutionError = nil
+			}
+		} else {
+			result.Status = StatusFailed
+			postErr := fmt.Errorf("post action execution failed: %w", err)
+			result.Errors[result.CurrentPhase] = postErr
+			errCtx := logger.WithErrorField(ctx, err)
+			e.log.Errorf(errCtx, "Phase %s: FAILED", result.CurrentPhase)
+		}
 	} else {
 		e.log.Infof(ctx, "Phase %s: SUCCESS - %d executed", result.CurrentPhase, len(postResults))
 	}
