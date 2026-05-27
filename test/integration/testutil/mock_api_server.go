@@ -28,14 +28,17 @@ type MockRequest struct {
 //
 // TODO: Replace with testcontainers using hyperfleet-api image when available.
 type MockAPIServer struct {
-	server           *httptest.Server
-	t                *testing.T
-	clusterResponse  map[string]interface{}
-	requests         []MockRequest
-	statusResponses  []map[string]interface{}
-	mu               sync.Mutex
-	failPrecondition bool
-	failPostAction   bool // If true, post action api call returns 500
+	server          *httptest.Server
+	t               *testing.T
+	clusterResponse map[string]interface{}
+	requests        []MockRequest
+	statusResponses []map[string]interface{}
+	mu              sync.Mutex
+
+	failPrecondition     bool // If true, precondition GET returns 500 (ignored if preconditionNotFound is set)
+	preconditionNotFound bool // If true, precondition GET returns 404 (takes precedence over failPrecondition)
+	failPostAction       bool // If true, post-action PUT returns 500
+	postActionNotFound   bool // If true, post-action PUT returns 404 (takes precedence over failPostAction)
 }
 
 // NewMockAPIServer creates a new MockAPIServer for testing.
@@ -104,7 +107,16 @@ func NewMockAPIServer(t *testing.T) *MockAPIServer {
 		case strings.Contains(r.URL.Path, "/clusters/") && strings.HasSuffix(r.URL.Path, "/statuses"):
 			// PUT /clusters/{id}/statuses - Store status and return success (or fail if configured)
 			if r.Method == http.MethodPut {
-				// Check if fail post action is set to true
+				if mock.postActionNotFound {
+					w.WriteHeader(http.StatusNotFound)
+					if encodeErr := json.NewEncoder(w).Encode(map[string]string{
+						"error":   "not found",
+						"message": "cluster not found",
+					}); encodeErr != nil {
+						t.Logf("Warning: failed to encode error response: %v", encodeErr)
+					}
+					return
+				}
 				if mock.failPostAction {
 					w.WriteHeader(http.StatusInternalServerError)
 					if encodeErr := json.NewEncoder(w).Encode(map[string]string{
@@ -130,9 +142,16 @@ func NewMockAPIServer(t *testing.T) *MockAPIServer {
 		case strings.Contains(r.URL.Path, "/clusters/"):
 			// GET /clusters/{id} - Return cluster details
 			if r.Method == http.MethodGet {
-				if mock.failPrecondition {
+				if mock.preconditionNotFound {
 					w.WriteHeader(http.StatusNotFound)
 					if encodeErr := json.NewEncoder(w).Encode(map[string]string{"error": "cluster not found"}); encodeErr != nil {
+						t.Logf("Warning: failed to encode error response: %v", encodeErr)
+					}
+					return
+				}
+				if mock.failPrecondition {
+					w.WriteHeader(http.StatusInternalServerError)
+					if encodeErr := json.NewEncoder(w).Encode(map[string]string{"error": "internal server error"}); encodeErr != nil {
 						t.Logf("Warning: failed to encode error response: %v", encodeErr)
 					}
 					return
@@ -194,11 +213,25 @@ func (m *MockAPIServer) SetClusterResponse(resp map[string]interface{}) {
 	m.clusterResponse = resp
 }
 
-// SetFailPrecondition configures whether precondition API calls should fail
+// SetFailPrecondition configures whether precondition API calls should fail with 500
 func (m *MockAPIServer) SetFailPrecondition(fail bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.failPrecondition = fail
+}
+
+// SetPreconditionNotFound configures whether precondition API calls should return 404
+func (m *MockAPIServer) SetPreconditionNotFound(notFound bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.preconditionNotFound = notFound
+}
+
+// SetPostActionNotFound configures whether post-action API calls should return 404
+func (m *MockAPIServer) SetPostActionNotFound(notFound bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.postActionNotFound = notFound
 }
 
 // SetFailPostAction configures whether post-action API calls should fail
@@ -229,7 +262,9 @@ func (m *MockAPIServer) Reset() {
 	m.requests = make([]MockRequest, 0)
 	m.statusResponses = make([]map[string]interface{}, 0)
 	m.failPrecondition = false
+	m.preconditionNotFound = false
 	m.failPostAction = false
+	m.postActionNotFound = false
 	m.clusterResponse = map[string]interface{}{
 		"id":   "test-cluster-id",
 		"name": "test-cluster",

@@ -395,7 +395,7 @@ func TestExecutor_PreconditionAPIFailure(t *testing.T) {
 	// Setup mock API server that fails precondition API call
 	mockAPI := testutil.NewMockAPIServer(t)
 	defer mockAPI.Close()
-	mockAPI.SetFailPrecondition(true) // API will return 404
+	mockAPI.SetFailPrecondition(true)
 
 	// Set environment variables
 	t.Setenv("HYPERFLEET_API_BASE_URL", mockAPI.URL())
@@ -487,6 +487,74 @@ func TestExecutor_PreconditionAPIFailure(t *testing.T) {
 	}
 
 	t.Logf("Execution failed as expected: errors=%v", result.Errors)
+}
+
+func setup404IntegrationTest(t *testing.T) (*testutil.MockAPIServer, *executor.Executor) {
+	t.Helper()
+	mockAPI := testutil.NewMockAPIServer(t)
+	t.Cleanup(func() { mockAPI.Close() })
+
+	t.Setenv("HYPERFLEET_API_BASE_URL", mockAPI.URL())
+	t.Setenv("HYPERFLEET_API_VERSION", "v1")
+
+	k8sEnv := getK8sEnvForTest(t)
+
+	config := createTestConfig(mockAPI.URL())
+	apiClient, err := hyperfleetapi.NewClient(testLog(),
+		hyperfleetapi.WithRetryAttempts(1),
+	)
+	require.NoError(t, err)
+
+	exec, err := executor.NewBuilder().
+		WithConfig(config).
+		WithAPIClient(apiClient).
+		WithLogger(k8sEnv.Log).
+		WithTransportClient(k8sEnv.Client).
+		Build()
+	require.NoError(t, err)
+
+	return mockAPI, exec
+}
+
+func TestExecutor_PreconditionNotFound_GracefulStop(t *testing.T) {
+	mockAPI, exec := setup404IntegrationTest(t)
+	mockAPI.SetPreconditionNotFound(true)
+
+	evt := createTestEvent("cluster-force-deleted")
+	ctx := context.Background()
+	result := exec.Execute(ctx, evt)
+
+	assert.Equal(t, executor.StatusSuccess, result.Status,
+		"404 on force-deleted resource should not mark execution as failed")
+	assert.True(t, result.ResourcesSkipped, "resources should be skipped")
+	assert.Equal(t, executor.ResourceGoneReason, result.SkipReason,
+		"skip reason should be ResourceGone")
+	assert.Empty(t, result.Errors, "no errors should be recorded for a 404")
+	assert.Empty(t, result.ResourceResults, "no resources should be processed")
+	assert.Empty(t, result.PostActionResults, "no post-actions should be attempted")
+
+	statusResponses := mockAPI.GetStatusResponses()
+	assert.Empty(t, statusResponses, "no status should be reported to the API")
+
+	t.Logf("Execution stopped gracefully: skipReason=%s", result.SkipReason)
+}
+
+func TestExecutor_PostActionNotFound_GracefulHandling(t *testing.T) {
+	mockAPI, exec := setup404IntegrationTest(t)
+	mockAPI.SetPostActionNotFound(true)
+
+	evt := createTestEvent("cluster-force-deleted-during-post")
+	ctx := context.Background()
+	result := exec.Execute(ctx, evt)
+
+	assert.Equal(t, executor.StatusSuccess, result.Status,
+		"404 on post-action should not mark execution as failed")
+	assert.True(t, result.ResourcesSkipped, "resources should be skipped")
+	assert.Equal(t, executor.ResourceGoneReason, result.SkipReason,
+		"skip reason should be ResourceGone")
+	assert.Empty(t, result.Errors, "no errors should be recorded for a post-action 404")
+
+	t.Logf("Post-action 404 handled gracefully: skipReason=%s", result.SkipReason)
 }
 
 func TestExecutor_CELExpressionEvaluation(t *testing.T) {
@@ -1168,7 +1236,7 @@ func TestExecutor_ExecutionError_CELAccess(t *testing.T) {
 	// Setup mock API server that fails precondition to trigger an error
 	mockAPI := testutil.NewMockAPIServer(t)
 	defer mockAPI.Close()
-	mockAPI.SetFailPrecondition(true) // Will return 404 for cluster lookup
+	mockAPI.SetFailPrecondition(true) // Will return 500 for cluster lookup
 
 	// Set environment variables
 	t.Setenv("HYPERFLEET_API_BASE_URL", mockAPI.URL())
