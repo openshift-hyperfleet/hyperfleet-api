@@ -22,6 +22,7 @@ import (
 	_ "github.com/openshift-hyperfleet/hyperfleet-api/plugins/generic"
 	_ "github.com/openshift-hyperfleet/hyperfleet-api/plugins/nodePools"
 	_ "github.com/openshift-hyperfleet/hyperfleet-api/plugins/resources"
+	_ "github.com/openshift-hyperfleet/hyperfleet-api/plugins/versions"
 )
 
 // nolint
