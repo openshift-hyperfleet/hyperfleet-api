@@ -1,0 +1,61 @@
+{
+  "responses": [
+    {
+      "match": {
+        "method": "GET",
+        "urlPattern": "/api/hyperfleet/v1/clusters/.*"
+      },
+      "responses": [
+        {
+          "statusCode": 200,
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "id": "abc-123",
+            "name": "abc123",
+            "kind": "Cluster",
+            "href": "/api/hyperfleet/v1/clusters/abc123",
+            "generation": "77",
+            "nodes": {
+              "compute": 3
+            },
+            "spec": {
+              "region": "us-east-1",
+              "provider": "aws"
+            },
+            "status": {
+              "conditions": [
+                {
+                  "type": "Reconciled",
+                  "status": "False"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "match": {
+        "method": "PUT",
+        "urlPattern": "/api/hyperfleet/v1/clusters/.*/statuses"
+      },
+      "responses": [
+        {
+          "statusCode": 404,
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "kind": "Error",
+            "id": "404",
+            "href": "/api/hyperfleet/v1/errors/404",
+            "code": "HYPERFLEET-NTF-001",
+            "reason": "Cluster 'abc123' not found"
+          }
+        }
+      ]
+    }
+  ]
+}

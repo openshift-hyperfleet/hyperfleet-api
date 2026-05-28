@@ -1,0 +1,46 @@
+{
+  "responses": [
+    {
+      "match": {
+        "method": "GET",
+        "urlPattern": "/api/hyperfleet/v1/clusters/.*"
+      },
+      "responses": [
+        {
+          "statusCode": 404,
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "kind": "Error",
+            "id": "404",
+            "href": "/api/hyperfleet/v1/errors/404",
+            "code": "HYPERFLEET-NTF-001",
+            "reason": "Cluster 'abc123' not found"
+          }
+        }
+      ]
+    },
+    {
+      "match": {
+        "method": "PUT",
+        "urlPattern": "/api/hyperfleet/v1/clusters/.*/statuses"
+      },
+      "responses": [
+        {
+          "statusCode": 404,
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "kind": "Error",
+            "id": "404",
+            "href": "/api/hyperfleet/v1/errors/404",
+            "code": "HYPERFLEET-NTF-001",
+            "reason": "Cluster 'abc123' not found"
+          }
+        }
+      ]
+    }
+  ]
+}
