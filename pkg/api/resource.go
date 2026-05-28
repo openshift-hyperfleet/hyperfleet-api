@@ -91,6 +91,12 @@ func (r *Resource) MarkDeleted(by string, t time.Time) {
 	r.DeletedBy = &by
 }
 
+func (r *Resource) SetOwner(id, kind, href string) {
+	r.OwnerID = &id
+	r.OwnerKind = &kind
+	r.OwnerHref = &href
+}
+
 func (r *Resource) IncrementGeneration() {
 	r.Generation++
 }

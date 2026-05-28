@@ -21,6 +21,7 @@ type ResourceService interface {
 	Patch(ctx context.Context, kind, id string, patch *api.ResourcePatchRequest) (*api.Resource, *errors.ServiceError)
 	Delete(ctx context.Context, kind, id string) (*api.Resource, *errors.ServiceError)
 	FindByIDs(ctx context.Context, kind string, ids []string) (api.ResourceList, *errors.ServiceError)
+	List(ctx context.Context, kind string, args *ListArguments) (api.ResourceList, *api.PagingMeta, *errors.ServiceError)
 	GetByOwner(ctx context.Context, kind, id, ownerID string) (*api.Resource, *errors.ServiceError)
 	ListByOwner(ctx context.Context, kind, ownerID string, args *ListArguments) (api.ResourceList, *api.PagingMeta, *errors.ServiceError) // nolint:lll
 }
@@ -184,6 +185,32 @@ func (s *sqlResourceService) GetByOwner(
 		return nil, handleGetError(kind, "id", id, err)
 	}
 	return resource, nil
+}
+
+// List returns resources of the given kind with pagination, search, and ordering.
+func (s *sqlResourceService) List(
+	ctx context.Context, kind string, args *ListArguments,
+) (api.ResourceList, *api.PagingMeta, *errors.ServiceError) {
+	if svcErr := validateKind(kind); svcErr != nil {
+		return nil, nil, svcErr
+	}
+	if args == nil {
+		args = &ListArguments{Page: 1, Size: 100}
+	}
+	scopedArgs := *args
+	kindFilter := fmt.Sprintf("kind = '%s'", kind)
+	if scopedArgs.Search == "" {
+		scopedArgs.Search = kindFilter
+	} else {
+		scopedArgs.Search = "(" + scopedArgs.Search + ") AND " + kindFilter
+	}
+
+	var resources api.ResourceList
+	paging, svcErr := s.generic.List(ctx, &scopedArgs, &resources)
+	if svcErr != nil {
+		return nil, nil, svcErr
+	}
+	return resources, paging, nil
 }
 
 // ListByOwner returns child resources of the given owner with pagination, search, and ordering.
