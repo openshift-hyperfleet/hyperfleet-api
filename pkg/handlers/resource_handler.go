@@ -14,8 +14,8 @@ import (
 )
 
 type ResourceHandler struct {
-	descriptor registry.EntityDescriptor
 	service    services.ResourceService
+	descriptor registry.EntityDescriptor
 }
 
 func NewResourceHandler(

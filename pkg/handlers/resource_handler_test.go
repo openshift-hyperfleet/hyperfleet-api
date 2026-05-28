@@ -55,9 +55,9 @@ func TestResourceHandler_Create(t *testing.T) {
 	now := time.Now()
 
 	tests := []struct {
+		setupMock          func(mock *services.MockResourceService)
 		name               string
 		body               string
-		setupMock          func(mock *services.MockResourceService)
 		expectedStatusCode int
 		expectedError      bool
 	}{
@@ -136,9 +136,9 @@ func TestResourceHandler_Get(t *testing.T) {
 	now := time.Now()
 
 	tests := []struct {
+		setupMock          func(mock *services.MockResourceService)
 		name               string
 		id                 string
-		setupMock          func(mock *services.MockResourceService)
 		expectedStatusCode int
 	}{
 		{
@@ -191,8 +191,8 @@ func TestResourceHandler_List(t *testing.T) {
 	now := time.Now()
 
 	tests := []struct {
-		name               string
 		setupMock          func(mock *services.MockResourceService)
+		name               string
 		expectedStatusCode int
 		expectedItems      int
 	}{
@@ -251,10 +251,10 @@ func TestResourceHandler_Patch(t *testing.T) {
 	now := time.Now()
 
 	tests := []struct {
+		setupMock          func(mock *services.MockResourceService)
 		name               string
 		id                 string
 		body               string
-		setupMock          func(mock *services.MockResourceService)
 		expectedStatusCode int
 	}{
 		{
@@ -323,7 +323,7 @@ func TestResourceHandler_Delete(t *testing.T) {
 					Return(&api.Resource{
 						Meta: api.Meta{ID: "ch-123"},
 						Kind: "Channel", Name: "stable",
-						Spec: datatypes.JSON(`{}`),
+						Spec:      datatypes.JSON(`{}`),
 						CreatedBy: "u@test.com", UpdatedBy: "u@test.com",
 					}, nil)
 			},
