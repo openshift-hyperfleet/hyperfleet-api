@@ -46,6 +46,7 @@ func NewLoggingConfig() *LoggingConfig {
 				"Cookie",
 				"X-Auth-Token",
 				"X-Forwarded-Authorization",
+				"X-HyperFleet-Identity",
 			},
 			Fields: []string{
 				"password",

@@ -21,6 +21,11 @@ server:
     enabled: true                   # Enable JWT authentication
     issuer_url: ""                  # JWT issuer URL (required when jwt.enabled=true)
     audience: ""                    # JWT audience claim (optional)
+    identity_claim: email           # JWT claim used as request identity for audit (e.g. email, preferred_username, sub)
+
+  identity_header:
+    enabled: false                  # Use HTTP header as caller identity (overrides JWT claim when set)
+    name: X-HyperFleet-Identity        # Header name (must be set by a trusted gateway in production)
 
   jwk:
     cert_file: ""                   # JWK certificate file path
@@ -67,6 +72,7 @@ logging:
       - Cookie
       - X-Auth-Token
       - X-Forwarded-Authorization
+      - X-HyperFleet-Identity
 
     fields:                         # Sensitive JSON fields to mask
       - password

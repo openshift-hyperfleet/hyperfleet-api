@@ -38,6 +38,11 @@ func (e *integrationTestingEnvImpl) OverrideConfig(c *config.ApplicationConfig) 
 		c.Database.SSL.Mode = SSLModeDisable
 	}
 
+	// Avoid clashing with a local dev server on default ports
+	c.Server.Port = 8777
+	c.Metrics.Port = 19090
+	c.Health.Port = 18080
+
 	return nil
 }
 

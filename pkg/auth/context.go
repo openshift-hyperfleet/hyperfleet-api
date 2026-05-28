@@ -14,6 +14,9 @@ type contextKey string
 const (
 	ContextUsernameKey contextKey = "username"
 	ContextJWTTokenKey contextKey = "jwt_token"
+
+	// DefaultJWTIdentityClaim is used when server.jwt.identity_claim is unset.
+	DefaultJWTIdentityClaim = "email"
 )
 
 // Payload defines the structure of the JWT payload we expect
@@ -115,6 +118,70 @@ func GetAuthPayloadFromContext(ctx context.Context) (*Payload, error) {
 	}
 
 	return payload, nil
+}
+
+// GetIdentityFromContext returns the configured JWT claim value used as the request identity.
+func GetIdentityFromContext(ctx context.Context, identityClaim string) (string, error) {
+	if identityClaim == "" {
+		identityClaim = DefaultJWTIdentityClaim
+	}
+
+	userToken := GetJWTTokenFromContext(ctx)
+	if userToken == nil {
+		return "", fmt.Errorf("JWT token in context is nil, unauthorized")
+	}
+
+	claims, ok := userToken.Claims.(jwt.MapClaims)
+	if !ok {
+		return "", fmt.Errorf("unable to parse JWT token claims: unexpected type %T", userToken.Claims)
+	}
+
+	if identity, ok := stringClaim(claims, identityClaim); ok {
+		return identity, nil
+	}
+
+	payload, err := GetAuthPayloadFromContext(ctx)
+	if err != nil {
+		return "", fmt.Errorf("identity claim %q not found: %w", identityClaim, err)
+	}
+
+	switch identityClaim {
+	case "email":
+		if payload.Email != "" {
+			return payload.Email, nil
+		}
+	case "username", "preferred_username":
+		if payload.Username != "" {
+			return payload.Username, nil
+		}
+	case "first_name", "given_name":
+		if payload.FirstName != "" {
+			return payload.FirstName, nil
+		}
+	case "last_name", "family_name":
+		if payload.LastName != "" {
+			return payload.LastName, nil
+		}
+	case "clientId":
+		if payload.ClientID != "" {
+			return payload.ClientID, nil
+		}
+	case "iss":
+		if payload.Issuer != "" {
+			return payload.Issuer, nil
+		}
+	}
+
+	return "", fmt.Errorf("identity claim %q not found or empty", identityClaim)
+}
+
+func stringClaim(claims jwt.MapClaims, key string) (string, bool) {
+	val, ok := claims[key]
+	if !ok {
+		return "", false
+	}
+	s, ok := val.(string)
+	return s, ok && s != ""
 }
 
 func GetAuthPayload(r *http.Request) (*Payload, error) {

@@ -10,6 +10,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/auth"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
@@ -112,4 +113,11 @@ func buildAdapterSummaries(ctx context.Context, statuses api.AdapterStatusList) 
 		summaries = append(summaries, adapterSummary{Adapter: st.Adapter, Conditions: conds})
 	}
 	return summaries
+}
+
+func actorFromContext(ctx context.Context) string {
+	if caller := auth.GetUsernameFromContext(ctx); caller != "" {
+		return caller
+	}
+	return defaultSystemUser
 }

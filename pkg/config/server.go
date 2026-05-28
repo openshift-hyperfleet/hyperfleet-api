@@ -5,19 +5,22 @@ import (
 	"net"
 	"strconv"
 	"time"
+
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/validation"
 )
 
 // ServerConfig holds HTTP/HTTPS server configuration
 // Follows HyperFleet Configuration Standard
 type ServerConfig struct {
-	Hostname          string         `mapstructure:"hostname" json:"hostname" validate:"omitempty,hostname|ip"`
-	Host              string         `mapstructure:"host" json:"host" validate:"required,hostname|ip"`
-	OpenAPISchemaPath string         `mapstructure:"openapi_schema_path" json:"openapi_schema_path"`
-	JWK               JWKConfig      `mapstructure:"jwk" json:"jwk" validate:"required"`
-	TLS               TLSConfig      `mapstructure:"tls" json:"tls" validate:"required"`
-	JWT               JWTConfig      `mapstructure:"jwt" json:"jwt" validate:"required"`
-	Timeouts          TimeoutsConfig `mapstructure:"timeouts" json:"timeouts" validate:"required"`
-	Port              int            `mapstructure:"port" json:"port" validate:"required,min=1,max=65535"`
+	Hostname          string               `mapstructure:"hostname" json:"hostname" validate:"omitempty,hostname|ip"`
+	Host              string               `mapstructure:"host" json:"host" validate:"required,hostname|ip"`
+	OpenAPISchemaPath string               `mapstructure:"openapi_schema_path" json:"openapi_schema_path"`
+	JWK               JWKConfig            `mapstructure:"jwk" json:"jwk" validate:"required"`
+	TLS               TLSConfig            `mapstructure:"tls" json:"tls" validate:"required"`
+	JWT               JWTConfig            `mapstructure:"jwt" json:"jwt" validate:"required"`
+	IdentityHeader    IdentityHeaderConfig `mapstructure:"identity_header" json:"identity_header" validate:"required"`
+	Timeouts          TimeoutsConfig       `mapstructure:"timeouts" json:"timeouts" validate:"required"`
+	Port              int                  `mapstructure:"port" json:"port" validate:"required,min=1,max=65535"`
 }
 
 // TimeoutsConfig holds HTTP timeout configuration
@@ -61,9 +64,10 @@ func (c *TLSConfig) Validate() error {
 
 // JWTConfig holds JWT authentication configuration
 type JWTConfig struct {
-	IssuerURL string `mapstructure:"issuer_url" json:"issuer_url" validate:"omitempty,url"`
-	Audience  string `mapstructure:"audience" json:"audience"`
-	Enabled   bool   `mapstructure:"enabled" json:"enabled"`
+	IssuerURL     string `mapstructure:"issuer_url" json:"issuer_url" validate:"omitempty,url"`
+	Audience      string `mapstructure:"audience" json:"audience"`
+	IdentityClaim string `mapstructure:"identity_claim" json:"identity_claim"`
+	Enabled       bool   `mapstructure:"enabled" json:"enabled"`
 }
 
 func (c *JWTConfig) Validate() error {
@@ -72,6 +76,28 @@ func (c *JWTConfig) Validate() error {
 	}
 	if c.IssuerURL == "" {
 		return fmt.Errorf("server.jwt.issuer_url is required when jwt is enabled")
+	}
+	if c.IdentityClaim == "" {
+		return fmt.Errorf("server.jwt.identity_claim is required when jwt is enabled")
+	}
+	return nil
+}
+
+// IdentityHeaderConfig holds HTTP header-based caller identity configuration.
+type IdentityHeaderConfig struct {
+	Name    string `mapstructure:"name" json:"name"`
+	Enabled bool   `mapstructure:"enabled" json:"enabled"`
+}
+
+func (c *IdentityHeaderConfig) Validate() error {
+	if !c.Enabled {
+		return nil
+	}
+	if c.Name == "" {
+		return fmt.Errorf("server.identity_header.name is required when identity_header is enabled")
+	}
+	if validation.IsForbiddenIdentityHeaderName(c.Name) {
+		return fmt.Errorf("server.identity_header.name %q is not allowed", c.Name)
 	}
 	return nil
 }
@@ -100,9 +126,14 @@ func NewServerConfig() *ServerConfig {
 			KeyFile:  "",
 		},
 		JWT: JWTConfig{
-			Enabled:   true,
-			IssuerURL: "",
-			Audience:  "",
+			Enabled:       true,
+			IssuerURL:     "",
+			Audience:      "",
+			IdentityClaim: "email",
+		},
+		IdentityHeader: IdentityHeaderConfig{
+			Enabled: false,
+			Name:    "X-HyperFleet-Identity",
 		},
 		JWK: JWKConfig{
 			CertFile: "",

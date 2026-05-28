@@ -71,10 +71,10 @@ func (s *sqlClusterService) Get(ctx context.Context, id string) (*api.Cluster, *
 
 func (s *sqlClusterService) Create(ctx context.Context, cluster *api.Cluster) (*api.Cluster, *errors.ServiceError) {
 	if cluster.CreatedBy == "" {
-		cluster.CreatedBy = defaultSystemUser
+		cluster.CreatedBy = actorFromContext(ctx)
 	}
 	if cluster.UpdatedBy == "" {
-		cluster.UpdatedBy = defaultSystemUser
+		cluster.UpdatedBy = actorFromContext(ctx)
 	}
 	if cluster.Generation == 0 {
 		cluster.Generation = 1

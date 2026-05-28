@@ -5,37 +5,68 @@ import (
 	"net/http"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/validation"
 )
 
-type JWTMiddleware interface {
-	AuthenticateAccountJWT(next http.Handler) http.Handler
+// CallerIdentityMiddleware resolves and attaches the caller identity used for audit fields.
+type CallerIdentityMiddleware interface {
+	ResolveCallerIdentity(next http.Handler) http.Handler
 }
 
-type Middleware struct{}
-
-var _ JWTMiddleware = &Middleware{}
-
-func NewAuthMiddleware() (*Middleware, error) {
-	middleware := Middleware{}
-	return &middleware, nil
+type callerIdentityMiddleware struct {
+	cfg CallerIdentityConfig
 }
 
-// AuthenticateAccountJWT Middleware handler to validate JWT tokens and authenticate users
-func (a *Middleware) AuthenticateAccountJWT(next http.Handler) http.Handler {
+var _ CallerIdentityMiddleware = &callerIdentityMiddleware{}
+
+func NewCallerIdentityMiddleware(cfg CallerIdentityConfig) (CallerIdentityMiddleware, error) {
+	if cfg.JWTIdentityClaim == "" {
+		cfg.JWTIdentityClaim = DefaultJWTIdentityClaim
+	}
+	if cfg.HeaderEnabled {
+		if cfg.HeaderName == "" {
+			return nil, fmt.Errorf("identity header name is required when identity header is enabled")
+		}
+		if validation.IsForbiddenIdentityHeaderName(cfg.HeaderName) {
+			return nil, fmt.Errorf("identity header name %q is not allowed", cfg.HeaderName)
+		}
+	}
+	return &callerIdentityMiddleware{cfg: cfg}, nil
+}
+
+// ResolveCallerIdentity attaches the resolved caller identity to the request context.
+// JWT validation is performed by JWTHandler; this middleware only resolves attribution.
+func (m *callerIdentityMiddleware) ResolveCallerIdentity(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if shouldSkipCallerIdentity(r.URL.Path) {
+			next.ServeHTTP(w, r)
+			return
+		}
+
 		ctx := r.Context()
-		payload, err := GetAuthPayload(r)
+		identity, err := CallerIdentityFromRequest(ctx, r, m.cfg)
 		if err != nil {
 			handleError(
 				ctx, w, r, errors.CodeAuthNoCredentials,
-				fmt.Sprintf("Unable to get payload details from JWT token: %s", err),
+				fmt.Sprintf("Unable to resolve caller identity: %s", err),
 			)
 			return
 		}
 
-		// Append the username to the request context
-		ctx = SetUsernameContext(ctx, payload.Username)
-		*r = *r.WithContext(ctx)
+		if identity != "" {
+			ctx = SetUsernameContext(ctx, identity)
+			r = r.WithContext(ctx)
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		if m.cfg.JWTEnabled {
+			handleError(
+				ctx, w, r, errors.CodeAuthNoCredentials,
+				"Unable to resolve caller identity from JWT token or identity header",
+			)
+			return
+		}
 
 		next.ServeHTTP(w, r)
 	})

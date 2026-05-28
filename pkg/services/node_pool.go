@@ -81,10 +81,10 @@ func (s *sqlNodePoolService) Get(ctx context.Context, id string) (*api.NodePool,
 
 func (s *sqlNodePoolService) Create(ctx context.Context, nodePool *api.NodePool) (*api.NodePool, *errors.ServiceError) {
 	if nodePool.CreatedBy == "" {
-		nodePool.CreatedBy = defaultSystemUser
+		nodePool.CreatedBy = actorFromContext(ctx)
 	}
 	if nodePool.UpdatedBy == "" {
-		nodePool.UpdatedBy = defaultSystemUser
+		nodePool.UpdatedBy = actorFromContext(ctx)
 	}
 	if nodePool.Generation == 0 {
 		nodePool.Generation = 1

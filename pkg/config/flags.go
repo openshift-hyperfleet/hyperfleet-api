@@ -31,6 +31,21 @@ func AddServerFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool("server-jwt-enabled", defaults.JWT.Enabled, "Enable JWT authentication")
 	cmd.Flags().String("server-jwt-issuer-url", defaults.JWT.IssuerURL, "Expected JWT issuer URL for token validation")
 	cmd.Flags().String("server-jwt-audience", defaults.JWT.Audience, "Expected JWT audience (optional)")
+	cmd.Flags().String(
+		"server-jwt-identity-claim",
+		defaults.JWT.IdentityClaim,
+		"JWT claim used as request identity for audit",
+	)
+	cmd.Flags().Bool(
+		"server-identity-header-enabled",
+		defaults.IdentityHeader.Enabled,
+		"Enable HTTP header as caller identity source for audit",
+	)
+	cmd.Flags().String(
+		"server-identity-header-name",
+		defaults.IdentityHeader.Name,
+		"HTTP header name for caller identity (overrides JWT claim when set)",
+	)
 	cmd.Flags().String("server-jwk-cert-file", defaults.JWK.CertFile, "JWK certificate file path")
 	cmd.Flags().String("server-jwk-cert-url", defaults.JWK.CertURL, "JWK certificate URL")
 }

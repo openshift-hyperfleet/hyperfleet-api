@@ -69,6 +69,43 @@ curl -H "Authorization: Bearer ${TOKEN}" \
   http://localhost:8000/api/hyperfleet/v1/clusters
 ```
 
+## Caller identity for audit
+
+Authentication (JWT validation) and caller identity (audit attribution) are separate:
+
+| Layer | Component | Responsibility |
+|-------|-----------|----------------|
+| Outer | `JWTHandler` | Validates `Authorization: Bearer` token |
+| Inner | `ResolveCallerIdentity` middleware | Resolves who is recorded as the actor (`CreatedBy`, force-delete logs) |
+
+### JWT claim
+
+Configure which JWT claim is used when no identity header is present:
+
+```yaml
+server:
+  jwt:
+    identity_claim: email   # or preferred_username, sub, etc.
+```
+
+### HTTP identity header (optional)
+
+When enabled, a trusted gateway can set the caller identity via HTTP header. **If the header is present and non-empty, it overrides the JWT claim** for audit fields. JWT validation is still required when `jwt.enabled=true`.
+
+```yaml
+server:
+  identity_header:
+    enabled: true
+    name: X-HyperFleet-Identity
+```
+
+**Security:** Clients must not be able to set this header directly. Configure your ingress/gateway to strip the header from external requests and set it from the authenticated upstream user.
+
+```bash
+export HYPERFLEET_SERVER_IDENTITY_HEADER_ENABLED=true
+export HYPERFLEET_SERVER_IDENTITY_HEADER_NAME=X-HyperFleet-Identity
+```
+
 ## Configuration
 
 ### Environment Variables

@@ -25,7 +25,6 @@ type ServicesInterface interface {
 type RouteRegistrationFunc func(
 	apiV1Router *mux.Router,
 	services ServicesInterface,
-	authMiddleware auth.JWTMiddleware,
 )
 
 var routeRegistry = make(map[string]RouteRegistrationFunc)
@@ -40,10 +39,9 @@ func RegisterRoutes(name string, registrationFunc RouteRegistrationFunc) {
 func LoadDiscoveredRoutes(
 	apiV1Router *mux.Router,
 	services ServicesInterface,
-	authMiddleware auth.JWTMiddleware,
 ) {
 	for name, registrationFunc := range routeRegistry {
-		registrationFunc(apiV1Router, services, authMiddleware)
+		registrationFunc(apiV1Router, services)
 		_ = name // prevent unused variable warning
 	}
 }
@@ -52,17 +50,6 @@ func (s *apiServer) routes(tracingEnabled bool) *mux.Router {
 	services := &env().Services
 
 	metadataHandler := handlers.NewMetadataHandler()
-
-	var authMiddleware auth.JWTMiddleware
-	authMiddleware = &auth.MiddlewareMock{}
-	if env().Config.Server.JWT.Enabled {
-		var err error
-		authMiddleware, err = auth.NewAuthMiddleware()
-		check(err, "Unable to create auth middleware")
-	}
-	if authMiddleware == nil {
-		check(fmt.Errorf("auth middleware is nil"), "Unable to create auth middleware: missing middleware")
-	}
 
 	// mainRouter is top level "/"
 	mainRouter := mux.NewRouter()
@@ -99,8 +86,19 @@ func (s *apiServer) routes(tracingEnabled bool) *mux.Router {
 	err = registerAPIMiddleware(apiV1Router)
 	check(err, "Failed to initialize API middleware")
 
+	if env().Config.Server.JWT.Enabled || env().Config.Server.IdentityHeader.Enabled {
+		callerIdentityMW, mwErr := auth.NewCallerIdentityMiddleware(auth.CallerIdentityConfig{
+			JWTEnabled:       env().Config.Server.JWT.Enabled,
+			JWTIdentityClaim: env().Config.Server.JWT.IdentityClaim,
+			HeaderEnabled:    env().Config.Server.IdentityHeader.Enabled,
+			HeaderName:       env().Config.Server.IdentityHeader.Name,
+		})
+		check(mwErr, "Unable to create caller identity middleware")
+		apiV1Router.Use(callerIdentityMW.ResolveCallerIdentity)
+	}
+
 	// Auto-discovered routes (no manual editing needed)
-	LoadDiscoveredRoutes(apiV1Router, services, authMiddleware)
+	LoadDiscoveredRoutes(apiV1Router, services)
 
 	return mainRouter
 }

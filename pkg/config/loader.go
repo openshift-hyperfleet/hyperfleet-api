@@ -179,6 +179,9 @@ func (l *ConfigLoader) validateConfig(config *ApplicationConfig) error {
 		if valErr := config.Server.JWT.Validate(); valErr != nil {
 			return fmt.Errorf("server JWT validation failed: %w", valErr)
 		}
+		if valErr := config.Server.IdentityHeader.Validate(); valErr != nil {
+			return fmt.Errorf("server identity header validation failed: %w", valErr)
+		}
 		if config.Server.JWT.Enabled &&
 			config.Server.JWK.CertFile == "" &&
 			config.Server.JWK.CertURL == "" {
@@ -315,6 +318,9 @@ func (l *ConfigLoader) bindAllEnvVars() {
 	l.bindEnv("server.jwt.enabled")
 	l.bindEnv("server.jwt.issuer_url")
 	l.bindEnv("server.jwt.audience")
+	l.bindEnv("server.jwt.identity_claim")
+	l.bindEnv("server.identity_header.enabled")
+	l.bindEnv("server.identity_header.name")
 	l.bindEnv("server.jwk.cert_file")
 	l.bindEnv("server.jwk.cert_url")
 	// Database config
@@ -384,6 +390,9 @@ func (l *ConfigLoader) bindFlags(cmd *cobra.Command) {
 	l.bindPFlag("server.jwt.enabled", cmd.Flags().Lookup("server-jwt-enabled"))
 	l.bindPFlag("server.jwt.issuer_url", cmd.Flags().Lookup("server-jwt-issuer-url"))
 	l.bindPFlag("server.jwt.audience", cmd.Flags().Lookup("server-jwt-audience"))
+	l.bindPFlag("server.jwt.identity_claim", cmd.Flags().Lookup("server-jwt-identity-claim"))
+	l.bindPFlag("server.identity_header.enabled", cmd.Flags().Lookup("server-identity-header-enabled"))
+	l.bindPFlag("server.identity_header.name", cmd.Flags().Lookup("server-identity-header-name"))
 	l.bindPFlag("server.jwk.cert_file", cmd.Flags().Lookup("server-jwk-cert-file"))
 	l.bindPFlag("server.jwk.cert_url", cmd.Flags().Lookup("server-jwk-cert-url"))
 	// Database flags: --db-* -> database.*

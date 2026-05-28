@@ -38,7 +38,7 @@ type Database struct {
 }
 
 type Handlers struct {
-	AuthMiddleware auth.JWTMiddleware
+	CallerIdentityMiddleware auth.CallerIdentityMiddleware
 }
 
 type Services struct {
