@@ -19,8 +19,8 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// ResourceGoneReason indicates the target resource was force-deleted (API returned 404).
-const ResourceGoneReason = "ResourceGone"
+// ResourceNotFoundReason indicates the API returned 404 for the target resource.
+const ResourceNotFoundReason = "ResourceNotFound"
 
 // NewExecutor creates a new Executor with the given configuration
 func NewExecutor(config *ExecutorConfig) (*Executor, error) {
@@ -135,8 +135,8 @@ func (e *Executor) Execute(ctx context.Context, data interface{}) *ExecutionResu
 		e.log.Infof(ctx, "Phase %s: resource not found, stopping processing gracefully",
 			result.CurrentPhase)
 		result.ResourcesSkipped = true
-		result.SkipReason = ResourceGoneReason
-		execCtx.SetSkipped(ResourceGoneReason, "")
+		result.SkipReason = ResourceNotFoundReason
+		execCtx.SetSkipped(ResourceNotFoundReason, "")
 		execCtx.Adapter.ExecutionError = nil
 		result.ExecutionContext = execCtx
 		result.Params = execCtx.Params
@@ -208,9 +208,9 @@ func (e *Executor) Execute(ctx context.Context, data interface{}) *ExecutionResu
 			e.log.Infof(ctx, "Phase %s: resource not found, skipping remaining post-actions",
 				result.CurrentPhase)
 			result.ResourcesSkipped = true
-			// ResourceGone takes precedence: the resource no longer exists,
+			// ResourceNotFound takes precedence: the resource no longer exists,
 			// making the original skip reason moot.
-			result.SkipReason = ResourceGoneReason
+			result.SkipReason = ResourceNotFoundReason
 			// The PostActionExecutor set the step to StatusFailed before the error
 			// reached us. Now that we've decided this 404 is a graceful stop (not a
 			// real failure), correct the step to match that decision.
@@ -218,11 +218,11 @@ func (e *Executor) Execute(ctx context.Context, data interface{}) *ExecutionResu
 				last := &result.PostActionResults[len(result.PostActionResults)-1]
 				last.Status = StatusSkipped
 				last.Skipped = true
-				last.SkipReason = ResourceGoneReason
+				last.SkipReason = ResourceNotFoundReason
 				last.Error = nil
 			}
 			if result.Status == StatusSuccess {
-				execCtx.SetSkipped(ResourceGoneReason, "")
+				execCtx.SetSkipped(ResourceNotFoundReason, "")
 				execCtx.Adapter.ExecutionError = nil
 			}
 		} else {

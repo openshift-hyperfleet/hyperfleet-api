@@ -97,29 +97,29 @@ func TestFormatText_ResourcesSkipped(t *testing.T) {
 		assert.Contains(t, output, "preconditions not met")
 	})
 
-	t.Run("resource gone shows RESOURCE GONE instead of NOT MET", func(t *testing.T) {
+	t.Run("resource not found shows RESOURCE NOT FOUND instead of NOT MET", func(t *testing.T) {
 		trace := makeTestTrace(executor.StatusSuccess, false)
 		trace.Result.ResourcesSkipped = true
-		trace.Result.SkipReason = executor.ResourceGoneReason
+		trace.Result.SkipReason = executor.ResourceNotFoundReason
 
 		output := trace.FormatText()
 
-		assert.Contains(t, output, "(RESOURCE GONE)")
+		assert.Contains(t, output, "(RESOURCE NOT FOUND)")
 		assert.NotContains(t, output, "(NOT MET)")
 	})
 
-	t.Run("post-action resource gone shows RESOURCE GONE in phase 4", func(t *testing.T) {
+	t.Run("post-action resource not found shows RESOURCE NOT FOUND in phase 4", func(t *testing.T) {
 		trace := makeTestTrace(executor.StatusSuccess, false)
 		trace.Result.ResourcesSkipped = true
-		trace.Result.SkipReason = executor.ResourceGoneReason
+		trace.Result.SkipReason = executor.ResourceNotFoundReason
 		trace.Result.PostActionResults = []executor.PostActionResult{
-			{Name: "reportStatus", Status: executor.StatusSkipped, Skipped: true, SkipReason: executor.ResourceGoneReason},
+			{Name: "reportStatus", Status: executor.StatusSkipped, Skipped: true, SkipReason: executor.ResourceNotFoundReason},
 		}
 
 		output := trace.FormatText()
 
 		assert.Contains(t, output, "Phase 4: Post Actions")
-		assert.Contains(t, output, "(RESOURCE GONE)")
+		assert.Contains(t, output, "(RESOURCE NOT FOUND)")
 		assert.Contains(t, output, "SKIPPED")
 	})
 }

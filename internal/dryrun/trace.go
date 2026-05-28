@@ -122,10 +122,10 @@ func (t *ExecutionTrace) FormatText() string {
 	switch {
 	case hasPrecondErr:
 		precondStatus = statusFailed
-	case result.ResourcesSkipped && result.SkipReason == executor.ResourceGoneReason &&
+	case result.ResourcesSkipped && result.SkipReason == executor.ResourceNotFoundReason &&
 		len(result.PostActionResults) == 0:
-		precondDetail = " (RESOURCE GONE)"
-	case result.ResourcesSkipped && result.SkipReason != "" && result.SkipReason != executor.ResourceGoneReason:
+		precondDetail = " (RESOURCE NOT FOUND)"
+	case result.ResourcesSkipped && result.SkipReason != "" && result.SkipReason != executor.ResourceNotFoundReason:
 		precondDetail = " (NOT MET)"
 	case len(result.PreconditionResults) > 0:
 		precondDetail = " (MET)"
@@ -243,9 +243,9 @@ func (t *ExecutionTrace) FormatText() string {
 	postDetail := ""
 	if _, ok := result.Errors[executor.PhasePostActions]; ok {
 		postStatus = statusFailed
-	} else if result.ResourcesSkipped && result.SkipReason == executor.ResourceGoneReason &&
+	} else if result.ResourcesSkipped && result.SkipReason == executor.ResourceNotFoundReason &&
 		len(result.PostActionResults) > 0 {
-		postDetail = " (RESOURCE GONE)"
+		postDetail = " (RESOURCE NOT FOUND)"
 	}
 	fmt.Fprintf(&b, "Phase 4: Post Actions ..................... %s%s\n", postStatus, postDetail)
 

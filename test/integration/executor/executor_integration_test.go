@@ -527,8 +527,8 @@ func TestExecutor_PreconditionNotFound_GracefulStop(t *testing.T) {
 	assert.Equal(t, executor.StatusSuccess, result.Status,
 		"404 on force-deleted resource should not mark execution as failed")
 	assert.True(t, result.ResourcesSkipped, "resources should be skipped")
-	assert.Equal(t, executor.ResourceGoneReason, result.SkipReason,
-		"skip reason should be ResourceGone")
+	assert.Equal(t, executor.ResourceNotFoundReason, result.SkipReason,
+		"skip reason should be ResourceNotFound")
 	assert.Empty(t, result.Errors, "no errors should be recorded for a 404")
 	assert.Empty(t, result.ResourceResults, "no resources should be processed")
 	assert.Empty(t, result.PostActionResults, "no post-actions should be attempted")
@@ -550,8 +550,8 @@ func TestExecutor_PostActionNotFound_GracefulHandling(t *testing.T) {
 	assert.Equal(t, executor.StatusSuccess, result.Status,
 		"404 on post-action should not mark execution as failed")
 	assert.True(t, result.ResourcesSkipped, "resources should be skipped")
-	assert.Equal(t, executor.ResourceGoneReason, result.SkipReason,
-		"skip reason should be ResourceGone")
+	assert.Equal(t, executor.ResourceNotFoundReason, result.SkipReason,
+		"skip reason should be ResourceNotFound")
 	assert.Empty(t, result.Errors, "no errors should be recorded for a post-action 404")
 
 	t.Logf("Post-action 404 handled gracefully: skipReason=%s", result.SkipReason)

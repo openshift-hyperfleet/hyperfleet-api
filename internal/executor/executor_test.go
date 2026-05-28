@@ -1520,8 +1520,8 @@ func TestPrecondition404_GracefulStop(t *testing.T) {
 		"404 on resource should not mark execution as failed")
 
 	assert.True(t, result.ResourcesSkipped, "resources should be skipped")
-	assert.Equal(t, ResourceGoneReason, result.SkipReason,
-		"skip reason should be ResourceGoneReason")
+	assert.Equal(t, ResourceNotFoundReason, result.SkipReason,
+		"skip reason should be ResourceNotFoundReason")
 
 	assert.Empty(t, result.Errors, "no errors should be recorded for a 404")
 	assert.Equal(t, "", result.ExecutionContext.Adapter.ErrorReason,
@@ -1562,8 +1562,8 @@ func TestPostAction404_GracefulHandling(t *testing.T) {
 		"adapter.executionStatus should be success for a post-action 404")
 	assert.True(t, result.ExecutionContext.Adapter.ResourcesSkipped,
 		"adapter.resourcesSkipped should be true")
-	assert.Equal(t, ResourceGoneReason, result.SkipReason,
-		"skip reason should be ResourceGone")
+	assert.Equal(t, ResourceNotFoundReason, result.SkipReason,
+		"skip reason should be ResourceNotFound")
 	assert.Nil(t, result.ExecutionContext.Adapter.ExecutionError,
 		"adapter.executionError should be nil for a post-action 404")
 }
@@ -1597,7 +1597,7 @@ func TestPrecondition404_SkipsPostActions(t *testing.T) {
 }
 
 // TestPreconditionFail_PostAction404 verifies that when preconditions fail with a non-404 error
-// and post-actions also return 404, the execution status remains failed (not masked by ResourceGone)
+// and post-actions also return 404, the execution status remains failed (not masked by ResourceNotFound)
 // and the original error context is preserved.
 func TestPreconditionFail_PostAction404(t *testing.T) {
 	mockClient := newMockAPIClient()
@@ -1614,9 +1614,9 @@ func TestPreconditionFail_PostAction404(t *testing.T) {
 	assert.Equal(t, StatusFailed, result.Status,
 		"status should remain failed from precondition error")
 
-	// SkipReason gets overwritten to ResourceGone (resource is gone, overrides PreconditionFailed)
-	assert.Equal(t, ResourceGoneReason, result.SkipReason,
-		"skip reason should be ResourceGone when post-action 404 overwrites it")
+	// SkipReason gets overwritten to ResourceNotFound (resource no longer exists, overrides PreconditionFailed)
+	assert.Equal(t, ResourceNotFoundReason, result.SkipReason,
+		"skip reason should be ResourceNotFound when post-action 404 overwrites it")
 	assert.True(t, result.ResourcesSkipped, "resources should be skipped")
 
 	// The precondition error should still be recorded
