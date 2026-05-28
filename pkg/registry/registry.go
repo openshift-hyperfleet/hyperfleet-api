@@ -56,7 +56,6 @@ func ChildrenOf(parentKind string) []EntityDescriptor {
 // Validate checks registry integrity. Panics on:
 //   - empty Kind or Plural on any descriptor
 //   - any ParentKind that references an unregistered kind
-//   - NameMinLen > NameMaxLen (when NameMaxLen is set)
 //   - duplicate Plural values across descriptors
 func Validate() {
 	plurals := make(map[string]string, len(descriptors))
@@ -76,13 +75,6 @@ func Validate() {
 					d.Kind, d.ParentKind,
 				))
 			}
-		}
-
-		if d.NameMaxLen > 0 && d.NameMinLen > d.NameMaxLen {
-			panic(fmt.Sprintf(
-				"entity kind %q has NameMinLen (%d) > NameMaxLen (%d)",
-				d.Kind, d.NameMinLen, d.NameMaxLen,
-			))
 		}
 
 		if existing, ok := plurals[d.Plural]; ok {

@@ -31,26 +31,17 @@ type Resource struct {
 	Generation  int32          `json:"generation" gorm:"default:1;not null"`
 }
 
-type (
-	ResourceList  []*Resource
-	ResourceIndex map[string]*Resource
-)
-
-// TODO: Evaluate the need for this method as part of
-// https://redhat.atlassian.net/browse/HYPERFLEET-1085 and remove if not needed
-func (l ResourceList) Index() ResourceIndex {
-	index := ResourceIndex{}
-	for _, o := range l {
-		index[o.ID] = o
-	}
-	return index
+type ResourcePatchRequest struct {
+	Spec   *map[string]interface{} `json:"spec,omitempty"`
+	Labels *map[string]string      `json:"labels,omitempty"`
 }
+
+type ResourceList []*Resource
 
 func (r Resource) TableName() string {
 	return "resources"
 }
 
-// BeforeCreate TODO: Validate the necessity for this as part of https://redhat.atlassian.net/browse/HYPERFLEET-1085
 func (r *Resource) BeforeCreate(tx *gorm.DB) error {
 	if r.ID == "" {
 		id, err := NewID()

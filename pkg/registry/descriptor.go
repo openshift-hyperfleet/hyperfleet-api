@@ -17,6 +17,4 @@ type EntityDescriptor struct {
 	SpecSchemaName         string               // OpenAPI component name for spec validation
 	OnParentDelete         OnParentDeletePolicy // only meaningful when ParentKind != ""
 	SearchDisallowedFields []string             // fields blocked from TSL search
-	NameMinLen             int                  // minimum name length
-	NameMaxLen             int                  // maximum name length
 }

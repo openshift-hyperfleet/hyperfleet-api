@@ -11,10 +11,8 @@ func TestRegister_Success(t *testing.T) {
 	Reset()
 
 	d := EntityDescriptor{
-		Kind:       "Channel",
-		Plural:     "channels",
-		NameMinLen: 3,
-		NameMaxLen: 53,
+		Kind:   "Channel",
+		Plural: "channels",
 	}
 
 	Register(d)
@@ -23,8 +21,6 @@ func TestRegister_Success(t *testing.T) {
 	Expect(ok).To(BeTrue())
 	Expect(got.Kind).To(Equal("Channel"))
 	Expect(got.Plural).To(Equal("channels"))
-	Expect(got.NameMinLen).To(Equal(3))
-	Expect(got.NameMaxLen).To(Equal(53))
 }
 
 func TestRegister_DuplicateKind_Panics(t *testing.T) {
@@ -140,17 +136,6 @@ func TestRegister_EmptyPlural_Panics(t *testing.T) {
 	}).To(PanicWith(ContainSubstring("has empty plural")))
 }
 
-func TestValidate_NameMinExceedsMax_Panics(t *testing.T) {
-	RegisterTestingT(t)
-	Reset()
-
-	Register(EntityDescriptor{Kind: "Channel", Plural: "channels", NameMinLen: 100, NameMaxLen: 3})
-
-	Expect(func() {
-		Validate()
-	}).To(PanicWith(ContainSubstring("NameMinLen (100) > NameMaxLen (3)")))
-}
-
 func TestValidate_Success(t *testing.T) {
 	RegisterTestingT(t)
 	Reset()
@@ -179,8 +164,6 @@ func TestDescriptorFields(t *testing.T) {
 	Register(EntityDescriptor{
 		Kind:                   "Version",
 		Plural:                 "versions",
-		NameMinLen:             3,
-		NameMaxLen:             53,
 		ParentKind:             "Channel",
 		OnParentDelete:         OnParentDeleteRestrict,
 		SpecSchemaName:         "VersionSpec",
