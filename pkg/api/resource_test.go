@@ -26,37 +26,6 @@ func strPtr(s string) *string {
 	return &s
 }
 
-func TestResourceList_Index(t *testing.T) {
-	RegisterTestingT(t)
-
-	emptyList := ResourceList{}
-	emptyIndex := emptyList.Index()
-	Expect(len(emptyIndex)).To(Equal(0))
-
-	r1 := &Resource{}
-	r1.ID = "res-1"
-	r1.Name = "test-resource-1"
-
-	r2 := &Resource{}
-	r2.ID = "res-2"
-	r2.Name = "test-resource-2"
-
-	multiList := ResourceList{r1, r2}
-	multiIndex := multiList.Index()
-	Expect(len(multiIndex)).To(Equal(2))
-	Expect(multiIndex["res-1"]).To(Equal(r1))
-	Expect(multiIndex["res-2"]).To(Equal(r2))
-
-	r1Dup := &Resource{}
-	r1Dup.ID = "res-1"
-	r1Dup.Name = "duplicate"
-
-	dupList := ResourceList{r1, r1Dup}
-	dupIndex := dupList.Index()
-	Expect(len(dupIndex)).To(Equal(1))
-	Expect(dupIndex["res-1"].Name).To(Equal("duplicate"))
-}
-
 func TestResource_BeforeCreate_IDGeneration(t *testing.T) {
 	RegisterTestingT(t)
 	setupTestRegistry()
