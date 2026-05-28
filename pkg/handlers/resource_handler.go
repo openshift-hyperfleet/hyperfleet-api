@@ -113,7 +113,7 @@ func (h *ResourceHandler) Delete(w http.ResponseWriter, r *http.Request) {
 			return presenters.PresentResource(resource), nil
 		},
 	}
-	handleSoftDelete(w, r, cfg, http.StatusAccepted)
+	handleSoftDelete(w, r, cfg)
 }
 
 // --- Nested resource (ByOwner) methods ---
@@ -241,5 +241,5 @@ func (h *ResourceHandler) DeleteByOwner(w http.ResponseWriter, r *http.Request) 
 			return presenters.PresentResource(resource), nil
 		},
 	}
-	handleSoftDelete(w, r, cfg, http.StatusAccepted)
+	handleSoftDelete(w, r, cfg)
 }
