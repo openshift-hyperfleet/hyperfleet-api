@@ -4,6 +4,7 @@ import (
 	"reflect"
 	"testing"
 
+	. "github.com/onsi/gomega"
 	"github.com/spf13/pflag"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
@@ -50,4 +51,9 @@ func TestLoadServices(t *testing.T) {
 			t.Errorf("Service locator %s is nil", fieldType.Name)
 		}
 	}
+}
+
+func TestEnvironmentDefaultIsProduction(t *testing.T) {
+	RegisterTestingT(t)
+	Expect(EnvironmentDefault).To(Equal(ProductionEnv), "EnvironmentDefault must be ProductionEnv for secure-by-default behavior")
 }
