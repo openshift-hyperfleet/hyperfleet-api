@@ -68,6 +68,9 @@ func (s *sqlGenericService) newListContext(
 	ctx context.Context, args *ListArguments, resourceList interface{},
 ) (*listContext, interface{}, *errors.ServiceError) {
 	resourceModel := reflect.TypeOf(resourceList).Elem().Elem()
+	if resourceModel.Kind() == reflect.Ptr {
+		resourceModel = resourceModel.Elem()
+	}
 	resourceTypeStr := resourceModel.Name()
 	if resourceTypeStr == "" {
 		return nil, nil, errors.GeneralError("Could not determine resource type")

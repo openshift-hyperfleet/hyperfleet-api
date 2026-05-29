@@ -169,7 +169,7 @@ func (h ClusterHandler) SoftDelete(w http.ResponseWriter, r *http.Request) {
 		},
 		ErrorHandler: handleError,
 	}
-	handleSoftDelete(w, r, cfg, http.StatusAccepted)
+	handleSoftDelete(w, r, cfg)
 }
 
 // ForceDelete permanently removes a cluster that is in Finalizing state.

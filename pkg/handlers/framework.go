@@ -85,7 +85,8 @@ func handle(w http.ResponseWriter, r *http.Request, cfg *handlerConfig, httpStat
 
 }
 
-func handleSoftDelete(w http.ResponseWriter, r *http.Request, cfg *handlerConfig, httpStatus int) {
+func handleSoftDelete(w http.ResponseWriter, r *http.Request, cfg *handlerConfig) {
+	httpStatus := http.StatusAccepted
 	if cfg.ErrorHandler == nil {
 		cfg.ErrorHandler = handleError
 	}

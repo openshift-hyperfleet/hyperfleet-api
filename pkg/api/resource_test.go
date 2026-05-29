@@ -219,6 +219,18 @@ func TestResource_IncrementGeneration(t *testing.T) {
 	Expect(r.Generation).To(Equal(int32(3)))
 }
 
+func TestResource_SetOwner(t *testing.T) {
+	RegisterTestingT(t)
+
+	r := &Resource{Name: "test", Kind: "Version"}
+	r.SetOwner("parent-123", "Channel", "/api/hyperfleet/v1/channels/parent-123")
+
+	Expect(r.OwnerID).ToNot(BeNil())
+	Expect(*r.OwnerID).To(Equal("parent-123"))
+	Expect(*r.OwnerKind).To(Equal("Channel"))
+	Expect(*r.OwnerHref).To(Equal("/api/hyperfleet/v1/channels/parent-123"))
+}
+
 func TestResource_TableName(t *testing.T) {
 	RegisterTestingT(t)
 
