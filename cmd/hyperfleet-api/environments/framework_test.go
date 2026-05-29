@@ -55,5 +55,8 @@ func TestLoadServices(t *testing.T) {
 
 func TestEnvironmentDefaultIsProduction(t *testing.T) {
 	RegisterTestingT(t)
-	Expect(EnvironmentDefault).To(Equal(ProductionEnv), "EnvironmentDefault must be ProductionEnv for secure-by-default behavior")
+	Expect(EnvironmentDefault).To(
+		Equal(ProductionEnv),
+		"EnvironmentDefault must be ProductionEnv for secure-by-default behavior",
+	)
 }
