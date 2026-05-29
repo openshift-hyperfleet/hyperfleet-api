@@ -137,10 +137,14 @@ true
 {{- if .Values.adapterTaskConfig.create -}}
   {{- $hasYaml := not (empty .Values.adapterTaskConfig.yaml) -}}
   {{- $hasFiles := not (empty .Values.adapterTaskConfig.files) -}}
-  {{- if or $hasYaml $hasFiles -}}
+  {{- $hasExternal := not (empty .Values.adapterTaskConfig.external) -}}
+  {{- if and $hasYaml (or $hasFiles $hasExternal) -}}
+{{- fail "Cannot set .Values.adapterTaskConfig.yaml with .Values.adapterTaskConfig.files or .Values.adapterTaskConfig.external - these modes are mutually exclusive." -}}
+  {{- end -}}
+  {{- if or $hasYaml $hasFiles $hasExternal -}}
 true
   {{- else -}}
-{{- fail "When .Values.adapterTaskConfig.create is true, either .Values.adapterTaskConfig.yaml or .Values.adapterTaskConfig.files must be provided." -}}
+{{- fail "When .Values.adapterTaskConfig.create is true, at least one of .Values.adapterTaskConfig.yaml, .Values.adapterTaskConfig.files, or .Values.adapterTaskConfig.external must be provided." -}}
   {{- end -}}
 {{- else if (hasKey .Values.adapterTaskConfig "configMapName") -}}
   {{- if and .Values.adapterTaskConfig.configMapName (ne .Values.adapterTaskConfig.configMapName "") -}}
@@ -295,4 +299,28 @@ googlepubsub
 {{- else if .Values.broker.rabbitmq -}}
 rabbitmq
 {{- end -}}
+{{- end }}
+
+
+{{/*
+Validate no key collisions between adapterTaskConfig.external and adapterTaskConfig.files
+Also validate that all file paths in adapterTaskConfig.files actually exist
+*/}}
+{{- define "hyperfleet-adapter.validateTaskConfigKeys" -}}
+{{- if and .Values.adapterTaskConfig.external .Values.adapterTaskConfig.files }}
+  {{- range $name, $value := .Values.adapterTaskConfig.external }}
+    {{- $externalKey := printf "%s.yaml" $name }}
+    {{- if hasKey $.Values.adapterTaskConfig.files $externalKey }}
+      {{- fail (printf "ConfigMap key collision: '%s' exists in both adapterTaskConfig.external and adapterTaskConfig.files" $externalKey) }}
+    {{- end }}
+  {{- end }}
+{{- end }}
+{{- if .Values.adapterTaskConfig.files }}
+  {{- range $key, $path := .Values.adapterTaskConfig.files }}
+    {{- $content := $.Files.Get $path }}
+    {{- if not $content }}
+      {{- fail (printf "adapterTaskConfig.files.%s: file not found or empty at path '%s'" $key $path) }}
+    {{- end }}
+  {{- end }}
+{{- end }}
 {{- end }}
