@@ -9,6 +9,7 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/auth"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/dao"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/registry"
 )
@@ -128,7 +129,9 @@ func (s *sqlResourceService) Patch(
 
 // Delete performs a soft-delete by setting DeletedTime and DeletedBy, then incrementing generation.
 // Idempotent — returns the resource unchanged if already marked for deletion.
-// Child cascade policies are not enforced here (deferred to HYPERFLEET-1093).
+// Before deleting, enforces child delete policies from the entity registry:
+//   - restrict: blocks deletion (409) if active children of that type exist
+//   - cascade: recursively soft-deletes children (DFS, innermost first)
 func (s *sqlResourceService) Delete(ctx context.Context, kind, id string) (*api.Resource, *errors.ServiceError) {
 	if svcErr := validateKind(kind); svcErr != nil {
 		return nil, svcErr
@@ -138,7 +141,6 @@ func (s *sqlResourceService) Delete(ctx context.Context, kind, id string) (*api.
 		return nil, handleSoftDeleteError(kind, err)
 	}
 
-	// Already marked for deletion — return as-is to keep the operation idempotent.
 	if resource.DeletedTime != nil {
 		return resource, nil
 	}
@@ -151,11 +153,73 @@ func (s *sqlResourceService) Delete(ctx context.Context, kind, id string) (*api.
 	resource.MarkDeleted(username, deletedTime)
 	resource.IncrementGeneration()
 
+	if svcErr := s.enforceDeletePolicies(ctx, resource); svcErr != nil {
+		db.MarkForRollback(ctx, svcErr)
+		return nil, svcErr
+	}
+
 	if saveErr := s.resourceDao.Save(ctx, resource); saveErr != nil {
 		return nil, handleSoftDeleteError(kind, saveErr)
 	}
 
 	return resource, nil
+}
+
+func (s *sqlResourceService) enforceDeletePolicies(
+	ctx context.Context, resource *api.Resource,
+) *errors.ServiceError {
+	children := registry.ChildrenOf(resource.Kind)
+
+	for _, child := range children {
+		if child.OnParentDelete == registry.OnParentDeleteRestrict {
+			if svcErr := s.checkCanDelete(ctx, resource, child); svcErr != nil {
+				return svcErr
+			}
+		}
+	}
+
+	for _, child := range children {
+		if child.OnParentDelete == registry.OnParentDeleteCascade {
+			items, err := s.resourceDao.FindByKindAndOwner(ctx, child.Kind, resource.ID)
+			if err != nil {
+				return errors.GeneralError(
+					"Unable to find %s children for cascade delete: %s", child.Kind, err,
+				)
+			}
+			for _, item := range items {
+				if item.DeletedTime != nil {
+					continue
+				}
+				item.MarkDeleted(*resource.DeletedBy, *resource.DeletedTime)
+				item.IncrementGeneration()
+
+				if svcErr := s.enforceDeletePolicies(ctx, item); svcErr != nil {
+					return svcErr
+				}
+				if saveErr := s.resourceDao.Save(ctx, item); saveErr != nil {
+					return handleSoftDeleteError(child.Kind, saveErr)
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+func (s *sqlResourceService) checkCanDelete(
+	ctx context.Context, resource *api.Resource, child registry.EntityDescriptor,
+) *errors.ServiceError {
+	exists, err := s.resourceDao.ExistsByOwner(ctx, child.Kind, resource.ID)
+	if err != nil {
+		return errors.GeneralError("Unable to check %s children: %s", child.Kind, err)
+	}
+	if exists {
+		return errors.ConflictState(
+			"Cannot delete %s '%s': active %s(s) exist",
+			resource.Kind, resource.ID, child.Kind,
+		)
+	}
+	return nil
 }
 
 // FindByIDs returns resources matching the given IDs, scoped to the specified kind.

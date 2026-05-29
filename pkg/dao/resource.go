@@ -17,7 +17,7 @@ type ResourceDao interface {
 	Create(ctx context.Context, resource *api.Resource) (*api.Resource, error)
 	Save(ctx context.Context, resource *api.Resource) error
 	Delete(ctx context.Context, kind, id string) error
-	CountByOwner(ctx context.Context, kind, ownerID string) (int64, error)
+	ExistsByOwner(ctx context.Context, kind, ownerID string) (bool, error)
 	FindByKind(ctx context.Context, kind string) (api.ResourceList, error)
 	FindByKindAndOwner(ctx context.Context, kind, ownerID string) (api.ResourceList, error)
 	FindByIDs(ctx context.Context, kind string, ids []string) (api.ResourceList, error)
@@ -99,14 +99,15 @@ func (d *sqlResourceDao) Delete(ctx context.Context, kind, id string) error {
 	return nil
 }
 
-func (d *sqlResourceDao) CountByOwner(ctx context.Context, kind, ownerID string) (int64, error) {
+func (d *sqlResourceDao) ExistsByOwner(ctx context.Context, kind, ownerID string) (bool, error) {
 	g2 := d.sessionFactory.New(ctx)
-	var count int64
-	if err := g2.Model(&api.Resource{}).Where(
-		"kind = ? AND owner_id = ?", kind, ownerID).Count(&count).Error; err != nil {
-		return 0, err
+	var exists bool
+	if err := g2.Raw(
+		"SELECT EXISTS(SELECT 1 FROM resources WHERE kind = ? AND owner_id = ? AND deleted_time IS NULL)",
+		kind, ownerID).Scan(&exists).Error; err != nil {
+		return false, err
 	}
-	return count, nil
+	return exists, nil
 }
 
 func (d *sqlResourceDao) FindByKind(ctx context.Context, kind string) (api.ResourceList, error) {
