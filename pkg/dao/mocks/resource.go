@@ -63,14 +63,13 @@ func (d *resourceDaoMock) Delete(_ context.Context, kind, id string) error {
 	return nil
 }
 
-func (d *resourceDaoMock) CountByOwner(_ context.Context, kind, ownerID string) (int64, error) {
-	var count int64
+func (d *resourceDaoMock) ExistsByOwner(_ context.Context, kind, ownerID string) (bool, error) {
 	for _, r := range d.resources {
-		if r.Kind == kind && r.OwnerID != nil && *r.OwnerID == ownerID {
-			count++
+		if r.Kind == kind && r.OwnerID != nil && *r.OwnerID == ownerID && r.DeletedTime == nil {
+			return true, nil
 		}
 	}
-	return count, nil
+	return false, nil
 }
 
 func (d *resourceDaoMock) FindByKind(_ context.Context, kind string) (api.ResourceList, error) {

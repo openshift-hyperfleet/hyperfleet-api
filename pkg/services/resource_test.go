@@ -24,9 +24,10 @@ func setupTestDescriptors() {
 		Plural: "channels",
 	})
 	registry.Register(registry.EntityDescriptor{
-		Kind:       "Version",
-		Plural:     "versions",
-		ParentKind: "Channel",
+		Kind:           "Version",
+		Plural:         "versions",
+		ParentKind:     "Channel",
+		OnParentDelete: registry.OnParentDeleteRestrict,
 	})
 	registry.Register(registry.EntityDescriptor{
 		Kind:   "WifConfig",
@@ -91,14 +92,13 @@ func (d *mockResourceDao) Delete(_ context.Context, kind, id string) error {
 	return nil
 }
 
-func (d *mockResourceDao) CountByOwner(_ context.Context, kind, ownerID string) (int64, error) {
-	var count int64
+func (d *mockResourceDao) ExistsByOwner(_ context.Context, kind, ownerID string) (bool, error) {
 	for _, r := range d.resources {
-		if r.Kind == kind && r.OwnerID != nil && *r.OwnerID == ownerID {
-			count++
+		if r.Kind == kind && r.OwnerID != nil && *r.OwnerID == ownerID && r.DeletedTime == nil {
+			return true, nil
 		}
 	}
-	return count, nil
+	return false, nil
 }
 
 func (d *mockResourceDao) FindByKind(_ context.Context, kind string) (api.ResourceList, error) {
@@ -545,6 +545,219 @@ func TestResourceService_Delete_SetsDeletedByFromAuthContext(t *testing.T) {
 	result, svcErr := svc.Delete(ctx, "Channel", "ch-1")
 	Expect(svcErr).To(BeNil())
 	Expect(*result.DeletedBy).To(Equal("admin@test.com"))
+}
+
+// --- Delete policies ---
+
+func testChildResource(kind, id, name, ownerID string) *api.Resource {
+	r := testResource(kind, id, name)
+	r.OwnerID = &ownerID
+	return r
+}
+
+type descriptorDef struct {
+	kind, plural, parent string
+	policy               registry.OnParentDeletePolicy
+}
+
+func rootDescriptor(kind, plural string) descriptorDef {
+	return descriptorDef{kind: kind, plural: plural}
+}
+
+func childDescriptor(kind, plural, parent string, policy registry.OnParentDeletePolicy) descriptorDef {
+	return descriptorDef{kind: kind, plural: plural, parent: parent, policy: policy}
+}
+
+func setupDeletePolicyDescriptors(defs ...descriptorDef) {
+	registry.Reset()
+	for _, p := range defs {
+		d := registry.EntityDescriptor{
+			Kind:   p.kind,
+			Plural: p.plural,
+		}
+		if p.parent != "" {
+			d.ParentKind = p.parent
+			d.OnParentDelete = p.policy
+		}
+		registry.Register(d)
+	}
+}
+
+func TestResourceService_Delete_RestrictBlocksWithActiveChildren(t *testing.T) {
+	RegisterTestingT(t)
+	setupDeletePolicyDescriptors(
+		rootDescriptor("Channel", "channels"),
+		childDescriptor("Version", "versions", "Channel", registry.OnParentDeleteRestrict),
+	)
+
+	mockDao := newMockResourceDao()
+	svc, _, _ := newTestResourceService(mockDao)
+
+	channel := testResource("Channel", "ch-1", "stable")
+	mockDao.addResource(channel)
+	mockDao.addResource(testChildResource("Version", "v-1", "4.17", "ch-1"))
+
+	result, svcErr := svc.Delete(context.Background(), "Channel", "ch-1")
+	Expect(result).To(BeNil())
+	Expect(svcErr).ToNot(BeNil())
+	Expect(svcErr.HTTPCode).To(Equal(409))
+	Expect(svcErr.Reason).To(ContainSubstring("active Version(s)"))
+
+}
+
+func TestResourceService_Delete_RestrictAllowsWithZeroChildren(t *testing.T) {
+	RegisterTestingT(t)
+	setupDeletePolicyDescriptors(
+		rootDescriptor("Channel", "channels"),
+		childDescriptor("Version", "versions", "Channel", registry.OnParentDeleteRestrict),
+	)
+
+	mockDao := newMockResourceDao()
+	svc, _, _ := newTestResourceService(mockDao)
+
+	channel := testResource("Channel", "ch-1", "stable")
+	mockDao.addResource(channel)
+
+	result, svcErr := svc.Delete(context.Background(), "Channel", "ch-1")
+	Expect(svcErr).To(BeNil())
+	Expect(result.DeletedTime).ToNot(BeNil())
+}
+
+func TestResourceService_Delete_CascadePropagates(t *testing.T) {
+	RegisterTestingT(t)
+	setupDeletePolicyDescriptors(
+		rootDescriptor("Parent", "parents"),
+		childDescriptor("Child", "children", "Parent", registry.OnParentDeleteCascade),
+	)
+
+	mockDao := newMockResourceDao()
+	svc, _, _ := newTestResourceService(mockDao)
+
+	parent := testResource("Parent", "p-1", "parent-1")
+	mockDao.addResource(parent)
+	mockDao.addResource(testChildResource("Child", "c-1", "child-1", "p-1"))
+	mockDao.addResource(testChildResource("Child", "c-2", "child-2", "p-1"))
+
+	ctx := auth.SetUsernameContext(context.Background(), "admin@test.com")
+	result, svcErr := svc.Delete(ctx, "Parent", "p-1")
+	Expect(svcErr).To(BeNil())
+	Expect(result.DeletedTime).ToNot(BeNil())
+
+	child1 := mockDao.resources[resourceKey("Child", "c-1")]
+	child2 := mockDao.resources[resourceKey("Child", "c-2")]
+	Expect(child1.DeletedTime).ToNot(BeNil())
+	Expect(child2.DeletedTime).ToNot(BeNil())
+	Expect(*child1.DeletedBy).To(Equal("admin@test.com"))
+	Expect(*child2.DeletedBy).To(Equal("admin@test.com"))
+	Expect(*child1.DeletedTime).To(Equal(*child2.DeletedTime))
+	Expect(*child1.DeletedTime).To(Equal(*result.DeletedTime))
+}
+
+func TestResourceService_Delete_CascadeRecursesMultipleLevels(t *testing.T) {
+	RegisterTestingT(t)
+	setupDeletePolicyDescriptors(
+		rootDescriptor("Top", "tops"),
+		childDescriptor("Mid", "mids", "Top", registry.OnParentDeleteCascade),
+		childDescriptor("Leaf", "leaves", "Mid", registry.OnParentDeleteCascade),
+	)
+
+	mockDao := newMockResourceDao()
+	svc, _, _ := newTestResourceService(mockDao)
+
+	mockDao.addResource(testResource("Top", "t-1", "top"))
+	mockDao.addResource(testChildResource("Mid", "m-1", "mid", "t-1"))
+	mockDao.addResource(testChildResource("Leaf", "l-1", "leaf", "m-1"))
+
+	result, svcErr := svc.Delete(context.Background(), "Top", "t-1")
+	Expect(svcErr).To(BeNil())
+	Expect(result.DeletedTime).ToNot(BeNil())
+
+	mid := mockDao.resources[resourceKey("Mid", "m-1")]
+	leaf := mockDao.resources[resourceKey("Leaf", "l-1")]
+	Expect(mid.DeletedTime).ToNot(BeNil())
+	Expect(leaf.DeletedTime).ToNot(BeNil())
+}
+
+func TestResourceService_Delete_MixedPolicies_CascadeAndRestrictPass(t *testing.T) {
+	RegisterTestingT(t)
+	setupDeletePolicyDescriptors(
+		rootDescriptor("Hub", "hubs"),
+		childDescriptor("Spoke", "spokes", "Hub", registry.OnParentDeleteCascade),
+		childDescriptor("Guard", "guards", "Hub", registry.OnParentDeleteRestrict),
+	)
+
+	mockDao := newMockResourceDao()
+	svc, _, _ := newTestResourceService(mockDao)
+
+	mockDao.addResource(testResource("Hub", "h-1", "hub"))
+	mockDao.addResource(testChildResource("Spoke", "s-1", "spoke", "h-1"))
+
+	result, svcErr := svc.Delete(context.Background(), "Hub", "h-1")
+	Expect(svcErr).To(BeNil())
+	Expect(result.DeletedTime).ToNot(BeNil())
+
+	spoke := mockDao.resources[resourceKey("Spoke", "s-1")]
+	Expect(spoke.DeletedTime).ToNot(BeNil())
+}
+
+func TestResourceService_Delete_MixedPolicyFailure_RestrictBlocks(t *testing.T) {
+	RegisterTestingT(t)
+	setupDeletePolicyDescriptors(
+		rootDescriptor("Hub", "hubs"),
+		childDescriptor("Spoke", "spokes", "Hub", registry.OnParentDeleteCascade),
+		childDescriptor("Guard", "guards", "Hub", registry.OnParentDeleteRestrict),
+	)
+
+	mockDao := newMockResourceDao()
+	svc, _, _ := newTestResourceService(mockDao)
+
+	mockDao.addResource(testResource("Hub", "h-1", "hub"))
+	mockDao.addResource(testChildResource("Spoke", "s-1", "spoke", "h-1"))
+	mockDao.addResource(testChildResource("Guard", "g-1", "guard", "h-1"))
+
+	result, svcErr := svc.Delete(context.Background(), "Hub", "h-1")
+	Expect(result).To(BeNil())
+	Expect(svcErr).ToNot(BeNil())
+	Expect(svcErr.HTTPCode).To(Equal(409))
+	Expect(svcErr.Reason).To(ContainSubstring("Guard"))
+
+	// Cascade child must not be saved — restrict blocked before cascade ran.
+	spoke := mockDao.resources[resourceKey("Spoke", "s-1")]
+	Expect(spoke.DeletedTime).To(BeNil())
+}
+
+func TestResourceService_Delete_CascadeSkipsAlreadyDeletedChild(t *testing.T) {
+	RegisterTestingT(t)
+	setupDeletePolicyDescriptors(
+		rootDescriptor("Parent", "parents"),
+		childDescriptor("Child", "children", "Parent", registry.OnParentDeleteCascade),
+	)
+
+	mockDao := newMockResourceDao()
+	svc, _, _ := newTestResourceService(mockDao)
+
+	parent := testResource("Parent", "p-1", "parent-1")
+	mockDao.addResource(parent)
+
+	activeChild := testChildResource("Child", "c-1", "active", "p-1")
+	mockDao.addResource(activeChild)
+
+	originalDeletedTime := time.Now().Add(-1 * time.Hour).UTC().Truncate(time.Microsecond)
+	originalDeletedBy := "previous-user@test.com"
+	preDeletedChild := testChildResource("Child", "c-2", "already-gone", "p-1")
+	preDeletedChild.MarkDeleted(originalDeletedBy, originalDeletedTime)
+	mockDao.addResource(preDeletedChild)
+
+	result, svcErr := svc.Delete(context.Background(), "Parent", "p-1")
+	Expect(svcErr).To(BeNil())
+	Expect(result.DeletedTime).ToNot(BeNil())
+
+	active := mockDao.resources[resourceKey("Child", "c-1")]
+	Expect(active.DeletedTime).ToNot(BeNil())
+
+	preDeleted := mockDao.resources[resourceKey("Child", "c-2")]
+	Expect(*preDeleted.DeletedBy).To(Equal(originalDeletedBy))
+	Expect(*preDeleted.DeletedTime).To(Equal(originalDeletedTime))
 }
 
 // --- FindByIDs ---
