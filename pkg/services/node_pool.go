@@ -127,6 +127,7 @@ func (s *sqlNodePoolService) Patch(
 	}
 
 	nodePool.IncrementGeneration()
+	nodePool.UpdatedBy = actorFromContext(ctx)
 
 	if saveErr := s.nodePoolDao.Save(ctx, nodePool); saveErr != nil {
 		return nil, handleUpdateError(api.ResourceTypeNodePool, saveErr)

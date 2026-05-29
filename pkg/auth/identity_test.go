@@ -12,12 +12,12 @@ import (
 
 func TestCallerIdentityFromRequest(t *testing.T) {
 	tests := []struct {
-		name        string
 		claims      jwt.MapClaims
-		setHeader   bool
+		name        string
 		headerValue string
-		cfg         CallerIdentityConfig
 		want        string
+		cfg         CallerIdentityConfig
+		setHeader   bool
 		wantErr     bool
 	}{
 		{

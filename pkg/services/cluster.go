@@ -117,6 +117,7 @@ func (s *sqlClusterService) Patch(
 	}
 
 	cluster.IncrementGeneration()
+	cluster.UpdatedBy = actorFromContext(ctx)
 
 	if saveErr := s.clusterDao.Save(ctx, cluster); saveErr != nil {
 		return nil, handleUpdateError(api.ResourceTypeCluster, saveErr)

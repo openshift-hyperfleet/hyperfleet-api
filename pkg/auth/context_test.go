@@ -10,12 +10,12 @@ import (
 
 func TestGetIdentityFromContext(t *testing.T) {
 	tests := []struct {
-		name          string
 		claims        jwt.MapClaims
+		name          string
 		identityField string
 		want          string
-		wantErr       bool
 		errSubstring  string
+		wantErr       bool
 	}{
 		{
 			name: "reads configured claim directly",
