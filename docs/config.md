@@ -257,6 +257,8 @@ HTTP server settings for the API endpoint.
 | `server.jwt.enabled` | bool | `true` | Enable JWT authentication |
 | `server.jwt.issuer_url` | string | `""` | Expected JWT issuer URL for token validation (required when JWT is enabled) |
 | `server.jwt.audience` | string | `""` | Expected JWT audience claim (optional) |
+| `server.jwt.identity_claim` | string | `email` | JWT claim used as request identity for audit (e.g. `email`, `preferred_username`, `sub`) |
+| `server.identity_header` | string | `""` | HTTP header name for caller identity; when set and non-empty, overrides JWT claim for audit attribution |
 | `server.jwk.cert_file` | string | `""` | JWK certificate file path (optional) |
 | `server.jwk.cert_url` | string | `""` | JWK certificate URL (required when JWT is enabled and cert_file is not set) |
 
@@ -351,6 +353,8 @@ Complete table of all configuration properties, their environment variables, and
 | `server.jwt.enabled` | `HYPERFLEET_SERVER_JWT_ENABLED` | bool | `true` |
 | `server.jwt.issuer_url` | `HYPERFLEET_SERVER_JWT_ISSUER_URL` | string | `""` |
 | `server.jwt.audience` | `HYPERFLEET_SERVER_JWT_AUDIENCE` | string | `""` |
+| `server.jwt.identity_claim` | `HYPERFLEET_SERVER_JWT_IDENTITY_CLAIM` | string | `email` |
+| `server.identity_header` | `HYPERFLEET_SERVER_IDENTITY_HEADER` | string | `""` |
 | `server.jwk.cert_file` | `HYPERFLEET_SERVER_JWK_CERT_FILE` | string | `""` |
 | `server.jwk.cert_url` | `HYPERFLEET_SERVER_JWK_CERT_URL` | string | `""` |
 | **Database** | | | |
@@ -413,6 +417,8 @@ All CLI flags and their corresponding configuration paths.
 | `--server-jwt-enabled` | `server.jwt.enabled` | bool |
 | `--server-jwt-issuer-url` | `server.jwt.issuer_url` | string |
 | `--server-jwt-audience` | `server.jwt.audience` | string |
+| `--server-jwt-identity-claim` | `server.jwt.identity_claim` | string |
+| `--server-identity-header` | `server.identity_header` | string |
 | `--server-jwk-cert-file` | `server.jwk.cert_file` | string |
 | `--server-jwk-cert-url` | `server.jwk.cert_url` | string |
 | **Database** | | |

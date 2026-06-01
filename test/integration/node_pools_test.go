@@ -601,7 +601,7 @@ func TestNodePoolSoftDelete(t *testing.T) {
 		Expect(*resp.JSON202.Id).To(Equal(nodePoolID))
 		Expect(resp.JSON202.DeletedTime).NotTo(BeNil())
 		Expect(resp.JSON202.DeletedBy).NotTo(BeNil())
-		Expect(string(*resp.JSON202.DeletedBy)).To(Equal("system@hyperfleet.local"))
+		Expect(string(*resp.JSON202.DeletedBy)).To(Equal(account.Email))
 	})
 
 	t.Run("given a nodepool with Ready=True, when deleted, then generation increments and Ready becomes False", func(t *testing.T) { //nolint:lll

@@ -369,6 +369,21 @@ func WithAuthToken(ctx context.Context) openapi.RequestEditorFn {
 	}
 }
 
+// WithIdentityHeader returns a RequestEditorFn that sets the caller identity header.
+func WithIdentityHeader(headerName, headerValue string) openapi.RequestEditorFn {
+	return func(_ context.Context, req *http.Request) error {
+		if headerName != "" && headerValue != "" {
+			req.Header.Set(headerName, headerValue)
+		}
+		return nil
+	}
+}
+
+// IdentityHeaderName returns the configured identity header name for integration tests.
+func IdentityHeaderName() string {
+	return environments.Environment().Config.Server.IdentityHeader
+}
+
 func (helper *Helper) StartJWKCertServerMock() (teardown func() error) {
 	jwkURL, teardown = mocks.NewJWKCertServerMock(helper.T, helper.JWTCA, jwkKID, jwkAlg)
 	helper.Env().Config.Server.JWK.CertURL = jwkURL

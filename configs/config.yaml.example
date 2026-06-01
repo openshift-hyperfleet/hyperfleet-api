@@ -21,6 +21,9 @@ server:
     enabled: true                   # Enable JWT authentication
     issuer_url: ""                  # JWT issuer URL (required when jwt.enabled=true)
     audience: ""                    # JWT audience claim (optional)
+    identity_claim: email           # JWT claim used as request identity for audit (e.g. email, preferred_username, sub)
+
+  identity_header: ""                  # HTTP header name for caller identity; leave empty to disable (e.g. X-HyperFleet-Identity)
 
   jwk:
     cert_file: ""                   # JWK certificate file path

@@ -52,6 +52,9 @@ config:
       enabled: false
       issuer_url: ""
       audience: ""
+      identity_claim: email
+
+    identity_header: ""
 
     jwk:
       cert_file: ""
@@ -104,6 +107,7 @@ config:
         - Cookie
         - X-Auth-Token
         - X-Forwarded-Authorization
+        - X-HyperFleet-Identity
       fields:
         - password
         - secret

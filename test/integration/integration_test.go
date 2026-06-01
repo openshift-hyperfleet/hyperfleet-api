@@ -34,6 +34,9 @@ func TestMain(m *testing.M) {
 	if os.Getenv("HYPERFLEET_SERVER_JWK_CERT_URL") == "" {
 		_ = os.Setenv("HYPERFLEET_SERVER_JWK_CERT_URL", "https://test-idp.example.com/certs")
 	}
+	if os.Getenv("HYPERFLEET_SERVER_IDENTITY_HEADER") == "" {
+		_ = os.Setenv("HYPERFLEET_SERVER_IDENTITY_HEADER", "X-HyperFleet-Identity")
+	}
 
 	// Set OpenAPI schema path for integration tests if not already set
 	// This enables schema validation middleware during tests

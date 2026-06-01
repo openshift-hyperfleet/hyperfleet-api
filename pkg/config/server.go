@@ -5,6 +5,8 @@ import (
 	"net"
 	"strconv"
 	"time"
+
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/validation"
 )
 
 // ServerConfig holds HTTP/HTTPS server configuration
@@ -13,6 +15,7 @@ type ServerConfig struct {
 	Hostname          string         `mapstructure:"hostname" json:"hostname" validate:"omitempty,hostname|ip"`
 	Host              string         `mapstructure:"host" json:"host" validate:"required,hostname|ip"`
 	OpenAPISchemaPath string         `mapstructure:"openapi_schema_path" json:"openapi_schema_path"`
+	IdentityHeader    string         `mapstructure:"identity_header" json:"identity_header"`
 	JWK               JWKConfig      `mapstructure:"jwk" json:"jwk" validate:"required"`
 	TLS               TLSConfig      `mapstructure:"tls" json:"tls" validate:"required"`
 	JWT               JWTConfig      `mapstructure:"jwt" json:"jwt" validate:"required"`
@@ -61,9 +64,10 @@ func (c *TLSConfig) Validate() error {
 
 // JWTConfig holds JWT authentication configuration
 type JWTConfig struct {
-	IssuerURL string `mapstructure:"issuer_url" json:"issuer_url" validate:"omitempty,url"`
-	Audience  string `mapstructure:"audience" json:"audience"`
-	Enabled   bool   `mapstructure:"enabled" json:"enabled"`
+	IssuerURL     string `mapstructure:"issuer_url" json:"issuer_url" validate:"omitempty,url"`
+	Audience      string `mapstructure:"audience" json:"audience"`
+	IdentityClaim string `mapstructure:"identity_claim" json:"identity_claim"`
+	Enabled       bool   `mapstructure:"enabled" json:"enabled"`
 }
 
 func (c *JWTConfig) Validate() error {
@@ -72,6 +76,20 @@ func (c *JWTConfig) Validate() error {
 	}
 	if c.IssuerURL == "" {
 		return fmt.Errorf("server.jwt.issuer_url is required when jwt is enabled")
+	}
+	if c.IdentityClaim == "" {
+		return fmt.Errorf("server.jwt.identity_claim is required when jwt is enabled")
+	}
+	return nil
+}
+
+// ValidateIdentityHeader validates the identity header name if set.
+func (s *ServerConfig) ValidateIdentityHeader() error {
+	if s.IdentityHeader == "" {
+		return nil
+	}
+	if validation.IsForbiddenIdentityHeaderName(s.IdentityHeader) {
+		return fmt.Errorf("server.identity_header %q is not allowed", s.IdentityHeader)
 	}
 	return nil
 }
@@ -100,9 +118,10 @@ func NewServerConfig() *ServerConfig {
 			KeyFile:  "",
 		},
 		JWT: JWTConfig{
-			Enabled:   true,
-			IssuerURL: "",
-			Audience:  "",
+			Enabled:       true,
+			IssuerURL:     "",
+			Audience:      "",
+			IdentityClaim: "email",
 		},
 		JWK: JWKConfig{
 			CertFile: "",

@@ -9,7 +9,6 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/server"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/presenters"
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/auth"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/dao"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/handlers"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/services"
@@ -50,7 +49,7 @@ func init() {
 	})
 
 	// Routes registration
-	server.RegisterRoutes("nodePools", func(apiV1Router *mux.Router, services server.ServicesInterface, authMiddleware auth.JWTMiddleware) {
+	server.RegisterRoutes("nodePools", func(apiV1Router *mux.Router, services server.ServicesInterface) {
 		envServices := services.(*environments.Services)
 		nodePoolHandler := handlers.NewNodePoolHandler(Service(envServices), generic.Service(envServices))
 
@@ -58,8 +57,6 @@ func init() {
 		// GET /api/hyperfleet/v1/nodepools - List all nodepools
 		nodePoolsRouter := apiV1Router.PathPrefix("/nodepools").Subrouter()
 		nodePoolsRouter.HandleFunc("", nodePoolHandler.List).Methods(http.MethodGet)
-
-		nodePoolsRouter.Use(authMiddleware.AuthenticateAccountJWT)
 	})
 
 	// REMOVED: Controller registration - Sentinel handles orchestration

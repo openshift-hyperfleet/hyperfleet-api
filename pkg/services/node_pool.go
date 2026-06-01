@@ -81,10 +81,10 @@ func (s *sqlNodePoolService) Get(ctx context.Context, id string) (*api.NodePool,
 
 func (s *sqlNodePoolService) Create(ctx context.Context, nodePool *api.NodePool) (*api.NodePool, *errors.ServiceError) {
 	if nodePool.CreatedBy == "" {
-		nodePool.CreatedBy = defaultSystemUser
+		nodePool.CreatedBy = actorFromContext(ctx)
 	}
 	if nodePool.UpdatedBy == "" {
-		nodePool.UpdatedBy = defaultSystemUser
+		nodePool.UpdatedBy = actorFromContext(ctx)
 	}
 	if nodePool.Generation == 0 {
 		nodePool.Generation = 1
@@ -127,6 +127,7 @@ func (s *sqlNodePoolService) Patch(
 	}
 
 	nodePool.IncrementGeneration()
+	nodePool.UpdatedBy = actorFromContext(ctx)
 
 	if saveErr := s.nodePoolDao.Save(ctx, nodePool); saveErr != nil {
 		return nil, handleUpdateError(api.ResourceTypeNodePool, saveErr)
@@ -186,7 +187,7 @@ func (s *sqlNodePoolService) SoftDelete(ctx context.Context, nodePoolID string) 
 	}
 
 	t := time.Now().UTC().Truncate(time.Microsecond)
-	deletedBy := defaultSystemUser
+	deletedBy := actorFromContext(ctx)
 	nodePool.MarkDeleted(deletedBy, t)
 	nodePool.IncrementGeneration()
 
