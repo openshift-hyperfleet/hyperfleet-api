@@ -54,9 +54,7 @@ config:
       audience: ""
       identity_claim: email
 
-    identity_header:
-      enabled: false
-      name: X-HyperFleet-Identity
+    identity_header: ""
 
     jwk:
       cert_file: ""

@@ -20,13 +20,7 @@ type callerIdentityMiddleware struct {
 var _ CallerIdentityMiddleware = &callerIdentityMiddleware{}
 
 func NewCallerIdentityMiddleware(cfg CallerIdentityConfig) (CallerIdentityMiddleware, error) {
-	if cfg.JWTIdentityClaim == "" {
-		cfg.JWTIdentityClaim = DefaultJWTIdentityClaim
-	}
-	if cfg.HeaderEnabled {
-		if cfg.HeaderName == "" {
-			return nil, fmt.Errorf("identity header name is required when identity header is enabled")
-		}
+	if cfg.HeaderName != "" {
 		if validation.IsForbiddenIdentityHeaderName(cfg.HeaderName) {
 			return nil, fmt.Errorf("identity header name %q is not allowed", cfg.HeaderName)
 		}
@@ -45,13 +39,6 @@ func (m *callerIdentityMiddleware) ResolveCallerIdentity(next http.Handler) http
 
 		ctx := r.Context()
 		identity, err := CallerIdentityFromRequest(ctx, r, m.cfg)
-		if err != nil {
-			handleError(
-				ctx, w, r, errors.CodeAuthNoCredentials,
-				fmt.Sprintf("Unable to resolve caller identity: %s", err),
-			)
-			return
-		}
 
 		if identity != "" {
 			ctx = SetUsernameContext(ctx, identity)
@@ -60,11 +47,12 @@ func (m *callerIdentityMiddleware) ResolveCallerIdentity(next http.Handler) http
 			return
 		}
 
-		if m.cfg.JWTEnabled {
-			handleError(
-				ctx, w, r, errors.CodeAuthNoCredentials,
-				"Unable to resolve caller identity from JWT token or identity header",
-			)
+		if isMutatingMethod(r.Method) {
+			msg := "Caller identity is required for mutating requests but could not be resolved"
+			if err != nil {
+				msg = fmt.Sprintf("Unable to resolve caller identity: %s", err)
+			}
+			handleError(ctx, w, r, errors.CodeAuthNoCredentials, msg)
 			return
 		}
 

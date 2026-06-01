@@ -187,7 +187,7 @@ func (s *sqlNodePoolService) SoftDelete(ctx context.Context, nodePoolID string) 
 	}
 
 	t := time.Now().UTC().Truncate(time.Microsecond)
-	deletedBy := defaultSystemUser
+	deletedBy := actorFromContext(ctx)
 	nodePool.MarkDeleted(deletedBy, t)
 	nodePool.IncrementGeneration()
 

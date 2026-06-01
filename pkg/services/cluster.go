@@ -131,7 +131,7 @@ func (s *sqlClusterService) Patch(
 }
 
 // SoftDelete marks a cluster for deletion by setting DeletedTime and
-// DeletedBy to the current time and system@hyperfleet.local.
+// DeletedBy to the current time and the caller identity from context.
 // If already marked, it returns the cluster unchanged. Cascades the deletion timestamp to all child nodepools.
 // Actual removal is handled by adapters detecting the new generation and triggering hard deletion asynchronously.
 func (s *sqlClusterService) SoftDelete(ctx context.Context, id string) (*api.Cluster, *errors.ServiceError) {
@@ -146,7 +146,7 @@ func (s *sqlClusterService) SoftDelete(ctx context.Context, id string) (*api.Clu
 	}
 
 	deletedTime := time.Now().UTC().Truncate(time.Microsecond)
-	deletedBy := defaultSystemUser
+	deletedBy := actorFromContext(ctx)
 	cluster.MarkDeleted(deletedBy, deletedTime)
 	cluster.IncrementGeneration()
 

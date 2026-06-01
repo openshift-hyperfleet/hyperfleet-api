@@ -381,7 +381,7 @@ func WithIdentityHeader(headerName, headerValue string) openapi.RequestEditorFn 
 
 // IdentityHeaderName returns the configured identity header name for integration tests.
 func IdentityHeaderName() string {
-	return environments.Environment().Config.Server.IdentityHeader.Name
+	return environments.Environment().Config.Server.IdentityHeader
 }
 
 func (helper *Helper) StartJWKCertServerMock() (teardown func() error) {

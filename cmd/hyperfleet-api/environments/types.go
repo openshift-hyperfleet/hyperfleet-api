@@ -3,7 +3,6 @@ package environments
 import (
 	"sync"
 
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/auth"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
 )
@@ -37,9 +36,7 @@ type Database struct {
 	SessionFactory db.SessionFactory
 }
 
-type Handlers struct {
-	CallerIdentityMiddleware auth.CallerIdentityMiddleware
-}
+type Handlers struct{}
 
 type Services struct {
 	serviceRegistry map[string]interface{}

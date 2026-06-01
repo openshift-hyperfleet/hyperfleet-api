@@ -32,9 +32,7 @@ data:
         audience: {{ .Values.config.server.jwt.audience | quote }}
         identity_claim: {{ .Values.config.server.jwt.identity_claim | quote }}
 
-      identity_header:
-        enabled: {{ .Values.config.server.identity_header.enabled }}
-        name: {{ .Values.config.server.identity_header.name | quote }}
+      identity_header: {{ .Values.config.server.identity_header | quote }}
 
       jwk:
         cert_file: {{ .Values.config.server.jwk.cert_file | quote }}

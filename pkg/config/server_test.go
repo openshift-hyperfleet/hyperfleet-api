@@ -42,35 +42,27 @@ func TestJWTConfig_Validate(t *testing.T) {
 	})
 }
 
-func TestIdentityHeaderConfig_Validate(t *testing.T) {
+func TestServerConfig_ValidateIdentityHeader(t *testing.T) {
 	RegisterTestingT(t)
 
-	t.Run("disabled identity header requires nothing", func(t *testing.T) {
+	t.Run("empty identity header requires nothing", func(t *testing.T) {
 		RegisterTestingT(t)
-		cfg := IdentityHeaderConfig{Enabled: false}
-		Expect(cfg.Validate()).To(Succeed())
-	})
-
-	t.Run("enabled identity header without name fails", func(t *testing.T) {
-		RegisterTestingT(t)
-		cfg := IdentityHeaderConfig{Enabled: true, Name: ""}
-		err := cfg.Validate()
-		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("identity_header.name"))
+		cfg := &ServerConfig{}
+		Expect(cfg.ValidateIdentityHeader()).To(Succeed())
 	})
 
 	t.Run("forbidden header name fails", func(t *testing.T) {
 		RegisterTestingT(t)
-		cfg := IdentityHeaderConfig{Enabled: true, Name: "Authorization"}
-		err := cfg.Validate()
+		cfg := &ServerConfig{IdentityHeader: "Authorization"}
+		err := cfg.ValidateIdentityHeader()
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("not allowed"))
 	})
 
-	t.Run("enabled identity header with valid name passes", func(t *testing.T) {
+	t.Run("valid header name passes", func(t *testing.T) {
 		RegisterTestingT(t)
-		cfg := IdentityHeaderConfig{Enabled: true, Name: "X-HyperFleet-Identity"}
-		Expect(cfg.Validate()).To(Succeed())
+		cfg := &ServerConfig{IdentityHeader: "X-HyperFleet-Identity"}
+		Expect(cfg.ValidateIdentityHeader()).To(Succeed())
 	})
 }
 

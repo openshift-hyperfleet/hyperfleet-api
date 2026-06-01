@@ -7,7 +7,6 @@ import (
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/environments"
 	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/server"
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/auth"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/handlers"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/registry"
 	"github.com/openshift-hyperfleet/hyperfleet-api/plugins/resources"
@@ -29,11 +28,7 @@ func init() {
 		SearchDisallowedFields: []string{"spec"},
 	})
 
-	server.RegisterRoutes(pluralVersions, func(
-		apiV1Router *mux.Router,
-		svc server.ServicesInterface,
-		authMiddleware auth.JWTMiddleware,
-	) {
+	server.RegisterRoutes(pluralVersions, func(apiV1Router *mux.Router, svc server.ServicesInterface) {
 		envServices := svc.(*environments.Services)
 		channelDescriptor := registry.MustGet("Channel")
 		descriptor := registry.MustGet(kindVersion)
@@ -48,7 +43,5 @@ func init() {
 		r.HandleFunc("/{id}", h.GetByOwner).Methods(http.MethodGet)
 		r.HandleFunc("/{id}", h.PatchByOwner).Methods(http.MethodPatch)
 		r.HandleFunc("/{id}", h.DeleteByOwner).Methods(http.MethodDelete)
-
-		r.Use(authMiddleware.AuthenticateAccountJWT)
 	})
 }

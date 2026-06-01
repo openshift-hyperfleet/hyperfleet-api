@@ -18,14 +18,12 @@ Validation schema validation is ENABLED.
 {{- end }}
 
 Caller identity (audit attribution):
-  config.server.jwt.identity_claim: {{ .Values.config.server.jwt.identity_claim | default "email" | quote }}
-  config.server.identity_header.enabled: {{ .Values.config.server.identity_header.enabled }} (chart default: false)
-  config.server.identity_header.name: {{ .Values.config.server.identity_header.name | default "X-HyperFleet-Identity" | quote }}
+  config.server.jwt.identity_claim: {{ .Values.config.server.jwt.identity_claim | default "" | quote }}
+  config.server.identity_header: {{ .Values.config.server.identity_header | default "" | quote }}
 
-When identity_header.enabled is true and a request includes a non-empty
-{{ .Values.config.server.identity_header.name | default "X-HyperFleet-Identity" }} header,
-that value overrides the JWT claim for audit fields (created_by, updated_by).
-JWT authentication behavior is unchanged when config.server.jwt.enabled is true.
+When identity_header is set and a request includes a non-empty header with that name,
+the header value overrides the JWT claim for audit fields (created_by, updated_by).
+When identity_claim is set, the named JWT claim is used as the caller identity.
 Only trusted gateways should set the identity header in production.
 
 Override in values.yaml:
@@ -33,14 +31,11 @@ Override in values.yaml:
     server:
       jwt:
         identity_claim: preferred_username
-      identity_header:
-        enabled: true
-        name: X-HyperFleet-Identity
+      identity_header: X-HyperFleet-Identity
 
 Or at install/upgrade:
   --set config.server.jwt.identity_claim=preferred_username
-  --set config.server.identity_header.enabled=true
-  --set config.server.identity_header.name=X-HyperFleet-Identity
+  --set config.server.identity_header=X-HyperFleet-Identity
 
 Documentation:
   https://github.com/openshift-hyperfleet/hyperfleet-api/blob/main/docs/deployment.md
