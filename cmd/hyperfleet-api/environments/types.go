@@ -15,7 +15,7 @@ const (
 	ProductionEnv         string = "production"
 
 	EnvironmentStringKey string = "HYPERFLEET_ENV"
-	EnvironmentDefault          = DevelopmentEnv
+	EnvironmentDefault          = ProductionEnv
 
 	// Database SSL modes
 	SSLModeDisable string = "disable"

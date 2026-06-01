@@ -91,6 +91,8 @@ pre-commit run --all-files
 make run-no-auth
 ```
 
+**Note**: The default runtime environment is `production` (JWT and TLS enabled). The `make run-no-auth` target explicitly disables authentication for local development. If running the binary directly, set `HYPERFLEET_ENV=development` or use `--server-jwt-enabled=false`.
+
 The service starts on `localhost:8000`:
 - REST API: `http://localhost:8000/api/hyperfleet/v1/`
 - OpenAPI spec: `http://localhost:8000/api/hyperfleet/v1/openapi`
