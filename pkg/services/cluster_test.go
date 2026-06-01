@@ -677,7 +677,7 @@ func TestProcessAdapterStatus_FirstMultipleConditions_AvailableUnknown(t *testin
 			LastTransitionTime: time.Now(),
 		},
 		{
-			Type:               api.AdapterConditionTypeReady,
+			Type:               api.AdapterConditionTypeReconciled,
 			Status:             api.AdapterConditionTrue,
 			LastTransitionTime: time.Now(),
 		},
@@ -749,7 +749,7 @@ func TestProcessAdapterStatus_SubsequentMultipleConditions_AvailableUnknown(t *t
 		{Type: api.AdapterConditionTypeAvailable, Status: api.AdapterConditionUnknown, LastTransitionTime: time.Now()},
 		{Type: api.AdapterConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
 		{Type: api.AdapterConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
-		{Type: api.AdapterConditionTypeReady, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeReconciled, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
 		{Type: "Progressing", Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
 	}
 	conditionsJSON, _ := json.Marshal(conditions)
@@ -770,7 +770,7 @@ func TestProcessAdapterStatus_SubsequentMultipleConditions_AvailableUnknown(t *t
 	g.Expect(result).To(BeNil(), "Subsequent Available=Unknown should be discarded")
 }
 
-func TestClusterAvailableReadyTransitions(t *testing.T) {
+func TestClusterAvailableReconciledTransitions(t *testing.T) {
 	t.Parallel()
 	g := NewWithT(t)
 
@@ -798,23 +798,20 @@ func TestClusterAvailableReadyTransitions(t *testing.T) {
 
 		var conds []api.ResourceCondition
 		g.Expect(json.Unmarshal(stored.StatusConditions, &conds)).To(Succeed())
-		g.Expect(len(conds)).To(BeNumerically(">=", 3))
+		g.Expect(len(conds)).To(BeNumerically(">=", 2))
 
-		var available, ready, reconciled *api.ResourceCondition
+		var available, reconciled *api.ResourceCondition
 		for i := range conds {
 			switch conds[i].Type {
 			case api.ResourceConditionTypeLastKnownReconciled:
 				available = &conds[i]
-			case api.ResourceConditionTypeReady:
-				ready = &conds[i]
 			case api.ResourceConditionTypeReconciled:
 				reconciled = &conds[i]
 			}
 		}
 		g.Expect(reconciled).ToNot(BeNil())
 		g.Expect(available).ToNot(BeNil())
-		g.Expect(ready).ToNot(BeNil())
-		return *available, *ready
+		return *available, *reconciled
 	}
 
 	upsert := func(adapter string, available api.AdapterConditionStatus, observedGen int32) {
@@ -843,44 +840,44 @@ func TestClusterAvailableReadyTransitions(t *testing.T) {
 	// No adapter statuses yet.
 	_, err := service.UpdateClusterStatusFromAdapters(ctx, clusterID)
 	g.Expect(err).To(BeNil())
-	avail, ready := getSynth()
+	avail, reconciled := getSynth()
 	g.Expect(avail.Status).To(Equal(api.ConditionFalse))
 	g.Expect(avail.ObservedGeneration).To(Equal(int32(1)))
-	g.Expect(ready.Status).To(Equal(api.ConditionFalse))
-	g.Expect(ready.ObservedGeneration).To(Equal(int32(1)))
+	g.Expect(reconciled.Status).To(Equal(api.ConditionFalse))
+	g.Expect(reconciled.ObservedGeneration).To(Equal(int32(1)))
 
-	// Partial adapters: still not Available/Ready.
+	// Partial adapters: still not Available/Reconciled.
 	upsert("validation", api.AdapterConditionTrue, 1)
-	avail, ready = getSynth()
+	avail, reconciled = getSynth()
 	g.Expect(avail.Status).To(Equal(api.ConditionFalse))
-	g.Expect(ready.Status).To(Equal(api.ConditionFalse))
+	g.Expect(reconciled.Status).To(Equal(api.ConditionFalse))
 
-	// All required adapters available at gen=1 => Available=True, Ready=True.
+	// All required adapters available at gen=1 => Available=True, Reconciled=True.
 	upsert("dns", api.AdapterConditionTrue, 1)
-	avail, ready = getSynth()
+	avail, reconciled = getSynth()
 	g.Expect(avail.Status).To(Equal(api.ConditionTrue))
 	g.Expect(avail.ObservedGeneration).To(Equal(int32(1)))
-	g.Expect(ready.Status).To(Equal(api.ConditionTrue))
-	g.Expect(ready.ObservedGeneration).To(Equal(int32(1)))
+	g.Expect(reconciled.Status).To(Equal(api.ConditionTrue))
+	g.Expect(reconciled.ObservedGeneration).To(Equal(int32(1)))
 
-	// Bump resource generation => Ready flips to False; Available remains True.
+	// Bump resource generation => Reconciled flips to False; Available remains True.
 	clusterDao.clusters[clusterID].Generation = 2
 	_, err = service.UpdateClusterStatusFromAdapters(ctx, clusterID)
 	g.Expect(err).To(BeNil())
-	avail, ready = getSynth()
+	avail, reconciled = getSynth()
 	g.Expect(avail.Status).To(Equal(api.ConditionTrue))
 	g.Expect(avail.ObservedGeneration).To(Equal(int32(1)))
-	g.Expect(ready.Status).To(Equal(api.ConditionFalse))
-	g.Expect(ready.ObservedGeneration).To(Equal(int32(2)))
+	g.Expect(reconciled.Status).To(Equal(api.ConditionFalse))
+	g.Expect(reconciled.ObservedGeneration).To(Equal(int32(2)))
 
-	// One adapter updates to gen=2 => Ready still False; Available still True (minObservedGeneration still 1).
+	// One adapter updates to gen=2 => Reconciled still False; Available still True (minObservedGeneration still 1).
 	upsert("validation", api.AdapterConditionTrue, 2)
-	avail, ready = getSynth()
+	avail, reconciled = getSynth()
 	g.Expect(avail.Status).To(Equal(api.ConditionTrue))
 	g.Expect(avail.ObservedGeneration).To(Equal(int32(1)))
-	g.Expect(ready.Status).To(Equal(api.ConditionFalse))
+	g.Expect(reconciled.Status).To(Equal(api.ConditionFalse))
 
-	// One adapter updates to gen=1 => Ready still False; Available still True (minObservedGeneration still 1).
+	// One adapter updates to gen=1 => Reconciled still False; Available still True (minObservedGeneration still 1).
 	// This is an edge case where an adapter reports a gen=1 status after a gen=2 status.
 	// Since we don't allow downgrading observed generations, we should not overwrite the cluster conditions.
 	// And Available should remain True, but in reality it should be False.
@@ -889,24 +886,24 @@ func TestClusterAvailableReadyTransitions(t *testing.T) {
 	// So, while we are keeping Available True for gen=1,
 	// there should be soon an update to gen=2, which will overwrite the Available condition.
 	upsert("validation", api.AdapterConditionFalse, 1)
-	avail, ready = getSynth()
+	avail, reconciled = getSynth()
 	g.Expect(avail.Status).To(Equal(api.ConditionTrue)) // <-- this is the edge case
 	g.Expect(avail.ObservedGeneration).To(Equal(int32(1)))
-	g.Expect(ready.Status).To(Equal(api.ConditionFalse))
+	g.Expect(reconciled.Status).To(Equal(api.ConditionFalse))
 
-	// All required adapters at gen=2 => Ready becomes True, Available minObservedGeneration becomes 2.
+	// All required adapters at gen=2 => Reconciled becomes True, Available minObservedGeneration becomes 2.
 	upsert("dns", api.AdapterConditionTrue, 2)
-	avail, ready = getSynth()
+	avail, reconciled = getSynth()
 	g.Expect(avail.Status).To(Equal(api.ConditionTrue))
 	g.Expect(avail.ObservedGeneration).To(Equal(int32(2)))
-	g.Expect(ready.Status).To(Equal(api.ConditionTrue))
+	g.Expect(reconciled.Status).To(Equal(api.ConditionTrue))
 
-	// One required adapter goes False => both Available and Ready become False.
+	// One required adapter goes False => both Available and Reconciled become False.
 	upsert("dns", api.AdapterConditionFalse, 2)
-	avail, ready = getSynth()
+	avail, reconciled = getSynth()
 	g.Expect(avail.Status).To(Equal(api.ConditionFalse))
 	g.Expect(avail.ObservedGeneration).To(Equal(int32(2)))
-	g.Expect(ready.Status).To(Equal(api.ConditionFalse))
+	g.Expect(reconciled.Status).To(Equal(api.ConditionFalse))
 
 	// Available=Unknown is a no-op (does not store, does not overwrite cluster conditions).
 	prevStatus := api.Cluster{}.StatusConditions
@@ -1034,14 +1031,6 @@ func TestClusterSyntheticTimestampsStableWithoutAdapterStatus(t *testing.T) {
 			CreatedTime:        fixedNow,
 			LastUpdatedTime:    fixedNow,
 		},
-		{
-			Type:               api.ResourceConditionTypeReady,
-			Status:             api.ConditionFalse,
-			ObservedGeneration: 1,
-			LastTransitionTime: fixedNow,
-			CreatedTime:        fixedNow,
-			LastUpdatedTime:    fixedNow,
-		},
 	}
 	initialConditionsJSON, _ := json.Marshal(initialConditions)
 
@@ -1057,28 +1046,22 @@ func TestClusterSyntheticTimestampsStableWithoutAdapterStatus(t *testing.T) {
 
 	var createdConds []api.ResourceCondition
 	g.Expect(json.Unmarshal(created.StatusConditions, &createdConds)).To(Succeed())
-	g.Expect(len(createdConds)).To(BeNumerically(">=", 3))
+	g.Expect(len(createdConds)).To(BeNumerically(">=", 2))
 
-	var createdAvailable, createdReady, createdReconciled *api.ResourceCondition
+	var createdAvailable, createdReconciled *api.ResourceCondition
 	for i := range createdConds {
 		switch createdConds[i].Type {
 		case api.ResourceConditionTypeLastKnownReconciled:
 			createdAvailable = &createdConds[i]
-		case api.ResourceConditionTypeReady:
-			createdReady = &createdConds[i]
 		case api.ResourceConditionTypeReconciled:
 			createdReconciled = &createdConds[i]
 		}
 	}
 	g.Expect(createdAvailable).ToNot(BeNil())
-	g.Expect(createdReady).ToNot(BeNil())
 	g.Expect(createdReconciled).ToNot(BeNil())
 	g.Expect(createdAvailable.CreatedTime).To(Equal(fixedNow))
 	g.Expect(createdAvailable.LastTransitionTime).To(Equal(fixedNow))
 	g.Expect(createdAvailable.LastUpdatedTime).To(Equal(fixedNow))
-	g.Expect(createdReady.CreatedTime).To(Equal(fixedNow))
-	g.Expect(createdReady.LastTransitionTime).To(Equal(fixedNow))
-	g.Expect(createdReady.LastUpdatedTime).To(Equal(fixedNow))
 	g.Expect(createdReconciled.CreatedTime).To(Equal(fixedNow))
 	g.Expect(createdReconciled.LastTransitionTime).To(Equal(fixedNow))
 	g.Expect(createdReconciled.LastUpdatedTime).To(Equal(fixedNow))
@@ -1088,28 +1071,22 @@ func TestClusterSyntheticTimestampsStableWithoutAdapterStatus(t *testing.T) {
 
 	var updatedConds []api.ResourceCondition
 	g.Expect(json.Unmarshal(updated.StatusConditions, &updatedConds)).To(Succeed())
-	g.Expect(len(updatedConds)).To(BeNumerically(">=", 3))
+	g.Expect(len(updatedConds)).To(BeNumerically(">=", 2))
 
-	var updatedAvailable, updatedReady, updatedReconciled *api.ResourceCondition
+	var updatedAvailable, updatedReconciled *api.ResourceCondition
 	for i := range updatedConds {
 		switch updatedConds[i].Type {
 		case api.ResourceConditionTypeLastKnownReconciled:
 			updatedAvailable = &updatedConds[i]
-		case api.ResourceConditionTypeReady:
-			updatedReady = &updatedConds[i]
 		case api.ResourceConditionTypeReconciled:
 			updatedReconciled = &updatedConds[i]
 		}
 	}
 	g.Expect(updatedAvailable).ToNot(BeNil())
-	g.Expect(updatedReady).ToNot(BeNil())
 	g.Expect(updatedReconciled).ToNot(BeNil())
 	g.Expect(updatedAvailable.CreatedTime).To(Equal(fixedNow))
 	g.Expect(updatedAvailable.LastTransitionTime).To(Equal(fixedNow))
 	g.Expect(updatedAvailable.LastUpdatedTime).To(Equal(fixedNow))
-	g.Expect(updatedReady.CreatedTime).To(Equal(fixedNow))
-	g.Expect(updatedReady.LastTransitionTime).To(Equal(fixedNow))
-	g.Expect(updatedReady.LastUpdatedTime).To(Equal(fixedNow))
 	g.Expect(updatedReconciled.CreatedTime).To(Equal(fixedNow))
 	g.Expect(updatedReconciled.LastTransitionTime).To(Equal(fixedNow))
 	g.Expect(updatedReconciled.LastUpdatedTime).To(Equal(fixedNow))
@@ -1551,7 +1528,7 @@ func TestClusterSoftDelete(t *testing.T) {
 		g.Expect(svcErr.HTTPCode).To(Equal(404))
 	})
 
-	t.Run("given a cluster with Ready=True, when soft-deleted, then Ready flips to False due to generation bump", func(t *testing.T) { //nolint:lll
+	t.Run("given a cluster with Reconciled=True, when soft-deleted, then Reconciled flips to False due to generation bump", func(t *testing.T) { //nolint:lll
 		g := NewWithT(t)
 		// Given:
 		clusterDao := newMockClusterDao()
@@ -1577,37 +1554,37 @@ func TestClusterSoftDelete(t *testing.T) {
 		})
 		g.Expect(svcErr).To(BeNil())
 
-		// Pre-condition: Ready=True before soft-delete
+		// Pre-condition: Reconciled=True before soft-delete
 		stored, _ := clusterDao.Get(ctx, clusterID)
 		var preConds []api.ResourceCondition
 		g.Expect(json.Unmarshal(stored.StatusConditions, &preConds)).To(Succeed())
-		var preReady *api.ResourceCondition
+		var preReconciled *api.ResourceCondition
 		for i := range preConds {
-			if preConds[i].Type == api.ResourceConditionTypeReady {
-				preReady = &preConds[i]
+			if preConds[i].Type == api.ResourceConditionTypeReconciled {
+				preReconciled = &preConds[i]
 			}
 		}
-		g.Expect(preReady).NotTo(BeNil())
-		g.Expect(preReady.Status).To(Equal(api.ConditionTrue))
+		g.Expect(preReconciled).NotTo(BeNil())
+		g.Expect(preReconciled.Status).To(Equal(api.ConditionTrue))
 
 		// When:
 		_, svcErr = service.SoftDelete(ctx, clusterID)
 		g.Expect(svcErr).To(BeNil())
 
-		// Then: generation bumped to 2, Ready must flip to False
+		// Then: generation bumped to 2, Reconciled must flip to False
 		stored, _ = clusterDao.Get(ctx, clusterID)
 		g.Expect(stored.Generation).To(Equal(int32(2)))
 		var postConds []api.ResourceCondition
 		g.Expect(json.Unmarshal(stored.StatusConditions, &postConds)).To(Succeed())
-		var postReady *api.ResourceCondition
+		var postReconciled *api.ResourceCondition
 		for i := range postConds {
-			if postConds[i].Type == api.ResourceConditionTypeReady {
-				postReady = &postConds[i]
+			if postConds[i].Type == api.ResourceConditionTypeReconciled {
+				postReconciled = &postConds[i]
 			}
 		}
-		g.Expect(postReady).NotTo(BeNil())
-		g.Expect(postReady.Status).To(Equal(api.ConditionFalse))
-		g.Expect(postReady.ObservedGeneration).To(Equal(int32(2)))
+		g.Expect(postReconciled).NotTo(BeNil())
+		g.Expect(postReconciled.Status).To(Equal(api.ConditionFalse))
+		g.Expect(postReconciled.ObservedGeneration).To(Equal(int32(2)))
 	})
 }
 
@@ -1671,13 +1648,10 @@ func TestReconciled_DuringDeletion_ChildResources(t *testing.T) {
 		var conds []api.ResourceCondition
 		g.Expect(json.Unmarshal(updated.StatusConditions, &conds)).To(Succeed())
 
-		var reconciled, ready *api.ResourceCondition
+		var reconciled *api.ResourceCondition
 		for i := range conds {
-			switch conds[i].Type {
-			case api.ResourceConditionTypeReconciled:
+			if conds[i].Type == api.ResourceConditionTypeReconciled {
 				reconciled = &conds[i]
-			case api.ResourceConditionTypeReady:
-				ready = &conds[i]
 			}
 		}
 
@@ -1685,9 +1659,6 @@ func TestReconciled_DuringDeletion_ChildResources(t *testing.T) {
 		g.Expect(reconciled.Status).To(Equal(api.ConditionFalse))
 		g.Expect(reconciled.Reason).NotTo(BeNil())
 		g.Expect(*reconciled.Reason).To(Equal(reasonReconciledWaitingForChildren))
-
-		g.Expect(ready).NotTo(BeNil())
-		g.Expect(ready.Status).To(Equal(api.ConditionFalse))
 	})
 
 	t.Run("all adapters finalized, no nodepools → Reconciled=True", func(t *testing.T) {
@@ -1717,13 +1688,10 @@ func TestReconciled_DuringDeletion_ChildResources(t *testing.T) {
 		var conds []api.ResourceCondition
 		g.Expect(json.Unmarshal(updated.StatusConditions, &conds)).To(Succeed())
 
-		var reconciled, ready *api.ResourceCondition
+		var reconciled *api.ResourceCondition
 		for i := range conds {
-			switch conds[i].Type {
-			case api.ResourceConditionTypeReconciled:
+			if conds[i].Type == api.ResourceConditionTypeReconciled {
 				reconciled = &conds[i]
-			case api.ResourceConditionTypeReady:
-				ready = &conds[i]
 			}
 		}
 
@@ -1731,9 +1699,6 @@ func TestReconciled_DuringDeletion_ChildResources(t *testing.T) {
 		g.Expect(reconciled.Status).To(Equal(api.ConditionTrue))
 		g.Expect(reconciled.Reason).NotTo(BeNil())
 		g.Expect(*reconciled.Reason).To(Equal(reasonReconciledAll))
-
-		g.Expect(ready).NotTo(BeNil())
-		g.Expect(ready.Status).To(Equal(api.ConditionTrue))
 	})
 }
 

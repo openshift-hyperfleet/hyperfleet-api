@@ -25,8 +25,8 @@ const (
 )
 
 // fixedConditionCount is the number of top-level conditions always present in resource status:
-// Ready (deprecated), Reconciled, and LastKnownReconciled.
-const fixedConditionCount = 3
+// Reconciled and LastKnownReconciled.
+const fixedConditionCount = 2
 
 const (
 	reasonReconciledAll                = "ReconciledAll"
@@ -156,16 +156,9 @@ func parsePrevConditions(ctx context.Context, raw []byte) (
 		logger.WithError(ctx, err).Error("Failed to unmarshal previous conditions JSON; proceeding with empty state")
 		return nil, nil, prevAdapterByType
 	}
-	// Backward compat: existing DB records may only have Ready (written before Reconciled was introduced).
-	// Use Ready as the previous Reconciled state if no Reconciled condition is stored yet.
-	// Reconciled takes precedence if both are present, regardless of array order
 	for i := range conditions {
 		c := conditions[i]
 		switch c.Type {
-		case api.ResourceConditionTypeReady:
-			if prevReconciled == nil {
-				prevReconciled = &c
-			}
 		case api.ResourceConditionTypeReconciled:
 			prevReconciled = &c
 		case api.ResourceConditionTypeLastKnownReconciled:
@@ -256,10 +249,10 @@ func normalizeAdapterReportsForAggregation(
 	return out
 }
 
-// buildReadyFalseMessage returns the diagnostic message for a False Ready condition,
+// buildReconciledFalseMessage returns the diagnostic message for a False Reconciled condition,
 // listing which required adapters are not yet reporting Available=True at the current
 // generation and which adapters have sent any report at all.
-func buildReadyFalseMessage(
+func buildReconciledFalseMessage(
 	required []string, byAdapter map[string]adapterAvailableSnapshot, resourceGen int32,
 ) string {
 	var notReady, reporting []string
@@ -356,13 +349,13 @@ func computeReconciled(
 		message = buildFinalizedFalseMessage(requiredAdapters, snapshotsByAdapter, resourceGen)
 	default:
 		reason = reasonReconciledMissingAdapters
-		message = buildReadyFalseMessage(requiredAdapters, snapshotsByAdapter, resourceGen)
+		message = buildReconciledFalseMessage(requiredAdapters, snapshotsByAdapter, resourceGen)
 	}
 
-	lastUpdated := computeReadyLastUpdatedTime(
+	lastUpdated := computeReconciledLastUpdatedTime(
 		resourceGen, refTime, requiredAdapters, snapshotsByAdapter,
 	)
-	lastTransition := computeReadyLastTransitionTime(
+	lastTransition := computeReconciledLastTransitionTime(
 		resourceGen, refTime, prevCondition, status, lastUpdated,
 	)
 
@@ -383,7 +376,7 @@ func computeReconciled(
 	}
 }
 
-func computeReadyLastUpdatedTime(
+func computeReconciledLastUpdatedTime(
 	resourceGen int32,
 	refTime time.Time,
 	required []string,
@@ -407,7 +400,7 @@ func computeReadyLastUpdatedTime(
 	return minTime(atGen)
 }
 
-func computeReadyLastTransitionTime(
+func computeReconciledLastTransitionTime(
 	resourceGen int32,
 	refTime time.Time,
 	prev *api.ResourceCondition,

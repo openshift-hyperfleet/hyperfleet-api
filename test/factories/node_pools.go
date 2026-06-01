@@ -81,15 +81,15 @@ func reloadNodePool(dbSession *gorm.DB, nodePool *api.NodePool) error {
 
 // NewNodePoolWithStatus creates a node pool with specific status conditions using the current time.
 func NewNodePoolWithStatus(
-	f *Factories, dbFactory db.SessionFactory, id string, isAvailable, isReady bool,
+	f *Factories, dbFactory db.SessionFactory, id string, isAvailable, isReconciled bool,
 ) (*api.NodePool, error) {
-	return NewNodePoolWithStatusAtTime(f, dbFactory, id, isAvailable, isReady, time.Now())
+	return NewNodePoolWithStatusAtTime(f, dbFactory, id, isAvailable, isReconciled, time.Now())
 }
 
 // NewNodePoolWithStatusAtTime creates a node pool with specific status conditions and custom timestamps.
 func NewNodePoolWithStatusAtTime(
 	f *Factories, dbFactory db.SessionFactory, id string,
-	isAvailable, isReady bool, conditionTime time.Time,
+	isAvailable, isReconciled bool, conditionTime time.Time,
 ) (*api.NodePool, error) {
 	nodePool, err := f.NewNodePool(id)
 	if err != nil {
@@ -100,9 +100,9 @@ func NewNodePoolWithStatusAtTime(
 	if isAvailable {
 		availableStatus = api.ConditionTrue
 	}
-	readyStatus := api.ConditionFalse
-	if isReady {
-		readyStatus = api.ConditionTrue
+	reconciledStatus := api.ConditionFalse
+	if isReconciled {
+		reconciledStatus = api.ConditionTrue
 	}
 
 	conditions := []api.ResourceCondition{
@@ -115,8 +115,8 @@ func NewNodePoolWithStatusAtTime(
 			LastUpdatedTime:    conditionTime,
 		},
 		{
-			Type:               api.ResourceConditionTypeReady,
-			Status:             readyStatus,
+			Type:               api.ResourceConditionTypeReconciled,
+			Status:             reconciledStatus,
 			ObservedGeneration: nodePool.Generation,
 			LastTransitionTime: conditionTime,
 			CreatedTime:        conditionTime,
@@ -171,9 +171,9 @@ func NewNodePoolWithLabels(
 
 // NewNodePoolWithStatusAndLabels creates a node pool with both status conditions and labels
 func NewNodePoolWithStatusAndLabels(
-	f *Factories, dbFactory db.SessionFactory, id string, isAvailable, isReady bool, labels map[string]string,
+	f *Factories, dbFactory db.SessionFactory, id string, isAvailable, isReconciled bool, labels map[string]string,
 ) (*api.NodePool, error) {
-	nodePool, err := NewNodePoolWithStatus(f, dbFactory, id, isAvailable, isReady)
+	nodePool, err := NewNodePoolWithStatus(f, dbFactory, id, isAvailable, isReconciled)
 	if err != nil {
 		return nil, err
 	}

@@ -143,12 +143,12 @@ func TestBuildAdapterSummaries(t *testing.T) {
 				},
 				{
 					Adapter:    "provisioning",
-					Conditions: mustMarshal([]api.AdapterCondition{{Type: "Ready", Status: "False"}}),
+					Conditions: mustMarshal([]api.AdapterCondition{{Type: "Reconciled", Status: "False"}}),
 				},
 			},
 			expected: []adapterSummary{
 				{Adapter: "validation", Conditions: map[string]string{"Applied": "True"}},
-				{Adapter: "provisioning", Conditions: map[string]string{"Ready": "False"}},
+				{Adapter: "provisioning", Conditions: map[string]string{"Reconciled": "False"}},
 			},
 		},
 	}

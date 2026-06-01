@@ -62,7 +62,7 @@ func TestClusterStatusPut(t *testing.T) {
 				Reason: util.PtrString("HealthyCluster"),
 			},
 			{
-				Type:   api.AdapterConditionTypeReady,
+				Type:   api.AdapterConditionTypeReconciled,
 				Status: openapi.AdapterConditionStatusTrue,
 				Reason: util.PtrString("AdapterReady"),
 			},
@@ -112,7 +112,7 @@ func TestClusterStatusGet(t *testing.T) {
 					Status: openapi.AdapterConditionStatusTrue,
 				},
 				{
-					Type:   api.AdapterConditionTypeReady,
+					Type:   api.AdapterConditionTypeReconciled,
 					Status: openapi.AdapterConditionStatusTrue,
 				},
 			},
@@ -187,7 +187,7 @@ func TestNodePoolStatusPut(t *testing.T) {
 				Reason: util.PtrString("Initializing"),
 			},
 			{
-				Type:   api.AdapterConditionTypeReady,
+				Type:   api.AdapterConditionTypeReconciled,
 				Status: openapi.AdapterConditionStatusFalse,
 				Reason: util.PtrString("Initializing"),
 			},
@@ -237,7 +237,7 @@ func TestNodePoolStatusGet(t *testing.T) {
 					Status: openapi.AdapterConditionStatusTrue,
 				},
 				{
-					Type:   api.AdapterConditionTypeReady,
+					Type:   api.AdapterConditionTypeReconciled,
 					Status: openapi.AdapterConditionStatusTrue,
 				},
 			},
@@ -289,7 +289,7 @@ func TestAdapterStatusPaging(t *testing.T) {
 					Status: openapi.AdapterConditionStatusTrue,
 				},
 				{
-					Type:   api.AdapterConditionTypeReady,
+					Type:   api.AdapterConditionTypeReconciled,
 					Status: openapi.AdapterConditionStatusTrue,
 				},
 			},
@@ -351,7 +351,7 @@ func TestAdapterStatusIdempotency(t *testing.T) {
 				Reason: util.PtrString("Initializing"),
 			},
 			{
-				Type:   api.AdapterConditionTypeReady,
+				Type:   api.AdapterConditionTypeReconciled,
 				Status: openapi.AdapterConditionStatusFalse,
 				Reason: util.PtrString("Initializing"),
 			},
@@ -393,7 +393,7 @@ func TestAdapterStatusIdempotency(t *testing.T) {
 				Reason: util.PtrString("HealthyCluster"),
 			},
 			{
-				Type:   api.AdapterConditionTypeReady,
+				Type:   api.AdapterConditionTypeReconciled,
 				Status: openapi.AdapterConditionStatusTrue,
 				Reason: util.PtrString("AdapterReady"),
 			},
@@ -501,7 +501,7 @@ func TestClusterStatusPut_FirstUnknownAccepted(t *testing.T) {
 		To(Equal(http.StatusNoContent), "Expected 204 No Content for subsequent Unknown status report")
 }
 
-// TestNodePoolStatusPost_FirstUnknownAccepted tests that first status reports with Unknown
+// TestNodePoolStatusPut_FirstUnknownAccepted tests that first status reports with Unknown
 // Available condition are accepted, subsequent ones are rejected (HYPERFLEET-657)
 func TestNodePoolStatusPut_FirstUnknownAccepted(t *testing.T) {
 	h, client := test.RegisterIntegration(t)
@@ -605,7 +605,7 @@ func TestClusterStatusPut_MultipleConditionsWithUnknownAvailable(t *testing.T) {
 				Reason: util.PtrString("HealthyCluster"),
 			},
 			{
-				Type:   api.AdapterConditionTypeReady,
+				Type:   api.AdapterConditionTypeReconciled,
 				Status: openapi.AdapterConditionStatusTrue,
 			},
 			{
@@ -665,7 +665,7 @@ func TestAdapterStatusPagingEdgeCases(t *testing.T) {
 					Status: openapi.AdapterConditionStatusTrue,
 				},
 				{
-					Type:   api.AdapterConditionTypeReady,
+					Type:   api.AdapterConditionTypeReconciled,
 					Status: openapi.AdapterConditionStatusTrue,
 				},
 			},
@@ -722,7 +722,7 @@ func TestAdapterStatusPagingEdgeCases(t *testing.T) {
 				Status: openapi.AdapterConditionStatusTrue,
 			},
 			{
-				Type:   api.AdapterConditionTypeReady,
+				Type:   api.AdapterConditionTypeReconciled,
 				Status: openapi.AdapterConditionStatusTrue,
 			},
 		},
@@ -1189,7 +1189,7 @@ func TestClusterStatusPut_ValidStatusesStillWork(t *testing.T) {
 					Status: openapi.AdapterConditionStatusTrue,
 				},
 				{
-					Type:   api.AdapterConditionTypeReady,
+					Type:   api.AdapterConditionTypeReconciled,
 					Status: openapi.AdapterConditionStatusTrue,
 				},
 			},

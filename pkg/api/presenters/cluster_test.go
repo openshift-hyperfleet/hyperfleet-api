@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	testConditionReady = "Ready"
+	testConditionReconciled = "Reconciled"
 )
 
 // Helper function to create test ClusterCreateRequest
@@ -158,7 +158,7 @@ func TestPresentCluster_Complete(t *testing.T) {
 	RegisterTestingT(t)
 
 	now := time.Now()
-	reason := testConditionReady
+	reason := testConditionReconciled
 	message := "Cluster is ready"
 
 	// Create domain ResourceCondition
@@ -219,7 +219,7 @@ func TestPresentCluster_Complete(t *testing.T) {
 	Expect(len(result.Status.Conditions)).To(Equal(1))
 	Expect(result.Status.Conditions[0].Type).To(Equal(api.ResourceConditionTypeAvailable))
 	Expect(result.Status.Conditions[0].Status).To(Equal(openapi.ResourceConditionStatusTrue))
-	Expect(*result.Status.Conditions[0].Reason).To(Equal(testConditionReady))
+	Expect(*result.Status.Conditions[0].Reason).To(Equal(testConditionReconciled))
 
 	// Verify timestamps
 	Expect(result.CreatedTime.Unix()).To(Equal(now.Unix()))
@@ -251,7 +251,7 @@ func TestPresentCluster_StatusConditionsConversion(t *testing.T) {
 	RegisterTestingT(t)
 
 	now := time.Now()
-	reason1 := "Ready"
+	reason1 := "Reconciled"
 	message1 := "All systems operational"
 	reason2 := "Degraded"
 	message2 := "Some components unavailable"
@@ -301,7 +301,7 @@ func TestPresentCluster_StatusConditionsConversion(t *testing.T) {
 	// First condition
 	Expect(result.Status.Conditions[0].Type).To(Equal(api.ResourceConditionTypeAvailable))
 	Expect(result.Status.Conditions[0].Status).To(Equal(openapi.ResourceConditionStatusTrue))
-	Expect(*result.Status.Conditions[0].Reason).To(Equal(testConditionReady))
+	Expect(*result.Status.Conditions[0].Reason).To(Equal(testConditionReconciled))
 	Expect(*result.Status.Conditions[0].Message).To(Equal("All systems operational"))
 
 	// Second condition

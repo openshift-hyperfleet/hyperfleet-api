@@ -147,13 +147,13 @@ func TestClusterPatch(t *testing.T) {
 	Expect(updatedWithLabels.Generation).To(Equal(updated.Generation+1), "Generation should increment when labels change")
 }
 
-func TestClusterPatch_SetReadyFalse(t *testing.T) {
+func TestClusterPatch_SetReconciledFalse(t *testing.T) {
 	h, client := test.RegisterIntegration(t)
 
 	account := h.NewRandAccount()
 	ctx := h.NewAuthenticatedContext(account)
 
-	// Create a cluster with Ready=True
+	// Create a cluster with Reconciled=True
 	cluster, err := factories.NewClusterWithStatus(&h.Factories, h.DBFactory, h.NewID(), true, true)
 	Expect(err).NotTo(HaveOccurred())
 
@@ -169,16 +169,16 @@ func TestClusterPatch_SetReadyFalse(t *testing.T) {
 	updated := patchResp.JSON200
 	Expect(updated.Generation).To(Equal(cluster.Generation+1), "Generation should increment when labels change")
 
-	var readyCond *openapi.ResourceCondition
+	var reconciledCond *openapi.ResourceCondition
 	for i := range updated.Status.Conditions {
-		if updated.Status.Conditions[i].Type == api.ResourceConditionTypeReady {
-			readyCond = &updated.Status.Conditions[i]
+		if updated.Status.Conditions[i].Type == api.ResourceConditionTypeReconciled {
+			reconciledCond = &updated.Status.Conditions[i]
 			break
 		}
 	}
-	Expect(readyCond).NotTo(BeNil(), "Expected Ready condition in response")
-	Expect(readyCond.Status).To(Equal(openapi.ResourceConditionStatusFalse),
-		"Ready must be False after generation increment")
+	Expect(reconciledCond).NotTo(BeNil(), "Expected Reconciled condition in response")
+	Expect(reconciledCond.Status).To(Equal(openapi.ResourceConditionStatusFalse),
+		"Reconciled must be False after generation increment")
 }
 
 func TestClusterPaging(t *testing.T) {
@@ -995,7 +995,7 @@ func TestClusterSoftDelete(t *testing.T) {
 		Expect(nodePool.DeletedBy).NotTo(BeNil(), "nodepool deleted_by should be set after cluster cascade")
 	})
 
-	t.Run("given a cluster with Ready=True, when deleted, then generation increments and Ready becomes False", func(t *testing.T) { //nolint:lll
+	t.Run("given a cluster with Reconciled=True, when deleted, then generation increments and Reconciled becomes False", func(t *testing.T) { //nolint:lll
 		RegisterTestingT(t)
 		// Given:
 		h, client := test.RegisterIntegration(t)
@@ -1012,19 +1012,19 @@ func TestClusterSoftDelete(t *testing.T) {
 		Expect(delResp.JSON202).NotTo(BeNil())
 		Expect(delResp.JSON202.Generation).To(Equal(initialGeneration+1),
 			"Generation should be incremented after soft-delete")
-		var readyCond *openapi.ResourceCondition
+		var reconciledCond *openapi.ResourceCondition
 		for i := range delResp.JSON202.Status.Conditions {
-			if delResp.JSON202.Status.Conditions[i].Type == api.ResourceConditionTypeReady {
-				readyCond = &delResp.JSON202.Status.Conditions[i]
+			if delResp.JSON202.Status.Conditions[i].Type == api.ResourceConditionTypeReconciled {
+				reconciledCond = &delResp.JSON202.Status.Conditions[i]
 				break
 			}
 		}
-		Expect(readyCond).NotTo(BeNil(), "Expected Ready condition in response")
-		Expect(readyCond.Status).To(Equal(openapi.ResourceConditionStatusFalse),
-			"Ready should be False after soft-delete due to generation bump")
+		Expect(reconciledCond).NotTo(BeNil(), "Expected Reconciled condition in response")
+		Expect(reconciledCond.Status).To(Equal(openapi.ResourceConditionStatusFalse),
+			"Reconciled should be False after soft-delete due to generation bump")
 	})
 
-	t.Run("given a cluster soft-delete cascades to child nodepools, when deleted, then both cluster and nodepool generation increment and Ready becomes False", func(t *testing.T) { //nolint:lll
+	t.Run("given a cluster soft-delete cascades to child nodepools, when deleted, then both cluster and nodepool generation increment and Reconciled becomes False", func(t *testing.T) { //nolint:lll
 		RegisterTestingT(t)
 		// Given:
 		h, client := test.RegisterIntegration(t)
@@ -1039,22 +1039,22 @@ func TestClusterSoftDelete(t *testing.T) {
 		Expect(dbSession.Model(nodePool).Update("owner_id", cluster.ID).Error).NotTo(HaveOccurred())
 		// When:
 		delResp, err := client.DeleteClusterByIdWithResponse(ctx, cluster.ID, test.WithAuthToken(ctx))
-		// Then: Verify cluster generation and Ready status
+		// Then: Verify cluster generation and Reconciled status
 		Expect(err).NotTo(HaveOccurred())
 		Expect(delResp.StatusCode()).To(Equal(http.StatusAccepted))
 		Expect(delResp.JSON202.Generation).To(Equal(cluster.Generation+1),
 			"Cluster generation should increment on soft-delete")
-		var clusterReadyCond *openapi.ResourceCondition
+		var clusterReconciledCond *openapi.ResourceCondition
 		for i := range delResp.JSON202.Status.Conditions {
-			if delResp.JSON202.Status.Conditions[i].Type == api.ResourceConditionTypeReady {
-				clusterReadyCond = &delResp.JSON202.Status.Conditions[i]
+			if delResp.JSON202.Status.Conditions[i].Type == api.ResourceConditionTypeReconciled {
+				clusterReconciledCond = &delResp.JSON202.Status.Conditions[i]
 				break
 			}
 		}
-		Expect(clusterReadyCond).NotTo(BeNil(), "Expected Ready condition in cluster response")
-		Expect(clusterReadyCond.Status).To(Equal(openapi.ResourceConditionStatusFalse),
-			"Cluster Ready should be False after soft-delete")
-		// Then: Verify cascaded nodepool generation and Ready status
+		Expect(clusterReconciledCond).NotTo(BeNil(), "Expected Reconciled condition in cluster response")
+		Expect(clusterReconciledCond.Status).To(Equal(openapi.ResourceConditionStatusFalse),
+			"Cluster Reconciled should be False after soft-delete")
+		// Then: Verify cascaded nodepool generation and Reconciled status
 		var npAfterDelete api.NodePool
 		Expect(dbSession.First(&npAfterDelete, "id = ?", nodePool.ID).Error).NotTo(HaveOccurred())
 		Expect(npAfterDelete.Generation).To(Equal(initialNodePoolGeneration+1),
@@ -1062,16 +1062,16 @@ func TestClusterSoftDelete(t *testing.T) {
 		var conditions []api.ResourceCondition
 		err = json.Unmarshal(npAfterDelete.StatusConditions, &conditions)
 		Expect(err).NotTo(HaveOccurred(), "should be able to unmarshal nodepool status conditions")
-		var readyCond *api.ResourceCondition
+		var reconciledCond *api.ResourceCondition
 		for i := range conditions {
-			if conditions[i].Type == api.ResourceConditionTypeReady {
-				readyCond = &conditions[i]
+			if conditions[i].Type == api.ResourceConditionTypeReconciled {
+				reconciledCond = &conditions[i]
 				break
 			}
 		}
-		Expect(readyCond).NotTo(BeNil(), "Expected Ready condition in nodepool status")
-		Expect(readyCond.Status).To(Equal(api.ConditionFalse),
-			"Ready should be False after cascade soft-delete due to generation bump")
+		Expect(reconciledCond).NotTo(BeNil(), "Expected Reconciled condition in nodepool status")
+		Expect(reconciledCond.Status).To(Equal(api.ConditionFalse),
+			"Reconciled should be False after cascade soft-delete due to generation bump")
 	})
 
 	t.Run("given an already-deleted cluster, when deleted again, then returns 202 with unchanged deleted_time and nodepool state is unchanged", func(t *testing.T) { //nolint:lll

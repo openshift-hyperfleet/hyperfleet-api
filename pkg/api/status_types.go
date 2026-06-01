@@ -37,7 +37,6 @@ const (
 	AdapterConditionTypeAvailable  = "Available"
 	AdapterConditionTypeApplied    = "Applied"
 	AdapterConditionTypeHealth     = "Health"
-	AdapterConditionTypeReady      = "Ready"
 	AdapterConditionTypeReconciled = "Reconciled"
 	AdapterConditionTypeFinalized  = "Finalized"
 )
@@ -46,7 +45,6 @@ const (
 const (
 	ResourceConditionTypeAvailable           = "Available"
 	ResourceConditionTypeHealth              = "Health"
-	ResourceConditionTypeReady               = "Ready"
 	ResourceConditionTypeReconciled          = "Reconciled"
 	ResourceConditionTypeFinalized           = "Finalized"
 	ResourceConditionTypeLastKnownReconciled = "LastKnownReconciled"
