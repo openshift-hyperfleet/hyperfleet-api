@@ -1015,7 +1015,7 @@ func TestAggregateResourceStatus(t *testing.T) {
 	t.Run("initial creation: req adapters, no reports → all False, observed_gen=1, times=refTime", func(t *testing.T) {
 		t.Parallel()
 		// Doc: when resource is created at gen=1, no adapter has reported yet.
-		// observed_generation for Reconciled and Available must be 1.
+		// observed_generation for Reconciled and LastKnownReconciled must be 1.
 		// last_updated_time and last_transition_time must equal resource.last_updated_time (refTime).
 		required := []string{"a", "b"}
 		in := AggregateResourceStatusInput{

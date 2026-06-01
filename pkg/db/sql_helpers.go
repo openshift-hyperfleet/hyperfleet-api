@@ -57,8 +57,6 @@ func hasProperty(n tsl.Node) bool {
 }
 
 // Field mapping rules for user-friendly syntax to database columns
-// Note: status.phase was removed — use status.conditions.Reconciled='True'
-// or status.conditions.Available='True' instead
 var statusFieldMappings = map[string]string{
 	"status.conditions": "status_conditions",
 }
