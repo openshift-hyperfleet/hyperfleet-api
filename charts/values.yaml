@@ -146,6 +146,10 @@ config:
       cluster: []  # Example: [validation, dns, pullsecret, hypershift]
       nodepool: []  # Example: [validation, hypershift]
 
+  # Generic resource entity registry (config-driven routes and validation)
+  # Example: Channel + Version — see configs/config.yaml.example
+  entities: []
+
 # ============================================================
 # Kubernetes Resources
 # ============================================================

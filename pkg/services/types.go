@@ -9,12 +9,13 @@ import (
 // ListArguments are arguments relevant for listing objects.
 // This struct is common to all service List funcs in this package
 type ListArguments struct {
-	Search   string
-	Preloads []string
-	OrderBy  []string
-	Fields   []string
-	Page     int
-	Size     int64
+	SearchDisallowedFields map[string]string
+	Search                 string
+	Preloads               []string
+	OrderBy                []string
+	Fields                 []string
+	Page                   int
+	Size                   int64
 }
 
 // ~65500 is the maximum number of parameters that can be provided to a postgres WHERE IN clause

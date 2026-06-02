@@ -11,6 +11,7 @@ import (
 
 	. "github.com/onsi/gomega"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/registry"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/validators"
 )
 
@@ -40,6 +41,14 @@ components:
           type: integer
           minimum: 1
           maximum: 10
+
+    ChannelSpec:
+      type: object
+      required:
+        - defaultVersion
+      properties:
+        defaultVersion:
+          type: string
 `
 
 func TestSchemaValidationMiddleware_PostRequestValidation(t *testing.T) {
@@ -349,6 +358,77 @@ func TestSchemaValidationMiddleware_InvalidSpecType(t *testing.T) {
 	err := json.Unmarshal(rr.Body.Bytes(), &errorResponse)
 	Expect(err).To(BeNil())
 	Expect(*errorResponse.Detail).To(ContainSubstring("spec field must be an object"))
+}
+
+func TestSchemaValidationMiddleware_ChannelValidation(t *testing.T) {
+	RegisterTestingT(t)
+
+	registry.Reset()
+	registry.Register(registry.EntityDescriptor{
+		Kind:           "Channel",
+		Plural:         "channels",
+		SpecSchemaName: "ChannelSpec",
+	})
+
+	validator := setupTestValidator(t)
+	validator.RegisterFromRegistry()
+	middleware := SchemaValidationMiddleware(validator)
+
+	validRequest := map[string]interface{}{
+		"kind": "Channel",
+		"name": "stable",
+		"spec": map[string]interface{}{
+			"defaultVersion": "4.14.0",
+		},
+	}
+
+	body, _ := json.Marshal(validRequest)
+	req := httptest.NewRequest(http.MethodPost, "/api/hyperfleet/v1/channels", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	nextHandlerCalled := false
+	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nextHandlerCalled = true
+		w.WriteHeader(http.StatusCreated)
+	})
+
+	middleware(nextHandler).ServeHTTP(rr, req)
+
+	Expect(nextHandlerCalled).To(BeTrue())
+	Expect(rr.Code).To(Equal(http.StatusCreated))
+}
+
+func TestRegistryResourceTypeForPath(t *testing.T) {
+	RegisterTestingT(t)
+
+	registry.Reset()
+	registry.Register(registry.EntityDescriptor{
+		Kind:           "Channel",
+		Plural:         "channels",
+		SpecSchemaName: "ChannelSpec",
+	})
+	registry.Register(registry.EntityDescriptor{
+		Kind:           "Version",
+		Plural:         "versions",
+		ParentKind:     "Channel",
+		SpecSchemaName: "VersionSpec",
+	})
+
+	key, ok := registryResourceTypeForPath("/api/hyperfleet/v1/channels")
+	Expect(ok).To(BeTrue())
+	Expect(key).To(Equal("channel"))
+
+	key, ok = registryResourceTypeForPath("/api/hyperfleet/v1/channels/abc123")
+	Expect(ok).To(BeTrue())
+	Expect(key).To(Equal("channel"))
+
+	key, ok = registryResourceTypeForPath("/api/hyperfleet/v1/channels/abc123/versions")
+	Expect(ok).To(BeTrue())
+	Expect(key).To(Equal("version"))
+
+	_, ok = registryResourceTypeForPath("/api/hyperfleet/v1/clusters")
+	Expect(ok).To(BeFalse())
 }
 
 func TestSchemaValidationMiddleware_MalformedJSON(t *testing.T) {

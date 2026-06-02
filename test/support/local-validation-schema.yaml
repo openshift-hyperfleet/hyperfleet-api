@@ -1,0 +1,25 @@
+openapi: 3.0.0
+info:
+  title: Local HyperFleet Validation Schema
+  version: 1.0.0
+paths: {}
+components:
+  schemas:
+    ClusterSpec:
+      type: object
+      additionalProperties: true
+    NodePoolSpec:
+      type: object
+      additionalProperties: true
+    ChannelSpec:
+      type: object
+      additionalProperties: true
+      properties:
+        defaultVersion:
+          type: string
+    VersionSpec:
+      type: object
+      additionalProperties: true
+      properties:
+        image:
+          type: string

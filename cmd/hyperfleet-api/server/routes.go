@@ -116,6 +116,7 @@ func registerAPIMiddleware(router *mux.Router) error {
 	}
 
 	logger.With(ctx, logger.FieldSchemaPath, schemaPath).Info("Schema validation enabled")
+	schemaValidator.RegisterFromRegistry()
 	router.Use(middleware.SchemaValidationMiddleware(schemaValidator))
 
 	router.Use(

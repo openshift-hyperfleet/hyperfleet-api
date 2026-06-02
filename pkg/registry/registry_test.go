@@ -157,6 +157,23 @@ func TestValidate_EmptyRegistry(t *testing.T) {
 	}).ToNot(Panic())
 }
 
+func TestValidate_InvalidOnParentDelete_Panics(t *testing.T) {
+	RegisterTestingT(t)
+	Reset()
+
+	Register(EntityDescriptor{Kind: "Channel", Plural: "channels"})
+	Register(EntityDescriptor{
+		Kind:           "Version",
+		Plural:         "versions",
+		ParentKind:     "Channel",
+		OnParentDelete: "invalid",
+	})
+
+	Expect(func() {
+		Validate()
+	}).To(PanicWith(ContainSubstring("invalid on_parent_delete")))
+}
+
 func TestDescriptorFields(t *testing.T) {
 	RegisterTestingT(t)
 	Reset()

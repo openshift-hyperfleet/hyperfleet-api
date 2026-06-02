@@ -9,12 +9,12 @@ const (
 )
 
 // EntityDescriptor defines everything specific to a HyperFleet entity type.
-// Descriptors are registered at startup via Register() in plugin init() functions.
+// Descriptors are loaded from application config YAML via LoadDescriptors().
 type EntityDescriptor struct {
-	Kind                   string               // discriminator value stored in Resource.Kind
-	Plural                 string               // URL path segment, e.g. "channels"
-	ParentKind             string               // "" for top-level entities
-	SpecSchemaName         string               // OpenAPI component name for spec validation
-	OnParentDelete         OnParentDeletePolicy // only meaningful when ParentKind != ""
-	SearchDisallowedFields []string             // fields blocked from TSL search
+	Kind                   string               `mapstructure:"kind" validate:"required"`
+	Plural                 string               `mapstructure:"plural" validate:"required"`
+	ParentKind             string               `mapstructure:"parent_kind"`
+	SpecSchemaName         string               `mapstructure:"spec_schema_name"`
+	OnParentDelete         OnParentDeletePolicy `mapstructure:"on_parent_delete"`
+	SearchDisallowedFields []string             `mapstructure:"search_disallowed_fields"`
 }

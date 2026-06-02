@@ -7,10 +7,11 @@ import (
 
 	"github.com/spf13/pflag"
 
-	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/environments/registry"
+	serviceregistry "github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/environments/registry"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/registry"
 )
 
 func init() {
@@ -92,6 +93,10 @@ func (e *Env) Initialize() error {
 		os.Exit(1)
 	}
 
+	registry.LoadDescriptors(e.Config.Entities)
+	registry.Validate()
+	registry.ValidateSchemas(e.Config.Server.OpenAPISchemaPath)
+
 	// each env will set db explicitly because the DB impl has a `once` init section
 	if err := envImpl.OverrideDatabase(&e.Database); err != nil {
 		logger.WithError(ctx, err).Error("Failed to configure Database")
@@ -123,7 +128,7 @@ func (e *Env) Seed() *errors.ServiceError {
 
 func (e *Env) LoadServices() {
 	e.Services.serviceRegistry = make(map[string]interface{})
-	registry.LoadDiscoveredServices(&e.Services, e)
+	serviceregistry.LoadDiscoveredServices(&e.Services, e)
 }
 
 func (e *Env) Teardown() {

@@ -77,6 +77,15 @@ func Validate() {
 			}
 		}
 
+		if d.OnParentDelete != "" &&
+			d.OnParentDelete != OnParentDeleteRestrict &&
+			d.OnParentDelete != OnParentDeleteCascade {
+			panic(fmt.Sprintf(
+				"entity kind %q has invalid on_parent_delete %q",
+				d.Kind, d.OnParentDelete,
+			))
+		}
+
 		if existing, ok := plurals[d.Plural]; ok {
 			panic(fmt.Sprintf(
 				"duplicate plural %q: registered by both %q and %q",

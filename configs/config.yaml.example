@@ -115,6 +115,20 @@ adapters:
       - validation
       - hypershift
 
+# Generic resource entity registry (Channel, Version, etc.)
+entities:
+  - kind: Channel
+    plural: channels
+    spec_schema_name: ChannelSpec
+    search_disallowed_fields: [spec]
+
+  - kind: Version
+    plural: versions
+    parent_kind: Channel
+    on_parent_delete: restrict
+    spec_schema_name: VersionSpec
+    search_disallowed_fields: [spec]
+
 # ----------------------------------------------------------------------------
 # Configuration Priority (highest to lowest):
 # 1. Command-line flags (e.g., --server-host=0.0.0.0 --server-port=8000)

@@ -268,6 +268,7 @@ func (s *sqlResourceService) List(
 	} else {
 		scopedArgs.Search = "(" + scopedArgs.Search + ") AND " + kindFilter
 	}
+	scopedArgs.SearchDisallowedFields = registry.SearchDisallowedFieldsForKind(kind)
 
 	var resources api.ResourceList
 	paging, svcErr := s.generic.List(ctx, &scopedArgs, &resources)
@@ -296,6 +297,7 @@ func (s *sqlResourceService) ListByOwner(
 	} else {
 		scopedArgs.Search = "(" + scopedArgs.Search + ") AND " + kindFilter
 	}
+	scopedArgs.SearchDisallowedFields = registry.SearchDisallowedFieldsForKind(kind)
 
 	var resources []api.Resource
 	paging, svcErr := s.generic.List(ctx, &scopedArgs, &resources)

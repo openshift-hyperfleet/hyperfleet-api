@@ -75,7 +75,10 @@ func (s *sqlGenericService) newListContext(
 	if resourceTypeStr == "" {
 		return nil, nil, errors.GeneralError("Could not determine resource type")
 	}
-	disallowedFields := SearchDisallowedFields[resourceTypeStr]
+	disallowedFields := args.SearchDisallowedFields
+	if disallowedFields == nil {
+		disallowedFields = SearchDisallowedFields[resourceTypeStr]
+	}
 	if disallowedFields == nil {
 		disallowedFields = allFieldsAllowed
 	}

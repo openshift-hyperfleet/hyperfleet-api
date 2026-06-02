@@ -136,4 +136,29 @@ data:
 {{- else }}
           []
 {{- end }}
+
+    entities:
+{{- if .Values.config.entities }}
+{{- range .Values.config.entities }}
+      - kind: {{ .kind | quote }}
+        plural: {{ .plural | quote }}
+{{- if .parent_kind }}
+        parent_kind: {{ .parent_kind | quote }}
+{{- end }}
+{{- if .on_parent_delete }}
+        on_parent_delete: {{ .on_parent_delete | quote }}
+{{- end }}
+{{- if .spec_schema_name }}
+        spec_schema_name: {{ .spec_schema_name | quote }}
+{{- end }}
+{{- if .search_disallowed_fields }}
+        search_disallowed_fields:
+{{- range .search_disallowed_fields }}
+          - {{ . | quote }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- else }}
+      []
+{{- end }}
 {{- end }}

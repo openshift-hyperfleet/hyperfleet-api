@@ -17,12 +17,11 @@ import (
 	// Import plugins to trigger their init() functions
 	// _ "github.com/openshift-hyperfleet/hyperfleet-api/plugins/events" // REMOVED: Events plugin no longer exists
 	_ "github.com/openshift-hyperfleet/hyperfleet-api/plugins/adapterStatus"
-	_ "github.com/openshift-hyperfleet/hyperfleet-api/plugins/channels"
 	_ "github.com/openshift-hyperfleet/hyperfleet-api/plugins/clusters"
+	_ "github.com/openshift-hyperfleet/hyperfleet-api/plugins/entities"
 	_ "github.com/openshift-hyperfleet/hyperfleet-api/plugins/generic"
 	_ "github.com/openshift-hyperfleet/hyperfleet-api/plugins/nodePools"
 	_ "github.com/openshift-hyperfleet/hyperfleet-api/plugins/resources"
-	_ "github.com/openshift-hyperfleet/hyperfleet-api/plugins/versions"
 )
 
 // nolint

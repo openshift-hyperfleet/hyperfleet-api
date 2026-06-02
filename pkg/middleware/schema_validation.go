@@ -7,8 +7,10 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/presenters"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/registry"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/validators"
 )
 
@@ -116,18 +118,60 @@ func shouldValidateRequest(method, path string) (bool, string) {
 		return false, ""
 	}
 
-	// Check nodepools first (more specific path)
-	// POST /api/hyperfleet/v1/clusters/{cluster_id}/nodepools
-	// PATCH /api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepool_id}
+	// Legacy typed resources (Cluster, NodePool)
 	if strings.Contains(path, "/nodepools") {
 		return true, "nodepool"
 	}
-
-	// POST /api/hyperfleet/v1/clusters
-	// PATCH /api/hyperfleet/v1/clusters/{cluster_id}
 	if strings.HasSuffix(path, "/clusters") || strings.Contains(path, "/clusters/") {
 		return true, "cluster"
 	}
 
+	if key, ok := registryResourceTypeForPath(path); ok {
+		return true, key
+	}
+
 	return false, ""
+}
+
+// registryResourceTypeForPath matches generic entity routes declared in the registry.
+func registryResourceTypeForPath(path string) (string, bool) {
+	apiV1Prefix := presenters.BasePath + "/"
+	if !strings.HasPrefix(path, apiV1Prefix) {
+		return "", false
+	}
+
+	segments := strings.Split(strings.Trim(strings.TrimPrefix(path, apiV1Prefix), "/"), "/")
+	if len(segments) == 0 || segments[0] == "" {
+		return "", false
+	}
+
+	for _, d := range registry.All() {
+		if d.SpecSchemaName == "" {
+			continue
+		}
+
+		key := registry.SchemaValidationKey(d.Kind)
+		if d.ParentKind == "" {
+			if segments[0] != d.Plural {
+				continue
+			}
+			if len(segments) == 1 || len(segments) == 2 {
+				return key, true
+			}
+			continue
+		}
+
+		parent, ok := registry.Get(d.ParentKind)
+		if !ok {
+			continue
+		}
+		if len(segments) < 3 || segments[0] != parent.Plural || segments[2] != d.Plural {
+			continue
+		}
+		if len(segments) == 3 || len(segments) == 4 {
+			return key, true
+		}
+	}
+
+	return "", false
 }

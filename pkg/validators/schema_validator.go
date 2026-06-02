@@ -7,6 +7,7 @@ import (
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/registry"
 )
 
 // ResourceSchema represents a validation schema for a specific resource type
@@ -63,6 +64,24 @@ func NewSchemaValidator(schemaPath string) (*SchemaValidator, error) {
 		doc:     doc,
 		schemas: schemas,
 	}, nil
+}
+
+// RegisterFromRegistry adds spec validation schemas for all registered entity descriptors
+// that declare a SpecSchemaName. Missing schemas are skipped (ValidateSchemas catches those at startup).
+func (v *SchemaValidator) RegisterFromRegistry() {
+	for _, d := range registry.All() {
+		if d.SpecSchemaName == "" {
+			continue
+		}
+		schemaRef := v.doc.Components.Schemas[d.SpecSchemaName]
+		if schemaRef == nil {
+			continue
+		}
+		v.schemas[registry.SchemaValidationKey(d.Kind)] = &ResourceSchema{
+			TypeName: d.SpecSchemaName,
+			Schema:   schemaRef,
+		}
+	}
 }
 
 // Validate validates a spec for the given resource type
