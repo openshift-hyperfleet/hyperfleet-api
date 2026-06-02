@@ -58,20 +58,6 @@ func makeAdapterStatus(adapter string, lastReport time.Time, obsGen int32, conds
 	}
 }
 
-// mkPrevReady builds a Ready ResourceCondition for use as a prev fixture.
-func mkPrevReady(
-	status api.ResourceConditionStatus, obsGen int32, lastTransition, lastUpdated time.Time,
-) *api.ResourceCondition {
-	return &api.ResourceCondition{
-		Type:               api.ResourceConditionTypeReady,
-		Status:             status,
-		ObservedGeneration: obsGen,
-		LastTransitionTime: lastTransition,
-		LastUpdatedTime:    lastUpdated,
-		CreatedTime:        aggT0,
-	}
-}
-
 // mkPrevReconciled builds a Reconciled ResourceCondition for use as a prev fixture.
 func mkPrevReconciled(
 	status api.ResourceConditionStatus, obsGen int32, lastTransition, lastUpdated time.Time,
@@ -115,7 +101,6 @@ func TestParsePrevConditions(t *testing.T) {
 		b, _ := json.Marshal(conds)
 		return b
 	}
-	readyCond := api.ResourceCondition{Type: api.ResourceConditionTypeReady, Status: api.ConditionTrue}
 	availCond := api.ResourceCondition{Type: api.ResourceConditionTypeLastKnownReconciled, Status: api.ConditionFalse}
 	reconciledCond := api.ResourceCondition{Type: api.ResourceConditionTypeReconciled, Status: api.ConditionFalse}
 	adapterCond := api.ResourceCondition{Type: "Adapter1Successful", Status: api.ConditionTrue}
@@ -198,19 +183,15 @@ func TestParsePrevConditions(t *testing.T) {
 		}
 	})
 
-	t.Run("Ready used as prevReconciled fallback when no Reconciled stored", func(t *testing.T) {
+	t.Run("Ready falls to default case and lands in adapter map", func(t *testing.T) {
 		t.Parallel()
-		rc, _, _ := parsePrevConditions(context.Background(), encode(readyCond))
-		if rc == nil || rc.Type != api.ResourceConditionTypeReady {
-			t.Fatal("expected Ready to be used as prevReconciled fallback")
-		}
-	})
-
-	t.Run("Reconciled takes precedence over Ready for prevReconciled", func(t *testing.T) {
-		t.Parallel()
-		rc, _, _ := parsePrevConditions(context.Background(), encode(readyCond, reconciledCond))
+		readyCond := api.ResourceCondition{Type: "Ready", Status: api.ConditionTrue}
+		rc, _, m := parsePrevConditions(context.Background(), encode(readyCond, reconciledCond))
 		if rc == nil || rc.Type != api.ResourceConditionTypeReconciled {
-			t.Fatalf("expected Reconciled to take precedence, got %v", rc)
+			t.Fatalf("expected Reconciled as prevReconciled, got %v", rc)
+		}
+		if _, ok := m["Ready"]; !ok {
+			t.Fatal("expected Ready to land in adapter map via default case")
 		}
 	})
 
@@ -451,14 +432,14 @@ func TestSameGenerationAllTrue(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// computeReadyLastTransitionTime
+// computeReconciledLastTransitionTime
 // ---------------------------------------------------------------------------
 
-func TestComputeReadyLastTransitionTime(t *testing.T) {
+func TestComputeReconciledLastTransitionTime(t *testing.T) {
 	t.Parallel()
 	t.Run("nil prev returns newLastUpdated", func(t *testing.T) {
 		t.Parallel()
-		got := computeReadyLastTransitionTime(2, aggTRef, nil, api.ConditionFalse, aggT1)
+		got := computeReconciledLastTransitionTime(2, aggTRef, nil, api.ConditionFalse, aggT1)
 		if !got.Equal(aggT1) {
 			t.Errorf("got %v, want %v", got, aggT1)
 		}
@@ -466,8 +447,8 @@ func TestComputeReadyLastTransitionTime(t *testing.T) {
 
 	t.Run("same status returns prev.LastTransitionTime", func(t *testing.T) {
 		t.Parallel()
-		prev := mkPrevReady(api.ConditionFalse, 1, aggT0, aggT1)
-		got := computeReadyLastTransitionTime(2, aggTRef, prev, api.ConditionFalse, aggT2)
+		prev := mkPrevReconciled(api.ConditionFalse, 1, aggT0, aggT1)
+		got := computeReconciledLastTransitionTime(2, aggTRef, prev, api.ConditionFalse, aggT2)
 		if !got.Equal(aggT0) {
 			t.Errorf("got %v, want prev.LastTransitionTime=%v", got, aggT0)
 		}
@@ -476,8 +457,8 @@ func TestComputeReadyLastTransitionTime(t *testing.T) {
 	t.Run("True→False with generation bump uses refTime", func(t *testing.T) {
 		t.Parallel()
 		// resourceGen(2) > prev.ObservedGeneration(1): generation-bump branch
-		prev := mkPrevReady(api.ConditionTrue, 1, aggT0, aggT1)
-		got := computeReadyLastTransitionTime(2, aggTRef, prev, api.ConditionFalse, aggT2)
+		prev := mkPrevReconciled(api.ConditionTrue, 1, aggT0, aggT1)
+		got := computeReconciledLastTransitionTime(2, aggTRef, prev, api.ConditionFalse, aggT2)
 		if !got.Equal(aggTRef) {
 			t.Errorf("got %v, want refTime=%v", got, aggTRef)
 		}
@@ -486,8 +467,8 @@ func TestComputeReadyLastTransitionTime(t *testing.T) {
 	t.Run("True→False without generation bump uses newLastUpdated", func(t *testing.T) {
 		t.Parallel()
 		// resourceGen == prev.ObservedGeneration → not a gen bump
-		prev := mkPrevReady(api.ConditionTrue, 2, aggT0, aggT1)
-		got := computeReadyLastTransitionTime(2, aggTRef, prev, api.ConditionFalse, aggT2)
+		prev := mkPrevReconciled(api.ConditionTrue, 2, aggT0, aggT1)
+		got := computeReconciledLastTransitionTime(2, aggTRef, prev, api.ConditionFalse, aggT2)
 		if !got.Equal(aggT2) {
 			t.Errorf("got %v, want newLastUpdated=%v", got, aggT2)
 		}
@@ -495,8 +476,8 @@ func TestComputeReadyLastTransitionTime(t *testing.T) {
 
 	t.Run("False→True uses newLastUpdated", func(t *testing.T) {
 		t.Parallel()
-		prev := mkPrevReady(api.ConditionFalse, 1, aggT0, aggT1)
-		got := computeReadyLastTransitionTime(2, aggTRef, prev, api.ConditionTrue, aggT2)
+		prev := mkPrevReconciled(api.ConditionFalse, 1, aggT0, aggT1)
+		got := computeReconciledLastTransitionTime(2, aggTRef, prev, api.ConditionTrue, aggT2)
 		if !got.Equal(aggT2) {
 			t.Errorf("got %v, want newLastUpdated=%v", got, aggT2)
 		}
@@ -772,7 +753,7 @@ func TestComputeLastKnownReconciledLastUpdatedTime(t *testing.T) {
 			"a": snap(2, false, aggT3), // False at gen 2
 			"b": snap(2, true, aggT1),  // True at gen 2 (still included in atX)
 		}
-		// observedGen=2, hasFalseAtX=true; atX=[t3,t1], min=t1 (oldest, matches Ready semantics)
+		// observedGen=2, hasFalseAtX=true; atX=[t3,t1], min=t1 (oldest, matches Reconciled semantics)
 		got := computeLastKnownReconciledLastUpdatedTime(
 			api.ConditionFalse, nil, aggTRef, required, byAdapter, 2, false, false,
 		)
@@ -1034,7 +1015,7 @@ func TestAggregateResourceStatus(t *testing.T) {
 	t.Run("initial creation: req adapters, no reports → all False, observed_gen=1, times=refTime", func(t *testing.T) {
 		t.Parallel()
 		// Doc: when resource is created at gen=1, no adapter has reported yet.
-		// observed_generation for Ready, Reconciled and Available must be 1.
+		// observed_generation for Reconciled and LastKnownReconciled must be 1.
 		// last_updated_time and last_transition_time must equal resource.last_updated_time (refTime).
 		required := []string{"a", "b"}
 		in := AggregateResourceStatusInput{
@@ -1109,7 +1090,7 @@ func TestAggregateResourceStatus(t *testing.T) {
 		func(t *testing.T) {
 			t.Parallel()
 			// Both adapters True at gen 1; resource is at gen 2.
-			// Ready=False (not at current gen), Available=True (all True at same old gen).
+			// Reconciled=False (not at current gen), Available=True (all True at same old gen).
 			required := []string{"a", "b"}
 			in := AggregateResourceStatusInput{
 				ResourceGeneration: 2,
@@ -1177,11 +1158,11 @@ func TestAggregateResourceStatus(t *testing.T) {
 
 	t.Run("generation-bump Reconciled True→False: LastTransitionTime=refTime", func(t *testing.T) {
 		t.Parallel()
-		// Was Ready=True at gen 1; bumped to gen 2, adapter still at old gen.
+		// Was Reconciled=True at gen 1; bumped to gen 2, adapter still at old gen.
 		required := []string{"a"}
 		prevConds := encodePrev(
 			api.ResourceCondition{
-				Type: api.ResourceConditionTypeReady, Status: api.ConditionTrue, ObservedGeneration: 1,
+				Type: api.ResourceConditionTypeReconciled, Status: api.ConditionTrue, ObservedGeneration: 1,
 				CreatedTime: aggT0, LastUpdatedTime: aggT1, LastTransitionTime: aggT1,
 			},
 		)
@@ -1241,7 +1222,7 @@ func TestAggregateResourceStatus(t *testing.T) {
 		}
 	})
 
-	t.Run("per-adapter conditions are included alongside Ready and Available", func(t *testing.T) {
+	t.Run("per-adapter conditions are included alongside Reconciled and Available", func(t *testing.T) {
 		t.Parallel()
 		required := []string{"adapter1", "adapter2"}
 		in := AggregateResourceStatusInput{
@@ -1576,7 +1557,7 @@ func TestValidateMandatoryConditions_WithCustomConditions(t *testing.T) {
 		{Type: api.AdapterConditionTypeApplied, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
 		{Type: api.AdapterConditionTypeHealth, Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
 		{Type: "CustomCondition", Status: api.AdapterConditionTrue, LastTransitionTime: time.Now()},
-		{Type: api.AdapterConditionTypeReady, Status: api.AdapterConditionFalse, LastTransitionTime: time.Now()},
+		{Type: api.AdapterConditionTypeReconciled, Status: api.AdapterConditionFalse, LastTransitionTime: time.Now()},
 	}
 
 	errorType, conditionName := ValidateMandatoryConditions(conditions)

@@ -101,7 +101,7 @@ Each resource registers via `init()` function:
 - Transaction middleware creates GORM transactions for **write requests only** (POST/PUT/PATCH/DELETE): `pkg/db/transaction_middleware.go`
 - Read requests (GET) skip transaction creation for performance
 - OpenAPI spec and code generation: see [openapi/README.md](openapi/README.md) — run `make generate` before building; generated files in `pkg/api/openapi/` are **never edited**
-- Status aggregation: Service layer synthesizes `Available` and `Ready` conditions from adapter reports
+- Status aggregation: Service layer synthesizes `Available`, `Reconciled`, and `LastKnownReconciled` conditions from adapter reports
 - Plugin-based: each resource type registers routes/services in `plugins/*/plugin.go`
 
 ## Boundaries

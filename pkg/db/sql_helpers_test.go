@@ -18,18 +18,18 @@ func TestConditionsNodeConverterStatus(t *testing.T) {
 		expectError   bool
 	}{
 		{
-			name:         "Ready condition True",
-			field:        "status.conditions.Ready",
+			name:         "Reconciled condition True",
+			field:        "status.conditions.Reconciled",
 			value:        "True",
 			expectedSQL:  "jsonb_path_query_first(status_conditions, ?::jsonpath) ->> 'status' = ?",
-			expectedArgs: []interface{}{`$[*] ? (@.type == "Ready")`, "True"},
+			expectedArgs: []interface{}{`$[*] ? (@.type == "Reconciled")`, "True"},
 		},
 		{
-			name:         "Ready condition False",
-			field:        "status.conditions.Ready",
+			name:         "Reconciled condition False",
+			field:        "status.conditions.Reconciled",
 			value:        "False",
 			expectedSQL:  "jsonb_path_query_first(status_conditions, ?::jsonpath) ->> 'status' = ?",
-			expectedArgs: []interface{}{`$[*] ? (@.type == "Ready")`, "False"},
+			expectedArgs: []interface{}{`$[*] ? (@.type == "Reconciled")`, "False"},
 		},
 		{
 			name:         "Available condition True",
@@ -46,15 +46,15 @@ func TestConditionsNodeConverterStatus(t *testing.T) {
 			expectedArgs: []interface{}{`$[*] ? (@.type == "Available")`, "Unknown"},
 		},
 		{
-			name:         "Progressing condition",
-			field:        "status.conditions.Progressing",
+			name:         "Reconciled condition",
+			field:        "status.conditions.Reconciled",
 			value:        "True",
 			expectedSQL:  "jsonb_path_query_first(status_conditions, ?::jsonpath) ->> 'status' = ?",
-			expectedArgs: []interface{}{`$[*] ? (@.type == "Progressing")`, "True"},
+			expectedArgs: []interface{}{`$[*] ? (@.type == "Reconciled")`, "True"},
 		},
 		{
 			name:          "Invalid condition status",
-			field:         "status.conditions.Ready",
+			field:         "status.conditions.Reconciled",
 			value:         "Invalid",
 			expectError:   true,
 			errorContains: "condition status 'Invalid' is invalid",
@@ -68,7 +68,7 @@ func TestConditionsNodeConverterStatus(t *testing.T) {
 		},
 		{
 			name:          "Invalid condition type - with underscore",
-			field:         "status.conditions.Ready_Status",
+			field:         "status.conditions.Reconciled_Status",
 			value:         "True",
 			expectError:   true,
 			errorContains: "must be PascalCase",
@@ -131,72 +131,72 @@ func TestConditionsNodeConverterSubfields(t *testing.T) {
 		// Time subfield: last_updated_time (encoded with __ after preprocessing)
 		{
 			name:        "last_updated_time less than",
-			field:       "status.conditions.Ready__last_updated_time",
+			field:       "status.conditions.Reconciled__last_updated_time",
 			op:          tsl.LtOp,
 			value:       "2026-03-06T00:00:00Z",
 			expectedSQL: "CAST(jsonb_path_query_first(status_conditions, ?::jsonpath) ->> ? AS TIMESTAMPTZ) < ?::timestamptz",
 			expectedArgs: []interface{}{
-				`$[*] ? (@.type == "Ready")`,
+				`$[*] ? (@.type == "Reconciled")`,
 				"last_updated_time",
 				"2026-03-06T00:00:00Z",
 			},
 		},
 		{
 			name:        "last_updated_time greater than",
-			field:       "status.conditions.Ready__last_updated_time",
+			field:       "status.conditions.Reconciled__last_updated_time",
 			op:          tsl.GtOp,
 			value:       "2026-03-06T00:00:00Z",
 			expectedSQL: "CAST(jsonb_path_query_first(status_conditions, ?::jsonpath) ->> ? AS TIMESTAMPTZ) > ?::timestamptz",
 			expectedArgs: []interface{}{
-				`$[*] ? (@.type == "Ready")`,
+				`$[*] ? (@.type == "Reconciled")`,
 				"last_updated_time",
 				"2026-03-06T00:00:00Z",
 			},
 		},
 		{
 			name:        "last_updated_time less than or equal",
-			field:       "status.conditions.Ready__last_updated_time",
+			field:       "status.conditions.Reconciled__last_updated_time",
 			op:          tsl.LteOp,
 			value:       "2026-03-06T00:00:00Z",
 			expectedSQL: "CAST(jsonb_path_query_first(status_conditions, ?::jsonpath) ->> ? AS TIMESTAMPTZ) <= ?::timestamptz",
 			expectedArgs: []interface{}{
-				`$[*] ? (@.type == "Ready")`,
+				`$[*] ? (@.type == "Reconciled")`,
 				"last_updated_time",
 				"2026-03-06T00:00:00Z",
 			},
 		},
 		{
 			name:        "last_updated_time greater than or equal",
-			field:       "status.conditions.Ready__last_updated_time",
+			field:       "status.conditions.Reconciled__last_updated_time",
 			op:          tsl.GteOp,
 			value:       "2026-03-06T00:00:00Z",
 			expectedSQL: "CAST(jsonb_path_query_first(status_conditions, ?::jsonpath) ->> ? AS TIMESTAMPTZ) >= ?::timestamptz",
 			expectedArgs: []interface{}{
-				`$[*] ? (@.type == "Ready")`,
+				`$[*] ? (@.type == "Reconciled")`,
 				"last_updated_time",
 				"2026-03-06T00:00:00Z",
 			},
 		},
 		{
 			name:        "last_updated_time equal",
-			field:       "status.conditions.Ready__last_updated_time",
+			field:       "status.conditions.Reconciled__last_updated_time",
 			op:          tsl.EqOp,
 			value:       "2026-03-06T00:00:00Z",
 			expectedSQL: "CAST(jsonb_path_query_first(status_conditions, ?::jsonpath) ->> ? AS TIMESTAMPTZ) = ?::timestamptz",
 			expectedArgs: []interface{}{
-				`$[*] ? (@.type == "Ready")`,
+				`$[*] ? (@.type == "Reconciled")`,
 				"last_updated_time",
 				"2026-03-06T00:00:00Z",
 			},
 		},
 		{
 			name:        "last_updated_time not equal",
-			field:       "status.conditions.Ready__last_updated_time",
+			field:       "status.conditions.Reconciled__last_updated_time",
 			op:          tsl.NotEqOp,
 			value:       "2026-03-06T00:00:00Z",
 			expectedSQL: "CAST(jsonb_path_query_first(status_conditions, ?::jsonpath) ->> ? AS TIMESTAMPTZ) != ?::timestamptz",
 			expectedArgs: []interface{}{
-				`$[*] ? (@.type == "Ready")`,
+				`$[*] ? (@.type == "Reconciled")`,
 				"last_updated_time",
 				"2026-03-06T00:00:00Z",
 			},
@@ -217,24 +217,24 @@ func TestConditionsNodeConverterSubfields(t *testing.T) {
 		// Integer subfield: observed_generation
 		{
 			name:        "observed_generation less than",
-			field:       "status.conditions.Ready__observed_generation",
+			field:       "status.conditions.Reconciled__observed_generation",
 			op:          tsl.LtOp,
 			value:       float64(5),
 			expectedSQL: "CAST(jsonb_path_query_first(status_conditions, ?::jsonpath) ->> ? AS INTEGER) < ?",
 			expectedArgs: []interface{}{
-				`$[*] ? (@.type == "Ready")`,
+				`$[*] ? (@.type == "Reconciled")`,
 				"observed_generation",
 				5,
 			},
 		},
 		{
 			name:        "observed_generation equal",
-			field:       "status.conditions.Ready__observed_generation",
+			field:       "status.conditions.Reconciled__observed_generation",
 			op:          tsl.EqOp,
 			value:       float64(3),
 			expectedSQL: "CAST(jsonb_path_query_first(status_conditions, ?::jsonpath) ->> ? AS INTEGER) = ?",
 			expectedArgs: []interface{}{
-				`$[*] ? (@.type == "Ready")`,
+				`$[*] ? (@.type == "Reconciled")`,
 				"observed_generation",
 				3,
 			},
@@ -242,7 +242,7 @@ func TestConditionsNodeConverterSubfields(t *testing.T) {
 		// Error cases
 		{
 			name:          "Invalid subfield name",
-			field:         "status.conditions.Ready__unknown_field",
+			field:         "status.conditions.Reconciled__unknown_field",
 			op:            tsl.LtOp,
 			value:         "2026-03-06T00:00:00Z",
 			expectError:   true,
@@ -250,7 +250,7 @@ func TestConditionsNodeConverterSubfields(t *testing.T) {
 		},
 		{
 			name:          "Invalid operator for subfield",
-			field:         "status.conditions.Ready__last_updated_time",
+			field:         "status.conditions.Reconciled__last_updated_time",
 			op:            tsl.LikeOp,
 			value:         "2026%",
 			expectError:   true,
@@ -266,7 +266,7 @@ func TestConditionsNodeConverterSubfields(t *testing.T) {
 		},
 		{
 			name:          "Invalid timestamp format",
-			field:         "status.conditions.Ready__last_updated_time",
+			field:         "status.conditions.Reconciled__last_updated_time",
 			op:            tsl.LtOp,
 			value:         "not-a-timestamp",
 			expectError:   true,
@@ -274,7 +274,7 @@ func TestConditionsNodeConverterSubfields(t *testing.T) {
 		},
 		{
 			name:          "Float value for integer subfield",
-			field:         "status.conditions.Ready__observed_generation",
+			field:         "status.conditions.Reconciled__observed_generation",
 			op:            tsl.LtOp,
 			value:         float64(3.5),
 			expectError:   true,
@@ -282,7 +282,7 @@ func TestConditionsNodeConverterSubfields(t *testing.T) {
 		},
 		{
 			name:          "Integer overflow for integer subfield",
-			field:         "status.conditions.Ready__observed_generation",
+			field:         "status.conditions.Reconciled__observed_generation",
 			op:            tsl.LtOp,
 			value:         float64(3000000000),
 			expectError:   true,
@@ -345,18 +345,20 @@ func TestPreprocessConditionSubfields(t *testing.T) {
 	}{
 		{
 			name:     "4-part path is encoded",
-			input:    "status.conditions.Ready.last_updated_time < '2026-03-06T00:00:00Z'",
-			expected: "status.conditions.Ready__last_updated_time < '2026-03-06T00:00:00Z'",
+			input:    "status.conditions.Reconciled.last_updated_time < '2026-03-06T00:00:00Z'",
+			expected: "status.conditions.Reconciled__last_updated_time < '2026-03-06T00:00:00Z'",
 		},
 		{
 			name:     "3-part path is unchanged",
-			input:    "status.conditions.Ready='True'",
-			expected: "status.conditions.Ready='True'",
+			input:    "status.conditions.Reconciled='True'",
+			expected: "status.conditions.Reconciled='True'",
 		},
 		{
-			name:     "Mixed 3-part and 4-part",
-			input:    "status.conditions.Ready='False' AND status.conditions.Ready.last_updated_time < '2026-03-06T00:00:00Z'",
-			expected: "status.conditions.Ready='False' AND status.conditions.Ready__last_updated_time < '2026-03-06T00:00:00Z'",
+			name: "Mixed 3-part and 4-part",
+			input: "status.conditions.Reconciled='False' AND " +
+				"status.conditions.Reconciled.last_updated_time < '2026-03-06T00:00:00Z'",
+			expected: "status.conditions.Reconciled='False' AND " +
+				"status.conditions.Reconciled__last_updated_time < '2026-03-06T00:00:00Z'",
 		},
 		{
 			name:     "Labels are unchanged",
@@ -370,25 +372,25 @@ func TestPreprocessConditionSubfields(t *testing.T) {
 		},
 		{
 			name:     "observed_generation is encoded",
-			input:    "status.conditions.Ready.observed_generation < 5",
-			expected: "status.conditions.Ready__observed_generation < 5",
+			input:    "status.conditions.Reconciled.observed_generation < 5",
+			expected: "status.conditions.Reconciled__observed_generation < 5",
 		},
 		{
 			name:     "Text inside single quotes is not encoded",
-			input:    "name='status.conditions.Ready.last_updated_time'",
-			expected: "name='status.conditions.Ready.last_updated_time'",
+			input:    "name='status.conditions.Reconciled.last_updated_time'",
+			expected: "name='status.conditions.Reconciled.last_updated_time'",
 		},
 		{
 			name:     "Text inside double quotes is not encoded",
-			input:    `name="status.conditions.Ready.last_updated_time"`,
-			expected: `name="status.conditions.Ready.last_updated_time"`,
+			input:    `name="status.conditions.Reconciled.last_updated_time"`,
+			expected: `name="status.conditions.Reconciled.last_updated_time"`,
 		},
 		{
 			name: "Mixed quoted and unquoted segments",
-			input: "status.conditions.Ready.last_updated_time < '2026-03-06T00:00:00Z'" +
-				" AND name='status.conditions.Ready.last_updated_time'",
-			expected: "status.conditions.Ready__last_updated_time < '2026-03-06T00:00:00Z'" +
-				" AND name='status.conditions.Ready.last_updated_time'",
+			input: "status.conditions.Reconciled.last_updated_time < '2026-03-06T00:00:00Z'" +
+				" AND name='status.conditions.Reconciled.last_updated_time'",
+			expected: "status.conditions.Reconciled__last_updated_time < '2026-03-06T00:00:00Z'" +
+				" AND name='status.conditions.Reconciled.last_updated_time'",
 		},
 	}
 
@@ -410,12 +412,12 @@ func TestHasConditionWithSubfields(t *testing.T) {
 	}{
 		{
 			name:     "3-part condition field",
-			field:    "status.conditions.Ready",
+			field:    "status.conditions.Reconciled",
 			expected: true,
 		},
 		{
 			name:     "Encoded subfield (after preprocessing)",
-			field:    "status.conditions.Ready__last_updated_time",
+			field:    "status.conditions.Reconciled__last_updated_time",
 			expected: true,
 		},
 		{
@@ -457,35 +459,36 @@ func TestExtractConditionQueriesWithSubfields(t *testing.T) {
 	}{
 		{
 			name:               "Subfield query only",
-			searchQuery:        "status.conditions.Ready.last_updated_time < '2026-03-06T00:00:00Z'",
+			searchQuery:        "status.conditions.Reconciled.last_updated_time < '2026-03-06T00:00:00Z'",
 			expectedConditions: 1,
 			expectedConditionSQL: "CAST(jsonb_path_query_first(status_conditions, " +
 				"?::jsonpath) ->> ? AS TIMESTAMPTZ) < ?::timestamptz",
 		},
 		{
 			name: "Mixed status and subfield queries",
-			searchQuery: "status.conditions.Ready='False' AND " +
-				"status.conditions.Ready.last_updated_time < '2026-03-06T00:00:00Z'",
+			searchQuery: "status.conditions.Reconciled='False' AND " +
+				"status.conditions.Reconciled.last_updated_time < '2026-03-06T00:00:00Z'",
 			expectedConditions: 2,
 		},
 		{
-			name:               "Subfield query combined with label query",
-			searchQuery:        "labels.region='us-east' AND status.conditions.Ready.last_updated_time < '2026-03-06T00:00:00Z'",
+			name: "Subfield query combined with label query",
+			searchQuery: "labels.region='us-east' AND " +
+				"status.conditions.Reconciled.last_updated_time < '2026-03-06T00:00:00Z'",
 			expectedConditions: 1,
 		},
 		{
 			name:        "NOT operator on condition query returns error",
-			searchQuery: "NOT status.conditions.Ready='True'",
+			searchQuery: "NOT status.conditions.Reconciled='True'",
 			expectError: true,
 		},
 		{
 			name:        "NOT operator on condition subfield query returns error",
-			searchQuery: "NOT status.conditions.Ready.last_updated_time < '2026-03-06T00:00:00Z'",
+			searchQuery: "NOT status.conditions.Reconciled.last_updated_time < '2026-03-06T00:00:00Z'",
 			expectError: true,
 		},
 		{
 			name:        "NOT operator on nested condition under AND returns error",
-			searchQuery: "NOT (status.conditions.Ready='True' AND name='test')",
+			searchQuery: "NOT (status.conditions.Reconciled='True' AND name='test')",
 			expectError: true,
 		},
 	}
@@ -527,7 +530,7 @@ func TestExtractConditionQueries(t *testing.T) {
 	}{
 		{
 			name:                 "Single condition query",
-			searchQuery:          "status.conditions.Ready='True'",
+			searchQuery:          "status.conditions.Reconciled='True'",
 			expectedConditions:   1,
 			expectedConditionSQL: "jsonb_path_query_first(status_conditions, ?::jsonpath) ->> 'status' = ?",
 		},
@@ -538,12 +541,12 @@ func TestExtractConditionQueries(t *testing.T) {
 		},
 		{
 			name:               "Mixed query with condition",
-			searchQuery:        "name='test' AND status.conditions.Ready='True'",
+			searchQuery:        "name='test' AND status.conditions.Reconciled='True'",
 			expectedConditions: 1,
 		},
 		{
 			name:               "Multiple condition queries",
-			searchQuery:        "status.conditions.Ready='True' AND status.conditions.Available='True'",
+			searchQuery:        "status.conditions.Reconciled='True' AND status.conditions.Available='True'",
 			expectedConditions: 2,
 		},
 	}
@@ -582,7 +585,7 @@ func TestHasCondition(t *testing.T) {
 	}{
 		{
 			name:     "Valid condition field",
-			field:    "status.conditions.Ready",
+			field:    "status.conditions.Reconciled",
 			expected: true,
 		},
 		{
@@ -630,15 +633,15 @@ func TestConditionTypeValidation(t *testing.T) {
 		condType    string
 		expectMatch bool
 	}{
-		{"Valid - Ready", "Ready", true},
+		{"Valid - Reconciled", "Reconciled", true},
 		{"Valid - Available", "Available", true},
 		{"Valid - Progressing", "Progressing", true},
 		{"Valid - CustomCondition", "CustomCondition", true},
-		{"Valid - With numbers", "Ready2", true},
+		{"Valid - With numbers", "Reconciled2", true},
 		{"Invalid - lowercase", "ready", false},
-		{"Invalid - starts with number", "2Ready", false},
-		{"Invalid - contains underscore", "Ready_State", false},
-		{"Invalid - contains hyphen", "Ready-State", false},
+		{"Invalid - starts with number", "2Reconciled", false},
+		{"Invalid - contains underscore", "Reconciled_State", false},
+		{"Invalid - contains hyphen", "Reconciled-State", false},
 		{"Invalid - empty", "", false},
 	}
 

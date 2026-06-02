@@ -96,35 +96,35 @@ func TestSearchCombinedQuery(t *testing.T) {
 	account := h.NewRandAccount()
 	ctx := h.NewAuthenticatedContext(account)
 
-	// Create cluster with NotReady status (Available=False, Ready=False) and us-east region
+	// Create cluster with NotReconciled status (Available=False, Reconciled=False) and us-east region
 	matchCluster, err := factories.NewClusterWithStatusAndLabels(
 		&h.Factories,
 		h.DBFactory,
 		h.NewID(),
 		false, // isAvailable
-		false, // isReady
+		false, // isReconciled
 		map[string]string{"region": "us-east"},
 	)
 	Expect(err).NotTo(HaveOccurred())
 
-	// Create cluster with NotReady status but different region
+	// Create cluster with NotReconciled status but different region
 	wrongRegionCluster, err := factories.NewClusterWithStatusAndLabels(
 		&h.Factories,
 		h.DBFactory,
 		h.NewID(),
 		false, // isAvailable
-		false, // isReady
+		false, // isReconciled
 		map[string]string{"region": "us-west"},
 	)
 	Expect(err).NotTo(HaveOccurred())
 
-	// Create cluster with Ready status (Available=True, Ready=True) and us-east region
+	// Create cluster with Reconciled status (Available=True, Reconciled=True) and us-east region
 	_, err = factories.NewClusterWithStatusAndLabels(
 		&h.Factories,
 		h.DBFactory,
 		h.NewID(),
 		true, // isAvailable
-		true, // isReady
+		true, // isReconciled
 		map[string]string{"region": "us-east"},
 	)
 	Expect(err).NotTo(HaveOccurred())
@@ -200,20 +200,20 @@ func TestSearchStatusConditionsMapping(t *testing.T) {
 	account := h.NewRandAccount()
 	ctx := h.NewAuthenticatedContext(account)
 
-	// Create cluster with Ready=True, Available=True
-	readyCluster, err := factories.NewClusterWithStatus(&h.Factories, h.DBFactory, h.NewID(), true, true)
+	// Create cluster with Reconciled=True, Available=True
+	reconciledCluster, err := factories.NewClusterWithStatus(&h.Factories, h.DBFactory, h.NewID(), true, true)
 	Expect(err).NotTo(HaveOccurred())
 
-	// Create cluster with Ready=False, Available=True
-	notReadyCluster, err := factories.NewClusterWithStatus(&h.Factories, h.DBFactory, h.NewID(), true, false)
+	// Create cluster with Reconciled=False, Available=True
+	notReconciledCluster, err := factories.NewClusterWithStatus(&h.Factories, h.DBFactory, h.NewID(), true, false)
 	Expect(err).NotTo(HaveOccurred())
 
-	// Create cluster with Ready=False, Available=False
+	// Create cluster with Reconciled=False, Available=False
 	notAvailableCluster, err := factories.NewClusterWithStatus(&h.Factories, h.DBFactory, h.NewID(), false, false)
 	Expect(err).NotTo(HaveOccurred())
 
-	// Search for Ready=True
-	searchStr := "status.conditions.Ready='True'"
+	// Search for Reconciled=True
+	searchStr := "status.conditions.Reconciled='True'"
 	search := openapi.SearchParams(searchStr)
 	params := &openapi.GetClustersParams{
 		Search: &search,
@@ -226,17 +226,17 @@ func TestSearchStatusConditionsMapping(t *testing.T) {
 	Expect(list).NotTo(BeNil())
 	Expect(list.Total).To(BeNumerically(">=", 1))
 
-	// Verify only readyCluster is returned
-	foundReady := false
+	// Verify only reconciledCluster is returned
+	foundReconciled := false
 	for _, item := range list.Items {
-		if *item.Id == readyCluster.ID {
-			foundReady = true
+		if *item.Id == reconciledCluster.ID {
+			foundReconciled = true
 		}
-		// Should not contain notReadyCluster or notAvailableCluster
-		Expect(*item.Id).NotTo(Equal(notReadyCluster.ID))
+		// Should not contain notReconciledCluster or notAvailableCluster
+		Expect(*item.Id).NotTo(Equal(notReconciledCluster.ID))
 		Expect(*item.Id).NotTo(Equal(notAvailableCluster.ID))
 	}
-	Expect(foundReady).To(BeTrue(), "Expected to find the ready cluster")
+	Expect(foundReconciled).To(BeTrue(), "Expected to find the reconciled cluster")
 
 	// Search for Available=True
 	searchAvailableStr := "status.conditions.Available='True'"
@@ -252,21 +252,21 @@ func TestSearchStatusConditionsMapping(t *testing.T) {
 	Expect(availableList).NotTo(BeNil())
 	Expect(availableList.Total).To(BeNumerically(">=", 2))
 
-	// Should contain readyCluster and notReadyCluster (both have Available=True)
-	foundReadyInAvailable := false
-	foundNotReadyInAvailable := false
+	// Should contain reconciledCluster and notReconciledCluster (both have Available=True)
+	foundReconciledInAvailable := false
+	foundNotReconciledInAvailable := false
 	for _, item := range availableList.Items {
-		if *item.Id == readyCluster.ID {
-			foundReadyInAvailable = true
+		if *item.Id == reconciledCluster.ID {
+			foundReconciledInAvailable = true
 		}
-		if *item.Id == notReadyCluster.ID {
-			foundNotReadyInAvailable = true
+		if *item.Id == notReconciledCluster.ID {
+			foundNotReconciledInAvailable = true
 		}
 		// Should not contain notAvailableCluster
 		Expect(*item.Id).NotTo(Equal(notAvailableCluster.ID))
 	}
-	Expect(foundReadyInAvailable).To(BeTrue(), "Expected to find ready cluster in Available=True search")
-	Expect(foundNotReadyInAvailable).To(BeTrue(), "Expected to find notReady cluster in Available=True search")
+	Expect(foundReconciledInAvailable).To(BeTrue(), "Expected to find reconciled cluster in Available=True search")
+	Expect(foundNotReconciledInAvailable).To(BeTrue(), "Expected to find notReconciled cluster in Available=True search")
 }
 
 // TestSearchStatusConditionsCombinedWithLabels verifies that condition queries
@@ -278,41 +278,41 @@ func TestSearchStatusConditionsCombinedWithLabels(t *testing.T) {
 	account := h.NewRandAccount()
 	ctx := h.NewAuthenticatedContext(account)
 
-	// Create cluster with Ready=True and region=us-east
+	// Create cluster with Reconciled=True and region=us-east
 	matchCluster, err := factories.NewClusterWithStatusAndLabels(
 		&h.Factories,
 		h.DBFactory,
 		h.NewID(),
 		true, // isAvailable
-		true, // isReady
+		true, // isReconciled
 		map[string]string{"region": "us-east"},
 	)
 	Expect(err).NotTo(HaveOccurred())
 
-	// Create cluster with Ready=True but wrong region
+	// Create cluster with Reconciled=True but wrong region
 	wrongRegionCluster, err := factories.NewClusterWithStatusAndLabels(
 		&h.Factories,
 		h.DBFactory,
 		h.NewID(),
 		true, // isAvailable
-		true, // isReady
+		true, // isReconciled
 		map[string]string{"region": "us-west"},
 	)
 	Expect(err).NotTo(HaveOccurred())
 
-	// Create cluster with correct region but Ready=False
+	// Create cluster with correct region but Reconciled=False
 	wrongStatusCluster, err := factories.NewClusterWithStatusAndLabels(
 		&h.Factories,
 		h.DBFactory,
 		h.NewID(),
 		true,  // isAvailable
-		false, // isReady
+		false, // isReconciled
 		map[string]string{"region": "us-east"},
 	)
 	Expect(err).NotTo(HaveOccurred())
 
-	// Search for Ready=True AND region=us-east
-	searchStr := "status.conditions.Ready='True' AND labels.region='us-east'"
+	// Search for Reconciled=True AND region=us-east
+	searchStr := "status.conditions.Reconciled='True' AND labels.region='us-east'"
 	search := openapi.SearchParams(searchStr)
 	params := &openapi.GetClustersParams{
 		Search: &search,
@@ -348,7 +348,7 @@ func TestSearchStatusConditionsInvalidValues(t *testing.T) {
 	ctx := h.NewAuthenticatedContext(account)
 
 	// Test invalid condition status
-	searchStr := "status.conditions.Ready='Invalid'"
+	searchStr := "status.conditions.Reconciled='Invalid'"
 	search := openapi.SearchParams(searchStr)
 	params := &openapi.GetClustersParams{
 		Search: &search,
@@ -359,7 +359,7 @@ func TestSearchStatusConditionsInvalidValues(t *testing.T) {
 	Expect(resp.StatusCode()).To(Equal(http.StatusBadRequest))
 
 	// Test invalid condition type (lowercase)
-	searchInvalidType := "status.conditions.ready='True'"
+	searchInvalidType := "status.conditions.reconciled='True'"
 	searchInvalidTypeParam := openapi.SearchParams(searchInvalidType)
 	invalidTypeParams := &openapi.GetClustersParams{
 		Search: &searchInvalidTypeParam,
@@ -380,7 +380,7 @@ func TestSearchStatusConditionsNotOperator(t *testing.T) {
 	ctx := h.NewAuthenticatedContext(account)
 
 	// "not" wrapping a condition query
-	searchStr := "not status.conditions.Ready='True'"
+	searchStr := "not status.conditions.Reconciled='True'"
 	search := openapi.SearchParams(searchStr)
 	params := &openapi.GetClustersParams{
 		Search: &search,
@@ -391,7 +391,7 @@ func TestSearchStatusConditionsNotOperator(t *testing.T) {
 	Expect(resp.StatusCode()).To(Equal(http.StatusBadRequest))
 
 	// "not" wrapping subtree containing a condition
-	searchMixed := "not (labels.region='us-east' AND status.conditions.Ready='True')"
+	searchMixed := "not (labels.region='us-east' AND status.conditions.Reconciled='True')"
 	searchMixedParam := openapi.SearchParams(searchMixed)
 	mixedParams := &openapi.GetClustersParams{
 		Search: &searchMixedParam,
@@ -402,7 +402,7 @@ func TestSearchStatusConditionsNotOperator(t *testing.T) {
 	Expect(mixedResp.StatusCode()).To(Equal(http.StatusBadRequest))
 
 	// "not" wrapping a non-condition
-	searchAllowed := "status.conditions.Ready='True' AND not labels.region='us-west'"
+	searchAllowed := "status.conditions.Reconciled='True' AND not labels.region='us-west'"
 	searchAllowedParam := openapi.SearchParams(searchAllowed)
 	allowedParams := &openapi.GetClustersParams{
 		Search: &searchAllowedParam,
@@ -426,7 +426,7 @@ func TestSearchConditionSubfieldLastUpdatedTime(t *testing.T) {
 	staleTime := time.Now().Add(-2 * time.Hour)
 	staleCluster, err := factories.NewClusterWithStatusAtTime(
 		&h.Factories, h.DBFactory, h.NewID(),
-		true, true, // isAvailable, isReady
+		true, true, // isAvailable, isReconciled
 		staleTime,
 	)
 	Expect(err).NotTo(HaveOccurred())
@@ -435,14 +435,14 @@ func TestSearchConditionSubfieldLastUpdatedTime(t *testing.T) {
 	freshTime := time.Now()
 	freshCluster, err := factories.NewClusterWithStatusAtTime(
 		&h.Factories, h.DBFactory, h.NewID(),
-		true, true, // isAvailable, isReady
+		true, true, // isAvailable, isReconciled
 		freshTime,
 	)
 	Expect(err).NotTo(HaveOccurred())
 
-	// Search for clusters where Ready.last_updated_time is older than 1 hour ago
+	// Search for clusters where Reconciled.last_updated_time is older than 1 hour ago
 	cutoff := time.Now().Add(-1 * time.Hour).UTC().Format(time.RFC3339)
-	searchStr := fmt.Sprintf("status.conditions.Ready.last_updated_time < '%s'", cutoff)
+	searchStr := fmt.Sprintf("status.conditions.Reconciled.last_updated_time < '%s'", cutoff)
 	search := openapi.SearchParams(searchStr)
 	params := &openapi.GetClustersParams{
 		Search: &search,
@@ -468,7 +468,7 @@ func TestSearchConditionSubfieldLastUpdatedTime(t *testing.T) {
 
 // TestSearchConditionSubfieldCombinedWithStatus verifies that condition subfield
 // queries can be combined with condition status queries using AND.
-// This is the primary Sentinel use case: fetch ready-but-stale resources.
+// This is the primary Sentinel use case: fetch reconciled-but-stale resources.
 func TestSearchConditionSubfieldCombinedWithStatus(t *testing.T) {
 	RegisterTestingT(t)
 	h, client := test.RegisterIntegration(t)
@@ -476,29 +476,29 @@ func TestSearchConditionSubfieldCombinedWithStatus(t *testing.T) {
 	account := h.NewRandAccount()
 	ctx := h.NewAuthenticatedContext(account)
 
-	// Create a stale ready cluster (Ready=True, updated 2h ago) - should match
+	// Create a stale reconciled cluster (Reconciled=True, updated 2h ago) - should match
 	staleTime := time.Now().Add(-2 * time.Hour)
-	staleReadyCluster, err := factories.NewClusterWithStatusAtTime(
+	staleReconciledCluster, err := factories.NewClusterWithStatusAtTime(
 		&h.Factories, h.DBFactory, h.NewID(),
 		true, true,
 		staleTime,
 	)
 	Expect(err).NotTo(HaveOccurred())
 
-	// Create a fresh ready cluster (Ready=True, updated now) - should NOT match
+	// Create a fresh reconciled cluster (Reconciled=True, updated now) - should NOT match
 	freshTime := time.Now()
-	freshReadyCluster, err := factories.NewClusterWithStatusAtTime(
+	freshReconciledCluster, err := factories.NewClusterWithStatusAtTime(
 		&h.Factories, h.DBFactory, h.NewID(),
 		true, true,
 		freshTime,
 	)
 	Expect(err).NotTo(HaveOccurred())
 
-	// Search: Ready=True AND last_updated_time < cutoff (stale resources)
+	// Search: Reconciled=True AND last_updated_time < cutoff (stale resources)
 	cutoff := time.Now().Add(-1 * time.Hour).UTC().Format(time.RFC3339)
 	searchStr := fmt.Sprintf(
-		"status.conditions.Ready='True' AND "+
-			"status.conditions.Ready.last_updated_time < '%s'",
+		"status.conditions.Reconciled='True' AND "+
+			"status.conditions.Reconciled.last_updated_time < '%s'",
 		cutoff,
 	)
 	search := openapi.SearchParams(searchStr)
@@ -513,15 +513,15 @@ func TestSearchConditionSubfieldCombinedWithStatus(t *testing.T) {
 	Expect(list).NotTo(BeNil())
 	Expect(list.Total).To(BeNumerically(">=", 1))
 
-	foundStaleReady := false
+	foundStaleReconciled := false
 	for _, item := range list.Items {
-		if *item.Id == staleReadyCluster.ID {
-			foundStaleReady = true
+		if *item.Id == staleReconciledCluster.ID {
+			foundStaleReconciled = true
 		}
-		// Should NOT contain freshReadyCluster
-		Expect(*item.Id).NotTo(Equal(freshReadyCluster.ID))
+		// Should NOT contain freshReconciledCluster
+		Expect(*item.Id).NotTo(Equal(freshReconciledCluster.ID))
 	}
-	Expect(foundStaleReady).To(BeTrue(), "Expected to find the stale ready cluster")
+	Expect(foundStaleReconciled).To(BeTrue(), "Expected to find the stale reconciled cluster")
 }
 
 // TestSearchConditionSubfieldGreaterThan verifies the > operator works for time subfield queries
@@ -554,8 +554,8 @@ func TestSearchConditionSubfieldGreaterThan(t *testing.T) {
 	)
 	Expect(err).NotTo(HaveOccurred())
 
-	// Search for clusters where Ready.last_updated_time is newer than 1 hour ago
-	searchStr := fmt.Sprintf("status.conditions.Ready.last_updated_time > '%s'", cutoff)
+	// Search for clusters where Reconciled.last_updated_time is newer than 1 hour ago
+	searchStr := fmt.Sprintf("status.conditions.Reconciled.last_updated_time > '%s'", cutoff)
 	search := openapi.SearchParams(searchStr)
 	params := &openapi.GetClustersParams{
 		Search: &search,
@@ -600,8 +600,8 @@ func TestSearchConditionSubfieldObservedGeneration(t *testing.T) {
 	)
 	Expect(err).NotTo(HaveOccurred())
 
-	// Search for clusters where Ready.observed_generation < 5
-	searchStr := "status.conditions.Ready.observed_generation < 5"
+	// Search for clusters where Reconciled.observed_generation < 5
+	searchStr := "status.conditions.Reconciled.observed_generation < 5"
 	search := openapi.SearchParams(searchStr)
 	params := &openapi.GetClustersParams{
 		Search: &search,
@@ -635,7 +635,7 @@ func TestSearchConditionSubfieldInvalidSubfield(t *testing.T) {
 	ctx := h.NewAuthenticatedContext(account)
 
 	// Query with an unsupported subfield
-	searchStr := "status.conditions.Ready.invalid_field < '2026-03-06T00:00:00Z'"
+	searchStr := "status.conditions.Reconciled.invalid_field < '2026-03-06T00:00:00Z'"
 	search := openapi.SearchParams(searchStr)
 	params := &openapi.GetClustersParams{
 		Search: &search,
@@ -676,8 +676,8 @@ func TestSearchNodePoolConditionSubfieldLastUpdatedTime(t *testing.T) {
 	)
 	Expect(err).NotTo(HaveOccurred())
 
-	// Search for node pools where Ready.last_updated_time is older than 1 hour ago
-	searchStr := fmt.Sprintf("status.conditions.Ready.last_updated_time < '%s'", cutoff)
+	// Search for node pools where Reconciled.last_updated_time is older than 1 hour ago
+	searchStr := fmt.Sprintf("status.conditions.Reconciled.last_updated_time < '%s'", cutoff)
 	search := openapi.SearchParams(searchStr)
 	params := &openapi.GetNodePoolsParams{
 		Search: &search,

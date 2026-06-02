@@ -146,8 +146,8 @@ func TestPresentNodePool_Complete(t *testing.T) {
 	RegisterTestingT(t)
 
 	now := time.Now()
-	reason := "Ready"
-	message := "NodePool is ready"
+	reason := "Reconciled"
+	message := "NodePool is reconciled"
 
 	// Create domain ResourceCondition
 	conditions := []api.ResourceCondition{

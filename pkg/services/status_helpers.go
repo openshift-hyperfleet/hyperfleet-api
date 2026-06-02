@@ -27,12 +27,8 @@ func computeNodePoolConditionsJSON(
 		AdapterStatuses:    adapterStatuses,
 	})
 
-	// Ready mirrors Reconciled for backward compatibility (deprecated)
-	ready := reconciled
-	ready.Type = api.ResourceConditionTypeReady
-
 	allConditions := make([]api.ResourceCondition, 0, fixedConditionCount+len(adapterConditions))
-	allConditions = append(allConditions, ready, reconciled, lastKnownReconciled)
+	allConditions = append(allConditions, reconciled, lastKnownReconciled)
 	allConditions = append(allConditions, adapterConditions...)
 
 	conditionsJSON, err := json.Marshal(allConditions)

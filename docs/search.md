@@ -43,8 +43,8 @@ The HyperFleet API uses the [Tree Search Language (TSL)](https://github.com/yaac
 | `created_by` | string | Creator email | `created_by='user@example.com'` |
 | `updated_by` | string | Last updater email | `updated_by='user@example.com'` |
 | `labels.<key>` | string | Label value | `labels.environment='production'` |
-| `status.conditions.<Type>` | string | Condition status | `status.conditions.Ready='True'` |
-| `status.conditions.<Type>.<Subfield>` | varies | Condition subfield | `status.conditions.Ready.last_updated_time < '...'` |
+| `status.conditions.<Type>` | string | Condition status | `status.conditions.Reconciled='True'` |
+| `status.conditions.<Type>.<Subfield>` | varies | Condition subfield | `status.conditions.Reconciled.last_updated_time < '...'` |
 
 ```bash
 # Find cluster by name
@@ -69,9 +69,9 @@ NodePools support the same searchable fields as Clusters, plus:
 curl -G "http://localhost:8000/api/hyperfleet/v1/nodepools" \
   --data-urlencode "search=owner_id='019466a0-8f8e-7abc-9def-0123456789ab'"
 
-# Find ready nodepools
+# Find reconciled nodepools
 curl -G "http://localhost:8000/api/hyperfleet/v1/nodepools" \
-  --data-urlencode "search=status.conditions.Ready='True'"
+  --data-urlencode "search=status.conditions.Reconciled='True'"
 
 # Find nodepools by label
 curl -G "http://localhost:8000/api/hyperfleet/v1/nodepools" \
@@ -98,18 +98,18 @@ Label keys must contain only lowercase letters (a-z), digits (0-9), and undersco
 
 Query resources by status conditions: `status.conditions.<Type>='<Status>'`
 
-Condition types must be PascalCase (`Ready`, `LastKnownReconciled`) and status must be `True` or `False` for resource conditions.
+Condition types must be PascalCase (`Reconciled`, `LastKnownReconciled`) and status must be `True` or `False` for resource conditions.
 
-**Note:** Only the `=` operator is supported for condition queries. Other operators (`!=`, `<`, `>`, `in`, etc.) will return an error. The `NOT` operator is not supported with condition queries (`status.conditions.<Type>` or `status.conditions.<Type>.<Subfield>`) and will return a `400 Bad Request` error. Use the inverse condition value instead (e.g., `status.conditions.Ready='False'` rather than `NOT status.conditions.Ready='True'`).
+**Note:** Only the `=` operator is supported for condition queries. Other operators (`!=`, `<`, `>`, `in`, etc.) will return an error. The `NOT` operator is not supported with condition queries (`status.conditions.<Type>` or `status.conditions.<Type>.<Subfield>`) and will return a `400 Bad Request` error. Use the inverse condition value instead (e.g., `status.conditions.Reconciled='False'` rather than `NOT status.conditions.Reconciled='True'`).
 
 ```bash
 # Find available clusters
 curl -G "http://localhost:8000/api/hyperfleet/v1/clusters" \
   --data-urlencode "search=status.conditions.LastKnownReconciled='True'"
 
-# Find clusters that are not ready
+# Find clusters that are not reconciled
 curl -G "http://localhost:8000/api/hyperfleet/v1/clusters" \
-  --data-urlencode "search=status.conditions.Ready='False'"
+  --data-urlencode "search=status.conditions.Reconciled='False'"
 ```
 
 ## Condition Subfield Queries
@@ -133,20 +133,20 @@ status.conditions.<Type>.<Subfield> <op> '<Value>'
 Condition subfields support comparison operators: `=`, `!=`, `<`, `<=`, `>`, `>=`.
 
 > **Note**: `status.conditions.<Type>` (without subfield) only supports the `=` operator.
-> The `NOT` operator is not supported with any condition expression — neither `status.conditions.<Type>` nor `status.conditions.<Type>.<Subfield>` (e.g., `status.conditions.Ready.last_updated_time`). Using `NOT` with these expressions returns a `400 Bad Request` error. Restructure queries using `AND`/`OR` or the inverse condition value instead.
+> The `NOT` operator is not supported with any condition expression — neither `status.conditions.<Type>` nor `status.conditions.<Type>.<Subfield>` (e.g., `status.conditions.Reconciled.last_updated_time`). Using `NOT` with these expressions returns a `400 Bad Request` error. Restructure queries using `AND`/`OR` or the inverse condition value instead.
 
 ```bash
-# Find clusters where Ready condition hasn't been updated in the last hour
+# Find clusters where Reconciled condition hasn't been updated in the last hour
 curl -G "http://localhost:8000/api/hyperfleet/v1/clusters" \
-  --data-urlencode "search=status.conditions.Ready.last_updated_time < '2026-03-06T14:00:00Z'"
+  --data-urlencode "search=status.conditions.Reconciled.last_updated_time < '2026-03-06T14:00:00Z'"
 
-# Find stale-ready resources (Sentinel selective polling use case)
+# Find stale-reconciled resources (Sentinel selective polling use case)
 curl -G "http://localhost:8000/api/hyperfleet/v1/clusters" \
-  --data-urlencode "search=status.conditions.Ready='True' AND status.conditions.Ready.last_updated_time < '2026-03-06T14:00:00Z'"
+  --data-urlencode "search=status.conditions.Reconciled='True' AND status.conditions.Reconciled.last_updated_time < '2026-03-06T14:00:00Z'"
 
 # Find clusters with observed_generation below a threshold (uses unquoted integer)
 curl -G "http://localhost:8000/api/hyperfleet/v1/clusters" \
-  --data-urlencode "search=status.conditions.Ready.observed_generation < 5"
+  --data-urlencode "search=status.conditions.Reconciled.observed_generation < 5"
 ```
 
 Time subfields require RFC3339 format (e.g., `2026-01-01T00:00:00Z`). Integer subfields use unquoted numeric values.
@@ -156,17 +156,17 @@ Time subfields require RFC3339 format (e.g., `2026-01-01T00:00:00Z`). Integer su
 Combine multiple conditions using `and`, `or`, `not`, and parentheses `()`:
 
 ```bash
-# Find ready production clusters
+# Find reconciled production clusters
 curl -G "http://localhost:8000/api/hyperfleet/v1/clusters" \
-  --data-urlencode "search=status.conditions.Ready='True' and labels.environment='production'"
+  --data-urlencode "search=status.conditions.Reconciled='True' and labels.environment='production'"
 
 # Find clusters in dev or staging
 curl -G "http://localhost:8000/api/hyperfleet/v1/clusters" \
   --data-urlencode "search=labels.environment in ('dev', 'staging')"
 
-# Find ready clusters in production or staging
+# Find reconciled clusters in production or staging
 curl -G "http://localhost:8000/api/hyperfleet/v1/clusters" \
-  --data-urlencode "search=status.conditions.Ready='True' and (labels.environment='production' or labels.environment='staging')"
+  --data-urlencode "search=status.conditions.Reconciled='True' and (labels.environment='production' or labels.environment='staging')"
 
 # Find clusters that are not in production
 curl -G "http://localhost:8000/api/hyperfleet/v1/clusters" \

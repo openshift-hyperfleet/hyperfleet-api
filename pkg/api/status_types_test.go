@@ -85,7 +85,7 @@ func TestResourceCondition_JSONSerialization(t *testing.T) {
 		ObservedGeneration: 5,
 		CreatedTime:        now,
 		LastUpdatedTime:    now,
-		Type:               ResourceConditionTypeReady,
+		Type:               ResourceConditionTypeReconciled,
 		Status:             ConditionTrue,
 		Reason:             &reason,
 		Message:            &message,
@@ -101,7 +101,7 @@ func TestResourceCondition_JSONSerialization(t *testing.T) {
 	Expect(err).To(BeNil())
 
 	Expect(jsonMap["observed_generation"]).To(BeNumerically("==", 5))
-	Expect(jsonMap["type"]).To(Equal(ResourceConditionTypeReady))
+	Expect(jsonMap["type"]).To(Equal(ResourceConditionTypeReconciled))
 	Expect(jsonMap["status"]).To(Equal("True"))
 	Expect(jsonMap["reason"]).To(Equal("TestReason"))
 	Expect(jsonMap["message"]).To(Equal("Test message"))

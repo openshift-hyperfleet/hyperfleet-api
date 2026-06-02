@@ -187,13 +187,13 @@ func TestNodePoolPatch(t *testing.T) {
 	Expect(updatedWithLabels.Generation).To(Equal(updated.Generation+1), "Generation should increment when labels change")
 }
 
-func TestNodePoolPatch_SetReadyFalse(t *testing.T) {
+func TestNodePoolPatch_SetReconciledFalse(t *testing.T) {
 	h, client := test.RegisterIntegration(t)
 
 	account := h.NewRandAccount()
 	ctx := h.NewAuthenticatedContext(account)
 
-	// Create a nodepool with Ready=True
+	// Create a nodepool with Reconciled=True
 	nodePool, err := factories.NewNodePoolWithStatus(&h.Factories, h.DBFactory, h.NewID(), true, true)
 	Expect(err).NotTo(HaveOccurred())
 
@@ -209,16 +209,16 @@ func TestNodePoolPatch_SetReadyFalse(t *testing.T) {
 	updated := patchResp.JSON200
 	Expect(updated.Generation).To(Equal(nodePool.Generation+1), "Generation should increment when labels change")
 
-	var readyCond *openapi.ResourceCondition
+	var reconciledCond *openapi.ResourceCondition
 	for i := range updated.Status.Conditions {
-		if updated.Status.Conditions[i].Type == api.ResourceConditionTypeReady {
-			readyCond = &updated.Status.Conditions[i]
+		if updated.Status.Conditions[i].Type == api.ResourceConditionTypeReconciled {
+			reconciledCond = &updated.Status.Conditions[i]
 			break
 		}
 	}
-	Expect(readyCond).NotTo(BeNil(), "Expected Ready condition in response")
-	Expect(readyCond.Status).To(Equal(openapi.ResourceConditionStatusFalse),
-		"Ready must be False after generation increment")
+	Expect(reconciledCond).NotTo(BeNil(), "Expected Reconciled condition in response")
+	Expect(reconciledCond.Status).To(Equal(openapi.ResourceConditionStatusFalse),
+		"Reconciled must be False after generation increment")
 }
 
 func TestNodePoolPaging(t *testing.T) {
@@ -604,7 +604,7 @@ func TestNodePoolSoftDelete(t *testing.T) {
 		Expect(string(*resp.JSON202.DeletedBy)).To(Equal(account.Email))
 	})
 
-	t.Run("given a nodepool with Ready=True, when deleted, then generation increments and Ready becomes False", func(t *testing.T) { //nolint:lll
+	t.Run("given a nodepool with Reconciled=True, when deleted, then generation increments and Reconciled becomes False", func(t *testing.T) { //nolint:lll
 		RegisterTestingT(t)
 		// Given:
 		h, client := test.RegisterIntegration(t)
@@ -625,16 +625,16 @@ func TestNodePoolSoftDelete(t *testing.T) {
 		Expect(resp.JSON202).NotTo(BeNil())
 		Expect(resp.JSON202.Generation).To(Equal(initialGeneration+1),
 			"Generation should be incremented after soft-delete")
-		var readyCond *openapi.ResourceCondition
+		var reconciledCond *openapi.ResourceCondition
 		for i := range resp.JSON202.Status.Conditions {
-			if resp.JSON202.Status.Conditions[i].Type == api.ResourceConditionTypeReady {
-				readyCond = &resp.JSON202.Status.Conditions[i]
+			if resp.JSON202.Status.Conditions[i].Type == api.ResourceConditionTypeReconciled {
+				reconciledCond = &resp.JSON202.Status.Conditions[i]
 				break
 			}
 		}
-		Expect(readyCond).NotTo(BeNil(), "Expected Ready condition in response")
-		Expect(readyCond.Status).To(Equal(openapi.ResourceConditionStatusFalse),
-			"Ready should be False after soft-delete due to generation bump")
+		Expect(reconciledCond).NotTo(BeNil(), "Expected Reconciled condition in response")
+		Expect(reconciledCond.Status).To(Equal(openapi.ResourceConditionStatusFalse),
+			"Reconciled should be False after soft-delete due to generation bump")
 	})
 
 	t.Run("given a nodepool that belongs to a different cluster, when deleted via wrong cluster ID, then returns 404", func(t *testing.T) { //nolint:lll

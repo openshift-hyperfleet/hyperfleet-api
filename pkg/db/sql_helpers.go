@@ -57,7 +57,6 @@ func hasProperty(n tsl.Node) bool {
 }
 
 // Field mapping rules for user-friendly syntax to database columns
-// Note: status.phase was removed - use status.conditions.Ready='True' or status.conditions.Available='True' instead
 var statusFieldMappings = map[string]string{
 	"status.conditions": "status_conditions",
 }
@@ -167,7 +166,7 @@ func propertiesNodeConverter(n tsl.Node) tsl.Node {
 	return propertyNode
 }
 
-// Condition type validation pattern: PascalCase condition types (e.g., Ready, Available, Progressing)
+// Condition type validation pattern: PascalCase condition types (e.g., Reconciled, Available, Progressing)
 var conditionTypePattern = regexp.MustCompile(`^[A-Z][a-zA-Z0-9]*$`)
 
 // Condition status validation: must be True, False, or Unknown
@@ -177,10 +176,10 @@ var validConditionStatuses = map[string]bool{
 	"Unknown": true,
 }
 
-// conditionSubfieldPattern matches 4-part condition paths like status.conditions.Ready.last_updated_time
-// and encodes them to 3-part paths (status.conditions.Ready__last_updated_time) so the TSL parser can handle them.
+// conditionSubfieldPattern matches 4-part condition paths like status.conditions.Reconciled.last_updated_time
+// and encodes them to 3-part paths (status.conditions.Reconciled__last_updated_time) so the TSL parser can handle them.
 // The TSL grammar only supports up to 3-part identifiers (database.table.column).
-// The (^|[\s(]) anchor ensures we don't match things like "xstatus.conditions.Ready.last_updated_time".
+// The (^|[\s(]) anchor ensures we don't match things like "xstatus.conditions.Reconciled.last_updated_time".
 // Group 1 captures the leading boundary (start-of-string, whitespace, or opening paren) to preserve it.
 var conditionSubfieldPattern = regexp.MustCompile(
 	`(^|[\s(])(status\.conditions\.[A-Z][a-zA-Z0-9]*)\.([a-z][a-z_]+)`,
@@ -190,8 +189,8 @@ var conditionSubfieldPattern = regexp.MustCompile(
 // before TSL parsing. The TSL parser supports at most 3 dot-separated segments.
 // Only replaces in unquoted segments to avoid mutating string literals.
 //
-// Example: status.conditions.Ready.last_updated_time < '2026-03-06T00:00:00Z'
-// becomes: status.conditions.Ready__last_updated_time < '2026-03-06T00:00:00Z'
+// Example: status.conditions.Reconciled.last_updated_time < '2026-03-06T00:00:00Z'
+// becomes: status.conditions.Reconciled__last_updated_time < '2026-03-06T00:00:00Z'
 func PreprocessConditionSubfields(search string) string {
 	var result strings.Builder
 	result.Grow(len(search))
@@ -280,7 +279,7 @@ func hasCondition(n tsl.Node) bool {
 //
 // 3-part path (status query): status.conditions.<ConditionType>='<Status>'
 //
-//	Transforms to: jsonb_path_query_first(status_conditions, '$[*] ? (@.type == "Ready")') ->> 'status' = 'True'
+//	Transforms to: jsonb_path_query_first(status_conditions, '$[*] ? (@.type == "Reconciled")') ->> 'status' = 'True'
 //
 // 4-part path (subfield query):
 //
@@ -301,14 +300,14 @@ func conditionsNodeConverter(n tsl.Node) (interface{}, *errors.ServiceError) {
 	}
 
 	// After PreprocessConditionSubfields, the path is always 3 parts:
-	// - status.conditions.Ready (status query)
-	// - status.conditions.Ready__last_updated_time (subfield query, encoded with __)
+	// - status.conditions.Reconciled (status query)
+	// - status.conditions.Reconciled__last_updated_time (subfield query, encoded with __)
 	parts := strings.Split(leftStr, ".")
 	if len(parts) != 3 || parts[0] != "status" || parts[1] != "conditions" {
 		return nil, errors.BadRequest("invalid condition field path: %s", leftStr)
 	}
 
-	// Check if the 3rd part contains an encoded subfield (e.g., Ready__last_updated_time).
+	// Check if the 3rd part contains an encoded subfield (e.g., Reconciled__last_updated_time).
 	// The __ encoding is produced by PreprocessConditionSubfields, but users can also
 	// submit the encoded form directly — the same validation applies either way.
 	subfieldParts := strings.SplitN(parts[2], "__", 2)
@@ -317,16 +316,16 @@ func conditionsNodeConverter(n tsl.Node) (interface{}, *errors.ServiceError) {
 	// Validate condition type to prevent SQL injection
 	if !conditionTypePattern.MatchString(conditionType) {
 		return nil, errors.BadRequest(
-			"condition type '%s' is invalid: must be PascalCase (e.g., Ready, Available)", conditionType,
+			"condition type '%s' is invalid: must be PascalCase (e.g., Reconciled, Available)", conditionType,
 		)
 	}
 
-	// Subfield query (e.g., Ready__last_updated_time -> conditionType=Ready, subfield=last_updated_time)
+	// Subfield query (e.g., Reconciled__last_updated_time -> conditionType=Reconciled, subfield=last_updated_time)
 	if len(subfieldParts) == 2 {
 		return conditionSubfieldConverter(n, conditionType, subfieldParts[1])
 	}
 
-	// Status query (e.g., status.conditions.Ready='True')
+	// Status query (e.g., status.conditions.Reconciled='True')
 	return conditionStatusConverter(n, conditionType)
 }
 
@@ -491,7 +490,8 @@ func extractConditionsWalk(n tsl.Node, conditions *[]sq.Sqlizer) (tsl.Node, *err
 	if n.Func == tsl.NotOp {
 		if child, ok := n.Left.(tsl.Node); ok && subtreeHasCondition(child) {
 			return n, errors.BadRequest(
-				"NOT operator is not supported with condition queries; use the inverse condition instead (e.g., Ready='False')",
+				"NOT operator is not supported with condition queries; " +
+					"use the inverse condition instead (e.g., Reconciled='False')",
 			)
 		}
 	}

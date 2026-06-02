@@ -61,16 +61,16 @@ func reloadCluster(dbSession *gorm.DB, cluster *api.Cluster) error {
 
 // NewClusterWithStatus creates a cluster with specific status conditions using the current time.
 func NewClusterWithStatus(
-	f *Factories, dbFactory db.SessionFactory, id string, isAvailable, isReady bool,
+	f *Factories, dbFactory db.SessionFactory, id string, isAvailable, isReconciled bool,
 ) (*api.Cluster, error) {
-	return NewClusterWithStatusAtTime(f, dbFactory, id, isAvailable, isReady, time.Now())
+	return NewClusterWithStatusAtTime(f, dbFactory, id, isAvailable, isReconciled, time.Now())
 }
 
 // NewClusterWithStatusAtTime creates a cluster with specific status conditions and custom timestamps.
 // This is useful for testing time-based condition queries (e.g., last_updated_time < '...')
 func NewClusterWithStatusAtTime(
 	f *Factories, dbFactory db.SessionFactory, id string,
-	isAvailable, isReady bool, conditionTime time.Time,
+	isAvailable, isReconciled bool, conditionTime time.Time,
 ) (*api.Cluster, error) {
 	cluster, err := f.NewCluster(id)
 	if err != nil {
@@ -81,9 +81,9 @@ func NewClusterWithStatusAtTime(
 	if isAvailable {
 		availableStatus = api.ConditionTrue
 	}
-	readyStatus := api.ConditionFalse
-	if isReady {
-		readyStatus = api.ConditionTrue
+	reconciledStatus := api.ConditionFalse
+	if isReconciled {
+		reconciledStatus = api.ConditionTrue
 	}
 
 	conditions := []api.ResourceCondition{
@@ -96,8 +96,8 @@ func NewClusterWithStatusAtTime(
 			LastUpdatedTime:    conditionTime,
 		},
 		{
-			Type:               api.ResourceConditionTypeReady,
-			Status:             readyStatus,
+			Type:               api.ResourceConditionTypeReconciled,
+			Status:             reconciledStatus,
 			ObservedGeneration: cluster.Generation,
 			LastTransitionTime: conditionTime,
 			CreatedTime:        conditionTime,
@@ -126,7 +126,7 @@ func NewClusterWithStatusAtTime(
 // This is useful for testing observed_generation-based queries.
 func NewClusterWithObservedGeneration(
 	f *Factories, dbFactory db.SessionFactory, id string,
-	isAvailable, isReady bool, observedGeneration int32,
+	isAvailable, isReconciled bool, observedGeneration int32,
 ) (*api.Cluster, error) {
 	cluster, err := f.NewCluster(id)
 	if err != nil {
@@ -138,9 +138,9 @@ func NewClusterWithObservedGeneration(
 	if isAvailable {
 		availableStatus = api.ConditionTrue
 	}
-	readyStatus := api.ConditionFalse
-	if isReady {
-		readyStatus = api.ConditionTrue
+	reconciledStatus := api.ConditionFalse
+	if isReconciled {
+		reconciledStatus = api.ConditionTrue
 	}
 
 	conditions := []api.ResourceCondition{
@@ -153,8 +153,8 @@ func NewClusterWithObservedGeneration(
 			LastUpdatedTime:    now,
 		},
 		{
-			Type:               api.ResourceConditionTypeReady,
-			Status:             readyStatus,
+			Type:               api.ResourceConditionTypeReconciled,
+			Status:             reconciledStatus,
 			ObservedGeneration: observedGeneration,
 			LastTransitionTime: now,
 			CreatedTime:        now,
@@ -209,9 +209,9 @@ func NewClusterWithLabels(
 
 // NewClusterWithStatusAndLabels creates a cluster with both status conditions and labels
 func NewClusterWithStatusAndLabels(
-	f *Factories, dbFactory db.SessionFactory, id string, isAvailable, isReady bool, labels map[string]string,
+	f *Factories, dbFactory db.SessionFactory, id string, isAvailable, isReconciled bool, labels map[string]string,
 ) (*api.Cluster, error) {
-	cluster, err := NewClusterWithStatus(f, dbFactory, id, isAvailable, isReady)
+	cluster, err := NewClusterWithStatus(f, dbFactory, id, isAvailable, isReconciled)
 	if err != nil {
 		return nil, err
 	}

@@ -414,7 +414,7 @@ func TestValidateConditions_Valid(t *testing.T) {
 		req := openapi.AdapterStatusCreateRequest{
 			Conditions: []openapi.ConditionRequest{
 				{
-					Type:   api.AdapterConditionTypeReady,
+					Type:   api.AdapterConditionTypeReconciled,
 					Status: status,
 				},
 			},
@@ -509,7 +509,7 @@ func TestValidateConditions_MultipleIssues(t *testing.T) {
 	req := openapi.AdapterStatusCreateRequest{
 		Conditions: []openapi.ConditionRequest{
 			{
-				Type:   api.AdapterConditionTypeReady,
+				Type:   api.AdapterConditionTypeReconciled,
 				Status: openapi.AdapterConditionStatusTrue,
 			},
 			{

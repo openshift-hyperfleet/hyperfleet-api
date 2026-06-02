@@ -124,9 +124,9 @@ curl -X POST http://localhost:8000/api/hyperfleet/v1/clusters \
 curl -G http://localhost:8000/api/hyperfleet/v1/clusters \
   --data-urlencode "search=labels.environment='production'" | jq
 
-# Search ready clusters in a specific region
+# Search reconciled clusters in a specific region
 curl -G http://localhost:8000/api/hyperfleet/v1/clusters \
-  --data-urlencode "search=status.conditions.Ready='True' and labels.region='us-east'" | jq
+  --data-urlencode "search=status.conditions.Reconciled='True' and labels.region='us-east'" | jq
 ```
 
 See [docs/search.md](docs/search.md) for search and filtering documentation.
