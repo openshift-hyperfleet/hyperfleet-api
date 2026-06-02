@@ -11,6 +11,7 @@ import (
 
 	. "github.com/onsi/gomega"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/registry"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/validators"
 )
 
@@ -40,6 +41,15 @@ components:
           type: integer
           minimum: 1
           maximum: 10
+
+    FooSpec:
+      type: object
+      required:
+        - bar
+      properties:
+        bar:
+          type: string
+          minLength: 1
 `
 
 func TestSchemaValidationMiddleware_PostRequestValidation(t *testing.T) {
@@ -258,6 +268,68 @@ func TestSchemaValidationMiddleware_NodePoolValidation(t *testing.T) {
 	Expect(rr.Code).To(Equal(http.StatusCreated))
 }
 
+func TestSchemaValidationMiddleware_NestedNodePoolPathUsesNodePoolSchema(t *testing.T) {
+	RegisterTestingT(t)
+
+	validator := setupTestValidator(t)
+	middleware := SchemaValidationMiddleware(validator)
+
+	// Valid for ClusterSpec (region) but invalid for NodePoolSpec (missing replicas).
+	clusterOnlySpec := map[string]interface{}{
+		"name": "test-nodepool",
+		"spec": map[string]interface{}{
+			"region": "us-central1",
+		},
+	}
+
+	body, _ := json.Marshal(clusterOnlySpec)
+	req := httptest.NewRequest(http.MethodPost, "/api/hyperfleet/v1/clusters/123/nodepools", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	nextHandlerCalled := false
+	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nextHandlerCalled = true
+	})
+
+	middleware(nextHandler).ServeHTTP(rr, req)
+
+	Expect(nextHandlerCalled).To(BeFalse(), "cluster-shaped spec must not pass on nested nodepool path")
+	Expect(rr.Code).To(Equal(http.StatusBadRequest))
+}
+
+func TestSchemaValidationMiddleware_NestedNodePoolPathRejectsClusterSpecOnPatch(t *testing.T) {
+	RegisterTestingT(t)
+
+	validator := setupTestValidator(t)
+	middleware := SchemaValidationMiddleware(validator)
+
+	clusterOnlySpec := map[string]interface{}{
+		"spec": map[string]interface{}{
+			"region": "us-east1",
+		},
+	}
+
+	body, _ := json.Marshal(clusterOnlySpec)
+	req := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/hyperfleet/v1/clusters/123/nodepools/np-456",
+		bytes.NewBuffer(body),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	nextHandlerCalled := false
+	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nextHandlerCalled = true
+	})
+
+	middleware(nextHandler).ServeHTTP(rr, req)
+
+	Expect(nextHandlerCalled).To(BeFalse())
+	Expect(rr.Code).To(Equal(http.StatusBadRequest))
+}
+
 func TestSchemaValidationMiddleware_NodePoolInvalidSpec(t *testing.T) {
 	RegisterTestingT(t)
 
@@ -353,6 +425,78 @@ func TestSchemaValidationMiddleware_InvalidSpecType(t *testing.T) {
 	Expect(*errorResponse.Detail).To(ContainSubstring("spec field must be an object"))
 }
 
+// TestSchemaValidationMiddleware_RegisteredEntityUsesValidator ensures entities from
+// registry.WithSpecSchema() with a matching OpenAPI component are validated end-to-end.
+func TestSchemaValidationMiddleware_RegisteredEntityUsesValidator(t *testing.T) {
+	RegisterTestingT(t)
+
+	validator := setupTestValidator(t)
+	Expect(validator.HasSchema("foos")).To(BeTrue(), "FooSpec must be loaded for registered plural foos")
+
+	middleware := SchemaValidationMiddleware(validator)
+
+	t.Run("valid spec passes validation and reaches next handler", func(t *testing.T) {
+		validRequest := map[string]interface{}{
+			"kind": "Foo",
+			"name": "test-foo",
+			"spec": map[string]interface{}{
+				"bar": "ok",
+			},
+		}
+
+		body, err := json.Marshal(validRequest)
+		Expect(err).NotTo(HaveOccurred())
+
+		req := httptest.NewRequest(http.MethodPost, "/api/hyperfleet/v1/foos", bytes.NewBuffer(body))
+		req.Header.Set("Content-Type", "application/json")
+		rr := httptest.NewRecorder()
+
+		nextHandlerCalled := false
+		nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			nextHandlerCalled = true
+			w.WriteHeader(http.StatusCreated)
+		})
+
+		middleware(nextHandler).ServeHTTP(rr, req)
+
+		Expect(nextHandlerCalled).To(BeTrue(), "validator should accept valid FooSpec")
+		Expect(rr.Code).To(Equal(http.StatusCreated))
+	})
+
+	t.Run("invalid spec is rejected by validator before next handler", func(t *testing.T) {
+		invalidRequest := map[string]interface{}{
+			"kind": "Foo",
+			"name": "test-foo-invalid",
+			"spec": map[string]interface{}{},
+		}
+
+		body, err := json.Marshal(invalidRequest)
+		Expect(err).NotTo(HaveOccurred())
+
+		req := httptest.NewRequest(http.MethodPost, "/api/hyperfleet/v1/foos", bytes.NewBuffer(body))
+		req.Header.Set("Content-Type", "application/json")
+		rr := httptest.NewRecorder()
+
+		nextHandlerCalled := false
+		nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			nextHandlerCalled = true
+		})
+
+		middleware(nextHandler).ServeHTTP(rr, req)
+
+		Expect(nextHandlerCalled).To(BeFalse(), "validator should reject invalid FooSpec")
+		Expect(rr.Code).To(Equal(http.StatusBadRequest))
+
+		var errorResponse openapi.ProblemDetails
+		err = json.Unmarshal(rr.Body.Bytes(), &errorResponse)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(errorResponse.Code).ToNot(BeNil())
+		Expect(*errorResponse.Code).To(Equal("HYPERFLEET-VAL-000"))
+		Expect(errorResponse.Detail).ToNot(BeNil())
+		Expect(*errorResponse.Detail).To(ContainSubstring("Invalid FooSpec"))
+	})
+}
+
 func TestSchemaValidationMiddleware_MalformedJSON(t *testing.T) {
 	RegisterTestingT(t)
 
@@ -379,6 +523,14 @@ func TestSchemaValidationMiddleware_MalformedJSON(t *testing.T) {
 
 // Helper function to setup test validator
 func setupTestValidator(t *testing.T) *validators.SchemaValidator {
+	t.Helper()
+	registry.Reset()
+	registry.Register(registry.EntityDescriptor{
+		Kind:           "Foo",
+		Plural:         "foos",
+		SpecSchemaName: "FooSpec",
+	})
+
 	tmpDir := t.TempDir()
 	schemaPath := filepath.Join(tmpDir, "test-schema.yaml")
 	err := os.WriteFile(schemaPath, []byte(testSchema), 0600)

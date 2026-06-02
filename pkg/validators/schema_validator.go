@@ -7,7 +7,12 @@ import (
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/registry"
 )
+
+// TODO : HYPERFLEET-1159 - Uncomment this once Cluster and NodePool are registered
+// var requiredSpecValidationKinds = []string{"Cluster", "NodePool"}
 
 // ResourceSchema represents a validation schema for a specific resource type
 type ResourceSchema struct {
@@ -21,20 +26,64 @@ type SchemaValidator struct {
 	schemas map[string]*ResourceSchema
 }
 
-// NewSchemaValidator creates a new schema validator by loading an OpenAPI spec from the given path
+// NewSchemaValidator creates a new schema validator by loading an OpenAPI spec from the given path.
+// Cluster and NodePool must be registered with SpecSchemaName and have matching OpenAPI components.
+// Other registered entities with SpecSchemaName are validated only when their component exists;
+// missing components are skipped with a warning at startup.
 func NewSchemaValidator(schemaPath string) (*SchemaValidator, error) {
-	// Load OpenAPI spec
 	loader := openapi3.NewLoader()
 	doc, err := loader.LoadFromFile(schemaPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load OpenAPI schema from %s: %w", schemaPath, err)
 	}
 
-	// Validate the loaded document
-	if err := doc.Validate(context.Background()); err != nil {
-		return nil, fmt.Errorf("invalid OpenAPI schema: %w", err)
+	if validateErr := doc.Validate(context.Background()); validateErr != nil {
+		return nil, fmt.Errorf("invalid OpenAPI schema: %w", validateErr)
 	}
 
+	schemas, err := buildSchemasMap(doc)
+	if err != nil {
+		return nil, err
+	}
+
+	return &SchemaValidator{
+		doc:     doc,
+		schemas: schemas,
+	}, nil
+}
+
+func buildSchemasMap(doc *openapi3.T) (map[string]*ResourceSchema, error) {
+	ctx := context.Background()
+	schemas := make(map[string]*ResourceSchema)
+	// registeredKinds := make(map[string]bool, len(requiredSpecValidationKinds))
+
+	for _, d := range registry.WithSpecSchema() {
+		schemaRef := doc.Components.Schemas[d.SpecSchemaName]
+		if schemaRef == nil {
+			// TODO : HYPERFLEET-1159 - Uncomment this once Cluster and NodePool are registered
+			// if isRequiredSpecValidationKind(d.Kind) {
+			// 	return nil, fmt.Errorf(
+			// 		"%s schema not found in OpenAPI spec (required for entity kind %q)",
+			// 		d.SpecSchemaName, d.Kind,
+			// 	)
+			// }
+
+			logger.With(ctx,
+				"schema_name", d.SpecSchemaName,
+				"kind", d.Kind,
+				"plural", d.Plural,
+			).Warn("OpenAPI spec schema not found, skipping validation for entity")
+			continue
+		}
+
+		schemas[d.Plural] = &ResourceSchema{
+			TypeName: d.SpecSchemaName,
+			Schema:   schemaRef,
+		}
+		// registeredKinds[d.Kind] = true
+	}
+
+	// TODO : HYPERFLEET-1159 - Remove this once Cluster and NodePool are registered
 	// Extract ClusterSpec schema
 	clusterSpecSchema := doc.Components.Schemas["ClusterSpec"]
 	if clusterSpecSchema == nil {
@@ -48,29 +97,46 @@ func NewSchemaValidator(schemaPath string) (*SchemaValidator, error) {
 	}
 
 	// Build schemas map
-	schemas := map[string]*ResourceSchema{
-		"cluster": {
-			TypeName: "ClusterSpec",
-			Schema:   clusterSpecSchema,
-		},
-		"nodepool": {
-			TypeName: "NodePoolSpec",
-			Schema:   nodePoolSpecSchema,
-		},
+	schemas["clusters"] = &ResourceSchema{
+		TypeName: "ClusterSpec",
+		Schema:   clusterSpecSchema,
 	}
+	schemas["nodepools"] = &ResourceSchema{
+		TypeName: "NodePoolSpec",
+		Schema:   nodePoolSpecSchema,
+	}
+	// for _, kind := range requiredSpecValidationKinds {
+	// 	if !registeredKinds[kind] {
+	// 		return nil, fmt.Errorf(
+	// 			"entity kind %q with SpecSchemaName must be registered for schema validation",
+	// 			kind,
+	// 		)
+	// 	}
+	// }
 
-	return &SchemaValidator{
-		doc:     doc,
-		schemas: schemas,
-	}, nil
+	return schemas, nil
 }
 
-// Validate validates a spec for the given resource type
-// Returns nil if resourceType is not found in schemas (allows graceful handling)
-func (v *SchemaValidator) Validate(resourceType string, spec map[string]interface{}) error {
-	resourceSchema := v.schemas[resourceType]
+// TODO : HYPERFLEET-1159 - Uncomment this once Cluster and NodePool are registered
+// func isRequiredSpecValidationKind(kind string) bool {
+// 	for _, required := range requiredSpecValidationKinds {
+// 		if kind == required {
+// 			return true
+// 		}
+// 	}
+// 	return false
+// }
+
+// HasSchema reports whether a validation schema was loaded for the given resource plural.
+func (v *SchemaValidator) HasSchema(resourcePlural string) bool {
+	return v.schemas[resourcePlural] != nil
+}
+
+// Validate validates a spec for the given resource plural (URL path segment).
+// Returns nil when no schema is loaded for the plural (validation skipped).
+func (v *SchemaValidator) Validate(resourcePlural string, spec map[string]interface{}) error {
+	resourceSchema := v.schemas[resourcePlural]
 	if resourceSchema == nil {
-		// Unknown resource type, skip validation
 		return nil
 	}
 
@@ -79,16 +145,16 @@ func (v *SchemaValidator) Validate(resourceType string, spec map[string]interfac
 
 // ValidateClusterSpec validates a cluster spec against the ClusterSpec schema
 //
-// Deprecated: Use Validate("cluster", spec) instead
+// Deprecated: Use Validate("clusters", spec) instead
 func (v *SchemaValidator) ValidateClusterSpec(spec map[string]interface{}) error {
-	return v.Validate("cluster", spec)
+	return v.Validate("clusters", spec)
 }
 
 // ValidateNodePoolSpec validates a nodepool spec against the NodePoolSpec schema
 //
-// Deprecated: Use Validate("nodepool", spec) instead
+// Deprecated: Use Validate("nodepools", spec) instead
 func (v *SchemaValidator) ValidateNodePoolSpec(spec map[string]interface{}) error {
-	return v.Validate("nodepool", spec)
+	return v.Validate("nodepools", spec)
 }
 
 // validateSpec performs the actual validation and converts errors to our error format

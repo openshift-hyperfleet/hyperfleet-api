@@ -9,6 +9,7 @@ import (
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/registry"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/validators"
 )
 
@@ -36,12 +37,30 @@ func handleValidationError(w http.ResponseWriter, r *http.Request, err *errors.S
 	}
 }
 
-// SchemaValidationMiddleware validates cluster and nodepool spec fields against OpenAPI schemas
+// SchemaValidationMiddleware validates resource spec fields against OpenAPI schemas for every
+// registered entity that declares SpecSchemaName.
 func SchemaValidationMiddleware(validator *validators.SchemaValidator) func(http.Handler) http.Handler {
+
+	// TODO : HYPERFLEET-1159 - Remove this once Cluster and NodePool are registered
+	specEntities := []registry.EntityDescriptor{
+		{
+			Kind:           "Cluster",
+			Plural:         "clusters",
+			SpecSchemaName: "ClusterSpec",
+		},
+		{
+			Kind:           "NodePool",
+			Plural:         "nodepools",
+			ParentKind:     "Cluster",
+			SpecSchemaName: "NodePoolSpec",
+		},
+	}
+
+	specEntities = append(specEntities, registry.WithSpecSchema()...)
+
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Check if the request requires spec validation
-			shouldValidate, resourceType := shouldValidateRequest(r.Method, r.URL.Path)
+			shouldValidate, resourcePlural := shouldValidateRequest(r.Method, r.URL.Path, specEntities)
 			if !shouldValidate {
 				next.ServeHTTP(w, r)
 				return
@@ -85,9 +104,7 @@ func SchemaValidationMiddleware(validator *validators.SchemaValidator) func(http
 				return
 			}
 
-			// Validate spec using the resource type
-			// validator.Validate returns nil for unknown resource types
-			validationErr := validator.Validate(resourceType, specMap)
+			validationErr := validator.Validate(resourcePlural, specMap)
 
 			// If validation failed, return 400 error
 			if validationErr != nil {
@@ -108,26 +125,55 @@ func SchemaValidationMiddleware(validator *validators.SchemaValidator) func(http
 	}
 }
 
-// shouldValidateRequest determines if the request requires spec validation
-// Returns (shouldValidate bool, resourceType string)
-func shouldValidateRequest(method, path string) (bool, string) {
-	// Only validate POST and PATCH requests
+// shouldValidateRequest determines if the request requires spec validation.
+// Returns (shouldValidate bool, resourcePlural string).
+//
+// When a path contains multiple registered plurals (e.g. /clusters/{id}/nodepools),
+// the rightmost matching segment wins so nested resources use their own spec schema.
+func shouldValidateRequest(
+	method, path string, specEntities []registry.EntityDescriptor,
+) (bool, string) {
 	if method != http.MethodPost && method != http.MethodPatch {
 		return false, ""
 	}
 
-	// Check nodepools first (more specific path)
-	// POST /api/hyperfleet/v1/clusters/{cluster_id}/nodepools
-	// PATCH /api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepool_id}
-	if strings.Contains(path, "/nodepools") {
-		return true, "nodepool"
+	// this path matching logic is used to determine the correct spec schema to use for validation
+	// based on the path of the request.
+	// For example, if the path is /clusters/abc-123/nodepools/np-456, the matched plural will be "nodepools".
+	var (
+		matchedPlural string
+		matchedIndex  = -1
+	)
+
+	for _, d := range specEntities {
+		segment := "/" + d.Plural
+		if !pathMatchesSpecEntity(method, path, segment) {
+			continue
+		}
+
+		idx := strings.LastIndex(path, segment)
+		if idx < matchedIndex {
+			continue
+		}
+		if idx > matchedIndex {
+			matchedIndex = idx
+			matchedPlural = d.Plural
+		}
 	}
 
-	// POST /api/hyperfleet/v1/clusters
-	// PATCH /api/hyperfleet/v1/clusters/{cluster_id}
-	if strings.HasSuffix(path, "/clusters") || strings.Contains(path, "/clusters/") {
-		return true, "cluster"
+	if matchedPlural == "" {
+		return false, ""
 	}
+	return true, matchedPlural
+}
 
-	return false, ""
+func pathMatchesSpecEntity(method, path, segment string) bool {
+	switch method {
+	case http.MethodPost:
+		return strings.HasSuffix(path, segment)
+	case http.MethodPatch:
+		return strings.Contains(path, segment+"/")
+	default:
+		return false
+	}
 }

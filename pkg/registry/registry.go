@@ -42,6 +42,17 @@ func All() []EntityDescriptor {
 	return result
 }
 
+// WithSpecSchema returns descriptors that declare an OpenAPI spec schema name.
+func WithSpecSchema() []EntityDescriptor {
+	var result []EntityDescriptor
+	for _, d := range descriptors {
+		if d.SpecSchemaName != "" {
+			result = append(result, d)
+		}
+	}
+	return result
+}
+
 // ChildrenOf returns descriptors whose ParentKind matches the given kind.
 func ChildrenOf(parentKind string) []EntityDescriptor {
 	var children []EntityDescriptor

@@ -30,7 +30,7 @@ Reference: `factories/`
 
 `integration/integration_test.go` — `TestMain(m *testing.M)`:
 - Sets default adapter env vars (`HYPERFLEET_ADAPTERS_REQUIRED_CLUSTER`, `HYPERFLEET_ADAPTERS_REQUIRED_NODEPOOL`)
-- Schema validation: `TestMain` auto-sets `HYPERFLEET_SERVER_OPENAPI_SCHEMA_PATH` to `openapi/openapi.yaml` in the repo root if not already set; override with a provider schema path to run provider-specific tests
+- Schema validation: `TestMain` auto-sets `HYPERFLEET_SERVER_OPENAPI_SCHEMA_PATH` to `test/validation-schema.yaml` (permissive, all registered entities) if present, else `openapi/openapi.yaml`; override with a strict provider schema path to run `TestClusterSchemaValidationWithProviderSchema`
 - 45-second timeout safeguard for CI (prevents hung Prow jobs)
 
 ## Key Environment Variables
@@ -38,4 +38,4 @@ Reference: `factories/`
 - `HYPERFLEET_ENV` — selects config environment: `unit_testing`, `integration_testing`, `development`
 - `TESTCONTAINERS_RYUK_DISABLED=true` — required for testcontainers in CI
 - `HYPERFLEET_ADAPTERS_REQUIRED_CLUSTER` / `HYPERFLEET_ADAPTERS_REQUIRED_NODEPOOL` — adapter lists for tests
-- `HYPERFLEET_SERVER_OPENAPI_SCHEMA_PATH` — path to OpenAPI schema for spec validation (auto-set by `TestMain` to `openapi/openapi.yaml`; override with a provider schema to run `TestClusterSchemaValidationWithProviderSchema`)
+- `HYPERFLEET_SERVER_OPENAPI_SCHEMA_PATH` — path to OpenAPI schema for spec validation (auto-set by `TestMain` to `test/validation-schema.yaml`; override with a strict provider schema to run `TestClusterSchemaValidationWithProviderSchema`)

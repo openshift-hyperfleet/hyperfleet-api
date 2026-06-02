@@ -1,12 +1,16 @@
 package validators
 
 import (
+	"bytes"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
 
 	. "github.com/onsi/gomega"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/registry"
 )
 
 const testSchema = `
@@ -51,10 +55,33 @@ components:
           maximum: 100
         autoscaling:
           type: boolean
+
+    WifConfigSpec:
+      type: object
+      required:
+        - version
+        - project_id
+      properties:
+        version:
+          type: string
+        project_id:
+          type: string
+          minLength: 1
+
+    ChannelSpec:
+      type: object
+      required:
+        - display_name
+      properties:
+        display_name:
+          type: string
+          minLength: 1
 `
 
 func TestNewSchemaValidator(t *testing.T) {
 	RegisterTestingT(t)
+
+	registerRequiredSpecValidationEntities()
 
 	// Create temporary schema file
 	tmpDir := t.TempDir()
@@ -68,12 +95,13 @@ func TestNewSchemaValidator(t *testing.T) {
 	Expect(validator).ToNot(BeNil())
 	Expect(validator.doc).ToNot(BeNil())
 	Expect(validator.schemas).ToNot(BeNil())
-	Expect(validator.schemas["cluster"]).ToNot(BeNil())
-	Expect(validator.schemas["cluster"].Schema).ToNot(BeNil())
-	Expect(validator.schemas["cluster"].TypeName).To(Equal("ClusterSpec"))
-	Expect(validator.schemas["nodepool"]).ToNot(BeNil())
-	Expect(validator.schemas["nodepool"].Schema).ToNot(BeNil())
-	Expect(validator.schemas["nodepool"].TypeName).To(Equal("NodePoolSpec"))
+	Expect(validator.schemas["clusters"]).ToNot(BeNil())
+	Expect(validator.schemas["clusters"].Schema).ToNot(BeNil())
+	Expect(validator.schemas["clusters"].TypeName).To(Equal("ClusterSpec"))
+	Expect(validator.schemas["nodepools"]).ToNot(BeNil())
+	Expect(validator.schemas["nodepools"].Schema).ToNot(BeNil())
+	Expect(validator.schemas["nodepools"].TypeName).To(Equal("NodePoolSpec"))
+	Expect(validator.HasSchema("wifconfigs")).To(BeFalse())
 }
 
 func TestNewSchemaValidator_InvalidPath(t *testing.T) {
@@ -101,6 +129,8 @@ func TestNewSchemaValidator_MalformedContent(t *testing.T) {
 func TestNewSchemaValidator_MissingSchemas(t *testing.T) {
 	RegisterTestingT(t)
 
+	registerRequiredSpecValidationEntities()
+
 	// Schema without required components
 	invalidSchema := `
 openapi: 3.0.0
@@ -123,6 +153,214 @@ components:
 	_, err = NewSchemaValidator(schemaPath)
 	Expect(err).ToNot(BeNil())
 	Expect(err.Error()).To(ContainSubstring("ClusterSpec schema not found"))
+}
+
+// TODO : HYPERFLEET-1159 - Uncomment this once Cluster and NodePool are registered
+// func TestNewSchemaValidator_MissingRequiredEntityRegistration(t *testing.T) {
+// 	RegisterTestingT(t)
+
+// 	registry.Reset()
+// 	registry.Register(registry.EntityDescriptor{
+// 		Kind:           "Cluster",
+// 		Plural:         "clusters",
+// 		SpecSchemaName: "ClusterSpec",
+// 	})
+
+// 	tmpDir := t.TempDir()
+// 	schemaPath := filepath.Join(tmpDir, "test-schema.yaml")
+// 	err := os.WriteFile(schemaPath, []byte(testSchema), 0600)
+// 	Expect(err).To(BeNil())
+
+// 	_, err = NewSchemaValidator(schemaPath)
+// 	Expect(err).ToNot(BeNil())
+// 	Expect(err.Error()).To(ContainSubstring(`entity kind "NodePool" with SpecSchemaName must be registered`))
+// }
+
+func TestNewSchemaValidator_OptionalEntityMissingOpenAPISchema_SkipsWithWarning(t *testing.T) {
+	RegisterTestingT(t)
+
+	var logBuf bytes.Buffer
+	logger.ReconfigureGlobalLogger(&logger.LogConfig{
+		Level:     slog.LevelWarn,
+		Format:    logger.FormatText,
+		Output:    &logBuf,
+		Component: "validators-test",
+	})
+
+	registerRequiredSpecValidationEntities()
+	registry.Register(registry.EntityDescriptor{
+		Kind:           "WifConfig",
+		Plural:         "wifconfigs",
+		SpecSchemaName: "WifConfigSpec",
+	})
+
+	schemaWithoutWifConfig := `
+openapi: 3.0.0
+info:
+  title: Cluster NodePool Only
+  version: 1.0.0
+paths: {}
+components:
+  schemas:
+    ClusterSpec:
+      type: object
+      properties:
+        region:
+          type: string
+    NodePoolSpec:
+      type: object
+      properties:
+        replicas:
+          type: integer
+`
+
+	tmpDir := t.TempDir()
+	schemaPath := filepath.Join(tmpDir, "cluster-nodepool-only.yaml")
+	err := os.WriteFile(schemaPath, []byte(schemaWithoutWifConfig), 0600)
+	Expect(err).To(BeNil())
+
+	validator, err := NewSchemaValidator(schemaPath)
+	Expect(err).To(BeNil())
+	Expect(validator.HasSchema("clusters")).To(BeTrue())
+	Expect(validator.HasSchema("nodepools")).To(BeTrue())
+	Expect(validator.HasSchema("wifconfigs")).To(BeFalse())
+
+	logOutput := logBuf.String()
+	Expect(logOutput).To(ContainSubstring("skipping validation for entity"))
+	Expect(logOutput).To(ContainSubstring("WifConfigSpec"))
+	Expect(logOutput).To(ContainSubstring("WifConfig"))
+}
+
+func TestNewSchemaValidator_RequiredEntityMissingOpenAPISchema_Fails(t *testing.T) {
+	RegisterTestingT(t)
+
+	registerRequiredSpecValidationEntities()
+
+	schemaWithoutNodePool := `
+openapi: 3.0.0
+info:
+  title: Cluster Only
+  version: 1.0.0
+paths: {}
+components:
+  schemas:
+    ClusterSpec:
+      type: object
+      properties:
+        region:
+          type: string
+`
+
+	tmpDir := t.TempDir()
+	schemaPath := filepath.Join(tmpDir, "cluster-only.yaml")
+	err := os.WriteFile(schemaPath, []byte(schemaWithoutNodePool), 0600)
+	Expect(err).To(BeNil())
+
+	_, err = NewSchemaValidator(schemaPath)
+	Expect(err).ToNot(BeNil())
+	Expect(err.Error()).To(ContainSubstring("NodePoolSpec schema not found"))
+}
+
+func TestValidate_SkipsWhenOptionalEntitySchemaNotLoaded(t *testing.T) {
+	RegisterTestingT(t)
+
+	var logBuf bytes.Buffer
+	logger.ReconfigureGlobalLogger(&logger.LogConfig{
+		Level:     slog.LevelWarn,
+		Format:    logger.FormatText,
+		Output:    &logBuf,
+		Component: "validators-test",
+	})
+
+	registerRequiredSpecValidationEntities()
+	registry.Register(registry.EntityDescriptor{
+		Kind:           "WifConfig",
+		Plural:         "wifconfigs",
+		SpecSchemaName: "WifConfigSpec",
+	})
+
+	schemaWithoutWifConfig := `
+openapi: 3.0.0
+info:
+  title: Cluster NodePool Only
+  version: 1.0.0
+paths: {}
+components:
+  schemas:
+    ClusterSpec:
+      type: object
+      properties:
+        region:
+          type: string
+    NodePoolSpec:
+      type: object
+      properties:
+        replicas:
+          type: integer
+`
+
+	tmpDir := t.TempDir()
+	schemaPath := filepath.Join(tmpDir, "cluster-nodepool-only.yaml")
+	err := os.WriteFile(schemaPath, []byte(schemaWithoutWifConfig), 0600)
+	Expect(err).To(BeNil())
+
+	validator, err := NewSchemaValidator(schemaPath)
+	Expect(err).To(BeNil())
+
+	// Invalid spec would fail validation if WifConfigSpec were loaded.
+	err = validator.Validate("wifconfigs", map[string]interface{}{})
+	Expect(err).To(BeNil())
+}
+
+func TestValidate_WifConfigSpec_Valid(t *testing.T) {
+	RegisterTestingT(t)
+
+	validator := setupTestValidatorWithOptionalEntities(t)
+
+	err := validator.Validate("wifconfigs", map[string]interface{}{
+		"version":    "4.17",
+		"project_id": "my-gcp-project",
+	})
+	Expect(err).To(BeNil())
+}
+
+func TestValidate_WifConfigSpec_MissingRequiredField(t *testing.T) {
+	RegisterTestingT(t)
+
+	validator := setupTestValidatorWithOptionalEntities(t)
+
+	err := validator.Validate("wifconfigs", map[string]interface{}{
+		"version": "4.17",
+	})
+	Expect(err).ToNot(BeNil())
+
+	serviceErr := getServiceError(err)
+	Expect(serviceErr).ToNot(BeNil())
+	Expect(serviceErr.Details).ToNot(BeEmpty())
+}
+
+func TestValidate_ChannelSpec_Valid(t *testing.T) {
+	RegisterTestingT(t)
+
+	validator := setupTestValidatorWithOptionalEntities(t)
+
+	err := validator.Validate("channels", map[string]interface{}{
+		"display_name": "stable",
+	})
+	Expect(err).To(BeNil())
+}
+
+func TestValidate_ChannelSpec_MissingRequiredField(t *testing.T) {
+	RegisterTestingT(t)
+
+	validator := setupTestValidatorWithOptionalEntities(t)
+
+	err := validator.Validate("channels", map[string]interface{}{})
+	Expect(err).ToNot(BeNil())
+
+	serviceErr := getServiceError(err)
+	Expect(serviceErr).ToNot(BeNil())
+	Expect(serviceErr.Details).ToNot(BeEmpty())
 }
 
 func TestValidateClusterSpec_Valid(t *testing.T) {
@@ -340,6 +578,9 @@ func TestValidateNodePoolSpec_EmptyMachineType(t *testing.T) {
 // Helper functions
 
 func setupTestValidator(t *testing.T) *SchemaValidator {
+	t.Helper()
+	registerRequiredSpecValidationEntities()
+
 	tmpDir := t.TempDir()
 	schemaPath := filepath.Join(tmpDir, "test-schema.yaml")
 	err := os.WriteFile(schemaPath, []byte(testSchema), 0600)
@@ -351,6 +592,57 @@ func setupTestValidator(t *testing.T) *SchemaValidator {
 	if err != nil {
 		t.Fatalf("Failed to create validator: %v", err)
 	}
+
+	return validator
+}
+
+func registerRequiredSpecValidationEntities() {
+	registry.Reset()
+	registry.Register(registry.EntityDescriptor{
+		Kind:           "Cluster",
+		Plural:         "clusters",
+		SpecSchemaName: "ClusterSpec",
+	})
+	registry.Register(registry.EntityDescriptor{
+		Kind:           "NodePool",
+		Plural:         "nodepools",
+		ParentKind:     "Cluster",
+		SpecSchemaName: "NodePoolSpec",
+	})
+}
+
+func registerOptionalSpecValidationEntities() {
+	registry.Register(registry.EntityDescriptor{
+		Kind:           "WifConfig",
+		Plural:         "wifconfigs",
+		SpecSchemaName: "WifConfigSpec",
+	})
+	registry.Register(registry.EntityDescriptor{
+		Kind:           "Channel",
+		Plural:         "channels",
+		SpecSchemaName: "ChannelSpec",
+	})
+}
+
+func setupTestValidatorWithOptionalEntities(t *testing.T) *SchemaValidator {
+	t.Helper()
+	registerRequiredSpecValidationEntities()
+	registerOptionalSpecValidationEntities()
+
+	tmpDir := t.TempDir()
+	schemaPath := filepath.Join(tmpDir, "test-schema.yaml")
+	err := os.WriteFile(schemaPath, []byte(testSchema), 0600)
+	if err != nil {
+		t.Fatalf("Failed to create test schema: %v", err)
+	}
+
+	validator, err := NewSchemaValidator(schemaPath)
+	if err != nil {
+		t.Fatalf("Failed to create validator: %v", err)
+	}
+
+	Expect(validator.HasSchema("wifconfigs")).To(BeTrue())
+	Expect(validator.HasSchema("channels")).To(BeTrue())
 
 	return validator
 }

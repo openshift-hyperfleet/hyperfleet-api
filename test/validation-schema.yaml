@@ -1,0 +1,22 @@
+openapi: 3.0.0
+info:
+  title: HyperFleet Integration Test Validation Schema
+  version: 1.0.0
+paths: {}
+components:
+  schemas:
+    ClusterSpec:
+      type: object
+      description: Permissive cluster spec schema for integration tests.
+    NodePoolSpec:
+      type: object
+      description: Permissive nodepool spec schema for integration tests.
+    WifConfigSpec:
+      type: object
+      description: Permissive WifConfig spec schema for integration tests.
+    ChannelSpec:
+      type: object
+      description: Permissive channel spec schema for integration tests.
+    VersionSpec:
+      type: object
+      description: Permissive version spec schema for integration tests.
