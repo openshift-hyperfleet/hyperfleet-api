@@ -68,7 +68,7 @@ func (s *sqlResourceService) Create(
 		desc := registry.MustGet(kind)
 		parent, err := s.resourceDao.GetForUpdate(ctx, desc.ParentKind, ownerID)
 		if err != nil {
-			return nil, errors.NotFound("%s parent '%s' not found", desc.ParentKind, ownerID)
+			return nil, handleGetError(desc.ParentKind, "id", ownerID, err)
 		}
 		if parent.DeletedTime != nil {
 			return nil, errors.ConflictState("%s '%s' is marked for deletion", desc.ParentKind, ownerID)
@@ -186,7 +186,7 @@ func (s *sqlResourceService) deleteResourceTree(
 
 	for _, child := range children {
 		if child.OnParentDelete == registry.OnParentDeleteCascade {
-			items, err := s.resourceDao.FindByKindAndOwner(ctx, child.Kind, resource.ID)
+			items, err := s.resourceDao.FindByKindAndOwnerForUpdate(ctx, child.Kind, resource.ID)
 			if err != nil {
 				return errors.GeneralError(
 					"Unable to find %s children for cascade delete: %s", child.Kind, err,

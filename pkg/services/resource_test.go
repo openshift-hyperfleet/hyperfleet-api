@@ -125,6 +125,12 @@ func (d *mockResourceDao) FindByKindAndOwner(_ context.Context, kind, ownerID st
 	return result, nil
 }
 
+func (d *mockResourceDao) FindByKindAndOwnerForUpdate(
+	ctx context.Context, kind, ownerID string,
+) (api.ResourceList, error) {
+	return d.FindByKindAndOwner(ctx, kind, ownerID)
+}
+
 func (d *mockResourceDao) FindByIDs(_ context.Context, kind string, ids []string) (api.ResourceList, error) {
 	idSet := make(map[string]bool, len(ids))
 	for _, id := range ids {
