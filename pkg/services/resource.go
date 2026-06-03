@@ -127,11 +127,8 @@ func (s *sqlResourceService) Patch(
 	return resource, nil
 }
 
-// Delete performs a soft-delete by setting DeletedTime and DeletedBy, then incrementing generation.
-// Idempotent — returns the resource unchanged if already marked for deletion.
-// Before deleting, enforces child delete policies from the entity registry:
-//   - restrict: blocks deletion (409) if active children of that type exist
-//   - cascade: recursively soft-deletes children (DFS, innermost first)
+// Delete removes a resource and its cascade subtree. Resources with required
+// adapters are soft-deleted; all others are hard-deleted.
 func (s *sqlResourceService) Delete(ctx context.Context, kind, id string) (*api.Resource, *errors.ServiceError) {
 	if svcErr := validateKind(kind); svcErr != nil {
 		return nil, svcErr
@@ -145,28 +142,25 @@ func (s *sqlResourceService) Delete(ctx context.Context, kind, id string) (*api.
 		return resource, nil
 	}
 
-	deletedTime := time.Now().UTC().Truncate(time.Microsecond)
-	username := auth.GetUsernameFromContext(ctx)
-	if username == "" {
-		username = defaultSystemUser
-	}
-	resource.MarkDeleted(username, deletedTime)
+	deletedBy := actorFromContext(ctx)
+	deletedAt := time.Now().UTC().Truncate(time.Microsecond)
+
+	resource.MarkDeleted(deletedBy, deletedAt)
 	resource.IncrementGeneration()
 
-	if svcErr := s.enforceDeletePolicies(ctx, resource); svcErr != nil {
+	if svcErr := s.deleteResourceTree(ctx, resource, deletedBy, deletedAt); svcErr != nil {
 		db.MarkForRollback(ctx, svcErr)
 		return nil, svcErr
-	}
-
-	if saveErr := s.resourceDao.Save(ctx, resource); saveErr != nil {
-		return nil, handleSoftDeleteError(kind, saveErr)
 	}
 
 	return resource, nil
 }
 
-func (s *sqlResourceService) enforceDeletePolicies(
+// deleteResourceTree enforces child delete policies then persists bottom-up.
+// Restrict check is best-effort: no lock prevents concurrent child inserts.
+func (s *sqlResourceService) deleteResourceTree(
 	ctx context.Context, resource *api.Resource,
+	deletedBy string, deletedAt time.Time,
 ) *errors.ServiceError {
 	children := registry.ChildrenOf(resource.Kind)
 
@@ -187,20 +181,27 @@ func (s *sqlResourceService) enforceDeletePolicies(
 				)
 			}
 			for _, item := range items {
-				if item.DeletedTime != nil {
-					continue
+				if item.DeletedTime == nil {
+					item.MarkDeleted(deletedBy, deletedAt)
+					item.IncrementGeneration()
 				}
-				item.MarkDeleted(*resource.DeletedBy, *resource.DeletedTime)
-				item.IncrementGeneration()
-
-				if svcErr := s.enforceDeletePolicies(ctx, item); svcErr != nil {
+				if svcErr := s.deleteResourceTree(ctx, item, deletedBy, deletedAt); svcErr != nil {
 					return svcErr
-				}
-				if saveErr := s.resourceDao.Save(ctx, item); saveErr != nil {
-					return handleSoftDeleteError(child.Kind, saveErr)
 				}
 			}
 		}
+	}
+
+	desc := registry.MustGet(resource.Kind)
+	if len(desc.RequiredAdapters) > 0 {
+		if saveErr := s.resourceDao.Save(ctx, resource); saveErr != nil {
+			return handleSoftDeleteError(resource.Kind, saveErr)
+		}
+		return nil
+	}
+
+	if err := s.resourceDao.Delete(ctx, resource.Kind, resource.ID); err != nil {
+		return handleDeleteError(resource.Kind, err)
 	}
 
 	return nil

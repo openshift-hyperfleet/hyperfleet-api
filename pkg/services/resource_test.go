@@ -41,6 +41,7 @@ type mockResourceDao struct {
 	resources map[string]*api.Resource
 	createErr error
 	saveErr   error
+	deleteErr error
 }
 
 func newMockResourceDao() *mockResourceDao {
@@ -88,6 +89,9 @@ func (d *mockResourceDao) Save(_ context.Context, resource *api.Resource) error 
 }
 
 func (d *mockResourceDao) Delete(_ context.Context, kind, id string) error {
+	if d.deleteErr != nil {
+		return d.deleteErr
+	}
 	delete(d.resources, resourceKey(kind, id))
 	return nil
 }
@@ -479,6 +483,9 @@ func TestResourceService_Delete_HappyPath(t *testing.T) {
 	Expect(result.DeletedTime).ToNot(BeNil())
 	Expect(result.DeletedBy).ToNot(BeNil())
 	Expect(result.Generation).To(Equal(int32(2)))
+
+	_, exists := mockDao.resources[resourceKey("Channel", "ch-1")]
+	Expect(exists).To(BeFalse())
 }
 
 func TestResourceService_Delete_AlreadyDeleted_Idempotent(t *testing.T) {
@@ -514,18 +521,18 @@ func TestResourceService_Delete_NotFound(t *testing.T) {
 	Expect(svcErr.HTTPCode).To(Equal(404))
 }
 
-func TestResourceService_Delete_SaveError(t *testing.T) {
+func TestResourceService_Delete_SaveError_WithAdapters(t *testing.T) {
 	RegisterTestingT(t)
-	setupTestDescriptors()
+	setupManagedDescriptor()
 
 	mockDao := newMockResourceDao()
 	svc, _, _ := newTestResourceService(mockDao)
 
-	existing := testResource("Channel", "ch-1", "stable")
+	existing := testResource("Managed", "m-1", "managed-1")
 	mockDao.addResource(existing)
 	mockDao.saveErr = fmt.Errorf("connection refused")
 
-	result, svcErr := svc.Delete(context.Background(), "Channel", "ch-1")
+	result, svcErr := svc.Delete(context.Background(), "Managed", "m-1")
 	Expect(result).To(BeNil())
 	Expect(svcErr).ToNot(BeNil())
 	Expect(svcErr.HTTPCode).To(Equal(500))
@@ -566,6 +573,15 @@ func rootDescriptor(kind, plural string) descriptorDef {
 
 func childDescriptor(kind, plural, parent string, policy registry.OnParentDeletePolicy) descriptorDef {
 	return descriptorDef{kind: kind, plural: plural, parent: parent, policy: policy}
+}
+
+func setupManagedDescriptor() {
+	registry.Reset()
+	registry.Register(registry.EntityDescriptor{
+		Kind:             "Managed",
+		Plural:           "manageds",
+		RequiredAdapters: []string{"provisioner"},
+	})
 }
 
 func setupDeletePolicyDescriptors(defs ...descriptorDef) {
@@ -642,15 +658,14 @@ func TestResourceService_Delete_CascadePropagates(t *testing.T) {
 	result, svcErr := svc.Delete(ctx, "Parent", "p-1")
 	Expect(svcErr).To(BeNil())
 	Expect(result.DeletedTime).ToNot(BeNil())
+	Expect(*result.DeletedBy).To(Equal("admin@test.com"))
 
-	child1 := mockDao.resources[resourceKey("Child", "c-1")]
-	child2 := mockDao.resources[resourceKey("Child", "c-2")]
-	Expect(child1.DeletedTime).ToNot(BeNil())
-	Expect(child2.DeletedTime).ToNot(BeNil())
-	Expect(*child1.DeletedBy).To(Equal("admin@test.com"))
-	Expect(*child2.DeletedBy).To(Equal("admin@test.com"))
-	Expect(*child1.DeletedTime).To(Equal(*child2.DeletedTime))
-	Expect(*child1.DeletedTime).To(Equal(*result.DeletedTime))
+	_, parentExists := mockDao.resources[resourceKey("Parent", "p-1")]
+	_, child1Exists := mockDao.resources[resourceKey("Child", "c-1")]
+	_, child2Exists := mockDao.resources[resourceKey("Child", "c-2")]
+	Expect(parentExists).To(BeFalse())
+	Expect(child1Exists).To(BeFalse())
+	Expect(child2Exists).To(BeFalse())
 }
 
 func TestResourceService_Delete_CascadeRecursesMultipleLevels(t *testing.T) {
@@ -672,10 +687,12 @@ func TestResourceService_Delete_CascadeRecursesMultipleLevels(t *testing.T) {
 	Expect(svcErr).To(BeNil())
 	Expect(result.DeletedTime).ToNot(BeNil())
 
-	mid := mockDao.resources[resourceKey("Mid", "m-1")]
-	leaf := mockDao.resources[resourceKey("Leaf", "l-1")]
-	Expect(mid.DeletedTime).ToNot(BeNil())
-	Expect(leaf.DeletedTime).ToNot(BeNil())
+	_, topExists := mockDao.resources[resourceKey("Top", "t-1")]
+	_, midExists := mockDao.resources[resourceKey("Mid", "m-1")]
+	_, leafExists := mockDao.resources[resourceKey("Leaf", "l-1")]
+	Expect(topExists).To(BeFalse())
+	Expect(midExists).To(BeFalse())
+	Expect(leafExists).To(BeFalse())
 }
 
 func TestResourceService_Delete_MixedPolicies_CascadeAndRestrictPass(t *testing.T) {
@@ -696,8 +713,10 @@ func TestResourceService_Delete_MixedPolicies_CascadeAndRestrictPass(t *testing.
 	Expect(svcErr).To(BeNil())
 	Expect(result.DeletedTime).ToNot(BeNil())
 
-	spoke := mockDao.resources[resourceKey("Spoke", "s-1")]
-	Expect(spoke.DeletedTime).ToNot(BeNil())
+	_, hubExists := mockDao.resources[resourceKey("Hub", "h-1")]
+	_, spokeExists := mockDao.resources[resourceKey("Spoke", "s-1")]
+	Expect(hubExists).To(BeFalse())
+	Expect(spokeExists).To(BeFalse())
 }
 
 func TestResourceService_Delete_MixedPolicyFailure_RestrictBlocks(t *testing.T) {
@@ -752,12 +771,12 @@ func TestResourceService_Delete_CascadeSkipsAlreadyDeletedChild(t *testing.T) {
 	Expect(svcErr).To(BeNil())
 	Expect(result.DeletedTime).ToNot(BeNil())
 
-	active := mockDao.resources[resourceKey("Child", "c-1")]
-	Expect(active.DeletedTime).ToNot(BeNil())
-
-	preDeleted := mockDao.resources[resourceKey("Child", "c-2")]
-	Expect(*preDeleted.DeletedBy).To(Equal(originalDeletedBy))
-	Expect(*preDeleted.DeletedTime).To(Equal(originalDeletedTime))
+	_, parentExists := mockDao.resources[resourceKey("Parent", "p-1")]
+	_, activeExists := mockDao.resources[resourceKey("Child", "c-1")]
+	_, preDeletedExists := mockDao.resources[resourceKey("Child", "c-2")]
+	Expect(parentExists).To(BeFalse())
+	Expect(activeExists).To(BeFalse())
+	Expect(preDeletedExists).To(BeFalse())
 }
 
 // --- FindByIDs ---
@@ -926,6 +945,61 @@ func TestResourceService_Delete_UnknownKind(t *testing.T) {
 	Expect(result).To(BeNil())
 	Expect(svcErr).ToNot(BeNil())
 	Expect(svcErr.HTTPCode).To(Equal(400))
+}
+
+func TestResourceService_Delete_HardDeleteError(t *testing.T) {
+	RegisterTestingT(t)
+	setupTestDescriptors()
+
+	mockDao := newMockResourceDao()
+	svc, _, _ := newTestResourceService(mockDao)
+
+	existing := testResource("Channel", "ch-1", "stable")
+	mockDao.addResource(existing)
+	mockDao.deleteErr = fmt.Errorf("disk full")
+
+	result, svcErr := svc.Delete(context.Background(), "Channel", "ch-1")
+	Expect(result).To(BeNil())
+	Expect(svcErr).ToNot(BeNil())
+	Expect(svcErr.HTTPCode).To(Equal(500))
+}
+
+func TestResourceService_Delete_ReDeleteAfterHardDelete_Returns404(t *testing.T) {
+	RegisterTestingT(t)
+	setupTestDescriptors()
+
+	mockDao := newMockResourceDao()
+	svc, _, _ := newTestResourceService(mockDao)
+
+	existing := testResource("Channel", "ch-1", "stable")
+	mockDao.addResource(existing)
+
+	_, svcErr := svc.Delete(context.Background(), "Channel", "ch-1")
+	Expect(svcErr).To(BeNil())
+
+	result, svcErr := svc.Delete(context.Background(), "Channel", "ch-1")
+	Expect(result).To(BeNil())
+	Expect(svcErr).ToNot(BeNil())
+	Expect(svcErr.HTTPCode).To(Equal(404))
+}
+
+func TestResourceService_Delete_WithAdapters_SoftDeleteOnly(t *testing.T) {
+	RegisterTestingT(t)
+	setupManagedDescriptor()
+
+	mockDao := newMockResourceDao()
+	svc, _, _ := newTestResourceService(mockDao)
+
+	existing := testResource("Managed", "m-1", "managed-1")
+	mockDao.addResource(existing)
+
+	result, svcErr := svc.Delete(context.Background(), "Managed", "m-1")
+	Expect(svcErr).To(BeNil())
+	Expect(result.DeletedTime).ToNot(BeNil())
+
+	saved := mockDao.resources[resourceKey("Managed", "m-1")]
+	Expect(saved).ToNot(BeNil())
+	Expect(saved.DeletedTime).ToNot(BeNil())
 }
 
 func TestResourceService_ListByOwner_UnknownKind(t *testing.T) {
