@@ -141,6 +141,15 @@ func (h ClusterHandler) Get(w http.ResponseWriter, r *http.Request) {
 			if presErr != nil {
 				return nil, errors.GeneralError("Failed to present cluster: %v", presErr)
 			}
+
+			listArgs := services.NewListArguments(r.URL.Query())
+			if listArgs.Fields != nil {
+				filtered, filterErr := presenters.FilterSingle(listArgs.Fields, presented)
+				if filterErr != nil {
+					return nil, filterErr
+				}
+				return filtered, nil
+			}
 			return presented, nil
 		},
 		ErrorHandler: handleError,

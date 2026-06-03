@@ -1,6 +1,7 @@
 package presenters
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -445,6 +446,405 @@ func TestSliceFilter(t *testing.T) {
 			RegisterTestingT(t)
 			result, err := SliceFilter(tt.fields, tt.model)
 			tt.validate(result, err)
+		})
+	}
+}
+
+func createTestCluster() openapi.Cluster {
+	id := "cluster-id1"
+	kind := clusterKind
+
+	labels := map[string]string{
+		"env":  "prod",
+		"team": "platform",
+	}
+
+	now := time.Now()
+	msg1 := "All checks passed"
+	msg2 := "Some components unavailable"
+	conditions := []openapi.ResourceCondition{
+		{
+			Type:               api.ResourceConditionTypeReconciled,
+			Status:             openapi.ResourceConditionStatus("True"),
+			Message:            &msg1,
+			CreatedTime:        time.Date(2026, 1, 25, 0, 0, 0, 0, time.UTC),
+			LastTransitionTime: now,
+			LastUpdatedTime:    now,
+		},
+		{
+			Type:               "Progressing",
+			Status:             openapi.ResourceConditionStatus("False"),
+			Message:            &msg2,
+			CreatedTime:        time.Date(2026, 3, 11, 0, 0, 0, 0, time.UTC),
+			LastTransitionTime: now,
+			LastUpdatedTime:    now,
+		},
+	}
+
+	return openapi.Cluster{
+		Id:          &id,
+		Kind:        &kind,
+		Name:        "test-cluster",
+		Generation:  1,
+		Labels:      &labels,
+		CreatedTime: now,
+		UpdatedTime: now,
+		Spec:        openapi.ClusterSpec{"region": "us-east-1"},
+		Status:      openapi.ClusterStatus{Conditions: conditions},
+	}
+}
+
+func TestFilterSingle(t *testing.T) {
+	tests := []struct {
+		model    interface{}
+		validate func(result map[string]interface{}, err *errors.ServiceError)
+		name     string
+		fields   []string
+	}{
+		{
+			name:   "filter single resource with basic fields",
+			fields: []string{"id", "name", "generation"},
+			model:  createTestCluster(),
+			validate: func(result map[string]interface{}, err *errors.ServiceError) {
+				Expect(err).To(BeNil())
+				Expect(result).ToNot(BeNil())
+
+				// Included fields
+				id := result["id"].(*string)
+				Expect(*id).To(Equal("cluster-id1"))
+				Expect(result["name"]).To(Equal("test-cluster"))
+				Expect(result["generation"]).To(Equal(int32(1)))
+
+				// Excluded fields
+				Expect(result).ToNot(HaveKey("labels"))
+				Expect(result).ToNot(HaveKey("spec"))
+				Expect(result).ToNot(HaveKey("created_time"))
+			},
+		},
+		{
+			name:   "filter single resource with nested fields",
+			fields: []string{"id", "name", "labels", "spec"},
+			model:  createTestCluster(),
+			validate: func(result map[string]interface{}, err *errors.ServiceError) {
+				Expect(err).To(BeNil())
+				Expect(result).ToNot(BeNil())
+
+				id := result["id"].(*string)
+				Expect(*id).To(Equal("cluster-id1"))
+				Expect(result["name"]).To(Equal("test-cluster"))
+
+				labels := result["labels"].(*map[string]string)
+				Expect((*labels)["env"]).To(Equal("prod"))
+				Expect((*labels)["team"]).To(Equal("platform"))
+				Expect(result["spec"]).To(Equal(openapi.ClusterSpec{"region": "us-east-1"}))
+
+				Expect(result).ToNot(HaveKey("generation"))
+			},
+		},
+		{
+			name:   "filter single resource with time field",
+			fields: []string{"id", "created_time"},
+			model:  createTestCluster(),
+			validate: func(result map[string]interface{}, err *errors.ServiceError) {
+				Expect(err).To(BeNil())
+				Expect(result).ToNot(BeNil())
+
+				id := result["id"].(*string)
+				Expect(*id).To(Equal("cluster-id1"))
+
+				createdTime, ok := result["created_time"].(string)
+				Expect(ok).To(BeTrue(), "created_time should be a string")
+				Expect(createdTime).ToNot(BeEmpty())
+
+				parsedTime, parseErr := time.Parse(time.RFC3339, createdTime)
+				Expect(parseErr).To(BeNil(), "created_time should be valid RFC3339 format")
+				Expect(parsedTime.IsZero()).To(BeFalse(), "parsed time should not be zero")
+			},
+		},
+		{
+			name:   "filter single resource with slice sub-fields",
+			fields: []string{"id", "status.conditions.type", "status.conditions.status"},
+			model:  createTestCluster(),
+			validate: func(result map[string]interface{}, err *errors.ServiceError) {
+				Expect(err).To(BeNil())
+				Expect(result).ToNot(BeNil())
+
+				status := result["status"].(map[string]interface{})
+				conditions := status["conditions"].([]interface{})
+				Expect(conditions).To(HaveLen(2))
+
+				elem0 := conditions[0].(map[string]interface{})
+				Expect(elem0["type"]).To(Equal(api.ResourceConditionTypeReconciled))
+				Expect(elem0["status"]).To(Equal(openapi.ResourceConditionStatus("True")))
+				Expect(elem0).ToNot(HaveKey("message"))
+				Expect(elem0).ToNot(HaveKey("last_transition_time"))
+			},
+		},
+		{
+			name:   "nil resource",
+			fields: []string{"id"},
+			model:  nil,
+			validate: func(result map[string]interface{}, err *errors.ServiceError) {
+				Expect(result).To(BeNil())
+				Expect(err).ToNot(BeNil())
+				Expect(err.Type).To(Equal(errors.ErrorTypeValidation))
+				Expect(err.Error()).To(ContainSubstring("Empty resource"))
+			},
+		},
+		{
+			name:   "invalid field name",
+			fields: []string{"id", "nonexistent_field"},
+			model:  createTestCluster(),
+			validate: func(result map[string]interface{}, err *errors.ServiceError) {
+				Expect(result).To(BeNil())
+				Expect(err).ToNot(BeNil())
+				Expect(err.Type).To(Equal(errors.ErrorTypeValidation))
+				Expect(err.Error()).To(ContainSubstring("doesn't exist"))
+				Expect(err.Error()).To(ContainSubstring("nonexistent_field"))
+			},
+		},
+		{
+			name:   "empty field list",
+			fields: []string{},
+			model:  createTestCluster(),
+			validate: func(result map[string]interface{}, err *errors.ServiceError) {
+				Expect(err).To(BeNil())
+				Expect(result).ToNot(BeNil())
+				Expect(result).To(HaveLen(0))
+			},
+		},
+		{
+			name:   "nil field list",
+			fields: nil,
+			model:  createTestCluster(),
+			validate: func(result map[string]interface{}, err *errors.ServiceError) {
+				Expect(err).To(BeNil())
+				Expect(result).ToNot(BeNil())
+				Expect(result).To(HaveLen(0))
+			},
+		},
+		{
+			name:   "cluster with spec and nested status.conditions",
+			fields: []string{"id", "kind", "name", "spec", "labels", "status.conditions"},
+			model:  createTestCluster(),
+			validate: func(result map[string]interface{}, err *errors.ServiceError) {
+				Expect(err).To(BeNil())
+				Expect(result).ToNot(BeNil())
+
+				Expect(result).To(HaveKey("id"))
+				Expect(result).To(HaveKey("kind"))
+				Expect(result).To(HaveKey("name"))
+				Expect(result).To(HaveKey("spec"))
+				Expect(result).To(HaveKey("labels"))
+				Expect(result).To(HaveKey("status"))
+
+				// Verify status.conditions is included
+				status := result["status"].(map[string]interface{})
+				Expect(status).To(HaveKey("conditions"))
+				conditions := status["conditions"].([]interface{})
+				Expect(conditions).To(HaveLen(2))
+
+				// Should NOT have other fields
+				Expect(result).ToNot(HaveKey("generation"))
+				Expect(result).ToNot(HaveKey("created_time"))
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			RegisterTestingT(t)
+			result, err := FilterSingle(tt.fields, tt.model)
+			tt.validate(result, err)
+		})
+	}
+}
+
+// TestFilterSingle_AllClusterFields tests filtering each Cluster field individually
+func TestFilterSingle_AllClusterFields(t *testing.T) {
+	RegisterTestingT(t)
+
+	allFields := []string{
+		"id",
+		"kind",
+		"href",
+		"name",
+		"labels",
+		"spec",
+		"generation",
+		"created_time",
+		"updated_time",
+		"created_by",
+		"updated_by",
+		"deleted_time",
+		"deleted_by",
+		"status.*",
+		"status.conditions",
+	}
+
+	for _, field := range allFields {
+		t.Run("Cluster field: "+field, func(t *testing.T) {
+			RegisterTestingT(t)
+
+			cluster := createTestCluster()
+			result, err := FilterSingle([]string{field}, cluster)
+
+			Expect(err).To(BeNil(), "Field '%s' should be valid for Cluster", field)
+			Expect(result).ToNot(BeNil())
+
+			// For nested fields, check parent exists
+			if strings.Contains(field, ".") {
+				parent := strings.Split(field, ".")[0]
+				Expect(result).To(HaveKey(parent), "Parent '%s' should exist for field '%s'", parent, field)
+			} else {
+				Expect(result).To(HaveKey(field), "Field '%s' should be present in result", field)
+			}
+		})
+	}
+}
+
+func createTestNodePool() openapi.NodePool {
+	id := "nodepool-id1"
+	kind := "NodePool"
+	ownerID := "cluster-id1"
+	ownerKind := "Cluster"
+	ownerHref := "/api/hyperfleet/v1/clusters/cluster-id1"
+
+	labels := map[string]string{
+		"tier":    "worker",
+		"purpose": "general",
+	}
+
+	now := time.Now()
+
+	return openapi.NodePool{
+		Id:   &id,
+		Kind: &kind,
+		Name: "worker-pool",
+		OwnerReferences: openapi.ObjectReference{
+			Id:   &ownerID,
+			Kind: &ownerKind,
+			Href: &ownerHref,
+		},
+		Spec:        openapi.NodePoolSpec{"replicas": 3, "instanceType": "m5.large"},
+		Labels:      &labels,
+		Generation:  1,
+		CreatedTime: now,
+		UpdatedTime: now,
+		Status:      openapi.NodePoolStatus{Conditions: []openapi.ResourceCondition{}},
+	}
+}
+
+func TestFilterSingle_NodePool(t *testing.T) {
+	RegisterTestingT(t)
+
+	tests := []struct {
+		model    interface{}
+		validate func(result map[string]interface{}, err *errors.ServiceError)
+		name     string
+		fields   []string
+	}{
+		{
+			name:   "nodepool with spec and owner_references.id - regression test for HYPERFLEET-1142",
+			fields: []string{"id", "name", "labels", "spec", "owner_references.id"},
+			model:  createTestNodePool(),
+			validate: func(result map[string]interface{}, err *errors.ServiceError) {
+				Expect(err).To(BeNil(), "Should not fail with 'spec doesn't exist in ObjectReference' error")
+				Expect(result).ToNot(BeNil())
+
+				// Verify all requested fields are present
+				id := result["id"].(*string)
+				Expect(*id).To(Equal("nodepool-id1"))
+				Expect(result["name"]).To(Equal("worker-pool"))
+				Expect(result).To(HaveKey("labels"))
+				Expect(result).To(HaveKey("spec"))
+				Expect(result).To(HaveKey("owner_references"))
+
+				// Verify owner_references.id is present
+				ownerRefs := result["owner_references"].(map[string]interface{})
+				Expect(ownerRefs).To(HaveKey("id"))
+				ownerID := ownerRefs["id"].(*string)
+				Expect(*ownerID).To(Equal("cluster-id1"))
+
+				// owner_references should NOT have kind or href (not requested)
+				Expect(ownerRefs).ToNot(HaveKey("kind"))
+				Expect(ownerRefs).ToNot(HaveKey("href"))
+
+				// Should NOT have other top-level fields
+				Expect(result).ToNot(HaveKey("generation"))
+				Expect(result).ToNot(HaveKey("created_time"))
+				Expect(result).ToNot(HaveKey("status"))
+			},
+		},
+		{
+			name:   "nodepool with all owner_references fields using star selector",
+			fields: []string{"id", "name", "owner_references.*"},
+			model:  createTestNodePool(),
+			validate: func(result map[string]interface{}, err *errors.ServiceError) {
+				Expect(err).To(BeNil())
+				Expect(result).ToNot(BeNil())
+
+				// Verify owner_references with all subfields
+				ownerRefs := result["owner_references"].(map[string]interface{})
+				Expect(ownerRefs).To(HaveKey("id"))
+				Expect(ownerRefs).To(HaveKey("kind"))
+				Expect(ownerRefs).To(HaveKey("href"))
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			RegisterTestingT(t)
+			result, err := FilterSingle(tt.fields, tt.model)
+			tt.validate(result, err)
+		})
+	}
+}
+
+// TestFilterSingle_AllNodePoolFields tests filtering each NodePool field individually
+func TestFilterSingle_AllNodePoolFields(t *testing.T) {
+	RegisterTestingT(t)
+
+	allFields := []string{
+		"id",
+		"kind",
+		"href",
+		"name",
+		"labels",
+		"spec",
+		"generation",
+		"created_time",
+		"updated_time",
+		"created_by",
+		"updated_by",
+		"deleted_time",
+		"deleted_by",
+		"owner_references.id",
+		"owner_references.kind",
+		"owner_references.href",
+		"owner_references.*",
+		"status.*",
+		"status.conditions",
+	}
+
+	for _, field := range allFields {
+		t.Run("NodePool field: "+field, func(t *testing.T) {
+			RegisterTestingT(t)
+
+			nodePool := createTestNodePool()
+			result, err := FilterSingle([]string{field}, nodePool)
+
+			Expect(err).To(BeNil(), "Field '%s' should be valid for NodePool", field)
+			Expect(result).ToNot(BeNil())
+
+			// For nested fields, check parent exists
+			if strings.Contains(field, ".") && !strings.HasSuffix(field, ".*") {
+				parent := strings.Split(field, ".")[0]
+				Expect(result).To(HaveKey(parent), "Parent '%s' should exist for field '%s'", parent, field)
+			} else if !strings.HasSuffix(field, ".*") {
+				Expect(result).To(HaveKey(field), "Field '%s' should be present in result", field)
+			}
 		})
 	}
 }
