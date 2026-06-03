@@ -110,13 +110,11 @@ func (h NodePoolHandler) List(w http.ResponseWriter, r *http.Request) {
 			}
 
 			nodePoolList := struct {
-				Kind  string             `json:"kind"`
 				Items []openapi.NodePool `json:"items"`
 				Page  int32              `json:"page"`
 				Size  int32              `json:"size"`
 				Total int32              `json:"total"`
 			}{
-				Kind:  "NodePoolList",
 				Page:  int32(paging.Page),
 				Size:  int32(paging.Size),
 				Total: int32(paging.Total),

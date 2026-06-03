@@ -12,8 +12,6 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/util"
 )
 
-const listResponseKind = "ResourceList"
-
 // ConvertResource converts an openapi.ResourceCreateRequest to an api.Resource GORM model.
 // CreatedBy/UpdatedBy are set by the service layer from auth context.
 func ConvertResource(req *openapi.ResourceCreateRequest) (*api.Resource, error) {
@@ -101,7 +99,6 @@ func PresentResourceList(resources api.ResourceList, paging *api.PagingMeta) ope
 		items = append(items, PresentResource(resources[i]))
 	}
 	return openapi.ResourceList{
-		Kind:  listResponseKind,
 		Items: items,
 		Page:  int32(paging.Page),
 		Size:  int32(paging.Size),

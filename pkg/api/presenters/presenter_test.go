@@ -15,7 +15,6 @@ const clusterKind = "Cluster"
 func createEmptyConditionsClusterList() openapi.ClusterList {
 	id := "cluster-empty"
 	return openapi.ClusterList{
-		Kind:  "ClusterList",
 		Page:  1,
 		Size:  1,
 		Total: 1,
@@ -61,7 +60,6 @@ func createTestClusterList() openapi.ClusterList {
 	}
 
 	return openapi.ClusterList{
-		Kind:  "ClusterList",
 		Page:  1,
 		Size:  2,
 		Total: 2,
@@ -106,7 +104,6 @@ func TestSliceFilter(t *testing.T) {
 			validate: func(result *ProjectionList, err *errors.ServiceError) {
 				Expect(err).To(BeNil())
 				Expect(result).ToNot(BeNil())
-				Expect(result.Kind).To(Equal("ClusterList"))
 				Expect(result.Page).To(Equal(int32(1)))
 				Expect(result.Size).To(Equal(int32(2)))
 				Expect(result.Total).To(Equal(int32(2)))
@@ -197,7 +194,6 @@ func TestSliceFilter(t *testing.T) {
 			validate: func(result *ProjectionList, err *errors.ServiceError) {
 				Expect(err).To(BeNil())
 				Expect(result).ToNot(BeNil())
-				Expect(result.Kind).To(Equal("ClusterList"))
 				Expect(result.Page).To(Equal(int32(1)))
 				Expect(result.Items).To(HaveLen(2))
 
@@ -213,7 +209,6 @@ func TestSliceFilter(t *testing.T) {
 			validate: func(result *ProjectionList, err *errors.ServiceError) {
 				Expect(err).To(BeNil())
 				Expect(result).ToNot(BeNil())
-				Expect(result.Kind).To(Equal("ClusterList"))
 				Expect(result.Items).To(HaveLen(2))
 				Expect(result.Items[0]).To(HaveLen(0))
 			},
@@ -429,7 +424,6 @@ func TestSliceFilter(t *testing.T) {
 			name:   "empty items - panic prevention",
 			fields: []string{"id", "name"},
 			model: openapi.ClusterList{
-				Kind:  "ClusterList",
 				Page:  1,
 				Size:  0,
 				Total: 0,
@@ -438,7 +432,6 @@ func TestSliceFilter(t *testing.T) {
 			validate: func(result *ProjectionList, err *errors.ServiceError) {
 				Expect(err).To(BeNil())
 				Expect(result).ToNot(BeNil())
-				Expect(result.Kind).To(Equal("ClusterList"))
 				Expect(result.Page).To(Equal(int32(1)))
 				Expect(result.Size).To(Equal(int32(0)))
 				Expect(result.Total).To(Equal(int32(0)))

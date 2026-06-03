@@ -152,7 +152,6 @@ func TestPresentResourceList(t *testing.T) {
 	paging := &api.PagingMeta{Page: 1, Size: 2, Total: 2}
 
 	result := PresentResourceList(resources, paging)
-	Expect(result.Kind).To(Equal("ResourceList"))
 	Expect(result.Items).To(HaveLen(2))
 	Expect(result.Page).To(Equal(int32(1)))
 	Expect(result.Size).To(Equal(int32(2)))
