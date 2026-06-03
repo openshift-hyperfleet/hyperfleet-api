@@ -327,6 +327,64 @@ func TestResourceService_Create_UnknownKind(t *testing.T) {
 	Expect(svcErr.Reason).To(ContainSubstring("Unknown entity kind"))
 }
 
+func TestResourceService_Create_ChildLocksParent(t *testing.T) {
+	RegisterTestingT(t)
+	setupTestDescriptors()
+
+	mockDao := newMockResourceDao()
+	svc, _, _ := newTestResourceService(mockDao)
+
+	parent := testResource("Channel", "ch-1", "stable")
+	mockDao.addResource(parent)
+
+	child := testResource("Version", "v-1", "4.18")
+	child.OwnerID = &parent.ID
+
+	result, svcErr := svc.Create(context.Background(), "Version", child)
+	Expect(svcErr).To(BeNil())
+	Expect(result).ToNot(BeNil())
+}
+
+func TestResourceService_Create_ChildRejectsDeletedParent(t *testing.T) {
+	RegisterTestingT(t)
+	setupTestDescriptors()
+
+	mockDao := newMockResourceDao()
+	svc, _, _ := newTestResourceService(mockDao)
+
+	parent := testResource("Channel", "ch-1", "stable")
+	now := time.Now()
+	deletedBy := "admin"
+	parent.DeletedTime = &now
+	parent.DeletedBy = &deletedBy
+	mockDao.addResource(parent)
+
+	child := testResource("Version", "v-1", "4.18")
+	child.OwnerID = &parent.ID
+
+	result, svcErr := svc.Create(context.Background(), "Version", child)
+	Expect(result).To(BeNil())
+	Expect(svcErr).ToNot(BeNil())
+	Expect(svcErr.HTTPCode).To(Equal(409))
+}
+
+func TestResourceService_Create_ChildRejectsMissingParent(t *testing.T) {
+	RegisterTestingT(t)
+	setupTestDescriptors()
+
+	mockDao := newMockResourceDao()
+	svc, _, _ := newTestResourceService(mockDao)
+
+	child := testResource("Version", "v-1", "4.18")
+	nonexistent := "no-such-id"
+	child.OwnerID = &nonexistent
+
+	result, svcErr := svc.Create(context.Background(), "Version", child)
+	Expect(result).To(BeNil())
+	Expect(svcErr).ToNot(BeNil())
+	Expect(svcErr.HTTPCode).To(Equal(404))
+}
+
 // --- Patch ---
 
 func TestResourceService_Patch_SpecChanged_IncrementsGeneration(t *testing.T) {

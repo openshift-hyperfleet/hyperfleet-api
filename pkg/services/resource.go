@@ -12,6 +12,7 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/registry"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/util"
 )
 
 //go:generate mockgen-v0.6.0 -source=resource.go -package=services -destination=resource_mock.go
@@ -60,6 +61,18 @@ func (s *sqlResourceService) Create(
 
 	if svcErr := validateResourceName(kind, resource.Name); svcErr != nil {
 		return nil, svcErr
+	}
+
+	// Lock parent row to serialize with concurrent deletes.
+	if ownerID := util.FromPtr(resource.OwnerID); ownerID != "" {
+		desc := registry.MustGet(kind)
+		parent, err := s.resourceDao.GetForUpdate(ctx, desc.ParentKind, ownerID)
+		if err != nil {
+			return nil, errors.NotFound("%s parent '%s' not found", desc.ParentKind, ownerID)
+		}
+		if parent.DeletedTime != nil {
+			return nil, errors.ConflictState("%s '%s' is marked for deletion", desc.ParentKind, ownerID)
+		}
 	}
 
 	username := auth.GetUsernameFromContext(ctx)
@@ -157,7 +170,6 @@ func (s *sqlResourceService) Delete(ctx context.Context, kind, id string) (*api.
 }
 
 // deleteResourceTree enforces child delete policies then persists bottom-up.
-// Restrict check is best-effort: no lock prevents concurrent child inserts.
 func (s *sqlResourceService) deleteResourceTree(
 	ctx context.Context, resource *api.Resource,
 	deletedBy string, deletedAt time.Time,
