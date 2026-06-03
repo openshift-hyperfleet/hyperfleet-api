@@ -24,6 +24,46 @@ const (
 	testSystemUser = "system@hyperfleet.local"
 )
 
+func TestClusterNodePoolsHandler_List(t *testing.T) {
+	RegisterTestingT(t)
+
+	now := time.Now()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockClusterSvc := services.NewMockClusterService(ctrl)
+	mockNodePoolSvc := services.NewMockNodePoolService(ctrl)
+	mockNodePoolSvc.EXPECT().ListByCluster(gomock.Any(), testClusterID, gomock.Any()).
+		Return(api.NodePoolList{
+			&api.NodePool{
+				Meta:             api.Meta{ID: "np-1", CreatedTime: now, UpdatedTime: now},
+				Name:             "test-np",
+				OwnerID:          testClusterID,
+				OwnerKind:        "Cluster",
+				Spec:             []byte(`{}`),
+				Labels:           []byte(`{}`),
+				StatusConditions: []byte(`[]`),
+				CreatedBy:        testSystemUser,
+				UpdatedBy:        testSystemUser,
+			},
+		}, &api.PagingMeta{Page: 1, Size: 1, Total: 1}, nil)
+
+	handler := NewClusterNodePoolsHandler(mockClusterSvc, mockNodePoolSvc)
+
+	req := httptest.NewRequest(http.MethodGet,
+		"/api/hyperfleet/v1/clusters/"+testClusterID+"/nodepools", nil)
+	req = mux.SetURLVars(req, map[string]string{"id": testClusterID})
+	rr := httptest.NewRecorder()
+
+	handler.List(rr, req)
+	Expect(rr.Code).To(Equal(http.StatusOK))
+
+	var raw map[string]interface{}
+	Expect(json.Unmarshal(rr.Body.Bytes(), &raw)).To(Succeed())
+	Expect(raw).NotTo(HaveKey("kind"))
+}
+
 func TestClusterNodePoolsHandler_Get(t *testing.T) {
 	RegisterTestingT(t)
 

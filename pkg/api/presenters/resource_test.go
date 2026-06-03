@@ -1,7 +1,6 @@
 package presenters
 
 import (
-	"encoding/json"
 	"testing"
 	"time"
 
@@ -157,10 +156,4 @@ func TestPresentResourceList(t *testing.T) {
 	Expect(result.Page).To(Equal(int32(1)))
 	Expect(result.Size).To(Equal(int32(2)))
 	Expect(result.Total).To(Equal(int64(2)))
-
-	jsonBytes, err := json.Marshal(result)
-	Expect(err).NotTo(HaveOccurred())
-	var raw map[string]interface{}
-	Expect(json.Unmarshal(jsonBytes, &raw)).To(Succeed())
-	Expect(raw).NotTo(HaveKey("kind"))
 }

@@ -1,7 +1,6 @@
 package presenters
 
 import (
-	"encoding/json"
 	"testing"
 	"time"
 
@@ -448,34 +447,4 @@ func TestSliceFilter(t *testing.T) {
 			tt.validate(result, err)
 		})
 	}
-}
-
-func TestListResponsesExcludeKind(t *testing.T) {
-	RegisterTestingT(t)
-
-	t.Run("ClusterList JSON does not contain kind", func(t *testing.T) {
-		RegisterTestingT(t)
-		clusterList := openapi.ClusterList{
-			Page:  1,
-			Size:  0,
-			Total: 0,
-			Items: []openapi.Cluster{},
-		}
-		jsonBytes, err := json.Marshal(clusterList)
-		Expect(err).To(BeNil())
-		var raw map[string]interface{}
-		Expect(json.Unmarshal(jsonBytes, &raw)).To(Succeed())
-		Expect(raw).NotTo(HaveKey("kind"))
-	})
-
-	t.Run("ProjectionList JSON does not contain kind", func(t *testing.T) {
-		RegisterTestingT(t)
-		result, err := SliceFilter([]string{"id"}, createTestClusterList())
-		Expect(err).To(BeNil())
-		jsonBytes, marshalErr := json.Marshal(result)
-		Expect(marshalErr).To(BeNil())
-		var raw map[string]interface{}
-		Expect(json.Unmarshal(jsonBytes, &raw)).To(Succeed())
-		Expect(raw).NotTo(HaveKey("kind"))
-	})
 }
