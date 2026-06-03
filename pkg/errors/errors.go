@@ -281,9 +281,9 @@ func isValidConstraint(constraint string) (openapi.ValidationErrorConstraint, bo
 }
 
 // AsProblemDetails converts the ServiceError to RFC 9457 Problem Details format
-func (e *ServiceError) AsProblemDetails(instance string, traceID string) openapi.Error {
+func (e *ServiceError) AsProblemDetails(instance string, traceID string) openapi.ProblemDetails {
 	now := time.Now().UTC()
-	problemDetails := openapi.Error{
+	problemDetails := openapi.ProblemDetails{
 		Type:      e.Type,
 		Title:     e.Title,
 		Status:    e.HTTPCode,

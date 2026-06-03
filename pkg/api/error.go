@@ -21,7 +21,7 @@ func SendNotFound(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC()
 	detail := fmt.Sprintf("The requested resource '%s' doesn't exist", r.URL.Path)
 
-	body := openapi.Error{
+	body := openapi.ProblemDetails{
 		Type:      errors.ErrorTypeNotFound,
 		Title:     "Resource Not Found",
 		Status:    http.StatusNotFound,
@@ -54,7 +54,7 @@ func SendUnauthorized(w http.ResponseWriter, r *http.Request, message string) {
 	traceID, _ := logger.GetRequestID(r.Context())
 	now := time.Now().UTC()
 
-	body := openapi.Error{
+	body := openapi.ProblemDetails{
 		Type:      errors.ErrorTypeAuth,
 		Title:     "Authentication Required",
 		Status:    http.StatusUnauthorized,
@@ -93,7 +93,7 @@ func SendPanic(w http.ResponseWriter, r *http.Request) {
 	detail := "An unexpected error happened, please check the log of the service for details"
 	instance := r.URL.Path
 
-	panicError := openapi.Error{
+	panicError := openapi.ProblemDetails{
 		Type:      errors.ErrorTypeInternal,
 		Title:     "Internal Server Error",
 		Status:    http.StatusInternalServerError,
@@ -132,7 +132,7 @@ func init() {
 	detail := "An unexpected error happened, please check the log of the service for details"
 	instance := "/api/hyperfleet/v1"
 
-	panicError := openapi.Error{
+	panicError := openapi.ProblemDetails{
 		Type:     errors.ErrorTypeInternal,
 		Title:    "Internal Server Error",
 		Status:   http.StatusInternalServerError,
