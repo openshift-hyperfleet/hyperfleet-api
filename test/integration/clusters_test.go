@@ -476,8 +476,9 @@ func TestClusterSchemaValidation(t *testing.T) {
 	if resp2.StatusCode() == http.StatusBadRequest {
 		t.Logf("Schema validation correctly rejected invalid spec type")
 		// Verify error response contains details
-		var errorResponse openapi.Error
+		var errorResponse openapi.ProblemDetails
 		_ = json.Unmarshal(resp2.Body(), &errorResponse)
+		Expect(errorResponse.Type).ToNot(BeEmpty())
 		Expect(errorResponse.Code).ToNot(BeNil())
 		Expect(errorResponse.Detail).ToNot(BeNil())
 	} else {
@@ -548,11 +549,12 @@ func TestClusterSchemaValidationWithProviderSchema(t *testing.T) {
 		t.Fatalf("failed to read response body: %v", err)
 	}
 
-	var errorResponse openapi.Error
+	var errorResponse openapi.ProblemDetails
 	if err := json.Unmarshal(bodyBytes, &errorResponse); err != nil {
 		t.Fatalf("failed to unmarshal error response body: %v", err)
 	}
 
+	Expect(errorResponse.Type).ToNot(BeEmpty())
 	Expect(errorResponse.Code).ToNot(BeNil())
 	Expect(*errorResponse.Code).To(Equal("HYPERFLEET-VAL-000")) // Validation error code (RFC 9457 format)
 	Expect(errorResponse.Errors).ToNot(BeEmpty(), "Should include field-level error details")
@@ -602,7 +604,7 @@ func TestClusterSchemaValidationErrorDetails(t *testing.T) {
 	Expect(resp.StatusCode()).To(Equal(http.StatusBadRequest), "Should return 400 for invalid spec type")
 
 	// Parse error response
-	var errorResponse openapi.Error
+	var errorResponse openapi.ProblemDetails
 	if err := json.Unmarshal(resp.Body(), &errorResponse); err != nil {
 		t.Fatalf("failed to unmarshal error response: %v, response body: %s", err, string(resp.Body()))
 	}

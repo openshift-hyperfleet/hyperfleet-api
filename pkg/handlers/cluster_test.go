@@ -116,9 +116,10 @@ func TestClusterHandler_Patch(t *testing.T) {
 			}
 
 			if tt.expectedStatusCode == http.StatusConflict {
-				var errResp openapi.Error
+				var errResp openapi.ProblemDetails
 				err := json.Unmarshal(rr.Body.Bytes(), &errResp)
 				Expect(err).NotTo(HaveOccurred())
+				Expect(errResp.Type).To(Equal(errors.ErrorTypeConflict))
 				Expect(errResp.Status).To(Equal(http.StatusConflict))
 				Expect(*errResp.Detail).To(ContainSubstring("marked for deletion"))
 				Expect(*errResp.Code).To(Equal("HYPERFLEET-CNF-003"))

@@ -105,9 +105,10 @@ func TestSchemaValidationMiddleware_PostRequestInvalidSpec(t *testing.T) {
 	Expect(rr.Code).To(Equal(http.StatusBadRequest))
 
 	// Verify error response format
-	var errorResponse openapi.Error
+	var errorResponse openapi.ProblemDetails
 	err := json.Unmarshal(rr.Body.Bytes(), &errorResponse)
 	Expect(err).To(BeNil())
+	Expect(errorResponse.Type).ToNot(BeEmpty())
 	Expect(errorResponse.Code).ToNot(BeNil())
 	Expect(errorResponse.Detail).ToNot(BeNil())
 }
@@ -345,9 +346,10 @@ func TestSchemaValidationMiddleware_InvalidSpecType(t *testing.T) {
 	Expect(rr.Code).To(Equal(http.StatusBadRequest))
 
 	// Verify error message
-	var errorResponse openapi.Error
+	var errorResponse openapi.ProblemDetails
 	err := json.Unmarshal(rr.Body.Bytes(), &errorResponse)
 	Expect(err).To(BeNil())
+	Expect(errorResponse.Detail).ToNot(BeNil())
 	Expect(*errorResponse.Detail).To(ContainSubstring("spec field must be an object"))
 }
 

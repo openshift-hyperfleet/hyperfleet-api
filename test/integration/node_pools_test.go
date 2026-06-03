@@ -478,8 +478,8 @@ func TestNodePoolDuplicateNames(t *testing.T) {
 	Expect(resp.StatusCode()).
 		To(Equal(http.StatusConflict), "Expected 409 Conflict for duplicate nodepool name in same cluster")
 
-	Expect(resp.ApplicationproblemJSONDefault).NotTo(BeNil(), "Expected response body to be present")
-	problemDetail := resp.ApplicationproblemJSONDefault
+	Expect(resp.ApplicationproblemJSON409).NotTo(BeNil(), "Expected response body to be present")
+	problemDetail := resp.ApplicationproblemJSON409
 
 	Expect(*problemDetail.Code).To(Equal("HYPERFLEET-CNF-001"), "Expected conflict error code")
 	Expect(problemDetail.Type).To(Equal("https://api.hyperfleet.io/errors/conflict"), "Expected conflict error type")

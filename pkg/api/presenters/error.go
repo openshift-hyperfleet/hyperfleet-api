@@ -6,6 +6,6 @@ import (
 )
 
 // PresentError converts a ServiceError to RFC 9457 Problem Details format
-func PresentError(err *errors.ServiceError, instance string, traceID string) openapi.Error {
+func PresentError(err *errors.ServiceError, instance string, traceID string) openapi.ProblemDetails {
 	return err.AsProblemDetails(instance, traceID)
 }

@@ -631,8 +631,8 @@ func (helper *Helper) CreateJWTToken(account *TestAccount) *jwt.Token {
 }
 
 // OpenapiError Convert an error response body to an openapi error struct
-func (helper *Helper) OpenapiError(body []byte) openapi.Error {
-	var exErr openapi.Error
+func (helper *Helper) OpenapiError(body []byte) openapi.ProblemDetails {
+	var exErr openapi.ProblemDetails
 	jsonErr := json.Unmarshal(body, &exErr)
 	if jsonErr != nil {
 		helper.T.Errorf("Unable to convert error response to openapi error: %s", jsonErr)
