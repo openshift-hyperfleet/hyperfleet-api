@@ -32,21 +32,34 @@ adapterConfig:
     level: info
 # AdapterTaskConfig (business logic) can be created:
 # - option1: from an existing ConfigMap by setting configMapName
-# - option2: from a YAML file by setting yaml
-# - option3: from a set of files by setting files
+# - option2: from inline YAML by setting yaml (mutually exclusive with files/external)
+# - option3: from chart-packaged files by setting files (can be combined with external)
+# - option4: from external content by setting external (can be combined with files)
 adapterTaskConfig:
   create: true
   # option1: ConfigMap name (if different from default, and set create: false)
   #configMapName: ""
 
   # option2: AdapterTaskConfig YAML (creates task-config.yaml key in ConfigMap)
+  # Mutually exclusive with files and external
   # yaml:
-  #  params: []
-  #  resources: []
+  #   params: []
+  #   resources: []
 
   # option3: AdapterTaskConfig YAML files packaged with the chart
+  # Files are loaded from the chart directory via $.Files.Get
+  # Can be combined with external for site-specific overrides
   # files:
-  # task-config.yaml: examples/kubernetes/adapter-task-config.yaml
+  #   task-config.yaml: examples/kubernetes/adapter-task-config.yaml
+
+  # option4: External content passed in (e.g., via --set-file)
+  # Creates ConfigMap keys as <name>.yaml with the provided content
+  # Can be combined with files (collision detection enforced)
+  # external:
+  #   myconfig: |
+  #     params: []
+  #     resources: []
+  # Or use: --set-file adapterTaskConfig.external.myconfig=/path/to/config.yaml
 affinity: {}
 # Override default args
 args:

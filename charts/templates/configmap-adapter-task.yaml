@@ -1,4 +1,7 @@
+
+
 {{- if .Values.adapterTaskConfig.create }}
+{{- include "hyperfleet-adapter.validateTaskConfigKeys" . }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -16,9 +19,17 @@ data:
 {{ toYaml .Values.adapterTaskConfig.yaml | nindent 4 }}
     {{- end }}
   {{- else }}
-    {{- range $key, $path := .Values.adapterTaskConfig.files }}
+  {{- if .Values.adapterTaskConfig.external }}
+  {{- range $name, $value := .Values.adapterTaskConfig.external }}
+  {{ $name }}.yaml: |
+{{ $value | nindent 4 }}
+  {{- end }}
+  {{- end }}
+  {{- if .Values.adapterTaskConfig.files }}
+  {{- range $key, $path := .Values.adapterTaskConfig.files }}
   {{ $key }}: |
-    {{ $.Files.Get $path | nindent 4 }}
-    {{- end }}
+{{ $.Files.Get $path | nindent 4 }}
+  {{- end }}
+  {{- end }}
   {{- end }}
 {{- end }}
