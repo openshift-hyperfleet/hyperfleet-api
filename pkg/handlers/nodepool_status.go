@@ -55,7 +55,6 @@ func (h NodePoolStatusHandler) List(w http.ResponseWriter, r *http.Request) {
 
 			// Return list response with pagination metadata
 			response := openapi.AdapterStatusList{
-				Kind:  "AdapterStatusList",
 				Items: items,
 				Page:  int32(listArgs.Page),
 				Size:  int32(len(items)),

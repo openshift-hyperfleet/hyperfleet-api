@@ -99,7 +99,6 @@ func (h ClusterHandler) List(w http.ResponseWriter, r *http.Request) {
 				return nil, err
 			}
 			clusterList := openapi.ClusterList{
-				Kind:  "ClusterList",
 				Page:  int32(paging.Page),
 				Size:  int32(paging.Size),
 				Total: int32(paging.Total),

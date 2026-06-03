@@ -10,7 +10,6 @@ import (
 )
 
 type ProjectionList struct {
-	Kind  string                   `json:"kind"`
 	Items []map[string]interface{} `json:"items"`
 	Page  int32                    `json:"page"`
 	Size  int32                    `json:"size"`
@@ -34,7 +33,6 @@ func SliceFilter(fields2Store []string, model interface{}) (*ProjectionList, *er
 
 	// Initialize result structure
 	result := &ProjectionList{
-		Kind:  reflectValue.FieldByName("Kind").String(),
 		Page:  int32(reflectValue.FieldByName("Page").Int()),
 		Size:  int32(reflectValue.FieldByName("Size").Int()),
 		Total: int32(reflectValue.FieldByName("Total").Int()),

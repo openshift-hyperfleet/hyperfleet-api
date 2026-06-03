@@ -1,6 +1,7 @@
 package presenters
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -152,9 +153,14 @@ func TestPresentResourceList(t *testing.T) {
 	paging := &api.PagingMeta{Page: 1, Size: 2, Total: 2}
 
 	result := PresentResourceList(resources, paging)
-	Expect(result.Kind).To(Equal("ResourceList"))
 	Expect(result.Items).To(HaveLen(2))
 	Expect(result.Page).To(Equal(int32(1)))
 	Expect(result.Size).To(Equal(int32(2)))
 	Expect(result.Total).To(Equal(int64(2)))
+
+	jsonBytes, err := json.Marshal(result)
+	Expect(err).NotTo(HaveOccurred())
+	var raw map[string]interface{}
+	Expect(json.Unmarshal(jsonBytes, &raw)).To(Succeed())
+	Expect(raw).NotTo(HaveKey("kind"))
 }

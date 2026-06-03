@@ -243,6 +243,10 @@ func TestResourceHandler_List(t *testing.T) {
 			err := json.Unmarshal(rr.Body.Bytes(), &resp)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(resp.Items).To(HaveLen(tt.expectedItems))
+
+			var raw map[string]interface{}
+			Expect(json.Unmarshal(rr.Body.Bytes(), &raw)).To(Succeed())
+			Expect(raw).NotTo(HaveKey("kind"))
 		})
 	}
 }
@@ -541,6 +545,12 @@ func TestResourceHandler_ListByOwner(t *testing.T) {
 
 			handler.ListByOwner(rr, req)
 			Expect(rr.Code).To(Equal(tt.expectedStatusCode))
+
+			if rr.Code == http.StatusOK {
+				var raw map[string]interface{}
+				Expect(json.Unmarshal(rr.Body.Bytes(), &raw)).To(Succeed())
+				Expect(raw).NotTo(HaveKey("kind"))
+			}
 		})
 	}
 }
