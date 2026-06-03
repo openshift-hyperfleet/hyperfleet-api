@@ -10,6 +10,8 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/util"
 )
 
+const clusterKind = "Cluster"
+
 // ConvertCluster converts openapi.ClusterCreateRequest to api.Cluster (GORM model)
 func ConvertCluster(req *openapi.ClusterCreateRequest) (*api.Cluster, error) {
 	// Marshal Spec
@@ -29,7 +31,7 @@ func ConvertCluster(req *openapi.ClusterCreateRequest) (*api.Cluster, error) {
 	}
 
 	// Get Kind value, use default if not provided
-	kind := "Cluster"
+	kind := clusterKind
 	if req.Kind != nil {
 		kind = *req.Kind
 	}

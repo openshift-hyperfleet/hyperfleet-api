@@ -13,7 +13,8 @@ import (
 )
 
 const (
-	testConditionReconciled = "Reconciled"
+	testConditionReconciled          = "Reconciled"
+	testMessageComponentsUnavailable = "Some components unavailable"
 )
 
 // Helper function to create test ClusterCreateRequest
@@ -254,7 +255,7 @@ func TestPresentCluster_StatusConditionsConversion(t *testing.T) {
 	reason1 := "Reconciled"
 	message1 := "All systems operational"
 	reason2 := "Degraded"
-	message2 := "Some components unavailable"
+	message2 := testMessageComponentsUnavailable
 
 	// Create multiple domain ResourceConditions
 	conditions := []api.ResourceCondition{
@@ -308,7 +309,7 @@ func TestPresentCluster_StatusConditionsConversion(t *testing.T) {
 	Expect(result.Status.Conditions[1].Type).To(Equal("Progressing"))
 	Expect(result.Status.Conditions[1].Status).To(Equal(openapi.ResourceConditionStatusFalse))
 	Expect(*result.Status.Conditions[1].Reason).To(Equal("Degraded"))
-	Expect(*result.Status.Conditions[1].Message).To(Equal("Some components unavailable"))
+	Expect(*result.Status.Conditions[1].Message).To(Equal(testMessageComponentsUnavailable))
 }
 
 // TestConvertAndPresentCluster_RoundTrip tests data integrity through convert and present

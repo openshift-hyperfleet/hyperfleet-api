@@ -11,8 +11,6 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 )
 
-const clusterKind = "Cluster"
-
 func createEmptyConditionsClusterList() openapi.ClusterList {
 	id := "cluster-empty"
 	return openapi.ClusterList{
