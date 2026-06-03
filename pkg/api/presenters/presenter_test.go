@@ -450,8 +450,10 @@ func TestSliceFilter(t *testing.T) {
 	}
 }
 
+const testClusterID1 = "cluster-id1"
+
 func createTestCluster() openapi.Cluster {
-	id := "cluster-id1"
+	id := testClusterID1
 	kind := clusterKind
 
 	labels := map[string]string{

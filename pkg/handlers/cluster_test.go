@@ -258,10 +258,10 @@ func TestClusterHandler_Get_WithFieldsFilter(t *testing.T) {
 
 	tests := []struct {
 		setupMocks         func(ctrl *gomock.Controller) (*services.MockClusterService, *services.MockGenericService)
+		validateResponse   func(body []byte)
 		name               string
 		queryParams        string
 		expectedStatusCode int
-		validateResponse   func(body []byte)
 	}{
 		{
 			name:        "Success - No fields filter returns full resource",

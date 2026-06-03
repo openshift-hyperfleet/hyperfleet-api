@@ -178,7 +178,7 @@ func validate(model interface{}, in map[string]bool, prefix string) *errors.Serv
 	var fields []string
 	expectedPrefix := prefix
 	if expectedPrefix != "" {
-		expectedPrefix = expectedPrefix + "."
+		expectedPrefix += "."
 	}
 	for k := range in {
 		// Include field if:

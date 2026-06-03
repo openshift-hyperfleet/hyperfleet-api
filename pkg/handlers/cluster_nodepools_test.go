@@ -774,10 +774,10 @@ func TestClusterNodePoolsHandler_Get_WithFieldsFilter(t *testing.T) {
 
 	tests := []struct {
 		setupMocks         func(ctrl *gomock.Controller) (*services.MockClusterService, *services.MockNodePoolService)
+		validateResponse   func(body []byte)
 		name               string
 		queryParams        string
 		expectedStatusCode int
-		validateResponse   func(body []byte)
 	}{
 		{
 			name:        "Success - Filter with spec and owner_references.id - HYPERFLEET-1142 regression test",
