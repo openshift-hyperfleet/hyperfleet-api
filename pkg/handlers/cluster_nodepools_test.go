@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	. "github.com/onsi/gomega"
 	"go.uber.org/mock/gomock"
@@ -28,18 +29,19 @@ func TestClusterNodePoolsHandler_List(t *testing.T) {
 	RegisterTestingT(t)
 
 	now := time.Now()
+	clusterUUID := uuid.New().String()
 
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
 	mockClusterSvc := services.NewMockClusterService(ctrl)
 	mockNodePoolSvc := services.NewMockNodePoolService(ctrl)
-	mockNodePoolSvc.EXPECT().ListByCluster(gomock.Any(), testClusterID, gomock.Any()).
+	mockNodePoolSvc.EXPECT().ListByCluster(gomock.Any(), clusterUUID, gomock.Any()).
 		Return(api.NodePoolList{
 			&api.NodePool{
 				Meta:             api.Meta{ID: "np-1", CreatedTime: now, UpdatedTime: now},
 				Name:             "test-np",
-				OwnerID:          testClusterID,
+				OwnerID:          clusterUUID,
 				OwnerKind:        "Cluster",
 				Spec:             []byte(`{}`),
 				Labels:           []byte(`{}`),
@@ -52,8 +54,8 @@ func TestClusterNodePoolsHandler_List(t *testing.T) {
 	handler := NewClusterNodePoolsHandler(mockClusterSvc, mockNodePoolSvc)
 
 	req := httptest.NewRequest(http.MethodGet,
-		"/api/hyperfleet/v1/clusters/"+testClusterID+"/nodepools", nil)
-	req = mux.SetURLVars(req, map[string]string{"id": testClusterID})
+		"/api/hyperfleet/v1/clusters/"+clusterUUID+"/nodepools", nil)
+	req = mux.SetURLVars(req, map[string]string{"id": clusterUUID})
 	rr := httptest.NewRecorder()
 
 	handler.List(rr, req)
