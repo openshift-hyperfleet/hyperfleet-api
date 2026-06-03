@@ -14,7 +14,7 @@ WORKDIR /build
 RUN chown 1001:0 /build
 USER 1001
 
-# Install bingo tools (mockgen, oapi-codegen) under /build/.gobin and add to PATH
+# Install Go tools (mockgen, oapi-codegen) under /build/.gobin and add to PATH
 # so "go generate" can find them. ENV persists for all subsequent RUN commands.
 ENV GOBIN=/build/.gobin
 RUN mkdir -p $GOBIN

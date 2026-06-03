@@ -26,7 +26,7 @@ Setup sequence for a fresh clone:
 6. `./bin/hyperfleet-api migrate` — apply database migrations
 7. `make run-no-auth` — start server without authentication
 
-Tool management uses [Bingo](https://github.com/bwplotka/bingo) — tool versions are pinned in `.bingo/`.
+Tool versions are pinned using Go 1.24+ `tool` directives in `go.mod`. Use `go tool <name>` to run or `make tools` to install to GOBIN.
 
 ## Verification Commands
 

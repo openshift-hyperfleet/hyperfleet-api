@@ -1,8 +1,5 @@
 .DEFAULT_GOAL := help
 
-# Include bingo-managed tool variables
-include .bingo/Variables.mk
-
 # CGO_ENABLED=0 is not FIPS compliant. large commercial vendors and FedRAMP require FIPS compliant crypto
 # Use ?= to allow Dockerfile to override (CGO_ENABLED=0 for Alpine-based dev images)
 CGO_ENABLED ?= 1
@@ -83,6 +80,12 @@ endif
 help: ## Display this help
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_\/-]+:.*?##/ { printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
 
+##@ Tools
+
+.PHONY: tools
+tools: ## Install pinned tool versions from go.mod tool directives
+	$(GO) install tool
+
 ##@ Code Quality
 
 .PHONY: verify
@@ -103,8 +106,8 @@ verify: ## Verify source passes standard checks
 		)
 
 .PHONY: lint
-lint: generate-all $(GOLANGCI_LINT) ## Run golangci-lint
-	$(GOLANGCI_LINT) run ./cmd/... ./pkg/... ./test/...
+lint: generate-all ## Run golangci-lint
+	$(GO) tool golangci-lint run ./cmd/... ./pkg/... ./test/...
 
 .PHONY: verify-migrations
 verify-migrations: ## Verify migration files follow project conventions
@@ -113,16 +116,16 @@ verify-migrations: ## Verify migration files follow project conventions
 ##@ Code Generation
 
 .PHONY: generate
-generate: $(OAPI_CODEGEN) ## Generate OpenAPI types using oapi-codegen
+generate: ## Generate OpenAPI types using oapi-codegen
 	$(GO) mod download
 	rm -rf pkg/api/openapi
 	mkdir -p pkg/api/openapi openapi
 	@rm -f openapi/openapi.yaml
 	@cp "$$($(GO) list -m -f '{{.Dir}}' github.com/openshift-hyperfleet/hyperfleet-api-spec)/schemas/core/openapi.yaml" openapi/openapi.yaml
-	$(OAPI_CODEGEN) --config openapi/oapi-codegen.yaml openapi/openapi.yaml
+	$(GO) tool oapi-codegen --config openapi/oapi-codegen.yaml openapi/openapi.yaml
 
 .PHONY: generate-mocks
-generate-mocks: $(MOCKGEN) ## Generate mock implementations for services
+generate-mocks: ## Generate mock implementations for services
 	${GO} generate ./pkg/services/...
 
 .PHONY: generate-all
@@ -199,25 +202,25 @@ secrets: ## Initialize secrets directory with default values
 ##@ Testing
 
 .PHONY: test
-test: install secrets $(GOTESTSUM) ## Run unit tests
-	HYPERFLEET_ENV=unit_testing $(GOTESTSUM) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -v $(TESTFLAGS) \
+test: install secrets ## Run unit tests
+	HYPERFLEET_ENV=unit_testing $(GO) tool gotestsum --format $(TEST_SUMMARY_FORMAT) -- -p 1 -v $(TESTFLAGS) \
 		./pkg/... \
 		./cmd/...
 
 .PHONY: ci-test-unit
-ci-test-unit: install secrets $(GOTESTSUM) ## Run unit tests with JSON output
-	HYPERFLEET_ENV=unit_testing $(GOTESTSUM) --jsonfile-timing-events=$(unit_test_json_output) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -v $(TESTFLAGS) \
+ci-test-unit: install secrets ## Run unit tests with JSON output
+	HYPERFLEET_ENV=unit_testing $(GO) tool gotestsum --jsonfile-timing-events=$(unit_test_json_output) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -v $(TESTFLAGS) \
 		./pkg/... \
 		./cmd/...
 
 .PHONY: test-integration
-test-integration: install secrets $(GOTESTSUM) ## Run integration tests
-	TESTCONTAINERS_RYUK_DISABLED=true HYPERFLEET_ENV=integration_testing $(GOTESTSUM) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) \
+test-integration: install secrets ## Run integration tests
+	TESTCONTAINERS_RYUK_DISABLED=true HYPERFLEET_ENV=integration_testing $(GO) tool gotestsum --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) \
 			./test/integration
 
 .PHONY: ci-test-integration
-ci-test-integration: install secrets $(GOTESTSUM) ## Run integration tests with JSON output
-	TESTCONTAINERS_RYUK_DISABLED=true HYPERFLEET_ENV=integration_testing $(GOTESTSUM) --jsonfile-timing-events=$(integration_test_json_output) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) \
+ci-test-integration: install secrets ## Run integration tests with JSON output
+	TESTCONTAINERS_RYUK_DISABLED=true HYPERFLEET_ENV=integration_testing $(GO) tool gotestsum --jsonfile-timing-events=$(integration_test_json_output) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) \
 			./test/integration
 
 .PHONY: test-all

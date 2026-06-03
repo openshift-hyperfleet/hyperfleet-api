@@ -17,7 +17,7 @@ func NewClusterService(dao, adapterStatusDao, config) ClusterService
 - All methods return `*errors.ServiceError` (from `pkg/errors/`), never stdlib `error`
 - Constructor injection: DAOs and config passed to `New*Service()` constructor
 - Compile-time interface check: `var _ ClusterService = &sqlClusterService{}`
-- Mock generation: add `//go:generate mockgen` directive, then `make generate-mocks`
+- Mock generation: add `//go:generate go tool mockgen` directive, then `make generate-mocks`
 
 ## Status Aggregation
 
