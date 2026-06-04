@@ -17,4 +17,5 @@ type EntityDescriptor struct {
 	SpecSchemaName         string               // OpenAPI component name for spec validation
 	OnParentDelete         OnParentDeletePolicy // only meaningful when ParentKind != ""
 	SearchDisallowedFields []string             // fields blocked from TSL search
+	RequiredAdapters       []string             // adapters that must finalize before hard-delete
 }

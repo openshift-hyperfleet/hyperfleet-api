@@ -12,6 +12,7 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/registry"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/util"
 )
 
 //go:generate mockgen-v0.6.0 -source=resource.go -package=services -destination=resource_mock.go
@@ -60,6 +61,18 @@ func (s *sqlResourceService) Create(
 
 	if svcErr := validateResourceName(kind, resource.Name); svcErr != nil {
 		return nil, svcErr
+	}
+
+	// Lock parent row to serialize with concurrent deletes.
+	if ownerID := util.FromPtr(resource.OwnerID); ownerID != "" {
+		desc := registry.MustGet(kind)
+		parent, err := s.resourceDao.GetForUpdate(ctx, desc.ParentKind, ownerID)
+		if err != nil {
+			return nil, handleGetError(desc.ParentKind, "id", ownerID, err)
+		}
+		if parent.DeletedTime != nil {
+			return nil, errors.ConflictState("%s '%s' is marked for deletion", desc.ParentKind, ownerID)
+		}
 	}
 
 	username := auth.GetUsernameFromContext(ctx)
@@ -127,11 +140,8 @@ func (s *sqlResourceService) Patch(
 	return resource, nil
 }
 
-// Delete performs a soft-delete by setting DeletedTime and DeletedBy, then incrementing generation.
-// Idempotent — returns the resource unchanged if already marked for deletion.
-// Before deleting, enforces child delete policies from the entity registry:
-//   - restrict: blocks deletion (409) if active children of that type exist
-//   - cascade: recursively soft-deletes children (DFS, innermost first)
+// Delete removes a resource and its cascade subtree. Resources with required
+// adapters are soft-deleted; all others are hard-deleted.
 func (s *sqlResourceService) Delete(ctx context.Context, kind, id string) (*api.Resource, *errors.ServiceError) {
 	if svcErr := validateKind(kind); svcErr != nil {
 		return nil, svcErr
@@ -145,28 +155,24 @@ func (s *sqlResourceService) Delete(ctx context.Context, kind, id string) (*api.
 		return resource, nil
 	}
 
-	deletedTime := time.Now().UTC().Truncate(time.Microsecond)
-	username := auth.GetUsernameFromContext(ctx)
-	if username == "" {
-		username = defaultSystemUser
-	}
-	resource.MarkDeleted(username, deletedTime)
+	deletedBy := actorFromContext(ctx)
+	deletedAt := time.Now().UTC().Truncate(time.Microsecond)
+
+	resource.MarkDeleted(deletedBy, deletedAt)
 	resource.IncrementGeneration()
 
-	if svcErr := s.enforceDeletePolicies(ctx, resource); svcErr != nil {
+	if svcErr := s.deleteResourceTree(ctx, resource, deletedBy, deletedAt); svcErr != nil {
 		db.MarkForRollback(ctx, svcErr)
 		return nil, svcErr
-	}
-
-	if saveErr := s.resourceDao.Save(ctx, resource); saveErr != nil {
-		return nil, handleSoftDeleteError(kind, saveErr)
 	}
 
 	return resource, nil
 }
 
-func (s *sqlResourceService) enforceDeletePolicies(
+// deleteResourceTree enforces child delete policies then persists bottom-up.
+func (s *sqlResourceService) deleteResourceTree(
 	ctx context.Context, resource *api.Resource,
+	deletedBy string, deletedAt time.Time,
 ) *errors.ServiceError {
 	children := registry.ChildrenOf(resource.Kind)
 
@@ -180,27 +186,34 @@ func (s *sqlResourceService) enforceDeletePolicies(
 
 	for _, child := range children {
 		if child.OnParentDelete == registry.OnParentDeleteCascade {
-			items, err := s.resourceDao.FindByKindAndOwner(ctx, child.Kind, resource.ID)
+			items, err := s.resourceDao.FindByKindAndOwnerForUpdate(ctx, child.Kind, resource.ID)
 			if err != nil {
 				return errors.GeneralError(
 					"Unable to find %s children for cascade delete: %s", child.Kind, err,
 				)
 			}
 			for _, item := range items {
-				if item.DeletedTime != nil {
-					continue
+				if item.DeletedTime == nil {
+					item.MarkDeleted(deletedBy, deletedAt)
+					item.IncrementGeneration()
 				}
-				item.MarkDeleted(*resource.DeletedBy, *resource.DeletedTime)
-				item.IncrementGeneration()
-
-				if svcErr := s.enforceDeletePolicies(ctx, item); svcErr != nil {
+				if svcErr := s.deleteResourceTree(ctx, item, deletedBy, deletedAt); svcErr != nil {
 					return svcErr
-				}
-				if saveErr := s.resourceDao.Save(ctx, item); saveErr != nil {
-					return handleSoftDeleteError(child.Kind, saveErr)
 				}
 			}
 		}
+	}
+
+	desc := registry.MustGet(resource.Kind)
+	if len(desc.RequiredAdapters) > 0 {
+		if saveErr := s.resourceDao.Save(ctx, resource); saveErr != nil {
+			return handleSoftDeleteError(resource.Kind, saveErr)
+		}
+		return nil
+	}
+
+	if err := s.resourceDao.Delete(ctx, resource.Kind, resource.ID); err != nil {
+		return handleDeleteError(resource.Kind, err)
 	}
 
 	return nil
