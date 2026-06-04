@@ -15,7 +15,7 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/util"
 )
 
-//go:generate mockgen-v0.6.0 -source=resource.go -package=services -destination=resource_mock.go
+//go:generate go tool mockgen -source=resource.go -package=services -destination=resource_mock.go
 
 type ResourceService interface {
 	Get(ctx context.Context, kind, id string) (*api.Resource, *errors.ServiceError)

@@ -254,7 +254,7 @@ Mock implementations of service interfaces are used for unit testing. Mocks are 
 **How it works**:
 Service files contain `//go:generate` directives that specify how to generate mocks:
 ```go
-//go:generate mockgen-v0.6.0 -source=cluster.go -package=services -destination=cluster_mock.go
+//go:generate go tool mockgen -source=cluster.go -package=services -destination=cluster_mock.go
 ```
 
 **Commands**:
@@ -266,31 +266,31 @@ make generate-mocks
 make generate-all
 ```
 
-### Tool Dependency Management (Bingo)
+### Tool Dependency Management
 
-HyperFleet API uses [bingo](https://github.com/bwplotka/bingo) to manage Go tool dependencies with pinned versions.
+Go tool dependencies are pinned using Go 1.24+ `tool` directives in `go.mod`. Tools are resolved automatically by `go tool` and `go generate`.
 
 **Managed tools**:
-- `mockgen` - Mock generation for testing
 - `golangci-lint` - Code linting
 - `gotestsum` - Enhanced test output
+- `mockgen` - Mock generation for testing
+- `oapi-codegen` - OpenAPI code generation
 
 **Common operations**:
 ```bash
-# Install all tools
-bingo get
+# Install all tools to GOBIN
+make tools
 
-# Install a specific tool
-bingo get <tool>
+# Run a tool directly (no install needed)
+go tool golangci-lint run ./...
 
-# Update a tool to latest version
-bingo get <tool>@latest
+# Add a new tool
+go get -tool <module>@<version>
 
-# List all managed tools
-bingo list
+# Update a tool version
+go get -tool <module>@<version>
+go mod tidy
 ```
-
-Tool versions are tracked in `.bingo/*.mod` files and loaded automatically via `include .bingo/Variables.mk` in the Makefile.
 
 ### Making Changes
 
