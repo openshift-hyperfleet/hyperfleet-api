@@ -88,6 +88,33 @@ func TestAll_ReturnsSnapshot(t *testing.T) {
 	Expect(types).To(HaveKey("Version"))
 }
 
+func TestWithSpecSchema(t *testing.T) {
+	RegisterTestingT(t)
+	Reset()
+
+	Expect(WithSpecSchema()).To(BeEmpty())
+
+	Register(EntityDescriptor{Kind: "Channel", Plural: "channels"})
+	Register(EntityDescriptor{
+		Kind:           "Version",
+		Plural:         "versions",
+		ParentKind:     "Channel",
+		SpecSchemaName: "VersionSpec",
+	})
+	Register(EntityDescriptor{Kind: "Cluster", Plural: "clusters", SpecSchemaName: "ClusterSpec"})
+	Register(EntityDescriptor{Kind: "WifConfig", Plural: "wifconfigs", SpecSchemaName: "WifConfigSpec"})
+
+	result := WithSpecSchema()
+	Expect(result).To(HaveLen(3))
+
+	var kinds []string
+	for _, d := range result {
+		kinds = append(kinds, d.Kind)
+		Expect(d.SpecSchemaName).NotTo(BeEmpty())
+	}
+	Expect(kinds).To(ConsistOf("Version", "Cluster", "WifConfig"))
+}
+
 func TestChildrenOf(t *testing.T) {
 	RegisterTestingT(t)
 	Reset()

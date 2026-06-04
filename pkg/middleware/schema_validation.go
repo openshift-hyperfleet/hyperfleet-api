@@ -3,12 +3,14 @@ package middleware
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
-	"strings"
+	"regexp"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/registry"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/validators"
 )
 
@@ -36,12 +38,60 @@ func handleValidationError(w http.ResponseWriter, r *http.Request, err *errors.S
 	}
 }
 
-// SchemaValidationMiddleware validates cluster and nodepool spec fields against OpenAPI schemas
+// specEntityMatcher pairs a resource plural with a pre-compiled regex for path matching.
+type specEntityMatcher struct {
+	re     *regexp.Regexp
+	plural string
+}
+
+// buildEndsWithEntityRegex compiles a regex that matches a URL path ending in:
+//   - /<plural>
+//   - /<plural>/
+//   - /<plural>/<uuid>
+func buildEndsWithEntityRegex(plural string) *regexp.Regexp {
+	pattern := fmt.Sprintf(
+		`/%s(?:/?|/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$`,
+		regexp.QuoteMeta(plural),
+	)
+	return regexp.MustCompile(pattern)
+}
+
+func buildMatchers(specEntities []registry.EntityDescriptor) []specEntityMatcher {
+	matchers := make([]specEntityMatcher, len(specEntities))
+	for i, d := range specEntities {
+		matchers[i] = specEntityMatcher{
+			plural: d.Plural,
+			re:     buildEndsWithEntityRegex(d.Plural),
+		}
+	}
+	return matchers
+}
+
+// SchemaValidationMiddleware validates resource spec fields against OpenAPI schemas for every
+// registered entity that declares SpecSchemaName.
 func SchemaValidationMiddleware(validator *validators.SchemaValidator) func(http.Handler) http.Handler {
+
+	// TODO : HYPERFLEET-1159 - Remove this once Cluster and NodePool are registered
+	specEntities := []registry.EntityDescriptor{
+		{
+			Kind:           "Cluster",
+			Plural:         "clusters",
+			SpecSchemaName: "ClusterSpec",
+		},
+		{
+			Kind:           "NodePool",
+			Plural:         "nodepools",
+			ParentKind:     "Cluster",
+			SpecSchemaName: "NodePoolSpec",
+		},
+	}
+
+	specEntities = append(specEntities, registry.WithSpecSchema()...)
+	matchers := buildMatchers(specEntities)
+
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Check if the request requires spec validation
-			shouldValidate, resourceType := shouldValidateRequest(r.Method, r.URL.Path)
+			shouldValidate, resourcePlural := shouldValidateRequest(r.Method, r.URL.Path, matchers)
 			if !shouldValidate {
 				next.ServeHTTP(w, r)
 				return
@@ -78,16 +128,14 @@ func SchemaValidationMiddleware(validator *validators.SchemaValidator) func(http
 			}
 
 			// Convert spec to map[string]interface{}
-			specMap, ok := spec.(map[string]interface{})
+			specMap, ok := spec.(map[string]any)
 			if !ok {
 				serviceErr := errors.Validation("spec field must be an object")
 				handleValidationError(w, r, serviceErr)
 				return
 			}
 
-			// Validate spec using the resource type
-			// validator.Validate returns nil for unknown resource types
-			validationErr := validator.Validate(resourceType, specMap)
+			validationErr := validator.Validate(resourcePlural, specMap)
 
 			// If validation failed, return 400 error
 			if validationErr != nil {
@@ -108,26 +156,26 @@ func SchemaValidationMiddleware(validator *validators.SchemaValidator) func(http
 	}
 }
 
-// shouldValidateRequest determines if the request requires spec validation
-// Returns (shouldValidate bool, resourceType string)
-func shouldValidateRequest(method, path string) (bool, string) {
-	// Only validate POST and PATCH requests
+// shouldValidateRequest determines if the request requires spec validation.
+//
+// Each matcher's regex anchors at the end of the path, so when a path contains
+// multiple registered plurals (e.g. /clusters/{id}/nodepools), only the
+// rightmost (deepest) segment can match, and that match wins automatically.
+func shouldValidateRequest(
+	method, path string, matchers []specEntityMatcher,
+) (shouldValidate bool, resourcePlural string) {
 	if method != http.MethodPost && method != http.MethodPatch {
 		return false, ""
 	}
 
-	// Check nodepools first (more specific path)
-	// POST /api/hyperfleet/v1/clusters/{cluster_id}/nodepools
-	// PATCH /api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepool_id}
-	if strings.Contains(path, "/nodepools") {
-		return true, "nodepool"
+	shouldValidate = false
+	for _, m := range matchers {
+		shouldValidate = m.re.MatchString(path)
+		if shouldValidate {
+			resourcePlural = m.plural
+			break
+		}
 	}
 
-	// POST /api/hyperfleet/v1/clusters
-	// PATCH /api/hyperfleet/v1/clusters/{cluster_id}
-	if strings.HasSuffix(path, "/clusters") || strings.Contains(path, "/clusters/") {
-		return true, "cluster"
-	}
-
-	return false, ""
+	return shouldValidate, resourcePlural
 }

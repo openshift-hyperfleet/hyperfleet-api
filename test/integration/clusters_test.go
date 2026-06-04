@@ -506,11 +506,13 @@ func TestClusterSchemaValidation(t *testing.T) {
 func TestClusterSchemaValidationWithProviderSchema(t *testing.T) {
 	RegisterTestingT(t)
 
-	// Check if we're using a provider schema or base schema
-	// If base schema, skip detailed validation tests
+	// Run only when a strict provider-specific schema is configured.
+	// Default integration tests use test/validation-schema.yaml (permissive) or openapi/openapi.yaml.
 	schemaPath := os.Getenv("HYPERFLEET_SERVER_OPENAPI_SCHEMA_PATH")
-	if schemaPath == "" || strings.HasSuffix(schemaPath, "openapi/openapi.yaml") {
-		t.Skip("Skipping provider schema validation test - using base schema")
+	if schemaPath == "" ||
+		strings.HasSuffix(schemaPath, "openapi/openapi.yaml") ||
+		strings.HasSuffix(schemaPath, "validation-schema.yaml") {
+		t.Skip("Skipping provider schema validation test - using permissive or base schema")
 		return
 	}
 

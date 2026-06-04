@@ -54,8 +54,9 @@ func TestMain(m *testing.M) {
 			testDir := filepath.Dir(integrationDir)  // /path/to/repo/test
 			repoRoot := filepath.Dir(testDir)        // /path/to/repo
 
-			// Build schema path using filepath.Join for cross-platform compatibility
-			schemaPath := filepath.Join(repoRoot, "openapi", "openapi.yaml")
+			// Prefer the integration test validation schema, which includes every
+			// registered entity that declares SpecSchemaName.
+			schemaPath := filepath.Join(repoRoot, "test", "validation-schema.yaml")
 
 			// Verify the schema file exists before setting the env var
 			if _, err := os.Stat(schemaPath); err != nil {
