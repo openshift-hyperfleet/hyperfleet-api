@@ -1,6 +1,7 @@
 package presenters
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -89,6 +90,27 @@ func TestPresentResource(t *testing.T) {
 	Expect(resp.Generation).To(Equal(int32(1)))
 	Expect(string(resp.CreatedBy)).To(Equal("user@test.com"))
 	Expect(resp.OwnerReferences).To(BeNil())
+	Expect(resp.Status.Conditions).NotTo(BeNil())
+	Expect(resp.Status.Conditions).To(BeEmpty())
+}
+
+func TestPresentResource_StatusConditionsJSONEmptyArray(t *testing.T) {
+	RegisterTestingT(t)
+
+	now := time.Now()
+	resource := &api.Resource{
+		Meta:      api.Meta{ID: "wif-id", CreatedTime: now, UpdatedTime: now},
+		Kind:      "Wifconfig",
+		Name:      "test-wif",
+		Spec:      datatypes.JSON(`{"project_id":"p1"}`),
+		CreatedBy: "user@test.com",
+		UpdatedBy: "user@test.com",
+	}
+
+	resp := PresentResource(resource)
+	body, err := json.Marshal(resp)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(string(body)).To(ContainSubstring(`"status":{"conditions":[]}`))
 }
 
 func TestPresentResource_WithOwner(t *testing.T) {

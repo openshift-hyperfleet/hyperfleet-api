@@ -70,6 +70,9 @@ func PresentResource(r *api.Resource) openapi.Resource {
 		CreatedBy:   openapi_types.Email(r.CreatedBy),
 		UpdatedBy:   openapi_types.Email(r.UpdatedBy),
 		DeletedTime: r.DeletedTime,
+		Status: openapi.ResourceStatus{
+			Conditions: []openapi.ResourceCondition{},
+		},
 	}
 
 	if r.DeletedBy != nil {
