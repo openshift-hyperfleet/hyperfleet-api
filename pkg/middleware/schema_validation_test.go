@@ -137,7 +137,11 @@ func TestSchemaValidationMiddleware_PatchRequestValidation(t *testing.T) {
 	}
 
 	body, _ := json.Marshal(validRequest)
-	req := httptest.NewRequest(http.MethodPatch, "/api/hyperfleet/v1/clusters/123", bytes.NewBuffer(body))
+	req := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/hyperfleet/v1/clusters/550e8400-e29b-41d4-a716-446655440000",
+		bytes.NewBuffer(body),
+	)
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
 
@@ -184,7 +188,7 @@ func TestSchemaValidationMiddleware_DeleteRequestSkipped(t *testing.T) {
 	middleware := SchemaValidationMiddleware(validator)
 
 	// DELETE request should skip validation
-	req := httptest.NewRequest(http.MethodDelete, "/api/hyperfleet/v1/clusters/123", nil)
+	req := httptest.NewRequest(http.MethodDelete, "/api/hyperfleet/v1/clusters/550e8400-e29b-41d4-a716-446655440000", nil)
 	rr := httptest.NewRecorder()
 
 	nextHandlerCalled := false
@@ -245,7 +249,11 @@ func TestSchemaValidationMiddleware_NodePoolValidation(t *testing.T) {
 	}
 
 	body, _ := json.Marshal(validRequest)
-	req := httptest.NewRequest(http.MethodPost, "/api/hyperfleet/v1/clusters/123/nodepools", bytes.NewBuffer(body))
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/hyperfleet/v1/clusters/550e8400-e29b-41d4-a716-446655440000/nodepools",
+		bytes.NewBuffer(body),
+	)
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
 
@@ -283,7 +291,11 @@ func TestSchemaValidationMiddleware_NestedNodePoolPathUsesNodePoolSchema(t *test
 	}
 
 	body, _ := json.Marshal(clusterOnlySpec)
-	req := httptest.NewRequest(http.MethodPost, "/api/hyperfleet/v1/clusters/123/nodepools", bytes.NewBuffer(body))
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/hyperfleet/v1/clusters/550e8400-e29b-41d4-a716-446655440000/nodepools",
+		bytes.NewBuffer(body),
+	)
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
 
@@ -313,7 +325,7 @@ func TestSchemaValidationMiddleware_NestedNodePoolPathRejectsClusterSpecOnPatch(
 	body, _ := json.Marshal(clusterOnlySpec)
 	req := httptest.NewRequest(
 		http.MethodPatch,
-		"/api/hyperfleet/v1/clusters/123/nodepools/np-456",
+		"/api/hyperfleet/v1/clusters/550e8400-e29b-41d4-a716-446655440000/nodepools/660e8400-e29b-41d4-a716-446655440001",
 		bytes.NewBuffer(body),
 	)
 	req.Header.Set("Content-Type", "application/json")
@@ -345,7 +357,11 @@ func TestSchemaValidationMiddleware_NodePoolInvalidSpec(t *testing.T) {
 	}
 
 	body, _ := json.Marshal(invalidRequest)
-	req := httptest.NewRequest(http.MethodPost, "/api/hyperfleet/v1/clusters/123/nodepools", bytes.NewBuffer(body))
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/hyperfleet/v1/clusters/550e8400-e29b-41d4-a716-446655440000/nodepools",
+		bytes.NewBuffer(body),
+	)
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
 

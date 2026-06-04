@@ -3,9 +3,10 @@ package middleware
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
-	"strings"
+	"regexp"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
@@ -37,6 +38,35 @@ func handleValidationError(w http.ResponseWriter, r *http.Request, err *errors.S
 	}
 }
 
+// specEntityMatcher pairs a resource plural with a pre-compiled regex for path matching.
+type specEntityMatcher struct {
+	re     *regexp.Regexp
+	plural string
+}
+
+// buildEndsWithEntityRegex compiles a regex that matches a URL path ending in:
+//   - /<plural>
+//   - /<plural>/
+//   - /<plural>/<uuid>
+func buildEndsWithEntityRegex(plural string) *regexp.Regexp {
+	pattern := fmt.Sprintf(
+		`/%s(?:/?|/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$`,
+		regexp.QuoteMeta(plural),
+	)
+	return regexp.MustCompile(pattern)
+}
+
+func buildMatchers(specEntities []registry.EntityDescriptor) []specEntityMatcher {
+	matchers := make([]specEntityMatcher, len(specEntities))
+	for i, d := range specEntities {
+		matchers[i] = specEntityMatcher{
+			plural: d.Plural,
+			re:     buildEndsWithEntityRegex(d.Plural),
+		}
+	}
+	return matchers
+}
+
 // SchemaValidationMiddleware validates resource spec fields against OpenAPI schemas for every
 // registered entity that declares SpecSchemaName.
 func SchemaValidationMiddleware(validator *validators.SchemaValidator) func(http.Handler) http.Handler {
@@ -57,10 +87,11 @@ func SchemaValidationMiddleware(validator *validators.SchemaValidator) func(http
 	}
 
 	specEntities = append(specEntities, registry.WithSpecSchema()...)
+	matchers := buildMatchers(specEntities)
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			shouldValidate, resourcePlural := shouldValidateRequest(r.Method, r.URL.Path, specEntities)
+			shouldValidate, resourcePlural := shouldValidateRequest(r.Method, r.URL.Path, matchers)
 			if !shouldValidate {
 				next.ServeHTTP(w, r)
 				return
@@ -97,7 +128,7 @@ func SchemaValidationMiddleware(validator *validators.SchemaValidator) func(http
 			}
 
 			// Convert spec to map[string]interface{}
-			specMap, ok := spec.(map[string]interface{})
+			specMap, ok := spec.(map[string]any)
 			if !ok {
 				serviceErr := errors.Validation("spec field must be an object")
 				handleValidationError(w, r, serviceErr)
@@ -126,54 +157,25 @@ func SchemaValidationMiddleware(validator *validators.SchemaValidator) func(http
 }
 
 // shouldValidateRequest determines if the request requires spec validation.
-// Returns (shouldValidate bool, resourcePlural string).
 //
-// When a path contains multiple registered plurals (e.g. /clusters/{id}/nodepools),
-// the rightmost matching segment wins so nested resources use their own spec schema.
+// Each matcher's regex anchors at the end of the path, so when a path contains
+// multiple registered plurals (e.g. /clusters/{id}/nodepools), only the
+// rightmost (deepest) segment can match, and that match wins automatically.
 func shouldValidateRequest(
-	method, path string, specEntities []registry.EntityDescriptor,
-) (bool, string) {
+	method, path string, matchers []specEntityMatcher,
+) (shouldValidate bool, resourcePlural string) {
 	if method != http.MethodPost && method != http.MethodPatch {
 		return false, ""
 	}
 
-	// this path matching logic is used to determine the correct spec schema to use for validation
-	// based on the path of the request.
-	// For example, if the path is /clusters/abc-123/nodepools/np-456, the matched plural will be "nodepools".
-	var (
-		matchedPlural string
-		matchedIndex  = -1
-	)
-
-	for _, d := range specEntities {
-		segment := "/" + d.Plural
-		if !pathMatchesSpecEntity(method, path, segment) {
-			continue
-		}
-
-		idx := strings.LastIndex(path, segment)
-		if idx < matchedIndex {
-			continue
-		}
-		if idx > matchedIndex {
-			matchedIndex = idx
-			matchedPlural = d.Plural
+	shouldValidate = false
+	for _, m := range matchers {
+		shouldValidate = m.re.MatchString(path)
+		if shouldValidate {
+			resourcePlural = m.plural
+			break
 		}
 	}
 
-	if matchedPlural == "" {
-		return false, ""
-	}
-	return true, matchedPlural
-}
-
-func pathMatchesSpecEntity(method, path, segment string) bool {
-	switch method {
-	case http.MethodPost:
-		return strings.HasSuffix(path, segment)
-	case http.MethodPatch:
-		return strings.Contains(path, segment+"/")
-	default:
-		return false
-	}
+	return shouldValidate, resourcePlural
 }

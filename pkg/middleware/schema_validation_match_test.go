@@ -8,8 +8,8 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/registry"
 )
 
-// clusterFirstEntities lists clusters before nodepools to ensure matching does not depend on slice order.
-var clusterFirstEntities = []registry.EntityDescriptor{
+// matchers lists clusters before nodepools to ensure matching does not depend on slice order.
+var matchers = buildMatchers([]registry.EntityDescriptor{
 	{
 		Kind:           "Cluster",
 		Plural:         "clusters",
@@ -32,15 +32,15 @@ var clusterFirstEntities = []registry.EntityDescriptor{
 		ParentKind:     "Channel",
 		SpecSchemaName: "VersionSpec",
 	},
-}
+})
 
 func TestShouldValidateRequest_PostNestedNodePoolPrefersNodePoolOverCluster(t *testing.T) {
 	RegisterTestingT(t)
 
 	should, plural := shouldValidateRequest(
 		http.MethodPost,
-		"/api/hyperfleet/v1/clusters/abc-123/nodepools",
-		clusterFirstEntities,
+		"/api/hyperfleet/v1/clusters/550e8400-e29b-41d4-a716-446655440000/nodepools",
+		matchers,
 	)
 
 	Expect(should).To(BeTrue())
@@ -52,8 +52,8 @@ func TestShouldValidateRequest_PatchNestedNodePoolPrefersNodePoolOverCluster(t *
 
 	should, plural := shouldValidateRequest(
 		http.MethodPatch,
-		"/api/hyperfleet/v1/clusters/abc-123/nodepools/np-456",
-		clusterFirstEntities,
+		"/api/hyperfleet/v1/clusters/550e8400-e29b-41d4-a716-446655440000/nodepools/660e8400-e29b-41d4-a716-446655440001",
+		matchers,
 	)
 
 	Expect(should).To(BeTrue())
@@ -66,7 +66,7 @@ func TestShouldValidateRequest_PostClusterCollectionMatchesCluster(t *testing.T)
 	should, plural := shouldValidateRequest(
 		http.MethodPost,
 		"/api/hyperfleet/v1/clusters",
-		clusterFirstEntities,
+		matchers,
 	)
 
 	Expect(should).To(BeTrue())
@@ -78,12 +78,25 @@ func TestShouldValidateRequest_PatchClusterResourceMatchesCluster(t *testing.T) 
 
 	should, plural := shouldValidateRequest(
 		http.MethodPatch,
-		"/api/hyperfleet/v1/clusters/abc-123",
-		clusterFirstEntities,
+		"/api/hyperfleet/v1/clusters/550e8400-e29b-41d4-a716-446655440000",
+		matchers,
 	)
 
 	Expect(should).To(BeTrue())
 	Expect(plural).To(Equal("clusters"))
+}
+
+func TestShouldValidateRequest_PatchVersionResourceMatchesVersion(t *testing.T) {
+	RegisterTestingT(t)
+
+	should, plural := shouldValidateRequest(
+		http.MethodPatch,
+		"/api/hyperfleet/v1/channels/cc0e8400-e29b-41d4-a716-446655440000/versions/550e8400-e29b-41d4-a716-446655440000",
+		matchers,
+	)
+
+	Expect(should).To(BeTrue())
+	Expect(plural).To(Equal("versions"))
 }
 
 func TestShouldValidateRequest_PostNestedVersionPrefersVersionOverChannel(t *testing.T) {
@@ -91,8 +104,8 @@ func TestShouldValidateRequest_PostNestedVersionPrefersVersionOverChannel(t *tes
 
 	should, plural := shouldValidateRequest(
 		http.MethodPost,
-		"/api/hyperfleet/v1/channels/stable/versions",
-		clusterFirstEntities,
+		"/api/hyperfleet/v1/channels/cc0e8400-e29b-41d4-a716-446655440000/versions",
+		matchers,
 	)
 
 	Expect(should).To(BeTrue())
@@ -104,8 +117,8 @@ func TestShouldValidateRequest_GetSkipsValidation(t *testing.T) {
 
 	should, plural := shouldValidateRequest(
 		http.MethodGet,
-		"/api/hyperfleet/v1/clusters/abc-123/nodepools",
-		clusterFirstEntities,
+		"/api/hyperfleet/v1/clusters/550e8400-e29b-41d4-a716-446655440000/nodepools",
+		matchers,
 	)
 
 	Expect(should).To(BeFalse())
