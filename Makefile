@@ -61,7 +61,6 @@ db_name := hyperfleet
 db_port := 5432
 db_user := hyperfleet
 db_password := foobar-bizz-buzz
-db_password_file := ${PWD}/secrets/db.password
 db_sslmode := disable
 db_image ?= docker.io/library/postgres:14.2
 
@@ -143,19 +142,17 @@ build: generate-all ## Build the hyperfleet-api binary
 install: generate-all ## Build and install binary to GOPATH/bin
 	CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=boringcrypto ${GO} install $(GOFLAGS) -ldflags="$(LDFLAGS)" ./cmd/hyperfleet-api
 
-# Common CLI flags for local database access (password loaded from secrets/ at runtime)
+# Common CLI flags for local database access
 DB_FLAGS = --db-host localhost --db-port $(db_port) --db-name $(db_name) \
-           --db-username $(db_user)
+           --db-username $(db_user) --db-password $(db_password)
 
 .PHONY: run
-run: build ## Run the application
-	HYPERFLEET_DATABASE_PASSWORD=$$(cat secrets/db.password) ./bin/hyperfleet-api migrate $(DB_FLAGS)
-	HYPERFLEET_DATABASE_PASSWORD=$$(cat secrets/db.password) ./bin/hyperfleet-api serve $(DB_FLAGS)
+run: db/migrate ## Run the application
+	./bin/hyperfleet-api serve $(DB_FLAGS)
 
 .PHONY: run-no-auth
-run-no-auth: build ## Run the application without auth
-	HYPERFLEET_DATABASE_PASSWORD=$$(cat secrets/db.password) HYPERFLEET_SERVER_JWT_ENABLED=false ./bin/hyperfleet-api migrate $(DB_FLAGS)
-	HYPERFLEET_DATABASE_PASSWORD=$$(cat secrets/db.password) ./bin/hyperfleet-api serve $(DB_FLAGS) --server-jwt-enabled=false
+run-no-auth: db/migrate ## Run the application without auth
+	./bin/hyperfleet-api serve $(DB_FLAGS) --server-jwt-enabled=false
 
 .PHONY: run/docs
 run/docs: check-container-tool ## Run swagger and host the api spec
@@ -182,41 +179,29 @@ clean: ## Delete temporary generated files
 		bin \
 		pkg/api/openapi \
 		data/generated/openapi/*.json \
-		secrets \
 		openapi/openapi.yaml \
-
-.PHONY: secrets
-secrets: ## Initialize secrets directory with default values
-	@mkdir -p secrets
-	@printf "localhost" > secrets/db.host
-	@printf "$(db_name)" > secrets/db.name
-	@printf "$(db_password)" > secrets/db.password
-	@printf "$(db_port)" > secrets/db.port
-	@printf "$(db_user)" > secrets/db.user
-
-	@echo "Secrets directory initialized with default values"
 
 ##@ Testing
 
 .PHONY: test
-test: install secrets $(GOTESTSUM) ## Run unit tests
+test: install $(GOTESTSUM) ## Run unit tests
 	HYPERFLEET_ENV=unit_testing $(GOTESTSUM) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -v $(TESTFLAGS) \
 		./pkg/... \
 		./cmd/...
 
 .PHONY: ci-test-unit
-ci-test-unit: install secrets $(GOTESTSUM) ## Run unit tests with JSON output
+ci-test-unit: install $(GOTESTSUM) ## Run unit tests with JSON output
 	HYPERFLEET_ENV=unit_testing $(GOTESTSUM) --jsonfile-timing-events=$(unit_test_json_output) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -v $(TESTFLAGS) \
 		./pkg/... \
 		./cmd/...
 
 .PHONY: test-integration
-test-integration: install secrets $(GOTESTSUM) ## Run integration tests
+test-integration: install $(GOTESTSUM) ## Run integration tests
 	TESTCONTAINERS_RYUK_DISABLED=true HYPERFLEET_ENV=integration_testing $(GOTESTSUM) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) \
 			./test/integration
 
 .PHONY: ci-test-integration
-ci-test-integration: install secrets $(GOTESTSUM) ## Run integration tests with JSON output
+ci-test-integration: install $(GOTESTSUM) ## Run integration tests with JSON output
 	TESTCONTAINERS_RYUK_DISABLED=true HYPERFLEET_ENV=integration_testing $(GOTESTSUM) --jsonfile-timing-events=$(integration_test_json_output) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) \
 			./test/integration
 
@@ -233,9 +218,12 @@ verify-all: verify lint verify-migrations test ## Run all static checks + unit t
 ##@ Database
 
 .PHONY: db/setup
-db/setup: check-container-tool secrets ## Start local PostgreSQL container
-	@echo $(db_password) > $(db_password_file)
+db/setup: check-container-tool ## Start local PostgreSQL container
 	$(CONTAINER_TOOL) run --name psql-hyperfleet -e POSTGRES_DB=$(db_name) -e POSTGRES_USER=$(db_user) -e POSTGRES_PASSWORD=$(db_password) -p $(db_port):5432 -d $(db_image)
+
+.PHONY: db/migrate
+db/migrate: build ## Apply database migrations to local PostgreSQL
+	HYPERFLEET_SERVER_JWT_ENABLED=false ./bin/hyperfleet-api migrate $(DB_FLAGS)
 
 .PHONY: db/login
 db/login: check-container-tool ## Login to local PostgreSQL
