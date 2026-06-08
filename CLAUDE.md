@@ -94,7 +94,6 @@ Each resource registers via `init()` function:
 - Integration tests: `test/integration/` — use `test.RegisterIntegration(t)` for setup
 - Testcontainers for PostgreSQL — auto-creates isolated DB per test suite
 - [Test placement strategy](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/docs/e2e-testing/test-placement-strategy.md) — which layer a test belongs in (unit / integration / E2E)
-- [Test placement strategy](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/docs/e2e-testing/test-placement-strategy.md) — which layer a test belongs in (unit / integration / E2E)
 
 ## Architecture Quick Reference
 
