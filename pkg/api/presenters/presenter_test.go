@@ -604,6 +604,17 @@ func TestFilterSingle(t *testing.T) {
 			},
 		},
 		{
+			name:   "invalid nested field with nonexistent parent",
+			fields: []string{"id", "nonexistent_parent.sub"},
+			model:  createTestCluster(),
+			validate: func(result map[string]interface{}, err *errors.ServiceError) {
+				Expect(result).To(BeNil())
+				Expect(err).ToNot(BeNil())
+				Expect(err.Type).To(Equal(errors.ErrorTypeValidation))
+				Expect(err.Error()).To(ContainSubstring("doesn't exist"))
+			},
+		},
+		{
 			name:   "empty field list",
 			fields: []string{},
 			model:  createTestCluster(),

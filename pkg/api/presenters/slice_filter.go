@@ -109,11 +109,14 @@ func validate(model interface{}, in map[string]bool, prefix string) *errors.Serv
 				// Only recurse if there are nested fields explicitly requested
 				// Pass ONLY the fields that belong to this struct (subIn)
 				if len(subIn) > 0 {
+					subKeys := make([]string, 0, len(subIn))
+					for k := range subIn {
+						subKeys = append(subKeys, k)
+					}
 					if err := validate(field, subIn, prefixedName); err != nil {
 						return err
 					}
-					// Remove validated fields from the original map AFTER successful validation
-					for k := range subIn {
+					for _, k := range subKeys {
 						delete(in, k)
 					}
 				}
@@ -182,16 +185,12 @@ func validate(model interface{}, in map[string]bool, prefix string) *errors.Serv
 	}
 	for k := range in {
 		// Include field if:
-		// 1. No prefix and field has no dots (top-level field)
+		// 1. No prefix: all remaining fields (nested fields consumed by recursion)
 		// 2. Has prefix and field starts with it (belongs to this struct)
 		if prefix == "" {
-			if !strings.Contains(k, ".") {
-				fields = append(fields, k)
-			}
-		} else {
-			if strings.HasPrefix(k, expectedPrefix) {
-				fields = append(fields, k)
-			}
+			fields = append(fields, k)
+		} else if strings.HasPrefix(k, expectedPrefix) {
+			fields = append(fields, k)
 		}
 	}
 
