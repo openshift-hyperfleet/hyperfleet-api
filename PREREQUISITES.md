@@ -61,9 +61,6 @@ make generate
 # Install Go dependencies
 go mod download
 
-# Initialize configuration
-make secrets
-
 # Start database
 make db/setup
 

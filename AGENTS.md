@@ -10,7 +10,6 @@ For Claude Code users: also see `CLAUDE.md` (auto-loaded) and `.claude/rules/` (
 ```
 make generate-all     # REQUIRED FIRST — generated code not in git
 go mod download
-make secrets          # Initialize secrets/ with defaults
 make db/setup         # Start local PostgreSQL container
 make build            # Build binary (CGO_ENABLED=1 GOEXPERIMENT=boringcrypto)
 ./bin/hyperfleet-api migrate

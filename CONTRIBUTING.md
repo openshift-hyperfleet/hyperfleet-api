@@ -20,10 +20,7 @@ make generate-all
 # 4. Install dependencies
 go mod download
 
-# 5. Initialize secrets directory
-make secrets
-
-# 6. Setup local PostgreSQL database
+# 5. Setup local PostgreSQL database
 make db/setup
 
 # 7. Build the project

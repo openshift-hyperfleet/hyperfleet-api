@@ -20,11 +20,10 @@ make generate-all    # Generates OpenAPI types + mock implementations
 Setup sequence for a fresh clone:
 1. `make generate-all` — generate OpenAPI models and mocks
 2. `go mod download` — fetch dependencies
-3. `make secrets` — initialize secrets/ with defaults
-4. `make db/setup` — start local PostgreSQL container
-5. `make build` — build binary (uses `CGO_ENABLED=1 GOEXPERIMENT=boringcrypto`)
-6. `./bin/hyperfleet-api migrate` — apply database migrations
-7. `make run-no-auth` — start server without authentication
+3. `make db/setup` — start local PostgreSQL container
+4. `make build` — build binary (uses `CGO_ENABLED=1 GOEXPERIMENT=boringcrypto`)
+5. `./bin/hyperfleet-api migrate` — apply database migrations
+6. `make run-no-auth` — start server without authentication
 
 Tool management uses [Bingo](https://github.com/bwplotka/bingo) — tool versions are pinned in `.bingo/`.
 
