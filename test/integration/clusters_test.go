@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1534,4 +1535,200 @@ func TestClusterForceDelete(t *testing.T) {
 			Expect(forceDeleteResp.StatusCode()).To(Equal(tc.expectedStatus))
 		})
 	}
+}
+
+func TestClusterDeleteNonExistent(t *testing.T) {
+	h, client := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+
+	resp, err := client.DeleteClusterByIdWithResponse(ctx, h.NewID(), test.WithAuthToken(ctx))
+	Expect(err).NotTo(HaveOccurred())
+	Expect(resp.StatusCode()).To(Equal(http.StatusNotFound),
+		"DELETE on non-existent cluster should return 404")
+}
+
+func TestClusterPatchSoftDeleted(t *testing.T) {
+	h, client := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+
+	cluster, err := h.Factories.NewClusters(h.NewID())
+	Expect(err).NotTo(HaveOccurred())
+
+	// Soft-delete the cluster
+	delResp, err := client.DeleteClusterByIdWithResponse(ctx, cluster.ID, test.WithAuthToken(ctx))
+	Expect(err).NotTo(HaveOccurred())
+	Expect(delResp.StatusCode()).To(Equal(http.StatusAccepted))
+
+	// PATCH should be rejected
+	patchBody := openapi.PatchClusterByIdJSONRequestBody{
+		Spec: &openapi.ClusterSpec{"should": "fail"},
+	}
+	patchResp, err := client.PatchClusterByIdWithResponse(ctx, cluster.ID, patchBody, test.WithAuthToken(ctx))
+	Expect(err).NotTo(HaveOccurred())
+	Expect(patchResp.StatusCode()).To(Equal(http.StatusConflict),
+		"PATCH on soft-deleted cluster should return 409")
+}
+
+func TestClusterCreateNodePoolUnderSoftDeleted(t *testing.T) {
+	h, client := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+
+	cluster, err := h.Factories.NewClusters(h.NewID())
+	Expect(err).NotTo(HaveOccurred())
+
+	// Soft-delete the cluster
+	delResp, err := client.DeleteClusterByIdWithResponse(ctx, cluster.ID, test.WithAuthToken(ctx))
+	Expect(err).NotTo(HaveOccurred())
+	Expect(delResp.StatusCode()).To(Equal(http.StatusAccepted))
+
+	// Attempt to create a nodepool under the soft-deleted cluster
+	npInput := openapi.NodePoolCreateRequest{
+		Kind: util.PtrString("NodePool"),
+		Name: "should-fail-np",
+		Spec: map[string]interface{}{"test": "spec"},
+	}
+	npResp, err := client.CreateNodePoolWithResponse(
+		ctx, cluster.ID, openapi.CreateNodePoolJSONRequestBody(npInput), test.WithAuthToken(ctx),
+	)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(npResp.StatusCode()).To(Equal(http.StatusConflict),
+		"creating nodepool under soft-deleted cluster should return 409")
+}
+
+func TestClusterPatchNoOpSameGeneration(t *testing.T) {
+	h, client := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+
+	cluster, err := h.Factories.NewClusters(h.NewID())
+	Expect(err).NotTo(HaveOccurred())
+
+	// PATCH with a spec change to bump generation
+	spec := openapi.ClusterSpec{"region": "us-east-1"}
+	patchBody := openapi.PatchClusterByIdJSONRequestBody{Spec: &spec}
+	resp, err := client.PatchClusterByIdWithResponse(ctx, cluster.ID, patchBody, test.WithAuthToken(ctx))
+	Expect(err).NotTo(HaveOccurred())
+	Expect(resp.StatusCode()).To(Equal(http.StatusOK))
+	genAfterPatch := resp.JSON200.Generation
+
+	// Replay the same spec — generation should not increment
+	replayResp, err := client.PatchClusterByIdWithResponse(ctx, cluster.ID, patchBody, test.WithAuthToken(ctx))
+	Expect(err).NotTo(HaveOccurred())
+	Expect(replayResp.StatusCode()).To(Equal(http.StatusOK))
+	Expect(replayResp.JSON200.Generation).To(Equal(genAfterPatch),
+		"generation should not increment for identical spec PATCH")
+}
+
+func TestClusterConcurrentDelete(t *testing.T) {
+	h, client := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+
+	cluster, err := h.Factories.NewClusters(h.NewID())
+	Expect(err).NotTo(HaveOccurred())
+	initialGeneration := cluster.Generation
+
+	const concurrency = 5
+	type deleteResult struct {
+		resp *openapi.DeleteClusterByIdResponse
+		err  error
+	}
+	results := make([]deleteResult, concurrency)
+
+	var wg sync.WaitGroup
+	wg.Add(concurrency)
+	for i := range concurrency {
+		go func(idx int) {
+			defer wg.Done()
+			r, e := client.DeleteClusterByIdWithResponse(ctx, cluster.ID, test.WithAuthToken(ctx))
+			results[idx] = deleteResult{resp: r, err: e}
+		}(i)
+	}
+	wg.Wait()
+
+	for i, r := range results {
+		Expect(r.err).NotTo(HaveOccurred(), "DELETE request %d should not return error", i)
+		Expect(r.resp.StatusCode()).To(Equal(http.StatusAccepted), "DELETE request %d should return 202", i)
+		Expect(r.resp.JSON202.DeletedTime).NotTo(BeNil(), "DELETE request %d should have deleted_time", i)
+	}
+
+	referenceTime := *results[0].resp.JSON202.DeletedTime
+	referenceGen := results[0].resp.JSON202.Generation
+	for i := 1; i < concurrency; i++ {
+		Expect(*results[i].resp.JSON202.DeletedTime).To(Equal(referenceTime),
+			"all DELETE responses should carry identical deleted_time")
+		Expect(results[i].resp.JSON202.Generation).To(Equal(referenceGen),
+			"all DELETE responses should carry identical generation")
+	}
+
+	Expect(referenceGen).To(Equal(initialGeneration+1),
+		"generation should increment by exactly 1, not by the number of concurrent requests")
+}
+
+func TestClusterGetSoftDeleted(t *testing.T) {
+	h, client := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+
+	cluster, err := h.Factories.NewClusters(h.NewID())
+	Expect(err).NotTo(HaveOccurred())
+
+	delResp, err := client.DeleteClusterByIdWithResponse(ctx, cluster.ID, test.WithAuthToken(ctx))
+	Expect(err).NotTo(HaveOccurred())
+	Expect(delResp.StatusCode()).To(Equal(http.StatusAccepted))
+
+	getResp, err := client.GetClusterByIdWithResponse(ctx, cluster.ID, nil, test.WithAuthToken(ctx))
+	Expect(err).NotTo(HaveOccurred())
+	Expect(getResp.StatusCode()).To(Equal(http.StatusOK),
+		"GET on soft-deleted cluster should return 200, not 404")
+	Expect(getResp.JSON200.DeletedTime).NotTo(BeNil(),
+		"soft-deleted cluster should have deleted_time in GET response")
+	Expect(*getResp.JSON200.Id).To(Equal(cluster.ID))
+}
+
+func TestClusterListIncludesSoftDeleted(t *testing.T) {
+	h, client := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+
+	activeCluster, err := h.Factories.NewClusters(h.NewID())
+	Expect(err).NotTo(HaveOccurred())
+
+	deletedCluster, err := h.Factories.NewClusters(h.NewID())
+	Expect(err).NotTo(HaveOccurred())
+
+	delResp, err := client.DeleteClusterByIdWithResponse(ctx, deletedCluster.ID, test.WithAuthToken(ctx))
+	Expect(err).NotTo(HaveOccurred())
+	Expect(delResp.StatusCode()).To(Equal(http.StatusAccepted))
+
+	listResp, err := client.GetClustersWithResponse(ctx, nil, test.WithAuthToken(ctx))
+	Expect(err).NotTo(HaveOccurred())
+	Expect(listResp.StatusCode()).To(Equal(http.StatusOK))
+
+	var foundActive, foundDeleted bool
+	for _, item := range listResp.JSON200.Items {
+		if item.Id == nil {
+			continue
+		}
+		if *item.Id == activeCluster.ID {
+			Expect(item.DeletedTime).To(BeNil(), "active cluster should not have deleted_time")
+			foundActive = true
+		}
+		if *item.Id == deletedCluster.ID {
+			Expect(item.DeletedTime).NotTo(BeNil(), "soft-deleted cluster should have deleted_time")
+			foundDeleted = true
+		}
+	}
+	Expect(foundActive).To(BeTrue(), "active cluster should appear in LIST")
+	Expect(foundDeleted).To(BeTrue(), "soft-deleted cluster should appear in LIST")
 }

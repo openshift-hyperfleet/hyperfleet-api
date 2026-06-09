@@ -78,6 +78,54 @@ func TestJSONEqual(t *testing.T) {
 			b:        []byte(`{"a":1}`),
 			expected: true,
 		},
+		{
+			name:     "both nil",
+			a:        nil,
+			b:        nil,
+			expected: true,
+		},
+		{
+			name:     "both empty",
+			a:        []byte{},
+			b:        []byte{},
+			expected: true,
+		},
+		{
+			name:     "nil and empty",
+			a:        nil,
+			b:        []byte{},
+			expected: true,
+		},
+		{
+			name:     "nil and valid json",
+			a:        nil,
+			b:        []byte(`{"a":1}`),
+			expected: false,
+		},
+		{
+			name:     "valid json and nil",
+			a:        []byte(`{"a":1}`),
+			b:        nil,
+			expected: false,
+		},
+		{
+			name:     "nil and json null",
+			a:        nil,
+			b:        []byte(`null`),
+			expected: false,
+		},
+		{
+			name:     "both json null",
+			a:        []byte(`null`),
+			b:        []byte(`null`),
+			expected: true,
+		},
+		{
+			name:     "both invalid json",
+			a:        []byte(`broken`),
+			b:        []byte(`broken`),
+			expected: false,
+		},
 	}
 
 	for _, tt := range tests {

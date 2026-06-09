@@ -79,7 +79,7 @@ hyperfleet-api/
 
 ## Testing
 
-How to run unit tests, integration tests, linting, and validation.
+How to run unit tests, integration tests, linting, and validation. See the [test placement strategy](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/docs/e2e-testing/test-placement-strategy.md) for which layer a new test belongs in.
 
 ### Unit Tests
 ```bash

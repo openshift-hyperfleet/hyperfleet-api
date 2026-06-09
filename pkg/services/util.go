@@ -17,6 +17,10 @@ import (
 )
 
 func jsonEqual(a, b []byte) bool {
+	if len(a) == 0 && len(b) == 0 {
+		return true
+	}
+
 	var va, vb any
 	if err := json.Unmarshal(a, &va); err != nil {
 		return false
