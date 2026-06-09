@@ -1,6 +1,8 @@
 package configloader
 
 import (
+	"bytes"
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -9,6 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
+
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/logger"
 )
 
 const testAdapterConfigYAML = `
@@ -521,6 +525,9 @@ func TestGetPreconditionByName(t *testing.T) {
 }
 
 func TestValidateAdapterVersion(t *testing.T) {
+	ctx := context.Background()
+	log := newTestLogger(nil)
+
 	config := &AdapterConfig{
 		Adapter: AdapterInfo{
 			Name:    "test-adapter",
@@ -529,35 +536,35 @@ func TestValidateAdapterVersion(t *testing.T) {
 	}
 
 	// Exact match
-	err := ValidateAdapterVersion(config, "1.0.0")
+	err := ValidateAdapterVersion(ctx, log, config, "1.0.0")
 	assert.NoError(t, err)
 
 	// Patch version differs - should pass (bug fix release)
-	err = ValidateAdapterVersion(config, "1.0.5")
+	err = ValidateAdapterVersion(ctx, log, config, "1.0.5")
 	assert.NoError(t, err)
 
 	// Minor version differs - should fail
-	err = ValidateAdapterVersion(config, "1.1.0")
+	err = ValidateAdapterVersion(ctx, log, config, "1.1.0")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "adapter version mismatch")
 
 	// Major version differs - should fail
-	err = ValidateAdapterVersion(config, "2.0.0")
+	err = ValidateAdapterVersion(ctx, log, config, "2.0.0")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "adapter version mismatch")
 
 	// Empty expected version (skip validation)
-	err = ValidateAdapterVersion(config, "")
+	err = ValidateAdapterVersion(ctx, log, config, "")
 	assert.NoError(t, err)
 
 	// Dev build versions (0.0.0-* skip validation)
-	err = ValidateAdapterVersion(config, "0.0.0-dev")
+	err = ValidateAdapterVersion(ctx, log, config, "0.0.0-dev")
 	assert.NoError(t, err)
 
-	err = ValidateAdapterVersion(config, "0.0.0-master")
+	err = ValidateAdapterVersion(ctx, log, config, "0.0.0-master")
 	assert.NoError(t, err)
 
-	err = ValidateAdapterVersion(config, "v0.0.0-dev")
+	err = ValidateAdapterVersion(ctx, log, config, "v0.0.0-dev")
 	assert.NoError(t, err)
 
 	// Empty config version (not provided in adapter config - skip validation)
@@ -566,28 +573,71 @@ func TestValidateAdapterVersion(t *testing.T) {
 			Name: "test-adapter",
 		},
 	}
-	err = ValidateAdapterVersion(noVersionConfig, "1.0.0")
+	err = ValidateAdapterVersion(ctx, log, noVersionConfig, "1.0.0")
 	assert.NoError(t, err)
 
 	// Pre-release version with same major.minor - should pass
-	err = ValidateAdapterVersion(config, "1.0.1-rc.1")
+	err = ValidateAdapterVersion(ctx, log, config, "1.0.1-rc.1")
 	assert.NoError(t, err)
 
-	// Invalid config version
+	// Non-semver config version - should warn and skip validation
 	invalidConfig := &AdapterConfig{
 		Adapter: AdapterInfo{
 			Name:    "test-adapter",
 			Version: "not-a-version",
 		},
 	}
-	err = ValidateAdapterVersion(invalidConfig, "1.0.0")
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "invalid config adapter version")
+	var buf bytes.Buffer
+	logWithCapture := newTestLogger(&buf)
 
-	// Invalid expected version
-	err = ValidateAdapterVersion(config, "not-a-version")
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "invalid expected adapter version")
+	err = ValidateAdapterVersion(ctx, logWithCapture, invalidConfig, "1.0.0")
+	assert.NoError(t, err)
+	assert.Contains(t, buf.String(), "Skipping adapter version validation")
+	assert.Contains(t, buf.String(), "config version is not valid semver")
+
+	// Non-semver binary version - should warn and skip validation
+	buf.Reset()
+	err = ValidateAdapterVersion(ctx, logWithCapture, config, "not-a-version")
+	assert.NoError(t, err)
+	assert.Contains(t, buf.String(), "Skipping adapter version validation")
+	assert.Contains(t, buf.String(), "binary version is not valid semver")
+
+	// Non-semver binary version "dev" (Konflux pipeline case)
+	buf.Reset()
+	err = ValidateAdapterVersion(ctx, logWithCapture, config, "dev")
+	assert.NoError(t, err)
+	assert.Contains(t, buf.String(), "Skipping adapter version validation")
+	assert.Contains(t, buf.String(), "binary version is not valid semver")
+
+	// Non-semver config version with valid binary version
+	devConfig := &AdapterConfig{
+		Adapter: AdapterInfo{
+			Name:    "test-adapter",
+			Version: "dev",
+		},
+	}
+	buf.Reset()
+	err = ValidateAdapterVersion(ctx, logWithCapture, devConfig, "1.0.0")
+	assert.NoError(t, err)
+	assert.Contains(t, buf.String(), "Skipping adapter version validation")
+	assert.Contains(t, buf.String(), "config version is not valid semver")
+
+	// Both versions non-semver (config parse fails first, so only config warning emitted)
+	buf.Reset()
+	err = ValidateAdapterVersion(ctx, logWithCapture, devConfig, "latest")
+	assert.NoError(t, err)
+	assert.Contains(t, buf.String(), "Skipping adapter version validation")
+	assert.Contains(t, buf.String(), "config version is not valid semver")
+}
+
+func newTestLogger(buf *bytes.Buffer) logger.Logger {
+	cfg := logger.DefaultConfig()
+	cfg.Format = "text"
+	if buf != nil {
+		cfg.Writer = buf
+	}
+	l, _ := logger.NewLogger(cfg)
+	return l
 }
 
 func TestValidateFileReferencesInTaskConfig(t *testing.T) {

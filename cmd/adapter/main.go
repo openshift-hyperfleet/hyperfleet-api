@@ -234,6 +234,8 @@ func loadConfig(ctx context.Context, log logger.Logger, flags *pflag.FlagSet) (*
 		configloader.WithTaskConfigPath(taskConfigPath),
 		configloader.WithAdapterVersion(version.Version),
 		configloader.WithFlags(flags),
+		configloader.WithContext(ctx),
+		configloader.WithLogger(log),
 	)
 	if err != nil {
 		errCtx := logger.WithErrorField(ctx, err)
