@@ -99,15 +99,7 @@ func (h ClusterNodePoolsHandler) Get(w http.ResponseWriter, r *http.Request) {
 				return nil, errors.GeneralError("Failed to present nodepool: %v", presErr)
 			}
 
-			listArgs := services.NewListArguments(r.URL.Query())
-			if listArgs.Fields != nil {
-				filtered, filterErr := presenters.FilterSingle(listArgs.Fields, presented)
-				if filterErr != nil {
-					return nil, filterErr
-				}
-				return filtered, nil
-			}
-			return presented, nil
+			return applyFieldFilter(r, presented)
 		},
 		ErrorHandler: handleError,
 	}

@@ -24,7 +24,7 @@ func createEmptyConditionsClusterList() openapi.ClusterList {
 }
 
 func createTestClusterList() openapi.ClusterList {
-	id1 := "cluster-id1"
+	id1 := testClusterID1
 	id2 := "cluster-id2"
 	kind := clusterKind
 
@@ -38,7 +38,7 @@ func createTestClusterList() openapi.ClusterList {
 
 	now := time.Now()
 	msg1 := "All checks passed"
-	msg2 := "Some components unavailable"
+	msg2 := testMessageComponentsUnavailable
 	conditions := []openapi.ResourceCondition{
 		{
 			Type:               api.ResourceConditionTypeReconciled,
@@ -110,7 +110,7 @@ func TestSliceFilter(t *testing.T) {
 
 				// Included fields
 				id1 := result.Items[0]["id"].(*string)
-				Expect(*id1).To(Equal("cluster-id1"))
+				Expect(*id1).To(Equal(testClusterID1))
 				Expect(result.Items[0]["name"]).To(Equal("test-cluster"))
 				Expect(result.Items[0]["generation"]).To(Equal(int32(1)))
 
@@ -135,7 +135,7 @@ func TestSliceFilter(t *testing.T) {
 				Expect(result.Items).To(HaveLen(2))
 
 				id1 := result.Items[0]["id"].(*string)
-				Expect(*id1).To(Equal("cluster-id1"))
+				Expect(*id1).To(Equal(testClusterID1))
 				Expect(result.Items[0]["name"]).To(Equal("test-cluster"))
 
 				// Verify nested labels map is included
@@ -163,7 +163,7 @@ func TestSliceFilter(t *testing.T) {
 				Expect(result.Items).To(HaveLen(2))
 
 				id1 := result.Items[0]["id"].(*string)
-				Expect(*id1).To(Equal("cluster-id1"))
+				Expect(*id1).To(Equal(testClusterID1))
 
 				createdTime, ok := result.Items[0]["created_time"].(string)
 				Expect(ok).To(BeTrue(), "created_time should be a string")
@@ -448,7 +448,10 @@ func TestSliceFilter(t *testing.T) {
 	}
 }
 
-const testClusterID1 = "cluster-id1"
+const (
+	testClusterID1  = "cluster-id1"
+	testNodePoolID1 = "nodepool-id1"
+)
 
 func createTestCluster() openapi.Cluster {
 	id := testClusterID1
@@ -461,7 +464,7 @@ func createTestCluster() openapi.Cluster {
 
 	now := time.Now()
 	msg1 := "All checks passed"
-	msg2 := "Some components unavailable"
+	msg2 := testMessageComponentsUnavailable
 	conditions := []openapi.ResourceCondition{
 		{
 			Type:               api.ResourceConditionTypeReconciled,
@@ -511,7 +514,7 @@ func TestFilterSingle(t *testing.T) {
 
 				// Included fields
 				id := result["id"].(*string)
-				Expect(*id).To(Equal("cluster-id1"))
+				Expect(*id).To(Equal(testClusterID1))
 				Expect(result["name"]).To(Equal("test-cluster"))
 				Expect(result["generation"]).To(Equal(int32(1)))
 
@@ -530,7 +533,7 @@ func TestFilterSingle(t *testing.T) {
 				Expect(result).ToNot(BeNil())
 
 				id := result["id"].(*string)
-				Expect(*id).To(Equal("cluster-id1"))
+				Expect(*id).To(Equal(testClusterID1))
 				Expect(result["name"]).To(Equal("test-cluster"))
 
 				labels := result["labels"].(*map[string]string)
@@ -550,7 +553,7 @@ func TestFilterSingle(t *testing.T) {
 				Expect(result).ToNot(BeNil())
 
 				id := result["id"].(*string)
-				Expect(*id).To(Equal("cluster-id1"))
+				Expect(*id).To(Equal(testClusterID1))
 
 				createdTime, ok := result["created_time"].(string)
 				Expect(ok).To(BeTrue(), "created_time should be a string")
@@ -715,10 +718,10 @@ func TestFilterSingle_AllClusterFields(t *testing.T) {
 }
 
 func createTestNodePool() openapi.NodePool {
-	id := "nodepool-id1"
-	kind := "NodePool"
-	ownerID := "cluster-id1"
-	ownerKind := "Cluster"
+	id := testNodePoolID1
+	kind := nodePoolKind
+	ownerID := testClusterID1
+	ownerKind := clusterKind
 	ownerHref := "/api/hyperfleet/v1/clusters/cluster-id1"
 
 	labels := map[string]string{
@@ -765,7 +768,7 @@ func TestFilterSingle_NodePool(t *testing.T) {
 
 				// Verify all requested fields are present
 				id := result["id"].(*string)
-				Expect(*id).To(Equal("nodepool-id1"))
+				Expect(*id).To(Equal(testNodePoolID1))
 				Expect(result["name"]).To(Equal("worker-pool"))
 				Expect(result).To(HaveKey("labels"))
 				Expect(result).To(HaveKey("spec"))
@@ -775,7 +778,7 @@ func TestFilterSingle_NodePool(t *testing.T) {
 				ownerRefs := result["owner_references"].(map[string]interface{})
 				Expect(ownerRefs).To(HaveKey("id"))
 				ownerID := ownerRefs["id"].(*string)
-				Expect(*ownerID).To(Equal("cluster-id1"))
+				Expect(*ownerID).To(Equal(testClusterID1))
 
 				// owner_references should NOT have kind or href (not requested)
 				Expect(ownerRefs).ToNot(HaveKey("kind"))

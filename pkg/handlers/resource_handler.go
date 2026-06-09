@@ -61,15 +61,7 @@ func (h *ResourceHandler) Get(w http.ResponseWriter, r *http.Request) {
 			}
 			presented := presenters.PresentResource(resource)
 
-			listArgs := services.NewListArguments(r.URL.Query())
-			if listArgs.Fields != nil {
-				filtered, filterErr := presenters.FilterSingle(listArgs.Fields, presented)
-				if filterErr != nil {
-					return nil, filterErr
-				}
-				return filtered, nil
-			}
-			return presented, nil
+			return applyFieldFilter(r, presented)
 		},
 	}
 	handleGet(w, r, cfg)
@@ -179,15 +171,7 @@ func (h *ResourceHandler) GetByOwner(w http.ResponseWriter, r *http.Request) {
 			}
 			presented := presenters.PresentResource(resource)
 
-			listArgs := services.NewListArguments(r.URL.Query())
-			if listArgs.Fields != nil {
-				filtered, filterErr := presenters.FilterSingle(listArgs.Fields, presented)
-				if filterErr != nil {
-					return nil, filterErr
-				}
-				return filtered, nil
-			}
-			return presented, nil
+			return applyFieldFilter(r, presented)
 		},
 	}
 	handleGet(w, r, cfg)
