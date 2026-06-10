@@ -29,7 +29,6 @@ type AdapterStatusService interface {
 	FindByResourceAndAdapter(
 		ctx context.Context, resourceType, resourceID, adapter string,
 	) (*api.AdapterStatus, *errors.ServiceError)
-	All(ctx context.Context) (api.AdapterStatusList, *errors.ServiceError)
 }
 
 func NewAdapterStatusService(adapterStatusDao dao.AdapterStatusDao) AdapterStatusService {
@@ -101,14 +100,6 @@ func (s *sqlAdapterStatusService) FindByResourceAndAdapter(
 		return nil, handleGetError("AdapterStatus", "adapter", adapter, err)
 	}
 	return status, nil
-}
-
-func (s *sqlAdapterStatusService) All(ctx context.Context) (api.AdapterStatusList, *errors.ServiceError) {
-	statuses, err := s.adapterStatusDao.All(ctx)
-	if err != nil {
-		return nil, errors.GeneralError("Unable to get all adapter statuses: %s", err)
-	}
-	return statuses, nil
 }
 
 func (s *sqlAdapterStatusService) Upsert(
