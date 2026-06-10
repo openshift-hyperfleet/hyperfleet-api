@@ -764,3 +764,92 @@ func TestClusterNodePoolsHandler_ForceDelete(t *testing.T) {
 		})
 	}
 }
+
+func TestClusterNodePoolsHandler_Get_WithFieldsFilter(t *testing.T) {
+	RegisterTestingT(t)
+
+	now := time.Now()
+	clusterID := testClusterID
+	nodePoolID := testNodePoolID
+
+	tests := []struct {
+		setupMocks         func(ctrl *gomock.Controller) (*services.MockClusterService, *services.MockNodePoolService)
+		validateResponse   func(body []byte)
+		name               string
+		queryParams        string
+		expectedStatusCode int
+	}{
+		{
+			name:        "Success - Filter with spec and owner_references.id - HYPERFLEET-1142 regression test",
+			queryParams: "?fields=id,name,labels,spec,owner_references.id",
+			setupMocks: func(ctrl *gomock.Controller) (*services.MockClusterService, *services.MockNodePoolService) {
+				mockClusterSvc := services.NewMockClusterService(ctrl)
+				mockNodePoolSvc := services.NewMockNodePoolService(ctrl)
+
+				mockNodePoolSvc.EXPECT().GetByIDAndOwner(gomock.Any(), nodePoolID, clusterID).Return(&api.NodePool{
+					Meta:             api.Meta{ID: nodePoolID, CreatedTime: now, UpdatedTime: now},
+					Kind:             "NodePool",
+					Name:             "worker-pool",
+					Spec:             []byte(`{"replicas": 3, "instanceType": "m5.large"}`),
+					Labels:           []byte(`{"tier": "worker"}`),
+					StatusConditions: []byte("[]"),
+					OwnerID:          clusterID,
+					OwnerKind:        "Cluster",
+					OwnerHref:        "/api/hyperfleet/v1/clusters/" + clusterID,
+					Generation:       1,
+					CreatedBy:        testSystemUser,
+					UpdatedBy:        testSystemUser,
+				}, nil)
+
+				return mockClusterSvc, mockNodePoolSvc
+			},
+			expectedStatusCode: http.StatusOK,
+			validateResponse: func(body []byte) {
+				var response map[string]interface{}
+				err := json.Unmarshal(body, &response)
+				Expect(err).NotTo(HaveOccurred())
+
+				// Should have requested fields
+				Expect(response).To(HaveKey("id"))
+				Expect(response).To(HaveKey("name"))
+				Expect(response).To(HaveKey("labels"))
+				Expect(response).To(HaveKey("spec"))
+				Expect(response).To(HaveKey("owner_references"))
+
+				// Verify owner_references.id is present
+				ownerRefs := response["owner_references"].(map[string]interface{})
+				Expect(ownerRefs).To(HaveKey("id"))
+
+				// Should NOT have other fields
+				Expect(response).ToNot(HaveKey("generation"))
+				Expect(response).ToNot(HaveKey("status"))
+				Expect(response).ToNot(HaveKey("created_time"))
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			RegisterTestingT(t)
+
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			mockClusterSvc, mockNodePoolSvc := tt.setupMocks(ctrl)
+			handler := NewClusterNodePoolsHandler(mockClusterSvc, mockNodePoolSvc)
+
+			reqURL := "/api/hyperfleet/v1/clusters/" + clusterID + "/nodepools/" + nodePoolID + tt.queryParams
+			req := httptest.NewRequest(http.MethodGet, reqURL, nil)
+			req = mux.SetURLVars(req, map[string]string{
+				"id":          clusterID,
+				"nodepool_id": nodePoolID,
+			})
+
+			rr := httptest.NewRecorder()
+			handler.Get(rr, req)
+
+			Expect(rr.Code).To(Equal(tt.expectedStatusCode))
+			tt.validateResponse(rr.Body.Bytes())
+		})
+	}
+}

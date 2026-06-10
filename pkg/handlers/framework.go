@@ -5,9 +5,11 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/presenters"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/response"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/services"
 )
 
 // handlerConfig defines the common things each REST controller must do.
@@ -47,6 +49,21 @@ func handleError(r *http.Request, w http.ResponseWriter, err *errors.ServiceErro
 	}
 
 	response.WriteProblemDetailsResponse(w, r, err.HTTPCode, err.AsProblemDetails(instance, traceID))
+}
+
+// applyFieldFilter applies field filtering to a presented resource based on the ?fields query parameter.
+// If no fields are specified, it returns the original presented resource.
+// If fields are specified, it filters the resource and returns only the requested fields.
+func applyFieldFilter(r *http.Request, presented interface{}) (interface{}, *errors.ServiceError) {
+	listArgs := services.NewListArguments(r.URL.Query())
+	if listArgs.Fields != nil {
+		filtered, filterErr := presenters.FilterSingle(listArgs.Fields, presented)
+		if filterErr != nil {
+			return nil, filterErr
+		}
+		return filtered, nil
+	}
+	return presented, nil
 }
 
 func handle(w http.ResponseWriter, r *http.Request, cfg *handlerConfig, httpStatus int) {

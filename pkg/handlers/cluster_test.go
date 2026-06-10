@@ -249,3 +249,179 @@ func TestClusterHandler_ForceDelete(t *testing.T) {
 		})
 	}
 }
+
+func TestClusterHandler_Get_WithFieldsFilter(t *testing.T) {
+	RegisterTestingT(t)
+
+	now := time.Now()
+	clusterID := testClusterID
+
+	tests := []struct {
+		setupMocks         func(ctrl *gomock.Controller) (*services.MockClusterService, *services.MockGenericService)
+		validateResponse   func(body []byte)
+		name               string
+		queryParams        string
+		expectedStatusCode int
+	}{
+		{
+			name:        "Success - No fields filter returns full resource",
+			queryParams: "",
+			setupMocks: func(ctrl *gomock.Controller) (*services.MockClusterService, *services.MockGenericService) {
+				mockClusterSvc := services.NewMockClusterService(ctrl)
+				mockGenericSvc := services.NewMockGenericService(ctrl)
+
+				mockClusterSvc.EXPECT().Get(gomock.Any(), clusterID).Return(&api.Cluster{
+					Meta:             api.Meta{ID: clusterID, CreatedTime: now, UpdatedTime: now},
+					Name:             "test-cluster",
+					Generation:       1,
+					Spec:             []byte(`{"region":"us-east-1"}`),
+					Labels:           []byte(`{"env":"prod"}`),
+					StatusConditions: []byte("[]"),
+					CreatedBy:        testSystemUser,
+					UpdatedBy:        testSystemUser,
+				}, nil)
+
+				return mockClusterSvc, mockGenericSvc
+			},
+			expectedStatusCode: http.StatusOK,
+			validateResponse: func(body []byte) {
+				var response openapi.Cluster
+				err := json.Unmarshal(body, &response)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(*response.Id).To(Equal(clusterID))
+				Expect(response.Name).To(Equal("test-cluster"))
+				Expect(response.Generation).To(Equal(int32(1)))
+				Expect(response.Spec).ToNot(BeNil())
+				Expect(response.Labels).ToNot(BeNil())
+			},
+		},
+		{
+			name:        "Success - Filter to only id and name",
+			queryParams: "?fields=id,name",
+			setupMocks: func(ctrl *gomock.Controller) (*services.MockClusterService, *services.MockGenericService) {
+				mockClusterSvc := services.NewMockClusterService(ctrl)
+				mockGenericSvc := services.NewMockGenericService(ctrl)
+
+				mockClusterSvc.EXPECT().Get(gomock.Any(), clusterID).Return(&api.Cluster{
+					Meta:             api.Meta{ID: clusterID, CreatedTime: now, UpdatedTime: now},
+					Name:             "test-cluster",
+					Generation:       1,
+					Spec:             []byte(`{"region":"us-east-1"}`),
+					Labels:           []byte(`{"env":"prod"}`),
+					StatusConditions: []byte("[]"),
+					CreatedBy:        testSystemUser,
+					UpdatedBy:        testSystemUser,
+				}, nil)
+
+				return mockClusterSvc, mockGenericSvc
+			},
+			expectedStatusCode: http.StatusOK,
+			validateResponse: func(body []byte) {
+				var response map[string]interface{}
+				err := json.Unmarshal(body, &response)
+				Expect(err).NotTo(HaveOccurred())
+
+				// Should have only id and name
+				Expect(response).To(HaveKey("id"))
+				Expect(response).To(HaveKey("name"))
+				Expect(response["name"]).To(Equal("test-cluster"))
+
+				// Should NOT have other fields
+				Expect(response).ToNot(HaveKey("generation"))
+				Expect(response).ToNot(HaveKey("spec"))
+				Expect(response).ToNot(HaveKey("labels"))
+				Expect(response).ToNot(HaveKey("created_time"))
+			},
+		},
+		{
+			name:        "Success - Filter with kind and generation",
+			queryParams: "?fields=kind,generation",
+			setupMocks: func(ctrl *gomock.Controller) (*services.MockClusterService, *services.MockGenericService) {
+				mockClusterSvc := services.NewMockClusterService(ctrl)
+				mockGenericSvc := services.NewMockGenericService(ctrl)
+
+				mockClusterSvc.EXPECT().Get(gomock.Any(), clusterID).Return(&api.Cluster{
+					Meta:             api.Meta{ID: clusterID, CreatedTime: now, UpdatedTime: now},
+					Name:             "test-cluster",
+					Generation:       1,
+					Spec:             []byte(`{"region":"us-east-1"}`),
+					Labels:           []byte(`{"env":"prod"}`),
+					StatusConditions: []byte("[]"),
+					CreatedBy:        testSystemUser,
+					UpdatedBy:        testSystemUser,
+				}, nil)
+
+				return mockClusterSvc, mockGenericSvc
+			},
+			expectedStatusCode: http.StatusOK,
+			validateResponse: func(body []byte) {
+				var response map[string]interface{}
+				err := json.Unmarshal(body, &response)
+				Expect(err).NotTo(HaveOccurred())
+
+				// id is always included automatically
+				Expect(response).To(HaveKey("id"))
+				Expect(response).To(HaveKey("kind"))
+				Expect(response).To(HaveKey("generation"))
+				Expect(response["generation"]).To(Equal(float64(1)))
+
+				// Should NOT have other fields
+				Expect(response).ToNot(HaveKey("name"))
+				Expect(response).ToNot(HaveKey("spec"))
+				Expect(response).ToNot(HaveKey("labels"))
+			},
+		},
+		{
+			name:        "Error 400 - Invalid field name",
+			queryParams: "?fields=id,nonexistent_field",
+			setupMocks: func(ctrl *gomock.Controller) (*services.MockClusterService, *services.MockGenericService) {
+				mockClusterSvc := services.NewMockClusterService(ctrl)
+				mockGenericSvc := services.NewMockGenericService(ctrl)
+
+				mockClusterSvc.EXPECT().Get(gomock.Any(), clusterID).Return(&api.Cluster{
+					Meta:             api.Meta{ID: clusterID, CreatedTime: now, UpdatedTime: now},
+					Name:             "test-cluster",
+					Generation:       1,
+					Spec:             []byte(`{"region":"us-east-1"}`),
+					Labels:           []byte(`{"env":"prod"}`),
+					StatusConditions: []byte("[]"),
+					CreatedBy:        testSystemUser,
+					UpdatedBy:        testSystemUser,
+				}, nil)
+
+				return mockClusterSvc, mockGenericSvc
+			},
+			expectedStatusCode: http.StatusBadRequest,
+			validateResponse: func(body []byte) {
+				var errResp openapi.ProblemDetails
+				err := json.Unmarshal(body, &errResp)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(errResp.Status).To(Equal(http.StatusBadRequest))
+				Expect(*errResp.Detail).To(ContainSubstring("doesn't exist"))
+				Expect(*errResp.Detail).To(ContainSubstring("nonexistent_field"))
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			RegisterTestingT(t)
+
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			mockClusterSvc, mockGenericSvc := tt.setupMocks(ctrl)
+			handler := NewClusterHandler(mockClusterSvc, mockGenericSvc)
+
+			reqURL := "/api/hyperfleet/v1/clusters/" + clusterID + tt.queryParams
+			req := httptest.NewRequest(http.MethodGet, reqURL, nil)
+			req = mux.SetURLVars(req, map[string]string{"id": clusterID})
+
+			rr := httptest.NewRecorder()
+			handler.Get(rr, req)
+
+			Expect(rr.Code).To(Equal(tt.expectedStatusCode))
+			tt.validateResponse(rr.Body.Bytes())
+		})
+	}
+}

@@ -149,7 +149,8 @@ func (h NodePoolHandler) Get(w http.ResponseWriter, r *http.Request) {
 			if presErr != nil {
 				return nil, errors.GeneralError("Failed to present nodepool: %v", presErr)
 			}
-			return presented, nil
+
+			return applyFieldFilter(r, presented)
 		},
 		ErrorHandler: handleError,
 	}

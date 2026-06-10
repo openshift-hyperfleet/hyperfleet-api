@@ -59,7 +59,9 @@ func (h *ResourceHandler) Get(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				return nil, err
 			}
-			return presenters.PresentResource(resource), nil
+			presented := presenters.PresentResource(resource)
+
+			return applyFieldFilter(r, presented)
 		},
 	}
 	handleGet(w, r, cfg)
@@ -167,7 +169,9 @@ func (h *ResourceHandler) GetByOwner(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				return nil, err
 			}
-			return presenters.PresentResource(resource), nil
+			presented := presenters.PresentResource(resource)
+
+			return applyFieldFilter(r, presented)
 		},
 	}
 	handleGet(w, r, cfg)

@@ -8,6 +8,8 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
 )
 
+const nodePoolKind = "NodePool"
+
 // ConvertNodePool converts openapi.NodePoolCreateRequest to api.NodePool (GORM model)
 func ConvertNodePool(req *openapi.NodePoolCreateRequest, ownerID string) (*api.NodePool, error) {
 	// Marshal Spec
@@ -26,7 +28,7 @@ func ConvertNodePool(req *openapi.NodePoolCreateRequest, ownerID string) (*api.N
 		return nil, fmt.Errorf("failed to marshal nodepool labels: %w", err)
 	}
 
-	kind := "NodePool"
+	kind := nodePoolKind
 	if req.Kind != nil {
 		kind = *req.Kind
 	}

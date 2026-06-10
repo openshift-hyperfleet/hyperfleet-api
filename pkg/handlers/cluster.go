@@ -141,7 +141,8 @@ func (h ClusterHandler) Get(w http.ResponseWriter, r *http.Request) {
 			if presErr != nil {
 				return nil, errors.GeneralError("Failed to present cluster: %v", presErr)
 			}
-			return presented, nil
+
+			return applyFieldFilter(r, presented)
 		},
 		ErrorHandler: handleError,
 	}

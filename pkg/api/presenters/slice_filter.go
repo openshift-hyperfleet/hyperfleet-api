@@ -98,8 +98,27 @@ func validate(model interface{}, in map[string]bool, prefix string) *errors.Serv
 			} else {
 				star := prefixedName + ".*"
 				delete(in, star)
-				if err := validate(field, in, prefixedName); err != nil {
-					return err
+				// Check if user explicitly requested fields within this struct
+				nestedPrefix := prefixedName + "."
+				subIn := make(map[string]bool)
+				for k := range in {
+					if strings.HasPrefix(k, nestedPrefix) {
+						subIn[k] = true
+					}
+				}
+				// Only recurse if there are nested fields explicitly requested
+				// Pass ONLY the fields that belong to this struct (subIn)
+				if len(subIn) > 0 {
+					subKeys := make([]string, 0, len(subIn))
+					for k := range subIn {
+						subKeys = append(subKeys, k)
+					}
+					if err := validate(field, subIn, prefixedName); err != nil {
+						return err
+					}
+					for _, k := range subKeys {
+						delete(in, k)
+					}
 				}
 			}
 		case reflect.Slice:
@@ -157,10 +176,28 @@ func validate(model interface{}, in map[string]bool, prefix string) *errors.Serv
 		return nil
 	}
 
+	// Only report fields that belong to this level
+	// Fields with different prefixes will be validated at other levels
 	var fields []string
-	for k := range in {
-		fields = append(fields, k)
+	expectedPrefix := prefix
+	if expectedPrefix != "" {
+		expectedPrefix += "."
 	}
+	for k := range in {
+		// Include field if:
+		// 1. No prefix: all remaining fields (nested fields consumed by recursion)
+		// 2. Has prefix and field starts with it (belongs to this struct)
+		if prefix == "" {
+			fields = append(fields, k)
+		} else if strings.HasPrefix(k, expectedPrefix) {
+			fields = append(fields, k)
+		}
+	}
+
+	if len(fields) == 0 {
+		return nil
+	}
+
 	message := fmt.Sprintf("The following field(s) doesn't exist in `%s`: %s",
 		reflect.TypeOf(model).Name(), strings.Join(fields, ", "))
 	return errors.Validation("%s", message)
@@ -303,4 +340,30 @@ func structToMap(item interface{}, in map[string]bool, prefix string) map[string
 	}
 
 	return res
+}
+
+// FilterSingle returns a projected map containing only the requested fields from a single resource.
+// This is the single-resource equivalent of SliceFilter.
+func FilterSingle(fields2Store []string, resource interface{}) (map[string]interface{}, *errors.ServiceError) {
+	if resource == nil {
+		return nil, errors.Validation("Empty resource")
+	}
+
+	// Prepare list of required fields
+	in := make(map[string]bool, len(fields2Store))
+	for _, field := range fields2Store {
+		in[field] = true
+	}
+
+	// Validate that all requested fields exist
+	validateIn := make(map[string]bool)
+	for key, value := range in {
+		validateIn[key] = value
+	}
+	if err := validate(resource, validateIn, ""); err != nil {
+		return nil, err
+	}
+
+	// Convert resource to filtered map
+	return structToMap(resource, in, ""), nil
 }
