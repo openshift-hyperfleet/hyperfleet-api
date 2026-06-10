@@ -87,8 +87,16 @@ image-integration-test: ## Build integration test image with envtest
 .PHONY: test-all
 test-all: lint test test-integration test-helm ## Run all checks (lint, unit, integration, helm)
 
+# kubeconform flags for validating rendered Helm templates against Kubernetes
+# and CRD schemas. Uses the datreeio/CRDs-catalog for ServiceMonitor schemas.
+KUBECONFORM_FLAGS := \
+	-strict \
+	-kubernetes-version 1.30.0 \
+	-schema-location default \
+	-schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
+
 .PHONY: test-helm
-test-helm: ## Test Helm charts (lint, template, validate)
+test-helm: $(KUBECONFORM) ## Test Helm charts (lint, template, validate, kubeconform)
 	@if ! command -v helm > /dev/null; then \
 		echo "ERROR: helm not found. Please install Helm:"; \
 		echo "  brew install helm  # macOS"; \
@@ -110,7 +118,7 @@ test-helm: ## Test Helm charts (lint, template, validate)
 		--set adapterTaskConfig.yaml="apiVersion: hyperfleet.redhat.com/v1alpha1" \
 		--set broker.type=googlepubsub \
 		--set broker.googlepubsub.subscriptionId=test-sub \
-		--set broker.googlepubsub.topic=test-topic > /dev/null
+		--set broker.googlepubsub.topic=test-topic | $(KUBECONFORM) $(KUBECONFORM_FLAGS)
 	@echo "Minimal required values template OK"
 	@echo ""
 	@echo "Testing template with broker enabled..."
@@ -125,7 +133,8 @@ test-helm: ## Test Helm charts (lint, template, validate)
 		--set broker.googlepubsub.topic=test-topic \
 		--set broker.type=googlepubsub) \
 		&& echo "$$output" | grep -q 'type: googlepubsub' \
-		|| { echo "ERROR: expected googlepubsub broker type in rendered output"; exit 1; }
+		|| { echo "ERROR: expected googlepubsub broker type in rendered output"; exit 1; }; \
+		echo "$$output" | $(KUBECONFORM) $(KUBECONFORM_FLAGS)
 	@echo "Broker config template OK"
 	@echo ""
 	@echo "Testing template with HyperFleet API config..."
@@ -139,7 +148,7 @@ test-helm: ## Test Helm charts (lint, template, validate)
 		--set broker.googlepubsub.subscriptionId=test-sub \
 		--set broker.googlepubsub.topic=test-topic \
 		--set adapterConfig.hyperfleetApi.baseUrl=http://localhost:8000 \
-		--set adapterConfig.hyperfleetApi.version=v1 > /dev/null
+		--set adapterConfig.hyperfleetApi.version=v1 | $(KUBECONFORM) $(KUBECONFORM_FLAGS)
 	@echo "HyperFleet API config template OK"
 	@echo ""
 	@echo "Testing template with PDB enabled..."
@@ -154,7 +163,7 @@ test-helm: ## Test Helm charts (lint, template, validate)
 		--set broker.googlepubsub.topic=test-topic \
 		--set podDisruptionBudget.enabled=true \
 		--set podDisruptionBudget.minAvailable=1 \
-		--set podDisruptionBudget.maxUnavailable=null > /dev/null
+		--set podDisruptionBudget.maxUnavailable=null | $(KUBECONFORM) $(KUBECONFORM_FLAGS)
 	@echo "PDB config template OK"
 	@echo ""
 	@echo "Testing template with autoscaling..."
@@ -169,7 +178,7 @@ test-helm: ## Test Helm charts (lint, template, validate)
 		--set broker.googlepubsub.topic=test-topic \
 		--set autoscaling.enabled=true \
 		--set autoscaling.minReplicas=2 \
-		--set autoscaling.maxReplicas=5 > /dev/null
+		--set autoscaling.maxReplicas=5 | $(KUBECONFORM) $(KUBECONFORM_FLAGS)
 	@echo "Autoscaling config template OK"
 	@echo ""
 	@echo "Testing template with probes enabled..."
@@ -184,11 +193,11 @@ test-helm: ## Test Helm charts (lint, template, validate)
 		--set broker.googlepubsub.topic=test-topic \
 		--set livenessProbe.enabled=true \
 		--set readinessProbe.enabled=true \
-		--set startupProbe.enabled=true > /dev/null
+		--set startupProbe.enabled=true | $(KUBECONFORM) $(KUBECONFORM_FLAGS)
 	@echo "Probes config template OK"
 	@echo ""
 	@echo "Testing template with ServiceMonitor enabled..."
-	@helm template test-release charts/ \
+	@output=$$(helm template test-release charts/ \
 		--set image.registry=quay.io \
 		--set image.repository=openshift-hyperfleet/hyperfleet-adapter \
 		--set image.tag=test \
@@ -198,8 +207,10 @@ test-helm: ## Test Helm charts (lint, template, validate)
 		--set broker.googlepubsub.subscriptionId=test-sub \
 		--set broker.googlepubsub.topic=test-topic \
 		--set serviceMonitor.enabled=true \
-		--api-versions monitoring.coreos.com/v1/ServiceMonitor | grep -q 'kind: ServiceMonitor' \
-		|| { echo "ERROR: ServiceMonitor not rendered"; exit 1; }
+		--api-versions monitoring.coreos.com/v1/ServiceMonitor) \
+		&& echo "$$output" | grep -q 'kind: ServiceMonitor' \
+		|| { echo "ERROR: ServiceMonitor not rendered"; exit 1; }; \
+		echo "$$output" | $(KUBECONFORM) $(KUBECONFORM_FLAGS)
 	@echo "ServiceMonitor enabled template OK"
 	@echo ""
 	@echo "Testing template with ServiceMonitor enabled but CRD unavailable..."
@@ -214,7 +225,8 @@ test-helm: ## Test Helm charts (lint, template, validate)
 		--set broker.googlepubsub.topic=test-topic \
 		--set serviceMonitor.enabled=true) \
 		&& ! echo "$$output" | grep -q 'kind: ServiceMonitor' \
-		|| { echo "ERROR: ServiceMonitor rendered without CRD"; exit 1; }
+		|| { echo "ERROR: ServiceMonitor rendered without CRD"; exit 1; }; \
+		echo "$$output" | $(KUBECONFORM) $(KUBECONFORM_FLAGS)
 	@echo "ServiceMonitor CRD-missing template OK"
 	@echo ""
 	@echo "Testing template with ServiceMonitor disabled..."
@@ -230,7 +242,8 @@ test-helm: ## Test Helm charts (lint, template, validate)
 		--set serviceMonitor.enabled=false \
 		--api-versions monitoring.coreos.com/v1/ServiceMonitor) \
 		&& ! echo "$$output" | grep -q 'kind: ServiceMonitor' \
-		|| { echo "ERROR: ServiceMonitor rendered while disabled"; exit 1; }
+		|| { echo "ERROR: ServiceMonitor rendered while disabled"; exit 1; }; \
+		echo "$$output" | $(KUBECONFORM) $(KUBECONFORM_FLAGS)
 	@echo "ServiceMonitor disabled template OK"
 	@echo ""
 	@echo "Testing template with RabbitMQ broker..."
@@ -247,7 +260,8 @@ test-helm: ## Test Helm charts (lint, template, validate)
 		--set broker.rabbitmq.exchange=test-exchange \
 		--set broker.rabbitmq.routingKey=test-key) \
 		&& echo "$$output" | grep -q 'type: rabbitmq' \
-		|| { echo "ERROR: expected rabbitmq broker type in rendered output"; exit 1; }
+		|| { echo "ERROR: expected rabbitmq broker type in rendered output"; exit 1; }; \
+		echo "$$output" | $(KUBECONFORM) $(KUBECONFORM_FLAGS)
 	@echo "RabbitMQ broker template OK"
 	@echo ""
 	@echo "Testing that rabbitmq broker.type with both sections set selects rabbitmq..."
@@ -267,7 +281,8 @@ test-helm: ## Test Helm charts (lint, template, validate)
 		--set broker.googlepubsub.topic=my-topic \
 		--set broker.googlepubsub.subscriptionId=my-sub) \
 		&& echo "$$output" | grep -q 'type: rabbitmq' \
-		|| { echo "ERROR: expected rabbitmq broker type in output"; exit 1; }
+		|| { echo "ERROR: expected rabbitmq broker type in output"; exit 1; }; \
+		echo "$$output" | $(KUBECONFORM) $(KUBECONFORM_FLAGS)
 	@echo "RabbitMQ broker type selection OK"
 	@echo ""
 	@echo "Testing that rabbitmq without queue fails validation..."

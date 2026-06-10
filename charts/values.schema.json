@@ -1,0 +1,943 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "adapterConfig": {
+      "type": "object",
+      "description": "Adapter deployment/client configuration",
+      "properties": {
+        "create": {
+          "type": "boolean",
+          "description": "Create the adapter config ConfigMap"
+        },
+        "configMapName": {
+          "type": "string",
+          "description": "Existing ConfigMap name (set create: false)"
+        },
+        "yaml": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "object"
+            }
+          ],
+          "description": "Inline YAML for adapter-config.yaml key in ConfigMap (string or structured object)"
+        },
+        "files": {
+          "type": "object",
+          "description": "Chart-packaged YAML files for adapter config"
+        },
+        "hyperfleetApi": {
+          "type": "object",
+          "description": "HyperFleet API client configuration",
+          "properties": {
+            "baseUrl": {
+              "type": "string",
+              "description": "Base URL for HyperFleet API (HYPERFLEET_API_BASE_URL)"
+            },
+            "version": {
+              "type": "string",
+              "description": "API version (HYPERFLEET_API_VERSION)"
+            }
+          }
+        },
+        "log": {
+          "type": "object",
+          "description": "Logging configuration",
+          "properties": {
+            "level": {
+              "type": "string",
+              "description": "Log level",
+              "enum": [
+                "debug",
+                "info",
+                "warn",
+                "error"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "adapterTaskConfig": {
+      "type": "object",
+      "description": "Adapter task/business logic configuration",
+      "properties": {
+        "create": {
+          "type": "boolean",
+          "description": "Create the adapter task config ConfigMap"
+        },
+        "configMapName": {
+          "type": "string",
+          "description": "Existing ConfigMap name (set create: false)"
+        },
+        "yaml": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "object"
+            }
+          ],
+          "description": "Inline YAML for task-config.yaml (mutually exclusive with files/external)"
+        },
+        "files": {
+          "type": "object",
+          "description": "Chart-packaged YAML files for task config"
+        },
+        "external": {
+          "type": "object",
+          "description": "External content passed via --set-file"
+        }
+      }
+    },
+    "affinity": {
+      "type": "object",
+      "description": "Affinity rules for pod scheduling"
+    },
+    "args": {
+      "type": "array",
+      "description": "Override default container args",
+      "items": {
+        "type": "string"
+      }
+    },
+    "autoscaling": {
+      "type": "object",
+      "description": "Horizontal Pod Autoscaler configuration",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable HPA"
+        },
+        "maxReplicas": {
+          "type": "integer",
+          "description": "Maximum number of replicas",
+          "minimum": 1
+        },
+        "minReplicas": {
+          "type": "integer",
+          "description": "Minimum number of replicas",
+          "minimum": 1
+        },
+        "targetCPUUtilizationPercentage": {
+          "type": "integer",
+          "description": "Target CPU utilization percentage",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "targetMemoryUtilizationPercentage": {
+          "type": "integer",
+          "description": "Target memory utilization percentage",
+          "minimum": 1,
+          "maximum": 100
+        }
+      }
+    },
+    "broker": {
+      "type": "object",
+      "description": "Message broker configuration",
+      "properties": {
+        "create": {
+          "type": "boolean",
+          "description": "Create the broker config ConfigMap"
+        },
+        "configMapName": {
+          "type": "string",
+          "description": "Existing ConfigMap name (set create: false)"
+        },
+        "yaml": {
+          "type": "string",
+          "description": "Inline YAML for broker config"
+        },
+        "type": {
+          "type": "string",
+          "description": "Broker type",
+          "enum": [
+            "googlepubsub",
+            "rabbitmq",
+            ""
+          ]
+        },
+        "googlepubsub": {
+          "type": "object",
+          "description": "Google Pub/Sub configuration",
+          "properties": {
+            "projectId": {
+              "type": "string",
+              "description": "GCP project ID"
+            },
+            "topic": {
+              "type": "string",
+              "description": "Pub/Sub topic name"
+            },
+            "subscriptionId": {
+              "type": "string",
+              "description": "Pub/Sub subscription ID"
+            },
+            "deadLetterTopic": {
+              "type": "string",
+              "description": "Dead letter topic for failed messages"
+            },
+            "createTopicIfMissing": {
+              "type": "boolean",
+              "description": "Auto-create topic if missing"
+            },
+            "createSubscriptionIfMissing": {
+              "type": "boolean",
+              "description": "Auto-create subscription if missing"
+            }
+          }
+        },
+        "rabbitmq": {
+          "type": "object",
+          "description": "RabbitMQ configuration",
+          "properties": {
+            "url": {
+              "type": "string",
+              "description": "RabbitMQ connection URL (amqp://user:password@host:port/vhost)"
+            },
+            "queue": {
+              "type": "string",
+              "description": "Queue name (optional \u2014 derived from topic if omitted)"
+            },
+            "exchange": {
+              "type": "string",
+              "description": "Exchange name"
+            },
+            "exchangeType": {
+              "type": "string",
+              "description": "Exchange type",
+              "enum": [
+                "direct",
+                "fanout",
+                "topic",
+                "headers"
+              ]
+            },
+            "routingKey": {
+              "type": "string",
+              "description": "Routing key for message publishing"
+            }
+          }
+        }
+      }
+    },
+    "command": {
+      "type": "array",
+      "description": "Override default container command",
+      "items": {
+        "type": "string"
+      }
+    },
+    "containerPorts": {
+      "type": "array",
+      "description": "Container ports for health and metrics endpoints",
+      "items": {
+        "type": "object",
+        "properties": {
+          "containerPort": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "protocol": {
+            "type": "string",
+            "enum": [
+              "TCP",
+              "UDP",
+              "SCTP"
+            ]
+          }
+        }
+      }
+    },
+    "env": {
+      "type": "array",
+      "description": "Additional environment variables",
+      "items": {
+        "type": "object"
+      }
+    },
+    "extraVolumeMounts": {
+      "type": "array",
+      "description": "Additional volume mounts",
+      "items": {
+        "type": "object"
+      }
+    },
+    "extraVolumes": {
+      "type": "array",
+      "description": "Additional volumes",
+      "items": {
+        "type": "object"
+      }
+    },
+    "fullnameOverride": {
+      "type": "string",
+      "description": "Override the full release name"
+    },
+    "image": {
+      "type": "object",
+      "description": "Container image configuration",
+      "required": [
+        "registry",
+        "repository",
+        "tag"
+      ],
+      "properties": {
+        "pullPolicy": {
+          "type": "string",
+          "description": "Image pull policy",
+          "enum": [
+            "Always",
+            "IfNotPresent",
+            "Never"
+          ]
+        },
+        "registry": {
+          "type": "string",
+          "description": "Container image registry (e.g. quay.io)"
+        },
+        "repository": {
+          "type": "string",
+          "description": "Container image repository (e.g. openshift-hyperfleet/hyperfleet-adapter)"
+        },
+        "tag": {
+          "type": "string",
+          "description": "Image tag. Must be set at install time."
+        }
+      }
+    },
+    "imagePullSecrets": {
+      "type": "array",
+      "description": "Image pull secrets for private registries",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "initContainers": {
+      "type": "array",
+      "description": "Init containers",
+      "items": {
+        "type": "object"
+      }
+    },
+    "lifecycle": {
+      "type": "object",
+      "description": "Container lifecycle hooks"
+    },
+    "livenessProbe": {
+      "type": "object",
+      "description": "Liveness probe configuration",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable liveness probe"
+        },
+        "httpGet": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "port": {
+              "oneOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        "initialDelaySeconds": {
+          "type": "integer",
+          "description": "Number of seconds after container start before probe is initiated",
+          "minimum": 0
+        },
+        "periodSeconds": {
+          "type": "integer",
+          "description": "How often (in seconds) to perform the probe",
+          "minimum": 1
+        },
+        "timeoutSeconds": {
+          "type": "integer",
+          "description": "Number of seconds after which the probe times out",
+          "minimum": 1
+        },
+        "failureThreshold": {
+          "type": "integer",
+          "description": "Minimum consecutive failures for the probe to be considered failed",
+          "minimum": 1
+        },
+        "successThreshold": {
+          "type": "integer",
+          "description": "Minimum consecutive successes for the probe to be considered successful",
+          "minimum": 1
+        },
+        "tcpSocket": {
+          "type": "object",
+          "description": "TCP socket probe configuration",
+          "properties": {
+            "port": {
+              "oneOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        "exec": {
+          "type": "object",
+          "description": "Exec probe configuration",
+          "properties": {
+            "command": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "minReadySeconds": {
+      "type": "integer",
+      "description": "Minimum seconds for pod readiness",
+      "minimum": 0
+    },
+    "nameOverride": {
+      "type": "string",
+      "description": "Override the chart name"
+    },
+    "nodeSelector": {
+      "type": "object",
+      "description": "Node selector for pod scheduling"
+    },
+    "podAnnotations": {
+      "type": "object",
+      "description": "Annotations to add to pods"
+    },
+    "podDisruptionBudget": {
+      "type": "object",
+      "description": "PodDisruptionBudget configuration",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable PDB creation"
+        },
+        "minAvailable": {
+          "description": "Minimum number of available pods",
+          "oneOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "maxUnavailable": {
+          "description": "Maximum number of unavailable pods",
+          "oneOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "unhealthyPodEvictionPolicy": {
+          "type": "string",
+          "description": "Unhealthy pod eviction policy",
+          "enum": [
+            "IfHealthyBudget",
+            "AlwaysAllow"
+          ]
+        }
+      }
+    },
+    "podLabels": {
+      "type": "object",
+      "description": "Labels to add to pods"
+    },
+    "podSecurityContext": {
+      "type": "object",
+      "description": "Pod-level security context",
+      "properties": {
+        "fsGroup": {
+          "type": "integer"
+        },
+        "runAsNonRoot": {
+          "type": "boolean"
+        },
+        "runAsUser": {
+          "type": "integer"
+        }
+      }
+    },
+    "priorityClassName": {
+      "type": "string",
+      "description": "Priority class name for pod scheduling"
+    },
+    "rbac": {
+      "type": "object",
+      "description": "RBAC configuration for cluster-level permissions",
+      "properties": {
+        "create": {
+          "type": "boolean",
+          "description": "Create RBAC resources"
+        },
+        "resources": {
+          "type": "array",
+          "description": "Kubernetes resources to grant full CRUD access",
+          "items": {
+            "type": "string"
+          }
+        },
+        "rules": {
+          "type": "array",
+          "description": "Additional custom RBAC rules",
+          "items": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    "readinessProbe": {
+      "type": "object",
+      "description": "Readiness probe configuration",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable readiness probe"
+        },
+        "httpGet": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "port": {
+              "oneOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        "initialDelaySeconds": {
+          "type": "integer",
+          "description": "Number of seconds after container start before probe is initiated",
+          "minimum": 0
+        },
+        "periodSeconds": {
+          "type": "integer",
+          "description": "How often (in seconds) to perform the probe",
+          "minimum": 1
+        },
+        "timeoutSeconds": {
+          "type": "integer",
+          "description": "Number of seconds after which the probe times out",
+          "minimum": 1
+        },
+        "failureThreshold": {
+          "type": "integer",
+          "description": "Minimum consecutive failures for the probe to be considered failed",
+          "minimum": 1
+        },
+        "successThreshold": {
+          "type": "integer",
+          "description": "Minimum consecutive successes for the probe to be considered successful",
+          "minimum": 1
+        },
+        "tcpSocket": {
+          "type": "object",
+          "description": "TCP socket probe configuration",
+          "properties": {
+            "port": {
+              "oneOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        "exec": {
+          "type": "object",
+          "description": "Exec probe configuration",
+          "properties": {
+            "command": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "replicaCount": {
+      "type": "integer",
+      "description": "Number of replicas",
+      "minimum": 1
+    },
+    "resources": {
+      "type": "object",
+      "description": "CPU and memory resource limits and requests",
+      "properties": {
+        "limits": {
+          "type": "object",
+          "properties": {
+            "cpu": {
+              "description": "CPU limit (e.g. 500m)",
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "memory": {
+              "type": "string",
+              "description": "Memory limit (e.g. 512Mi)"
+            }
+          }
+        },
+        "requests": {
+          "type": "object",
+          "properties": {
+            "cpu": {
+              "description": "CPU request (e.g. 100m)",
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "memory": {
+              "type": "string",
+              "description": "Memory request (e.g. 128Mi)"
+            }
+          }
+        }
+      }
+    },
+    "revisionHistoryLimit": {
+      "type": "integer",
+      "description": "Number of old ReplicaSets to retain",
+      "minimum": 0
+    },
+    "securityContext": {
+      "type": "object",
+      "description": "Container-level security context",
+      "properties": {
+        "allowPrivilegeEscalation": {
+          "type": "boolean"
+        },
+        "capabilities": {
+          "type": "object",
+          "properties": {
+            "drop": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "add": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "readOnlyRootFilesystem": {
+          "type": "boolean"
+        },
+        "seccompProfile": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "serviceAccount": {
+      "type": "object",
+      "description": "ServiceAccount configuration",
+      "properties": {
+        "annotations": {
+          "type": "object",
+          "description": "Annotations to add to the service account"
+        },
+        "create": {
+          "type": "boolean",
+          "description": "Create a service account"
+        },
+        "name": {
+          "type": "string",
+          "description": "The name of the service account to use"
+        }
+      }
+    },
+    "sidecarContainers": {
+      "type": "array",
+      "description": "Sidecar containers",
+      "items": {
+        "type": "object"
+      }
+    },
+    "startupProbe": {
+      "type": "object",
+      "description": "Startup probe configuration",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable startup probe"
+        },
+        "httpGet": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "port": {
+              "oneOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        "initialDelaySeconds": {
+          "type": "integer",
+          "description": "Number of seconds after container start before probe is initiated",
+          "minimum": 0
+        },
+        "periodSeconds": {
+          "type": "integer",
+          "description": "How often (in seconds) to perform the probe",
+          "minimum": 1
+        },
+        "timeoutSeconds": {
+          "type": "integer",
+          "description": "Number of seconds after which the probe times out",
+          "minimum": 1
+        },
+        "failureThreshold": {
+          "type": "integer",
+          "description": "Minimum consecutive failures for the probe to be considered failed",
+          "minimum": 1
+        },
+        "successThreshold": {
+          "type": "integer",
+          "description": "Minimum consecutive successes for the probe to be considered successful",
+          "minimum": 1
+        },
+        "tcpSocket": {
+          "type": "object",
+          "description": "TCP socket probe configuration",
+          "properties": {
+            "port": {
+              "oneOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        "exec": {
+          "type": "object",
+          "description": "Exec probe configuration",
+          "properties": {
+            "command": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "strategy": {
+      "type": "object",
+      "description": "Deployment strategy",
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "Strategy type",
+          "enum": [
+            "RollingUpdate",
+            "Recreate"
+          ]
+        },
+        "rollingUpdate": {
+          "type": "object",
+          "properties": {
+            "maxSurge": {
+              "oneOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "maxUnavailable": {
+              "oneOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "terminationGracePeriodSeconds": {
+      "type": "integer",
+      "description": "Termination grace period in seconds",
+      "minimum": 0
+    },
+    "tolerations": {
+      "type": "array",
+      "description": "Tolerations for pod scheduling",
+      "items": {
+        "type": "object"
+      }
+    },
+    "serviceMonitor": {
+      "type": "object",
+      "description": "ServiceMonitor for Prometheus Operator discovery",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable ServiceMonitor creation (requires monitoring.coreos.com CRDs)"
+        },
+        "interval": {
+          "type": "string",
+          "description": "Scrape interval (e.g. 30s)"
+        },
+        "scrapeTimeout": {
+          "type": "string",
+          "description": "Scrape timeout, must be less than interval (e.g. 10s)"
+        },
+        "labels": {
+          "type": "object",
+          "description": "Additional labels for ServiceMonitor"
+        },
+        "honorLabels": {
+          "type": "boolean",
+          "description": "Honor labels from the target"
+        },
+        "metricRelabeling": {
+          "type": "array",
+          "description": "Metric relabel configs",
+          "items": {
+            "type": "object"
+          }
+        },
+        "namespaceSelector": {
+          "type": "object",
+          "description": "Namespace selector for cross-namespace monitoring"
+        },
+        "namespace": {
+          "type": "string",
+          "description": "Override namespace where ServiceMonitor is created"
+        }
+      }
+    },
+    "tracing": {
+      "type": "object",
+      "description": "OpenTelemetry tracing configuration",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable OpenTelemetry tracing"
+        },
+        "serviceName": {
+          "type": "string",
+          "description": "OTEL_SERVICE_NAME value"
+        },
+        "otlpEndpoint": {
+          "type": "string",
+          "description": "OTLP exporter endpoint"
+        },
+        "otlpProtocol": {
+          "type": "string",
+          "description": "OTLP protocol",
+          "enum": [
+            "grpc",
+            "http/protobuf"
+          ]
+        },
+        "sampler": {
+          "type": "string",
+          "description": "Sampler type"
+        },
+        "samplerArg": {
+          "type": "string",
+          "description": "Sampling rate (1.0 for dev, 0.01 for production)"
+        },
+        "propagators": {
+          "type": "string",
+          "description": "Trace context propagators (comma-separated)"
+        }
+      }
+    }
+  }
+}
