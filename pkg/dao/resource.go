@@ -21,7 +21,6 @@ type ResourceDao interface {
 	FindByKind(ctx context.Context, kind string) (api.ResourceList, error)
 	FindByKindAndOwner(ctx context.Context, kind, ownerID string) (api.ResourceList, error)
 	FindByKindAndOwnerForUpdate(ctx context.Context, kind, ownerID string) (api.ResourceList, error)
-	FindByIDs(ctx context.Context, kind string, ids []string) (api.ResourceList, error)
 }
 
 var _ ResourceDao = &sqlResourceDao{}
@@ -141,11 +140,3 @@ func (d *sqlResourceDao) FindByKindAndOwnerForUpdate(
 	return resources, nil
 }
 
-func (d *sqlResourceDao) FindByIDs(ctx context.Context, kind string, ids []string) (api.ResourceList, error) {
-	g2 := d.sessionFactory.New(ctx)
-	var resources api.ResourceList
-	if err := g2.Where("kind = ? AND id in (?)", kind, ids).Find(&resources).Error; err != nil {
-		return nil, err
-	}
-	return resources, nil
-}

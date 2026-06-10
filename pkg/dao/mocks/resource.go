@@ -98,16 +98,3 @@ func (d *resourceDaoMock) FindByKindAndOwnerForUpdate(
 	return d.FindByKindAndOwner(ctx, kind, ownerID)
 }
 
-func (d *resourceDaoMock) FindByIDs(_ context.Context, kind string, ids []string) (api.ResourceList, error) {
-	idSet := make(map[string]bool, len(ids))
-	for _, id := range ids {
-		idSet[id] = true
-	}
-	var result api.ResourceList
-	for _, r := range d.resources {
-		if r.Kind == kind && idSet[r.ID] {
-			result = append(result, r)
-		}
-	}
-	return result, nil
-}

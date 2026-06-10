@@ -843,37 +843,6 @@ func TestResourceService_Delete_CascadeSkipsAlreadyDeletedChild(t *testing.T) {
 	Expect(preDeletedExists).To(BeFalse())
 }
 
-// --- FindByIDs ---
-
-func TestResourceService_FindByIDs_ReturnsMatching(t *testing.T) {
-	RegisterTestingT(t)
-	setupTestDescriptors()
-
-	mockDao := newMockResourceDao()
-	svc, _, _ := newTestResourceService(mockDao)
-
-	mockDao.addResource(testResource("Channel", "ch-1", "stable"))
-	mockDao.addResource(testResource("Channel", "ch-2", "candidate"))
-	mockDao.addResource(testResource("Channel", "ch-3", "nightly"))
-
-	result, svcErr := svc.FindByIDs(context.Background(), "Channel", []string{"ch-1", "ch-3"})
-	Expect(svcErr).To(BeNil())
-	Expect(result).To(HaveLen(2))
-}
-
-func TestResourceService_FindByIDs_UnknownKind(t *testing.T) {
-	RegisterTestingT(t)
-	setupTestDescriptors()
-
-	mockDao := newMockResourceDao()
-	svc, _, _ := newTestResourceService(mockDao)
-
-	result, svcErr := svc.FindByIDs(context.Background(), "Bogus", []string{"id-1"})
-	Expect(result).To(BeNil())
-	Expect(svcErr).ToNot(BeNil())
-	Expect(svcErr.HTTPCode).To(Equal(400))
-}
-
 // --- GetByOwner ---
 
 func TestResourceService_GetByOwner_HappyPath(t *testing.T) {

@@ -22,7 +22,6 @@ type ResourceService interface {
 	Create(ctx context.Context, kind string, resource *api.Resource) (*api.Resource, *errors.ServiceError)
 	Patch(ctx context.Context, kind, id string, patch *api.ResourcePatchRequest) (*api.Resource, *errors.ServiceError)
 	Delete(ctx context.Context, kind, id string) (*api.Resource, *errors.ServiceError)
-	FindByIDs(ctx context.Context, kind string, ids []string) (api.ResourceList, *errors.ServiceError)
 	List(ctx context.Context, kind string, args *ListArguments) (api.ResourceList, *api.PagingMeta, *errors.ServiceError)
 	GetByOwner(ctx context.Context, kind, id, ownerID string) (*api.Resource, *errors.ServiceError)
 	ListByOwner(ctx context.Context, kind, ownerID string, args *ListArguments) (api.ResourceList, *api.PagingMeta, *errors.ServiceError) // nolint:lll
@@ -233,20 +232,6 @@ func (s *sqlResourceService) checkCanDelete(
 		)
 	}
 	return nil
-}
-
-// FindByIDs returns resources matching the given IDs, scoped to the specified kind.
-func (s *sqlResourceService) FindByIDs(
-	ctx context.Context, kind string, ids []string,
-) (api.ResourceList, *errors.ServiceError) {
-	if svcErr := validateKind(kind); svcErr != nil {
-		return nil, svcErr
-	}
-	resources, err := s.resourceDao.FindByIDs(ctx, kind, ids)
-	if err != nil {
-		return nil, errors.GeneralError("Unable to find %s resources by IDs: %s", kind, err)
-	}
-	return resources, nil
 }
 
 // GetByOwner returns a single child resource, validated as belonging to the specified owner.
