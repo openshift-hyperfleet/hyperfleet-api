@@ -243,9 +243,7 @@ test-helm: ## Test Helm charts (lint, template, validate)
 		--set broker.create=true \
 		--set broker.type=rabbitmq \
 		--set broker.rabbitmq.url=amqp://guest:guest@rabbitmq:5672/ \
-		--set broker.rabbitmq.queue=test-queue \
-		--set broker.rabbitmq.exchange=test-exchange \
-		--set broker.rabbitmq.routingKey=test-key) \
+		--set broker.rabbitmq.exchange=test-exchange) \
 		&& echo "$$output" | grep -q 'type: rabbitmq' \
 		|| { echo "ERROR: expected rabbitmq broker type in rendered output"; exit 1; }
 	@echo "RabbitMQ broker template OK"
@@ -260,9 +258,7 @@ test-helm: ## Test Helm charts (lint, template, validate)
 		--set broker.create=true \
 		--set broker.type=rabbitmq \
 		--set broker.rabbitmq.url=amqp://guest:guest@rabbitmq:5672/ \
-		--set broker.rabbitmq.queue=test-queue \
 		--set broker.rabbitmq.exchange=test-exchange \
-		--set broker.rabbitmq.routingKey=test-key \
 		--set broker.googlepubsub.projectId=my-project \
 		--set broker.googlepubsub.topic=my-topic \
 		--set broker.googlepubsub.subscriptionId=my-sub) \
@@ -270,8 +266,8 @@ test-helm: ## Test Helm charts (lint, template, validate)
 		|| { echo "ERROR: expected rabbitmq broker type in output"; exit 1; }
 	@echo "RabbitMQ broker type selection OK"
 	@echo ""
-	@echo "Testing that rabbitmq without queue fails validation..."
-	@if helm template test-release charts/ \
+	@echo "Testing that rabbitmq renders OK without queue (queue is optional)..."
+	@helm template test-release charts/ \
 		--set image.registry=quay.io \
 		--set image.repository=openshift-hyperfleet/hyperfleet-adapter \
 		--set image.tag=test \
@@ -279,10 +275,10 @@ test-helm: ## Test Helm charts (lint, template, validate)
 		--set adapterTaskConfig.yaml="apiVersion: hyperfleet.redhat.com/v1alpha1" \
 		--set broker.create=true \
 		--set broker.type=rabbitmq \
-		--set broker.rabbitmq.url=amqp://guest:guest@rabbitmq:5672/ > /dev/null 2>&1; then \
-		echo "ERROR: expected helm template to fail when broker.rabbitmq.queue is missing"; exit 1; \
-	fi
-	@echo "RabbitMQ missing queue validation OK"
+		--set broker.rabbitmq.url=amqp://guest:guest@rabbitmq:5672/ \
+		--set broker.rabbitmq.exchange=test-exchange > /dev/null \
+		|| { echo "ERROR: helm template failed when broker.rabbitmq.queue is omitted (queue should be optional)"; exit 1; }
+	@echo "RabbitMQ optional queue validation OK"
 	@echo ""
 	@echo "Testing that rabbitmq without exchange fails validation..."
 	@if helm template test-release charts/ \
@@ -298,22 +294,6 @@ test-helm: ## Test Helm charts (lint, template, validate)
 		echo "ERROR: expected helm template to fail when broker.rabbitmq.exchange is missing"; exit 1; \
 	fi
 	@echo "RabbitMQ missing exchange validation OK"
-	@echo ""
-	@echo "Testing that rabbitmq without routingKey fails validation..."
-	@if helm template test-release charts/ \
-		--set image.registry=quay.io \
-		--set image.repository=openshift-hyperfleet/hyperfleet-adapter \
-		--set image.tag=test \
-		--set adapterConfig.yaml="apiVersion: hyperfleet.redhat.com/v1alpha1" \
-		--set adapterTaskConfig.yaml="apiVersion: hyperfleet.redhat.com/v1alpha1" \
-		--set broker.create=true \
-		--set broker.type=rabbitmq \
-		--set broker.rabbitmq.url=amqp://guest:guest@rabbitmq:5672/ \
-		--set broker.rabbitmq.queue=test-queue \
-		--set broker.rabbitmq.exchange=test-exchange > /dev/null 2>&1; then \
-		echo "ERROR: expected helm template to fail when broker.rabbitmq.routingKey is missing"; exit 1; \
-	fi
-	@echo "RabbitMQ missing routingKey validation OK"
 
 ##@ Code Quality
 

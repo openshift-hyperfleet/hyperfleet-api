@@ -1487,17 +1487,29 @@ clients:
     retry_attempts: 3
     retry_backoff: exponential
   broker:
-    subscription_id: "my-adapter-sub"
-    topic: "cluster-events"
+    subscription_id: "my-adapter"   # must be unique per adapter — shared IDs cause competing consumers, not fan-out
+    topic: "hyperfleet-clusters"    # for RabbitMQ: queue name prefix only (not a routing key)
   kubernetes:
     api_version: "v1"
 ```
 
 </details>
 
+1. **Configure the broker connection** — the Helm chart creates a `broker.yaml` ConfigMap from the `broker.*` Helm values. For RabbitMQ, set `broker.rabbitmq.exchange` to the value of the sentinel's `clients.broker.topic` — this is the exchange the sentinel publishes to and the only coupling point between them.
+
+   ```yaml
+   # Helm values
+   broker:
+     type: rabbitmq
+     rabbitmq:
+       url: "amqp://user:pass@rabbitmq:5672/"
+       exchange: "hyperfleet-clusters"   # must match sentinel's clients.broker.topic
+       exchange_type: "topic"
+   ```
+
 1. **Deploy using the Helm chart** — the generic `adapter/` chart mounts your task config as a ConfigMap and sets the environment variables.
 
-2. **Set up broker subscription** — ensure your adapter has a dedicated subscription on the cluster events topic so it receives events independently of other adapters (fan-out pattern).
+2. **Set up broker subscription** — for Google Pub/Sub, ensure your adapter has a dedicated subscription on the cluster events topic so it receives events independently of other adapters (fan-out pattern). For RabbitMQ, fan-out is achieved automatically by giving each adapter a unique `subscription_id` — the broker library creates a separate queue per adapter.
 
 3. Set permissions for the adapter to read from the broker subscription. This is cloud provider specific.
 

@@ -99,10 +99,10 @@ broker:
     createSubscriptionIfMissing: false
   rabbitmq:
     url: ""
-    queue: ""
+    queue: ""        # optional prefix {queue}-{subscription_id} — if omitted, queue name is derived as "{topic}-{subscriptionId}"
     exchange: ""
     exchangeType: "topic"
-    routingKey: ""
+
 # Override default command
 command:
   - /app/adapter
