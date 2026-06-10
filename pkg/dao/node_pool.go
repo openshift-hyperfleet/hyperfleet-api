@@ -125,4 +125,3 @@ func (d *sqlNodePoolDao) ExistsByOwner(ctx context.Context, ownerID string) (boo
 	}
 	return count > 0, nil
 }
-

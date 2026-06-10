@@ -139,4 +139,3 @@ func (d *sqlResourceDao) FindByKindAndOwnerForUpdate(
 	}
 	return resources, nil
 }
-

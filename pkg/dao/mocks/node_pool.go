@@ -78,4 +78,3 @@ func (d *nodePoolDaoMock) ExistsByOwner(ctx context.Context, ownerID string) (bo
 	}
 	return false, nil
 }
-

@@ -183,4 +183,3 @@ func (d *sqlAdapterStatusDao) FindByResourceAndAdapter(
 	}
 	return &adapterStatus, nil
 }
-

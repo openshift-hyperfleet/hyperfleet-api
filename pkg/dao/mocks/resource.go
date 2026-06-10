@@ -97,4 +97,3 @@ func (d *resourceDaoMock) FindByKindAndOwnerForUpdate(
 ) (api.ResourceList, error) {
 	return d.FindByKindAndOwner(ctx, kind, ownerID)
 }
-
