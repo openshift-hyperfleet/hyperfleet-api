@@ -35,6 +35,12 @@ $(GOTESTSUM): $(BINGO_DIR)/gotestsum.mod
 	@echo "(re)installing $(GOBIN)/gotestsum-v1.13.0"
 	@cd $(BINGO_DIR) && GOWORK=off GOOS=$(GOHOSTOS) GOARCH=$(GOHOSTARCH) GOARM=$(GOHOSTARM) $(GO) build -mod=mod -modfile=gotestsum.mod -o=$(GOBIN)/gotestsum-v1.13.0 "gotest.tools/gotestsum"
 
+KUBECONFORM := $(GOBIN)/kubeconform-v0.7.0
+$(KUBECONFORM): $(BINGO_DIR)/kubeconform.mod
+	@# Install binary/ries using Go 1.14+ build command. This is using bwplotka/bingo-controlled, separate go module with pinned dependencies.
+	@echo "(re)installing $(GOBIN)/kubeconform-v0.7.0"
+	@cd $(BINGO_DIR) && GOWORK=off GOOS=$(GOHOSTOS) GOARCH=$(GOHOSTARCH) GOARM=$(GOHOSTARM) $(GO) build -mod=mod -modfile=kubeconform.mod -o=$(GOBIN)/kubeconform-v0.7.0 "github.com/yannh/kubeconform/cmd/kubeconform"
+
 MOCKGEN := $(GOBIN)/mockgen-v0.6.0
 $(MOCKGEN): $(BINGO_DIR)/mockgen.mod
 	@# Install binary/ries using Go 1.14+ build command. This is using bwplotka/bingo-controlled, separate go module with pinned dependencies.

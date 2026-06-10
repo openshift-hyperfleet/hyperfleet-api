@@ -234,10 +234,19 @@ db/teardown: check-container-tool ## Stop and remove local PostgreSQL container
 	$(CONTAINER_TOOL) stop psql-hyperfleet
 	$(CONTAINER_TOOL) rm psql-hyperfleet
 
-##@ Container Images
+##@ Helm Charts
+
+# kubeconform flags for validating rendered Helm templates against Kubernetes
+# and CRD schemas. Uses the datreeio/CRDs-catalog for ServiceMonitor and
+# PrometheusRule schemas.
+KUBECONFORM_FLAGS := \
+	-strict \
+	-kubernetes-version 1.30.0 \
+	-schema-location default \
+	-schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
 
 .PHONY: test-helm
-test-helm: ## Test Helm charts (lint, template, validate)
+test-helm: $(KUBECONFORM) ## Test Helm charts (lint, template, validate, kubeconform)
 	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 	@echo "Testing Helm charts..."
 	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -261,7 +270,7 @@ test-helm: ## Test Helm charts (lint, template, validate)
 		--set image.repository=openshift-hyperfleet/hyperfleet-api \
 		--set image.tag=test \
 		--set 'adapters.cluster=["validation"]' \
-		--set 'adapters.nodepool=["validation"]' > /dev/null
+		--set 'adapters.nodepool=["validation"]' | $(KUBECONFORM) $(KUBECONFORM_FLAGS)
 	@echo "Default values template OK"
 	@echo ""
 	@echo "Testing template with external database..."
@@ -273,7 +282,7 @@ test-helm: ## Test Helm charts (lint, template, validate)
 		--set 'adapters.nodepool=["validation"]' \
 		--set database.postgresql.enabled=false \
 		--set database.external.enabled=true \
-		--set database.external.secretName=my-db-secret > /dev/null
+		--set database.external.secretName=my-db-secret | $(KUBECONFORM) $(KUBECONFORM_FLAGS)
 	@echo "External database config template OK"
 	@echo ""
 	@echo "Testing template with autoscaling..."
@@ -285,7 +294,7 @@ test-helm: ## Test Helm charts (lint, template, validate)
 		--set 'adapters.nodepool=["validation"]' \
 		--set autoscaling.enabled=true \
 		--set autoscaling.minReplicas=2 \
-		--set autoscaling.maxReplicas=5 > /dev/null
+		--set autoscaling.maxReplicas=5 | $(KUBECONFORM) $(KUBECONFORM_FLAGS)
 	@echo "Autoscaling config template OK"
 	@echo ""
 	@echo "Testing template with PDB enabled..."
@@ -296,7 +305,7 @@ test-helm: ## Test Helm charts (lint, template, validate)
 		--set 'adapters.cluster=["validation"]' \
 		--set 'adapters.nodepool=["validation"]' \
 		--set podDisruptionBudget.enabled=true \
-		--set podDisruptionBudget.minAvailable=1 > /dev/null
+		--set podDisruptionBudget.minAvailable=1 | $(KUBECONFORM) $(KUBECONFORM_FLAGS)
 	@echo "PDB config template OK"
 	@echo ""
 	@echo "Testing template with ServiceMonitor enabled..."
@@ -307,7 +316,7 @@ test-helm: ## Test Helm charts (lint, template, validate)
 		--set 'adapters.cluster=["validation"]' \
 		--set 'adapters.nodepool=["validation"]' \
 		--set serviceMonitor.enabled=true \
-		--set serviceMonitor.interval=15s > /dev/null
+		--set serviceMonitor.interval=15s | $(KUBECONFORM) $(KUBECONFORM_FLAGS)
 	@echo "ServiceMonitor config template OK"
 	@echo ""
 	@echo "Testing template with auth disabled..."
@@ -317,7 +326,7 @@ test-helm: ## Test Helm charts (lint, template, validate)
 		--set image.tag=test \
 		--set 'adapters.cluster=["validation"]' \
 		--set 'adapters.nodepool=["validation"]' \
-		--set config.server.jwt.enabled=false > /dev/null
+		--set config.server.jwt.enabled=false | $(KUBECONFORM) $(KUBECONFORM_FLAGS)
 	@echo "Auth disabled config template OK"
 	@echo ""
 	@echo "Testing template with custom image..."
@@ -326,7 +335,7 @@ test-helm: ## Test Helm charts (lint, template, validate)
 		--set 'adapters.nodepool=["validation"]' \
 		--set image.registry=quay.io \
 		--set image.repository=myorg/hyperfleet-api \
-		--set image.tag=v1.0.0 > /dev/null
+		--set image.tag=v1.0.0 | $(KUBECONFORM) $(KUBECONFORM_FLAGS)
 	@echo "Custom image config template OK"
 	@echo ""
 	@echo "Testing template with sidecar injection..."
@@ -336,7 +345,7 @@ test-helm: ## Test Helm charts (lint, template, validate)
 		--set image.tag=test \
 		--set 'adapters.cluster=["validation"]' \
 		--set 'adapters.nodepool=["validation"]' \
-		--set-json 'sidecars=[{"name":"test-sidecar","image":"busybox:1.36","command":["sleep","infinity"]}]' > /dev/null
+		--set-json 'sidecars=[{"name":"test-sidecar","image":"busybox:1.36","command":["sleep","infinity"]}]' | $(KUBECONFORM) $(KUBECONFORM_FLAGS)
 	@echo "Sidecar injection config template OK"
 	@echo ""
 	@echo "Testing template with native sidecar injection..."
@@ -350,7 +359,8 @@ test-helm: ## Test Helm charts (lint, template, validate)
 		echo "$$OUTPUT" | grep -q 'name: cloud-sql-proxy' || { echo "FAIL: cloud-sql-proxy not found in rendered output"; exit 1; }; \
 		PROXY_LINE=$$(echo "$$OUTPUT" | grep -n 'name: cloud-sql-proxy' | head -1 | cut -d: -f1); \
 		MIGRATE_LINE=$$(echo "$$OUTPUT" | grep -n 'name: db-migrate' | head -1 | cut -d: -f1); \
-		if [ "$$PROXY_LINE" -ge "$$MIGRATE_LINE" ]; then echo "FAIL: cloud-sql-proxy must appear before db-migrate"; exit 1; fi
+		if [ "$$PROXY_LINE" -ge "$$MIGRATE_LINE" ]; then echo "FAIL: cloud-sql-proxy must appear before db-migrate"; exit 1; fi; \
+		echo "$$OUTPUT" | $(KUBECONFORM) $(KUBECONFORM_FLAGS)
 	@echo "Native sidecar injection config template OK"
 	@echo ""
 	@echo "Testing template with native sidecars and no database..."
@@ -364,7 +374,8 @@ test-helm: ## Test Helm charts (lint, template, validate)
 		--set-json 'nativeSidecars=[{"name":"test-proxy","restartPolicy":"Always","image":"busybox:1.36","command":["sleep","infinity"]}]'); \
 		echo "$$OUTPUT" | grep -q 'name: test-proxy' || { echo "FAIL: test-proxy not found in rendered output"; exit 1; }; \
 		if echo "$$OUTPUT" | grep -q 'name: wait-for-db'; then echo "FAIL: wait-for-db should not appear when no database is configured"; exit 1; fi; \
-		if echo "$$OUTPUT" | grep -q 'name: db-migrate'; then echo "FAIL: db-migrate should not appear when no database is configured"; exit 1; fi
+		if echo "$$OUTPUT" | grep -q 'name: db-migrate'; then echo "FAIL: db-migrate should not appear when no database is configured"; exit 1; fi; \
+		echo "$$OUTPUT" | $(KUBECONFORM) $(KUBECONFORM_FLAGS)
 	@echo "Native sidecar without database config template OK"
 	@echo ""
 	@echo "Testing template with full adapter config..."
@@ -373,7 +384,7 @@ test-helm: ## Test Helm charts (lint, template, validate)
 		--set image.repository=openshift-hyperfleet/hyperfleet-api \
 		--set image.tag=test \
 		--set-json 'adapters.cluster=["validation","dns","pullsecret","hypershift"]' \
-		--set-json 'adapters.nodepool=["validation","hypershift"]' > /dev/null
+		--set-json 'adapters.nodepool=["validation","hypershift"]' | $(KUBECONFORM) $(KUBECONFORM_FLAGS)
 	@echo "Full adapter config template OK"
 	@echo ""
 	@echo "Testing template with validation schema enabled..."
@@ -386,7 +397,8 @@ test-helm: ## Test Helm charts (lint, template, validate)
 		--set validationSchema.enabled=true \
 		--set-string 'validationSchema.content=openapi: 3.0.0'); \
 		echo "$$OUTPUT" | grep -q 'app.kubernetes.io/component: validation-schema' || { echo "FAIL: validation-schema ConfigMap not found"; exit 1; }; \
-		echo "$$OUTPUT" | grep -q '/etc/hyperfleet/validation-schema' || { echo "FAIL: validation schema volume mount not found"; exit 1; }
+		echo "$$OUTPUT" | grep -q '/etc/hyperfleet/validation-schema' || { echo "FAIL: validation schema volume mount not found"; exit 1; }; \
+		echo "$$OUTPUT" | $(KUBECONFORM) $(KUBECONFORM_FLAGS)
 	@echo "Validation schema enabled config template OK"
 	@echo ""
 	@echo "Testing template with validation schema disabled (default)..."
@@ -396,7 +408,8 @@ test-helm: ## Test Helm charts (lint, template, validate)
 		--set image.tag=test \
 		--set 'adapters.cluster=["validation"]' \
 		--set 'adapters.nodepool=["validation"]'); \
-		if echo "$$OUTPUT" | grep -q 'validation-schema'; then echo "FAIL: validation-schema should not appear when disabled"; exit 1; fi
+		if echo "$$OUTPUT" | grep -q 'validation-schema'; then echo "FAIL: validation-schema should not appear when disabled"; exit 1; fi; \
+		echo "$$OUTPUT" | $(KUBECONFORM) $(KUBECONFORM_FLAGS)
 	@echo "Validation schema disabled config template OK"
 	@echo ""
 	@echo "Testing template with validation schema existingConfigMap..."
@@ -409,7 +422,8 @@ test-helm: ## Test Helm charts (lint, template, validate)
 		--set validationSchema.enabled=true \
 		--set validationSchema.existingConfigMap=my-validation-schema); \
 		echo "$$OUTPUT" | grep -q 'my-validation-schema' || { echo "FAIL: existingConfigMap name not found"; exit 1; }; \
-		if echo "$$OUTPUT" | grep -q 'app.kubernetes.io/component: validation-schema'; then echo "FAIL: generated ConfigMap should not appear with existingConfigMap"; exit 1; fi
+		if echo "$$OUTPUT" | grep -q 'app.kubernetes.io/component: validation-schema'; then echo "FAIL: generated ConfigMap should not appear with existingConfigMap"; exit 1; fi; \
+		echo "$$OUTPUT" | $(KUBECONFORM) $(KUBECONFORM_FLAGS)
 	@echo "Validation schema existingConfigMap config template OK"
 	@echo ""
 	@echo "Testing validation schema fails without content or existingConfigMap..."
@@ -448,6 +462,8 @@ test-helm: ## Test Helm charts (lint, template, validate)
 	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 	@echo "All Helm chart tests passed!"
 	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+##@ Container Images
 
 # Build container image (multi-stage build, no local binary needed)
 .PHONY: image

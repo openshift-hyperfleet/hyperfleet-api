@@ -31,21 +31,39 @@ Create chart name and version as used by the chart label.
 {{- end }}
 
 {{/*
-Common labels
+Common labels without component — base labels shared by all helpers.
+Use for sub-resources (e.g. postgresql) that set their own
+app.kubernetes.io/component value.
 */}}
-{{- define "hyperfleet-api.labels" -}}
+{{- define "hyperfleet-api.labelsWithoutComponent" -}}
 helm.sh/chart: {{ include "hyperfleet-api.chart" . }}
-{{ include "hyperfleet-api.selectorLabels" . }}
+app.kubernetes.io/name: {{ include "hyperfleet-api.name" . }}
+app.kubernetes.io/instance: {{ .Release.Name }}
 app.kubernetes.io/version: {{ .Values.image.tag | default .Chart.AppVersion | quote }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
 
 {{/*
-Selector labels
+Common labels (includes component: api)
 */}}
-{{- define "hyperfleet-api.selectorLabels" -}}
+{{- define "hyperfleet-api.labels" -}}
+{{ include "hyperfleet-api.labelsWithoutComponent" . }}
+app.kubernetes.io/component: api
+{{- end }}
+
+{{/*
+Selector labels without component — use for sub-resources that set their own component.
+*/}}
+{{- define "hyperfleet-api.selectorLabelsWithoutComponent" -}}
 app.kubernetes.io/name: {{ include "hyperfleet-api.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end }}
+
+{{/*
+Selector labels (includes component: api)
+*/}}
+{{- define "hyperfleet-api.selectorLabels" -}}
+{{ include "hyperfleet-api.selectorLabelsWithoutComponent" . }}
 app.kubernetes.io/component: api
 {{- end }}
 
