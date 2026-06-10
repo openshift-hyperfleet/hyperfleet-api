@@ -25,7 +25,7 @@ const MaxListSize = 65500
 func NewListArguments(params url.Values) *ListArguments {
 	listArgs := &ListArguments{
 		Page:   1,
-		Size:   100,
+		Size:   20,
 		Search: "",
 	}
 	if v := strings.Trim(params.Get("page"), " "); v != "" {

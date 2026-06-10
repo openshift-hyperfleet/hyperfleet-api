@@ -74,7 +74,7 @@ func TestNewListArguments_DefaultValues(t *testing.T) {
 	listArgs := NewListArguments(url.Values{})
 
 	Expect(listArgs.Page).To(Equal(1), "Default page should be 1")
-	Expect(listArgs.Size).To(Equal(int64(100)), "Default size should be 100")
+	Expect(listArgs.Size).To(Equal(int64(20)), "Default size should be 20")
 	Expect(listArgs.Search).To(Equal(""), "Default search should be empty")
 	Expect(listArgs.OrderBy).To(Equal([]string{"created_time desc"}), "Default orderBy should be created_time desc")
 }
