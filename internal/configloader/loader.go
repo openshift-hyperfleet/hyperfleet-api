@@ -1,10 +1,12 @@
 package configloader
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/logger"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/utils"
 	"gopkg.in/yaml.v3"
 )
@@ -30,9 +32,11 @@ var ValidHTTPMethods = []string{"GET", "POST", "PUT", "PATCH", "DELETE"}
 type LoadOption func(*loadOptions)
 
 type loadOptions struct {
+	flags                  interface{} // *pflag.FlagSet
+	ctx                    context.Context
+	logger                 logger.Logger
 	adapterConfigPath      string
 	taskConfigPath         string
-	flags                  interface{} // *pflag.FlagSet
 	adapterVersion         string
 	skipSemanticValidation bool
 }
@@ -72,6 +76,20 @@ func WithSkipSemanticValidation() LoadOption {
 	}
 }
 
+// WithContext sets the context for logging during config loading
+func WithContext(ctx context.Context) LoadOption {
+	return func(o *loadOptions) {
+		o.ctx = ctx
+	}
+}
+
+// WithLogger sets the logger for config loading
+func WithLogger(l logger.Logger) LoadOption {
+	return func(o *loadOptions) {
+		o.logger = l
+	}
+}
+
 // -----------------------------------------------------------------------------
 // Public API
 // -----------------------------------------------------------------------------
@@ -83,6 +101,16 @@ func LoadConfig(opts ...LoadOption) (*Config, error) {
 	o := &loadOptions{}
 	for _, opt := range opts {
 		opt(o)
+	}
+	if o.ctx == nil {
+		o.ctx = context.Background()
+	}
+	if o.logger == nil {
+		var logErr error
+		o.logger, logErr = logger.NewLogger(logger.DefaultConfig())
+		if logErr != nil {
+			return nil, fmt.Errorf("failed to create logger: %w", logErr)
+		}
 	}
 
 	// 1. Load AdapterConfig with Viper (env/CLI overrides)
@@ -106,7 +134,7 @@ func LoadConfig(opts ...LoadOption) (*Config, error) {
 
 	// Validate adapter version if specified
 	if o.adapterVersion != "" {
-		if err = ValidateAdapterVersion(adapterCfg, o.adapterVersion); err != nil {
+		if err = ValidateAdapterVersion(o.ctx, o.logger, adapterCfg, o.adapterVersion); err != nil {
 			return nil, fmt.Errorf("adapter version validation failed: %w", err)
 		}
 	}
