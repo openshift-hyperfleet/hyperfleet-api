@@ -72,16 +72,6 @@ PUT   /api/hyperfleet/v1/clusters/{cluster_id}/statuses
         "last_updated_time": "2025-01-01T00:00:00Z",
         "last_transition_time": "2025-01-01T00:00:00Z"
       },
-      {
-        "type": "Ready",
-        "status": "False",
-        "reason": "ReconciledMissingAdapters",
-        "message": "Required adapters have not yet reported status",
-        "observed_generation": 1,
-        "created_time": "2025-01-01T00:00:00Z",
-        "last_updated_time": "2025-01-01T00:00:00Z",
-        "last_transition_time": "2025-01-01T00:00:00Z"
-      }
     ]
   }
 }
@@ -89,7 +79,7 @@ PUT   /api/hyperfleet/v1/clusters/{cluster_id}/statuses
 
 </details>
 
-**Note**: Status initially has `Reconciled=False`, `LastKnownReconciled=False`, and `Ready=False` conditions until adapters report status.
+**Note**: Status initially has `Reconciled=False` and `LastKnownReconciled=False` conditions until adapters report status.
 
 ### Get Cluster
 
@@ -137,16 +127,6 @@ PUT   /api/hyperfleet/v1/clusters/{cluster_id}/statuses
         "last_updated_time": "2025-01-01T00:00:00Z",
         "last_transition_time": "2025-01-01T00:00:00Z"
       },
-      {
-        "type": "Ready",
-        "status": "True",
-        "reason": "ReconciledAll",
-        "message": "All required adapters reported Available=True or Finalized=True at the current generation",
-        "observed_generation": 1,
-        "created_time": "2025-01-01T00:00:00Z",
-        "last_updated_time": "2025-01-01T00:00:00Z",
-        "last_transition_time": "2025-01-01T00:00:00Z"
-      }
     ]
   }
 }
@@ -343,16 +323,6 @@ PUT   /api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepool_id}/statuses
         "last_updated_time": "2025-01-01T00:00:00Z",
         "last_transition_time": "2025-01-01T00:00:00Z"
       },
-      {
-        "type": "Ready",
-        "status": "False",
-        "reason": "ReconciledMissingAdapters",
-        "message": "Required adapters have not yet reported status",
-        "observed_generation": 1,
-        "created_time": "2025-01-01T00:00:00Z",
-        "last_updated_time": "2025-01-01T00:00:00Z",
-        "last_transition_time": "2025-01-01T00:00:00Z"
-      }
     ]
   }
 }
@@ -404,13 +374,6 @@ PUT   /api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepool_id}/statuses
         "message": "All required adapters report Available=True for the tracked generation",
         "observed_generation": 1
       },
-      {
-        "type": "Ready",
-        "status": "True",
-        "reason": "ReconciledAll",
-        "message": "All required adapters reported Available=True or Finalized=True at the current generation",
-        "observed_generation": 1
-      }
     ]
   }
 }
@@ -437,7 +400,7 @@ GET /api/hyperfleet/v1/clusters?page=1&pageSize=10
 **Parameters:**
 
 - `page` - Page number (default: 1)
-- `pageSize` - Items per page (default: 100)
+- `pageSize` - Items per page (default: 20)
 
 **Response:**
 
@@ -485,7 +448,6 @@ The status object contains synthesized conditions computed from adapter reports:
 - `conditions` - Array of resource conditions, including:
   - **Reconciled** - Whether all adapters have reconciled at the current spec generation
   - **LastKnownReconciled** - Whether resource is running at any known good configuration
-  - **Ready** *(deprecated — alias of Reconciled)* - Same semantics as Reconciled; prefer `Reconciled` for new integrations
   - Additional conditions from adapters (with `observed_generation`, timestamps)
 
 ### Condition Fields
@@ -502,7 +464,7 @@ The status object contains synthesized conditions computed from adapter reports:
 - All above fields plus:
 - `observed_generation` - Generation this condition reflects
 - `created_time` - When condition was first created (API-managed)
-- `last_updated_time` - API-managed. For per-adapter conditions, taken from `AdapterStatus.last_report_time`. For aggregated conditions (`Reconciled`, `LastKnownReconciled`, `Ready`), computed as the oldest valid adapter report time within the relevant generation bucket — not the latest report time
+- `last_updated_time` - API-managed. For per-adapter conditions, taken from `AdapterStatus.last_report_time`. For aggregated conditions (`Reconciled`, `LastKnownReconciled`), computed as the oldest valid adapter report time within the relevant generation bucket — not the latest report time
 - `last_transition_time` - When status last changed (API-managed)
 
 ## Parameter Restrictions
@@ -577,6 +539,23 @@ Same naming rules as cluster, but with a shorter maximum length.
 - **AdapterConditionStatus** (used in adapter status reports): `True`, `False`, `Unknown`
 - **ResourceConditionStatus** (used in cluster/nodepool conditions): `True`, `False`
 - **OrderDirection**: `asc`, `desc`
+
+## Spec Validation
+
+When an OpenAPI schema is configured (see [deployment.md](deployment.md#schema-validation) for setup), the API validates cluster and nodepool `spec` fields on every create and update request. If no schema is configured, all specs are accepted without validation. When a schema is configured:
+
+- `POST /clusters` and `POST /nodepools` validate `spec` against `ClusterSpec` or `NodePoolSpec` from the schema
+- `PATCH /clusters/{id}` and `PATCH /nodepools/{id}` validate the merged result
+- Invalid specs return a `400` with validation details in the error response
+
+The schema is configured via `--server-openapi-schema-path` or the `validationSchema` section in the Helm chart. See [Validation Schema](../openapi/README.md#validation-schema) for details.
+
+## Statuses Endpoint vs. Resource Endpoint
+
+- `GET /clusters/{id}` returns the cluster with **aggregated** status conditions (`Reconciled`, `LastKnownReconciled`, and per-adapter conditions synthesized from adapter reports).
+- `GET /clusters/{id}/statuses` returns the **raw adapter status records** — one per adapter that has reported. These are the individual reports, not the aggregated view.
+
+The same distinction applies to nodepools.
 
 ## Related Documentation
 

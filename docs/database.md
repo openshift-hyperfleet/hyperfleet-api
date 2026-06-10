@@ -9,20 +9,26 @@ HyperFleet API uses PostgreSQL with GORM ORM. The schema follows a simple relati
 ## Core Tables
 
 ### clusters
-Primary resources for cluster management. Contains cluster metadata and JSONB spec field for provider-specific configuration.
+Primary resources for cluster management. It contains :
+* cluster metadata, 
+* a JSONB `spec` field for provider-specific configuration, 
+* a JSONB `labels` field for key-value categorization, 
+* a JSONB `status_conditions` field for synthesized status. 
+* `deleted_time` for soft delete 
+* and `deleted_by` for audit.
 
 ### node_pools
-Child resources owned by clusters, representing groups of compute nodes. Uses foreign key relationship with cascade delete.
+Child resources owned by clusters, representing groups of compute nodes. References clusters via `owner_id` with a `RESTRICT` foreign key. Same column layout as clusters (including `labels`, `status_conditions`, `deleted_time`, `deleted_by`).
 
 ### adapter_statuses
-Polymorphic status records for both clusters and node pools. Stores adapter-reported conditions in JSONB format.
+Polymorphic status records for both clusters and node pools. Stores adapter-reported conditions in JSONB format. No soft delete — rows are hard-deleted or replaced.
 
 **Polymorphic pattern:**
-- `owner_type` + `owner_id` allows one table to serve both clusters and node pools
-- Enables efficient status lookups across resource types
+- `resource_type` + `resource_id` allows one table to serve both clusters and node pools
+- Unique constraint on `(resource_type, resource_id, adapter)` — one record per adapter per resource
 
-### labels
-Key-value pairs for resource categorization and search. Uses polymorphic association to support both clusters and node pools.
+### resources
+Generic resource table used by the plugin system for extensible resource types (WifConfigs, Channels, Versions, etc.). Stores `kind`, `name`, `spec` (JSONB), `labels` (JSONB), and optional owner references (`owner_id`, `owner_kind`, `owner_href`) for parent-child relationships. Uses `deleted_time`/`deleted_by` for soft delete. Unique name constraints are scoped by `kind` and `owner_id`.
 
 ## Schema Relationships
 
@@ -32,8 +38,9 @@ clusters (1) ──→ (N) node_pools
     │                    │
     └────────┬───────────┘
              │
-             ├──→ adapter_statuses (polymorphic)
-             └──→ labels (polymorphic)
+             └──→ adapter_statuses (polymorphic via resource_type + resource_id)
+
+resources (standalone, self-referencing parent-child via owner_id)
 ```
 
 ## Key Design Patterns
@@ -52,7 +59,7 @@ Flexible schema storage for:
 
 ### Soft Delete
 
-Resources use GORM's soft delete pattern with `deleted_at` timestamp. Soft-deleted records are excluded from queries by default.
+Clusters, node pools, and generic resources use a custom soft delete pattern with a `deleted_time` timestamp and `deleted_by` audit field. Soft-deleted records are excluded from queries by default. Adapter statuses do not use soft delete.
 
 ### Migration System
 

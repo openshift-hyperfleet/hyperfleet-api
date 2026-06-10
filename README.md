@@ -6,7 +6,7 @@ HyperFleet API - Simple REST API for cluster lifecycle management. Provides CRUD
 
 ### Technology Stack
 
-- **Language**: Go 1.24+
+- **Language**: Go 1.25+
 - **API Definition**: OpenAPI 3.0
 - **Code Generation**: oapi-codegen
 - **Database**: PostgreSQL with GORM ORM
@@ -18,10 +18,12 @@ HyperFleet API - Simple REST API for cluster lifecycle management. Provides CRUD
 * OpenAPI 3.0 specification
 * Automated Go code generation from OpenAPI
 * Cluster and NodePool lifecycle management
+* Generic resource types (WifConfigs, Channels, Versions) via plugin-based registration
 * Adapter-based status reporting with Kubernetes-style conditions
+* Runtime spec validation against custom OpenAPI schemas
 * Pagination and search capabilities
 * Complete integration test coverage
-* Database migrations with GORM
+* Database migrations with gormigrate
 * Embedded OpenAPI specification using `//go:embed`
 
 ### Project Structure
@@ -30,11 +32,18 @@ HyperFleet API - Simple REST API for cluster lifecycle management. Provides CRUD
 hyperfleet-api/
 ├── cmd/hyperfleet-api/          # Application entry point
 ├── pkg/
-│   ├── api/                     # API models and handlers
+│   ├── api/                     # API models and type definitions
 │   ├── dao/                     # Data access layer
-│   ├── db/                      # Database setup and migrations
+│   ├── db/                      # Database setup, migrations, and session management
 │   ├── handlers/                # HTTP request handlers
-│   └── services/                # Business logic
+│   └── services/                # Service layer (status aggregation, CRUD)
+├── plugins/                     # Plugin-based resource registration
+│   ├── clusters/                # Cluster resource plugin
+│   ├── nodePools/               # NodePool resource plugin
+│   ├── wifconfigs/              # WifConfig resource plugin
+│   ├── channels/                # Channel resource plugin
+│   ├── versions/                # Version resource plugin (child of Channel)
+│   └── generic/                 # Generic resource framework
 ├── openapi/                     # Generated artifacts from hyperfleet-api-spec module
 ├── test/                        # Integration tests and factories
 ├── docs/                        # Detailed documentation
@@ -45,7 +54,7 @@ hyperfleet-api/
 
 ### Prerequisites
 
-- **Go 1.24+**, **Podman**, **PostgreSQL 13+**, **Make**
+- **Go 1.25+**, **Podman**, **PostgreSQL 14+**, **Make**
 
 See [PREREQUISITES.md](PREREQUISITES.md) for installation instructions.
 
@@ -61,17 +70,25 @@ go mod download
 # 3. Build binary
 make build
 
-# 4. Setup database
+# 4. Setup database (local PostgreSQL container)
 make db/setup
 
-# 5. Run migrations
+# 5. Copy config file
+cp configs/config.yaml.example configs/config.yaml
+
+# 6. Run migrations
 ./bin/hyperfleet-api migrate
 
-# 6. Start service (no auth)
+# 7. Start service (no auth)
 make run-no-auth
 ```
 
 **Note**: Generated code is not tracked in git. You must run `make generate-all` after cloning.
+
+The `migrate` and `serve` commands require a configuration file. The loader checks `--config` flag, then `HYPERFLEET_CONFIG` env var, then `/etc/hyperfleet/config.yaml`, then `./configs/config.yaml`.
+If none are found, the command fails with `failed to load configuration`. Copy the example config or point to your own.
+
+For production database setup (external PostgreSQL, Cloud SQL, etc.), see [docs/deployment.md](docs/deployment.md#production-deployment).
 
 ### Accessing the API
 
@@ -110,7 +127,15 @@ Groups of compute nodes within clusters.
 - `GET /api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepool_id}`
 - `GET/PUT /api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepool_id}/statuses`
 
-Both resources support pagination, label-based search, and adapter status reporting. See [docs/api-resources.md](docs/api-resources.md) for complete API documentation.
+### Generic Resources
+
+The API also supports generic resource types registered via the plugin system. Currently available:
+
+- **WifConfigs** — `GET/POST /api/hyperfleet/v1/wifconfigs`, `GET/PATCH/DELETE .../wifconfigs/{id}`
+- **Channels** — `GET/POST /api/hyperfleet/v1/channels`, `GET/PATCH/DELETE .../channels/{id}`
+- **Versions** — `GET/POST /api/hyperfleet/v1/channels/{parent_id}/versions`, `GET/PATCH/DELETE .../versions/{id}` (child of Channel)
+
+All resources support pagination, label-based search, and spec validation. Clusters and NodePools additionally support adapter status reporting. See [docs/api-resources.md](docs/api-resources.md) for complete API documentation.
 
 ## Example Usage
 
@@ -183,4 +208,4 @@ This project uses [pre-commit](https://pre-commit.io/) for code quality checks. 
 
 ## License
 
-[License information to be added]
+This project is licensed under the Apache License 2.0. See [LICENSE](LICENSE) for details.
