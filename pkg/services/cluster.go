@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/auth"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/dao"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
@@ -483,10 +482,7 @@ func logForceDeleteAudit(
 	ctx context.Context, clusterID, reason string,
 	statuses api.AdapterStatusList, nodePools api.NodePoolList,
 ) {
-	caller := auth.GetUsernameFromContext(ctx)
-	if caller == "" {
-		caller = "unknown"
-	}
+	caller := actorFromContext(ctx)
 
 	nodePoolIDs := make([]string, 0, len(nodePools))
 	for _, np := range nodePools {

@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/auth"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/dao"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
@@ -74,10 +73,7 @@ func (s *sqlResourceService) Create(
 		}
 	}
 
-	username := auth.GetUsernameFromContext(ctx)
-	if username == "" {
-		username = defaultSystemUser
-	}
+	username := actorFromContext(ctx)
 	if resource.CreatedBy == "" {
 		resource.CreatedBy = username
 	}
@@ -126,11 +122,7 @@ func (s *sqlResourceService) Patch(
 
 	resource.IncrementGeneration()
 
-	username := auth.GetUsernameFromContext(ctx)
-	if username == "" {
-		username = defaultSystemUser
-	}
-	resource.UpdatedBy = username
+	resource.UpdatedBy = actorFromContext(ctx)
 
 	if saveErr := s.resourceDao.Save(ctx, resource); saveErr != nil {
 		return nil, handleUpdateError(kind, saveErr)

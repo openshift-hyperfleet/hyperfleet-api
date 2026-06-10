@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/auth"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/dao"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
@@ -247,10 +246,7 @@ func (s *sqlNodePoolService) ForceDelete(ctx context.Context, id string, reason 
 		return errors.GeneralError("Failed to fetch adapter statuses for nodepool '%s': %s", id, err)
 	}
 
-	caller := auth.GetUsernameFromContext(ctx)
-	if caller == "" {
-		caller = "unknown"
-	}
+	caller := actorFromContext(ctx)
 
 	logger.With(ctx,
 		"nodepool_id", id,
