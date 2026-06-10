@@ -3,16 +3,12 @@ package handlers
 import (
 	"net/http"
 
-	"github.com/gorilla/mux"
-
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/presenters"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/services"
 )
-
-var _ RestHandler = NodePoolHandler{}
 
 type NodePoolHandler struct {
 	nodePool services.NodePoolService
@@ -24,67 +20,6 @@ func NewNodePoolHandler(nodePool services.NodePoolService, generic services.Gene
 		nodePool: nodePool,
 		generic:  generic,
 	}
-}
-
-func (h NodePoolHandler) Create(w http.ResponseWriter, r *http.Request) {
-	var req openapi.NodePoolCreateRequest
-	cfg := &handlerConfig{
-		MarshalInto: &req,
-		Validate: []validate{
-			validateEmpty(&req, "Id", "id"),
-			validateName(&req, "Name", "name", 3, 15),
-			validateKind(&req, "Kind", "kind", "NodePool"),
-		},
-		Action: func() (interface{}, *errors.ServiceError) {
-			ctx := r.Context()
-			// For standalone nodepools, owner_id would need to come from somewhere
-			// This is likely not a supported use case, but using empty string for now
-			nodePoolModel, convErr := presenters.ConvertNodePool(&req, "")
-			if convErr != nil {
-				return nil, errors.GeneralError("Failed to convert nodepool: %v", convErr)
-			}
-			nodePoolModel, err := h.nodePool.Create(ctx, nodePoolModel)
-			if err != nil {
-				return nil, err
-			}
-			presented, presErr := presenters.PresentNodePool(nodePoolModel)
-			if presErr != nil {
-				return nil, errors.GeneralError("Failed to present nodepool: %v", presErr)
-			}
-			return presented, nil
-		},
-		ErrorHandler: handleError,
-	}
-
-	handle(w, r, cfg, http.StatusCreated)
-}
-
-func (h NodePoolHandler) Patch(w http.ResponseWriter, r *http.Request) {
-	var patch api.NodePoolPatchRequest
-
-	cfg := &handlerConfig{
-		MarshalInto: &patch,
-		Validate: []validate{
-			validatePatchRequest(&patch),
-		},
-		Action: func() (interface{}, *errors.ServiceError) {
-			ctx := r.Context()
-			id := mux.Vars(r)["id"]
-
-			nodePoolModel, err := h.nodePool.Patch(ctx, id, &patch)
-			if err != nil {
-				return nil, err
-			}
-			presented, presErr := presenters.PresentNodePool(nodePoolModel)
-			if presErr != nil {
-				return nil, errors.GeneralError("Failed to present nodepool: %v", presErr)
-			}
-			return presented, nil
-		},
-		ErrorHandler: handleError,
-	}
-
-	handle(w, r, cfg, http.StatusOK)
 }
 
 func (h NodePoolHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -133,27 +68,4 @@ func (h NodePoolHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 
 	handleList(w, r, cfg)
-}
-
-func (h NodePoolHandler) Get(w http.ResponseWriter, r *http.Request) {
-	cfg := &handlerConfig{
-		Action: func() (interface{}, *errors.ServiceError) {
-			id := mux.Vars(r)["id"]
-			ctx := r.Context()
-			nodePool, err := h.nodePool.Get(ctx, id)
-			if err != nil {
-				return nil, err
-			}
-
-			presented, presErr := presenters.PresentNodePool(nodePool)
-			if presErr != nil {
-				return nil, errors.GeneralError("Failed to present nodepool: %v", presErr)
-			}
-
-			return applyFieldFilter(r, presented)
-		},
-		ErrorHandler: handleError,
-	}
-
-	handleGet(w, r, cfg)
 }

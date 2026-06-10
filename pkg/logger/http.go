@@ -2,7 +2,6 @@ package logger
 
 import (
 	"log/slog"
-	"net/http"
 	"time"
 )
 
@@ -38,21 +37,4 @@ func HTTPDuration(d time.Duration) slog.Attr {
 // HTTPUserAgent returns a slog attribute for HTTP user agent
 func HTTPUserAgent(ua string) slog.Attr {
 	return slog.String(FieldHTTPUserAgent, ua)
-}
-
-// HTTPRequestAttrs returns a slice of slog attributes for HTTP request
-func HTTPRequestAttrs(r *http.Request) []slog.Attr {
-	return []slog.Attr{
-		HTTPMethod(r.Method),
-		HTTPPath(r.URL.Path),
-		HTTPUserAgent(r.UserAgent()),
-	}
-}
-
-// HTTPResponseAttrs returns a slice of slog attributes for HTTP response
-func HTTPResponseAttrs(statusCode int, duration time.Duration) []slog.Attr {
-	return []slog.Attr{
-		HTTPStatusCode(statusCode),
-		HTTPDuration(duration),
-	}
 }

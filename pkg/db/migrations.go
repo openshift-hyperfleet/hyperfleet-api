@@ -2,7 +2,6 @@ package db
 
 import (
 	"context"
-	"os"
 
 	"github.com/go-gormigrate/gormigrate/v2"
 	"gorm.io/gorm"
@@ -43,20 +42,6 @@ func MigrateWithLock(ctx context.Context, factory SessionFactory) error {
 
 	logger.Info(ctx, "Migration completed successfully")
 	return nil
-}
-
-// MigrateTo a specific migration will not seed the database, seeds are up to date with the latest
-// schema based on the most recent migration
-// This should be for testing purposes mainly
-func MigrateTo(sessionFactory SessionFactory, migrationID string) {
-	ctx := context.Background()
-	g2 := sessionFactory.New(ctx)
-	m := newGormigrate(g2)
-
-	if err := m.MigrateTo(migrationID); err != nil {
-		logger.With(ctx, logger.FieldMigrationID, migrationID).WithError(err).Error("Could not migrate")
-		os.Exit(1)
-	}
 }
 
 func newGormigrate(g2 *gorm.DB) *gormigrate.Gormigrate {

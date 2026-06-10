@@ -2,7 +2,6 @@ package environments
 
 import (
 	"context"
-	"fmt"
 	"os"
 
 	"github.com/spf13/pflag"
@@ -50,18 +49,6 @@ func GetEnvironmentStrFromEnv() string {
 
 func Environment() *Env {
 	return environment
-}
-
-// ApplyEnvironmentOverrides applies environment-specific configuration overrides
-// This is used by the new config system to apply environment-specific settings
-// (e.g., development environment disables JWT and TLS)
-func ApplyEnvironmentOverrides(cfg *config.ApplicationConfig) error {
-	envName := GetEnvironmentStrFromEnv()
-	envImpl, found := environments[envName]
-	if !found {
-		return fmt.Errorf("unknown runtime environment: %s", envName)
-	}
-	return envImpl.OverrideConfig(cfg)
 }
 
 // SetEnvironmentDefaults sets environment-specific flag defaults
