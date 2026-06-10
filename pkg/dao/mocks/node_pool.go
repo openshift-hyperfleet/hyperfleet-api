@@ -62,10 +62,6 @@ func (d *nodePoolDaoMock) Delete(ctx context.Context, id string) error {
 	return errors.NotImplemented("NodePool").AsError()
 }
 
-func (d *nodePoolDaoMock) FindByIDs(ctx context.Context, ids []string) (api.NodePoolList, error) {
-	return nil, errors.NotImplemented("NodePool").AsError()
-}
-
 func (d *nodePoolDaoMock) FindByOwner(ctx context.Context, ownerID string) (api.NodePoolList, error) {
 	return nil, errors.NotImplemented("NodePool").AsError()
 }
@@ -83,6 +79,3 @@ func (d *nodePoolDaoMock) ExistsByOwner(ctx context.Context, ownerID string) (bo
 	return false, nil
 }
 
-func (d *nodePoolDaoMock) All(ctx context.Context) (api.NodePoolList, error) {
-	return d.nodePools, nil
-}

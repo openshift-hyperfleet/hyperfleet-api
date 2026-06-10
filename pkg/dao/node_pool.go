@@ -17,11 +17,9 @@ type NodePoolDao interface {
 	Save(ctx context.Context, nodePool *api.NodePool) error
 	SaveStatusConditions(ctx context.Context, id string, statusConditions []byte) error
 	Delete(ctx context.Context, id string) error
-	FindByIDs(ctx context.Context, ids []string) (api.NodePoolList, error)
 	FindByOwner(ctx context.Context, ownerID string) (api.NodePoolList, error)
 	SaveAll(ctx context.Context, nodePools api.NodePoolList) error
 	ExistsByOwner(ctx context.Context, ownerID string) (bool, error)
-	All(ctx context.Context) (api.NodePoolList, error)
 }
 
 var _ NodePoolDao = &sqlNodePoolDao{}
@@ -98,15 +96,6 @@ func (d *sqlNodePoolDao) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-func (d *sqlNodePoolDao) FindByIDs(ctx context.Context, ids []string) (api.NodePoolList, error) {
-	g2 := d.sessionFactory.New(ctx)
-	nodePools := api.NodePoolList{}
-	if err := g2.Where("id in (?)", ids).Find(&nodePools).Error; err != nil {
-		return nil, err
-	}
-	return nodePools, nil
-}
-
 func (d *sqlNodePoolDao) FindByOwner(ctx context.Context, ownerID string) (api.NodePoolList, error) {
 	g2 := d.sessionFactory.New(ctx)
 	var nodePools api.NodePoolList
@@ -137,11 +126,3 @@ func (d *sqlNodePoolDao) ExistsByOwner(ctx context.Context, ownerID string) (boo
 	return count > 0, nil
 }
 
-func (d *sqlNodePoolDao) All(ctx context.Context) (api.NodePoolList, error) {
-	g2 := d.sessionFactory.New(ctx)
-	nodePools := api.NodePoolList{}
-	if err := g2.Find(&nodePools).Error; err != nil {
-		return nil, err
-	}
-	return nodePools, nil
-}

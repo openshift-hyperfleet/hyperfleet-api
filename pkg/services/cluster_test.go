@@ -290,19 +290,8 @@ func (m *mockNodePoolService) CascadeSoftDelete(
 	return nil
 }
 
-func (m *mockNodePoolService) Delete(context.Context, string) *errors.ServiceError { return nil }
 func (m *mockNodePoolService) ForceDelete(context.Context, string, string) *errors.ServiceError {
 	return nil
-}
-
-func (m *mockNodePoolService) All(context.Context) (api.NodePoolList, *errors.ServiceError) {
-	return nil, nil
-}
-
-func (m *mockNodePoolService) FindByIDs(
-	context.Context, []string,
-) (api.NodePoolList, *errors.ServiceError) {
-	return nil, nil
 }
 
 func (m *mockNodePoolService) UpdateNodePoolStatusFromAdapters(
@@ -316,9 +305,6 @@ func (m *mockNodePoolService) ProcessAdapterStatus(
 ) (*api.AdapterStatus, *errors.ServiceError) {
 	return nil, nil
 }
-
-func (m *mockNodePoolService) OnUpsert(context.Context, string) error { return nil }
-func (m *mockNodePoolService) OnDelete(context.Context, string) error { return nil }
 
 var _ dao.AdapterStatusDao = &mockAdapterStatusDao{}
 
