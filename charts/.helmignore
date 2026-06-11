@@ -21,6 +21,10 @@
 .idea/
 *.tmproj
 .vscode/
+# helm-docs template (not needed in chart package)
+README.md.gotmpl
+# AI agent context
+CLAUDE.md
 # Parent directory patterns
 ../.git/
 ../../.git/

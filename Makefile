@@ -236,6 +236,16 @@ db/teardown: check-container-tool ## Stop and remove local PostgreSQL container
 
 ##@ Helm Charts
 
+.PHONY: helm-docs
+helm-docs: $(HELM_DOCS) ## Generate Helm chart README from values.yaml annotations
+	$(HELM_DOCS) --chart-search-root=charts --sort-values-order=file
+
+.PHONY: verify-helm-docs
+verify-helm-docs: $(HELM_DOCS) ## Verify chart README is up to date
+	$(HELM_DOCS) --chart-search-root=charts --sort-values-order=file
+	@git diff --exit-code charts/README.md > /dev/null 2>&1 || \
+		(echo "ERROR: charts/README.md is out of date. Run 'make helm-docs' and commit the result." && exit 1)
+
 # kubeconform flags for validating rendered Helm templates against Kubernetes
 # and CRD schemas. Uses the datreeio/CRDs-catalog for ServiceMonitor and
 # PrometheusRule schemas.
@@ -246,7 +256,7 @@ KUBECONFORM_FLAGS := \
 	-schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
 
 .PHONY: test-helm
-test-helm: $(KUBECONFORM) ## Test Helm charts (lint, template, validate, kubeconform)
+test-helm: $(KUBECONFORM) verify-helm-docs ## Test Helm charts (lint, template, validate, kubeconform)
 	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 	@echo "Testing Helm charts..."
 	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
