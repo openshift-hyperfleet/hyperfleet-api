@@ -1,0 +1,924 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/openshift-hyperfleet/hyperfleet-api/charts/values.schema.json",
+  "title": "hyperfleet-api Helm Values",
+  "description": "JSON Schema for the hyperfleet-api Helm chart values.yaml",
+  "type": "object",
+  "properties": {
+    "replicaCount": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Number of API server replicas to deploy"
+    },
+    "image": {
+      "type": "object",
+      "description": "Container image configuration",
+      "required": [
+        "registry",
+        "repository",
+        "tag"
+      ],
+      "properties": {
+        "registry": {
+          "type": "string",
+          "description": "Container registry host (e.g. quay.io)"
+        },
+        "repository": {
+          "type": "string",
+          "description": "Image repository path (e.g. openshift-hyperfleet/hyperfleet-api)"
+        },
+        "pullPolicy": {
+          "type": "string",
+          "enum": [
+            "Always",
+            "IfNotPresent",
+            "Never"
+          ],
+          "description": "Kubernetes image pull policy"
+        },
+        "tag": {
+          "type": "string",
+          "description": "Image tag to deploy; required, no default"
+        }
+      }
+    },
+    "imagePullSecrets": {
+      "type": "array",
+      "description": "List of Kubernetes image pull secrets",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Name of the image pull secret"
+          }
+        }
+      }
+    },
+    "nameOverride": {
+      "type": "string",
+      "description": "Override the chart name used in resource names"
+    },
+    "fullnameOverride": {
+      "type": "string",
+      "description": "Override the full release name used in resource names"
+    },
+    "ports": {
+      "type": "object",
+      "description": "Container port mappings; must match the corresponding config.*.port values",
+      "properties": {
+        "api": {
+          "type": "integer",
+          "description": "API server port; must match config.server.port"
+        },
+        "health": {
+          "type": "integer",
+          "description": "Health check port; must match config.health.port"
+        },
+        "metrics": {
+          "type": "integer",
+          "description": "Metrics endpoint port; must match config.metrics.port"
+        }
+      }
+    },
+    "config": {
+      "type": "object",
+      "description": "Application configuration; generates the ConfigMap consumed by the API server",
+      "properties": {
+        "existingConfigMap": {
+          "type": "string",
+          "description": "Name of an existing ConfigMap to use instead of generating one; when set, all other config.* values are ignored"
+        },
+        "server": {
+          "type": "object",
+          "description": "HTTP server settings",
+          "properties": {
+            "hostname": {
+              "type": "string",
+              "description": "External hostname advertised by the server"
+            },
+            "host": {
+              "type": "string",
+              "description": "Address the server binds to (use 0.0.0.0 inside Kubernetes)"
+            },
+            "port": {
+              "type": "integer",
+              "description": "Port the API server listens on"
+            },
+            "timeouts": {
+              "type": "object",
+              "description": "HTTP server timeout configuration",
+              "properties": {
+                "read": {
+                  "type": "string",
+                  "description": "Maximum duration for reading the entire request (Go duration, e.g. 5s)"
+                },
+                "write": {
+                  "type": "string",
+                  "description": "Maximum duration before timing out writes of the response (Go duration, e.g. 30s)"
+                }
+              }
+            },
+            "tls": {
+              "type": "object",
+              "description": "TLS termination at the server level",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "description": "Enable TLS on the API server"
+                },
+                "cert_file": {
+                  "type": "string",
+                  "description": "Path to the TLS certificate file"
+                },
+                "key_file": {
+                  "type": "string",
+                  "description": "Path to the TLS private key file"
+                }
+              }
+            },
+            "jwt": {
+              "type": "object",
+              "description": "JWT authentication configuration",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "description": "Enable JWT token validation"
+                },
+                "issuer_url": {
+                  "type": "string",
+                  "description": "Expected JWT issuer URL"
+                },
+                "audience": {
+                  "type": "string",
+                  "description": "Expected JWT audience claim"
+                },
+                "identity_claim": {
+                  "type": "string",
+                  "description": "JWT claim to extract the caller identity from (e.g. email, sub)"
+                }
+              }
+            },
+            "identity_header": {
+              "type": "string",
+              "description": "HTTP header carrying a pre-authenticated identity (bypasses JWT when set)"
+            },
+            "jwk": {
+              "type": "object",
+              "description": "JWK key material for token verification",
+              "properties": {
+                "cert_file": {
+                  "type": "string",
+                  "description": "Path to a local JWK certificate file"
+                },
+                "cert_url": {
+                  "type": "string",
+                  "description": "URL to fetch JWK certificates from"
+                }
+              }
+            }
+          }
+        },
+        "database": {
+          "type": "object",
+          "description": "Database connection and pool settings (credentials come from Secrets, not here)",
+          "properties": {
+            "dialect": {
+              "type": "string",
+              "description": "Database dialect (only postgres is currently supported)"
+            },
+            "host": {
+              "type": "string",
+              "description": "Database host; auto-set when using the built-in PostgreSQL pod"
+            },
+            "port": {
+              "type": "integer",
+              "description": "Database port"
+            },
+            "name": {
+              "type": "string",
+              "description": "Database name"
+            },
+            "debug": {
+              "type": "boolean",
+              "description": "Enable verbose SQL query logging"
+            },
+            "ssl": {
+              "type": "object",
+              "description": "Database SSL/TLS settings",
+              "properties": {
+                "mode": {
+                  "type": "string",
+                  "enum": [
+                    "disable",
+                    "require",
+                    "verify-ca",
+                    "verify-full"
+                  ],
+                  "description": "PostgreSQL SSL mode"
+                },
+                "root_cert_file": {
+                  "type": "string",
+                  "description": "Path to the CA certificate for SSL verification"
+                }
+              }
+            },
+            "pool": {
+              "type": "object",
+              "description": "Connection pool tuning",
+              "properties": {
+                "max_connections": {
+                  "type": "integer",
+                  "description": "Maximum number of open connections in the pool"
+                },
+                "max_idle_connections": {
+                  "type": "integer",
+                  "description": "Maximum number of idle connections retained"
+                },
+                "conn_max_lifetime": {
+                  "type": "string",
+                  "description": "Maximum lifetime of a connection (Go duration, e.g. 5m)"
+                },
+                "conn_max_idle_time": {
+                  "type": "string",
+                  "description": "Maximum idle time before a connection is closed (Go duration, e.g. 1m)"
+                },
+                "request_timeout": {
+                  "type": "string",
+                  "description": "Per-request database timeout (Go duration, e.g. 30s)"
+                },
+                "conn_retry_attempts": {
+                  "type": "integer",
+                  "description": "Number of connection retry attempts on startup"
+                },
+                "conn_retry_interval": {
+                  "type": "string",
+                  "description": "Delay between connection retry attempts (Go duration, e.g. 3s)"
+                }
+              }
+            }
+          }
+        },
+        "logging": {
+          "type": "object",
+          "description": "Structured logging configuration",
+          "properties": {
+            "level": {
+              "type": "string",
+              "enum": [
+                "debug",
+                "info",
+                "warn",
+                "error"
+              ],
+              "description": "Minimum log level emitted"
+            },
+            "format": {
+              "type": "string",
+              "enum": [
+                "json",
+                "text"
+              ],
+              "description": "Log output format"
+            },
+            "output": {
+              "type": "string",
+              "enum": [
+                "stdout",
+                "stderr"
+              ],
+              "description": "Log output destination"
+            },
+            "otel": {
+              "type": "object",
+              "description": "OpenTelemetry log integration",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "description": "Enable OpenTelemetry trace context in log entries"
+                }
+              }
+            },
+            "masking": {
+              "type": "object",
+              "description": "Sensitive data masking in log output",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "description": "Enable automatic masking of sensitive values in logs"
+                },
+                "headers": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "HTTP header names whose values are masked in logs"
+                },
+                "fields": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Structured log field names whose values are masked"
+                }
+              }
+            }
+          }
+        },
+        "metrics": {
+          "type": "object",
+          "description": "Prometheus metrics endpoint settings",
+          "properties": {
+            "host": {
+              "type": "string",
+              "description": "Address the metrics server binds to (use 0.0.0.0 in Kubernetes)"
+            },
+            "port": {
+              "type": "integer",
+              "description": "Port the metrics server listens on"
+            },
+            "tls": {
+              "type": "object",
+              "description": "Metrics endpoint TLS settings",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "description": "Enable TLS on the metrics endpoint"
+                }
+              }
+            },
+            "label_metrics_inclusion_duration": {
+              "type": "string",
+              "description": "Duration window for including label-based metrics (Go duration, e.g. 168h)"
+            },
+            "deletion_stuck_threshold": {
+              "type": "string",
+              "description": "Duration after which a pending deletion is considered stuck (Go duration, e.g. 30m)"
+            }
+          }
+        },
+        "health": {
+          "type": "object",
+          "description": "Health and readiness probe endpoint settings",
+          "properties": {
+            "host": {
+              "type": "string",
+              "description": "Address the health server binds to (use 0.0.0.0 in Kubernetes)"
+            },
+            "port": {
+              "type": "integer",
+              "description": "Port the health server listens on"
+            },
+            "tls": {
+              "type": "object",
+              "description": "Health endpoint TLS settings",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "description": "Enable TLS on the health endpoint"
+                }
+              }
+            },
+            "shutdown_timeout": {
+              "type": "string",
+              "description": "Graceful shutdown timeout before forceful termination (Go duration, e.g. 20s)"
+            },
+            "db_ping_timeout": {
+              "type": "string",
+              "description": "Timeout for database health check pings (Go duration, e.g. 2s)"
+            }
+          }
+        },
+        "adapters": {
+          "type": "object",
+          "description": "Adapter requirements for resource readiness",
+          "properties": {
+            "required": {
+              "type": "object",
+              "description": "Lists of adapters that must report ready before a resource is considered ready",
+              "properties": {
+                "cluster": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Adapters required for cluster resources (e.g. validation, dns, pullsecret, hypershift)"
+                },
+                "nodepool": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Adapters required for nodepool resources (e.g. validation, hypershift)"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "serviceAccount": {
+      "type": "object",
+      "description": "Kubernetes ServiceAccount configuration",
+      "properties": {
+        "create": {
+          "type": "boolean",
+          "description": "Create a dedicated ServiceAccount for the deployment"
+        },
+        "annotations": {
+          "type": "object",
+          "description": "Annotations added to the ServiceAccount (e.g. for Workload Identity)"
+        },
+        "name": {
+          "type": "string",
+          "description": "Explicit ServiceAccount name; when empty, a name is generated from the release"
+        }
+      }
+    },
+    "podAnnotations": {
+      "type": "object",
+      "description": "Additional annotations applied to every pod"
+    },
+    "podLabels": {
+      "type": "object",
+      "description": "Additional labels applied to every pod"
+    },
+    "podSecurityContext": {
+      "type": "object",
+      "description": "Pod-level security context (applies to all containers in the pod)",
+      "properties": {
+        "fsGroup": {
+          "type": "integer",
+          "description": "Filesystem group ID applied to mounted volumes"
+        },
+        "runAsNonRoot": {
+          "type": "boolean",
+          "description": "Require the pod to run as a non-root user"
+        },
+        "runAsUser": {
+          "type": "integer",
+          "description": "UID the pod processes run as"
+        }
+      }
+    },
+    "securityContext": {
+      "type": "object",
+      "description": "Container-level security context for the main API container",
+      "properties": {
+        "allowPrivilegeEscalation": {
+          "type": "boolean",
+          "description": "Prevent child processes from gaining more privileges than the parent"
+        },
+        "capabilities": {
+          "type": "object",
+          "description": "Linux capabilities to add or drop",
+          "properties": {
+            "drop": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Capabilities to drop (typically [ALL])"
+            },
+            "add": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Capabilities to add (use sparingly)"
+            }
+          }
+        },
+        "readOnlyRootFilesystem": {
+          "type": "boolean",
+          "description": "Mount the container root filesystem as read-only"
+        },
+        "seccompProfile": {
+          "type": "object",
+          "description": "Seccomp profile configuration",
+          "properties": {
+            "type": {
+              "type": "string",
+              "description": "Seccomp profile type (e.g. RuntimeDefault, Localhost)"
+            }
+          }
+        }
+      }
+    },
+    "service": {
+      "type": "object",
+      "description": "Kubernetes Service configuration",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "ClusterIP",
+            "NodePort",
+            "LoadBalancer"
+          ],
+          "description": "Service type"
+        }
+      }
+    },
+    "resources": {
+      "type": "object",
+      "description": "CPU and memory resource requests and limits for the API container",
+      "properties": {
+        "limits": {
+          "type": "object",
+          "description": "Resource upper bounds",
+          "properties": {
+            "cpu": {
+              "type": "string",
+              "description": "CPU limit (e.g. 500m, 1)"
+            },
+            "memory": {
+              "type": "string",
+              "description": "Memory limit (e.g. 512Mi, 1Gi)"
+            }
+          }
+        },
+        "requests": {
+          "type": "object",
+          "description": "Resource lower bounds for scheduling",
+          "properties": {
+            "cpu": {
+              "type": "string",
+              "description": "CPU request (e.g. 100m)"
+            },
+            "memory": {
+              "type": "string",
+              "description": "Memory request (e.g. 128Mi)"
+            }
+          }
+        }
+      }
+    },
+    "nodeSelector": {
+      "type": "object",
+      "description": "Node label selectors for pod scheduling"
+    },
+    "tolerations": {
+      "type": "array",
+      "description": "Tolerations for pod scheduling onto tainted nodes",
+      "items": {
+        "type": "object",
+        "description": "A Kubernetes toleration entry"
+      }
+    },
+    "affinity": {
+      "type": "object",
+      "description": "Affinity and anti-affinity rules for pod scheduling"
+    },
+    "autoscaling": {
+      "type": "object",
+      "description": "Horizontal Pod Autoscaler configuration",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable the HorizontalPodAutoscaler resource"
+        },
+        "minReplicas": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Minimum number of replicas the autoscaler will maintain"
+        },
+        "maxReplicas": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum number of replicas the autoscaler can scale to"
+        },
+        "targetCPUUtilizationPercentage": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "description": "Target average CPU utilization percentage across all pods"
+        },
+        "targetMemoryUtilizationPercentage": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "description": "Target average memory utilization percentage across all pods"
+        }
+      }
+    },
+    "podDisruptionBudget": {
+      "type": "object",
+      "description": "PodDisruptionBudget configuration for voluntary disruption protection",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Create a PodDisruptionBudget resource"
+        },
+        "minAvailable": {
+          "oneOf": [
+            {
+              "type": "integer",
+              "description": "Absolute number of pods that must remain available"
+            },
+            {
+              "type": "string",
+              "description": "Percentage of pods that must remain available (e.g. 50%)"
+            }
+          ],
+          "description": "Minimum number or percentage of pods that must remain available during disruption"
+        },
+        "maxUnavailable": {
+          "oneOf": [
+            {
+              "type": "integer",
+              "description": "Absolute number of pods that can be unavailable"
+            },
+            {
+              "type": "string",
+              "description": "Percentage of pods that can be unavailable (e.g. 25%)"
+            }
+          ],
+          "description": "Maximum number or percentage of pods that can be unavailable during disruption"
+        }
+      }
+    },
+    "database": {
+      "type": "object",
+      "description": "Database infrastructure: choose external (production) or built-in PostgreSQL (development)",
+      "properties": {
+        "external": {
+          "type": "object",
+          "description": "External database connection (production use)",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Use an external database instead of the built-in PostgreSQL pod"
+            },
+            "secretName": {
+              "type": "string",
+              "description": "Name of an existing Secret containing db.host, db.port, db.name, db.user, db.password keys"
+            }
+          }
+        },
+        "postgresql": {
+          "type": "object",
+          "description": "Built-in PostgreSQL pod for development and testing",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Deploy a single-replica PostgreSQL pod alongside the API"
+            },
+            "image": {
+              "type": "string",
+              "description": "PostgreSQL container image reference"
+            },
+            "database": {
+              "type": "string",
+              "description": "Database name to create"
+            },
+            "user": {
+              "type": "string",
+              "description": "Database user to create"
+            },
+            "password": {
+              "type": "string",
+              "description": "Password for the database user"
+            },
+            "port": {
+              "type": "integer",
+              "description": "Port the PostgreSQL pod listens on"
+            },
+            "resources": {
+              "type": "object",
+              "description": "Resource requests and limits for the PostgreSQL pod",
+              "properties": {
+                "limits": {
+                  "type": "object",
+                  "description": "Resource upper bounds",
+                  "properties": {
+                    "cpu": {
+                      "type": "string",
+                      "description": "CPU limit"
+                    },
+                    "memory": {
+                      "type": "string",
+                      "description": "Memory limit"
+                    }
+                  }
+                },
+                "requests": {
+                  "type": "object",
+                  "description": "Resource lower bounds for scheduling",
+                  "properties": {
+                    "cpu": {
+                      "type": "string",
+                      "description": "CPU request"
+                    },
+                    "memory": {
+                      "type": "string",
+                      "description": "Memory request"
+                    }
+                  }
+                }
+              }
+            },
+            "persistence": {
+              "type": "object",
+              "description": "Persistent volume for PostgreSQL data",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "description": "Enable persistent storage (false uses emptyDir)"
+                },
+                "size": {
+                  "type": "string",
+                  "description": "PVC size (e.g. 1Gi)"
+                },
+                "storageClass": {
+                  "type": "string",
+                  "description": "StorageClass name; empty string uses the cluster default"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "monitoring": {
+      "type": "object",
+      "description": "Monitoring and alerting configuration",
+      "properties": {
+        "prometheusRule": {
+          "type": "object",
+          "description": "PrometheusRule resource for Prometheus Operator alerting",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Create a PrometheusRule resource"
+            },
+            "additionalLabels": {
+              "type": "object",
+              "description": "Extra labels applied to the PrometheusRule resource"
+            },
+            "namespace": {
+              "type": "string",
+              "description": "Namespace for the PrometheusRule; defaults to the release namespace"
+            },
+            "rules": {
+              "type": "object",
+              "description": "Alert rule definitions",
+              "properties": {
+                "deletionStuck": {
+                  "type": "object",
+                  "description": "Alert when a resource deletion is stuck beyond threshold",
+                  "properties": {
+                    "for": {
+                      "type": "string",
+                      "description": "Duration the condition must hold before firing (e.g. 5m)"
+                    },
+                    "runbookUrl": {
+                      "type": "string",
+                      "description": "URL to the runbook for this alert"
+                    }
+                  }
+                },
+                "deletionTimeout": {
+                  "type": "object",
+                  "description": "Alert when a resource deletion exceeds the timeout window",
+                  "properties": {
+                    "for": {
+                      "type": "string",
+                      "description": "Duration the condition must hold before firing (e.g. 30m)"
+                    },
+                    "runbookUrl": {
+                      "type": "string",
+                      "description": "URL to the runbook for this alert"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "serviceMonitor": {
+      "type": "object",
+      "description": "ServiceMonitor resource for Prometheus Operator scrape configuration",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Create a ServiceMonitor resource"
+        },
+        "interval": {
+          "type": "string",
+          "description": "Prometheus scrape interval (e.g. 30s)"
+        },
+        "scrapeTimeout": {
+          "type": "string",
+          "description": "Prometheus scrape timeout (e.g. 10s)"
+        },
+        "labels": {
+          "type": "object",
+          "description": "Extra labels applied to the ServiceMonitor for Prometheus selector matching"
+        },
+        "namespace": {
+          "type": "string",
+          "description": "Namespace for the ServiceMonitor; defaults to the release namespace"
+        }
+      }
+    },
+    "tracing": {
+      "type": "object",
+      "description": "Distributed tracing via OpenTelemetry",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable OpenTelemetry tracing"
+        },
+        "serviceName": {
+          "type": "string",
+          "description": "Service name reported in traces"
+        },
+        "otlpEndpoint": {
+          "type": "string",
+          "description": "OTLP exporter endpoint; traces go to stdout if empty"
+        },
+        "otlpProtocol": {
+          "type": "string",
+          "enum": [
+            "grpc",
+            "http/protobuf"
+          ],
+          "description": "OTLP exporter transport protocol"
+        },
+        "sampler": {
+          "type": "string",
+          "description": "Trace sampler type (e.g. parentbased_traceidratio)"
+        },
+        "samplerArg": {
+          "type": "string",
+          "description": "Sampler argument; for traceidratio this is the sampling rate (0.0-1.0)"
+        },
+        "propagators": {
+          "type": "string",
+          "description": "Comma-separated list of context propagators (e.g. tracecontext,baggage)"
+        }
+      }
+    },
+    "nativeSidecars": {
+      "type": "array",
+      "description": "Native sidecar containers (Kubernetes 1.28+ init containers with restartPolicy: Always); start before other init containers and run for the pod lifetime",
+      "items": {
+        "type": "object",
+        "description": "A full Kubernetes container spec; must include restartPolicy: Always"
+      }
+    },
+    "sidecars": {
+      "type": "array",
+      "description": "Regular sidecar containers injected into the pod; start after init containers complete",
+      "items": {
+        "type": "object",
+        "description": "A full Kubernetes container spec"
+      }
+    },
+    "validationSchema": {
+      "type": "object",
+      "description": "OpenAPI validation schema for cluster and nodepool specs",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable spec validation; the API validates create/update requests against the schema"
+        },
+        "existingConfigMap": {
+          "type": "string",
+          "description": "Name of an existing ConfigMap with an 'openapi.yaml' key; overrides content when set"
+        },
+        "content": {
+          "type": "string",
+          "description": "Inline OpenAPI 3.0 schema content defining ClusterSpec and NodePoolSpec"
+        }
+      }
+    },
+    "extraEnv": {
+      "type": "array",
+      "description": "Additional environment variables injected into the API container; use sparingly, prefer config.* values",
+      "items": {
+        "type": "object",
+        "description": "A Kubernetes EnvVar object"
+      }
+    },
+    "extraVolumeMounts": {
+      "type": "array",
+      "description": "Additional volume mounts for the API container",
+      "items": {
+        "type": "object",
+        "description": "A Kubernetes VolumeMount object"
+      }
+    },
+    "extraVolumes": {
+      "type": "array",
+      "description": "Additional volumes attached to the pod",
+      "items": {
+        "type": "object",
+        "description": "A Kubernetes Volume object"
+      }
+    }
+  }
+}
