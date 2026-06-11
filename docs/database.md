@@ -9,12 +9,12 @@ HyperFleet API uses PostgreSQL with GORM ORM. The schema follows a simple relati
 ## Core Tables
 
 ### clusters
-Primary resources for cluster management. It contains :
-* cluster metadata, 
-* a JSONB `spec` field for provider-specific configuration, 
-* a JSONB `labels` field for key-value categorization, 
-* a JSONB `status_conditions` field for synthesized status. 
-* `deleted_time` for soft delete 
+Primary resources for cluster management. It contains:
+* cluster metadata,
+* a JSONB `spec` field for provider-specific configuration,
+* a JSONB `labels` field for key-value categorization,
+* a JSONB `status_conditions` field for synthesized status,
+* `deleted_time` for soft delete,
 * and `deleted_by` for audit.
 
 ### node_pools
@@ -57,9 +57,34 @@ Flexible schema storage for:
 - Runtime validation against OpenAPI schema
 - PostgreSQL JSON query capabilities
 
-### Soft Delete
+### Delete Lifecycle
 
-Clusters, node pools, and generic resources use a custom soft delete pattern with a `deleted_time` timestamp and `deleted_by` audit field. Soft-deleted records are excluded from queries by default. Adapter statuses do not use soft delete.
+Resources follow a three-phase delete lifecycle:
+
+```text
+Active ──(DELETE)──▶ Finalizing ──(adapters report Finalized=True)──▶ Hard-Deleted
+                         │
+                         └──(POST /force-delete)──▶ Hard-Deleted
+```
+
+1. **Active** — Normal state. Resource is visible in list queries and can be updated.
+2. **Finalizing** (soft-deleted) — `DELETE` sets `deleted_time` and `deleted_by`, increments `generation`. The resource stays in the database so adapters can observe the deletion and clean up external state. Soft-deleted records are excluded from list queries by default. New child resources cannot be created under a finalizing parent (returns `409 Conflict`).
+3. **Hard-Deleted** — Permanently removed from the database. This happens automatically when all required adapters report `Finalized=True` at the current generation. If adapters are stuck, `POST .../force-delete` bypasses finalization and hard-deletes immediately.
+
+Adapter statuses do not use soft delete — they are hard-deleted when their parent resource is hard-deleted.
+
+### Delete Policies
+
+Generic resources (the `resources` table) use descriptor-driven delete policies to control child behavior when a parent is deleted. Each resource type declares its policy in its `EntityDescriptor`:
+
+| Policy     | Behavior |
+|------------|----------|
+| `restrict` | Parent delete is rejected with `409 Conflict` if active children exist |
+| `cascade`  | All children are soft-deleted (marked Finalizing) along with the parent |
+
+Policies are enforced recursively — a cascade on a parent triggers policy checks on grandchildren. For clusters and nodepools, the cascade is built-in: deleting a cluster always cascades the soft-delete to all its nodepools.
+
+Resources without `RequiredAdapters` in their descriptor skip the Finalizing phase entirely — they are hard-deleted immediately on `DELETE`.
 
 ### Migration System
 

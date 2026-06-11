@@ -39,22 +39,22 @@ The `image.registry` value in [`charts/values.yaml`](../charts/values.yaml) defa
 | Staging | `quay.io/openshift-hyperfleet/hyperfleet-api:v<version>` |
 | Production | `quay.io/openshift-hyperfleet/hyperfleet-api:v<version>` |
 
-Example `values.yaml` overrides:
+Example `values.yaml` overrides (pick one):
 
+**Production/Staging:**
 ```yaml
-# Production/Staging (official image)
 image:
   registry: quay.io
   repository: openshift-hyperfleet/hyperfleet-api
   tag: v1.2.3
-  
-# Personal development image
+```
+
+**Development:**
+```yaml
 image:
   registry: quay.io
   repository: user/hyperfleet-api
   tag: dev-abc1234
-
-
 ```
 
 #### Custom Registry
@@ -138,7 +138,7 @@ The Helm chart manages configuration through:
 --set 'config.adapters.required.nodepool={validation,hypershift}'
 ```
 
-See [Configuration Guide](config.md) for the complete reference, and [`charts/values.yaml`](../charts/values.yaml) for all Helm-specific settings.
+See [Configuration Guide](config.md) for the complete reference (including [caller identity details](config.md#caller-identity)), and [`charts/values.yaml`](../charts/values.yaml) for all Helm-specific settings.
 
 ### Schema Validation via Helm
 
@@ -239,7 +239,6 @@ This creates:
 - PostgreSQL StatefulSet
 - Services for both components
 - ConfigMaps and Secrets
-
 
 **Note**: The `registry` should contain only the registry domain (e.g., `quay.io`, `docker.io`). The `repository` includes the organization and image name (e.g., `myuser/hyperfleet-api`).
 
@@ -591,7 +590,6 @@ Once running, the API is available at:
 ```
 
 ---
-
 
 ## Related Documentation
 

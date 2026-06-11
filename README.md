@@ -17,9 +17,13 @@ HyperFleet API - Simple REST API for cluster lifecycle management. Provides CRUD
 
 * OpenAPI 3.0 specification
 * Automated Go code generation from OpenAPI
-* Cluster and NodePool lifecycle management
+* Cluster and NodePool lifecycle management (create, patch, delete, force-delete)
 * Generic resource types (WifConfigs, Channels, Versions) via plugin-based registration
 * Adapter-based status reporting with Kubernetes-style conditions
+* Soft-delete with adapter finalization and force-delete for stuck resources
+* Descriptor-driven delete policies (restrict/cascade) for generic resources
+* RFC 9457 Problem Details error responses
+* Configurable caller identity for audit fields (HTTP header or JWT claim)
 * Runtime spec validation against custom OpenAPI schemas
 * Pagination and search capabilities
 * Complete integration test coverage
@@ -114,7 +118,8 @@ Kubernetes clusters with provider-specific configurations, labels, and adapter-b
 
 **Main endpoints:**
 - `GET/POST /api/hyperfleet/v1/clusters`
-- `GET /api/hyperfleet/v1/clusters/{id}`
+- `GET/PATCH/DELETE /api/hyperfleet/v1/clusters/{id}`
+- `POST /api/hyperfleet/v1/clusters/{id}/force-delete`
 - `GET/PUT /api/hyperfleet/v1/clusters/{id}/statuses`
 
 ### NodePools
@@ -124,7 +129,8 @@ Groups of compute nodes within clusters.
 **Main endpoints:**
 - `GET /api/hyperfleet/v1/nodepools`
 - `GET/POST /api/hyperfleet/v1/clusters/{cluster_id}/nodepools`
-- `GET /api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepool_id}`
+- `GET/PATCH/DELETE /api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepool_id}`
+- `POST /api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepool_id}/force-delete`
 - `GET/PUT /api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepool_id}/statuses`
 
 ### Generic Resources
@@ -194,6 +200,7 @@ This project uses [pre-commit](https://pre-commit.io/) for code quality checks. 
 - **[Development Guide](docs/development.md)** - Local setup, testing, code generation, and workflows
 - **[Database](docs/database.md)** - Schema, migrations, and data model
 - **[Deployment](docs/deployment.md)** - Container images, Kubernetes deployment, and configuration
+- **[Configuration](docs/config.md)** - Complete configuration reference (database, server, caller identity, adapters)
 - **[Authentication](docs/authentication.md)** - Development and production auth
 - **[Logging](docs/logging.md)** - Structured logging, OpenTelemetry integration, and data masking
 - **[Validation Schema](openapi/README.md#validation-schema)** - How to supply a custom OpenAPI schema for runtime `spec` field validation
