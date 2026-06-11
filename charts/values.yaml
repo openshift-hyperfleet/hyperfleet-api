@@ -1,106 +1,152 @@
 # Default values for hyperfleet-api
 # This is a YAML-formatted file.
 
+# -- Number of API server replicas
 replicaCount: 1
 
 image:
-  registry: CHANGE_ME  # Set to your actual container registry (e.g. quay.io)
-  repository: CHANGE_ME # e.g. openshift-hyperfleet/hyperfleet-api
+  # -- Container image registry (no default — must be set)
+  registry: CHANGE_ME
+  # -- Container image repository (no default — must be set)
+  repository: CHANGE_ME
+  # -- Image pull policy
   pullPolicy: Always
-  tag: ""  # Required — no default. Set via --set image.tag=<version>
+  # -- Image tag (no default — must be set via `--set image.tag=<version>`)
+  tag: ""
 
+# -- Secrets for pulling images from private registries
 imagePullSecrets: []
+# -- Override the chart name used in resource names
 nameOverride: ""
+# -- Override the full release name used in resource names
 fullnameOverride: ""
 
-# ============================================================
-# Container Ports
-# ============================================================
-# These ports must match the application configuration
+# -- Container ports exposed by the API server. These must match the
+# corresponding application config values (`config.server.port`,
+# `config.health.port`, `config.metrics.port`).
 ports:
-  api: 8000      # Must match config.server.port
-  health: 8080   # Must match config.health.port
-  metrics: 9090  # Must match config.metrics.port
+  # -- API server port
+  api: 8000
+  # -- Health check endpoint port
+  health: 8080
+  # -- Prometheus metrics endpoint port
+  metrics: 9090
 
-# ============================================================
-# Application Configuration
-# ============================================================
-# All application settings are configurable via this section.
-# These values generate the ConfigMap used by the application.
-# ============================================================
+# -- Application configuration. All settings in this section generate the
+# ConfigMap consumed by the API server. Set `config.existingConfigMap` to
+# use a pre-existing ConfigMap instead.
 config:
-  # Use existing ConfigMap instead of generating one
-  # If set, all config.* values below are ignored
+  # -- Use an existing ConfigMap instead of generating one. When set, all
+  # other `config.*` values are ignored.
   existingConfigMap: ""
 
-  # Server configuration
+  # -- HTTP server settings
   server:
+    # -- Public hostname advertised by the API (leave empty for auto-detect)
     hostname: ""
+    # -- Listen address
     host: "0.0.0.0"
+    # -- Listen port (must match `ports.api`)
     port: 8000
 
+    # -- Request timeout settings
     timeouts:
+      # -- HTTP read timeout
       read: 5s
+      # -- HTTP write timeout
       write: 30s
 
+    # -- TLS configuration for the API server
     tls:
+      # -- Enable TLS on the API listener
       enabled: false
+      # -- Path to TLS certificate file
       cert_file: ""
+      # -- Path to TLS key file
       key_file: ""
 
+    # -- JWT authentication settings
     jwt:
+      # -- Enable JWT authentication
       enabled: false
+      # -- OIDC issuer URL for token validation
       issuer_url: ""
+      # -- Expected JWT audience claim
       audience: ""
+      # -- JWT claim used as the caller identity
       identity_claim: email
 
+    # -- HTTP header used to pass caller identity (bypasses JWT when set)
     identity_header: ""
 
+    # -- JWK settings for token verification
     jwk:
+      # -- Path to a local JWK certificate file
       cert_file: ""
+      # -- URL to fetch JWK certificates from
       cert_url: ""
 
-  # Database configuration
+  # -- Database connection settings. Credentials must be provided via a
+  # Secret — see `database.external.secretName` or use the built-in
+  # PostgreSQL (`database.postgresql.enabled`).
   database:
+    # -- SQL dialect
     dialect: postgres
 
-    # Connection settings
-    # Note: username/password MUST be provided via Secret (not ConfigMap)
-    # See database.external.secretName or database.postgresql.enabled for credentials
-    host: ""  # Auto-set for built-in DB, or specify external host
+    # -- Database host (auto-set when using the built-in PostgreSQL)
+    host: ""
+    # -- Database port
     port: 5432
+    # -- Database name
     name: hyperfleet
 
-    # Application behavior settings
+    # -- Enable SQL debug logging
     debug: false
 
+    # -- SSL / TLS settings for the database connection
     ssl:
+      # -- SSL mode (`disable`, `require`, `verify-ca`, `verify-full`)
       mode: disable
+      # -- Path to the CA root certificate
       root_cert_file: ""
 
+    # -- Connection pool tuning
     pool:
+      # -- Maximum number of open connections
       max_connections: 50
+      # -- Maximum number of idle connections
       max_idle_connections: 10
+      # -- Maximum lifetime of a connection
       conn_max_lifetime: 5m
+      # -- Maximum idle time before a connection is closed
       conn_max_idle_time: 1m
+      # -- Timeout for acquiring a connection from the pool
       request_timeout: 30s
+      # -- Number of connection retry attempts on startup
       conn_retry_attempts: 10
+      # -- Interval between connection retry attempts
       conn_retry_interval: 3s
 
-  # Logging configuration
+  # -- Logging configuration
   logging:
+    # -- Log level (`debug`, `info`, `warn`, `error`)
     level: info
+    # -- Log format (`json` or `text`)
     format: json
+    # -- Log output destination
     output: stdout
 
-    # OpenTelemetry tracing (HyperFleet standard)
-    # Configuration via standard environment variables.
-    # See: https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/standards/tracing.md#configuration
+    # -- OpenTelemetry tracing integration.
+    # See the [tracing standard](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/standards/tracing.md#configuration).
     otel:
+      # -- Enable OpenTelemetry log correlation
       enabled: false
 
+    # -- Sensitive-data masking for logs
     masking:
+      # -- Enable log masking
       enabled: true
+      # -- HTTP headers whose values are redacted in logs
       headers:
         - Authorization
         - X-API-Key
@@ -108,6 +154,7 @@ config:
         - X-Auth-Token
         - X-Forwarded-Authorization
         - X-HyperFleet-Identity
+      # -- Field names whose values are redacted in logs
       fields:
         - password
         - secret
@@ -117,64 +164,91 @@ config:
         - refresh_token
         - client_secret
 
-  # Metrics configuration
+  # -- Prometheus metrics endpoint settings
   metrics:
-    host: 0.0.0.0  # Must be 0.0.0.0 in Kubernetes for Service to access
+    # -- Listen address (must be `0.0.0.0` for in-cluster access)
+    host: 0.0.0.0
+    # -- Listen port (must match `ports.metrics`)
     port: 9090
 
+    # -- TLS configuration for the metrics endpoint
     tls:
+      # -- Enable TLS on the metrics endpoint
       enabled: false
 
+    # -- Duration window for label-based metric inclusion
     label_metrics_inclusion_duration: 168h
+    # -- Threshold after which a deletion is considered stuck
     deletion_stuck_threshold: 30m
 
-  # Health check configuration
+  # -- Health check endpoint settings
   health:
-    host: 0.0.0.0  # Must be 0.0.0.0 in Kubernetes for liveness/readiness probes
+    # -- Listen address (must be `0.0.0.0` for probe access)
+    host: 0.0.0.0
+    # -- Listen port (must match `ports.health`)
     port: 8080
 
+    # -- TLS configuration for the health endpoint
     tls:
+      # -- Enable TLS on the health endpoint
       enabled: false
 
+    # -- Graceful shutdown timeout
     shutdown_timeout: 20s
+    # -- Timeout for the database liveness ping
     db_ping_timeout: 2s
 
-  # Adapters required for resources to reach "Ready" state
-  # Production deployments should specify adapters
+  # -- Adapters required for resources to reach "Ready" state.
+  # Production deployments should list all expected adapters.
   adapters:
+    # -- Adapters required for cluster resources
     required:
-      cluster: []  # Example: [validation, dns, pullsecret, hypershift]
-      nodepool: []  # Example: [validation, hypershift]
+      # -- Required cluster adapters (e.g. `["validation", "dns", "pullsecret", "hypershift"]`)
+      cluster: []
+      # -- Required nodepool adapters (e.g. `["validation", "hypershift"]`)
+      nodepool: []
 
-# ============================================================
-# Kubernetes Resources
-# ============================================================
+# -- ServiceAccount configuration
 serviceAccount:
+  # -- Create a ServiceAccount for the API server
   create: true
+  # -- Annotations added to the ServiceAccount (e.g. for Workload Identity)
   annotations: {}
+  # -- Override the ServiceAccount name (defaults to the release fullname)
   name: ""
 
+# -- Additional annotations applied to all pods
 podAnnotations: {}
+# -- Additional labels applied to all pods
 podLabels: {}
 
+# -- Pod-level security context
 podSecurityContext:
+  # -- Filesystem group for volume mounts
   fsGroup: 65532
+  # -- Run all containers as non-root
   runAsNonRoot: true
+  # -- UID for all containers
   runAsUser: 65532
 
+# -- Container-level security context
 securityContext:
+  # -- Disallow privilege escalation
   allowPrivilegeEscalation: false
   capabilities:
     drop:
     - ALL
+  # -- Mount root filesystem as read-only
   readOnlyRootFilesystem: true
   seccompProfile:
     type: RuntimeDefault
 
+# -- Kubernetes Service configuration
 service:
+  # -- Service type (`ClusterIP`, `LoadBalancer`, `NodePort`)
   type: ClusterIP
-  # Service ports are set to match container ports (ports.api, ports.health, ports.metrics)
 
+# -- CPU and memory resource requests and limits
 resources:
   limits:
     cpu: 500m
@@ -183,55 +257,64 @@ resources:
     cpu: 100m
     memory: 128Mi
 
+# -- Node selector constraints for pod scheduling
 nodeSelector: {}
 
+# -- Tolerations for pod scheduling
 tolerations: []
 
+# -- Affinity rules for pod scheduling
 affinity: {}
 
+# -- Horizontal Pod Autoscaler configuration
 autoscaling:
+  # -- Enable the HPA
   enabled: false
+  # -- Minimum number of replicas
   minReplicas: 1
+  # -- Maximum number of replicas
   maxReplicas: 10
+  # -- Target CPU utilization percentage
   targetCPUUtilizationPercentage: 80
+  # -- Target memory utilization percentage
   targetMemoryUtilizationPercentage: 80
 
-# Pod Disruption Budget configuration
+# -- PodDisruptionBudget configuration
 podDisruptionBudget:
+  # -- Enable the PDB
   enabled: false
+  # -- Minimum number of available pods during disruption
   minAvailable: 1
-  # Maximum number of pods that can be unavailable during disruption
   # maxUnavailable: 1
 
-# ============================================================
-# Infrastructure Configuration
-# ============================================================
-# These settings control Kubernetes infrastructure components
-# (PostgreSQL pod, secrets)
-# ============================================================
-
-# Database infrastructure
+# -- Database infrastructure settings. For **production**, set
+# `database.external.enabled=true` and supply a secret with connection
+# details. For **development**, the built-in PostgreSQL pod is enabled
+# by default.
 database:
-  # For PRODUCTION: Use external database (GCP Cloud SQL, etc.)
-  # Set external.enabled=true and provide connection details
-  #
-  # For DEVELOPMENT: Use built-in PostgreSQL pod
-  # Set postgresql.enabled=true (default)
-
-  # External database configuration (production)
+  # -- External database configuration (production)
   external:
+    # -- Use an external database instead of the built-in PostgreSQL
     enabled: false
-    # Name of existing secret with db.host, db.port, db.name, db.user, db.password keys
+    # -- Name of an existing Secret with keys: `db.host`, `db.port`,
+    # `db.name`, `db.user`, `db.password`
     secretName: ""
 
-  # Built-in PostgreSQL for development/testing
+  # -- Built-in PostgreSQL for development and testing
   postgresql:
+    # -- Deploy a single-pod PostgreSQL instance
     enabled: true
+    # -- PostgreSQL container image
     image: docker.io/library/postgres:14.2
+    # -- Database name
     database: hyperfleet
+    # -- Database user
     user: hyperfleet
+    # -- Database password (**development only** — use a Secret in production)
     password: hyperfleet-dev-password
+    # -- PostgreSQL listen port
     port: 5432
+    # -- Resource requests and limits for the PostgreSQL pod
     resources:
       limits:
         cpu: 500m
@@ -239,56 +322,76 @@ database:
       requests:
         cpu: 100m
         memory: 128Mi
+    # -- Persistent volume configuration for PostgreSQL data
     persistence:
+      # -- Enable persistent storage (uses emptyDir when disabled)
       enabled: false
+      # -- Volume size
       size: 1Gi
+      # -- StorageClass name (empty for cluster default)
       storageClass: ""
 
-# Monitoring configuration
+# -- Monitoring and alerting configuration
 monitoring:
-  # PrometheusRule for alerting
+  # -- PrometheusRule for alerting
   prometheusRule:
+    # -- Create PrometheusRule resources
     enabled: false
+    # -- Additional labels for PrometheusRule discovery
     additionalLabels: {}
+    # -- Namespace to create the PrometheusRule in (defaults to release namespace)
     namespace: ""
+    # -- Alert rule configuration
     rules:
+      # -- Alert when a deletion is stuck
       deletionStuck:
+        # -- Duration before the alert fires
         for: "5m"
+        # -- Runbook URL included in the alert
         runbookUrl: ""
+      # -- Alert when a deletion times out
       deletionTimeout:
+        # -- Duration before the alert fires
         for: "30m"
+        # -- Runbook URL included in the alert
         runbookUrl: ""
 
-# ServiceMonitor for Prometheus Operator
+# -- ServiceMonitor for Prometheus Operator scrape configuration
 serviceMonitor:
+  # -- Create a ServiceMonitor resource
   enabled: false
+  # -- Scrape interval
   interval: 30s
+  # -- Scrape timeout
   scrapeTimeout: 10s
+  # -- Additional labels for ServiceMonitor discovery
   labels: {}
+  # -- Namespace to create the ServiceMonitor in (defaults to release namespace)
   namespace: ""
 
+# -- Distributed tracing configuration (OpenTelemetry)
 tracing:
+  # -- Enable trace export
   enabled: false
+  # -- Service name reported in traces
   serviceName: "hyperfleet-api"
-  # OTLP exporter endpoint (traces go to stdout if not set)
+  # -- OTLP exporter endpoint (traces go to stdout when empty)
   otlpEndpoint: ""
-  # OTLP protocol: grpc (default) or http/protobuf
+  # -- OTLP protocol (`grpc` or `http/protobuf`)
   otlpProtocol: "grpc"
-  # Sampler type (default per tracing standard)
+  # -- Sampler type
   sampler: "parentbased_traceidratio"
-  # Sampling rate: 1.0 for dev, 0.01 for production
+  # -- Sampling rate (`1.0` for dev, `0.01` for production)
   samplerArg: "1.0"
+  # -- Context propagation formats
   propagators: "tracecontext,baggage"
 
-# ============================================================
-# Native Sidecar Containers (Kubernetes 1.28+)
-# ============================================================
-# Native sidecars are init containers with restartPolicy: Always (Kubernetes 1.28+).
-# They start BEFORE other init containers and keep running throughout the pod lifecycle.
-# Use this for database proxies that must be available during db-migrate.
-# Each entry is a full Kubernetes container spec — you MUST include restartPolicy: Always.
-# WARNING: Requires Kubernetes 1.28+. On older clusters, these containers will NOT stay running.
-# Operators SHOULD enforce container security via admission policies (PodSecurity Standards, Kyverno, etc.).
+# -- Native sidecar containers (Kubernetes 1.28+). Native sidecars are init
+# containers with `restartPolicy: Always` — they start before other init
+# containers and keep running throughout the pod lifecycle. Use this for
+# database proxies that must be available during `db-migrate`.
+# Each entry is a full Kubernetes container spec.
+# @default -- `[]`
 nativeSidecars: []
 # Example: Cloud SQL Auth Proxy as native sidecar
 #   - name: cloud-sql-proxy
@@ -315,14 +418,11 @@ nativeSidecars: []
 #         cpu: 200m
 #         memory: 128Mi
 
-# ============================================================
-# Sidecar Containers
-# ============================================================
-# Regular sidecar injection — each entry is a full Kubernetes container spec.
-# These start AFTER init containers complete. Use nativeSidecars above for
-# containers that must be available during init (e.g., database proxies).
-# Use extraVolumes/extraVolumeMounts for sidecar volume needs.
-# Operators SHOULD enforce container security via admission policies (PodSecurity Standards, Kyverno, etc.).
+# -- Regular sidecar containers. These start after init containers complete.
+# Use `nativeSidecars` above for containers that must be available during
+# init (e.g. database proxies). Each entry is a full Kubernetes container
+# spec.
+# @default -- `[]`
 sidecars: []
 # Example: PgBouncer connection pooler
 #   - name: pgbouncer
@@ -364,55 +464,27 @@ sidecars: []
 #         cpu: 50m
 #         memory: 64Mi
 
-# ============================================================
-# Validation Schema Configuration
-# ============================================================
-# Supply a custom OpenAPI schema for cluster/nodepool spec
-# validation. When enabled, the schema content is mounted into
-# the container and the API validates specs against it on every
-# create/update request. The API will fail to start if the
-# schema is invalid.
+# -- Validation schema configuration. Supply a custom OpenAPI schema for
+# cluster/nodepool spec validation. When enabled, the schema is mounted into
+# the container and every create/update request is validated against it. The
+# API will fail to start if the schema is invalid.
 validationSchema:
+  # -- Enable spec validation
   enabled: false
-  # Use an existing ConfigMap instead of generating one from content.
-  # The ConfigMap must contain an "openapi.yaml" key with the schema.
-  # If set, validationSchema.content is ignored.
+  # -- Use an existing ConfigMap (must contain an `openapi.yaml` key).
+  # When set, `validationSchema.content` is ignored.
   existingConfigMap: ""
-  # Inline OpenAPI 3.0 schema content. Must define ClusterSpec and
-  # NodePoolSpec under components.schemas.
-  # Example:
-  #   content: |
-  #     openapi: 3.0.0
-  #     info:
-  #       title: My Validation Schema
-  #       version: 1.0.0
-  #     paths: {}
-  #     components:
-  #       schemas:
-  #         ClusterSpec:
-  #           type: object
-  #           required: [region]
-  #           properties:
-  #             region:
-  #               type: string
-  #         NodePoolSpec:
-  #           type: object
-  #           required: [machine_type]
-  #           properties:
-  #             machine_type:
-  #               type: string
+  # -- Inline OpenAPI 3.0 schema content. Must define `ClusterSpec` and
+  # `NodePoolSpec` under `components.schemas`.
+  # @default -- `""`
   content: ""
 
-# ============================================================
-# Advanced Overrides (Escape Hatch)
-# ============================================================
-# Additional environment variables to override ConfigMap values.
-# Use sparingly - prefer modifying config.* values above.
-# See docs/deployment.md#environment-variables for examples.
+# -- Additional environment variables injected into the API container.
+# Use sparingly — prefer `config.*` values above.
 extraEnv: []
 
-# Volume mounts for additional configs
+# -- Extra volume mounts added to the API container
 extraVolumeMounts: []
 
-# Additional volumes
+# -- Extra volumes added to the pod
 extraVolumes: []

@@ -35,6 +35,12 @@ $(GOTESTSUM): $(BINGO_DIR)/gotestsum.mod
 	@echo "(re)installing $(GOBIN)/gotestsum-v1.13.0"
 	@cd $(BINGO_DIR) && GOWORK=off GOOS=$(GOHOSTOS) GOARCH=$(GOHOSTARCH) GOARM=$(GOHOSTARM) $(GO) build -mod=mod -modfile=gotestsum.mod -o=$(GOBIN)/gotestsum-v1.13.0 "gotest.tools/gotestsum"
 
+HELM_DOCS := $(GOBIN)/helm-docs-v1.14.2
+$(HELM_DOCS): $(BINGO_DIR)/helm-docs.mod
+	@# Install binary/ries using Go 1.14+ build command. This is using bwplotka/bingo-controlled, separate go module with pinned dependencies.
+	@echo "(re)installing $(GOBIN)/helm-docs-v1.14.2"
+	@cd $(BINGO_DIR) && GOWORK=off GOOS=$(GOHOSTOS) GOARCH=$(GOHOSTARCH) GOARM=$(GOHOSTARM) $(GO) build -mod=mod -modfile=helm-docs.mod -o=$(GOBIN)/helm-docs-v1.14.2 "github.com/norwoodj/helm-docs/cmd/helm-docs"
+
 KUBECONFORM := $(GOBIN)/kubeconform-v0.7.0
 $(KUBECONFORM): $(BINGO_DIR)/kubeconform.mod
 	@# Install binary/ries using Go 1.14+ build command. This is using bwplotka/bingo-controlled, separate go module with pinned dependencies.
