@@ -1,13 +1,12 @@
 # Default values for hyperfleet-adapter
 # This is a YAML-formatted file.
 
-## Application configuration section
-## ================================
-# AdapterConfig (deployment/client config) can be created:
-# - option1: from an existing ConfigMap by setting configMapName
-# - option2: from a YAML file by setting yaml
-# - option3: from a set of files by setting files
+# -- Adapter deployment configuration. Controls how the adapter-config
+# ConfigMap is created. Use `adapterConfig.yaml` for inline YAML,
+# `adapterConfig.files` for chart-packaged files, or set `create: false`
+# and provide `configMapName` to reference an existing ConfigMap.
 adapterConfig:
+  # -- Create the adapter-config ConfigMap
   create: true
   # option1: ConfigMap name (if different from default, and set create: false)
   #configMapName: ""
@@ -22,20 +21,22 @@ adapterConfig:
   # files:
   # adapter-config.yaml: examples/kubernetes/adapter-config.yaml
 
-  # HyperFleet API env vars used by task params
+  # -- HyperFleet API connection settings injected as environment variables
   hyperfleetApi:
-    # Base URL for HyperFleet API (HYPERFLEET_API_BASE_URL)
+    # -- API base URL (`HYPERFLEET_API_BASE_URL`)
     baseUrl: http://hyperfleet-api:8000
-    # API version (HYPERFLEET_API_VERSION), default: v1
+    # -- API version (`HYPERFLEET_API_VERSION`)
     version: v1
+  # -- Log level for the adapter
   log:
+    # -- Log level (`debug`, `info`, `warn`, `error`)
     level: info
-# AdapterTaskConfig (business logic) can be created:
-# - option1: from an existing ConfigMap by setting configMapName
-# - option2: from inline YAML by setting yaml (mutually exclusive with files/external)
-# - option3: from chart-packaged files by setting files (can be combined with external)
-# - option4: from external content by setting external (can be combined with files)
+
+# -- Adapter task configuration. Controls how the adapter-task-config
+# ConfigMap is created. Supports inline YAML, chart-packaged files,
+# or external content via `--set-file`.
 adapterTaskConfig:
+  # -- Create the adapter-task-config ConfigMap
   create: true
   # option1: ConfigMap name (if different from default, and set create: false)
   #configMapName: ""
@@ -60,25 +61,37 @@ adapterTaskConfig:
   #     params: []
   #     resources: []
   # Or use: --set-file adapterTaskConfig.external.myconfig=/path/to/config.yaml
+
+# -- Affinity rules for pod scheduling
 affinity: {}
-# Override default args
+
+# -- Container arguments passed to the adapter binary
+# @default -- `["serve", "--config", "/etc/adapter/adapter-config.yaml", "--task-config", "/etc/adapter/task-config.yaml"]`
 args:
   - serve
   - --config
   - /etc/adapter/adapter-config.yaml
   - --task-config
   - /etc/adapter/task-config.yaml
+
+# -- Horizontal Pod Autoscaler configuration
 autoscaling:
+  # -- Enable the HPA
   enabled: false
+  # -- Maximum number of replicas
   maxReplicas: 10
+  # -- Minimum number of replicas
   minReplicas: 1
+  # -- Target CPU utilization percentage
   targetCPUUtilizationPercentage: 80
+  # -- Target memory utilization percentage
   targetMemoryUtilizationPercentage: 80
-# Broker configuration can be created:
-# - option1: from an existing ConfigMap by setting configMapName
-# - option2: from a YAML file by setting yaml
-# - option3: from a set of properties under broker.googlepubsub, broker.rabbitmq, etc.
+
+# -- Broker configuration for event consumption. Supports RabbitMQ and
+# Google Pub/Sub. Use `broker.yaml` for inline config, or set `create: false`
+# and provide `configMapName` to reference an existing ConfigMap.
 broker:
+  # -- Create the broker ConfigMap
   create: true
   # option1
   # configMapName: ""
@@ -86,27 +99,39 @@ broker:
   # option2
   # yaml: ""
 
-  # option3: required broker type — must be set to "googlepubsub" or "rabbitmq".
+  # -- Broker type (must be `googlepubsub` or `rabbitmq`)
   type: ""
+  # -- Google Pub/Sub configuration
   googlepubsub:
+    # -- GCP project ID
     projectId: ""
+    # -- Pub/Sub topic name
     topic: ""
+    # -- Subscription ID
     subscriptionId: ""
+    # -- Dead letter topic name
     deadLetterTopic: ""
-    # Auto-creation flags (default: false - infrastructure must pre-exist)
-    # Set to true for development/testing; use false in production with pre-provisioned resources
+    # -- Auto-create topic if missing (use `false` in production)
     createTopicIfMissing: false
+    # -- Auto-create subscription if missing (use `false` in production)
     createSubscriptionIfMissing: false
+  # -- RabbitMQ configuration
   rabbitmq:
+    # -- Connection URL
     url: ""
-    queue: ""        # optional prefix {queue}-{subscription_id} — if omitted, queue name is derived as "{topic}-{subscriptionId}"
+    # -- Queue name prefix (derived from topic+subscriptionId if omitted)
+    queue: ""
+    # -- Exchange name
     exchange: ""
+    # -- Exchange type
     exchangeType: "topic"
 
-# Override default command
+# -- Container command override
 command:
   - /app/adapter
-# Container ports for health and metrics endpoints
+
+# -- Container ports exposed by the adapter
+# @default -- `[{containerPort: 8080, name: http}, {containerPort: 9090, name: metrics}]`
 containerPorts:
   - containerPort: 8080
     name: http
@@ -114,7 +139,8 @@ containerPorts:
   - containerPort: 9090
     name: metrics
     protocol: TCP
-# Environment variables
+
+# -- Additional environment variables injected into the adapter container
 env: []
 # - name: ADAPTER_CONFIG_PATH
 #   value: /path/to/custom/config.yaml
@@ -124,33 +150,43 @@ env: []
 #       name: my-secret
 #       key: secret-key
 
-# Volume mounts for additional configs
+# -- Extra volume mounts added to the adapter container
 extraVolumeMounts: []
 # - name: custom-config
 #   mountPath: /etc/custom
 #   readOnly: true
 
-# Additional volumes
+# -- Extra volumes added to the pod
 extraVolumes: []
 # - name: custom-config
 #   configMap:
 #     name: custom-configmap
 
+# -- Override the full release name used in resource names
 fullnameOverride: ""
-# This is the image for the adapter framework
+
 image:
+  # -- Image pull policy
   pullPolicy: Always
-  registry: CHANGE_ME # e.g. quay.io
-  repository: CHANGE_ME # e.g. openshift-hyperfleet/hyperfleet-adapter
-  tag: "" # Required — no default. Set via --set image.tag=<version>
+  # -- Container image registry (no default — must be set)
+  registry: CHANGE_ME
+  # -- Container image repository (no default — must be set)
+  repository: CHANGE_ME
+  # -- Image tag (no default — must be set via `--set image.tag=<version>`)
+  tag: ""
+
+# -- Secrets for pulling images from private registries
 imagePullSecrets: []
-# Init containers
+
+# -- Init containers added to the pod
+# @default -- `[]`
 initContainers: []
 # - name: init-myservice
 #   image: busybox:1.28
 #   command: ['sh', '-c', 'until nslookup myservice; do echo waiting; sleep 2; done']
 
-# Lifecycle hooks
+# -- Lifecycle hooks for the adapter container
+# @default -- `{}`
 lifecycle: {}
 # preStop:
 #   exec:
@@ -159,40 +195,54 @@ lifecycle: {}
 #       - -c
 #       - sleep 10
 
-# Liveness probe configuration (per HyperFleet health-endpoints standard)
-# Uses K8s defaults: initialDelaySeconds=0, periodSeconds=10, timeoutSeconds=1, failureThreshold=3
+# -- Liveness probe configuration (per HyperFleet health-endpoints standard)
 livenessProbe:
+  # -- Enable the liveness probe
   enabled: true
   httpGet:
+    # -- Liveness probe path
     path: /healthz
+    # -- Liveness probe port
     port: 8080
-# Minimum number of seconds for which a newly created pod should be ready
+
+# -- Minimum seconds a pod must be ready before considered available
 minReadySeconds: 0
+# -- Override the chart name used in resource names
 nameOverride: ""
+# -- Node selector constraints for pod scheduling
 nodeSelector: {}
+# -- Additional annotations applied to all pods
 podAnnotations: {}
-# Pod Disruption Budget
-# PDB protects availability during voluntary disruptions (node maintenance, cluster upgrades).
-# Set minAvailable OR maxUnavailable (not both). Use maxUnavailable with HPA for smoother scaling.
+
+# -- PodDisruptionBudget configuration
 podDisruptionBudget:
+  # -- Enable the PDB
   enabled: true
   # minAvailable: 1
+  # -- Maximum number of pods that can be unavailable during disruption
   maxUnavailable: 1
   # unhealthyPodEvictionPolicy: IfHealthyBudget
-# Pod labels (in addition to selector labels)
+
+# -- Additional labels applied to all pods
 podLabels: {}
+
+# -- Pod-level security context
 podSecurityContext:
+  # -- Filesystem group for volume mounts
   fsGroup: 65532
+  # -- Run all containers as non-root
   runAsNonRoot: true
+  # -- UID for all containers
   runAsUser: 65532
-# Priority class name for pod scheduling
+
+# -- PriorityClass name for pod scheduling
 priorityClassName: ""
-# RBAC permissions are needed if the adapter task needs to interact with CLM cluster
-# e.g. if triggering a job that must update its status to report conditions
+
+# -- RBAC configuration. Required when adapter tasks interact with the
+# cluster (e.g. creating Jobs, updating status).
 rbac:
+  # -- Create RBAC resources (Role + RoleBinding)
   create: true
-  # Resources to grant full access (get, list, watch, create, update, patch, delete)
-  # apiGroup is auto-detected based on resource type
   # resources:
   #   - namespaces
   #   - serviceaccounts
@@ -203,18 +253,23 @@ rbac:
   #   - rolebindings
   #   - jobs
   #   - jobs/status
-  # Additional custom rules (appended to auto-generated rules)
+  # -- Additional custom RBAC rules appended to auto-generated rules
   rules: []
-# Readiness probe configuration (per HyperFleet health-endpoints standard)
-# Uses K8s defaults: initialDelaySeconds=0, periodSeconds=10, timeoutSeconds=1, failureThreshold=3
+
+# -- Readiness probe configuration (per HyperFleet health-endpoints standard)
 readinessProbe:
+  # -- Enable the readiness probe
   enabled: true
   httpGet:
+    # -- Readiness probe path
     path: /readyz
+    # -- Readiness probe port
     port: 8080
-## Kubernetes configuration section
-## ================================
+
+# -- Number of adapter replicas
 replicaCount: 1
+
+# -- CPU and memory resource requests and limits
 resources:
   limits:
     cpu: 500m
@@ -222,86 +277,98 @@ resources:
   requests:
     cpu: 100m
     memory: 128Mi
-# The number of old ReplicaSets to retain for rollback
+
+# -- Number of old ReplicaSets to retain for rollback
 revisionHistoryLimit: 10
+
+# -- Container-level security context
 securityContext:
+  # -- Disallow privilege escalation
   allowPrivilegeEscalation: false
   capabilities:
     drop:
       - ALL
+  # -- Mount root filesystem as read-only
   readOnlyRootFilesystem: true
   seccompProfile:
     type: RuntimeDefault
+
+# -- ServiceAccount configuration
 serviceAccount:
-  # Annotations to add to the service account
+  # -- Annotations added to the ServiceAccount (e.g. for Workload Identity)
   annotations: {}
-  # Specifies whether a service account should be created
+  # -- Create a ServiceAccount for the adapter
   create: true
-  # The name of the service account to use.
-  # If not set and create is true, a name is generated using the fullname template
+  # -- Override the ServiceAccount name (defaults to the release fullname)
   name: ""
-# Sidecar containers
+
+# -- Sidecar containers added to the pod
+# @default -- `[]`
 sidecarContainers: []
 # - name: sidecar
 #   image: nginx:1.19
 #   ports:
 #     - containerPort: 80
 
-# Startup probe configuration (useful for slow-starting containers)
-# Uses K8s defaults when enabled
+# -- Startup probe configuration (useful for slow-starting containers)
 startupProbe:
+  # -- Enable the startup probe
   enabled: false
   httpGet:
+    # -- Startup probe path
     path: /healthz
+    # -- Startup probe port
     port: 8080
-# Deployment strategy
+
+# -- Deployment update strategy
 strategy:
   rollingUpdate:
+    # -- Maximum number of pods above desired count during update
     maxSurge: 1
+    # -- Maximum number of unavailable pods during update
     maxUnavailable: 0
+  # -- Strategy type (`RollingUpdate` or `Recreate`)
   type: RollingUpdate
-# Termination grace period in seconds
+
+# -- Termination grace period in seconds
 terminationGracePeriodSeconds: 30
+# -- Tolerations for pod scheduling
 tolerations: []
 
-# ServiceMonitor for Prometheus Operator discovery
-# Enables automatic scraping of the adapter's /metrics endpoint.
-# Requires the Prometheus Operator CRDs (monitoring.coreos.com/v1/ServiceMonitor) to be installed.
-# NOTE: Defaults to true. On clusters with Prometheus Operator CRDs, upgrading to this
-# chart version will automatically create a ServiceMonitor. On clusters without the CRDs
-# the resource is silently skipped. Set to false to opt out.
+# -- ServiceMonitor for Prometheus Operator scrape configuration.
+# Defaults to enabled. On clusters without Prometheus Operator CRDs,
+# the resource is silently skipped.
 serviceMonitor:
+  # -- Create a ServiceMonitor resource
   enabled: true
-  # Scrape interval
+  # -- Scrape interval
   interval: 30s
-  # Scrape timeout (must be less than interval)
+  # -- Scrape timeout (must be less than interval)
   scrapeTimeout: 10s
-  # Additional labels for ServiceMonitor to match Prometheus selector
-  # Example: release: prometheus
+  # -- Additional labels for ServiceMonitor discovery
   labels: {}
-  # Honor labels from the target to avoid overwriting
+  # -- Honor labels from the target to avoid overwriting
   honorLabels: true
-  # Metric relabel configs to apply to samples before ingestion
+  # -- Metric relabel configs applied before ingestion
   metricRelabeling: []
-  # Namespace selector for cross-namespace monitoring
-  # Example:
-  #   matchNames:
-  #     - hyperfleet-system
+  # -- Namespace selector for cross-namespace monitoring
   namespaceSelector: {}
-  # Override the namespace where ServiceMonitor is created (defaults to release namespace).
-  # When set, a namespaceSelector.matchNames is automatically added pointing to the
-  # release namespace so Prometheus can discover the Service across namespaces.
+  # -- Override the namespace where ServiceMonitor is created (defaults to release namespace)
   namespace: ""
 
+# -- Distributed tracing configuration (OpenTelemetry)
 tracing:
+  # -- Enable trace export
   enabled: false
+  # -- Service name reported in traces
   serviceName: "hyperfleet-adapter"
-  # OTLP exporter endpoint (traces go to stdout if not set)
+  # -- OTLP exporter endpoint (traces go to stdout when empty)
   otlpEndpoint: ""
-  # OTLP protocol: grpc (default) or http/protobuf
+  # -- OTLP protocol (`grpc` or `http/protobuf`)
   otlpProtocol: "grpc"
-  # Sampler type (default per tracing standard)
+  # -- Sampler type
   sampler: "parentbased_traceidratio"
-  # Sampling rate: 1.0 for dev, 0.01 for production
+  # -- Sampling rate (`1.0` for dev, `0.01` for production)
   samplerArg: "1.0"
+  # -- Context propagation formats
   propagators: "tracecontext,baggage"
