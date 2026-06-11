@@ -259,9 +259,6 @@ Per Helm Chart Conventions Standard section 9 (Deprecation and Migration Pattern
 {{- end -}}
 {{- end -}}
 {{- if .Values.broker.rabbitmq }}
-{{- if hasKey .Values.broker.rabbitmq "routing_key" }}
-{{- fail "broker.rabbitmq.routing_key has been renamed to broker.rabbitmq.routingKey (camelCase). Please update your values." }}
-{{- end -}}
 {{- if hasKey .Values.broker.rabbitmq "exchange_type" }}
 {{- fail "broker.rabbitmq.exchange_type has been renamed to broker.rabbitmq.exchangeType (camelCase). Please update your values." }}
 {{- end -}}
@@ -304,14 +301,8 @@ Validate that required fields are set for the resolved broker type.
   {{- if not .Values.broker.rabbitmq.url -}}
     {{- fail "broker.rabbitmq.url is required when broker type is rabbitmq" -}}
   {{- end -}}
-  {{- if not .Values.broker.rabbitmq.queue -}}
-    {{- fail "broker.rabbitmq.queue is required when broker type is rabbitmq" -}}
-  {{- end -}}
   {{- if not .Values.broker.rabbitmq.exchange -}}
     {{- fail "broker.rabbitmq.exchange is required when broker type is rabbitmq" -}}
-  {{- end -}}
-  {{- if not .Values.broker.rabbitmq.routingKey -}}
-    {{- fail "broker.rabbitmq.routingKey is required when broker type is rabbitmq" -}}
   {{- end -}}
 {{- end -}}
 {{- end }}

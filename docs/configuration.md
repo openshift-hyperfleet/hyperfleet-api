@@ -115,8 +115,59 @@ clients:
 
 ### Broker (`clients.broker`)
 
-- `subscription_id` (string): Broker subscription ID (required at runtime).
-- `topic` (string): Broker topic (required at runtime).
+These fields appear in the **adapter deployment config** and control which events the adapter consumes. The actual broker connection details (URL, credentials, exchange) live in a separate `broker.yaml` file managed by the Helm chart.
+
+- `subscription_id` (string, required): A unique identifier for this adapter instance's subscription. **Must be unique across adapter instances** that should each receive all events independently (fan-out). Two adapters with the same `subscription_id` and same queue name will share a queue and compete for messages — each event goes to only one of them.
+- `topic` (string, required): For RabbitMQ, this is the AMQP queue name prefix (not a routing key — see below). Set it to a meaningful value that identifies this adapter's event stream (e.g. `hyperfleet-clusters`). For Google Pub/Sub this is the Pub/Sub topic name.
+
+Set these values directly in the adapter config YAML. The env var overrides (`HYPERFLEET_BROKER_SUBSCRIPTION_ID`, `HYPERFLEET_BROKER_TOPIC`) exist as an escape hatch but are not required — values in the YAML take effect without them.
+
+### Broker connection config (`broker.yaml`)
+
+The broker connection is configured separately, via a mounted `broker.yaml` (or the Helm `broker.*` values). This file is read by the hyperfleet-broker library directly and **does not support Viper/env var overrides** — it is pure YAML.
+
+#### Google Pub/Sub
+
+```yaml
+broker:
+  type: googlepubsub
+  googlepubsub:
+    project_id: "my-gcp-project"
+    topic: "cluster-events"
+    subscription_id: "my-adapter-sub"
+    dead_letter_topic: ""            # optional
+    create_topic_if_missing: false
+    create_subscription_if_missing: false
+```
+
+#### RabbitMQ
+
+```yaml
+broker:
+  type: rabbitmq
+  rabbitmq:
+    url: "amqp://user:pass@rabbitmq:5672/"   # required; amqp:// or amqps://
+    exchange: "hyperfleet-clusters"           # required; must match sentinel's clients.broker.topic
+    exchange_type: "topic"                    # optional; default: topic
+    queue: "my-adapter"                       # optional; see queue naming below
+    prefetch_count: 0                         # optional; 0 = broker default
+    prefetch_size: 0                          # optional; 0 = no limit
+    consumer_tag: ""                          # optional; auto-assigned if empty
+    publisher_confirm: false                  # optional; enable publisher confirms
+```
+
+**Connecting to the sentinel.** The sentinel publishes events to a RabbitMQ exchange whose name equals the sentinel's `clients.broker.topic` (e.g. `hyperfleet-clusters`). The adapter's `broker.yaml` `exchange` field must match this value exactly — this is the only coupling point between sentinel and adapter.
+
+**Queue naming in RabbitMQ.** The adapter binds a queue to the exchange and consumes from it. The queue name is derived as:
+
+- If `queue` is set: `{queue}-{subscription_id}` (e.g. `my-adapter-adapter-1`)
+- If `queue` is omitted: `{topic}-{subscription_id}` (e.g. `hyperfleet-clusters-adapter-1`)
+
+The queue-to-exchange binding always uses an **empty routing key** — all queues bound to the same exchange receive all messages published to it.
+
+**Fan-out vs competing consumers.** Because queue name is derived from both `topic` and `subscription_id`, two adapters sharing the same values for both fields will land on the same queue and compete (each event goes to one adapter). Give each adapter instance a unique `subscription_id` in its adapter config YAML to ensure each gets an independent copy of every event.
+
+`url` and `exchange` are required. `queue` is optional.
 
 ### Kubernetes (`clients.kubernetes`)
 

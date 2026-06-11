@@ -99,17 +99,23 @@ kubectl exec <pod> -- curl -s localhost:8080/readyz | jq .
 
 | Log Pattern | Cause | Resolution |
 |-------------|-------|------------|
-| `"Missing required broker configuration"` | `subscriptionId` or `topic` not set | Check broker ConfigMap and env vars |
+| `"Missing required broker configuration"` | `subscription_id` or `topic` not set in adapter config | Check adapter config ConfigMap; set values directly in YAML (not via env vars for RabbitMQ) |
 | `"Failed to create subscriber"` | Broker backend misconfiguration | Verify broker connection settings (Pub/Sub project, RabbitMQ URL) |
-| `"Failed to subscribe to topic"` | Topic doesn't exist or permissions denied | Verify topic exists and service account has subscribe permission |
+| `"Failed to subscribe to topic"` | Topic doesn't exist or permissions denied | Verify topic/exchange exists and adapter has access |
 | `"Subscription error"` | Transient broker error | Usually recovers; monitor for frequency |
 | `"Fatal subscription error, shutting down"` | Unrecoverable broker error | Check broker service health; adapter will restart via liveness probe |
 
 **Steps:**
-1. Check broker ConfigMap: `kubectl get configmap <release>-broker -o yaml`
-2. For Google Pub/Sub: verify subscription exists and IAM permissions
-3. For RabbitMQ: verify exchange, queue, and connectivity from the pod network
-4. Check if broker service is healthy independently
+1. Check broker ConfigMap: `kubectl get configmap <release>-hyperfleet-adapter-broker -o yaml`
+2. Check adapter config ConfigMap: `kubectl get configmap <release>-hyperfleet-adapter-config -o yaml`
+3. For Google Pub/Sub: verify subscription exists and IAM permissions
+4. For RabbitMQ:
+   - Verify `broker.yaml` `exchange` matches the sentinel's `clients.broker.topic` — this is the most common misconfiguration
+   - Verify `subscription_id` in the adapter config is unique per adapter instance (shared IDs cause competing consumers, not fan-out)
+   - Check the queue exists and is bound to the exchange: `rabbitmqctl list_bindings`
+   - Check the queue has consumers: `rabbitmqctl list_queues name messages consumers`
+   - Verify TCP connectivity to RabbitMQ from the pod network
+5. Check if broker service is healthy independently
 
 ---
 
@@ -250,9 +256,9 @@ Events are ACKed on failure and not automatically retried. To reprocess:
    gcloud pubsub topics publish <topic> --message '<event-json>'
    ```
 
-   For RabbitMQ:
+   For RabbitMQ (the adapter's queue binding uses an empty routing key, so publish with `routing_key=""`):
    ```bash
-   rabbitmqadmin publish exchange=<exchange> routing_key=<key> payload='<event-json>'
+   rabbitmqadmin publish exchange=<exchange> routing_key="" payload='<event-json>'
    ```
 3. Monitor `hyperfleet_adapter_events_processed_total` for the reprocessed event
 
