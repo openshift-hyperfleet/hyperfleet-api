@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/auth"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/dao"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
@@ -29,20 +28,13 @@ type NodePoolService interface {
 	CascadeSoftDelete(
 		ctx context.Context, nodePools api.NodePoolList, deletedBy string, deletedTime time.Time,
 	) *errors.ServiceError
-	Delete(ctx context.Context, id string) *errors.ServiceError
 	ForceDelete(ctx context.Context, id string, reason string) *errors.ServiceError
-	All(ctx context.Context) (api.NodePoolList, *errors.ServiceError)
-
-	FindByIDs(ctx context.Context, ids []string) (api.NodePoolList, *errors.ServiceError)
 
 	UpdateNodePoolStatusFromAdapters(ctx context.Context, nodePoolID string) (*api.NodePool, *errors.ServiceError)
 
 	ProcessAdapterStatus(
 		ctx context.Context, nodePoolID string, adapterStatus *api.AdapterStatus,
 	) (*api.AdapterStatus, *errors.ServiceError)
-
-	OnUpsert(ctx context.Context, id string) error
-	OnDelete(ctx context.Context, id string) error
 }
 
 func NewNodePoolService(
@@ -239,14 +231,6 @@ func (s *sqlNodePoolService) CascadeSoftDelete(
 	return nil
 }
 
-func (s *sqlNodePoolService) Delete(ctx context.Context, id string) *errors.ServiceError {
-	if err := s.nodePoolDao.Delete(ctx, id); err != nil {
-		return handleDeleteError(api.ResourceTypeNodePool, errors.GeneralError("Unable to delete nodePool: %s", err))
-	}
-
-	return nil
-}
-
 func (s *sqlNodePoolService) ForceDelete(ctx context.Context, id string, reason string) *errors.ServiceError {
 	nodePool, err := s.nodePoolDao.GetForUpdate(ctx, id)
 	if err != nil {
@@ -262,10 +246,7 @@ func (s *sqlNodePoolService) ForceDelete(ctx context.Context, id string, reason 
 		return errors.GeneralError("Failed to fetch adapter statuses for nodepool '%s': %s", id, err)
 	}
 
-	caller := auth.GetUsernameFromContext(ctx)
-	if caller == "" {
-		caller = "unknown"
-	}
+	caller := actorFromContext(ctx)
 
 	logger.With(ctx,
 		"nodepool_id", id,
@@ -286,39 +267,6 @@ func (s *sqlNodePoolService) ForceDelete(ctx context.Context, id string, reason 
 		return handleDeleteError(api.ResourceTypeNodePool, err)
 	}
 
-	return nil
-}
-
-func (s *sqlNodePoolService) FindByIDs(ctx context.Context, ids []string) (api.NodePoolList, *errors.ServiceError) {
-	nodePools, err := s.nodePoolDao.FindByIDs(ctx, ids)
-	if err != nil {
-		return nil, errors.GeneralError("Unable to get all nodePools: %s", err)
-	}
-	return nodePools, nil
-}
-
-func (s *sqlNodePoolService) All(ctx context.Context) (api.NodePoolList, *errors.ServiceError) {
-	nodePools, err := s.nodePoolDao.All(ctx)
-	if err != nil {
-		return nil, errors.GeneralError("Unable to get all nodePools: %s", err)
-	}
-	return nodePools, nil
-}
-
-func (s *sqlNodePoolService) OnUpsert(ctx context.Context, id string) error {
-	nodePool, err := s.nodePoolDao.Get(ctx, id)
-	if err != nil {
-		return err
-	}
-
-	logger.With(ctx, logger.FieldNodePoolID, nodePool.ID).
-		Info("Perform idempotent operations on node pool")
-
-	return nil
-}
-
-func (s *sqlNodePoolService) OnDelete(ctx context.Context, id string) error {
-	logger.With(ctx, logger.FieldNodePoolID, id).Info("Node pool has been deleted")
 	return nil
 }
 

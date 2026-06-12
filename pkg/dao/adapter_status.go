@@ -23,7 +23,6 @@ type AdapterStatusDao interface {
 	FindByResourceAndAdapter(
 		ctx context.Context, resourceType, resourceID, adapter string,
 	) (*api.AdapterStatus, error)
-	All(ctx context.Context) (api.AdapterStatusList, error)
 }
 
 var _ AdapterStatusDao = &sqlAdapterStatusDao{}
@@ -183,13 +182,4 @@ func (d *sqlAdapterStatusDao) FindByResourceAndAdapter(
 		return nil, err
 	}
 	return &adapterStatus, nil
-}
-
-func (d *sqlAdapterStatusDao) All(ctx context.Context) (api.AdapterStatusList, error) {
-	g2 := d.sessionFactory.New(ctx)
-	statuses := api.AdapterStatusList{}
-	if err := g2.Find(&statuses).Error; err != nil {
-		return nil, err
-	}
-	return statuses, nil
 }

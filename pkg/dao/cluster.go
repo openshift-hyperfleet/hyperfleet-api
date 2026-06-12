@@ -16,8 +16,6 @@ type ClusterDao interface {
 	Save(ctx context.Context, cluster *api.Cluster) error
 	SaveStatusConditions(ctx context.Context, id string, statusConditions []byte) error
 	Delete(ctx context.Context, id string) error
-	FindByIDs(ctx context.Context, ids []string) (api.ClusterList, error)
-	All(ctx context.Context) (api.ClusterList, error)
 }
 
 var _ ClusterDao = &sqlClusterDao{}
@@ -83,22 +81,4 @@ func (d *sqlClusterDao) Delete(ctx context.Context, id string) error {
 		return err
 	}
 	return nil
-}
-
-func (d *sqlClusterDao) FindByIDs(ctx context.Context, ids []string) (api.ClusterList, error) {
-	g2 := d.sessionFactory.New(ctx)
-	clusters := api.ClusterList{}
-	if err := g2.Where("id in (?)", ids).Find(&clusters).Error; err != nil {
-		return nil, err
-	}
-	return clusters, nil
-}
-
-func (d *sqlClusterDao) All(ctx context.Context) (api.ClusterList, error) {
-	g2 := d.sessionFactory.New(ctx)
-	clusters := api.ClusterList{}
-	if err := g2.Find(&clusters).Error; err != nil {
-		return nil, err
-	}
-	return clusters, nil
 }

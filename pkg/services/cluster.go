@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/auth"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/dao"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
@@ -24,15 +23,9 @@ type ClusterService interface {
 	Create(ctx context.Context, cluster *api.Cluster) (*api.Cluster, *errors.ServiceError)
 	Patch(ctx context.Context, id string, patch *api.ClusterPatchRequest) (*api.Cluster, *errors.ServiceError)
 	SoftDelete(ctx context.Context, id string) (*api.Cluster, *errors.ServiceError)
-	All(ctx context.Context) (api.ClusterList, *errors.ServiceError)
-	FindByIDs(ctx context.Context, ids []string) (api.ClusterList, *errors.ServiceError)
 	UpdateClusterStatusFromAdapters(ctx context.Context, clusterID string) (*api.Cluster, *errors.ServiceError)
 	ProcessAdapterStatus(ctx context.Context, clusterID string, adapterStatus *api.AdapterStatus) (*api.AdapterStatus, *errors.ServiceError) // nolint:lll
 	ForceDelete(ctx context.Context, id, reason string) *errors.ServiceError
-
-	// idempotent functions for the control plane, but can also be called synchronously by any actor
-	OnUpsert(ctx context.Context, id string) error
-	OnDelete(ctx context.Context, id string) error
 }
 
 func NewClusterService(
@@ -171,40 +164,6 @@ func (s *sqlClusterService) SoftDelete(ctx context.Context, id string) (*api.Clu
 	}
 
 	return cluster, nil
-}
-
-func (s *sqlClusterService) FindByIDs(ctx context.Context, ids []string) (api.ClusterList, *errors.ServiceError) {
-	clusters, err := s.clusterDao.FindByIDs(ctx, ids)
-	if err != nil {
-		return nil, errors.GeneralError("Unable to get all clusters: %s", err)
-	}
-	return clusters, nil
-}
-
-func (s *sqlClusterService) All(ctx context.Context) (api.ClusterList, *errors.ServiceError) {
-	clusters, err := s.clusterDao.All(ctx)
-	if err != nil {
-		return nil, errors.GeneralError("Unable to get all clusters: %s", err)
-	}
-	return clusters, nil
-}
-
-func (s *sqlClusterService) OnUpsert(ctx context.Context, id string) error {
-	cluster, err := s.clusterDao.Get(ctx, id)
-	if err != nil {
-		return err
-	}
-
-	ctx = logger.WithClusterID(ctx, cluster.ID)
-	logger.Info(ctx, "Perform idempotent operations on cluster")
-
-	return nil
-}
-
-func (s *sqlClusterService) OnDelete(ctx context.Context, id string) error {
-	ctx = logger.WithClusterID(ctx, id)
-	logger.Info(ctx, "Cluster has been deleted")
-	return nil
 }
 
 func applyClusterPatch(cluster *api.Cluster, patch *api.ClusterPatchRequest) error {
@@ -523,10 +482,7 @@ func logForceDeleteAudit(
 	ctx context.Context, clusterID, reason string,
 	statuses api.AdapterStatusList, nodePools api.NodePoolList,
 ) {
-	caller := auth.GetUsernameFromContext(ctx)
-	if caller == "" {
-		caller = "unknown"
-	}
+	caller := actorFromContext(ctx)
 
 	nodePoolIDs := make([]string, 0, len(nodePools))
 	for _, np := range nodePools {

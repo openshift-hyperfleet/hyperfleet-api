@@ -52,11 +52,3 @@ func (d *clusterDaoMock) SaveStatusConditions(ctx context.Context, id string, st
 func (d *clusterDaoMock) Delete(ctx context.Context, id string) error {
 	return errors.NotImplemented("Cluster").AsError()
 }
-
-func (d *clusterDaoMock) FindByIDs(ctx context.Context, ids []string) (api.ClusterList, error) {
-	return nil, errors.NotImplemented("Cluster").AsError()
-}
-
-func (d *clusterDaoMock) All(ctx context.Context) (api.ClusterList, error) {
-	return d.clusters, nil
-}

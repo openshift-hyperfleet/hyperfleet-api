@@ -3,7 +3,6 @@ package auth
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"strings"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -182,8 +181,4 @@ func stringClaim(claims jwt.MapClaims, key string) (string, bool) {
 	}
 	s, ok := val.(string)
 	return s, ok && s != ""
-}
-
-func GetAuthPayload(r *http.Request) (*Payload, error) {
-	return GetAuthPayloadFromContext(r.Context())
 }

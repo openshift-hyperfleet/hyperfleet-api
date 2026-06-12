@@ -47,39 +47,6 @@ func SendNotFound(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// SendUnauthorized sends a 401 response in RFC 9457 Problem Details format.
-func SendUnauthorized(w http.ResponseWriter, r *http.Request, message string) {
-	w.Header().Set("Content-Type", "application/problem+json")
-
-	traceID, _ := logger.GetRequestID(r.Context())
-	now := time.Now().UTC()
-
-	body := openapi.ProblemDetails{
-		Type:      errors.ErrorTypeAuth,
-		Title:     "Authentication Required",
-		Status:    http.StatusUnauthorized,
-		Detail:    &message,
-		Instance:  &r.URL.Path,
-		Code:      ptrString(errors.CodeAuthNoCredentials),
-		Timestamp: &now,
-		TraceId:   &traceID,
-	}
-
-	data, err := json.Marshal(body)
-	if err != nil {
-		logger.WithError(r.Context(), err).Error("Failed to marshal unauthorized response")
-		SendPanic(w, r)
-		return
-	}
-
-	w.WriteHeader(http.StatusUnauthorized)
-	_, err = w.Write(data)
-	if err != nil {
-		err = fmt.Errorf("can't send response body for request '%s'", r.URL.Path)
-		logger.WithError(r.Context(), err).Error("Failed to send response")
-	}
-}
-
 // SendPanic sends a panic error response in RFC 9457 Problem Details format.
 // It attempts to include trace_id and timestamp dynamically, falling back to
 // a pre-computed body if marshaling fails.

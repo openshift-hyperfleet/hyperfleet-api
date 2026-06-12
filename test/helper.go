@@ -426,10 +426,6 @@ func (helper *Helper) MigrateDB() error {
 	return db.Migrate(helper.DBFactory.New(context.Background()))
 }
 
-func (helper *Helper) MigrateDBTo(migrationID string) {
-	db.MigrateTo(helper.DBFactory, migrationID)
-}
-
 func (helper *Helper) ClearAllTables() {
 	// Reserved for future use
 }

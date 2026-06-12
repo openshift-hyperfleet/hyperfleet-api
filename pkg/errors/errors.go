@@ -201,21 +201,6 @@ func Find(code string) (bool, *ServiceError) {
 	}
 }
 
-// Errors returns all defined errors
-func Errors() ServiceErrors {
-	errors := make(ServiceErrors, 0, len(errorDefinitions))
-	for code, def := range errorDefinitions {
-		errors = append(errors, ServiceError{
-			RFC9457Code: code,
-			Type:        def.Type,
-			Title:       def.Title,
-			Reason:      def.Reason,
-			HTTPCode:    def.HTTPCode,
-		})
-	}
-	return errors
-}
-
 // New creates a new ServiceError with optional custom reason
 func New(code string, reason string, values ...interface{}) *ServiceError {
 	exists, err := Find(code)
