@@ -100,7 +100,7 @@ The configuration file is resolved in the following order:
    - Production: `/etc/hyperfleet/config.yaml`
    - Development: `./configs/config.yaml`
 
-If none are found, the command fails with `failed to load configuration`. Copy the example config or point to your own.
+If none are found, the application continues normally using environment variables and CLI flags.
 
 ---
 

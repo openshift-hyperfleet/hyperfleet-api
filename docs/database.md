@@ -18,7 +18,7 @@ Primary resources for cluster management. It contains:
 * and `deleted_by` for audit.
 
 ### node_pools
-Child resources owned by clusters, representing groups of compute nodes. References clusters via `owner_id` with a `RESTRICT` foreign key. Same column layout as clusters (including `labels`, `status_conditions`, `deleted_time`, `deleted_by`).
+Child resources owned by clusters, representing groups of compute nodes. References clusters via `owner_id` with a `RESTRICT` foreign key. Shares the same core columns as clusters (`labels`, `status_conditions`, `deleted_time`, `deleted_by`) plus `owner_id` for the parent relationship.
 
 ### adapter_statuses
 Polymorphic status records for both clusters and node pools. Stores adapter-reported conditions in JSONB format. No soft delete — rows are hard-deleted or replaced.
@@ -68,14 +68,14 @@ Active ──(DELETE)──▶ Finalizing ──(adapters report Finalized=True)
 ```
 
 1. **Active** — Normal state. Resource is visible in list queries and can be updated.
-2. **Finalizing** (soft-deleted) — `DELETE` sets `deleted_time` and `deleted_by`, increments `generation`. The resource stays in the database so adapters can observe the deletion and clean up external state. Soft-deleted records are excluded from list queries by default. New child resources cannot be created under a finalizing parent (returns `409 Conflict`).
-3. **Hard-Deleted** — Permanently removed from the database. This happens automatically when all required adapters report `Finalized=True` at the current generation. If adapters are stuck, `POST .../force-delete` bypasses finalization and hard-deletes immediately.
+2. **Finalizing** (soft-deleted) — `DELETE` sets `deleted_time` and `deleted_by`, increments `generation`. The resource stays in the database so adapters can observe the deletion and clean up external state. Soft-deleted records are excluded from list queries by default. Creating new child resources under a finalizing parent is rejected with `409 Conflict`.
+3. **Hard-Deleted** — Permanently removed from the database. This happens automatically when all required adapters report `Finalized=True` at the current generation. If adapters are stuck, `POST .../force-delete` bypasses the adapter gating and hard-deletes immediately — but the resource must already be in Finalizing state; calling force-delete on an active resource returns `409 Conflict`. Repeated force-delete calls after hard-deletion return `404 Not Found`. Cluster force-delete cascades to all child NodePools and their adapter statuses. NodePool force-delete only removes the NodePool and its adapter statuses.
 
 Adapter statuses do not use soft delete — they are hard-deleted when their parent resource is hard-deleted.
 
 ### Delete Policies
 
-Generic resources (the `resources` table) use descriptor-driven delete policies to control child behavior when a parent is deleted. Each resource type declares its policy in its `EntityDescriptor`:
+Generic resources (the `resources` table) use delete policies to control child behavior when a parent is deleted. Each resource type declares its policy:
 
 | Policy     | Behavior |
 |------------|----------|
@@ -84,56 +84,18 @@ Generic resources (the `resources` table) use descriptor-driven delete policies 
 
 Policies are enforced recursively — a cascade on a parent triggers policy checks on grandchildren. For clusters and nodepools, the cascade is built-in: deleting a cluster always cascades the soft-delete to all its nodepools.
 
-Resources without `RequiredAdapters` in their descriptor skip the Finalizing phase entirely — they are hard-deleted immediately on `DELETE`.
+Resources without required adapters skip the Finalizing phase entirely — they are hard-deleted immediately on `DELETE`.
 
 ### Migration System
 
-Uses GORM AutoMigrate:
+Migrations are:
 - Non-destructive (never drops columns or tables)
 - Additive (creates missing tables, columns, indexes)
 - Run via `./bin/hyperfleet-api migrate`
 
 ### Migration Coordination
 
-**Problem:** During rolling deployments, multiple pods attempt to run migrations simultaneously, causing race conditions and deployment failures.
-
-**Solution:** PostgreSQL advisory locks ensure exclusive migration execution.
-
-#### How It Works
-
-```go
-// Only one pod/process acquires the lock and runs migrations
-// Others wait until the lock is released
-db.MigrateWithLock(ctx, factory)
-```
-
-**Implementation:**
-1. Pod sets statement timeout (5 minutes) to prevent indefinite blocking
-2. Pod acquires advisory lock via `pg_advisory_xact_lock(hash("migrations"), hash("Migrations"))`
-3. Lock holder runs migrations exclusively
-4. Other pods block until lock is released or timeout is reached
-5. Lock automatically released on transaction commit
-
-**Key Features:**
-- **Zero infrastructure overhead** - Uses native PostgreSQL locks
-- **Automatic cleanup** - Locks released on transaction end or pod crash
-- **Timeout protection** - 5-minute timeout prevents indefinite blocking if a pod hangs
-- **Nested lock support** - Same lock can be acquired in nested contexts without deadlock
-- **UUID-based ownership** - Only original acquirer can unlock
-
-#### Testing Concurrent Migrations
-
-Integration tests validate concurrent behavior:
-
-```bash
-make test-integration  # Runs TestConcurrentMigrations
-```
-
-**Test coverage:**
-- `TestConcurrentMigrations` - Multiple pods running migrations simultaneously
-- `TestAdvisoryLocksConcurrently` - Lock serialization under race conditions
-- `TestAdvisoryLocksWithTransactions` - Lock + transaction interaction
-- `TestAdvisoryLockBlocking` - Lock blocking behavior
+During rolling deployments, multiple pods may attempt to run migrations simultaneously. The API uses PostgreSQL advisory locks to ensure only one pod runs migrations at a time — other pods wait (up to 5 minutes) until the lock is released. Locks are automatically cleaned up on transaction commit or pod crash, so no manual intervention is needed.
 
 ## Database Setup
 
@@ -152,43 +114,16 @@ See [development.md](development.md) for detailed setup instructions.
 
 ## Transaction Strategy
 
-The API uses an optimized transaction strategy to maximize connection pool efficiency and reduce latency under high adapter polling load.
+- **Write operations** (POST/PUT/PATCH/DELETE) run inside a database transaction with automatic commit on success and rollback on error.
+- **Read operations** (GET) run without a transaction for lower latency and reduced connection pool pressure.
 
-### Write Operations (POST/PUT/PATCH/DELETE)
+### Pagination note
 
-Write operations create full GORM transactions with ACID guarantees:
-- Transaction begins before handler execution
-- Automatic commit on success, rollback on error (via `MarkForRollback()`)
-- Transaction ID tracked in logs for debugging
-
-### Read Operations (GET)
-
-Read operations skip transaction creation entirely for performance:
-- Direct database session without BEGIN/COMMIT overhead
-- No transaction ID consumption
-- Reduced connection hold time and pool pressure
-
-### Trade-offs
-
-**List Operations**: COUNT and SELECT queries execute as separate autocommit statements (read operations don't use transactions). PostgreSQL's default READ COMMITTED isolation level means each statement gets a fresh snapshot:
-
-- Under concurrent deletes, `total` count may slightly exceed actual `items` returned
-- This is a cosmetic pagination issue, not a data integrity problem
-- Occurs only during the ~1ms window between COUNT and SELECT
-- Low probability in practice (requires delete between two consecutive queries)
-
-**Why not use transactions for reads?** Creating transactions for every GET request would:
-- Increase connection pool pressure under high adapter polling load
-- Consume transaction IDs unnecessarily
-- Add latency (BEGIN/COMMIT overhead)
-
-**Why not use REPEATABLE READ?** The current inconsistency is acceptable for pagination UX. REPEATABLE READ would add overhead and doesn't align with the read-heavy workload optimization.
-
-**Alternative**: Clients can use continuation tokens (Kubernetes pattern) instead of page/total pagination if strict consistency is required.
+Because list queries run without a transaction, the `total` count and the returned `items` are computed in separate statements. Under concurrent deletes, `total` may briefly exceed the actual number of items returned. This is a cosmetic pagination artifact, not a data integrity issue.
 
 ## Connection Pool Configuration
 
-The API manages a Go `sql.DB` connection pool with the following tunable parameters, exposed as CLI flags:
+The connection pool is configured via CLI flags:
 
 | Flag | Default | Description |
 |------|---------|-------------|

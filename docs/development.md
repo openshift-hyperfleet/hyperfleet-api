@@ -6,14 +6,14 @@ This guide covers the complete development workflow for HyperFleet API, from ini
 
 Before running hyperfleet-api, ensure these prerequisites are installed. See [PREREQUISITES.md](../PREREQUISITES.md) for detailed installation instructions.
 
-- **Go 1.24 or higher**
+- **Go 1.25 or higher**
 - **Podman**
-- **PostgreSQL 13+**
+- **PostgreSQL 14+**
 - **Make**
 
 Verify installations:
 ```bash
-go version      # Should show 1.24+
+go version      # Should show 1.25+
 podman version
 make --version
 ```
@@ -32,11 +32,11 @@ go mod download
 # 3. Build the binary
 make build
 
-# 4. Setup PostgreSQL database
+# 4. Setup PostgreSQL database (see Database Setup below)
 make db/setup
 
 # 5. Run database migrations
-./bin/hyperfleet-api migrate
+make db/migrate
 
 # 6. Verify database schema
 make db/login
@@ -45,42 +45,58 @@ make db/login
 
 **Important**: Generated code is not tracked in git. You must run `make generate-all` after cloning to generate both OpenAPI models and mocks.
 
-## Pre-commit Hooks (Optional)
+## Configuration
 
-This project uses pre-commit hooks for code quality and security checks.
+The application loads configuration in this priority order: **CLI flags > environment variables > config file > defaults**.
 
-### Setup
+**Config file:** Copy the example and adjust as needed:
 
 ```bash
-# Install pre-commit
-brew install pre-commit  # macOS
-# or
-pip install pre-commit
-
-# Install hooks
-pre-commit install
-pre-commit install --hook-type pre-push
-
-# Test
-pre-commit run --all-files
+cp configs/config.yaml.example configs/config.yaml
 ```
 
-### For External Contributors
+The loader searches for a config file in this order:
+1. `--config` flag (explicit path)
+2. `HYPERFLEET_CONFIG` environment variable
+3. `/etc/hyperfleet/config.yaml` (production default)
+4. `./configs/config.yaml` (development default)
 
-The `.pre-commit-config.yaml` includes `rh-pre-commit` which requires access to Red Hat's internal GitLab. External contributors can skip it:
+If none are found, the application continues normally using environment variables and CLI flags.
+
+**Environment variables:** Override any config value with the `HYPERFLEET_*` prefix:
 
 ```bash
-# Skip internal hook when committing
-SKIP=rh-pre-commit git commit -m "your message"
+export HYPERFLEET_DATABASE_HOST=localhost
+export HYPERFLEET_DATABASE_PORT=5432
+export HYPERFLEET_DATABASE_NAME=hyperfleet
+export HYPERFLEET_DATABASE_USER=hyperfleet
+export HYPERFLEET_DATABASE_PASSWORD=hyperfleet-dev-password
+export HYPERFLEET_LOGGING_LEVEL=debug
+export HYPERFLEET_SERVER_PORT=8000
 ```
 
-Or comment out the internal hook in `.pre-commit-config.yaml`.
+See [Configuration Guide](config.md) for the complete reference and all available settings.
 
-### Update Hooks
+## Database Setup
+
+**Option A: Local PostgreSQL container (quickest)**
 
 ```bash
-pre-commit autoupdate
-pre-commit run --all-files
+make db/setup     # Creates a PostgreSQL container via Podman
+make db/login     # Connect to the database for inspection
+```
+
+**Option B: External PostgreSQL**
+
+Point the config or environment variables to your PostgreSQL instance:
+
+```bash
+export HYPERFLEET_DATABASE_HOST=my-postgres-host.example.com
+export HYPERFLEET_DATABASE_PORT=5432
+export HYPERFLEET_DATABASE_NAME=hyperfleet
+export HYPERFLEET_DATABASE_USER=hyperfleet
+export HYPERFLEET_DATABASE_PASSWORD=my-password
+export HYPERFLEET_DATABASE_SSL_MODE=require   # for remote databases
 ```
 
 ## Running the Service
@@ -93,13 +109,7 @@ make run-no-auth
 
 **Note**: The default runtime environment is `production` (JWT and TLS enabled). The `make run-no-auth` target explicitly disables authentication for local development. If running the binary directly, set `HYPERFLEET_ENV=development` or use `--server-jwt-enabled=false`.
 
-The service starts on `localhost:8000`:
-- REST API: `http://localhost:8000/api/hyperfleet/v1/`
-- OpenAPI spec: `http://localhost:8000/api/hyperfleet/v1/openapi`
-- Swagger UI: `http://localhost:8000/api/hyperfleet/v1/openapi.html`
-- Liveness probe: `http://localhost:8080/healthz`
-- Readiness probe: `http://localhost:8080/readyz`
-- Metrics: `http://localhost:9090/metrics`
+The service starts on `localhost:8000` — see [Accessing the API](../README.md#accessing-the-api) for all available endpoints.
 
 ### Testing the API
 
@@ -131,7 +141,29 @@ curl -H "Authorization: Bearer ${TOKEN}" \
   http://localhost:8000/api/hyperfleet/v1/clusters
 ```
 
-See [Deployment](deployment.md) and [Authentication](authentication.md) for complete configuration options.
+See [Deployment](deployment.md) for Kubernetes/Helm deployment and [Authentication](authentication.md) for JWT configuration.
+
+### Schema Validation (Local)
+
+The API validates cluster and nodepool `spec` fields against an OpenAPI schema. Configure the schema path:
+
+```bash
+# Via flag
+./bin/hyperfleet-api serve --server-openapi-schema-path ./openapi/openapi.yaml
+
+# Via environment variable
+export HYPERFLEET_SERVER_OPENAPI_SCHEMA_PATH=./openapi/openapi.yaml
+```
+
+The API **will fail to start** if the configured schema file is missing, unreadable, or invalid.
+
+### CLI Subcommands
+
+```bash
+./bin/hyperfleet-api serve     # Start the HTTP server
+./bin/hyperfleet-api migrate   # Run database migrations
+./bin/hyperfleet-api version   # Print version, commit, and build date
+```
 
 ## Testing
 
@@ -292,6 +324,45 @@ bingo list
 
 Tool versions are tracked in `.bingo/*.mod` files and loaded automatically via `include .bingo/Variables.mk` in the Makefile.
 
+
+### Pre-commit Hooks (Optional)
+
+This project uses pre-commit hooks for code quality and security checks.
+
+#### Setup
+
+```bash
+# Install pre-commit
+brew install pre-commit  # macOS
+# or
+pip install pre-commit
+
+# Install hooks
+pre-commit install
+pre-commit install --hook-type pre-push
+
+# Test
+pre-commit run --all-files
+```
+
+#### For External Contributors
+
+The `.pre-commit-config.yaml` includes `rh-pre-commit` which requires access to Red Hat's internal GitLab. External contributors can skip it:
+
+```bash
+# Skip internal hook when committing
+SKIP=rh-pre-commit git commit -m "your message"
+```
+
+Or comment out the internal hook in `.pre-commit-config.yaml`.
+
+#### Update Hooks
+
+```bash
+pre-commit autoupdate
+pre-commit run --all-files
+```
+
 ### Making Changes
 
 1. **Create a feature branch**:
@@ -382,6 +453,8 @@ make test-integration
 
 ## Related Documentation
 
-- [Database](database.md) - Database schema and migrations
-- [Deployment](deployment.md) - Container and Kubernetes deployment
-- [API Resources](api-resources.md) - API endpoints and data models
+- [Configuration Guide](config.md) — Complete configuration reference
+- [Database](database.md) — Database schema and migrations
+- [Deployment](deployment.md) — Kubernetes/Helm deployment (ops)
+- [Authentication](authentication.md) — Authentication configuration
+- [API Resources](api-resources.md) — API endpoints and data models

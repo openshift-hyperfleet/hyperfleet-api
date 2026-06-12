@@ -2,6 +2,14 @@
 
 This document provides detailed information about the HyperFleet API resources, including endpoints, request/response formats, and usage patterns.
 
+## Authentication Prerequisites
+
+All API endpoints require a valid JWT bearer token when authentication is enabled (the default in production). Requests without a valid token receive `401 Unauthorized`. See [authentication.md](authentication.md) for configuration details, token format, and caller identity resolution.
+
+Mutating requests (POST, PATCH, PUT, DELETE) additionally require a resolvable caller identity — either from a JWT claim or an identity header — which is recorded in audit fields (`created_by`, `updated_by`, `deleted_by`). Read requests (GET, LIST) are allowed without caller identity.
+
+> **Note**: The API does not enforce role-based access control (RBAC). Any authenticated caller can invoke any endpoint, including destructive operations like force-delete. Access control should be enforced at the infrastructure layer (e.g., ingress policies, gateway authorization).
+
 ## Cluster Management
 
 ### Endpoints
@@ -328,7 +336,7 @@ Updates a cluster's `spec` and/or `labels`. Only the fields provided in the requ
 
 **DELETE** `/api/hyperfleet/v1/clusters/{cluster_id}`
 
-Soft-deletes a cluster. Sets `deleted_time` and `deleted_by`, increments `generation`, and cascades the soft-delete to all child nodepools. The cluster enters a **Finalizing** state — it remains in the database until adapters report `Finalized=True`, at which point it is hard-deleted automatically.
+Soft-deletes a cluster. Sets `deleted_time` and `deleted_by`, increments `generation`, and cascades deletion to child nodepools according to the deletion policy: nodepools with required adapters are soft-deleted (their `deleted_time` and `deleted_by` are set and `generation` is incremented, entering **Finalizing**), while nodepools without required adapters are hard-deleted immediately. The cluster itself enters a **Finalizing** state — it remains in the database until adapters report `Finalized=True`, at which point it is hard-deleted automatically.
 
 **Response (202 Accepted):**
 
@@ -364,7 +372,7 @@ Once a cluster is soft-deleted, creating or updating child nodepools returns `40
 
 **POST** `/api/hyperfleet/v1/clusters/{cluster_id}/force-delete`
 
-Permanently removes a cluster that is stuck in the Finalizing state. This bypasses the normal adapter finalization flow — use it only when adapters are unable to report `Finalized=True`. The cluster, all its child nodepools, and all associated adapter statuses are hard-deleted immediately.
+Permanently removes a cluster that is stuck in the Finalizing state. This bypasses the normal adapter finalization flow — use it only when adapters are unable to report `Finalized=True`. The cluster, all its child nodepools, and all associated adapter statuses are hard-deleted immediately. The caller and reason are recorded in an audit log entry before deletion.
 
 The cluster **must** already be soft-deleted (have a `deleted_time`). Calling force-delete on an active cluster returns `409 Conflict`.
 
@@ -723,7 +731,7 @@ Same naming rules as cluster, but with a shorter maximum length.
 
 ## Spec Validation
 
-When an OpenAPI schema is configured (see [deployment.md](deployment.md#schema-validation-via-helm) for setup), the API validates cluster and nodepool `spec` fields on every create and update request. If no schema is configured, all specs are accepted without validation. When a schema is configured:
+When an OpenAPI schema is configured (see [deployment.md](deployment.md#configuring-schema-validation) for setup), the API validates cluster and nodepool `spec` fields on every create and update request. If no schema is configured, all specs are accepted without validation. When a schema is configured:
 
 - `POST /clusters` and `POST /nodepools` validate `spec` against `ClusterSpec` or `NodePoolSpec` from the schema
 - `PATCH /clusters/{id}` and `PATCH /nodepools/{id}` validate the merged result
@@ -749,7 +757,7 @@ All error responses use the [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) P
 | `type`      | string   | Yes            | URI reference identifying the problem type |
 | `title`     | string   | Yes            | Short human-readable summary |
 | `status`    | integer  | Yes            | HTTP status code |
-| `detail`    | string   | No             | Human-readable explanation specific to this occurrence |
+| `detail`    | string   | Yes             | Human-readable explanation specific to this occurrence |
 | `code`      | string   | No             | Machine-readable error code in `HYPERFLEET-CAT-NUM` format |
 | `timestamp` | string   | No             | RFC 3339 timestamp of when the error occurred |
 | `trace_id`  | string   | No             | Distributed trace ID for correlation (from `X-Request-Id` header) |
@@ -777,7 +785,7 @@ Error codes follow the `HYPERFLEET-CAT-NUM` format:
 
 ```json
 {
-  "type": "about:blank",
+  "type": "https://api.hyperfleet.io/errors/validation-error",
   "title": "Validation failed",
   "status": 400,
   "detail": "Request body validation failed",
@@ -805,7 +813,7 @@ Error codes follow the `HYPERFLEET-CAT-NUM` format:
 
 ```json
 {
-  "type": "about:blank",
+  "type": "https://api.hyperfleet.io/errors/not-found",
   "title": "Not found",
   "status": 404,
   "detail": "Cluster with id='2abc123...' not found",
@@ -818,7 +826,7 @@ Error codes follow the `HYPERFLEET-CAT-NUM` format:
 
 ```json
 {
-  "type": "about:blank",
+  "type": "https://api.hyperfleet.io/errors/conflict",
   "title": "Conflict",
   "status": 409,
   "detail": "Cannot create nodepool: parent cluster is being deleted",
