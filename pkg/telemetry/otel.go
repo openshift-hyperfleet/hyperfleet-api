@@ -92,9 +92,7 @@ func createExporter(ctx context.Context) (trace.SpanExporter, error) {
 	otlpEndpoint := os.Getenv(envOtelExporterOtlpEndpoint)
 	if otlpEndpoint == "" {
 		// Create stdout exporter when no OTLP endpoint is configured
-		exporter, err := stdouttrace.New(
-			stdouttrace.WithPrettyPrint(), // Formatted output
-		)
+		exporter, err := stdouttrace.New()
 		if err != nil {
 			logger.WithError(ctx, err).Error("Failed to create OpenTelemetry stdout exporter")
 			return nil, fmt.Errorf("failed to create OpenTelemetry stdout exporter: %w", err)
