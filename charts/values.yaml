@@ -333,6 +333,16 @@ database:
 
 # -- Monitoring and alerting configuration
 monitoring:
+  # -- PodMonitoring for Google Managed Prometheus (GMP) scraping
+  podMonitoring:
+    # -- Create a PodMonitoring resource
+    enabled: false
+    # -- Scrape interval
+    interval: 30s
+    # -- Additional labels for the PodMonitoring resource
+    additionalLabels: {}
+    # -- Metric relabel configs to apply to samples before ingestion
+    metricRelabeling: []
   # -- PrometheusRule for alerting
   prometheusRule:
     # -- Create PrometheusRule resources
