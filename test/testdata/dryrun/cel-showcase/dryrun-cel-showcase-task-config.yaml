@@ -20,6 +20,11 @@
 #  13.  toJson()        — JSON serialization (new helper)
 #  14.  adapter.?       — adapter execution metadata access
 #  15.  Go templates    — template rendering with {{ }}
+#  16.  distinct()      — deduplicate list elements (ext.Lists)
+#  17.  sort()          — sort list elements (ext.Lists)
+#  18.  slice()         — extract a sub-list by index range (ext.Lists)
+#  19.  flatten()       — collapse nested lists into one (ext.Lists)
+#  20.  sortBy()        — sort objects by a derived key (ext.Lists)
 
 params:
   - name: "clusterId"
@@ -140,6 +145,46 @@ preconditions:
       # Static timestamp for dry-run reproducibility
       - name: "timestamp"
         expression: "\"2006-01-02T15:04:05Z07:00\""
+
+      # ---------------------------------------------------------------
+      # Pattern 16: distinct() — deduplicate list elements
+      # Removes duplicate entries from the tags list.
+      # ---------------------------------------------------------------
+      - name: "uniqueTags"
+        expression: |
+          spec.tags.distinct()
+
+      # ---------------------------------------------------------------
+      # Pattern 17: sort() — sort list elements alphabetically
+      # Sorts the deduplicated tags list in ascending order.
+      # ---------------------------------------------------------------
+      - name: "sortedTags"
+        expression: |
+          spec.tags.distinct().sort()
+
+      # ---------------------------------------------------------------
+      # Pattern 18: slice() — extract a sub-list by index range
+      # Returns the first node pool name only (indices 0..1 exclusive).
+      # ---------------------------------------------------------------
+      - name: "firstNodePoolName"
+        expression: |
+          spec.node_pools.map(p, p.name).slice(0, 1)
+
+      # ---------------------------------------------------------------
+      # Pattern 19: flatten() — collapse nested lists into one
+      # Extracts type and status from each condition into a flat list.
+      # ---------------------------------------------------------------
+      - name: "conditionSummary"
+        expression: |
+          status.conditions.map(c, [c.type, c.status]).flatten()
+
+      # ---------------------------------------------------------------
+      # Pattern 20: sortBy() — sort objects by a derived key
+      # Sorts node pools by replica count ascending, then extracts names.
+      # ---------------------------------------------------------------
+      - name: "nodePoolsByReplicas"
+        expression: |
+          spec.node_pools.sortBy(p, p.replicas).map(p, p.name)
 
     conditions:
       - field: "clusterStatus"
@@ -349,6 +394,33 @@ post:
             endpoint:
               expression: |
                 dig(resources, "configmap1.data.endpoint")
+
+          # ---------------------------------------------------------
+          # Pattern 16-20 (payload): ext.Lists functions via captured variables
+          # Note: raw API fields (spec.*, status.*) are not in scope here —
+          # reference the variables captured in the precondition phase instead.
+          # ---------------------------------------------------------
+          lists:
+            unique_tags:
+              # Pattern 16: distinct() — captured uniqueTags list as JSON
+              expression: |
+                toJson(uniqueTags)
+            sorted_tags:
+              # Pattern 17: sort() — captured sortedTags list as JSON
+              expression: |
+                toJson(sortedTags)
+            first_pool:
+              # Pattern 18: slice() — first element from captured firstNodePoolName
+              expression: |
+                firstNodePoolName[0]
+            condition_summary:
+              # Pattern 19: flatten() — captured conditionSummary flat list as JSON
+              expression: |
+                toJson(conditionSummary)
+            pools_by_replicas:
+              # Pattern 20: sortBy() — captured nodePoolsByReplicas list as JSON
+              expression: |
+                toJson(nodePoolsByReplicas)
 
           # ---------------------------------------------------------
           # Pattern 9 (payload): nested ternary chains — multi-level branching
