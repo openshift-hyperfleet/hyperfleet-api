@@ -843,6 +843,76 @@ func TestResourceService_Delete_CascadeSkipsAlreadyDeletedChild(t *testing.T) {
 	Expect(preDeletedExists).To(BeFalse())
 }
 
+// --- List ---
+
+func TestResourceService_List_InjectsKindFilter(t *testing.T) {
+	RegisterTestingT(t)
+	setupTestDescriptors()
+
+	mockDao := newMockResourceDao()
+	svc, _, generic := newTestResourceService(mockDao)
+
+	args := &ListArguments{Page: 1, Size: 100}
+	_, _, svcErr := svc.List(context.Background(), "Channel", args)
+	Expect(svcErr).To(BeNil())
+	Expect(args.Search).To(Equal(""), "original args should not be mutated")
+	Expect(generic.listCalled).To(BeTrue())
+	Expect(generic.lastSearch).To(Equal("kind = 'Channel'"))
+}
+
+func TestResourceService_List_NilArgs(t *testing.T) {
+	RegisterTestingT(t)
+	setupTestDescriptors()
+
+	mockDao := newMockResourceDao()
+	svc, _, generic := newTestResourceService(mockDao)
+
+	_, _, svcErr := svc.List(context.Background(), "Version", nil)
+	Expect(svcErr).To(BeNil())
+	Expect(generic.listCalled).To(BeTrue())
+	Expect(generic.lastSearch).To(Equal("kind = 'Version'"))
+}
+
+func TestResourceService_List_AppendsToExistingSearch(t *testing.T) {
+	RegisterTestingT(t)
+	setupTestDescriptors()
+
+	mockDao := newMockResourceDao()
+	svc, _, generic := newTestResourceService(mockDao)
+
+	args := &ListArguments{Page: 1, Size: 100, Search: "name = 'stable'"}
+	_, _, svcErr := svc.List(context.Background(), "Channel", args)
+	Expect(svcErr).To(BeNil())
+	Expect(args.Search).To(Equal("name = 'stable'"), "original args should not be mutated")
+	Expect(generic.lastSearch).To(Equal("(name = 'stable') AND kind = 'Channel'"))
+}
+
+func TestResourceService_List_UnknownKind(t *testing.T) {
+	RegisterTestingT(t)
+	setupTestDescriptors()
+
+	mockDao := newMockResourceDao()
+	svc, _, _ := newTestResourceService(mockDao)
+
+	_, _, svcErr := svc.List(context.Background(), "UnknownKind", nil)
+	Expect(svcErr).ToNot(BeNil())
+	Expect(svcErr.Reason).To(ContainSubstring("Unknown entity kind"))
+}
+
+func TestResourceService_List_GenericServiceError(t *testing.T) {
+	RegisterTestingT(t)
+	setupTestDescriptors()
+
+	mockDao := newMockResourceDao()
+	svc, _, generic := newTestResourceService(mockDao)
+
+	generic.listErr = errors.GeneralError("database connection lost")
+
+	_, _, svcErr := svc.List(context.Background(), "Channel", nil)
+	Expect(svcErr).ToNot(BeNil())
+	Expect(svcErr.Reason).To(ContainSubstring("database connection lost"))
+}
+
 // --- GetByOwner ---
 
 func TestResourceService_GetByOwner_HappyPath(t *testing.T) {
