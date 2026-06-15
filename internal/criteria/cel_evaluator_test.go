@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/cel-go/common/types"
+	"github.com/google/cel-go/common/types/ref"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -387,6 +389,71 @@ func TestCELEvaluatorExtStrings(t *testing.T) {
 		require.NoError(t, err)
 		require.False(t, result.HasError())
 		assert.Equal(t, "candidate-4.22", result.Value)
+	})
+}
+
+func TestCELEvaluatorExtLists(t *testing.T) {
+	ctx := NewEvaluationContext()
+	ctx.Set("tags", []interface{}{"production", "tier-1", "us-east", "tier-1"})
+	ctx.Set("nodePools", []interface{}{
+		map[string]interface{}{"name": "worker-pool", "replicas": int64(3)},
+		map[string]interface{}{"name": "infra-pool", "replicas": int64(2)},
+	})
+	ctx.Set("nested", []interface{}{
+		[]interface{}{"a", "b"},
+		[]interface{}{"c", "d"},
+	})
+
+	evaluator, err := newCELEvaluator(ctx)
+	require.NoError(t, err)
+
+	t.Run("distinct removes duplicates", func(t *testing.T) {
+		result, err := evaluator.EvaluateSafe(`tags.distinct()`)
+		require.NoError(t, err)
+		require.False(t, result.HasError())
+		vals, ok := result.Value.([]ref.Val)
+		require.True(t, ok)
+		assert.Len(t, vals, 3)
+	})
+
+	t.Run("sort orders strings alphabetically", func(t *testing.T) {
+		result, err := evaluator.EvaluateSafe(`tags.distinct().sort()`)
+		require.NoError(t, err)
+		require.False(t, result.HasError())
+		vals, ok := result.Value.([]ref.Val)
+		require.True(t, ok)
+		assert.Equal(t, "production", string(vals[0].(types.String)))
+		assert.Equal(t, "tier-1", string(vals[1].(types.String)))
+		assert.Equal(t, "us-east", string(vals[2].(types.String)))
+	})
+
+	t.Run("slice returns sub-list", func(t *testing.T) {
+		result, err := evaluator.EvaluateSafe(`tags.slice(0, 2)`)
+		require.NoError(t, err)
+		require.False(t, result.HasError())
+		vals, ok := result.Value.([]ref.Val)
+		require.True(t, ok)
+		assert.Len(t, vals, 2)
+	})
+
+	t.Run("flatten collapses nested lists", func(t *testing.T) {
+		result, err := evaluator.EvaluateSafe(`nested.flatten()`)
+		require.NoError(t, err)
+		require.False(t, result.HasError())
+		vals, ok := result.Value.([]ref.Val)
+		require.True(t, ok)
+		assert.Len(t, vals, 4)
+	})
+
+	t.Run("sortBy orders objects by field", func(t *testing.T) {
+		result, err := evaluator.EvaluateSafe(`nodePools.sortBy(p, p.name).map(p, p.name)`)
+		require.NoError(t, err)
+		require.False(t, result.HasError())
+		vals, ok := result.Value.([]ref.Val)
+		require.True(t, ok)
+		require.Len(t, vals, 2)
+		assert.Equal(t, "infra-pool", string(vals[0].(types.String)))
+		assert.Equal(t, "worker-pool", string(vals[1].(types.String)))
 	})
 }
 
