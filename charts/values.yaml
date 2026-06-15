@@ -343,6 +343,10 @@ monitoring:
     additionalLabels: {}
     # -- Metric relabel configs to apply to samples before ingestion
     metricRelabeling: []
+    # -- TLS configuration when config.metrics.tls.enabled=true
+    tlsConfig:
+      # -- Disable target certificate validation (e.g. for self-signed certs)
+      insecureSkipVerify: false
   # -- PrometheusRule for alerting
   prometheusRule:
     # -- Create PrometheusRule resources

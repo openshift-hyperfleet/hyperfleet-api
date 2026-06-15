@@ -17,6 +17,11 @@ spec:
     - port: metrics
       interval: {{ .Values.monitoring.podMonitoring.interval | default "30s" }}
       path: /metrics
+      {{- if .Values.config.metrics.tls.enabled }}
+      scheme: https
+      tls:
+        insecureSkipVerify: {{ .Values.monitoring.podMonitoring.tlsConfig.insecureSkipVerify }}
+      {{- end }}
       {{- with .Values.monitoring.podMonitoring.metricRelabeling }}
       metricRelabeling:
         {{- toYaml . | nindent 8 }}

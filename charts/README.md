@@ -131,12 +131,14 @@ helm install hyperfleet-api oci://REGISTRY/hyperfleet-api \
 | image.repository | string | `"CHANGE_ME"` | Container image repository (no default — must be set) |
 | image.tag | string | `""` | Image tag (no default — must be set via `--set image.tag=<version>`) |
 | imagePullSecrets | list | `[]` | Secrets for pulling images from private registries |
-| monitoring | object | `{"podMonitoring":{"additionalLabels":{},"enabled":false,"interval":"30s","metricRelabeling":[]},"prometheusRule":{"additionalLabels":{},"enabled":false,"namespace":"","rules":{"deletionStuck":{"for":"5m","runbookUrl":""},"deletionTimeout":{"for":"30m","runbookUrl":""}}}}` | Monitoring and alerting configuration |
-| monitoring.podMonitoring | object | `{"additionalLabels":{},"enabled":false,"interval":"30s","metricRelabeling":[]}` | PodMonitoring for Google Managed Prometheus (GMP) scraping |
+| monitoring | object | `{"podMonitoring":{"additionalLabels":{},"enabled":false,"interval":"30s","metricRelabeling":[],"tlsConfig":{"insecureSkipVerify":false}},"prometheusRule":{"additionalLabels":{},"enabled":false,"namespace":"","rules":{"deletionStuck":{"for":"5m","runbookUrl":""},"deletionTimeout":{"for":"30m","runbookUrl":""}}}}` | Monitoring and alerting configuration |
+| monitoring.podMonitoring | object | `{"additionalLabels":{},"enabled":false,"interval":"30s","metricRelabeling":[],"tlsConfig":{"insecureSkipVerify":false}}` | PodMonitoring for Google Managed Prometheus (GMP) scraping |
 | monitoring.podMonitoring.additionalLabels | object | `{}` | Additional labels for the PodMonitoring resource |
 | monitoring.podMonitoring.enabled | bool | `false` | Create a PodMonitoring resource |
 | monitoring.podMonitoring.interval | string | `"30s"` | Scrape interval |
 | monitoring.podMonitoring.metricRelabeling | list | `[]` | Metric relabel configs to apply to samples before ingestion |
+| monitoring.podMonitoring.tlsConfig | object | `{"insecureSkipVerify":false}` | TLS configuration when config.metrics.tls.enabled=true |
+| monitoring.podMonitoring.tlsConfig.insecureSkipVerify | bool | `false` | Disable target certificate validation (e.g. for self-signed certs) |
 | monitoring.prometheusRule | object | `{"additionalLabels":{},"enabled":false,"namespace":"","rules":{"deletionStuck":{"for":"5m","runbookUrl":""},"deletionTimeout":{"for":"30m","runbookUrl":""}}}` | PrometheusRule for alerting |
 | monitoring.prometheusRule.additionalLabels | object | `{}` | Additional labels for PrometheusRule discovery |
 | monitoring.prometheusRule.enabled | bool | `false` | Create PrometheusRule resources |
