@@ -100,7 +100,7 @@ The configuration file is resolved in the following order:
    - Production: `/etc/hyperfleet/config.yaml`
    - Development: `./configs/config.yaml`
 
-If no configuration file is found, the application continues using environment variables, CLI flags, and defaults.
+If none are found, the application continues normally using environment variables and CLI flags.
 
 ---
 
@@ -278,6 +278,38 @@ server:
     audience: ""
   jwk:
     cert_url: https://your-idp.example.com/auth/realms/your-realm/protocol/openid-connect/certs
+```
+
+#### Caller Identity
+
+The API records who performed each mutation in the `created_by`, `updated_by`, and `deleted_by` audit fields. Two settings control how the caller identity is resolved:
+
+| Setting | Purpose |
+|---------|---------|
+| `server.identity_header` | HTTP header to read the caller identity from (e.g., `X-Forwarded-Email`) |
+| `server.jwt.identity_claim` | JWT claim to use as fallback (e.g., `email`, `preferred_username`, `sub`) |
+
+**Precedence:** If both are configured and the header is present in the request, the header value wins. The JWT claim is used only when the header is not configured or is empty in the request.
+
+**Validation:** Identity values are trimmed, must not exceed 256 characters, and must not contain control characters.
+
+**Example — header-based identity (behind an authenticating proxy):**
+```yaml
+server:
+  identity_header: X-Forwarded-Email
+  jwt:
+    enabled: false
+```
+
+**Example — JWT-based identity:**
+```yaml
+server:
+  jwt:
+    enabled: true
+    issuer_url: https://idp.example.com/realms/hyperfleet
+    identity_claim: email
+  jwk:
+    cert_url: https://idp.example.com/realms/hyperfleet/protocol/openid-connect/certs
 ```
 
 </details>

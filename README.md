@@ -1,77 +1,25 @@
 # HyperFleet API
 
-HyperFleet API - Simple REST API for cluster lifecycle management. Provides CRUD operations for clusters and status sub-resources. Pure data layer with PostgreSQL integration - no business logic or event creation. Stateless design enables horizontal scaling.
+The HyperFleet API is the data storage and status aggregation layer of the HyperFleet platform. It exposes a REST API for CRUD operations on customizable entities (e.g. Cluster, NodePool) backed by PostgreSQL.
 
-## Architecture
+The API is the source of truth for desired state of resources that live in remote clusters. It persists resource specs, increments generation on spec changes, and aggregates adapter-reported conditions into Kubernetes-style status.
 
-### Technology Stack
+It does not reconcile infrastructure or publish events itself. For that it collaborates with other HyperFleet components:
 
-- **Language**: Go 1.24+
-- **API Definition**: OpenAPI 3.0
-- **Code Generation**: oapi-codegen
-- **Database**: PostgreSQL with GORM ORM
-- **Container Runtime**: Podman
-- **Testing**: Gomega + Resty
+* **[Sentinel](https://github.com/openshift-hyperfleet/hyperfleet-sentinel)** component polls the API for unreconciled resources and publishes a message for reconciliation actions
+* **[Adapter](https://github.com/openshift-hyperfleet/hyperfleet-adapter)** component listens to events, performs actions needed to reconcile a resource and reports the status to the API.
 
-### Core Features
+Stateless design enables horizontal scaling. Adapters fetch full resource state from the API after receiving minimal CloudEvents (anemic events pattern).
 
-* OpenAPI 3.0 specification
-* Automated Go code generation from OpenAPI
-* Cluster and NodePool lifecycle management
-* Adapter-based status reporting with Kubernetes-style conditions
-* Pagination and search capabilities
-* Complete integration test coverage
-* Database migrations with GORM
-* Embedded OpenAPI specification using `//go:embed`
+## Getting Started
 
-### Project Structure
+### Deploying to Kubernetes
 
-```text
-hyperfleet-api/
-├── cmd/hyperfleet-api/          # Application entry point
-├── pkg/
-│   ├── api/                     # API models and handlers
-│   ├── dao/                     # Data access layer
-│   ├── db/                      # Database setup and migrations
-│   ├── handlers/                # HTTP request handlers
-│   └── services/                # Business logic
-├── openapi/                     # Generated artifacts from hyperfleet-api-spec module
-├── test/                        # Integration tests and factories
-├── docs/                        # Detailed documentation
-└── Makefile                     # Build automation
-```
+For Helm-based deployment to staging, production, or partner environments, see the **[Deployment Guide](docs/deployment.md)** — covers container images, Helm values, external databases, schema validation, monitoring, and production checklists.
 
-## Quick Start
+### Local Development
 
-### Prerequisites
-
-- **Go 1.24+**, **Podman**, **PostgreSQL 13+**, **Make**
-
-See [PREREQUISITES.md](PREREQUISITES.md) for installation instructions.
-
-### Installation
-
-```bash
-# 1. Generate OpenAPI code and mocks
-make generate-all
-
-# 2. Install dependencies
-go mod download
-
-# 3. Build binary
-make build
-
-# 4. Setup database
-make db/setup
-
-# 5. Run migrations
-./bin/hyperfleet-api migrate
-
-# 6. Start service (no auth)
-make run-no-auth
-```
-
-**Note**: Generated code is not tracked in git. You must run `make generate-all` after cloning.
+For setting up a local development environment, see the **[Development Guide](docs/development.md)** — covers prerequisites, code generation, mock generation, database setup, running tests, pre-commit hooks, and development workflows.
 
 ### Accessing the API
 
@@ -97,7 +45,8 @@ Kubernetes clusters with provider-specific configurations, labels, and adapter-b
 
 **Main endpoints:**
 - `GET/POST /api/hyperfleet/v1/clusters`
-- `GET /api/hyperfleet/v1/clusters/{id}`
+- `GET/PATCH/DELETE /api/hyperfleet/v1/clusters/{id}`
+- `POST /api/hyperfleet/v1/clusters/{id}/force-delete`
 - `GET/PUT /api/hyperfleet/v1/clusters/{id}/statuses`
 
 ### NodePools
@@ -107,10 +56,19 @@ Groups of compute nodes within clusters.
 **Main endpoints:**
 - `GET /api/hyperfleet/v1/nodepools`
 - `GET/POST /api/hyperfleet/v1/clusters/{cluster_id}/nodepools`
-- `GET /api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepool_id}`
+- `GET/PATCH/DELETE /api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepool_id}`
+- `POST /api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepool_id}/force-delete`
 - `GET/PUT /api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepool_id}/statuses`
 
-Both resources support pagination, label-based search, and adapter status reporting. See [docs/api-resources.md](docs/api-resources.md) for complete API documentation.
+### Generic Resources
+
+The API also supports generic resource types registered via the plugin system. Currently available:
+
+- **WifConfigs** — `GET/POST /api/hyperfleet/v1/wifconfigs`, `GET/PATCH/DELETE .../wifconfigs/{id}`
+- **Channels** — `GET/POST /api/hyperfleet/v1/channels`, `GET/PATCH/DELETE .../channels/{id}`
+- **Versions** — `GET/POST /api/hyperfleet/v1/channels/{parent_id}/versions`, `GET/PATCH/DELETE .../versions/{id}` (child of Channel)
+
+All resources support pagination, label-based search, and spec validation. Clusters and NodePools additionally support adapter status reporting. See [docs/api-resources.md](docs/api-resources.md) for complete API documentation.
 
 ## Example Usage
 
@@ -131,36 +89,6 @@ curl -G http://localhost:8000/api/hyperfleet/v1/clusters \
 
 See [docs/search.md](docs/search.md) for search and filtering documentation.
 
-## Development
-
-### Common Commands
-
-```bash
-make build               # Build binary to bin/
-make run-no-auth         # Run without authentication
-make test                # Run unit tests
-make test-integration    # Run integration tests
-make generate            # Generate OpenAPI models
-make generate-mocks      # Generate test mocks
-make generate-all        # Generate OpenAPI models and mocks
-make db/setup            # Create PostgreSQL container
-make image               # Build container image
-```
-
-See [docs/development.md](docs/development.md) for detailed workflows.
-
-### CLI Subcommands
-
-```bash
-./bin/hyperfleet-api serve     # Start the HTTP server
-./bin/hyperfleet-api migrate   # Run database migrations
-./bin/hyperfleet-api version   # Print version, commit, and build date
-```
-
-### Pre-commit Hooks
-
-This project uses [pre-commit](https://pre-commit.io/) for code quality checks. See [docs/development.md](docs/development.md#pre-commit-hooks-optional) for setup instructions.
-
 ## Documentation
 
 ### Core Documentation
@@ -169,6 +97,7 @@ This project uses [pre-commit](https://pre-commit.io/) for code quality checks. 
 - **[Development Guide](docs/development.md)** - Local setup, testing, code generation, and workflows
 - **[Database](docs/database.md)** - Schema, migrations, and data model
 - **[Deployment](docs/deployment.md)** - Container images, Kubernetes deployment, and configuration
+- **[Configuration](docs/config.md)** - Complete configuration reference (database, server, caller identity, adapters)
 - **[Authentication](docs/authentication.md)** - Development and production auth
 - **[Logging](docs/logging.md)** - Structured logging, OpenTelemetry integration, and data masking
 - **[Validation Schema](openapi/README.md#validation-schema)** - How to supply a custom OpenAPI schema for runtime `spec` field validation
@@ -183,4 +112,4 @@ This project uses [pre-commit](https://pre-commit.io/) for code quality checks. 
 
 ## License
 
-[License information to be added]
+This project is licensed under the Apache License 2.0. See [LICENSE](LICENSE) for details.

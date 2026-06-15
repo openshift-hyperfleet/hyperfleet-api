@@ -249,7 +249,7 @@ func (s *sqlResourceService) List(
 		return nil, nil, svcErr
 	}
 	if args == nil {
-		args = &ListArguments{Page: 1, Size: 100}
+		args = &ListArguments{Page: 1, Size: 20}
 	}
 	scopedArgs := *args
 	kindFilter := fmt.Sprintf("kind = '%s'", kind)
@@ -277,7 +277,7 @@ func (s *sqlResourceService) ListByOwner(
 		return nil, nil, svcErr
 	}
 	if args == nil {
-		args = &ListArguments{Page: 1, Size: 100}
+		args = &ListArguments{Page: 1, Size: 20}
 	}
 	scopedArgs := *args
 	kindFilter := fmt.Sprintf("kind = '%s' AND owner_id = '%s'", kind, ownerID)

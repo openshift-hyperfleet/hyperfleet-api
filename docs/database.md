@@ -9,20 +9,26 @@ HyperFleet API uses PostgreSQL with GORM ORM. The schema follows a simple relati
 ## Core Tables
 
 ### clusters
-Primary resources for cluster management. Contains cluster metadata and JSONB spec field for provider-specific configuration.
+Primary resources for cluster management. It contains:
+* cluster metadata,
+* a JSONB `spec` field for provider-specific configuration,
+* a JSONB `labels` field for key-value categorization,
+* a JSONB `status_conditions` field for synthesized status,
+* `deleted_time` for soft delete,
+* and `deleted_by` for audit.
 
 ### node_pools
-Child resources owned by clusters, representing groups of compute nodes. Uses foreign key relationship with cascade delete.
+Child resources owned by clusters, representing groups of compute nodes. References clusters via `owner_id` with a `RESTRICT` foreign key. Shares the same core columns as clusters (`labels`, `status_conditions`, `deleted_time`, `deleted_by`) plus `owner_id` for the parent relationship.
 
 ### adapter_statuses
-Polymorphic status records for both clusters and node pools. Stores adapter-reported conditions in JSONB format.
+Polymorphic status records for both clusters and node pools. Stores adapter-reported conditions in JSONB format. No soft delete — rows are hard-deleted or replaced.
 
 **Polymorphic pattern:**
-- `owner_type` + `owner_id` allows one table to serve both clusters and node pools
-- Enables efficient status lookups across resource types
+- `resource_type` + `resource_id` allows one table to serve both clusters and node pools
+- Unique constraint on `(resource_type, resource_id, adapter)` — one record per adapter per resource
 
-### labels
-Key-value pairs for resource categorization and search. Uses polymorphic association to support both clusters and node pools.
+### resources
+Generic resource table used by the plugin system for extensible resource types (WifConfigs, Channels, Versions, etc.). Stores `kind`, `name`, `spec` (JSONB), `labels` (JSONB), and optional owner references (`owner_id`, `owner_kind`, `owner_href`) for parent-child relationships. Uses `deleted_time`/`deleted_by` for soft delete. Unique name constraints are scoped by `kind` and `owner_id`.
 
 ## Schema Relationships
 
@@ -32,8 +38,9 @@ clusters (1) ──→ (N) node_pools
     │                    │
     └────────┬───────────┘
              │
-             ├──→ adapter_statuses (polymorphic)
-             └──→ labels (polymorphic)
+             └──→ adapter_statuses (polymorphic via resource_type + resource_id)
+
+resources (standalone, self-referencing parent-child via owner_id)
 ```
 
 ## Key Design Patterns
@@ -50,58 +57,32 @@ Flexible schema storage for:
 - Runtime validation against OpenAPI schema
 - PostgreSQL JSON query capabilities
 
-### Soft Delete
 
-Resources use GORM's soft delete pattern with `deleted_at` timestamp. Soft-deleted records are excluded from queries by default.
+Adapter statuses do not use soft delete — they are hard-deleted when their parent resource is hard-deleted.
+
+### Delete Policies
+
+Generic resources (the `resources` table) use delete policies to control child behavior when a parent is deleted. Each resource type declares its policy:
+
+| Policy     | Behavior |
+|------------|----------|
+| `restrict` | Parent delete is rejected with `409 Conflict` if active children exist |
+| `cascade`  | All children are soft-deleted (marked Finalizing) along with the parent |
+
+Policies are enforced recursively — a cascade on a parent triggers policy checks on children. For clusters and nodepools, the cascade is built-in: deleting a cluster cascades to all its nodepools — those with required adapters are soft-deleted (entering Finalizing), while those without are hard-deleted immediately.  
+
+Resources without required adapters skip the Finalizing phase entirely — they are hard-deleted immediately on `DELETE`.
 
 ### Migration System
 
-Uses GORM AutoMigrate:
+Migrations are:
 - Non-destructive (never drops columns or tables)
 - Additive (creates missing tables, columns, indexes)
 - Run via `./bin/hyperfleet-api migrate`
 
 ### Migration Coordination
 
-**Problem:** During rolling deployments, multiple pods attempt to run migrations simultaneously, causing race conditions and deployment failures.
-
-**Solution:** PostgreSQL advisory locks ensure exclusive migration execution.
-
-#### How It Works
-
-```go
-// Only one pod/process acquires the lock and runs migrations
-// Others wait until the lock is released
-db.MigrateWithLock(ctx, factory)
-```
-
-**Implementation:**
-1. Pod sets statement timeout (5 minutes) to prevent indefinite blocking
-2. Pod acquires advisory lock via `pg_advisory_xact_lock(hash("migrations"), hash("Migrations"))`
-3. Lock holder runs migrations exclusively
-4. Other pods block until lock is released or timeout is reached
-5. Lock automatically released on transaction commit
-
-**Key Features:**
-- **Zero infrastructure overhead** - Uses native PostgreSQL locks
-- **Automatic cleanup** - Locks released on transaction end or pod crash
-- **Timeout protection** - 5-minute timeout prevents indefinite blocking if a pod hangs
-- **Nested lock support** - Same lock can be acquired in nested contexts without deadlock
-- **UUID-based ownership** - Only original acquirer can unlock
-
-#### Testing Concurrent Migrations
-
-Integration tests validate concurrent behavior:
-
-```bash
-make test-integration  # Runs TestConcurrentMigrations
-```
-
-**Test coverage:**
-- `TestConcurrentMigrations` - Multiple pods running migrations simultaneously
-- `TestAdvisoryLocksConcurrently` - Lock serialization under race conditions
-- `TestAdvisoryLocksWithTransactions` - Lock + transaction interaction
-- `TestAdvisoryLockBlocking` - Lock blocking behavior
+During rolling deployments, multiple pods may attempt to run migrations simultaneously. The API uses PostgreSQL advisory locks to ensure only one pod runs migrations at a time — other pods wait (up to 5 minutes) until the lock is released. Locks are automatically cleaned up on transaction commit or pod crash, so no manual intervention is needed.
 
 ## Database Setup
 
@@ -120,43 +101,16 @@ See [development.md](development.md) for detailed setup instructions.
 
 ## Transaction Strategy
 
-The API uses an optimized transaction strategy to maximize connection pool efficiency and reduce latency under high adapter polling load.
+- **Write operations** (POST/PUT/PATCH/DELETE) run inside a database transaction with automatic commit on success and rollback on error.
+- **Read operations** (GET) run without a transaction for lower latency and reduced connection pool pressure.
 
-### Write Operations (POST/PUT/PATCH/DELETE)
+### Pagination note
 
-Write operations create full GORM transactions with ACID guarantees:
-- Transaction begins before handler execution
-- Automatic commit on success, rollback on error (via `MarkForRollback()`)
-- Transaction ID tracked in logs for debugging
-
-### Read Operations (GET)
-
-Read operations skip transaction creation entirely for performance:
-- Direct database session without BEGIN/COMMIT overhead
-- No transaction ID consumption
-- Reduced connection hold time and pool pressure
-
-### Trade-offs
-
-**List Operations**: COUNT and SELECT queries execute as separate autocommit statements (read operations don't use transactions). PostgreSQL's default READ COMMITTED isolation level means each statement gets a fresh snapshot:
-
-- Under concurrent deletes, `total` count may slightly exceed actual `items` returned
-- This is a cosmetic pagination issue, not a data integrity problem
-- Occurs only during the ~1ms window between COUNT and SELECT
-- Low probability in practice (requires delete between two consecutive queries)
-
-**Why not use transactions for reads?** Creating transactions for every GET request would:
-- Increase connection pool pressure under high adapter polling load
-- Consume transaction IDs unnecessarily
-- Add latency (BEGIN/COMMIT overhead)
-
-**Why not use REPEATABLE READ?** The current inconsistency is acceptable for pagination UX. REPEATABLE READ would add overhead and doesn't align with the read-heavy workload optimization.
-
-**Alternative**: Clients can use continuation tokens (Kubernetes pattern) instead of page/total pagination if strict consistency is required.
+Because list queries run without a transaction, the `total` count and the returned `items` are computed in separate statements. Under concurrent deletes, `total` may briefly exceed the actual number of items returned. This is a cosmetic pagination artifact, not a data integrity issue.
 
 ## Connection Pool Configuration
 
-The API manages a Go `sql.DB` connection pool with the following tunable parameters, exposed as CLI flags:
+The connection pool is configured via CLI flags:
 
 | Flag | Default | Description |
 |------|---------|-------------|
