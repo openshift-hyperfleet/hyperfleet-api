@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sync"
 	"testing"
 
 	. "github.com/onsi/gomega"
@@ -1080,4 +1081,166 @@ func TestNodePoolForceDelete(t *testing.T) {
 			Expect(forceDeleteResp.StatusCode()).To(Equal(tc.expectedStatus))
 		})
 	}
+}
+
+func TestNodePoolPatchSoftDeleted(t *testing.T) {
+	h, client := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+
+	cluster, err := h.Factories.NewClusters(h.NewID())
+	Expect(err).NotTo(HaveOccurred())
+
+	npResp, err := client.CreateNodePoolWithResponse(
+		ctx, cluster.ID, openapi.CreateNodePoolJSONRequestBody(newNodePoolInput("patch-del-np")), test.WithAuthToken(ctx),
+	)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(npResp.StatusCode()).To(Equal(http.StatusCreated))
+	nodePoolID := *npResp.JSON201.Id
+
+	delResp, err := client.DeleteNodePoolByIdWithResponse(ctx, cluster.ID, nodePoolID, test.WithAuthToken(ctx))
+	Expect(err).NotTo(HaveOccurred())
+	Expect(delResp.StatusCode()).To(Equal(http.StatusAccepted))
+
+	patchBody := openapi.PatchNodePoolByIdJSONRequestBody{
+		Spec: &openapi.NodePoolSpec{"should": "fail"},
+	}
+	patchResp, err := client.PatchNodePoolByIdWithResponse(ctx, cluster.ID, nodePoolID, patchBody, test.WithAuthToken(ctx))
+	Expect(err).NotTo(HaveOccurred())
+	Expect(patchResp.StatusCode()).To(Equal(http.StatusConflict),
+		"PATCH on soft-deleted nodepool should return 409")
+}
+
+func TestNodePoolConcurrentDelete(t *testing.T) {
+	h, client := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+
+	cluster, err := h.Factories.NewClusters(h.NewID())
+	Expect(err).NotTo(HaveOccurred())
+
+	input := newNodePoolInput("concurr-del-np")
+	npResp, err := client.CreateNodePoolWithResponse(
+		ctx, cluster.ID, openapi.CreateNodePoolJSONRequestBody(input), test.WithAuthToken(ctx),
+	)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(npResp.StatusCode()).To(Equal(http.StatusCreated))
+	nodePoolID := *npResp.JSON201.Id
+	initialGeneration := npResp.JSON201.Generation
+
+	const concurrency = 5
+	type deleteResult struct {
+		resp *openapi.DeleteNodePoolByIdResponse
+		err  error
+	}
+	results := make([]deleteResult, concurrency)
+
+	var wg sync.WaitGroup
+	wg.Add(concurrency)
+	for i := range concurrency {
+		go func(idx int) {
+			defer wg.Done()
+			r, e := client.DeleteNodePoolByIdWithResponse(ctx, cluster.ID, nodePoolID, test.WithAuthToken(ctx))
+			results[idx] = deleteResult{resp: r, err: e}
+		}(i)
+	}
+	wg.Wait()
+
+	for i, r := range results {
+		Expect(r.err).NotTo(HaveOccurred(), "DELETE request %d should not return error", i)
+		Expect(r.resp.StatusCode()).To(Equal(http.StatusAccepted), "DELETE request %d should return 202", i)
+		Expect(r.resp.JSON202.DeletedTime).NotTo(BeNil(), "DELETE request %d should have deleted_time", i)
+	}
+
+	referenceTime := *results[0].resp.JSON202.DeletedTime
+	referenceGen := results[0].resp.JSON202.Generation
+	for i := 1; i < concurrency; i++ {
+		Expect(*results[i].resp.JSON202.DeletedTime).To(Equal(referenceTime),
+			"all DELETE responses should carry identical deleted_time")
+		Expect(results[i].resp.JSON202.Generation).To(Equal(referenceGen),
+			"all DELETE responses should carry identical generation")
+	}
+
+	Expect(referenceGen).To(Equal(initialGeneration+1),
+		"generation should increment by exactly 1, not by the number of concurrent requests")
+}
+
+func TestNodePoolGetSoftDeleted(t *testing.T) {
+	h, client := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+
+	cluster, err := h.Factories.NewClusters(h.NewID())
+	Expect(err).NotTo(HaveOccurred())
+
+	npResp, err := client.CreateNodePoolWithResponse(
+		ctx, cluster.ID, openapi.CreateNodePoolJSONRequestBody(newNodePoolInput("get-deleted-np")), test.WithAuthToken(ctx),
+	)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(npResp.StatusCode()).To(Equal(http.StatusCreated))
+	nodePoolID := *npResp.JSON201.Id
+
+	delResp, err := client.DeleteNodePoolByIdWithResponse(ctx, cluster.ID, nodePoolID, test.WithAuthToken(ctx))
+	Expect(err).NotTo(HaveOccurred())
+	Expect(delResp.StatusCode()).To(Equal(http.StatusAccepted))
+
+	getResp, err := client.GetNodePoolByIdWithResponse(ctx, cluster.ID, nodePoolID, test.WithAuthToken(ctx))
+	Expect(err).NotTo(HaveOccurred())
+	Expect(getResp.StatusCode()).To(Equal(http.StatusOK),
+		"GET on soft-deleted nodepool should return 200, not 404")
+	Expect(getResp.JSON200.DeletedTime).NotTo(BeNil(),
+		"soft-deleted nodepool should have deleted_time in GET response")
+	Expect(*getResp.JSON200.Id).To(Equal(nodePoolID))
+}
+
+func TestNodePoolListIncludesSoftDeleted(t *testing.T) {
+	h, client := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+
+	cluster, err := h.Factories.NewClusters(h.NewID())
+	Expect(err).NotTo(HaveOccurred())
+
+	activeResp, err := client.CreateNodePoolWithResponse(
+		ctx, cluster.ID, openapi.CreateNodePoolJSONRequestBody(newNodePoolInput("active-np")), test.WithAuthToken(ctx),
+	)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(activeResp.StatusCode()).To(Equal(http.StatusCreated))
+	activeID := *activeResp.JSON201.Id
+
+	deletedResp, err := client.CreateNodePoolWithResponse(
+		ctx, cluster.ID, openapi.CreateNodePoolJSONRequestBody(newNodePoolInput("deleted-np")), test.WithAuthToken(ctx),
+	)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(deletedResp.StatusCode()).To(Equal(http.StatusCreated))
+	deletedID := *deletedResp.JSON201.Id
+
+	delResp, err := client.DeleteNodePoolByIdWithResponse(ctx, cluster.ID, deletedID, test.WithAuthToken(ctx))
+	Expect(err).NotTo(HaveOccurred())
+	Expect(delResp.StatusCode()).To(Equal(http.StatusAccepted))
+
+	listResp, err := client.GetNodePoolsByClusterIdWithResponse(ctx, cluster.ID, nil, test.WithAuthToken(ctx))
+	Expect(err).NotTo(HaveOccurred())
+	Expect(listResp.StatusCode()).To(Equal(http.StatusOK))
+
+	var foundActive, foundDeleted bool
+	for _, item := range listResp.JSON200.Items {
+		if item.Id == nil {
+			continue
+		}
+		if *item.Id == activeID {
+			Expect(item.DeletedTime).To(BeNil(), "active nodepool should not have deleted_time")
+			foundActive = true
+		}
+		if *item.Id == deletedID {
+			Expect(item.DeletedTime).NotTo(BeNil(), "soft-deleted nodepool should have deleted_time")
+			foundDeleted = true
+		}
+	}
+	Expect(foundActive).To(BeTrue(), "active nodepool should appear in LIST")
+	Expect(foundDeleted).To(BeTrue(), "soft-deleted nodepool should appear in LIST")
 }
