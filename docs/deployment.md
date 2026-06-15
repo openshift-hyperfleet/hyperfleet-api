@@ -10,11 +10,12 @@ For running the binary directly on your machine (development, debugging), see th
 
 Before deploying, ensure you have:
 
-- **Kubernetes cluster** (1.25+) with **Helm 3** installed
+- **Kubernetes cluster** (1.25+) 
+- **Helm 3** CLI
 - **PostgreSQL database** — either:
   - An external managed instance (Cloud SQL, RDS, Azure Database) for production, or
   - The chart's built-in PostgreSQL pod for evaluation and testing
-- **Container image** — a released hypershift-api image, a pre-built image from your registry, or build your own:
+- **Container image** — a released hyperfleet-api image, a pre-built image from your registry, or build your own:
   ```bash
   make image \
     IMAGE_REGISTRY=quay.io/yourorg \
@@ -154,7 +155,7 @@ The chart injects database credentials as environment variables using `secretKey
 
 ## Configuring Authentication
 
-JWT authentication is **disabled by default** in the Helm chart. To enable it:
+JWT authentication is **disabled by default** in the Helm chart. To enable it, set the `config.server.jwt.*` properties, like so:
 
 ```bash
 helm install hyperfleet-api ./charts/ \
@@ -264,6 +265,8 @@ helm upgrade hyperfleet-api ./charts/ \
   --namespace hyperfleet-system \
   --set image.tag=v1.1.0
 ```
+
+During upgrade, in case schema changes have occurred in the new version, a DB migration will be handled automatically. See [Migration](./database.md#migration-system).
 
 ### Uninstall
 

@@ -338,6 +338,8 @@ Updates a cluster's `spec` and/or `labels`. Only the fields provided in the requ
 
 Soft-deletes a cluster. Sets `deleted_time` and `deleted_by`, increments `generation`, and cascades deletion to child nodepools according to the deletion policy: nodepools with required adapters are soft-deleted (their `deleted_time` and `deleted_by` are set and `generation` is incremented, entering **Finalizing**), while nodepools without required adapters are hard-deleted immediately. The cluster itself enters a **Finalizing** state — it remains in the database until adapters report `Finalized=True`, at which point it is hard-deleted automatically.
 
+For more information, please take a look at the [delete lifecycle](#delete-lifecycle).
+
 **Response (202 Accepted):**
 
 <details>
@@ -372,7 +374,9 @@ Once a cluster is soft-deleted, creating or updating child nodepools returns `40
 
 **POST** `/api/hyperfleet/v1/clusters/{cluster_id}/force-delete`
 
-Permanently removes a cluster that is stuck in the Finalizing state. This bypasses the normal adapter finalization flow — use it only when adapters are unable to report `Finalized=True`. The cluster, all its child nodepools, and all associated adapter statuses are hard-deleted immediately. The caller and reason are recorded in an audit log entry before deletion.
+Permanently removes a cluster that is stuck in the Finalizing state. This bypasses the normal adapter finalization flow — use it only when adapters are unable to report `Finalized=True`. See [delete lifecycle](#delete-lifecycle) for more details.
+
+The cluster, all its child nodepools, and all associated adapter statuses are hard-deleted immediately. The caller and reason are recorded in an audit log entry before deletion.
 
 The cluster **must** already be soft-deleted (have a `deleted_time`). Calling force-delete on an active cluster returns `409 Conflict`.
 
@@ -558,6 +562,8 @@ Updates a nodepool's `spec` and/or `labels`. Same semantics as [Patch Cluster](#
 
 Soft-deletes a nodepool. Same lifecycle as [Delete Cluster](#delete-cluster) — sets `deleted_time` and `deleted_by`, enters the Finalizing state, and is hard-deleted when adapters report `Finalized=True`.
 
+For more information, please refer to [delete lifecycle](#delete-lifecycle).
+
 **Response (202 Accepted):** Full nodepool resource with `deleted_time` and `deleted_by` fields set.
 
 ### Force Delete NodePool
@@ -575,6 +581,20 @@ Same semantics as [Force Delete Cluster](#force-delete-cluster). The nodepool mu
 ```
 
 **Response:** `204 No Content`
+
+## Delete Lifecycle
+
+Resources follow a three-phase delete lifecycle:
+
+```text
+Active ──(DELETE)──▶ Finalizing ──(adapters report Finalized=True)──▶ Hard-Deleted
+                         │
+                         └──(POST /force-delete)──▶ Hard-Deleted
+```
+
+1. **Active** — Normal state. Resource is visible in list queries and can be updated.
+2. **Finalizing** (soft-deleted) — `DELETE` sets `deleted_time` and `deleted_by`, increments `generation`. The resource stays in the database so adapters can observe the deletion and clean up external state. Soft-deleted records are excluded from list queries by default. Creating new child resources under a finalizing parent is rejected with `409 Conflict`.
+3. **Hard-Deleted** — Permanently removed from the database. This happens automatically when all required adapters report `Finalized=True` at the current generation. If adapters are stuck, `POST .../force-delete` bypasses the adapter gating and hard-deletes immediately — but the resource must already be in Finalizing state; calling force-delete on an active resource returns `409 Conflict`. Repeated force-delete calls after hard-deletion return `404 Not Found`. Cluster force-delete cascades to all child NodePools and their adapter statuses. NodePool force-delete only removes the NodePool and its adapter statuses.
 
 ## Pagination and Search
 

@@ -1,31 +1,15 @@
 # HyperFleet API
 
-HyperFleet API - Simple REST API for cluster lifecycle management. Provides CRUD operations for clusters and status sub-resources. Pure data layer with PostgreSQL integration - no business logic or event creation. Stateless design enables horizontal scaling.
+The HyperFleet API is the data storage and status aggregation layer of the HyperFleet platform. It exposes a REST API for CRUD operations on customizable entities (e.g. Cluster, NodePool) backed by PostgreSQL.
 
-## Architecture
+The API is the source of truth for desired state of resources that live in remote clusters. It persists resource specs, increments generation on spec changes, and aggregates adapter-reported conditions into Kubernetes-style status.
 
+It does not reconcile infrastructure or publish events itself. For that it collaborates with other HyperFleet components:
 
-### Core Features
+* **[Sentinel](https://github.com/openshift-hyperfleet/hyperfleet-sentinel)** component polls the API for unreconciled resources and publishes a message for reconciliation actions
+* **[Adapter](https://github.com/openshift-hyperfleet/hyperfleet-adapter)** component listens to events, performs actions needed to reconcile a resource and reports the status to the API.
 
-* OpenAPI 3.0 specification
-* Automated Go code generation from OpenAPI
-* Cluster and NodePool lifecycle management (create, patch, delete, force-delete)
-* Generic resource types (WifConfigs, Channels, Versions) via plugin-based registration
-* Adapter-based status reporting with Kubernetes-style conditions
-* Soft-delete with adapter finalization and force-delete for stuck resources
-* Descriptor-driven delete policies (restrict/cascade) for generic resources
-* Configurable caller identity for audit fields (HTTP header or JWT claim)
-* Runtime spec validation against custom OpenAPI schemas
-* Pagination and search capabilities
-
-### Technology Stack
-
-- **Language**: Go 1.25+
-- **API Definition**: OpenAPI 3.0
-- **Code Generation**: oapi-codegen
-- **Database**: PostgreSQL with GORM ORM
-- **Container Runtime**: Podman
-- **Testing**: Gomega + Resty
+Stateless design enables horizontal scaling. Adapters fetch full resource state from the API after receiving minimal CloudEvents (anemic events pattern).
 
 ## Getting Started
 

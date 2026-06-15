@@ -57,19 +57,6 @@ Flexible schema storage for:
 - Runtime validation against OpenAPI schema
 - PostgreSQL JSON query capabilities
 
-### Delete Lifecycle
-
-Resources follow a three-phase delete lifecycle:
-
-```text
-Active ──(DELETE)──▶ Finalizing ──(adapters report Finalized=True)──▶ Hard-Deleted
-                         │
-                         └──(POST /force-delete)──▶ Hard-Deleted
-```
-
-1. **Active** — Normal state. Resource is visible in list queries and can be updated.
-2. **Finalizing** (soft-deleted) — `DELETE` sets `deleted_time` and `deleted_by`, increments `generation`. The resource stays in the database so adapters can observe the deletion and clean up external state. Soft-deleted records are excluded from list queries by default. Creating new child resources under a finalizing parent is rejected with `409 Conflict`.
-3. **Hard-Deleted** — Permanently removed from the database. This happens automatically when all required adapters report `Finalized=True` at the current generation. If adapters are stuck, `POST .../force-delete` bypasses the adapter gating and hard-deletes immediately — but the resource must already be in Finalizing state; calling force-delete on an active resource returns `409 Conflict`. Repeated force-delete calls after hard-deletion return `404 Not Found`. Cluster force-delete cascades to all child NodePools and their adapter statuses. NodePool force-delete only removes the NodePool and its adapter statuses.
 
 Adapter statuses do not use soft delete — they are hard-deleted when their parent resource is hard-deleted.
 
@@ -82,7 +69,7 @@ Generic resources (the `resources` table) use delete policies to control child b
 | `restrict` | Parent delete is rejected with `409 Conflict` if active children exist |
 | `cascade`  | All children are soft-deleted (marked Finalizing) along with the parent |
 
-Policies are enforced recursively — a cascade on a parent triggers policy checks on grandchildren. For clusters and nodepools, the cascade is built-in: deleting a cluster always cascades the soft-delete to all its nodepools.
+Policies are enforced recursively — a cascade on a parent triggers policy checks on children. For clusters and nodepools, the cascade is built-in: deleting a cluster cascades to all its nodepools — those with required adapters are soft-deleted (entering Finalizing), while those without are hard-deleted immediately.  
 
 Resources without required adapters skip the Finalizing phase entirely — they are hard-deleted immediately on `DELETE`.
 
