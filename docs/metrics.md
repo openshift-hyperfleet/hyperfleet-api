@@ -376,6 +376,19 @@ serviceMonitor:
 
 See [Deployment Guide](deployment.md#prometheus-operator-integration) for details.
 
+## Google Managed Prometheus (GMP) Integration
+
+If running on GKE with Google Managed Prometheus, enable the PodMonitoring resource in Helm values:
+
+```yaml
+monitoring:
+  podMonitoring:
+    enabled: true
+    interval: 30s
+```
+
+This creates a `monitoring.googleapis.com/v1/PodMonitoring` resource that configures the GMP collector agent to scrape the `/metrics` endpoint directly from pods. The `serviceMonitor` and `podMonitoring` options are independent and can be enabled simultaneously.
+
 ## Grafana Dashboard
 
 Example dashboard JSON for HyperFleet API monitoring is available in the architecture repository. Key panels to include:
