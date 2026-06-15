@@ -38,6 +38,9 @@ helm.sh/chart: {{ include "hyperfleet-adapter.chart" . }}
 {{ include "hyperfleet-adapter.selectorLabels" . }}
 app.kubernetes.io/version: {{ .Values.image.tag | default .Chart.AppVersion | quote }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
+{{- with .Values.labels }}
+{{ toYaml . }}
+{{- end }}
 {{- end }}
 
 {{/*
