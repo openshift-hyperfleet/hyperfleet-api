@@ -16,8 +16,9 @@
    - [HyperFleet API Failures](#hyperfleet-api-failures)
    - [Maestro Client Failures](#maestro-client-failures)
    - [Kubernetes Client Failures](#kubernetes-client-failures)
-4. [Recovery Procedures](#recovery-procedures)
-5. [Escalation Paths](#escalation-paths)
+4. [Tracing / OpenTelemetry Issues](#tracing--opentelemetry-issues)
+5. [Recovery Procedures](#recovery-procedures)
+6. [Escalation Paths](#escalation-paths)
 
 ---
 
@@ -234,6 +235,30 @@ Non-retryable: forbidden, unauthorized, bad request, invalid, gone, method not s
 1. Check RBAC: `kubectl auth can-i --as=system:serviceaccount:<ns>:<sa> create <resource>`
 2. Check resource quotas: `kubectl describe resourcequota -n <namespace>`
 3. Check for finalizers blocking deletion: `kubectl get <resource> -o yaml | grep finalizers`
+
+---
+
+## Tracing / OpenTelemetry Issues
+
+**Symptoms:** OTLP export errors in logs at startup or during event processing. Traces not appearing in the collector.
+
+| Log Pattern | Cause | Resolution |
+|-------------|-------|------------|
+| `"failed to create OTLP exporter"` | Invalid endpoint or protocol | Verify `OTEL_EXPORTER_OTLP_ENDPOINT` is reachable and `OTEL_EXPORTER_OTLP_PROTOCOL` is `grpc` or `http/protobuf` |
+| `"failed to export spans"` | Collector is down or unreachable | Check OTLP collector health; verify network connectivity from the pod |
+| `"context deadline exceeded"` on spans | Slow or overloaded collector | Check collector resource usage; consider increasing export timeout |
+| Traces going to stdout unexpectedly | No OTLP endpoint configured | Set `OTEL_EXPORTER_OTLP_ENDPOINT` to point to your collector |
+
+**Default mismatch:** The binary defaults to tracing **enabled** (`HYPERFLEET_TRACING_ENABLED=true`), but the Helm chart defaults to tracing **disabled**. Running `adapter serve` locally without setting `HYPERFLEET_TRACING_ENABLED=false` will attempt OTLP export (falling back to stdout if no endpoint is set).
+
+**Steps:**
+1. Check if tracing is enabled: look for `"tracing enabled"` in startup logs
+2. To disable tracing entirely: `HYPERFLEET_TRACING_ENABLED=false`
+3. Verify collector connectivity:
+   ```bash
+   kubectl exec <pod> -- curl -s http://otel-collector:4317
+   ```
+4. Check Helm values: `tracing.enabled`, `tracing.otlpEndpoint`, `tracing.otlpProtocol`
 
 ---
 

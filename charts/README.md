@@ -21,6 +21,8 @@ helm install hyperfleet-adapter oci://REGISTRY/hyperfleet-adapter \
 | ---- | ------ | --- |
 | HyperFleet Team | <hyperfleet-team@redhat.com> |  |
 
+> For the full deployment guide (configuration overview, env var mapping, examples), see [Deployment Guide](../docs/deployment.md).
+
 ## Values
 
 | Key | Type | Default | Description |

@@ -1,6 +1,6 @@
 # HyperFleet Adapter Authoring Guide
 
-> **Audience:** Developers building adapter configurations for HyperFleet cluster lifecycle tasks.
+> **Audience:** Adapter authors writing task configurations for HyperFleet cluster lifecycle events.
 
 ---
 
@@ -785,6 +785,25 @@ The resource executor treats apply and delete operations differently when they f
 
 This means a list containing both apply and delete operations behaves predictably: a delete failure does not prevent the next resource from being deleted, but an apply failure stops further processing.
 
+### Force-deleted resources (404 handling)
+
+When a resource is force-deleted externally (e.g., removed from the HyperFleet API while the adapter is running), the precondition API call returns a `404 Not Found`. Instead of treating this as a hard failure, the adapter handles it gracefully:
+
+- `adapter.resourcesSkipped` is set to `true`
+- `adapter.skipReason` is set to `"ResourceNotFound"`
+- The resources phase is skipped entirely
+- Post-actions still execute, so the adapter can report the skip back to the API
+
+This means your post-action CEL expressions can detect force-deletion and report an appropriate status:
+
+```cel
+adapter.?skipReason.orValue("") == "ResourceNotFound"
+  ? "Resource was deleted externally"
+  : adapter.?skipReason.orValue("unknown reason")
+```
+
+The same 404 handling applies during post-action execution: if a post-action API call returns 404, remaining post-actions are skipped gracefully rather than failed.
+
 ### Partial delete failures
 
 When one or more delete operations fail:
@@ -1030,6 +1049,31 @@ This means your adapter does not need to poll or wait. The framework and Sentine
 Post-actions build a status payload and send it to the HyperFleet API. This is how the system knows your adapter's work is done (or failed, or in progress).
 
 The process has two steps: **build payloads**, then **execute post actions**.
+
+### Conditional post-actions (`when`)
+
+Post-actions can be gated with a CEL expression. When the expression evaluates to `false`, the action is **skipped** (not failed) — useful for sending different status reports depending on execution outcome.
+
+```yaml
+post_actions:
+  - name: "reportSuccess"
+    when:
+      expression: "adapter.?executionStatus.orValue('') == 'success'"
+    api_call:
+      method: "PUT"
+      url: "/api/hyperfleet/v1/clusters/{{ .clusterId }}/statuses"
+      body: "{{ .successPayload }}"
+
+  - name: "reportFailure"
+    when:
+      expression: "adapter.?executionStatus.orValue('') != 'success'"
+    api_call:
+      method: "PUT"
+      url: "/api/hyperfleet/v1/clusters/{{ .clusterId }}/statuses"
+      body: "{{ .failurePayload }}"
+```
+
+The `when` expression has access to the full execution context: all `adapter.*` metadata, extracted params, and `resources.*`. If `when` is omitted, the action always executes (existing behavior). If the expression fails to parse or evaluate, the action is marked as **failed**.
 
 ### Building payloads
 
@@ -1552,6 +1596,23 @@ generation
 
 # JSON serialization (debugging)
 toJson(resources.resource0)
+```
+
+### String extension functions (`ext.Strings()`)
+
+The CEL environment registers `ext.Strings()`, making the following methods available on string values:
+
+`charAt`, `indexOf`, `lastIndexOf`, `lowerAscii`, `upperAscii`, `replace`, `split`, `substring`, `trim`, `join`
+
+```cel
+# Lowercase a cluster name
+clusterName.lowerAscii()
+
+# Split a comma-separated list and check membership
+"us-east-1,us-west-2".split(",").exists(r, r == region)
+
+# Trim whitespace from a captured value
+resources.?myResource.?metadata.?name.orValue("").trim()
 ```
 
 ### Common patterns

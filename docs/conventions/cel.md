@@ -1,5 +1,7 @@
 # CEL Expressions
 
+> **Audience:** Framework developers contributing to the adapter codebase.
+
 Used in precondition expressions, lifecycle delete conditions, and post-action `when` gates.
 
 ## Variables

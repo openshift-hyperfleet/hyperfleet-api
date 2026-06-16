@@ -21,6 +21,8 @@ helm install {{ template "chart.name" . }} oci://REGISTRY/{{ template "chart.nam
 
 {{ template "chart.requirementsSection" . }}
 
+> For the full deployment guide (configuration overview, env var mapping, examples), see [Deployment Guide](../docs/deployment.md).
+
 {{ template "chart.valuesSection" . }}
 
 ----------------------------------------------

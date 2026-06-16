@@ -1,5 +1,7 @@
 # Logging Conventions
 
+> **Audience:** Framework developers contributing to the adapter codebase.
+
 Uses `log/slog` wrapped in `pkg/logger`. Every log call takes `context.Context` as first parameter.
 
 ## Patterns
