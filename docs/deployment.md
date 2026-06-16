@@ -10,7 +10,7 @@ For running the binary directly on your machine (development, debugging), see th
 
 Before deploying, ensure you have:
 
-- **Kubernetes cluster** (1.25+) 
+- **Kubernetes cluster** (1.25+)
 - **Helm 3** CLI
 - **PostgreSQL database** — either:
   - An external managed instance (Cloud SQL, RDS, Azure Database) for production, or

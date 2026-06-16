@@ -10,6 +10,7 @@ For Claude Code users: also see `CLAUDE.md` (auto-loaded) and `.claude/rules/` (
 ```
 make generate-all     # REQUIRED FIRST — generated code not in git
 go mod download
+make install-hooks    # Install pre-commit hooks (secret scanning, linting, etc.)
 make db/setup         # Start local PostgreSQL container
 make build            # Build binary (CGO_ENABLED=1 GOEXPERIMENT=boringcrypto)
 ./bin/hyperfleet-api migrate
@@ -143,12 +144,17 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 ```
 
 ### Pre-commit Hooks
-Install: `pre-commit install && pre-commit install --hook-type pre-push`
+Install: `make install-hooks`
 
 Hooks:
-- `rh-pre-commit` — Red Hat security compliance (requires internal GitLab access; skip with `SKIP=rh-pre-commit`)
-- `validate-agents-md` — validates AGENTS.md exists (runs on push)
-- `ai-attribution-reminder` — reminds about AI co-author attribution
+- `leaktk.git.pre-commit` — secret scanning (open-source, no VPN required)
+- `hyperfleet-commitlint` — validates commit message format (commit-msg stage)
+- `hyperfleet-gofmt` — Go code formatting
+- `hyperfleet-golangci-lint` — linting
+- `hyperfleet-go-vet` — Go vet checks
+- `trailing-whitespace` — removes trailing whitespace
+- `end-of-file-fixer` — ensures files end with newline
+- `check-added-large-files` — prevents large files from being committed
 
 ### Branching
 Create feature branches from `main`. PRs target `main`.

@@ -647,4 +647,3 @@ Before deploying to production, verify:
 - ✅ Configuration files (YAML snake_case)
 - ✅ Default values
 - ✅ OpenTelemetry tracing variables (HYPERFLEET_TRACING_ENABLED, OTEL_*) if tracing is enabled
-
