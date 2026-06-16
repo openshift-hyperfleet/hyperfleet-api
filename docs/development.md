@@ -1,4 +1,6 @@
-# Setup
+# Development Guide
+
+## Setup
 
 ```bash
 git clone https://github.com/openshift-hyperfleet/hyperfleet-adapter.git
@@ -7,7 +9,7 @@ make mod-tidy
 make build        # → bin/hyperfleet-adapter
 ```
 
-# Verification
+## Verification
 
 ```bash
 make fmt              # Format code + imports (golangci-lint fmt with gci)
@@ -17,7 +19,7 @@ make test-integration # Integration tests via testcontainers (needs Docker/Podma
 make test-all         # All of the above + make test-helm
 ```
 
-# Make Targets
+## Make Targets
 
 | Target | Description |
 |--------|-------------|
@@ -37,23 +39,23 @@ make test-all         # All of the above + make test-helm
 
 Use `make help` to see all available targets.
 
-# Integration Tests
+## Integration Tests
 
 <details>
 <summary>Setup and run integration tests</summary>
 
 Integration tests use **Testcontainers** with **envtest** — works in any CI/CD platform without privileged containers.
 
-## Prerequisites
+### Prerequisites
 
 - **Docker or Podman** must be running (both supported)
 - The Makefile automatically detects and configures your container runtime
 - **Podman users**: Corporate proxy settings are auto-detected from Podman machine. Define and export the environment variable : 
-```
+```bash
 DOCKER_HOST=unix://$XDG_RUNTIME_DIR/podman/podman.sock
 ```
 
-## Run
+### Run
 
 ```bash
 make test-integration       # envtest (default, unprivileged)
@@ -64,7 +66,7 @@ The first run downloads `golang:alpine` and installs envtest (~20-30 seconds). S
 
 </details>
 
-# Tool Dependencies (Bingo)
+## Tool Dependencies (Bingo)
 
 Build tools are pinned via [bingo](https://github.com/bwplotka/bingo) in `.bingo/` manifests:
 
@@ -73,7 +75,7 @@ bingo get           # Install all tools
 bingo list          # List managed tools
 ```
 
-# Container Image
+## Container Image
 
 ```bash
 # Build container image
@@ -95,7 +97,7 @@ The container build embeds version metadata (version, git commit, build date) in
 
 ---
 
-# Dry-Run Mode
+## Dry-Run Mode
 
 Dry-run mode simulates the full execution pipeline locally without connecting to any real infrastructure. It processes a single CloudEvent from a JSON file and produces a detailed trace.
 
@@ -107,9 +109,7 @@ hyperfleet-adapter serve \
 ```
 
 <details>
-<summary>Dry-run flags and input files</summary>
-
-## Flags
+<summary>Dry-run flags</summary>
 
 | Flag | Required | Description |
 |------|----------|-------------|
@@ -119,65 +119,6 @@ hyperfleet-adapter serve \
 | `--dry-run-verbose` | No | Show rendered manifests and API request/response bodies in output |
 | `--dry-run-output <format>` | No | Output format: `text` (default) or `json` |
 
-## CloudEvent file (`--dry-run-event`)
-
-```json
-{
-  "specversion": "1.0",
-  "id": "abc123",
-  "type": "io.hyperfleet.cluster.updated",
-  "source": "/api/hyperfleet/v1/clusters/abc123",
-  "data": {
-    "id": "abc123",
-    "kind": "Cluster",
-    "href": "/api/hyperfleet/v1/clusters/abc123",
-    "generation": 5
-  }
-}
-```
-
-## Mock API responses (`--dry-run-api-responses`)
-
-Requests are matched by HTTP method and URL regex. When multiple responses are defined for a match, they are returned sequentially (the last one repeats):
-
-```json
-{
-  "responses": [
-    {
-      "match": { "method": "GET", "urlPattern": "/api/hyperfleet/v1/clusters/.*" },
-      "responses": [
-        { "statusCode": 200, "body": { "id": "abc123", "name": "my-cluster", "generation": 5 } }
-      ]
-    },
-    {
-      "match": { "method": "PUT", "urlPattern": "/api/hyperfleet/v1/clusters/.*/statuses" },
-      "responses": [{ "statusCode": 200, "body": {} }]
-    }
-  ]
-}
-```
-
-If no file is provided, all API requests return 200 OK.
-
-## Discovery overrides (`--dry-run-discovery`)
-
-Maps rendered resource names to complete Kubernetes objects, simulating server-populated fields (status, uid, resourceVersion):
-
-```json
-{
-  "abc123": {
-    "apiVersion": "v1",
-    "kind": "Namespace",
-    "metadata": { "name": "abc123", "uid": "a1b2c3d4", "resourceVersion": "100" },
-    "status": { "phase": "Active" }
-  }
-}
-```
-
-## Output
-
-The trace walks through each phase: parameter extraction, preconditions (with API calls), resources (CREATE/UPDATE/RECREATE/DELETE), discovery results, and post-actions. Use `--dry-run-verbose` for full manifests and API bodies, or `--dry-run-output json` for machine-readable output.
-
-Example input files are available in `test/testdata/dryrun/`.
-
 </details>
+
+For mock file formats and a step-by-step development workflow, see [Adapter Authoring Guide — Dry-Run Mode](adapter-authoring-guide.md#10-dry-run-mode). Example input files are in `test/testdata/dryrun/`.

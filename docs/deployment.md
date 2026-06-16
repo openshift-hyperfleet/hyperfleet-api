@@ -85,39 +85,7 @@ These fields have first-class Helm values that the chart injects as environment 
 
 ### Fields settable via the `env` list
 
-These adapter config fields have environment variable overrides but no dedicated Helm value. Set them using the `env` list:
-
-| Adapter config field | Environment variable |
-|---------------------|---------------------|
-| `debug_config` | `HYPERFLEET_DEBUG_CONFIG` |
-| `log.format` | `LOG_FORMAT` |
-| `log.output` | `LOG_OUTPUT` |
-| `clients.maestro.grpc_server_address` | `HYPERFLEET_MAESTRO_GRPC_SERVER_ADDRESS` |
-| `clients.maestro.http_server_address` | `HYPERFLEET_MAESTRO_HTTP_SERVER_ADDRESS` |
-| `clients.maestro.source_id` | `HYPERFLEET_MAESTRO_SOURCE_ID` |
-| `clients.maestro.client_id` | `HYPERFLEET_MAESTRO_CLIENT_ID` |
-| `clients.maestro.auth.type` | `HYPERFLEET_MAESTRO_AUTH_TYPE` |
-| `clients.maestro.auth.tls_config.ca_file` | `HYPERFLEET_MAESTRO_CA_FILE` |
-| `clients.maestro.auth.tls_config.cert_file` | `HYPERFLEET_MAESTRO_CERT_FILE` |
-| `clients.maestro.auth.tls_config.key_file` | `HYPERFLEET_MAESTRO_KEY_FILE` |
-| `clients.maestro.auth.tls_config.http_ca_file` | `HYPERFLEET_MAESTRO_HTTP_CA_FILE` |
-| `clients.maestro.timeout` | `HYPERFLEET_MAESTRO_TIMEOUT` |
-| `clients.maestro.server_healthiness_timeout` | `HYPERFLEET_MAESTRO_SERVER_HEALTHINESS_TIMEOUT` |
-| `clients.maestro.retry_attempts` | `HYPERFLEET_MAESTRO_RETRY_ATTEMPTS` |
-| `clients.maestro.keepalive.time` | `HYPERFLEET_MAESTRO_KEEPALIVE_TIME` |
-| `clients.maestro.keepalive.timeout` | `HYPERFLEET_MAESTRO_KEEPALIVE_TIMEOUT` |
-| `clients.maestro.insecure` | `HYPERFLEET_MAESTRO_INSECURE` |
-| `clients.hyperfleet_api.timeout` | `HYPERFLEET_API_TIMEOUT` |
-| `clients.hyperfleet_api.retry_attempts` | `HYPERFLEET_API_RETRY_ATTEMPTS` |
-| `clients.hyperfleet_api.retry_backoff` | `HYPERFLEET_API_RETRY_BACKOFF` |
-| `clients.hyperfleet_api.base_delay` | `HYPERFLEET_API_BASE_DELAY` |
-| `clients.hyperfleet_api.max_delay` | `HYPERFLEET_API_MAX_DELAY` |
-| `clients.kubernetes.api_version` | `HYPERFLEET_KUBERNETES_API_VERSION` |
-| `clients.kubernetes.kube_config_path` | `HYPERFLEET_KUBERNETES_KUBE_CONFIG_PATH` |
-| `clients.kubernetes.qps` | `HYPERFLEET_KUBERNETES_QPS` |
-| `clients.kubernetes.burst` | `HYPERFLEET_KUBERNETES_BURST` |
-
-Example:
+Many adapter config fields have environment variable overrides but no dedicated Helm value. Set them using the `env` list. The naming convention is `HYPERFLEET_<SECTION>_<FIELD>` for most fields. For example:
 
 ```yaml
 env:
@@ -128,6 +96,8 @@ env:
   - name: LOG_FORMAT
     value: "text"
 ```
+
+The [Configuration Reference](configuration.md#environment-variables) lists every adapter config field with its environment variable equivalent.
 
 ---
 
@@ -164,47 +134,15 @@ The broker config controls the message broker connection. It can be sourced in t
 | Inline YAML | `broker.yaml` | Full broker config as a YAML string |
 | Existing ConfigMap | `broker.configMapName` | Pre-existing ConfigMap (set `broker.create: false`) |
 
-When using individual properties, `broker.type` must be set to `googlepubsub` or `rabbitmq`.
-
-### Google Pub/Sub
-
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| `broker.type` | Must be `googlepubsub` | — |
-| `broker.googlepubsub.projectId` | Google Cloud project ID | `""` |
-| `broker.googlepubsub.topic` | Pub/Sub topic name | `""` |
-| `broker.googlepubsub.subscriptionId` | Subscription ID | `""` |
-| `broker.googlepubsub.deadLetterTopic` | Dead letter topic | `""` |
-| `broker.googlepubsub.createTopicIfMissing` | Auto-create topic (dev/test only) | `false` |
-| `broker.googlepubsub.createSubscriptionIfMissing` | Auto-create subscription (dev/test only) | `false` |
-
-### RabbitMQ
-
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| `broker.type` | Must be `rabbitmq` | — |
-| `broker.rabbitmq.url` | AMQP connection URL (required) | `""` |
-| `broker.rabbitmq.queue` | Queue name (required) | `""` |
-| `broker.rabbitmq.exchange` | Exchange name (required) | `""` |
-| `broker.rabbitmq.exchangeType` | Exchange type | `topic` |
+When using individual properties, `broker.type` must be set to `googlepubsub` or `rabbitmq`. See the [Helm Values Reference](../charts/README.md) for the full list of `broker.googlepubsub.*` and `broker.rabbitmq.*` parameters with defaults. For broker config semantics (queue naming, fan-out behavior, exchange coupling), see the [Configuration Reference](configuration.md#broker).
 
 ---
 
 ## Tracing
 
-OpenTelemetry distributed tracing. The Helm chart defaults to tracing **disabled** (the binary defaults to enabled).
+OpenTelemetry distributed tracing. The Helm chart defaults to tracing **disabled** (the binary defaults to enabled). When no endpoint is configured, traces are written to stdout.
 
-| Parameter | Env var set by chart | Default |
-|-----------|---------------------|---------|
-| `tracing.enabled` | `HYPERFLEET_TRACING_ENABLED` | `false` |
-| `tracing.serviceName` | `OTEL_SERVICE_NAME` | `hyperfleet-adapter` |
-| `tracing.otlpEndpoint` | `OTEL_EXPORTER_OTLP_ENDPOINT` | `""` (stdout) |
-| `tracing.otlpProtocol` | `OTEL_EXPORTER_OTLP_PROTOCOL` | `grpc` |
-| `tracing.sampler` | `OTEL_TRACES_SAMPLER` | `parentbased_traceidratio` |
-| `tracing.samplerArg` | `OTEL_TRACES_SAMPLER_ARG` | `1.0` |
-| `tracing.propagators` | `OTEL_PROPAGATORS` | `tracecontext,baggage` |
-
-When no endpoint is configured, traces are written to stdout.
+See the [Helm Values Reference](../charts/README.md) for the full list of `tracing.*` parameters and defaults, and the [Configuration Reference](configuration.md#tracing-opentelemetry) for the underlying OTEL environment variables.
 
 ---
 
@@ -291,6 +229,7 @@ broker:
     queue: my-adapter
     exchange: hyperfleet
     exchangeType: topic
+    routingKey: adapter.events # Optional
 ```
 
 ### Full (inline adapter config, external task config, Maestro, Pub/Sub, tracing)

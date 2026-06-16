@@ -1567,6 +1567,8 @@ More information about deployment can be found in [Architecture repository - Hyp
 
 ## Appendix A: CEL Quick Reference
 
+> For the full CEL reference including implementation details, see [CEL Conventions](conventions/cel.md).
+
 ```cel
 # Optional chaining — safe access to fields that may not exist
 resources.?clusterNamespace.?status.?phase.orValue("")
@@ -1723,6 +1725,8 @@ Go Templates are used in: URLs, manifest field values, direct string values in p
 
 ## Appendix C: Condition Operators Reference
 
+See also [Preconditions — Supported operators](#supported-operators).
+
 | Operator | Value type | Example |
 |----------|-----------|---------|
 | `equals` | any | `value: "True"` |
@@ -1731,8 +1735,11 @@ Go Templates are used in: URLs, manifest field values, direct string values in p
 | `notIn` | array | `value: ["deprecated-region"]` |
 | `contains` | string | `value: "prod"` |
 | `greaterThan` | numeric | `value: 0` |
+| `greaterThanOrEqual` | numeric | `value: 0` |
 | `lessThan` | numeric | `value: 100` |
+| `lessThanOrEqual` | numeric | `value: 100` |
 | `exists` | (none) | Field must exist, no value needed |
+| `notExists` | (none) | Field must not exist, no value needed |
 
 ---
 

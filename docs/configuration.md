@@ -194,10 +194,9 @@ When tracing is enabled, the adapter uses standard [OpenTelemetry environment va
 | `OTEL_TRACES_SAMPLER` | Sampler type (`always_on`, `always_off`, `traceidratio`, `parentbased_*`) | `parentbased_traceidratio` |
 | `OTEL_TRACES_SAMPLER_ARG` | Sampling ratio (0.0–1.0) | `1.0` |
 
-When no `OTEL_EXPORTER_OTLP_ENDPOINT` is set, traces are written to stdout for local development. 
+When no `OTEL_EXPORTER_OTLP_ENDPOINT` is set, traces are written to stdout for local development.
 
-The Helm chart exposes `tracing.enabled`, `tracing.otlpEndpoint`, `tracing.otlpProtocol`, `tracing.serviceName`, `tracing.sampler`, `tracing.samplerArg`, and `tracing.propagators` in `values.yaml` which map to these environment variables.
-
+The Helm chart exposes `tracing.enabled`, `tracing.otlpEndpoint`, `tracing.otlpProtocol`, `tracing.serviceName`, `tracing.sampler`, `tracing.samplerArg`, and `tracing.propagators` in `values.yaml` which map to these environment variables. For Helm deployment details, see the [Deployment Guide — Tracing](deployment.md#tracing).
 
 ## Command-line parameters
 
