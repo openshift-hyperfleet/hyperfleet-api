@@ -75,7 +75,7 @@ clients:
 ### Top-level fields
 
 - `adapter.name` (string, required): Adapter name.
-- `adapter.version` (string, optional): when set, the binary validates it matches the running version.
+- `adapter.version` (string, optional): when set, the binary validates it matches the running version. Only major and minor versions are compared — patch differences are allowed (e.g., config `1.2.0` with binary `1.2.3` is valid). Non-semver versions (e.g., `dev`, `latest`, custom tags) skip validation gracefully.
 - `debug_config` (bool, optional): Log the merged config after load. Default: `false`.
 
 ### Logging (`log`)
@@ -175,6 +175,28 @@ The queue-to-exchange binding always uses an **empty routing key** — all queue
 - `kube_config_path` (string): Path to kubeconfig (empty uses in-cluster auth).
 - `qps` (float): Client-side QPS limit (0 uses defaults).
 - `burst` (int): Client-side burst limit (0 uses defaults).
+
+### Tracing (OpenTelemetry)
+
+Tracing is configured entirely through environment variables — there is no YAML section.
+
+- `HYPERFLEET_TRACING_ENABLED` (bool): Enable or disable tracing. Default: `true` in the binary, `false` in the Helm chart. Set to `false` to suppress OTLP export errors when no collector is available.
+
+When tracing is enabled, the adapter uses standard [OpenTelemetry environment variables](https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/):
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP collector endpoint (e.g., `http://otel-collector:4317`) | — (stdout exporter) |
+| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | Signal-specific endpoint; overrides the above for traces only | — |
+| `OTEL_EXPORTER_OTLP_PROTOCOL` | Protocol: `grpc` or `http/protobuf` | `grpc` |
+| `OTEL_EXPORTER_OTLP_TRACES_PROTOCOL` | Signal-specific protocol override | — |
+| `OTEL_SERVICE_NAME` | Service name reported in spans | `adapter.name` from config |
+| `OTEL_TRACES_SAMPLER` | Sampler type (`always_on`, `always_off`, `traceidratio`, `parentbased_*`) | `parentbased_traceidratio` |
+| `OTEL_TRACES_SAMPLER_ARG` | Sampling ratio (0.0–1.0) | `1.0` |
+
+When no `OTEL_EXPORTER_OTLP_ENDPOINT` is set, traces are written to stdout for local development.
+
+The Helm chart exposes `tracing.enabled`, `tracing.otlpEndpoint`, `tracing.otlpProtocol`, `tracing.serviceName`, `tracing.sampler`, `tracing.samplerArg`, and `tracing.propagators` in `values.yaml` which map to these environment variables. For Helm deployment details, see the [Deployment Guide — Tracing](deployment.md#tracing).
 
 ## Command-line parameters
 

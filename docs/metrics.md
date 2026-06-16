@@ -1,6 +1,6 @@
 # HyperFleet Adapter Metrics
 
-> **Audience:** Developers integrating with adapter metrics and SREs building dashboards.
+> **Audience:** SREs building dashboards and operators monitoring the adapter.
 
 All metrics are exposed on the `/metrics` endpoint (port 9090) in Prometheus format. No additional configuration is needed.
 
