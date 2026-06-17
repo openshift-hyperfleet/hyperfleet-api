@@ -6,6 +6,20 @@ For running the binary directly on your machine (development, debugging), see th
 
 ---
 
+## ⚠️ Production Security Warning
+
+**IMPORTANT**: Default Helm values are for development. Production requires:
+
+| Setting | Default | Production | Risk if not changed |
+|---------|---------|------------|---------------------|
+| JWT auth | `false` | `true` | ⚠️ Unauthenticated access |
+| TLS | `false` | `true` | ⚠️ Plaintext credentials |
+| Database | Built-in pod | External managed | Data loss on restart |
+
+See [API Operator Guide](api-operator-guide.md) for complete production configuration.
+
+---
+
 ## Prerequisites
 
 Before deploying, ensure you have:
@@ -274,6 +288,37 @@ During upgrade, in case schema changes have occurred in the new version, a DB mi
 helm uninstall hyperfleet-api --namespace hyperfleet-system
 ```
 
+<<<<<<< HEAD
+=======
+## Helm Values
+
+### Key Configuration Options
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `image.registry` | Container registry | `CHANGE_ME` (must be set explicitly) |
+| `image.repository` | Image repository | `openshift-hyperfleet/hyperfleet-api` |
+| `image.tag` | Image tag | `latest` |
+| `image.pullPolicy` | Image pull policy | `Always` |
+| `config.adapters.required.cluster` | Cluster adapters required for Ready state | `[]` |
+| `config.adapters.required.nodepool` | Nodepool adapters required for Ready state | `[]` |
+| `config.server.jwt.enabled` | Enable JWT authentication | `false` (Helm default; app default is `true`) |
+| `database.postgresql.enabled` | Enable built-in PostgreSQL | `true` |
+| `database.external.enabled` | Use external database | `false` |
+| `database.external.secretName` | Secret containing database credentials | `hyperfleet-db-external` |
+| `serviceMonitor.enabled` | Enable Prometheus Operator ServiceMonitor | `false` |
+| `serviceMonitor.interval` | Metrics scrape interval | `30s` |
+| `serviceMonitor.scrapeTimeout` | Metrics scrape timeout | `10s` |
+| `serviceMonitor.labels` | Additional labels for Prometheus selector | `{}` |
+| `serviceMonitor.namespace` | Namespace for ServiceMonitor (if different) | `""` |
+| `replicaCount` | Number of API replicas | `1` |
+| `resources.limits.cpu` | CPU limit | `500m` |
+| `resources.limits.memory` | Memory limit | `512Mi` |
+| `podDisruptionBudget.enabled` | Enable PodDisruptionBudget | `false` |
+| `podDisruptionBudget.minAvailable` | Minimum available pods during disruption | `1` |
+| `podDisruptionBudget.maxUnavailable` | Maximum unavailable pods during disruption | - |
+
+>>>>>>> 9ec002c (HYPERFLEET-1146 - docs: update development env configuration)
 ### Custom Values File
 
 For repeatable deployments, create a `values.yaml` file:
@@ -452,7 +497,18 @@ Before deploying to production, ensure:
 
 ### Configuration File Security
 
+<<<<<<< HEAD
 The configuration file path — set via `--config` or `HYPERFLEET_CONFIG` — is a trust boundary. The API validates configuration **content** on startup (unknown fields are rejected, required values are enforced, TLS/JWT/timeout settings are checked) and will refuse to start with an invalid configuration. However, **path and permission safety is the operator's responsibility**. The API reads whatever file the process can access at the given path without checking permissions or ownership.
+=======
+- **Environment**: Use default (ProductionEnv) for production deployments; never set `HYPERFLEET_ENV=development`
+- Use external managed database (Cloud SQL, RDS, Azure Database) with automated backups
+- Store all sensitive data in Kubernetes Secrets, never in ConfigMap or values.yaml
+- Enable authentication with `config.server.jwt.enabled=true`
+- Set resource limits and use multiple replicas for high availability
+- Use specific image tags (semantic versioning) instead of `latest`
+- Enable PodDisruptionBudget for zero-downtime during cluster maintenance
+- Configure health probes with appropriate timeouts for your workload
+>>>>>>> 9ec002c (HYPERFLEET-1146 - docs: update development env configuration)
 
 Ensure configuration files are:
 - Owned by the service account running the API (e.g., `root:root` or a dedicated user)
