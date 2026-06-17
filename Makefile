@@ -329,6 +329,29 @@ test-helm: $(KUBECONFORM) verify-helm-docs ## Test Helm charts (lint, template, 
 		--set serviceMonitor.interval=15s | $(KUBECONFORM) $(KUBECONFORM_FLAGS)
 	@echo "ServiceMonitor config template OK"
 	@echo ""
+	@echo "Testing template with PodMonitoring enabled..."
+	helm template test-release charts/ \
+		--set image.registry=quay.io \
+		--set image.repository=openshift-hyperfleet/hyperfleet-api \
+		--set image.tag=test \
+		--set 'adapters.cluster=["validation"]' \
+		--set 'adapters.nodepool=["validation"]' \
+		--set monitoring.podMonitoring.enabled=true \
+		--set monitoring.podMonitoring.interval=15s | $(KUBECONFORM) $(KUBECONFORM_FLAGS) -ignore-missing-schemas
+	@echo "PodMonitoring config template OK"
+	@echo ""
+	@echo "Testing template with PodMonitoring and TLS enabled..."
+	helm template test-release charts/ \
+		--set image.registry=quay.io \
+		--set image.repository=openshift-hyperfleet/hyperfleet-api \
+		--set image.tag=test \
+		--set 'adapters.cluster=["validation"]' \
+		--set 'adapters.nodepool=["validation"]' \
+		--set monitoring.podMonitoring.enabled=true \
+		--set config.metrics.tls.enabled=true \
+		--set monitoring.podMonitoring.tlsConfig.insecureSkipVerify=true | $(KUBECONFORM) $(KUBECONFORM_FLAGS) -ignore-missing-schemas
+	@echo "PodMonitoring with TLS config template OK"
+	@echo ""
 	@echo "Testing template with auth disabled..."
 	helm template test-release charts/ \
 		--set image.registry=quay.io \

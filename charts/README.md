@@ -155,7 +155,14 @@ helm install hyperfleet-api oci://REGISTRY/hyperfleet-api \
 | database.postgresql.persistence.enabled | bool | `false` | Enable persistent storage (uses emptyDir when disabled) |
 | database.postgresql.persistence.size | string | `"1Gi"` | Volume size |
 | database.postgresql.persistence.storageClass | string | `""` | StorageClass name (empty for cluster default) |
-| monitoring | object | `{"prometheusRule":{"additionalLabels":{},"enabled":false,"namespace":"","rules":{"deletionStuck":{"for":"5m","runbookUrl":""},"deletionTimeout":{"for":"30m","runbookUrl":""}}}}` | Monitoring and alerting configuration |
+| monitoring | object | `{"podMonitoring":{"additionalLabels":{},"enabled":false,"interval":"30s","metricRelabeling":[],"tlsConfig":{"insecureSkipVerify":false}},"prometheusRule":{"additionalLabels":{},"enabled":false,"namespace":"","rules":{"deletionStuck":{"for":"5m","runbookUrl":""},"deletionTimeout":{"for":"30m","runbookUrl":""}}}}` | Monitoring and alerting configuration |
+| monitoring.podMonitoring | object | `{"additionalLabels":{},"enabled":false,"interval":"30s","metricRelabeling":[],"tlsConfig":{"insecureSkipVerify":false}}` | PodMonitoring for Google Managed Prometheus (GMP) scraping |
+| monitoring.podMonitoring.enabled | bool | `false` | Create a PodMonitoring resource |
+| monitoring.podMonitoring.interval | string | `"30s"` | Scrape interval |
+| monitoring.podMonitoring.additionalLabels | object | `{}` | Additional labels for the PodMonitoring resource |
+| monitoring.podMonitoring.metricRelabeling | list | `[]` | Metric relabel configs to apply to samples before ingestion |
+| monitoring.podMonitoring.tlsConfig | object | `{"insecureSkipVerify":false}` | TLS configuration when config.metrics.tls.enabled=true |
+| monitoring.podMonitoring.tlsConfig.insecureSkipVerify | bool | `false` | Disable target certificate validation (e.g. for self-signed certs) |
 | monitoring.prometheusRule | object | `{"additionalLabels":{},"enabled":false,"namespace":"","rules":{"deletionStuck":{"for":"5m","runbookUrl":""},"deletionTimeout":{"for":"30m","runbookUrl":""}}}` | PrometheusRule for alerting |
 | monitoring.prometheusRule.enabled | bool | `false` | Create PrometheusRule resources |
 | monitoring.prometheusRule.additionalLabels | object | `{}` | Additional labels for PrometheusRule discovery |
