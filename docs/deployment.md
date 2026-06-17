@@ -288,8 +288,6 @@ During upgrade, in case schema changes have occurred in the new version, a DB mi
 helm uninstall hyperfleet-api --namespace hyperfleet-system
 ```
 
-<<<<<<< HEAD
-=======
 ## Helm Values
 
 ### Key Configuration Options
@@ -318,7 +316,6 @@ helm uninstall hyperfleet-api --namespace hyperfleet-system
 | `podDisruptionBudget.minAvailable` | Minimum available pods during disruption | `1` |
 | `podDisruptionBudget.maxUnavailable` | Maximum unavailable pods during disruption | - |
 
->>>>>>> 9ec002c (HYPERFLEET-1146 - docs: update development env configuration)
 ### Custom Values File
 
 For repeatable deployments, create a `values.yaml` file:
@@ -495,11 +492,8 @@ Before deploying to production, ensure:
 - [ ] **Disruption**: PodDisruptionBudget enabled (`podDisruptionBudget.enabled=true`)
 - [ ] **Monitoring**: ServiceMonitor enabled if using Prometheus Operator
 
-### Configuration File Security
+## Production Best Practices
 
-<<<<<<< HEAD
-The configuration file path — set via `--config` or `HYPERFLEET_CONFIG` — is a trust boundary. The API validates configuration **content** on startup (unknown fields are rejected, required values are enforced, TLS/JWT/timeout settings are checked) and will refuse to start with an invalid configuration. However, **path and permission safety is the operator's responsibility**. The API reads whatever file the process can access at the given path without checking permissions or ownership.
-=======
 - **Environment**: Use default (ProductionEnv) for production deployments; never set `HYPERFLEET_ENV=development`
 - Use external managed database (Cloud SQL, RDS, Azure Database) with automated backups
 - Store all sensitive data in Kubernetes Secrets, never in ConfigMap or values.yaml
@@ -508,7 +502,10 @@ The configuration file path — set via `--config` or `HYPERFLEET_CONFIG` — is
 - Use specific image tags (semantic versioning) instead of `latest`
 - Enable PodDisruptionBudget for zero-downtime during cluster maintenance
 - Configure health probes with appropriate timeouts for your workload
->>>>>>> 9ec002c (HYPERFLEET-1146 - docs: update development env configuration)
+
+### Configuration File Security
+
+The configuration file path — set via `--config` or `HYPERFLEET_CONFIG` — is a trust boundary. The API validates configuration **content** on startup (unknown fields are rejected, required values are enforced, TLS/JWT/timeout settings are checked) and will refuse to start with an invalid configuration. However, **path and permission safety is the operator's responsibility**. The API reads whatever file the process can access at the given path without checking permissions or ownership.
 
 Ensure configuration files are:
 - Owned by the service account running the API (e.g., `root:root` or a dedicated user)
