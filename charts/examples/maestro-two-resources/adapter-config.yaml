@@ -4,9 +4,9 @@ adapter:
   version: "0.2.0"
 
 # Log the full merged configuration after load (default: false)
-debug_config: true
+debug_config: false
 log:
-  level: debug
+  level: info
 
 clients:
   hyperfleet_api:
