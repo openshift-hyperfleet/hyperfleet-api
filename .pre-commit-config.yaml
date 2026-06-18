@@ -1,29 +1,26 @@
-# Pre-commit configuration for hyperfleet-api
-# Enforces Red Hat security compliance and AI-readiness best practices
-#
-# Setup:
-#   1. Run: pre-commit install
-#   2. Run: pre-commit install --hook-type pre-push
-#   3. Run: pre-commit run --all-files (to test)
-#
-# See: https://pre-commit.com/
+default_install_hook_types: [pre-commit, commit-msg]
 
 repos:
-  # Red Hat security and compliance hooks
-  # NOTE: This hook requires access to Red Hat's internal GitLab.
-  # External contributors: You can comment out this section or skip with:
-  #   SKIP=rh-pre-commit git commit -m "your message"
-  # See README.md "Pre-commit Hooks" section for more details.
-  - repo: https://gitlab.cee.redhat.com/infosec-public/developer-workbench/tools
-    rev: rh-pre-commit-2.3.2  # Use specific tag
+  # Secret scanning (VPN-free, open-source alternative to rh-pre-commit)
+  - repo: https://github.com/leaktk/leaktk
+    rev: e62a495260dc1e396fa586e51bbe1355f6fc7d9d # v0.3.3
     hooks:
-      - id: rh-pre-commit
+      - id: leaktk.git.pre-commit
 
-  # AI-readiness hooks
-  - repo: https://github.com/openshift-hyperfleet/rh-hooks-ai
-    rev: v1.0.3  # Use latest release
+  # HyperFleet code quality hooks
+  - repo: https://github.com/openshift-hyperfleet/hyperfleet-hooks
+    rev: 7f5119208e5cdee3f0c688881b6a4b803095f203 # v0.2.1
     hooks:
-      - id: check-rh-precommit
-      - id: validate-agents-md  # Runs on git push, requires AGENTS.md
-      - id: ai-attribution-reminder
-      # - id: check-version  # Optional: Checks for updates once per 24h (non-blocking)
+      - id: hyperfleet-commitlint
+        stages: [commit-msg]
+      - id: hyperfleet-gofmt
+      - id: hyperfleet-golangci-lint
+      - id: hyperfleet-go-vet
+
+  # File hygiene
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c # v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-added-large-files

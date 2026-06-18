@@ -133,4 +133,3 @@ Database environment variables (using secretKeyRef - Kubernetes best practice)
       key: db.password
 {{- end }}
 {{- end }}
-

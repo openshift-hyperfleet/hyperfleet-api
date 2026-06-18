@@ -84,6 +84,10 @@ help: ## Display this help
 
 ##@ Code Quality
 
+.PHONY: install-hooks
+install-hooks: ## Install pre-commit hooks
+	pre-commit install
+
 .PHONY: verify
 verify: ## Verify source passes standard checks
 	${GO} vet \
@@ -100,6 +104,16 @@ verify: ## Verify source passes standard checks
 			echo "* Your go version is not the expected $(GO_VERSION) *" | sed 's/./*/g'; \
 			printf '\033[0m'; \
 		)
+
+.PHONY: gofmt
+gofmt: ## Format Go code
+	! gofmt -l cmd pkg test |\
+		sed 's/^/Unformatted file: /' |\
+		grep .
+
+.PHONY: go-vet
+go-vet: ## Run go vet
+	${GO} vet ./cmd/... ./pkg/...
 
 .PHONY: lint
 lint: generate-all $(GOLANGCI_LINT) ## Run golangci-lint

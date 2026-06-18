@@ -69,7 +69,7 @@ Generic resources (the `resources` table) use delete policies to control child b
 | `restrict` | Parent delete is rejected with `409 Conflict` if active children exist |
 | `cascade`  | All children are soft-deleted (marked Finalizing) along with the parent |
 
-Policies are enforced recursively — a cascade on a parent triggers policy checks on children. For clusters and nodepools, the cascade is built-in: deleting a cluster cascades to all its nodepools — those with required adapters are soft-deleted (entering Finalizing), while those without are hard-deleted immediately.  
+Policies are enforced recursively — a cascade on a parent triggers policy checks on children. For clusters and nodepools, the cascade is built-in: deleting a cluster cascades to all its nodepools — those with required adapters are soft-deleted (entering Finalizing), while those without are hard-deleted immediately.
 
 Resources without required adapters skip the Finalizing phase entirely — they are hard-deleted immediately on `DELETE`.
 
