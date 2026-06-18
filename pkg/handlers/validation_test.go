@@ -401,6 +401,37 @@ func TestValidatePatchRequest(t *testing.T) {
 	}
 }
 
+func TestValidateObservedGeneration(t *testing.T) {
+	testCases := []struct {
+		name        string
+		generation  int32
+		expectError bool
+	}{
+		{"valid generation 1", 1, false},
+		{"valid generation 100", 100, false},
+		{"zero is invalid", 0, true},
+		{"negative is invalid", -1, true},
+		{"large negative is invalid", -999, true},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			RegisterTestingT(t)
+			req := openapi.AdapterStatusCreateRequest{
+				ObservedGeneration: tc.generation,
+			}
+			validator := validateObservedGeneration(&req)
+			err := validator()
+			if tc.expectError {
+				Expect(err).ToNot(BeNil())
+				Expect(err.Reason).To(ContainSubstring("observed_generation must be >= 1"))
+			} else {
+				Expect(err).To(BeNil())
+			}
+		})
+	}
+}
+
 func TestValidateConditions_Valid(t *testing.T) {
 	RegisterTestingT(t)
 
