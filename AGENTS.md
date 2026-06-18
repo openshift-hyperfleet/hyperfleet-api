@@ -4,6 +4,13 @@ Event-driven Kubernetes resource manager. Consumes CloudEvents from a message br
 
 Go 1.25.0 · Cobra CLI · Viper config · golangci-lint (bingo-managed) · Tekton CI (Konflux)
 
+## Setup (fresh clone)
+
+```bash
+make install-hooks    # Install pre-commit hooks (secret scanning, linting, etc.)
+make build            # Build binary → bin/hyperfleet-adapter
+```
+
 ## Verification Checklist
 
 ```bash
@@ -14,7 +21,20 @@ make test-integration # Integration tests via testcontainers (needs Docker/Podma
 make build            # Build binary → bin/hyperfleet-adapter
 ```
 
-`make test-all` runs all of the above plus `make test-helm`. Pre-commit hooks: `make install-hooks`.
+`make test-all` runs `make lint`, `make test`, `make test-integration`, and `make test-helm`.
+
+### Pre-commit Hooks
+Install: `make install-hooks`
+
+Hooks:
+- `leaktk.git.pre-commit` — secret scanning (open-source, no VPN required)
+- `hyperfleet-commitlint` — validates commit message format (commit-msg stage)
+- `hyperfleet-gofmt` — Go code formatting
+- `hyperfleet-golangci-lint` — linting
+- `hyperfleet-go-vet` — Go vet checks
+- `trailing-whitespace` — removes trailing whitespace
+- `end-of-file-fixer` — ensures files end with newline
+- `check-added-large-files` — prevents large files from being committed
 
 ## CLI
 

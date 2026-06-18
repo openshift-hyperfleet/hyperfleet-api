@@ -324,9 +324,16 @@ test-helm: $(KUBECONFORM) verify-helm-docs ## Test Helm charts (lint, template, 
 
 ##@ Code Quality
 
+.PHONY: install-hooks
+install-hooks: ## Install pre-commit hooks
+	pre-commit install
+
 .PHONY: fmt
 fmt: $(GOIMPORTS) ## Format code with goimports
 	$(GOIMPORTS) -w .
+
+.PHONY: gofmt
+gofmt: fmt ## Alias for fmt
 
 .PHONY: fmt-check
 fmt-check: ## Check if code is formatted
@@ -340,6 +347,9 @@ fmt-check: ## Check if code is formatted
 .PHONY: vet
 vet: ## Run go vet
 	$(GO) vet ./...
+
+.PHONY: go-vet
+go-vet: vet ## Alias for vet
 
 .PHONY: lint
 lint: $(GOLANGCI_LINT) ## Run golangci-lint
