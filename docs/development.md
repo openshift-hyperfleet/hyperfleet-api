@@ -107,7 +107,7 @@ export HYPERFLEET_DATABASE_SSL_MODE=require   # for remote databases
 make run-no-auth
 ```
 
-**Note**: The default runtime environment is `production`. Security features (JWT, TLS) require explicit enablement in Helm values.
+**Note**: The default runtime environment is `production`. For local development without authentication, use `make run-no-auth` or set `HYPERFLEET_ENV=development` see [Development Environment Configuration](#development-environment-configuration) below).
 
 The service starts on `localhost:8000` — see [Accessing the API](../README.md#accessing-the-api) for all available endpoints.
 
@@ -453,7 +453,7 @@ make test-integration
 
 ## Development Environment Configuration
 
-### HYPERFLEET-1146: Development Environment Analysis
+### Development Environment Analysis
 
 **Background**: Prior to HYPERFLEET-1133, the API defaulted to `DevelopmentEnv` (insecure). To protect production deployments, HYPERFLEET-1133 changed the default to `ProductionEnv` (secure by default).
 

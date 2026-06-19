@@ -301,6 +301,8 @@ helm uninstall hyperfleet-api --namespace hyperfleet-system
 | `config.adapters.required.cluster` | Cluster adapters required for Ready state | `[]` |
 | `config.adapters.required.nodepool` | Nodepool adapters required for Ready state | `[]` |
 | `config.server.jwt.enabled` | Enable JWT authentication | `false` (Helm default; app default is `true`) |
+| `config.server.tls.enabled` | Enable TLS on the API listener | `false` |
+| `config.database.ssl.mode` | SSL mode for database connection | `disable` |
 | `database.postgresql.enabled` | Enable built-in PostgreSQL | `true` |
 | `database.external.enabled` | Use external database | `false` |
 | `database.external.secretName` | Secret containing database credentials | `hyperfleet-db-external` |
@@ -495,13 +497,16 @@ Before deploying to production, ensure:
 ## Production Best Practices
 
 - **Environment**: Use default (ProductionEnv) for production deployments; never set `HYPERFLEET_ENV=development`
-- Use external managed database (Cloud SQL, RDS, Azure Database) with automated backups
-- Store all sensitive data in Kubernetes Secrets, never in ConfigMap or values.yaml
-- Enable authentication with `config.server.jwt.enabled=true`
-- Set resource limits and use multiple replicas for high availability
-- Use specific image tags (semantic versioning) instead of `latest`
-- Enable PodDisruptionBudget for zero-downtime during cluster maintenance
-- Configure health probes with appropriate timeouts for your workload
+- **Database**: Use external managed database (Cloud SQL, RDS, Azure Database) with automated backups
+- **Secrets**: Store all sensitive data in Kubernetes Secrets, never in ConfigMap or values.yaml
+- **Authentication**: Enable JWT authentication with `config.server.jwt.enabled=true`
+- **Identity**: Enable identity extraction based on JWT claims or HTTP headers as appropriate
+- **Logging**: Use JSON format (`config.logging.format=json`) and set level to `info` for production
+- **Tracing**: Enable distributed tracing for observability in production environments
+- **Resources**: Set CPU/memory limits and use multiple replicas for high availability
+- **Images**: Use specific image tags (semantic versioning) instead of `latest`
+- **Disruption**: Enable PodDisruptionBudget for zero-downtime during cluster maintenance
+- **Health**: Configure health probes with appropriate timeouts for your workload
 
 ### Configuration File Security
 
