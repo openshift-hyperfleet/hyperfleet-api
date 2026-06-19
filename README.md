@@ -28,13 +28,13 @@ The adapter requires a running message broker and HyperFleet API. The [hyperflee
 |---------|-----------------|
 | `make local-up-gcp` | GKE cluster + images + API + adapters + Maestro |
 | `make install-hyperfleet` | Everything on an existing K8s cluster using RabbitMQ (no GCP needed) |
-| `make install-hyperfleet-adapters` | Install sample Hyperfleet Adapters |
+| `make install-adapters` | Install sample Hyperfleet Adapters |
 | `make status` | Verify the deployment |
 
 Make sure you define the following environment variables:
 * `HELMFILE_ENV`: accepted values : `kind`, `gcp`
 * `NAMESPACE`: namespace where HyperFleet components will be deployed
-* `REGISTRY`: The registry namespace from which to pull the images. `quay.io/openshift-hyperfleet` for released images
+* `REGISTRY`: The registry namespace from which to pull the images. `quay.io/redhat-services-prod/hyperfleet-tenant/hyperfleet` for released images
 * `API_IMAGE_TAG`: image tag for `hyperfleet-api` container image
 * `SENTINEL_IMAGE_TAG`: image tag for `hyperfleet-sentinel` container image
 * `ADAPTER_IMAGE_TAG`: image tag for `hyperfleet-adapter` container image

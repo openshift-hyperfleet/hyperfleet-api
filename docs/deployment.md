@@ -6,6 +6,8 @@ This guide explains how to configure and deploy an adapter instance using the He
 
 ## Configuration Overview
 
+The HyperFleet Adapter Helm chart is released as an oci artifact at : oci://quay.io/redhat-services-prod/hyperfleet-tenant/hyperfleet/hyperfleet-adapter-chart. 
+
 An adapter deployment requires three pieces of configuration, all settable through Helm values:
 
 | Config | Helm value | Purpose |
@@ -208,8 +210,8 @@ gcloud projects add-iam-policy-binding MY_PROJECT \
 ```yaml
 image:
   registry: quay.io
-  repository: openshift-hyperfleet/hyperfleet-adapter
-  tag: v0.2.0
+  repository: redhat-services-prod/hyperfleet-tenant/hyperfleet/hyperfleet-adapter
+  tag: <version>
 
 adapterConfig:
   create: true
@@ -237,15 +239,15 @@ broker:
 ```yaml
 image:
   registry: quay.io
-  repository: openshift-hyperfleet/my-adapter
-  tag: v1.0.0
+  repository: redhat-services-prod/hyperfleet-tenant/hyperfleet/hyperfleet-adapter
+  tag: <version>
 
 adapterConfig:
   create: true
   yaml:
     adapter:
       name: my-adapter
-      version: "1.0.0"
+      version: "<version-no-v-prefix>"
     clients:
       hyperfleet_api:
         base_url: http://hyperfleet-api:8000
