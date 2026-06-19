@@ -825,7 +825,7 @@ Choose your database deployment strategy based on your environment:
 - [ ] Deploy using Helm:
 
   ```bash
-  helm install hyperfleet-api ./charts/ \
+  helm install hyperfleet-api oci://quay.io/redhat-services-prod/hyperfleet-tenant/hyperfleet/hyperfleet-api-chart:<tag> \
     --namespace hyperfleet-system \
     --create-namespace \
     --values custom-values.yaml
