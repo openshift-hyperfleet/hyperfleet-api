@@ -186,6 +186,15 @@ func validatePatchRequest(i interface{}) validate {
 	}
 }
 
+func validateObservedGeneration(req *openapi.AdapterStatusCreateRequest) validate {
+	return func() *errors.ServiceError {
+		if req.ObservedGeneration < 1 {
+			return errors.Validation("observed_generation must be >= 1")
+		}
+		return nil
+	}
+}
+
 // validateConditions validates condition type and status fields
 // - Type must not be empty
 // - Type must not be duplicated
