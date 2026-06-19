@@ -222,6 +222,16 @@ podAnnotations: {}
 # -- Additional labels applied to all pods
 podLabels: {}
 
+# -- Custom labels applied to all resources managed by this Helm chart
+# (Deployment, Service, ServiceAccount, ConfigMap, PostgreSQL StatefulSet, etc.)
+# Useful for labeling resources for cleanup, tracking, or organization.
+# Example:
+#   labels:
+#     environment: production
+#     team: platform
+#     hyperfleet-e2e-run: e2e-20260615-102422-bb5nfo2d
+# labels: {}
+
 # -- Pod-level security context
 podSecurityContext:
   # -- Filesystem group for volume mounts
