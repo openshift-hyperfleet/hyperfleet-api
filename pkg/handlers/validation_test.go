@@ -561,6 +561,104 @@ func TestValidateConditions_MultipleIssues(t *testing.T) {
 	Expect(err.Reason).To(ContainSubstring(api.AdapterConditionTypeAvailable)) // Type of the invalid condition
 }
 
+func TestValidateLabels_Valid(t *testing.T) {
+	RegisterTestingT(t)
+
+	validCases := []map[string]string{
+		nil,                                  // nil labels: always valid
+		{},                                   // empty map
+		{"env": "prod"},                      // simple key/value
+		{"app": ""},                          // empty value is valid (Kubernetes allows it)
+		{"my-key": "my-value"},               // hyphens
+		{"key.with.dots": "value.with.dots"}, // dots
+		{"key_with_underscores": "val_underscore"}, // underscores
+		{"A1": "B2"},                         // uppercase
+		{"app.kubernetes.io/name": "my-app"}, // prefixed key
+		{"a": "b"},                           // single char key and value
+		{"123": "456"},                       // numeric keys/values
+	}
+
+	for _, labels := range validCases {
+		req := openapi.ClusterCreateRequest{Labels: &labels}
+		if labels == nil {
+			req = openapi.ClusterCreateRequest{}
+		}
+		validator := validateLabels(&req, "Labels")
+		err := validator()
+		Expect(err).To(BeNil(), "Expected labels %v to be valid", labels)
+	}
+}
+
+func TestValidateLabels_InvalidKeys(t *testing.T) {
+	RegisterTestingT(t)
+
+	invalidKeys := []string{
+		"",                                   // empty key not allowed
+		"<script>alert(xss)</script>",        // XSS payload
+		"../../etc/passwd",                   // path traversal
+		"<img src=x onerror=alert(1)>",       // HTML injection
+		"key with spaces",                    // spaces not allowed
+		"-starts-with-hyphen",                // key cannot start with hyphen
+		"ends-with-hyphen-",                  // key cannot end with hyphen
+		"key/with/two/slashes",               // only one slash (prefix separator) allowed
+		"/missing-prefix",                    // slash with no prefix
+		"key\x00null",                        // null byte
+		"APP.io/name",                        // uppercase in DNS prefix
+		"my_app.io/name",                     // underscore in DNS prefix
+		strings.Repeat("a", 64) + ".io/name", // prefix DNS segment exceeds 63 chars
+		strings.Repeat("a", 64),              // name without prefix exceeds 63 chars
+	}
+
+	for _, k := range invalidKeys {
+		labels := map[string]string{k: "valid-value"}
+		req := openapi.ClusterCreateRequest{Labels: &labels}
+		validator := validateLabels(&req, "Labels")
+		err := validator()
+		Expect(err).ToNot(BeNil(), "Expected key %q to be invalid", k)
+		Expect(err.Reason).To(ContainSubstring("label validation failed"))
+	}
+}
+
+func TestValidateLabels_InvalidValues(t *testing.T) {
+	RegisterTestingT(t)
+
+	invalidValues := []string{
+		"value with spaces",                      // spaces not allowed
+		"-starts-with-hyphen",                    // value cannot start with hyphen
+		"ends-with-hyphen-",                      // value cannot end with hyphen
+		string(make([]byte, maxLabelValueLen+1)), // exceeds 63 chars
+	}
+
+	for _, v := range invalidValues {
+		labels := map[string]string{"valid-key": v}
+		req := openapi.ClusterCreateRequest{Labels: &labels}
+		validator := validateLabels(&req, "Labels")
+		err := validator()
+		Expect(err).ToNot(BeNil(), "Expected value %q to be invalid", v)
+		Expect(err.Reason).To(ContainSubstring("label validation failed"))
+	}
+}
+
+func TestValidateLabels_NilLabels(t *testing.T) {
+	RegisterTestingT(t)
+
+	req := openapi.ClusterCreateRequest{}
+	validator := validateLabels(&req, "Labels")
+	err := validator()
+	Expect(err).To(BeNil())
+}
+
+func TestValidateLabels_WorksOnPatchRequest(t *testing.T) {
+	RegisterTestingT(t)
+
+	labels := map[string]string{"<xss>": "payload"}
+	patch := api.ClusterPatchRequest{Labels: &labels}
+	validator := validateLabels(&patch, "Labels")
+	err := validator()
+	Expect(err).ToNot(BeNil())
+	Expect(err.Reason).To(ContainSubstring("label validation failed"))
+}
+
 func TestValidateConditions_EmptyConditions(t *testing.T) {
 	RegisterTestingT(t)
 

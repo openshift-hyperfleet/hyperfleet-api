@@ -170,6 +170,7 @@ func (h ClusterNodePoolsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		MarshalInto: &patch,
 		Validate: []validate{
 			validatePatchRequest(&patch),
+			validateLabels(&patch, "Labels"),
 		},
 		Action: func() (interface{}, *errors.ServiceError) {
 			ctx := r.Context()
@@ -208,6 +209,7 @@ func (h ClusterNodePoolsHandler) Create(w http.ResponseWriter, r *http.Request) 
 			validateName(&req, "Name", "name", 3, 15),
 			validateKind(&req, "Kind", "kind", "NodePool"),
 			validateSpec(&req, "Spec", "spec"),
+			validateLabels(&req, "Labels"),
 		},
 		Action: func() (interface{}, *errors.ServiceError) {
 			ctx := r.Context()
