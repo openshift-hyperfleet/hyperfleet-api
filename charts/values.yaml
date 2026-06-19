@@ -234,7 +234,7 @@ podLabels: {}
 #     environment: production
 #     team: platform
 #     hyperfleet-e2e-run: e2e-20260615-102422-bb5nfo2d
-# labels: {}
+labels: {}
 
 # -- Pod-level security context
 podSecurityContext:
