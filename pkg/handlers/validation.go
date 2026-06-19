@@ -1,8 +1,10 @@
 package handlers
 
 import (
+	"fmt"
 	"reflect"
 	"regexp"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/google/uuid"
@@ -11,7 +13,52 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 )
 
-const maxReasonLength = 1024
+const (
+	maxReasonLength  = 1024
+	maxLabelKeyLen   = 317 // 253-char prefix + "/" + 63-char name
+	maxLabelValueLen = 63
+)
+
+// dnsLabelPattern matches a single DNS label segment in a Kubernetes label key prefix:
+// lowercase alphanumeric with hyphens, must start and end with alphanumeric.
+var dnsLabelPattern = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`)
+
+// labelNamePattern matches the name portion of a Kubernetes label key:
+// alphanumeric (upper or lower), may contain ., _, -.
+var labelNamePattern = regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$`)
+
+// labelValuePattern enforces Kubernetes label value format: empty or alphanumeric with ._-.
+var labelValuePattern = regexp.MustCompile(`^([a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?)?$`)
+
+// isValidLabelKey validates a Kubernetes label key: optional DNS subdomain prefix (lowercase,
+// dot-separated, each segment <=63 chars, total <=253) + "/" + required name (<=63 chars).
+func isValidLabelKey(k string) bool {
+	if len(k) == 0 || len(k) > maxLabelKeyLen {
+		return false
+	}
+	prefix, name, hasPrefix := strings.Cut(k, "/")
+	if hasPrefix {
+		if !isValidLabelKeyPrefix(prefix) {
+			return false
+		}
+	} else {
+		name = prefix
+	}
+	return len(name) > 0 && len(name) <= 63 && labelNamePattern.MatchString(name)
+}
+
+// isValidLabelKeyPrefix validates the DNS subdomain prefix of a Kubernetes label key.
+func isValidLabelKeyPrefix(s string) bool {
+	if len(s) == 0 || len(s) > 253 {
+		return false
+	}
+	for _, seg := range strings.Split(s, ".") {
+		if len(seg) == 0 || len(seg) > 63 || !dnsLabelPattern.MatchString(seg) {
+			return false
+		}
+	}
+	return true
+}
 
 func validatePathID(id, name string) *errors.ServiceError {
 	if _, err := uuid.Parse(id); err != nil {
@@ -160,6 +207,57 @@ func validateSpec(i interface{}, fieldName string, field string) validate { //no
 			return errors.Validation("%s is required", field)
 		}
 
+		return nil
+	}
+}
+
+// validateLabels validates that all label keys and values conform to Kubernetes label format.
+// Keys must match Kubernetes label key format (optional prefix/name).
+// Values must be empty or match the same alphanumeric-with-._- pattern, max 63 chars.
+// This catches XSS payloads, path traversal, null bytes, and other invalid inputs.
+//
+//nolint:unparam // fieldName is kept as parameter for flexibility even though currently only "Labels" is used
+func validateLabels(i interface{}, fieldName string) validate {
+	return func() *errors.ServiceError {
+		value := reflect.ValueOf(i).Elem().FieldByName(fieldName)
+		if value.Kind() == reflect.Ptr {
+			if value.IsNil() {
+				return nil
+			}
+			value = value.Elem()
+		}
+		if !value.IsValid() {
+			return nil
+		}
+
+		labels, ok := value.Interface().(map[string]string)
+		if !ok {
+			return nil
+		}
+
+		var details []errors.ValidationDetail
+		for k, v := range labels {
+			if !isValidLabelKey(k) {
+				details = append(details, errors.ValidationDetail{
+					Field:      "labels",
+					Value:      k,
+					Constraint: "pattern",
+					Message:    "label key must match Kubernetes label format (optional DNS prefix/name, alphanumeric with ._-)",
+				})
+			}
+			if len(v) > maxLabelValueLen || !labelValuePattern.MatchString(v) {
+				details = append(details, errors.ValidationDetail{
+					Field:      fmt.Sprintf("labels[%s]", k),
+					Value:      v,
+					Constraint: "pattern",
+					Message:    fmt.Sprintf("label value must be at most %d chars (alphanumeric with ._-)", maxLabelValueLen),
+				})
+			}
+		}
+
+		if len(details) > 0 {
+			return errors.ValidationWithDetails("label validation failed", details)
+		}
 		return nil
 	}
 }

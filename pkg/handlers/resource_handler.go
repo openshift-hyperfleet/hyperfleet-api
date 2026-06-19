@@ -35,6 +35,7 @@ func (h *ResourceHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Validate: []validate{
 			validateKind(&req, "Kind", "kind", h.descriptor.Kind),
 			validateSpec(&req, "Spec", "spec"),
+			validateLabels(&req, "Labels"),
 		},
 		Action: func() (interface{}, *errors.ServiceError) {
 			resource, err := presenters.ConvertResource(&req)
@@ -91,6 +92,7 @@ func (h *ResourceHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		MarshalInto: &patch,
 		Validate: []validate{
 			validatePatchRequest(&patch),
+			validateLabels(&patch, "Labels"),
 		},
 		Action: func() (interface{}, *errors.ServiceError) {
 			id := mux.Vars(r)["id"]
@@ -127,6 +129,7 @@ func (h *ResourceHandler) CreateWithOwner(w http.ResponseWriter, r *http.Request
 		Validate: []validate{
 			validateKind(&req, "Kind", "kind", h.descriptor.Kind),
 			validateSpec(&req, "Spec", "spec"),
+			validateLabels(&req, "Labels"),
 		},
 		Action: func() (interface{}, *errors.ServiceError) {
 			ctx := r.Context()
@@ -209,6 +212,7 @@ func (h *ResourceHandler) PatchByOwner(w http.ResponseWriter, r *http.Request) {
 		MarshalInto: &patch,
 		Validate: []validate{
 			validatePatchRequest(&patch),
+			validateLabels(&patch, "Labels"),
 		},
 		Action: func() (interface{}, *errors.ServiceError) {
 			vars := mux.Vars(r)

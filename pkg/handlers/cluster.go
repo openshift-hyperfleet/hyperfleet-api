@@ -35,6 +35,7 @@ func (h ClusterHandler) Create(w http.ResponseWriter, r *http.Request) {
 			validateName(&req, "Name", "name", 3, 53),
 			validateKind(&req, "Kind", "kind", "Cluster"),
 			validateSpec(&req, "Spec", "spec"),
+			validateLabels(&req, "Labels"),
 		},
 		Action: func() (interface{}, *errors.ServiceError) {
 			ctx := r.Context()
@@ -66,6 +67,7 @@ func (h ClusterHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		MarshalInto: &patch,
 		Validate: []validate{
 			validatePatchRequest(&patch),
+			validateLabels(&patch, "Labels"),
 		},
 		Action: func() (interface{}, *errors.ServiceError) {
 			ctx := r.Context()
