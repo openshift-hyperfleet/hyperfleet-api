@@ -3,7 +3,7 @@ adapterConfig:
   files:
     adapter-config.yaml: examples/kubernetes/adapter-config.yaml
   log:
-    level: debug
+    level: info
 
 adapterTaskConfig:
   create: true
