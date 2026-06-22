@@ -222,6 +222,68 @@ ci-test-integration: install $(GOTESTSUM) ## Run integration tests with JSON out
 .PHONY: test-all
 test-all: lint test test-integration test-helm ## Run all checks (lint, unit, integration, helm)
 
+.PHONY: test-coverage
+test-coverage: ## Run unit tests with coverage (excludes generated code)
+	@echo "Running unit tests with coverage..."
+	@$(MAKE) test TESTFLAGS="-coverprofile=coverage.out -covermode=atomic -count=1"
+	@if [ -f coverage.out ]; then \
+		echo "Filtering out generated code (mocks, openapi) from coverage..."; \
+		grep -v -E '(_mock\.go|/mocks/|/openapi/)' coverage.out > coverage-filtered.out || true; \
+		mv coverage-filtered.out coverage.out; \
+	fi
+	@echo ""
+	@if [ -f coverage.out ]; then \
+		echo ""; \
+		echo "Coverage summary (excluding generated code):"; \
+		echo "Total Coverage: $$(go tool cover -func=coverage.out | tail -1 | awk '{print $$3}')"; \
+		echo ""; \
+		echo "To view detailed HTML coverage report, run: make coverage-html"; \
+	else \
+		echo "No coverage file generated."; \
+	fi
+
+.PHONY: test-coverage-integration
+test-coverage-integration: ## Run integration tests with coverage (excludes generated code)
+	@echo "Running integration tests with coverage..."
+	@$(MAKE) test-integration TESTFLAGS="-coverprofile=coverage-integration.out -covermode=atomic -coverpkg=./pkg/...,./cmd/... -count=1"
+	@if [ -f coverage-integration.out ]; then \
+		echo "Filtering out generated code (mocks, openapi) from coverage..."; \
+		grep -v -E '(_mock\.go|/mocks/|/openapi/)' coverage-integration.out > coverage-integration-filtered.out || true; \
+		mv coverage-integration-filtered.out coverage-integration.out; \
+	fi
+	@echo ""
+	@if [ -f coverage-integration.out ]; then \
+		echo ""; \
+		echo "Coverage summary (excluding generated code):"; \
+		echo "Total Coverage: $$(go tool cover -func=coverage-integration.out | tail -1 | awk '{print $$3}')"; \
+		echo ""; \
+		echo "To view detailed HTML coverage report, run: make coverage-integration-html"; \
+	fi
+
+.PHONY: coverage-html
+coverage-html: ## Open HTML coverage report for unit tests
+	@if [ ! -f coverage.out ]; then \
+		echo "No coverage.out file found. Run 'make test-coverage' first."; \
+		exit 1; \
+	fi
+	@echo "Opening coverage report in browser..."
+	@go tool cover -html=coverage.out
+
+.PHONY: coverage-integration-html
+coverage-integration-html: ## Open HTML coverage report for integration tests
+	@if [ ! -f coverage-integration.out ]; then \
+		echo "No coverage-integration.out file found. Run 'make test-coverage-integration' first."; \
+		exit 1; \
+	fi
+	@echo "Opening coverage report in browser..."
+	@go tool cover -html=coverage-integration.out
+
+.PHONY: coverage-clean
+coverage-clean: ## Remove all coverage files
+	@echo "Cleaning coverage files..."
+	@rm -f coverage.out coverage-integration.out coverage-unfiltered.out
+	@echo "Coverage files removed."
+
 ##@ Agent Verification
 
 .PHONY: verify-all

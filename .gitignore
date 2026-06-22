@@ -27,7 +27,12 @@
 # Ignore master key for decrypting credentials and more.
 /config/master.key
 
+# Coverage files
 /coverage
+coverage.out
+coverage-integration.out
+coverage-filtered.out
+coverage-integration-filtered.out
 
 # Ignore built binaries
 /bin/
