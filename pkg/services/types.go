@@ -100,7 +100,7 @@ func NewListArguments(params url.Values) (*ListArguments, *errors.ServiceError) 
 		// Filter out empty tokens from malformed input like "name,,created_time"
 		for _, field := range rawFields {
 			if trimmed := strings.TrimSpace(field); trimmed != "" {
-				listArgs.OrderBy = append(listArgs.OrderBy, trimmed)
+				listArgs.OrderBy = append(listArgs.OrderBy, strings.Join(strings.Fields(trimmed), " "))
 			}
 		}
 	}

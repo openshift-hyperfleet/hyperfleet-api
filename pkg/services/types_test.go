@@ -106,6 +106,16 @@ func TestNewListArguments_OrderBy(t *testing.T) {
 			queryParams:     url.Values{"orderBy": []string{"name   asc"}, "order": []string{"desc"}},
 			expectedOrderBy: []string{"name asc"},
 		},
+		{
+			name:            "order=asc without orderBy - should be ignored, use default",
+			queryParams:     url.Values{"order": []string{"asc"}},
+			expectedOrderBy: []string{"created_time desc"},
+		},
+		{
+			name:            "order=desc without orderBy - should be ignored, use default",
+			queryParams:     url.Values{"order": []string{"desc"}},
+			expectedOrderBy: []string{"created_time desc"},
+		},
 	}
 
 	for _, tt := range tests {
