@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"regexp"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/google/uuid"
@@ -14,9 +15,11 @@ import (
 )
 
 const (
-	maxReasonLength  = 1024
-	maxLabelKeyLen   = 317 // 253-char prefix + "/" + 63-char name
-	maxLabelValueLen = 63
+	maxReasonLength     = 1024
+	maxLabelKeyLen      = 317 // 253-char prefix + "/" + 63-char name
+	maxLabelValueLen    = 63
+	maxObservedTimeSkew = 5 * time.Minute  // tolerance for clock skew between adapter pods and API server
+	maxObservedTimeAge  = 30 * time.Minute // matches Sentinel staleness health check window
 )
 
 // dnsLabelPattern matches a single DNS label segment in a Kubernetes label key prefix:
@@ -329,6 +332,24 @@ func validateConditions(i interface{}, fieldName string) validate {
 					cond.Status, idx, cond.Type,
 				)
 			}
+		}
+		return nil
+	}
+}
+
+// validateObservedTimeRange rejects observed_time values that are more than maxObservedTimeSkew in
+// the future or more than maxObservedTimeAge in the past — see HYPERFLEET-1239.
+func validateObservedTimeRange(t *time.Time) validate {
+	return func() *errors.ServiceError {
+		if t == nil || t.IsZero() {
+			return nil
+		}
+		now := time.Now()
+		if t.After(now.Add(maxObservedTimeSkew)) {
+			return errors.Validation("observed_time must not be more than %s in the future", maxObservedTimeSkew)
+		}
+		if t.Before(now.Add(-maxObservedTimeAge)) {
+			return errors.Validation("observed_time must not be more than %s in the past", maxObservedTimeAge)
 		}
 		return nil
 	}

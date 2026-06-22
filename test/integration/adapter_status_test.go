@@ -1109,6 +1109,121 @@ func TestClusterStatusPut_InvalidStatusRejected(t *testing.T) {
 	}
 }
 
+// TestClusterStatusPut_SlightlyFutureObservedTimeAccepted verifies clock skew tolerance works
+func TestClusterStatusPut_SlightlyFutureObservedTimeAccepted(t *testing.T) {
+	h, client := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+
+	cluster, err := h.Factories.NewClusters(h.NewID())
+	Expect(err).NotTo(HaveOccurred())
+
+	statusInput := openapi.AdapterStatusCreateRequest{
+		Adapter:            "test-adapter-skew",
+		ObservedGeneration: cluster.Generation,
+		ObservedTime:       time.Now().Add(2 * time.Minute),
+		Conditions: []openapi.ConditionRequest{
+			{Type: api.AdapterConditionTypeAvailable, Status: openapi.AdapterConditionStatusTrue},
+			{Type: api.AdapterConditionTypeApplied, Status: openapi.AdapterConditionStatusTrue},
+			{Type: api.AdapterConditionTypeHealth, Status: openapi.AdapterConditionStatusTrue},
+		},
+	}
+
+	resp, err := client.PutClusterStatusesWithResponse(
+		ctx, cluster.ID,
+		openapi.PutClusterStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
+	)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(resp.StatusCode()).To(Equal(http.StatusCreated),
+		"observed_time 2 minutes in the future should be accepted (within 5 minute tolerance)")
+	Expect(resp.JSON201).NotTo(BeNil())
+}
+
+// TestClusterStatusPut_FutureRejectedThenCurrentAccepted verifies no state leaks from
+// a rejected future-time request (HYPERFLEET-1239)
+func TestClusterStatusPut_FutureRejectedThenCurrentAccepted(t *testing.T) {
+	h, client := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+
+	cluster, err := h.Factories.NewClusters(h.NewID())
+	Expect(err).NotTo(HaveOccurred())
+
+	conditions := []openapi.ConditionRequest{
+		{Type: api.AdapterConditionTypeAvailable, Status: openapi.AdapterConditionStatusTrue},
+		{Type: api.AdapterConditionTypeApplied, Status: openapi.AdapterConditionStatusTrue},
+		{Type: api.AdapterConditionTypeHealth, Status: openapi.AdapterConditionStatusTrue},
+	}
+
+	// Step 1: Rejected (future timestamp)
+	futureReq := openapi.AdapterStatusCreateRequest{
+		Adapter:            "seq-adapter",
+		ObservedGeneration: cluster.Generation,
+		ObservedTime:       time.Now().Add(10 * time.Minute),
+		Conditions:         conditions,
+	}
+	resp1, err := client.PutClusterStatusesWithResponse(
+		ctx, cluster.ID,
+		openapi.PutClusterStatusesJSONRequestBody(futureReq), test.WithAuthToken(ctx),
+	)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(resp1.StatusCode()).To(Equal(http.StatusBadRequest),
+		"Future timestamp should be rejected")
+	Expect(string(resp1.Body)).To(ContainSubstring("observed_time must not be more than"))
+
+	// Verify no status record was created by the rejected request
+	listResp, err := client.GetClusterStatusesWithResponse(ctx, cluster.ID, nil, test.WithAuthToken(ctx))
+	Expect(err).NotTo(HaveOccurred())
+	Expect(listResp.JSON200.Total).To(Equal(int32(0)),
+		"No adapter status should be created when observed_time is rejected")
+
+	// Step 2: Accepted (current timestamp, same adapter name)
+	validReq := newAdapterStatusRequest("seq-adapter", cluster.Generation, conditions, nil)
+	resp2, err := client.PutClusterStatusesWithResponse(
+		ctx, cluster.ID,
+		openapi.PutClusterStatusesJSONRequestBody(validReq), test.WithAuthToken(ctx),
+	)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(resp2.StatusCode()).To(Equal(http.StatusCreated),
+		"Current observed_time should be accepted after a rejected future request")
+	Expect(resp2.JSON201).NotTo(BeNil())
+	Expect(resp2.JSON201.Adapter).To(Equal("seq-adapter"))
+}
+
+// TestNodePoolStatusPut_FutureObservedTimeRejected tests the nodepool endpoint also rejects
+// future observed_time (HYPERFLEET-1239)
+func TestNodePoolStatusPut_FutureObservedTimeRejected(t *testing.T) {
+	h, client := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+
+	nodePool, err := h.Factories.NewNodePools(h.NewID())
+	Expect(err).NotTo(HaveOccurred())
+
+	statusInput := openapi.AdapterStatusCreateRequest{
+		Adapter:            "test-nodepool-adapter",
+		ObservedGeneration: 1,
+		ObservedTime:       time.Now().Add(10 * time.Minute),
+		Conditions: []openapi.ConditionRequest{
+			{Type: api.AdapterConditionTypeAvailable, Status: openapi.AdapterConditionStatusTrue},
+			{Type: api.AdapterConditionTypeApplied, Status: openapi.AdapterConditionStatusTrue},
+			{Type: api.AdapterConditionTypeHealth, Status: openapi.AdapterConditionStatusTrue},
+		},
+	}
+
+	resp, err := client.PutNodePoolStatusesWithResponse(
+		ctx, nodePool.OwnerID, nodePool.ID,
+		openapi.PutNodePoolStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
+	)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(resp.StatusCode()).To(Equal(http.StatusBadRequest),
+		"Expected 400 for observed_time 10 minutes in the future on nodepool endpoint")
+	Expect(string(resp.Body)).To(ContainSubstring("observed_time must not be more than"))
+}
+
 // TestNodePoolStatusPut_InvalidStatusRejected tests that nodepool endpoint also rejects invalid status values
 func TestNodePoolStatusPut_InvalidStatusRejected(t *testing.T) {
 	h, client := test.RegisterIntegration(t)
