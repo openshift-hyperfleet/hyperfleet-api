@@ -139,13 +139,13 @@ helm install hyperfleet-api oci://REGISTRY/hyperfleet-api \
 | podDisruptionBudget | object | `{"enabled":false,"minAvailable":1}` | PodDisruptionBudget configuration |
 | podDisruptionBudget.enabled | bool | `false` | Enable the PDB |
 | podDisruptionBudget.minAvailable | int | `1` | Minimum number of available pods during disruption |
-| database | object | `{"external":{"enabled":false,"secretName":""},"postgresql":{"database":"hyperfleet","enabled":true,"image":"docker.io/library/postgres:14.2","password":"hyperfleet-dev-password","persistence":{"enabled":false,"size":"1Gi","storageClass":""},"port":5432,"resources":{"limits":{"cpu":"500m","memory":"512Mi"},"requests":{"cpu":"100m","memory":"128Mi"}},"user":"hyperfleet"}}` | Database infrastructure settings. For **production**, set `database.external.enabled=true` and supply a secret with connection details. For **development**, the built-in PostgreSQL pod is enabled by default. |
+| database | object | `{"external":{"enabled":false,"secretName":""},"postgresql":{"database":"hyperfleet","enabled":true,"image":"docker.io/library/postgres:14.23","password":"hyperfleet-dev-password","persistence":{"enabled":false,"size":"1Gi","storageClass":""},"port":5432,"resources":{"limits":{"cpu":"500m","memory":"512Mi"},"requests":{"cpu":"100m","memory":"128Mi"}},"user":"hyperfleet"}}` | Database infrastructure settings. For **production**, set `database.external.enabled=true` and supply a secret with connection details. For **development**, the built-in PostgreSQL pod is enabled by default. |
 | database.external | object | `{"enabled":false,"secretName":""}` | External database configuration (production) |
 | database.external.enabled | bool | `false` | Use an external database instead of the built-in PostgreSQL |
 | database.external.secretName | string | `""` | Name of an existing Secret with keys: `db.host`, `db.port`, `db.name`, `db.user`, `db.password` |
-| database.postgresql | object | `{"database":"hyperfleet","enabled":true,"image":"docker.io/library/postgres:14.2","password":"hyperfleet-dev-password","persistence":{"enabled":false,"size":"1Gi","storageClass":""},"port":5432,"resources":{"limits":{"cpu":"500m","memory":"512Mi"},"requests":{"cpu":"100m","memory":"128Mi"}},"user":"hyperfleet"}` | Built-in PostgreSQL for development and testing |
+| database.postgresql | object | `{"database":"hyperfleet","enabled":true,"image":"docker.io/library/postgres:14.23","password":"hyperfleet-dev-password","persistence":{"enabled":false,"size":"1Gi","storageClass":""},"port":5432,"resources":{"limits":{"cpu":"500m","memory":"512Mi"},"requests":{"cpu":"100m","memory":"128Mi"}},"user":"hyperfleet"}` | Built-in PostgreSQL for development and testing |
 | database.postgresql.enabled | bool | `true` | Deploy a single-pod PostgreSQL instance |
-| database.postgresql.image | string | `"docker.io/library/postgres:14.2"` | PostgreSQL container image |
+| database.postgresql.image | string | `"docker.io/library/postgres:14.23"` | PostgreSQL container image |
 | database.postgresql.database | string | `"hyperfleet"` | Database name |
 | database.postgresql.user | string | `"hyperfleet"` | Database user |
 | database.postgresql.password | string | `"hyperfleet-dev-password"` | Database password (**development only** — use a Secret in production) |

@@ -62,7 +62,7 @@ db_port := 5432
 db_user := hyperfleet
 db_password := foobar-bizz-buzz
 db_sslmode := disable
-db_image ?= docker.io/library/postgres:14.2
+db_image ?= docker.io/library/postgres:14.23
 
 # Test output files
 unit_test_json_output ?= ${PWD}/unit-test-results.json

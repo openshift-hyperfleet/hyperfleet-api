@@ -66,7 +66,7 @@ func (f *Testcontainer) Init(config *config.DatabaseConfig) {
 
 	// Create PostgreSQL container
 	container, err := postgres.Run(ctx,
-		"postgres:14.2",
+		"postgres:14.23",
 		postgres.WithDatabase(config.Name),
 		postgres.WithUsername(config.Username),
 		postgres.WithPassword(config.Password),
