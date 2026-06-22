@@ -110,8 +110,7 @@ func NewListArguments(params url.Values) (*ListArguments, *errors.ServiceError) 
 		if v != "asc" && v != "desc" {
 			return nil, errors.New(
 				errors.CodeValidationFormat,
-				"Invalid order parameter: must be 'asc' or 'desc', got '%s'",
-				v,
+				"Invalid order parameter: must be 'asc' or 'desc'",
 			)
 		}
 		// Apply order direction to fields without explicit direction and filter out empty tokens
