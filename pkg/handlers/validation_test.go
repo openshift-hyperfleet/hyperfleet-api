@@ -3,6 +3,7 @@ package handlers
 import (
 	"strings"
 	"testing"
+	"time"
 
 	. "github.com/onsi/gomega"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
@@ -668,4 +669,106 @@ func TestValidateConditions_EmptyConditions(t *testing.T) {
 	validator := validateConditions(&req, "Conditions")
 	err := validator()
 	Expect(err).To(BeNil(), "Expected empty conditions to be valid")
+}
+
+func TestValidateObservedTimeRange(t *testing.T) {
+	now := time.Now()
+	testCases := []struct {
+		observedTime time.Time
+		name         string
+		expectError  bool
+	}{
+		{
+			name:         "zero time is valid (skipped)",
+			observedTime: time.Time{},
+			expectError:  false,
+		},
+		{
+			name:         "current time is valid",
+			observedTime: now,
+			expectError:  false,
+		},
+		{
+			name:         "2 minutes in the future is valid (within tolerance)",
+			observedTime: now.Add(2 * time.Minute),
+			expectError:  false,
+		},
+		{
+			name:         "4 minutes in the future is valid (within tolerance)",
+			observedTime: now.Add(4 * time.Minute),
+			expectError:  false,
+		},
+		{
+			name:         "just inside 5 minutes in the future is valid (boundary)",
+			observedTime: now.Add(5*time.Minute - 1*time.Second),
+			expectError:  false,
+		},
+		{
+			name:         "just over 5 minutes in the future is rejected (boundary)",
+			observedTime: now.Add(5*time.Minute + 1*time.Second),
+			expectError:  true,
+		},
+		{
+			name:         "10 minutes in the future is rejected",
+			observedTime: now.Add(10 * time.Minute),
+			expectError:  true,
+		},
+		{
+			name:         "far future (year 2099) is rejected",
+			observedTime: time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC),
+			expectError:  true,
+		},
+		{
+			name:         "10 minutes in the past is valid (within 30 min tolerance)",
+			observedTime: now.Add(-10 * time.Minute),
+			expectError:  false,
+		},
+		{
+			name:         "29 minutes in the past is valid (within tolerance)",
+			observedTime: now.Add(-29 * time.Minute),
+			expectError:  false,
+		},
+		{
+			name:         "just inside 30 minutes in the past is valid (boundary)",
+			observedTime: now.Add(-30*time.Minute + 1*time.Second),
+			expectError:  false,
+		},
+		{
+			name:         "just over 30 minutes in the past is rejected (boundary)",
+			observedTime: now.Add(-30*time.Minute - 1*time.Second),
+			expectError:  true,
+		},
+		{
+			name:         "1 hour in the past is rejected",
+			observedTime: now.Add(-1 * time.Hour),
+			expectError:  true,
+		},
+		{
+			name:         "far past (year 2000) is rejected",
+			observedTime: time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC),
+			expectError:  true,
+		},
+	}
+
+	t.Run("nil pointer is valid (no panic)", func(t *testing.T) {
+		RegisterTestingT(t)
+		validator := validateObservedTimeRange(nil)
+		err := validator()
+		Expect(err).To(BeNil())
+	})
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			RegisterTestingT(t)
+			observedTime := tc.observedTime
+			validator := validateObservedTimeRange(&observedTime)
+			err := validator()
+			if tc.expectError {
+				Expect(err).ToNot(BeNil(), "Expected error for: %s", tc.name)
+				Expect(err.Reason).To(ContainSubstring("observed_time must not be more than"))
+			} else {
+				Expect(err).To(BeNil(), "Expected no error for: %s", tc.name)
+			}
+		})
+	}
 }

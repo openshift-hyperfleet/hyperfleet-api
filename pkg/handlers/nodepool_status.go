@@ -79,6 +79,7 @@ func (h NodePoolStatusHandler) Create(w http.ResponseWriter, r *http.Request) {
 			validateNotEmpty(&req, "Adapter", "adapter"),
 			validateObservedGeneration(&req),
 			validateConditions(&req, "Conditions"),
+			validateObservedTimeRange(&req.ObservedTime),
 		},
 		Action: func() (interface{}, *errors.ServiceError) {
 			ctx := r.Context()
