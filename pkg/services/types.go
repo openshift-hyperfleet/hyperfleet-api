@@ -96,7 +96,13 @@ func NewListArguments(params url.Values) (*ListArguments, *errors.ServiceError) 
 		listArgs.Search = v
 	}
 	if v := strings.Trim(params.Get("orderBy"), " "); v != "" {
-		listArgs.OrderBy = strings.Split(v, ",")
+		rawFields := strings.Split(v, ",")
+		// Filter out empty tokens from malformed input like "name,,created_time"
+		for _, field := range rawFields {
+			if trimmed := strings.TrimSpace(field); trimmed != "" {
+				listArgs.OrderBy = append(listArgs.OrderBy, trimmed)
+			}
+		}
 	}
 
 	// Validate and apply order parameter (asc/desc direction)
@@ -111,6 +117,10 @@ func NewListArguments(params url.Values) (*ListArguments, *errors.ServiceError) 
 		// Apply order direction to all orderBy fields that don't already have a direction
 		for i, field := range listArgs.OrderBy {
 			trimmedField := strings.TrimSpace(field)
+			if trimmedField == "" {
+				// Skip empty tokens from malformed input like "name,,created_time"
+				continue
+			}
 			parts := strings.Split(trimmedField, " ")
 			if len(parts) == 1 {
 				// Field has no direction specified, apply the order parameter

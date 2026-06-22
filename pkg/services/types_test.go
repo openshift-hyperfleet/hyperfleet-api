@@ -86,6 +86,16 @@ func TestNewListArguments_OrderBy(t *testing.T) {
 			queryParams:     url.Values{"orderBy": []string{"   "}},
 			expectedOrderBy: []string{"created_time desc"},
 		},
+		{
+			name:            "orderBy with empty tokens - should filter out",
+			queryParams:     url.Values{"orderBy": []string{"name,,created_time"}},
+			expectedOrderBy: []string{"name", "created_time"},
+		},
+		{
+			name:            "orderBy with empty tokens + order parameter - should filter and apply direction",
+			queryParams:     url.Values{"orderBy": []string{"name, , status"}, "order": []string{"desc"}},
+			expectedOrderBy: []string{"name desc", "status desc"},
+		},
 	}
 
 	for _, tt := range tests {
@@ -235,9 +245,9 @@ func TestNewListArguments_Validation(t *testing.T) {
 	tests := []struct {
 		name          string
 		queryParams   url.Values
-		expectError   bool
 		errorContains string
 		errorCode     string
+		expectError   bool
 	}{
 		// Page validation tests
 		// Page boundary checks — VAL-004 (CodeValidationRange) for values outside valid range
