@@ -33,10 +33,13 @@ func (h ClusterStatusHandler) List(w http.ResponseWriter, r *http.Request) {
 		Action: func() (interface{}, *errors.ServiceError) {
 			ctx := r.Context()
 			clusterID := mux.Vars(r)["id"]
-			listArgs := services.NewListArguments(r.URL.Query())
+			listArgs, err := services.NewListArguments(r.URL.Query())
+			if err != nil {
+				return nil, err
+			}
 
 			// Verify cluster exists
-			_, err := h.clusterService.Get(ctx, clusterID)
+			_, err = h.clusterService.Get(ctx, clusterID)
 			if err != nil {
 				return nil, err
 			}

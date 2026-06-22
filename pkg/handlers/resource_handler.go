@@ -71,7 +71,10 @@ func (h *ResourceHandler) Get(w http.ResponseWriter, r *http.Request) {
 func (h *ResourceHandler) List(w http.ResponseWriter, r *http.Request) {
 	cfg := &handlerConfig{
 		Action: func() (interface{}, *errors.ServiceError) {
-			listArgs := services.NewListArguments(r.URL.Query())
+			listArgs, err := services.NewListArguments(r.URL.Query())
+			if err != nil {
+				return nil, err
+			}
 			resources, paging, err := h.service.List(r.Context(), h.descriptor.Kind, listArgs)
 			if err != nil {
 				return nil, err
@@ -189,7 +192,10 @@ func (h *ResourceHandler) ListByOwner(w http.ResponseWriter, r *http.Request) {
 				return nil, err
 			}
 
-			listArgs := services.NewListArguments(r.URL.Query())
+			listArgs, err := services.NewListArguments(r.URL.Query())
+			if err != nil {
+				return nil, err
+			}
 			resources, paging, err := h.service.ListByOwner(
 				r.Context(), h.descriptor.Kind, parentID, listArgs,
 			)

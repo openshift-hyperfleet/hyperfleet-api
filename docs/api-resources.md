@@ -685,10 +685,18 @@ All list endpoints accept the following query parameters:
 | Parameter  | Type           | Required | Default        | Constraints          |
 |------------|----------------|----------|----------------|----------------------|
 | `search`   | string         | No       | -              | TSL query syntax     |
-| `page`     | integer (int32)| No       | `1`            | -                    |
-| `pageSize` | integer (int32)| No       | `20`           | -                    |
-| `orderBy`  | string         | No       | `created_time` | -                    |
+| `page`     | integer (int32)| No       | `1`            | Must be >= 1         |
+| `pageSize` | integer (int32)| No       | `20`           | Must be between 1 and 100 |
+| `orderBy`  | string         | No       | `created_time` | Field name(s), optionally with direction |
 | `order`    | string         | No       | -              | Must be `asc` or `desc` |
+
+**Ordering behavior**:
+- `orderBy` can include direction: `?orderBy=name desc` or `?orderBy=name asc,created_time desc`
+- `order` applies default direction to fields without explicit direction: `?orderBy=name&order=desc` → sorts by `name desc`
+- Fields with explicit direction in `orderBy` are not affected by `order` parameter
+- Default ordering: `created_time desc`
+
+**Note**: Violating constraints returns a `400 Bad Request` response with [RFC 9457 Problem Details](https://datatracker.ietf.org/doc/html/rfc9457) format.
 
 ### Path Parameters
 

@@ -55,7 +55,10 @@ func handleError(r *http.Request, w http.ResponseWriter, err *errors.ServiceErro
 // If no fields are specified, it returns the original presented resource.
 // If fields are specified, it filters the resource and returns only the requested fields.
 func applyFieldFilter(r *http.Request, presented interface{}) (interface{}, *errors.ServiceError) {
-	listArgs := services.NewListArguments(r.URL.Query())
+	listArgs, err := services.NewListArguments(r.URL.Query())
+	if err != nil {
+		return nil, err
+	}
 	if listArgs.Fields != nil {
 		filtered, filterErr := presenters.FilterSingle(listArgs.Fields, presented)
 		if filterErr != nil {

@@ -4,6 +4,8 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 )
 
 // ListArguments are arguments relevant for listing objects.
@@ -21,38 +23,101 @@ type ListArguments struct {
 // Use it as a sane max
 const MaxListSize = 65500
 
+// MaxPageSize is the maximum allowed page size for pagination
+// Set to 100 to prevent excessive resource usage
+const MaxPageSize = 100
+
 // NewListArguments Create ListArguments from url query parameters with sane defaults
-func NewListArguments(params url.Values) *ListArguments {
+// Returns an error if page or size parameters are invalid (negative, non-numeric, or out of range)
+func NewListArguments(params url.Values) (*ListArguments, *errors.ServiceError) {
 	listArgs := &ListArguments{
 		Page:   1,
 		Size:   20,
 		Search: "",
 	}
+
+	// Validate page parameter
 	if v := strings.Trim(params.Get("page"), " "); v != "" {
-		if page, err := strconv.Atoi(v); err == nil {
-			listArgs.Page = page
+		page, err := strconv.Atoi(v)
+		if err != nil {
+			return nil, errors.New(
+				errors.CodeValidationFormat,
+				"Invalid page parameter: must be a positive integer",
+			)
 		}
+		if page < 1 {
+			return nil, errors.New(
+				errors.CodeValidationRange,
+				"Invalid page parameter: %d is less than 1",
+				page,
+			)
+		}
+		listArgs.Page = page
 	}
-	// Support both "size" (legacy) and "pageSize" (OpenAPI spec)
+
+	// Validate size parameter (support both "size" legacy and "pageSize" OpenAPI spec)
+	var sizeParam string
+	var sizeValue string
 	if v := strings.Trim(params.Get("pageSize"), " "); v != "" {
-		if size, err := strconv.ParseInt(v, 10, 0); err == nil {
-			listArgs.Size = size
-		}
+		sizeParam = "pageSize"
+		sizeValue = v
 	} else if v := strings.Trim(params.Get("size"), " "); v != "" {
-		if size, err := strconv.ParseInt(v, 10, 0); err == nil {
-			listArgs.Size = size
+		sizeParam = "size"
+		sizeValue = v
+	}
+
+	if sizeValue != "" {
+		size, err := strconv.ParseInt(sizeValue, 10, 64)
+		if err != nil {
+			return nil, errors.New(
+				errors.CodeValidationFormat,
+				"Invalid %s parameter: must be a positive integer",
+				sizeParam,
+			)
 		}
+		if size < 1 {
+			return nil, errors.New(
+				errors.CodeValidationRange,
+				"Invalid %s parameter: %d is less than 1",
+				sizeParam, size,
+			)
+		}
+		if size > MaxPageSize {
+			return nil, errors.New(
+				errors.CodeValidationRange,
+				"Invalid %s parameter: %d exceeds maximum allowed value of %d",
+				sizeParam, size, MaxPageSize,
+			)
+		}
+		listArgs.Size = size
 	}
-	if listArgs.Size > MaxListSize || listArgs.Size < 0 {
-		// MaxListSize is the maximum number of *parameters* that can be provided to a postgres WHERE IN clause
-		// Use it as a sane max
-		listArgs.Size = MaxListSize
-	}
+
 	if v := strings.Trim(params.Get("search"), " "); v != "" {
 		listArgs.Search = v
 	}
 	if v := strings.Trim(params.Get("orderBy"), " "); v != "" {
 		listArgs.OrderBy = strings.Split(v, ",")
+	}
+
+	// Validate and apply order parameter (asc/desc direction)
+	if v := strings.Trim(params.Get("order"), " "); v != "" {
+		if v != "asc" && v != "desc" {
+			return nil, errors.New(
+				errors.CodeValidationFormat,
+				"Invalid order parameter: must be 'asc' or 'desc', got '%s'",
+				v,
+			)
+		}
+		// Apply order direction to all orderBy fields that don't already have a direction
+		for i, field := range listArgs.OrderBy {
+			trimmedField := strings.TrimSpace(field)
+			parts := strings.Split(trimmedField, " ")
+			if len(parts) == 1 {
+				// Field has no direction specified, apply the order parameter
+				listArgs.OrderBy[i] = trimmedField + " " + v
+			}
+			// If field already has direction (e.g., "name asc"), leave it unchanged
+		}
 	}
 
 	// Set default sorting to created_time desc if orderBy not provided
@@ -78,5 +143,5 @@ func NewListArguments(params url.Values) *ListArguments {
 		}
 	}
 
-	return listArgs
+	return listArgs, nil
 }

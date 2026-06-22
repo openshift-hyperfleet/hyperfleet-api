@@ -27,7 +27,10 @@ func (h NodePoolHandler) List(w http.ResponseWriter, r *http.Request) {
 		Action: func() (interface{}, *errors.ServiceError) {
 			ctx := r.Context()
 
-			listArgs := services.NewListArguments(r.URL.Query())
+			listArgs, err := services.NewListArguments(r.URL.Query())
+			if err != nil {
+				return nil, err
+			}
 			var nodePools []api.NodePool
 			paging, err := h.generic.List(ctx, listArgs, &nodePools)
 			if err != nil {
