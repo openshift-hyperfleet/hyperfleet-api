@@ -598,6 +598,51 @@ func TestClusterNodePoolsHandler_Patch(t *testing.T) {
 	}
 }
 
+func TestClusterNodePoolsHandler_Patch_RejectsUnknownFields(t *testing.T) {
+	RegisterTestingT(t)
+
+	tests := []struct {
+		name string
+		body string
+	}{
+		{"rejects name", `{"name":"new-name","spec":{"replicas":2}}`},
+		{"rejects id", `{"id":"some-id","spec":{"replicas":2}}`},
+		{"rejects generation", `{"generation":5,"spec":{"replicas":2}}`},
+		{"rejects status", `{"status":{"phase":"Ready"},"spec":{"replicas":2}}`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			RegisterTestingT(t)
+
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			mockClusterSvc := services.NewMockClusterService(ctrl)
+			mockNodePoolSvc := services.NewMockNodePoolService(ctrl)
+			handler := NewClusterNodePoolsHandler(mockClusterSvc, mockNodePoolSvc)
+
+			reqURL := "/api/hyperfleet/v1/clusters/" + testClusterID + "/nodepools/" + testNodePoolID
+			req := httptest.NewRequest(http.MethodPatch, reqURL, strings.NewReader(tt.body))
+			req.Header.Set("Content-Type", "application/json")
+			req = mux.SetURLVars(req, map[string]string{
+				"id":          testClusterID,
+				"nodepool_id": testNodePoolID,
+			})
+
+			rr := httptest.NewRecorder()
+			handler.Patch(rr, req)
+
+			Expect(rr.Code).To(Equal(http.StatusBadRequest))
+
+			var errResp openapi.ProblemDetails
+			err := json.Unmarshal(rr.Body.Bytes(), &errResp)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(*errResp.Code).To(Equal(errors.CodeBadRequest))
+		})
+	}
+}
+
 func TestClusterNodePoolsHandler_ForceDelete(t *testing.T) {
 	RegisterTestingT(t)
 

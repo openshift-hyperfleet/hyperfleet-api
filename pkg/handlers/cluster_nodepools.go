@@ -164,13 +164,14 @@ func (h ClusterNodePoolsHandler) ForceDelete(w http.ResponseWriter, r *http.Requ
 
 // Patch patches a specific nodepool for a cluster
 func (h ClusterNodePoolsHandler) Patch(w http.ResponseWriter, r *http.Request) {
-	var patch api.NodePoolPatchRequest
+	var req openapi.NodePoolPatchRequest
 
 	cfg := &handlerConfig{
-		MarshalInto: &patch,
+		MarshalInto:     &req,
+		StrictUnmarshal: true,
 		Validate: []validate{
-			validatePatchRequest(&patch),
-			validateLabels(&patch, "Labels"),
+			validatePatchRequest(&req),
+			validateLabels(&req, "Labels"),
 		},
 		Action: func() (interface{}, *errors.ServiceError) {
 			ctx := r.Context()
@@ -182,7 +183,8 @@ func (h ClusterNodePoolsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 				return nil, err
 			}
 
-			found, err := h.nodePoolService.Patch(ctx, nodePoolID, &patch)
+			patch := convertNodePoolPatch(&req)
+			found, err := h.nodePoolService.Patch(ctx, nodePoolID, patch)
 			if err != nil {
 				return nil, err
 			}
@@ -197,6 +199,17 @@ func (h ClusterNodePoolsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 	}
 
 	handle(w, r, cfg, http.StatusOK)
+}
+
+func convertNodePoolPatch(req *openapi.NodePoolPatchRequest) *api.NodePoolPatch {
+	patch := &api.NodePoolPatch{}
+	if req.Spec != nil {
+		patch.Spec = *req.Spec
+	}
+	if req.Labels != nil {
+		patch.Labels = *req.Labels
+	}
+	return patch
 }
 
 // Create creates a new nodepool for a cluster

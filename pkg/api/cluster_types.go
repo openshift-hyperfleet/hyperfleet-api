@@ -66,11 +66,6 @@ func (c *Cluster) BeforeUpdate(tx *gorm.DB) error {
 	return nil
 }
 
-type ClusterPatchRequest struct {
-	Spec   *map[string]interface{} `json:"spec,omitempty"`
-	Labels *map[string]string      `json:"labels,omitempty"`
-}
-
 func (c *Cluster) MarkDeleted(by string, t time.Time) {
 	c.DeletedTime = &t
 	c.DeletedBy = &by
@@ -78,4 +73,9 @@ func (c *Cluster) MarkDeleted(by string, t time.Time) {
 
 func (c *Cluster) IncrementGeneration() {
 	c.Generation++
+}
+
+type ClusterPatch struct {
+	Spec   map[string]interface{}
+	Labels map[string]string
 }

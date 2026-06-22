@@ -19,7 +19,7 @@ import (
 type ResourceService interface {
 	Get(ctx context.Context, kind, id string) (*api.Resource, *errors.ServiceError)
 	Create(ctx context.Context, kind string, resource *api.Resource) (*api.Resource, *errors.ServiceError)
-	Patch(ctx context.Context, kind, id string, patch *api.ResourcePatchRequest) (*api.Resource, *errors.ServiceError)
+	Patch(ctx context.Context, kind, id string, patch *api.ResourcePatch) (*api.Resource, *errors.ServiceError)
 	Delete(ctx context.Context, kind, id string) (*api.Resource, *errors.ServiceError)
 	List(ctx context.Context, kind string, args *ListArguments) (api.ResourceList, *api.PagingMeta, *errors.ServiceError)
 	GetByOwner(ctx context.Context, kind, id, ownerID string) (*api.Resource, *errors.ServiceError)
@@ -92,7 +92,7 @@ func (s *sqlResourceService) Create(
 // to prevent concurrent modifications. Increments generation only when spec or labels actually
 // change (compared via deep JSON equality). Rejects patches on soft-deleted resources with 409.
 func (s *sqlResourceService) Patch(
-	ctx context.Context, kind, id string, patch *api.ResourcePatchRequest,
+	ctx context.Context, kind, id string, patch *api.ResourcePatch,
 ) (*api.Resource, *errors.ServiceError) {
 	if svcErr := validateKind(kind); svcErr != nil {
 		return nil, svcErr
@@ -336,20 +336,22 @@ func jsonBytesEqual(a, b []byte) bool {
 }
 
 // applyResourcePatch merges non-nil patch fields into the resource by marshaling them to JSON.
-func applyResourcePatch(resource *api.Resource, patch *api.ResourcePatchRequest) error {
+func applyResourcePatch(resource *api.Resource, patch *api.ResourcePatch) error {
 	if patch.Spec != nil {
-		specJSON, err := json.Marshal(*patch.Spec)
+		specJSON, err := json.Marshal(patch.Spec)
 		if err != nil {
 			return fmt.Errorf("failed to marshal resource spec: %w", err)
 		}
 		resource.Spec = specJSON
 	}
 	if patch.Labels != nil {
-		labelsJSON, err := json.Marshal(*patch.Labels)
+		labelsJSON, err := json.Marshal(patch.Labels)
 		if err != nil {
 			return fmt.Errorf("failed to marshal resource labels: %w", err)
 		}
 		resource.Labels = labelsJSON
 	}
+	// TODO: handle patch.References — three-way semantics (nil=skip, {}=clear, map=replace)
+	// via dao.ReplaceReferences per generic-resource-registry-design.md §9.2
 	return nil
 }

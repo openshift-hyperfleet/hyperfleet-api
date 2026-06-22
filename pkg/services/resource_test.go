@@ -405,7 +405,7 @@ func TestResourceService_Patch_SpecChanged_IncrementsGeneration(t *testing.T) {
 	mockDao.addResource(existing)
 
 	newSpec := map[string]interface{}{"key": "new-value"}
-	patch := &api.ResourcePatchRequest{Spec: &newSpec}
+	patch := &api.ResourcePatch{Spec: newSpec}
 
 	result, svcErr := svc.Patch(context.Background(), "Channel", "ch-1", patch)
 	Expect(svcErr).To(BeNil())
@@ -424,7 +424,7 @@ func TestResourceService_Patch_LabelsChanged_IncrementsGeneration(t *testing.T) 
 	mockDao.addResource(existing)
 
 	newLabels := map[string]string{"env": "prod"}
-	patch := &api.ResourcePatchRequest{Labels: &newLabels}
+	patch := &api.ResourcePatch{Labels: newLabels}
 
 	result, svcErr := svc.Patch(context.Background(), "Channel", "ch-1", patch)
 	Expect(svcErr).To(BeNil())
@@ -444,7 +444,7 @@ func TestResourceService_Patch_NoChange_KeepsGeneration(t *testing.T) {
 	existing.Generation = 3
 	mockDao.addResource(existing)
 
-	patch := &api.ResourcePatchRequest{}
+	patch := &api.ResourcePatch{}
 
 	result, svcErr := svc.Patch(context.Background(), "Channel", "ch-1", patch)
 	Expect(svcErr).To(BeNil())
@@ -464,7 +464,7 @@ func TestResourceService_Patch_DeletedResource_409(t *testing.T) {
 	mockDao.addResource(existing)
 
 	newSpec := map[string]interface{}{"key": "new-value"}
-	patch := &api.ResourcePatchRequest{Spec: &newSpec}
+	patch := &api.ResourcePatch{Spec: newSpec}
 
 	result, svcErr := svc.Patch(context.Background(), "Channel", "ch-1", patch)
 	Expect(result).To(BeNil())
@@ -481,7 +481,7 @@ func TestResourceService_Patch_NotFound(t *testing.T) {
 	svc, _, _ := newTestResourceService(mockDao)
 
 	newSpec := map[string]interface{}{"key": "new-value"}
-	patch := &api.ResourcePatchRequest{Spec: &newSpec}
+	patch := &api.ResourcePatch{Spec: newSpec}
 
 	result, svcErr := svc.Patch(context.Background(), "Channel", "nonexistent", patch)
 	Expect(result).To(BeNil())
@@ -501,7 +501,7 @@ func TestResourceService_Patch_SaveError(t *testing.T) {
 	mockDao.saveErr = fmt.Errorf("connection refused")
 
 	newSpec := map[string]interface{}{"key": "new-value"}
-	patch := &api.ResourcePatchRequest{Spec: &newSpec}
+	patch := &api.ResourcePatch{Spec: newSpec}
 
 	result, svcErr := svc.Patch(context.Background(), "Channel", "ch-1", patch)
 	Expect(result).To(BeNil())
@@ -522,7 +522,7 @@ func TestResourceService_Patch_SetsUpdatedByFromAuthContext(t *testing.T) {
 
 	ctx := auth.SetUsernameContext(context.Background(), "new-user@test.com")
 	newSpec := map[string]interface{}{"key": "new-value"}
-	patch := &api.ResourcePatchRequest{Spec: &newSpec}
+	patch := &api.ResourcePatch{Spec: newSpec}
 
 	result, svcErr := svc.Patch(ctx, "Channel", "ch-1", patch)
 	Expect(svcErr).To(BeNil())
@@ -1030,7 +1030,7 @@ func TestResourceService_Patch_UnknownKind(t *testing.T) {
 	mockDao := newMockResourceDao()
 	svc, _, _ := newTestResourceService(mockDao)
 
-	patch := &api.ResourcePatchRequest{}
+	patch := &api.ResourcePatch{}
 	result, svcErr := svc.Patch(context.Background(), "Bogus", "id-1", patch)
 	Expect(result).To(BeNil())
 	Expect(svcErr).ToNot(BeNil())

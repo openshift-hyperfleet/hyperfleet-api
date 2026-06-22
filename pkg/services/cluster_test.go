@@ -251,7 +251,7 @@ func (m *mockNodePoolService) Create(context.Context, *api.NodePool) (*api.NodeP
 }
 
 func (m *mockNodePoolService) Patch(
-	context.Context, string, *api.NodePoolPatchRequest,
+	context.Context, string, *api.NodePoolPatch,
 ) (*api.NodePool, *errors.ServiceError) {
 	return nil, nil
 }
@@ -1709,7 +1709,7 @@ func TestClusterPatch(t *testing.T) {
 		}
 
 		newSpec := map[string]interface{}{"new": "spec"}
-		result, svcErr := service.Patch(ctx, "c1", &api.ClusterPatchRequest{Spec: &newSpec})
+		result, svcErr := service.Patch(ctx, "c1", &api.ClusterPatch{Spec: newSpec})
 
 		g.Expect(svcErr).To(BeNil())
 		g.Expect(result.Generation).To(Equal(int32(2)))
@@ -1734,7 +1734,7 @@ func TestClusterPatch(t *testing.T) {
 		}
 
 		sameSpec := map[string]interface{}{"key": "value"}
-		result, svcErr := service.Patch(ctx, "c1", &api.ClusterPatchRequest{Spec: &sameSpec})
+		result, svcErr := service.Patch(ctx, "c1", &api.ClusterPatch{Spec: sameSpec})
 
 		g.Expect(svcErr).To(BeNil())
 		g.Expect(result.Generation).To(Equal(int32(3)))
@@ -1759,7 +1759,7 @@ func TestClusterPatch(t *testing.T) {
 		}
 
 		newLabels := map[string]string{"env": "prod"}
-		result, svcErr := service.Patch(ctx, "c1", &api.ClusterPatchRequest{Labels: &newLabels})
+		result, svcErr := service.Patch(ctx, "c1", &api.ClusterPatch{Labels: newLabels})
 
 		g.Expect(svcErr).To(BeNil())
 		g.Expect(result.Generation).To(Equal(int32(2)))
@@ -1784,7 +1784,7 @@ func TestClusterPatch(t *testing.T) {
 		}
 
 		sameSpec := map[string]interface{}{"z": "last", "a": "first", "m": "middle"}
-		result, svcErr := service.Patch(ctx, "c1", &api.ClusterPatchRequest{Spec: &sameSpec})
+		result, svcErr := service.Patch(ctx, "c1", &api.ClusterPatch{Spec: sameSpec})
 
 		g.Expect(svcErr).To(BeNil())
 		g.Expect(result.Generation).To(Equal(int32(5)))
@@ -1809,7 +1809,7 @@ func TestClusterPatch(t *testing.T) {
 		}
 
 		sameLabels := map[string]string{"z": "zulu", "a": "alpha"}
-		result, svcErr := service.Patch(ctx, "c1", &api.ClusterPatchRequest{Labels: &sameLabels})
+		result, svcErr := service.Patch(ctx, "c1", &api.ClusterPatch{Labels: sameLabels})
 
 		g.Expect(svcErr).To(BeNil())
 		g.Expect(result.Generation).To(Equal(int32(4)))
@@ -1825,7 +1825,7 @@ func TestClusterPatch(t *testing.T) {
 		ctx := context.Background()
 
 		newSpec := map[string]interface{}{"a": "b"}
-		_, svcErr := service.Patch(ctx, "nonexistent", &api.ClusterPatchRequest{Spec: &newSpec})
+		_, svcErr := service.Patch(ctx, "nonexistent", &api.ClusterPatch{Spec: newSpec})
 
 		g.Expect(svcErr).NotTo(BeNil())
 		g.Expect(svcErr.HTTPCode).To(Equal(404))

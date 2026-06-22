@@ -357,32 +357,32 @@ func TestValidateSpec_Nil(t *testing.T) {
 }
 
 func TestValidatePatchRequest(t *testing.T) {
-	spec := map[string]interface{}{"key": "value"}
+	spec := openapi.ClusterSpec{"key": "value"}
 	labels := map[string]string{"env": "prod"}
 
 	testCases := []struct {
-		req         api.ClusterPatchRequest
+		req         openapi.ClusterPatchRequest
 		name        string
 		expectError bool
 	}{
 		{
 			name:        "both nil returns error",
-			req:         api.ClusterPatchRequest{},
+			req:         openapi.ClusterPatchRequest{},
 			expectError: true,
 		},
 		{
 			name:        "spec only is valid",
-			req:         api.ClusterPatchRequest{Spec: &spec},
+			req:         openapi.ClusterPatchRequest{Spec: &spec},
 			expectError: false,
 		},
 		{
 			name:        "labels only is valid",
-			req:         api.ClusterPatchRequest{Labels: &labels},
+			req:         openapi.ClusterPatchRequest{Labels: &labels},
 			expectError: false,
 		},
 		{
 			name:        "both spec and labels is valid",
-			req:         api.ClusterPatchRequest{Spec: &spec, Labels: &labels},
+			req:         openapi.ClusterPatchRequest{Spec: &spec, Labels: &labels},
 			expectError: false,
 		},
 	}
@@ -653,7 +653,7 @@ func TestValidateLabels_WorksOnPatchRequest(t *testing.T) {
 	RegisterTestingT(t)
 
 	labels := map[string]string{"<xss>": "payload"}
-	patch := api.ClusterPatchRequest{Labels: &labels}
+	patch := openapi.ClusterPatchRequest{Labels: &labels}
 	validator := validateLabels(&patch, "Labels")
 	err := validator()
 	Expect(err).ToNot(BeNil())

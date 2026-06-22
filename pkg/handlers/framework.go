@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -21,10 +22,11 @@ import (
 //	Action is the specific logic a handler must take (e.g, find an object, save an object)
 //	ErrorHandler is the way errors are returned to the client
 type handlerConfig struct {
-	MarshalInto  interface{}
-	Action       httpAction
-	ErrorHandler errorHandlerFunc
-	Validate     []validate
+	MarshalInto     interface{}
+	Action          httpAction
+	ErrorHandler    errorHandlerFunc
+	Validate        []validate
+	StrictUnmarshal bool
 }
 
 type validate func() *errors.ServiceError
@@ -71,16 +73,24 @@ func handle(w http.ResponseWriter, r *http.Request, cfg *handlerConfig, httpStat
 		cfg.ErrorHandler = handleError
 	}
 
-	bytes, err := io.ReadAll(r.Body)
+	bodyBytes, err := io.ReadAll(r.Body)
 	if err != nil {
 		handleError(r, w, errors.MalformedRequest("Unable to read request body: %s", err))
 		return
 	}
 
-	err = json.Unmarshal(bytes, &cfg.MarshalInto)
-	if err != nil {
-		handleError(r, w, errors.MalformedRequest("Invalid request format: %s", err))
-		return
+	if cfg.StrictUnmarshal {
+		dec := json.NewDecoder(bytes.NewReader(bodyBytes))
+		dec.DisallowUnknownFields()
+		if err := dec.Decode(cfg.MarshalInto); err != nil {
+			handleError(r, w, errors.BadRequest("Unknown or immutable field in request body: %s", err))
+			return
+		}
+	} else {
+		if err := json.Unmarshal(bodyBytes, &cfg.MarshalInto); err != nil {
+			handleError(r, w, errors.MalformedRequest("Invalid request format: %s", err))
+			return
+		}
 	}
 
 	for _, v := range cfg.Validate {

@@ -21,7 +21,7 @@ const defaultSystemUser = "system@hyperfleet.local"
 type ClusterService interface {
 	Get(ctx context.Context, id string) (*api.Cluster, *errors.ServiceError)
 	Create(ctx context.Context, cluster *api.Cluster) (*api.Cluster, *errors.ServiceError)
-	Patch(ctx context.Context, id string, patch *api.ClusterPatchRequest) (*api.Cluster, *errors.ServiceError)
+	Patch(ctx context.Context, id string, patch *api.ClusterPatch) (*api.Cluster, *errors.ServiceError)
 	SoftDelete(ctx context.Context, id string) (*api.Cluster, *errors.ServiceError)
 	UpdateClusterStatusFromAdapters(ctx context.Context, clusterID string) (*api.Cluster, *errors.ServiceError)
 	ProcessAdapterStatus(ctx context.Context, clusterID string, adapterStatus *api.AdapterStatus) (*api.AdapterStatus, *errors.ServiceError) // nolint:lll
@@ -87,7 +87,7 @@ func (s *sqlClusterService) Create(ctx context.Context, cluster *api.Cluster) (*
 }
 
 func (s *sqlClusterService) Patch(
-	ctx context.Context, id string, patch *api.ClusterPatchRequest,
+	ctx context.Context, id string, patch *api.ClusterPatch,
 ) (*api.Cluster, *errors.ServiceError) {
 	cluster, err := s.clusterDao.GetForUpdate(ctx, id)
 	if err != nil {
@@ -166,16 +166,16 @@ func (s *sqlClusterService) SoftDelete(ctx context.Context, id string) (*api.Clu
 	return cluster, nil
 }
 
-func applyClusterPatch(cluster *api.Cluster, patch *api.ClusterPatchRequest) error {
+func applyClusterPatch(cluster *api.Cluster, patch *api.ClusterPatch) error {
 	if patch.Spec != nil {
-		specJSON, err := json.Marshal(*patch.Spec)
+		specJSON, err := json.Marshal(patch.Spec)
 		if err != nil {
 			return fmt.Errorf("failed to marshal cluster spec: %w", err)
 		}
 		cluster.Spec = specJSON
 	}
 	if patch.Labels != nil {
-		labelsJSON, err := json.Marshal(*patch.Labels)
+		labelsJSON, err := json.Marshal(patch.Labels)
 		if err != nil {
 			return fmt.Errorf("failed to marshal cluster labels: %w", err)
 		}

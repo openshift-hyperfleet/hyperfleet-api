@@ -262,7 +262,7 @@ func TestResourceHandler_Patch(t *testing.T) {
 			id:   "ch-123",
 			body: `{"spec":{"is_default":false}}`,
 			setupMock: func(mock *services.MockResourceService) {
-				mock.EXPECT().Patch(gomock.Any(), "Channel", "ch-123", gomock.AssignableToTypeOf(&api.ResourcePatchRequest{})).
+				mock.EXPECT().Patch(gomock.Any(), "Channel", "ch-123", gomock.AssignableToTypeOf(&api.ResourcePatch{})).
 					Return(&api.Resource{
 						Meta:       api.Meta{ID: "ch-123", CreatedTime: now, UpdatedTime: now},
 						Kind:       "Channel",
@@ -280,7 +280,7 @@ func TestResourceHandler_Patch(t *testing.T) {
 			id:   "nonexistent",
 			body: `{"spec":{"is_default":false}}`,
 			setupMock: func(mock *services.MockResourceService) {
-				mock.EXPECT().Patch(gomock.Any(), "Channel", "nonexistent", gomock.AssignableToTypeOf(&api.ResourcePatchRequest{})).
+				mock.EXPECT().Patch(gomock.Any(), "Channel", "nonexistent", gomock.AssignableToTypeOf(&api.ResourcePatch{})).
 					Return(nil, errors.NotFound("Channel not found"))
 			},
 			expectedStatusCode: http.StatusNotFound,
@@ -560,7 +560,7 @@ func TestResourceHandler_PatchByOwner(t *testing.T) {
 					Return(&api.Resource{Meta: api.Meta{ID: "v-1"}, Kind: "Version",
 						Spec: datatypes.JSON(`{}`), CreatedBy: "u@t.com", UpdatedBy: "u@t.com"}, nil)
 				mock.EXPECT().Patch(gomock.Any(), "Version", "v-1",
-					gomock.AssignableToTypeOf(&api.ResourcePatchRequest{})).
+					gomock.AssignableToTypeOf(&api.ResourcePatch{})).
 					Return(&api.Resource{
 						Meta: api.Meta{ID: "v-1", CreatedTime: now, UpdatedTime: now},
 						Kind: "Version", Name: "4-17-3", Generation: 2,
