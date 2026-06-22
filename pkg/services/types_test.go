@@ -96,6 +96,16 @@ func TestNewListArguments_OrderBy(t *testing.T) {
 			queryParams:     url.Values{"orderBy": []string{"name, , status"}, "order": []string{"desc"}},
 			expectedOrderBy: []string{"name desc", "status desc"},
 		},
+		{
+			name:            "orderBy with consecutive commas + order parameter - regression test for empty token bug",
+			queryParams:     url.Values{"orderBy": []string{"name,,created_time"}, "order": []string{"desc"}},
+			expectedOrderBy: []string{"name desc", "created_time desc"},
+		},
+		{
+			name:            "orderBy with multiple spaces in field + order parameter - should normalize",
+			queryParams:     url.Values{"orderBy": []string{"name   asc"}, "order": []string{"desc"}},
+			expectedOrderBy: []string{"name asc"},
+		},
 	}
 
 	for _, tt := range tests {

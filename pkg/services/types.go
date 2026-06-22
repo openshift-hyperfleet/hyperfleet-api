@@ -114,20 +114,21 @@ func NewListArguments(params url.Values) (*ListArguments, *errors.ServiceError) 
 				v,
 			)
 		}
-		// Apply order direction to all orderBy fields that don't already have a direction
-		for i, field := range listArgs.OrderBy {
+		// Apply order direction to fields without explicit direction and filter out empty tokens
+		normalized := make([]string, 0, len(listArgs.OrderBy))
+		for _, field := range listArgs.OrderBy {
 			trimmedField := strings.TrimSpace(field)
 			if trimmedField == "" {
-				// Skip empty tokens from malformed input like "name,,created_time"
 				continue
 			}
-			parts := strings.Split(trimmedField, " ")
+			parts := strings.Fields(trimmedField)
 			if len(parts) == 1 {
-				// Field has no direction specified, apply the order parameter
-				listArgs.OrderBy[i] = trimmedField + " " + v
+				normalized = append(normalized, parts[0]+" "+v)
+				continue
 			}
-			// If field already has direction (e.g., "name asc"), leave it unchanged
+			normalized = append(normalized, strings.Join(parts, " "))
 		}
+		listArgs.OrderBy = normalized
 	}
 
 	// Set default sorting to created_time desc if orderBy not provided
