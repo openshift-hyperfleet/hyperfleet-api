@@ -315,7 +315,7 @@ database:
     # -- Deploy a single-pod PostgreSQL instance
     enabled: true
     # -- PostgreSQL container image
-    image: docker.io/library/postgres:14.2
+    image: docker.io/library/postgres:18.4
     # -- Database name
     database: hyperfleet
     # -- Database user
