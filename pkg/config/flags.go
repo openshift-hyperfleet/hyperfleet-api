@@ -29,25 +29,10 @@ func AddServerFlags(cmd *cobra.Command) {
 	cmd.Flags().String("server-https-key-file", defaults.TLS.KeyFile, "Path to TLS key file")
 	cmd.Flags().Bool("server-https-enabled", defaults.TLS.Enabled, "Enable HTTPS rather than HTTP")
 	cmd.Flags().Bool("server-jwt-enabled", defaults.JWT.Enabled, "Enable JWT authentication")
-	cmd.Flags().String("server-jwt-issuer-url", defaults.JWT.IssuerURL, "Expected JWT issuer URL for token validation")
-	cmd.Flags().String("server-jwt-audience", defaults.JWT.Audience, "Expected JWT audience (optional)")
-	cmd.Flags().String(
-		"server-jwt-identity-claim",
-		defaults.JWT.IdentityClaim,
-		"JWT claim used as request identity for audit",
-	)
-	cmd.Flags().String(
-		"server-jwt-identity-claim-pattern",
-		defaults.JWT.IdentityClaimPattern,
-		"Optional regex pattern the resolved identity claim value must match (e.g. .+@.+ for email-like values)",
-	)
-	cmd.Flags().String(
-		"server-identity-header",
-		defaults.IdentityHeader,
-		"HTTP header name for caller identity (overrides JWT claim when set); leave empty to disable",
-	)
 	cmd.Flags().String("server-jwk-cert-file", defaults.JWK.CertFile, "JWK certificate file path")
 	cmd.Flags().String("server-jwk-cert-url", defaults.JWK.CertURL, "JWK certificate URL")
+	// Note: server.jwt.configs (issuer list) is configured via YAML config file only;
+	// array-of-structs cannot be expressed as CLI flags.
 }
 
 // AddDatabaseFlags adds database configuration flags following standard naming

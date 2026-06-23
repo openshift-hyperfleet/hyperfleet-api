@@ -86,18 +86,12 @@ func (s *apiServer) routes(tracingEnabled bool) *mux.Router {
 	err = registerAPIMiddleware(apiV1Router)
 	check(err, "Failed to initialize API middleware")
 
-	identityCfg := auth.CallerIdentityConfig{
-		HeaderName: env().Config.Server.IdentityHeader,
-	}
-	if env().Config.Server.JWT.Enabled && env().Config.Server.JWT.IdentityClaim != "" {
-		identityCfg.JWTIdentityClaim = env().Config.Server.JWT.IdentityClaim
-		identityCfg.IdentityClaimPattern = env().Config.Server.JWT.IdentityClaimPattern
-	}
-	if identityCfg.JWTIdentityClaim != "" || identityCfg.HeaderName != "" {
-		callerIdentityMW, mwErr := auth.NewCallerIdentityMiddleware(identityCfg)
-		check(mwErr, "Unable to create caller identity middleware")
-		apiV1Router.Use(callerIdentityMW.ResolveCallerIdentity)
-	}
+	// Identity config is resolved per-request from context when JWT is enabled
+	// (JWTHandler stores the matched issuer's config). An empty static config is used
+	// as the fallback for non-JWT paths (dev/no-auth mode).
+	callerIdentityMW, mwErr := auth.NewCallerIdentityMiddleware(auth.CallerIdentityConfig{})
+	check(mwErr, "Unable to create caller identity middleware")
+	apiV1Router.Use(callerIdentityMW.ResolveCallerIdentity)
 
 	// Auto-discovered routes (no manual editing needed)
 	LoadDiscoveredRoutes(apiV1Router, services)

@@ -156,8 +156,8 @@ func (helper *Helper) Teardown() {
 
 func (helper *Helper) startAPIServer() {
 	ctx := context.Background()
-	// Configure JWK certificate URL for API server
-	helper.Env().Config.Server.JWK.CertURL = jwkURL
+	// Configure JWK certificate URL for the first (and only) integration test issuer
+	helper.Env().Config.Server.JWT.Configs[0].JWKCertURL = jwkURL
 	// Disable tracing for integration tests (no OTLP collector required)
 	helper.APIServer = server.NewAPIServer(false)
 	listener, err := helper.APIServer.Listen()
@@ -379,14 +379,20 @@ func WithIdentityHeader(headerName, headerValue string) openapi.RequestEditorFn 
 	}
 }
 
-// IdentityHeaderName returns the configured identity header name for integration tests.
+// IdentityHeaderName returns the identity header name configured for the first JWT issuer.
 func IdentityHeaderName() string {
-	return environments.Environment().Config.Server.IdentityHeader
+	cfgs := environments.Environment().Config.Server.JWT.Configs
+	if len(cfgs) == 0 {
+		return ""
+	}
+	return cfgs[0].Header
 }
 
 func (helper *Helper) StartJWKCertServerMock() (teardown func() error) {
 	jwkURL, teardown = mocks.NewJWKCertServerMock(helper.T, helper.JWTCA, jwkKID, jwkAlg)
-	helper.Env().Config.Server.JWK.CertURL = jwkURL
+	if cfgs := helper.Env().Config.Server.JWT.Configs; len(cfgs) > 0 {
+		helper.Env().Config.Server.JWT.Configs[0].JWKCertURL = jwkURL
+	}
 	return teardown
 }
 
@@ -586,8 +592,13 @@ func (helper *Helper) ResetDB() error {
 }
 
 func (helper *Helper) CreateJWTString(account *TestAccount) string {
+	var issuerURL, audience string
+	if cfgs := helper.Env().Config.Server.JWT.Configs; len(cfgs) > 0 {
+		issuerURL = cfgs[0].IssuerURL
+		audience = cfgs[0].Audience
+	}
 	claims := jwt.MapClaims{
-		"iss":        helper.Env().Config.Server.JWT.IssuerURL,
+		"iss":        issuerURL,
 		"username":   strings.ToLower(account.Username),
 		"first_name": account.FirstName,
 		"last_name":  account.LastName,
@@ -595,8 +606,8 @@ func (helper *Helper) CreateJWTString(account *TestAccount) string {
 		"iat":        time.Now().Unix(),
 		"exp":        time.Now().Add(1 * time.Hour).Unix(),
 	}
-	if aud := helper.Env().Config.Server.JWT.Audience; aud != "" {
-		claims["aud"] = aud
+	if audience != "" {
+		claims["aud"] = audience
 	}
 	if account.Email != "" {
 		claims["email"] = account.Email

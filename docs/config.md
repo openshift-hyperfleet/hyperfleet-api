@@ -255,13 +255,14 @@ HTTP server settings for the API endpoint.
 | `server.tls.cert_file` | string | `""` | Path to TLS certificate file |
 | `server.tls.key_file` | string | `""` | Path to TLS key file |
 | `server.jwt.enabled` | bool | `true` | Enable JWT authentication |
-| `server.jwt.issuer_url` | string | `""` | Expected JWT issuer URL for token validation (required when JWT is enabled) |
-| `server.jwt.audience` | string | `""` | Expected JWT audience claim (optional) |
-| `server.jwt.identity_claim` | string | `email` | JWT claim used as request identity for audit (e.g. `email`, `preferred_username`, `sub`) |
-| `server.jwt.identity_claim_pattern` | string | `""` | Optional regex the resolved identity value must match; requests that don't match are rejected with 401. Invalid regex prevents startup. |
-| `server.identity_header` | string | `""` | HTTP header name for caller identity; when set and non-empty, overrides JWT claim for audit attribution |
-| `server.jwk.cert_file` | string | `""` | JWK certificate file path (optional) |
-| `server.jwk.cert_url` | string | `""` | JWK certificate URL (required when JWT is enabled and cert_file is not set) |
+| `server.jwt.configs` | []object | `[]` | Ordered list of JWT issuer configurations (YAML file or JSON env var only — not expressible as individual env vars). See [Authentication](authentication.md) for the full per-issuer field reference. |
+| `server.jwt.configs[].issuer_url` | string | `""` | Expected `iss` claim for this issuer (required per entry) |
+| `server.jwt.configs[].jwk_cert_url` | string | `""` | JWKS endpoint URL for this issuer's public keys |
+| `server.jwt.configs[].jwk_cert_file` | string | `""` | Path to a local JWKS file (alternative or supplement to `jwk_cert_url`) |
+| `server.jwt.configs[].audience` | string | `""` | Expected `aud` claim for this issuer (optional; any audience accepted if empty) |
+| `server.jwt.configs[].identity_claim` | string | `""` | JWT claim used as audit identity for this issuer (required per entry; e.g. `email`, `sub`) |
+| `server.jwt.configs[].identity_claim_pattern` | string | `""` | Optional regex the identity value must match; non-matching requests are rejected with 401 |
+| `server.jwt.configs[].header` | string | `""` | Optional HTTP header that overrides the JWT claim for audit identity (gateway-set only) |
 
 **Example:**
 ```yaml
@@ -275,55 +276,48 @@ server:
     key_file: /etc/certs/tls.key
   jwt:
     enabled: true
-    issuer_url: https://your-idp.example.com/auth/realms/your-realm
-    audience: ""
-  jwk:
-    cert_url: https://your-idp.example.com/auth/realms/your-realm/protocol/openid-connect/certs
+    configs:
+      - issuer_url: https://your-idp.example.com/auth/realms/your-realm
+        jwk_cert_url: https://your-idp.example.com/auth/realms/your-realm/protocol/openid-connect/certs
+        identity_claim: email
 ```
 
 #### Caller Identity
 
-The API records who performed each mutation in the `created_by`, `updated_by`, and `deleted_by` audit fields. Three settings control how the caller identity is resolved:
+The API records who performed each mutation in the `created_by`, `updated_by`, and `deleted_by` audit fields. Identity settings are configured per issuer in `server.jwt.configs[*]`:
 
 | Setting | Purpose |
 |---------|---------|
-| `server.identity_header` | HTTP header to read the caller identity from (e.g., `X-Forwarded-Email`) |
-| `server.jwt.identity_claim` | JWT claim to use as fallback (e.g., `email`, `preferred_username`, `sub`) |
-| `server.jwt.identity_claim_pattern` | Optional regex the resolved identity value must match |
-
-**Precedence:** If both header and JWT claim are configured and the header is present in the request, the header value wins. The JWT claim is used only when the header is not configured or is empty in the request.
+| `identity_claim` | JWT claim used as audit identity (e.g., `email`, `preferred_username`, `sub`) |
+| `identity_claim_pattern` | Optional regex the resolved identity value must match |
+| `header` | Optional HTTP header that overrides the JWT claim (gateway-set; takes precedence) |
 
 **Validation:** Identity values are trimmed, must not exceed 256 characters, and must not contain control characters. If `identity_claim_pattern` is set, the value must also match the regex — requests that don't match are rejected with `401 Unauthorized`.
-
-**Example — header-based identity (behind an authenticating proxy):**
-```yaml
-server:
-  identity_header: X-Forwarded-Email
-  jwt:
-    enabled: false
-```
 
 **Example — JWT-based identity:**
 ```yaml
 server:
   jwt:
     enabled: true
-    issuer_url: https://idp.example.com/realms/hyperfleet
-    identity_claim: email
-  jwk:
-    cert_url: https://idp.example.com/realms/hyperfleet/protocol/openid-connect/certs
+    configs:
+      - issuer_url: https://idp.example.com/realms/hyperfleet
+        jwk_cert_url: https://idp.example.com/realms/hyperfleet/protocol/openid-connect/certs
+        identity_claim: email
 ```
 
-**Example — allow only specific service accounts:**
+**Example — multiple issuers with different identity rules:**
 ```yaml
 server:
   jwt:
     enabled: true
-    issuer_url: https://idp.example.com/realms/hyperfleet
-    identity_claim: sub
-    identity_claim_pattern: '^(sentinel|adapter-namespace|adapter-locator)$'
-  jwk:
-    cert_url: https://idp.example.com/realms/hyperfleet/protocol/openid-connect/certs
+    configs:
+      - issuer_url: https://idp.example.com/realms/hyperfleet
+        jwk_cert_url: https://idp.example.com/realms/hyperfleet/protocol/openid-connect/certs
+        identity_claim: email
+      - issuer_url: https://sa-issuer.example.com
+        jwk_cert_url: https://sa-issuer.example.com/certs
+        identity_claim: sub
+        identity_claim_pattern: '^(sentinel|adapter-namespace|adapter-locator)$'
 ```
 
 </details>
@@ -397,13 +391,7 @@ Complete table of all configuration properties, their environment variables, and
 | `server.tls.cert_file` | `HYPERFLEET_SERVER_TLS_CERT_FILE` | string | `""` |
 | `server.tls.key_file` | `HYPERFLEET_SERVER_TLS_KEY_FILE` | string | `""` |
 | `server.jwt.enabled` | `HYPERFLEET_SERVER_JWT_ENABLED` | bool | `true` |
-| `server.jwt.issuer_url` | `HYPERFLEET_SERVER_JWT_ISSUER_URL` | string | `""` |
-| `server.jwt.audience` | `HYPERFLEET_SERVER_JWT_AUDIENCE` | string | `""` |
-| `server.jwt.identity_claim` | `HYPERFLEET_SERVER_JWT_IDENTITY_CLAIM` | string | `email` |
-| `server.jwt.identity_claim_pattern` | `HYPERFLEET_SERVER_JWT_IDENTITY_CLAIM_PATTERN` | string | `""` |
-| `server.identity_header` | `HYPERFLEET_SERVER_IDENTITY_HEADER` | string | `""` |
-| `server.jwk.cert_file` | `HYPERFLEET_SERVER_JWK_CERT_FILE` | string | `""` |
-| `server.jwk.cert_url` | `HYPERFLEET_SERVER_JWK_CERT_URL` | string | `""` |
+| `server.jwt.configs` | `HYPERFLEET_SERVER_JWT_CONFIGS` (JSON array) | []object | `[]` |
 | **Database** | | | |
 | `database.dialect` | `HYPERFLEET_DATABASE_DIALECT` | string | `postgres` |
 | `database.host` | `HYPERFLEET_DATABASE_HOST` | string | `localhost` |
@@ -448,6 +436,8 @@ Complete table of all configuration properties, their environment variables, and
 
 All CLI flags and their corresponding configuration paths.
 
+> **Note:** `server.jwt.configs` (the array of issuer configurations) cannot be set via CLI flags because arrays of structs are not expressible as individual flag values. Use a YAML config file or the `HYPERFLEET_SERVER_JWT_CONFIGS` environment variable (JSON array format).
+
 | CLI Flag | Config Path | Type |
 |----------|-------------|------|
 | `--config` | N/A (config file path) | string |
@@ -462,13 +452,6 @@ All CLI flags and their corresponding configuration paths.
 | `--server-https-cert-file` | `server.tls.cert_file` | string |
 | `--server-https-key-file` | `server.tls.key_file` | string |
 | `--server-jwt-enabled` | `server.jwt.enabled` | bool |
-| `--server-jwt-issuer-url` | `server.jwt.issuer_url` | string |
-| `--server-jwt-audience` | `server.jwt.audience` | string |
-| `--server-jwt-identity-claim` | `server.jwt.identity_claim` | string |
-| `--server-jwt-identity-claim-pattern` | `server.jwt.identity_claim_pattern` | string |
-| `--server-identity-header` | `server.identity_header` | string |
-| `--server-jwk-cert-file` | `server.jwk.cert_file` | string |
-| `--server-jwk-cert-url` | `server.jwk.cert_url` | string |
 | **Database** | | |
 | `--db-dialect` | `database.dialect` | string |
 | `--db-host` | `database.host` | string |

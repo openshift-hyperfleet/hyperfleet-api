@@ -15,54 +15,51 @@ func TestJWTConfig_Validate(t *testing.T) {
 		Expect(cfg.Validate()).To(Succeed())
 	})
 
-	t.Run("enabled JWT without issuer URL fails", func(t *testing.T) {
+	t.Run("enabled JWT with empty configs passes", func(t *testing.T) {
 		RegisterTestingT(t)
-		cfg := JWTConfig{Enabled: true, IssuerURL: ""}
+		cfg := JWTConfig{Enabled: true, Configs: []JWTIssuerConfig{}}
+		Expect(cfg.Validate()).To(Succeed())
+	})
+
+	t.Run("enabled JWT with valid config passes", func(t *testing.T) {
+		RegisterTestingT(t)
+		cfg := JWTConfig{
+			Enabled: true,
+			Configs: []JWTIssuerConfig{
+				{
+					IssuerURL:     "https://sso.example.com/auth/realms/test",
+					IdentityClaim: "email",
+					JWKCertURL:    "https://sso.example.com/certs",
+				},
+			},
+		}
+		Expect(cfg.Validate()).To(Succeed())
+	})
+
+	t.Run("enabled JWT config missing issuer_url fails", func(t *testing.T) {
+		RegisterTestingT(t)
+		cfg := JWTConfig{
+			Enabled: true,
+			Configs: []JWTIssuerConfig{
+				{IdentityClaim: "email", JWKCertURL: "https://sso.example.com/certs"},
+			},
+		}
 		err := cfg.Validate()
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("issuer_url"))
 	})
 
-	t.Run("enabled JWT with issuer URL passes", func(t *testing.T) {
+	t.Run("enabled JWT config missing identity_claim fails", func(t *testing.T) {
 		RegisterTestingT(t)
 		cfg := JWTConfig{
-			Enabled:       true,
-			IssuerURL:     "https://sso.example.com/auth/realms/test",
-			IdentityClaim: "email",
+			Enabled: true,
+			Configs: []JWTIssuerConfig{
+				{IssuerURL: "https://sso.example.com/auth/realms/test", JWKCertURL: "https://sso.example.com/certs"},
+			},
 		}
-		Expect(cfg.Validate()).To(Succeed())
-	})
-
-	t.Run("enabled JWT without identity claim fails", func(t *testing.T) {
-		RegisterTestingT(t)
-		cfg := JWTConfig{Enabled: true, IssuerURL: "https://sso.example.com/auth/realms/test", IdentityClaim: ""}
 		err := cfg.Validate()
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("identity_claim"))
-	})
-}
-
-func TestServerConfig_ValidateIdentityHeader(t *testing.T) {
-	RegisterTestingT(t)
-
-	t.Run("empty identity header requires nothing", func(t *testing.T) {
-		RegisterTestingT(t)
-		cfg := &ServerConfig{}
-		Expect(cfg.ValidateIdentityHeader()).To(Succeed())
-	})
-
-	t.Run("forbidden header name fails", func(t *testing.T) {
-		RegisterTestingT(t)
-		cfg := &ServerConfig{IdentityHeader: "Authorization"}
-		err := cfg.ValidateIdentityHeader()
-		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("not allowed"))
-	})
-
-	t.Run("valid header name passes", func(t *testing.T) {
-		RegisterTestingT(t)
-		cfg := &ServerConfig{IdentityHeader: "X-HyperFleet-Identity"}
-		Expect(cfg.ValidateIdentityHeader()).To(Succeed())
 	})
 }
 

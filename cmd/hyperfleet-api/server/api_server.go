@@ -33,11 +33,21 @@ func NewAPIServer(tracingEnabled bool) Server {
 	var mainHandler http.Handler = mainRouter
 
 	if env().Config.Server.JWT.Enabled {
+		cfgs := env().Config.Server.JWT.Configs
+		issuers := make([]auth.JWTIssuerHandlerConfig, len(cfgs))
+		for i, c := range cfgs {
+			issuers[i] = auth.JWTIssuerHandlerConfig{
+				IssuerURL:            c.IssuerURL,
+				Audience:             c.Audience,
+				KeysFile:             c.JWKCertFile,
+				KeysURL:              c.JWKCertURL,
+				IdentityClaim:        c.IdentityClaim,
+				IdentityClaimPattern: c.IdentityClaimPattern,
+				Header:               c.Header,
+			}
+		}
 		jwtHandler, err := auth.NewJWTHandler(context.Background(), auth.JWTHandlerConfig{
-			KeysFile:  env().Config.Server.JWK.CertFile,
-			KeysURL:   env().Config.Server.JWK.CertURL,
-			IssuerURL: env().Config.Server.JWT.IssuerURL,
-			Audience:  env().Config.Server.JWT.Audience,
+			Issuers: issuers,
 			PublicPaths: []string{
 				"^/api/hyperfleet/?$",
 				"^/api/hyperfleet/v1/?$",
