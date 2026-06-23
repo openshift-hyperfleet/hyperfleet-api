@@ -724,6 +724,210 @@ func TestGetField_SpecDisallowed(t *testing.T) {
 	Expect(err.Reason).To(ContainSubstring("not a valid field name"))
 }
 
+func TestPreprocessSpecSubfields(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "1-level path is unchanged",
+			input:    "spec.region = 'us-east-1'",
+			expected: "spec.region = 'us-east-1'",
+		},
+		{
+			name:     "2-level path is encoded",
+			input:    "spec.release.channel = 'dev'",
+			expected: "spec.release__channel = 'dev'",
+		},
+		{
+			name:     "3-level path is encoded",
+			input:    "spec.release.config.zone = 'us-east-1a'",
+			expected: "spec.release__config__zone = 'us-east-1a'",
+		},
+		{
+			name:     "non-spec path is unchanged",
+			input:    "labels.environment = 'production'",
+			expected: "labels.environment = 'production'",
+		},
+		{
+			name:     "spec path inside single quotes is not encoded",
+			input:    "name='spec.release.channel'",
+			expected: "name='spec.release.channel'",
+		},
+		{
+			name:     "spec path inside double quotes is not encoded",
+			input:    `name="spec.release.channel"`,
+			expected: `name="spec.release.channel"`,
+		},
+		{
+			name:     "multiple occurrences all encoded",
+			input:    "spec.release.channel = 'dev' AND spec.release.version > 9",
+			expected: "spec.release__channel = 'dev' AND spec.release__version > 9",
+		},
+		{
+			name:     "mixed quoted and unquoted",
+			input:    "spec.release.channel = 'dev' AND name = 'spec.release.channel'",
+			expected: "spec.release__channel = 'dev' AND name = 'spec.release.channel'",
+		},
+		{
+			name:     "adjacent paren before spec path",
+			input:    "(spec.release.channel = 'dev')",
+			expected: "(spec.release__channel = 'dev')",
+		},
+		{
+			name:     "empty input",
+			input:    "",
+			expected: "",
+		},
+		{
+			name:     "no spec paths",
+			input:    "name = 'my-cluster'",
+			expected: "name = 'my-cluster'",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			RegisterTestingT(t)
+
+			result := PreprocessSpecSubfields(tt.input)
+			Expect(result).To(Equal(tt.expected))
+		})
+	}
+}
+
+func TestWrapSpecNumericCasts(t *testing.T) {
+	// helper: build a comparison node with an ident LHS and a value RHS
+	identNode := func(field string) tsl.Node {
+		return tsl.Node{Func: tsl.IdentOp, Left: field}
+	}
+	numNode := func(v float64) tsl.Node {
+		return tsl.Node{Func: tsl.NumberOp, Left: v}
+	}
+	strNode := func(v string) tsl.Node {
+		return tsl.Node{Func: tsl.StringOp, Left: v}
+	}
+	cmpNode := func(op string, left, right tsl.Node) tsl.Node {
+		return tsl.Node{Func: op, Left: left, Right: right}
+	}
+
+	checkIdent := func(t *testing.T, result tsl.Node, expected string) {
+		t.Helper()
+		leftNode, ok := result.Left.(tsl.Node)
+		Expect(ok).To(BeTrue())
+		ident, ok := leftNode.Left.(string)
+		Expect(ok).To(BeTrue())
+		Expect(ident).To(Equal(expected))
+	}
+
+	t.Run("spec field with numeric RHS — CAST applied", func(t *testing.T) {
+		RegisterTestingT(t)
+		checkIdent(t,
+			WrapSpecNumericCasts(cmpNode(tsl.GtOp, identNode("spec->>'replicas'"), numNode(9))),
+			"CAST(spec->>'replicas' AS numeric)",
+		)
+	})
+
+	t.Run("nested spec field with numeric RHS — CAST applied", func(t *testing.T) {
+		RegisterTestingT(t)
+		checkIdent(t,
+			WrapSpecNumericCasts(cmpNode(tsl.GtOp, identNode("spec->'release'->>'version'"), numNode(9))),
+			"CAST(spec->'release'->>'version' AS numeric)",
+		)
+	})
+
+	t.Run("spec field with string RHS — no CAST", func(t *testing.T) {
+		RegisterTestingT(t)
+		checkIdent(t,
+			WrapSpecNumericCasts(cmpNode(tsl.EqOp, identNode("spec->>'channel'"), strNode("dev"))),
+			"spec->>'channel'",
+		)
+	})
+
+	t.Run("non-spec field with numeric RHS — no CAST", func(t *testing.T) {
+		RegisterTestingT(t)
+		checkIdent(t,
+			WrapSpecNumericCasts(cmpNode(tsl.GtOp, identNode("generation"), numNode(1))),
+			"generation",
+		)
+	})
+
+	t.Run("AND tree: only spec+numeric nodes get CAST", func(t *testing.T) {
+		RegisterTestingT(t)
+
+		// spec->>'replicas' > 9 AND generation > 1 AND spec->>'channel' = 'dev'
+		tree := cmpNode(tsl.AndOp,
+			cmpNode(tsl.AndOp,
+				cmpNode(tsl.GtOp, identNode("spec->>'replicas'"), numNode(9)),
+				cmpNode(tsl.GtOp, identNode("generation"), numNode(1)),
+			),
+			cmpNode(tsl.EqOp, identNode("spec->>'channel'"), strNode("dev")),
+		)
+
+		result := WrapSpecNumericCasts(tree)
+
+		// left AND subtree
+		andLeft := result.Left.(tsl.Node)
+		specNode := andLeft.Left.(tsl.Node)
+		specIdent := specNode.Left.(tsl.Node).Left.(string)
+		Expect(specIdent).To(Equal("CAST(spec->>'replicas' AS numeric)"))
+
+		genNode := andLeft.Right.(tsl.Node)
+		genIdent := genNode.Left.(tsl.Node).Left.(string)
+		Expect(genIdent).To(Equal("generation")) // unchanged
+
+		// right: string RHS — no CAST
+		chanNode := result.Right.(tsl.Node)
+		chanIdent := chanNode.Left.(tsl.Node).Left.(string)
+		Expect(chanIdent).To(Equal("spec->>'channel'")) // unchanged
+	})
+}
+
+func TestGetField_SpecNestedEncoded(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "1-level: spec.region",
+			input:    "spec.region",
+			expected: "spec->>'region'",
+		},
+		{
+			name:     "2-level encoded: spec.release__channel",
+			input:    "spec.release__channel",
+			expected: "spec->'release'->>'channel'",
+		},
+		{
+			name:     "3-level encoded: spec.release__config__zone",
+			input:    "spec.release__config__zone",
+			expected: "spec->'release'->'config'->>'zone'",
+		},
+		{
+			name:     "2-level encoded with underscore in key: spec.release__image_v2",
+			input:    "spec.release__image_v2",
+			expected: "spec->'release'->>'image_v2'",
+		},
+		{
+			name:     "leading/trailing spaces are trimmed",
+			input:    "  spec.region  ",
+			expected: "spec->>'region'",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			RegisterTestingT(t)
+
+			field, err := getField(tt.input, map[string]string{})
+			Expect(err).To(BeNil())
+			Expect(field).To(Equal(tt.expected))
+		})
+	}
+}
+
 func TestConditionStatusValidation(t *testing.T) {
 	tests := []struct {
 		status      string

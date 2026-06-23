@@ -25,15 +25,11 @@ func TestSQLTranslation(t *testing.T) {
 	g := dao.NewGenericDao(dbFactory)
 	genericService := sqlGenericService{genericDao: g}
 
-	// ill-formatted search or disallowed fields should be rejected
+	// ill-formatted search should be rejected
 	tests := []map[string]interface{}{
 		{
 			"search": "garbage",
 			"error":  errors.CodeBadRequest + ": Failed to parse search query: garbage",
-		},
-		{
-			"search": "spec = '{}'",
-			"error":  errors.CodeBadRequest + ": spec is not a valid field name",
 		},
 	}
 	for _, test := range tests {
@@ -65,6 +61,42 @@ func TestSQLTranslation(t *testing.T) {
 			"sql":    "labels->>'environment' = ?",
 			"values": ConsistOf("production"),
 		},
+		// Test spec.xxx field mapping (shallow, string value — no CAST)
+		{
+			"search": "spec.region = 'us-east-1'",
+			"sql":    "spec->>'region' = ?",
+			"values": ConsistOf("us-east-1"),
+		},
+		// Test spec.xxx.yyy field mapping (2-level nested, string value — no CAST)
+		{
+			"search": "spec.release.version = '2'",
+			"sql":    "spec->'release'->>'version' = ?",
+			"values": ConsistOf("2"),
+		},
+		// Test spec.xxx.yyy.zzz field mapping (3-level nested, string value — no CAST)
+		{
+			"search": "spec.release.notes.url = 'https://example.com'",
+			"sql":    "spec->'release'->'notes'->>'url' = ?",
+			"values": ConsistOf("https://example.com"),
+		},
+		// Test spec field with unquoted number — CAST applied for correct numeric ordering
+		{
+			"search": "spec.replicas > 9",
+			"sql":    "CAST(spec->>'replicas' AS numeric) > ?",
+			"values": ConsistOf(float64(9)),
+		},
+		// Test nested spec field with unquoted number — CAST applied
+		{
+			"search": "spec.release.version > 9",
+			"sql":    "CAST(spec->'release'->>'version' AS numeric) > ?",
+			"values": ConsistOf(float64(9)),
+		},
+		// Test 3-level nested spec field with unquoted number — CAST applied
+		{
+			"search": "spec.release.config.replicas > 9",
+			"sql":    "CAST(spec->'release'->'config'->>'replicas' AS numeric) > ?",
+			"values": ConsistOf(float64(9)),
+		},
 		// Test ID query (should be allowed)
 		{
 			"search": "id = 'cls-123'",
@@ -81,12 +113,16 @@ func TestSQLTranslation(t *testing.T) {
 			context.Background(), &ListArguments{Search: search}, &list,
 		)
 		Expect(serviceErr).ToNot(HaveOccurred())
-		tslTree, err := tsl.ParseTSL(search)
+		// Mirror the production pipeline: pre-process spec deep paths before TSL parsing
+		preprocessed := db.PreprocessSpecSubfields(search)
+		tslTree, err := tsl.ParseTSL(preprocessed)
 		Expect(err).ToNot(HaveOccurred())
 		// Apply field name mapping (status.xxx -> status_xxx, labels.xxx -> labels->>'xxx')
 		// This must happen before converting to sqlizer
 		tslTree, serviceErr = db.FieldNameWalk(tslTree, *listCtx.disallowedFields)
 		Expect(serviceErr).ToNot(HaveOccurred())
+		// Wrap spec fields in CAST(... AS numeric) when compared against a number
+		tslTree = db.WrapSpecNumericCasts(tslTree)
 		sqlizer, serviceErr := genericService.treeWalkForSqlizer(listCtx, tslTree)
 		Expect(serviceErr).ToNot(HaveOccurred())
 		sql, values, err := sqlizer.ToSql()

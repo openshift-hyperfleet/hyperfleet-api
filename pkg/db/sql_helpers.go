@@ -18,20 +18,25 @@ import (
 // Label key validation pattern: only lowercase letters, digits, and underscores to prevent SQL injection
 var labelKeyPattern = regexp.MustCompile(`^[a-z0-9_]+$`)
 
-// validateLabelKey validates a label key to prevent SQL injection
-// through field name interpolation. Only allows lowercase letters, digits, and underscores.
-func validateLabelKey(key string) *errors.ServiceError {
+// validateFieldKey validates a JSONB field key to prevent SQL injection through field
+// name interpolation. Only allows lowercase letters, digits, and underscores.
+// fieldType is used in error messages (e.g. "label key", "spec field segment").
+func validateFieldKey(key, fieldType string) *errors.ServiceError {
 	if key == "" {
-		return errors.BadRequest("label key cannot be empty")
+		return errors.BadRequest("%s cannot be empty", fieldType)
 	}
 
 	if !labelKeyPattern.MatchString(key) {
 		return errors.BadRequest(
-			"label key '%s' is invalid: must contain only lowercase letters, digits, and underscores", key,
+			"%s '%s' is invalid: must contain only lowercase letters, digits, and underscores", fieldType, key,
 		)
 	}
 
 	return nil
+}
+
+func validateLabelKey(key string) *errors.ServiceError {
+	return validateFieldKey(key, "label key")
 }
 
 // Check if a field name starts with properties.
@@ -72,21 +77,34 @@ func getField(name string, disallowedFields map[string]string) (field string, er
 		return
 	}
 
-	// Map user-friendly spec.xxx syntax to JSONB query: spec->>'xxx'
+	// Map user-friendly spec.xxx (and nested spec.xxx.yyy...) syntax to JSONB query.
+	// Paths are pre-encoded by PreprocessSpecSubfields: dots beyond the first key
+	// segment are replaced with __ so the TSL parser sees at most 2 segments.
+	//   spec.region              → spec->>'region'
+	//   spec.release__channel    → spec->'release'->>'channel'
+	//   spec.a__b__c             → spec->'a'->'b'->>'c'
 	if strings.HasPrefix(trimmedName, "spec.") {
 		if _, disallowed := disallowedFields["spec"]; disallowed {
 			err = errors.BadRequest("%s is not a valid field name", name)
 			return
 		}
 
-		key := strings.TrimPrefix(trimmedName, "spec.")
-
-		if validationErr := validateLabelKey(key); validationErr != nil {
-			err = validationErr
-			return
+		parts := strings.Split(strings.TrimPrefix(trimmedName, "spec."), "__")
+		for _, part := range parts {
+			if validationErr := validateFieldKey(part, "spec field segment"); validationErr != nil {
+				err = validationErr
+				return
+			}
 		}
 
-		field = fmt.Sprintf("spec->>'%s'", key)
+		field = "spec"
+		for i, part := range parts {
+			if i == len(parts)-1 {
+				field += fmt.Sprintf("->>'%s'", part)
+			} else {
+				field += fmt.Sprintf("->'%s'", part)
+			}
+		}
 		return
 	}
 
@@ -174,6 +192,74 @@ var validConditionStatuses = map[string]bool{
 	"True":    true,
 	"False":   true,
 	"Unknown": true,
+}
+
+// specDeepPathPattern matches spec paths with 2 or more key segments after "spec."
+// (e.g. spec.release.channel, spec.a.b.c) so they can be encoded before TSL parsing.
+// The TSL parser supports at most 3-part identifiers (database.table.column), so
+// spec.release.channel (3 parts) is at the limit and spec.a.b.c (4 parts) would fail.
+// PreprocessSpecSubfields collapses dots beyond the first key segment into __ so the
+// TSL parser always sees exactly 2 parts (spec and the encoded key path).
+var specDeepPathPattern = regexp.MustCompile(
+	`(^|[\s(])(spec\.[a-z0-9_]+(?:\.[a-z0-9_]+)+)`,
+)
+
+// PreprocessSpecSubfields rewrites spec paths with 2+ key segments into 2-part paths
+// before TSL parsing, by replacing dots beyond the first key segment with __.
+// Only replaces in unquoted segments to avoid mutating string literals.
+//
+// Examples:
+//
+//	spec.release.channel        → spec.release__channel
+//	spec.a.b.c                  → spec.a__b__c
+//	spec.region (1 segment)     → unchanged
+func PreprocessSpecSubfields(search string) string {
+	var result strings.Builder
+	result.Grow(len(search))
+	inQuote := false
+	quoteChar := byte(0)
+	segStart := 0
+
+	encode := func(s string) string {
+		return specDeepPathPattern.ReplaceAllStringFunc(s, func(match string) string {
+			idx := strings.Index(match, "spec.")
+			if idx < 0 {
+				return match
+			}
+			boundary := match[:idx]
+			// SplitN on "." with n=3 gives ["spec", "firstKey", "rest..."]
+			parts := strings.SplitN(match[idx:], ".", 3)
+			if len(parts) < 3 {
+				return match
+			}
+			// encode remaining dots in the tail as __
+			return boundary + parts[0] + "." + parts[1] + "__" + strings.ReplaceAll(parts[2], ".", "__")
+		})
+	}
+
+	for i := 0; i < len(search); i++ {
+		ch := search[i]
+		if inQuote {
+			if ch == quoteChar {
+				result.WriteString(search[segStart : i+1])
+				segStart = i + 1
+				inQuote = false
+			}
+			continue
+		}
+		if ch == '\'' || ch == '"' {
+			result.WriteString(encode(search[segStart:i]))
+			segStart = i
+			inQuote = true
+			quoteChar = ch
+		}
+	}
+	if inQuote {
+		result.WriteString(search[segStart:])
+	} else {
+		result.WriteString(encode(search[segStart:]))
+	}
+	return result.String()
 }
 
 // conditionSubfieldPattern matches 4-part condition paths like status.conditions.Reconciled.last_updated_time
@@ -561,6 +647,58 @@ func extractConditionsWalk(n tsl.Node, conditions *[]sq.Sqlizer) (tsl.Node, *err
 		Left:  newLeft,
 		Right: newRight,
 	}, nil
+}
+
+// WrapSpecNumericCasts walks the TSL tree after field name mapping and wraps
+// spec field identifiers in CAST(... AS numeric) when the right-hand side of a
+// comparison is a number. This is necessary because JSONB ->> returns text, so
+// without the cast, numeric ordering breaks for multi-digit values
+// (e.g. '10' < '9' lexicographically).
+func WrapSpecNumericCasts(n tsl.Node) tsl.Node {
+	return wrapSpecNumericCastsWalk(n)
+}
+
+func wrapSpecNumericCastsWalk(n tsl.Node) tsl.Node {
+	// If this is a comparison with a spec field on the left and a number on the right,
+	// wrap the field in CAST(... AS numeric).
+	if _, isComparison := comparisonOperators[n.Func]; isComparison {
+		leftNode, leftOk := n.Left.(tsl.Node)
+		rightNode, rightOk := n.Right.(tsl.Node)
+		if leftOk && rightOk && leftNode.Func == tsl.IdentOp && rightNode.Func == tsl.NumberOp {
+			if field, ok := leftNode.Left.(string); ok && strings.HasPrefix(field, "spec->") {
+				return tsl.Node{
+					Func:  n.Func,
+					Left:  tsl.Node{Func: tsl.IdentOp, Left: fmt.Sprintf("CAST(%s AS numeric)", field)},
+					Right: n.Right,
+				}
+			}
+		}
+	}
+
+	// Recurse into children.
+	var newLeft, newRight interface{}
+	if n.Left != nil {
+		if leftNode, ok := n.Left.(tsl.Node); ok {
+			newLeft = wrapSpecNumericCastsWalk(leftNode)
+		} else {
+			newLeft = n.Left
+		}
+	}
+	if n.Right != nil {
+		switch v := n.Right.(type) {
+		case tsl.Node:
+			newRight = wrapSpecNumericCastsWalk(v)
+		case []tsl.Node:
+			nodes := make([]tsl.Node, len(v))
+			for i, node := range v {
+				nodes[i] = wrapSpecNumericCastsWalk(node)
+			}
+			newRight = nodes
+		default:
+			newRight = v
+		}
+	}
+	return tsl.Node{Func: n.Func, Left: newLeft, Right: newRight}
 }
 
 // FieldNameWalk walks on the filter tree and check/replace

@@ -40,15 +40,8 @@ type sqlGenericService struct {
 }
 
 var (
-	SearchDisallowedFields = map[string]map[string]string{
-		api.ResourceTypeCluster: {
-			"spec": "spec", // Provider-specific field, not searchable
-		},
-		api.ResourceTypeNodePool: {
-			"spec": "spec", // Provider-specific field, not searchable
-		},
-	}
-	allFieldsAllowed = map[string]string{}
+	SearchDisallowedFields = map[string]map[string]string{}
+	allFieldsAllowed       = map[string]string{}
 )
 
 // wrap all needed pieces for the LIST function
@@ -176,9 +169,11 @@ func (s *sqlGenericService) buildSearchValues(
 		)
 	}
 
-	// Pre-process condition subfield paths (4-part -> 3-part encoding) before TSL parsing.
-	// The TSL parser only supports up to 3-part identifiers (database.table.column).
+	// Pre-process before TSL parsing — the parser only supports 3-part identifiers.
+	// Condition subfields: status.conditions.Reconciled.last_updated_time → 3-part encoding
+	// Spec deep paths: spec.a.b.c → spec.a__b__c (2 parts, decoded in getField)
 	preprocessedSearch := db.PreprocessConditionSubfields(listCtx.args.Search)
+	preprocessedSearch = db.PreprocessSpecSubfields(preprocessedSearch)
 
 	// create the TSL tree
 	tslTree, err := tsl.ParseTSL(preprocessedSearch)
@@ -200,6 +195,9 @@ func (s *sqlGenericService) buildSearchValues(
 	if serviceErr != nil {
 		return "", nil, serviceErr
 	}
+	// wrap spec field identifiers in CAST(... AS numeric) when compared against a number,
+	// so that multi-digit values sort correctly instead of using text ordering
+	tslTree = db.WrapSpecNumericCasts(tslTree)
 	// find all related tables
 	tslTree, serviceErr = s.treeWalkForRelatedTables(listCtx, tslTree, d)
 	if serviceErr != nil {
