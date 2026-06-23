@@ -43,6 +43,8 @@ The HyperFleet API uses the [Tree Search Language (TSL)](https://github.com/yaac
 | `created_by` | string | Creator email | `created_by='user@example.com'` |
 | `updated_by` | string | Last updater email | `updated_by='user@example.com'` |
 | `labels.<key>` | string | Label value | `labels.environment='production'` |
+| `spec.<key>` | string/number | Top-level spec field | `spec.provider='aws'` |
+| `spec.<key>.<nested>` | string/number | Nested spec field (2 levels max) | `spec.release.channel='dev'` |
 | `status.conditions.<Type>` | string | Condition status | `status.conditions.Reconciled='True'` |
 | `status.conditions.<Type>.<Subfield>` | varies | Condition subfield | `status.conditions.Reconciled.last_updated_time < '...'` |
 
@@ -77,6 +79,48 @@ curl -G "http://localhost:8000/api/hyperfleet/v1/nodepools" \
 curl -G "http://localhost:8000/api/hyperfleet/v1/nodepools" \
   --data-urlencode "search=labels.role='worker'"
 ```
+
+## Spec Field Queries
+
+Use `spec.<key>` or `spec.<key>.<nested>` syntax to filter by fields inside the resource's spec JSON. This works for Clusters, NodePools, and generic resources.
+
+```bash
+# Find clusters by provider
+curl -G "http://localhost:8000/api/hyperfleet/v1/clusters" \
+  --data-urlencode "search=spec.provider='aws'"
+
+# Find clusters by nested release channel
+curl -G "http://localhost:8000/api/hyperfleet/v1/clusters" \
+  --data-urlencode "search=spec.release.channel='dev'"
+
+# Combine multiple spec fields with AND
+curl -G "http://localhost:8000/api/hyperfleet/v1/clusters" \
+  --data-urlencode "search=spec.release.channel='dev' AND spec.release.version > 9"
+
+# Range query on a spec field
+curl -G "http://localhost:8000/api/hyperfleet/v1/clusters" \
+  --data-urlencode "search=spec.release.version > 1 AND spec.release.version < 10"
+```
+
+### Numeric Comparisons
+
+When the comparison value is an **unquoted number**, the spec field is automatically cast to `numeric` for correct ordering:
+
+```bash
+# Correct: unquoted numbers use numeric ordering (10 > 9 ✓)
+--data-urlencode "search=spec.release.version > 9"
+
+# Text ordering: quoted numbers compare lexicographically ('10' < '9' ✗ for multi-digit)
+--data-urlencode "search=spec.release.version > '9'"
+```
+
+All comparison operators work on spec fields: `=`, `!=`, `<`, `<=`, `>`, `>=`, `in`.
+
+### Constraints
+
+- Key names may only contain lowercase letters (`a-z`), digits (`0-9`), and underscores (`_`).
+- Nesting is limited to **two levels** (`spec.<key>.<nested>`) due to the TSL parser's 3-segment identifier limit.
+- Values returned from spec fields are always text internally; use unquoted numbers for correct numeric comparisons.
 
 ## Labels Queries
 

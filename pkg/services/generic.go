@@ -40,15 +40,8 @@ type sqlGenericService struct {
 }
 
 var (
-	SearchDisallowedFields = map[string]map[string]string{
-		api.ResourceTypeCluster: {
-			"spec": "spec", // Provider-specific field, not searchable
-		},
-		api.ResourceTypeNodePool: {
-			"spec": "spec", // Provider-specific field, not searchable
-		},
-	}
-	allFieldsAllowed = map[string]string{}
+	SearchDisallowedFields = map[string]map[string]string{}
+	allFieldsAllowed       = map[string]string{}
 )
 
 // wrap all needed pieces for the LIST function
@@ -200,6 +193,9 @@ func (s *sqlGenericService) buildSearchValues(
 	if serviceErr != nil {
 		return "", nil, serviceErr
 	}
+	// wrap spec field identifiers in CAST(... AS numeric) when compared against a number,
+	// so that multi-digit values sort correctly instead of using text ordering
+	tslTree = db.WrapSpecNumericCasts(tslTree)
 	// find all related tables
 	tslTree, serviceErr = s.treeWalkForRelatedTables(listCtx, tslTree, d)
 	if serviceErr != nil {

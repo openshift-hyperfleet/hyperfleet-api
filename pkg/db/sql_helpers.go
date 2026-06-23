@@ -72,21 +72,31 @@ func getField(name string, disallowedFields map[string]string) (field string, er
 		return
 	}
 
-	// Map user-friendly spec.xxx syntax to JSONB query: spec->>'xxx'
+	// Map user-friendly spec.xxx (and nested spec.xxx.yyy) syntax to JSONB query.
+	// spec.region            → spec->>'region'
+	// spec.release.version   → spec->'release'->>'version'
 	if strings.HasPrefix(trimmedName, "spec.") {
 		if _, disallowed := disallowedFields["spec"]; disallowed {
 			err = errors.BadRequest("%s is not a valid field name", name)
 			return
 		}
 
-		key := strings.TrimPrefix(trimmedName, "spec.")
-
-		if validationErr := validateLabelKey(key); validationErr != nil {
-			err = validationErr
-			return
+		parts := strings.Split(strings.TrimPrefix(trimmedName, "spec."), ".")
+		for _, part := range parts {
+			if validationErr := validateLabelKey(part); validationErr != nil {
+				err = validationErr
+				return
+			}
 		}
 
-		field = fmt.Sprintf("spec->>'%s'", key)
+		field = "spec"
+		for i, part := range parts {
+			if i == len(parts)-1 {
+				field += fmt.Sprintf("->>'%s'", part)
+			} else {
+				field += fmt.Sprintf("->'%s'", part)
+			}
+		}
 		return
 	}
 
@@ -561,6 +571,58 @@ func extractConditionsWalk(n tsl.Node, conditions *[]sq.Sqlizer) (tsl.Node, *err
 		Left:  newLeft,
 		Right: newRight,
 	}, nil
+}
+
+// WrapSpecNumericCasts walks the TSL tree after field name mapping and wraps
+// spec field identifiers in CAST(... AS numeric) when the right-hand side of a
+// comparison is a number. This is necessary because JSONB ->> returns text, so
+// without the cast, numeric ordering breaks for multi-digit values
+// (e.g. '10' < '9' lexicographically).
+func WrapSpecNumericCasts(n tsl.Node) tsl.Node {
+	return wrapSpecNumericCastsWalk(n)
+}
+
+func wrapSpecNumericCastsWalk(n tsl.Node) tsl.Node {
+	// If this is a comparison with a spec field on the left and a number on the right,
+	// wrap the field in CAST(... AS numeric).
+	if _, isComparison := comparisonOperators[n.Func]; isComparison {
+		leftNode, leftOk := n.Left.(tsl.Node)
+		rightNode, rightOk := n.Right.(tsl.Node)
+		if leftOk && rightOk && leftNode.Func == tsl.IdentOp && rightNode.Func == tsl.NumberOp {
+			if field, ok := leftNode.Left.(string); ok && strings.HasPrefix(field, "spec->") {
+				return tsl.Node{
+					Func:  n.Func,
+					Left:  tsl.Node{Func: tsl.IdentOp, Left: fmt.Sprintf("CAST(%s AS numeric)", field)},
+					Right: n.Right,
+				}
+			}
+		}
+	}
+
+	// Recurse into children.
+	var newLeft, newRight interface{}
+	if n.Left != nil {
+		if leftNode, ok := n.Left.(tsl.Node); ok {
+			newLeft = wrapSpecNumericCastsWalk(leftNode)
+		} else {
+			newLeft = n.Left
+		}
+	}
+	if n.Right != nil {
+		switch v := n.Right.(type) {
+		case tsl.Node:
+			newRight = wrapSpecNumericCastsWalk(v)
+		case []tsl.Node:
+			nodes := make([]tsl.Node, len(v))
+			for i, node := range v {
+				nodes[i] = wrapSpecNumericCastsWalk(node)
+			}
+			newRight = nodes
+		default:
+			newRight = v
+		}
+	}
+	return tsl.Node{Func: n.Func, Left: newLeft, Right: newRight}
 }
 
 // FieldNameWalk walks on the filter tree and check/replace

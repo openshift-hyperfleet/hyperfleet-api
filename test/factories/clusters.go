@@ -207,6 +207,33 @@ func NewClusterWithLabels(
 	return cluster, nil
 }
 
+// NewClusterWithSpec creates a cluster with a specific spec JSON value.
+// The spec map is serialized to JSON and stored as the cluster's spec column.
+func NewClusterWithSpec(
+	f *Factories, dbFactory db.SessionFactory, id string, spec map[string]interface{},
+) (*api.Cluster, error) {
+	cluster, err := f.NewCluster(id)
+	if err != nil {
+		return nil, err
+	}
+
+	specJSON, err := json.Marshal(spec)
+	if err != nil {
+		return nil, err
+	}
+
+	dbSession := dbFactory.New(context.Background())
+	err = dbSession.Model(cluster).Update("spec", specJSON).Error
+	if err != nil {
+		return nil, err
+	}
+
+	if err := reloadCluster(dbSession, cluster); err != nil {
+		return nil, err
+	}
+	return cluster, nil
+}
+
 // NewClusterWithStatusAndLabels creates a cluster with both status conditions and labels
 func NewClusterWithStatusAndLabels(
 	f *Factories, dbFactory db.SessionFactory, id string, isAvailable, isReconciled bool, labels map[string]string,

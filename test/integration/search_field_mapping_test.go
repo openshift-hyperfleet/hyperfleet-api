@@ -65,26 +65,141 @@ func TestSearchLabelsMapping(t *testing.T) {
 	Expect(foundProd).To(BeTrue(), "Expected to find the production cluster")
 }
 
-// TestSearchSpecFieldRejected verifies that querying the spec field
-// is correctly rejected with 400 Bad Request error
-func TestSearchSpecFieldRejected(t *testing.T) {
+// TestSearchSpecSubfield verifies that spec.xxx user-friendly syntax correctly
+// maps to JSONB query spec->>'xxx' and filters results accordingly.
+func TestSearchSpecSubfield(t *testing.T) {
 	RegisterTestingT(t)
 	h, client := test.RegisterIntegration(t)
 
 	account := h.NewRandAccount()
 	ctx := h.NewAuthenticatedContext(account)
 
-	// Attempt to query spec field (should be rejected)
-	searchStr := "spec = '{}'"
+	// Create cluster with provider=aws
+	awsCluster, err := factories.NewClusterWithSpec(&h.Factories, h.DBFactory, h.NewID(), map[string]interface{}{
+		"provider": "aws",
+	})
+	Expect(err).NotTo(HaveOccurred())
+
+	// Create cluster with provider=gcp (should not match)
+	_, err = factories.NewClusterWithSpec(&h.Factories, h.DBFactory, h.NewID(), map[string]interface{}{
+		"provider": "gcp",
+	})
+	Expect(err).NotTo(HaveOccurred())
+
+	searchStr := "spec.provider = 'aws'"
 	search := openapi.SearchParams(searchStr)
 	params := &openapi.GetClustersParams{
 		Search: &search,
 	}
 	resp, err := client.GetClustersWithResponse(ctx, params, test.WithAuthToken(ctx))
 
-	// Should return error
 	Expect(err).NotTo(HaveOccurred())
-	Expect(resp.StatusCode()).To(Equal(http.StatusBadRequest))
+	Expect(resp.StatusCode()).To(Equal(http.StatusOK))
+	list := resp.JSON200
+	Expect(list).NotTo(BeNil())
+	Expect(list.Total).To(BeNumerically(">=", 1))
+
+	foundAWS := false
+	for _, item := range list.Items {
+		if *item.Id == awsCluster.ID {
+			foundAWS = true
+		}
+	}
+	Expect(foundAWS).To(BeTrue(), "Expected to find the aws cluster")
+}
+
+// TestSearchNestedSpecSubfield verifies that spec.xxx.yyy syntax maps to
+// spec->'xxx'->>'yyy' and filters on nested JSONB fields.
+func TestSearchNestedSpecSubfield(t *testing.T) {
+	RegisterTestingT(t)
+	h, client := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+
+	// Create cluster with release.channel=dev
+	devCluster, err := factories.NewClusterWithSpec(&h.Factories, h.DBFactory, h.NewID(), map[string]interface{}{
+		"release": map[string]interface{}{"channel": "dev", "version": "4.16.0"},
+	})
+	Expect(err).NotTo(HaveOccurred())
+
+	// Create cluster with release.channel=stable (should not match)
+	_, err = factories.NewClusterWithSpec(&h.Factories, h.DBFactory, h.NewID(), map[string]interface{}{
+		"release": map[string]interface{}{"channel": "stable", "version": "4.15.0"},
+	})
+	Expect(err).NotTo(HaveOccurred())
+
+	searchStr := "spec.release.channel = 'dev'"
+	search := openapi.SearchParams(searchStr)
+	params := &openapi.GetClustersParams{
+		Search: &search,
+	}
+	resp, err := client.GetClustersWithResponse(ctx, params, test.WithAuthToken(ctx))
+
+	Expect(err).NotTo(HaveOccurred())
+	Expect(resp.StatusCode()).To(Equal(http.StatusOK))
+	list := resp.JSON200
+	Expect(list).NotTo(BeNil())
+	Expect(list.Total).To(BeNumerically(">=", 1))
+
+	foundDev := false
+	for _, item := range list.Items {
+		if *item.Id == devCluster.ID {
+			foundDev = true
+		}
+	}
+	Expect(foundDev).To(BeTrue(), "Expected to find the dev channel cluster")
+}
+
+// TestSearchSpecSubfieldCombined verifies that multiple spec subfield conditions
+// can be combined with AND, and that numeric comparisons use proper CAST(... AS numeric)
+// so multi-digit values sort correctly (not lexicographically).
+func TestSearchSpecSubfieldCombined(t *testing.T) {
+	RegisterTestingT(t)
+	h, client := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+
+	// channel=dev, version=10 — should match: correct channel and version > 9
+	// Without CAST, '10' < '9' lexicographically and this would be incorrectly excluded.
+	devV10, err := factories.NewClusterWithSpec(&h.Factories, h.DBFactory, h.NewID(), map[string]interface{}{
+		"release": map[string]interface{}{"channel": "dev", "version": 10},
+	})
+	Expect(err).NotTo(HaveOccurred())
+
+	// channel=dev, version=1 — should NOT match: version not > 9
+	_, err = factories.NewClusterWithSpec(&h.Factories, h.DBFactory, h.NewID(), map[string]interface{}{
+		"release": map[string]interface{}{"channel": "dev", "version": 1},
+	})
+	Expect(err).NotTo(HaveOccurred())
+
+	// channel=stable, version=10 — should NOT match: wrong channel
+	_, err = factories.NewClusterWithSpec(&h.Factories, h.DBFactory, h.NewID(), map[string]interface{}{
+		"release": map[string]interface{}{"channel": "stable", "version": 10},
+	})
+	Expect(err).NotTo(HaveOccurred())
+
+	searchStr := "spec.release.channel = 'dev' AND spec.release.version > 9"
+	search := openapi.SearchParams(searchStr)
+	params := &openapi.GetClustersParams{
+		Search: &search,
+	}
+	resp, err := client.GetClustersWithResponse(ctx, params, test.WithAuthToken(ctx))
+
+	Expect(err).NotTo(HaveOccurred())
+	Expect(resp.StatusCode()).To(Equal(http.StatusOK))
+	list := resp.JSON200
+	Expect(list).NotTo(BeNil())
+	Expect(list.Total).To(BeNumerically(">=", 1))
+
+	foundDevV10 := false
+	for _, item := range list.Items {
+		if *item.Id == devV10.ID {
+			foundDevV10 = true
+		}
+	}
+	Expect(foundDevV10).To(BeTrue(), "Expected to find dev channel cluster with version > 9")
 }
 
 // TestSearchCombinedQuery verifies that combined queries (AND/OR)
