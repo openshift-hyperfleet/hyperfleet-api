@@ -55,7 +55,7 @@ func handleError(r *http.Request, w http.ResponseWriter, err *errors.ServiceErro
 // parseFieldsParameter extracts and parses the ?fields query parameter without validating
 // pagination parameters. Used for single-resource GET endpoints where pagination is irrelevant.
 func parseFieldsParameter(params url.Values) []string {
-	if v := strings.Trim(params.Get("fields"), " "); v != "" {
+	if v := strings.TrimSpace(params.Get("fields")); v != "" {
 		fields := strings.Split(v, ",")
 		result := make([]string, 0, len(fields)+1)
 		idPresent := false
@@ -69,7 +69,11 @@ func parseFieldsParameter(params url.Values) []string {
 			}
 			result = append(result, trimmed)
 		}
-		// Always include id field
+		// If no valid fields were provided (e.g., "fields=" or "fields=   "), return nil
+		if len(result) == 0 {
+			return nil
+		}
+		// Always include id field when user provided valid fields
 		if !idPresent {
 			result = append(result, "id")
 		}
