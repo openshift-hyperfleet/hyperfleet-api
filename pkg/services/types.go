@@ -105,33 +105,6 @@ func NewListArguments(params url.Values) (*ListArguments, *errors.ServiceError) 
 		}
 	}
 
-	// Validate and apply order parameter (asc/desc direction)
-	// Note: order parameter requires orderBy to be present. If only order is provided
-	// without orderBy, it will be ignored and the default ordering will be used instead.
-	if v := strings.Trim(params.Get("order"), " "); v != "" {
-		if v != "asc" && v != "desc" {
-			return nil, errors.New(
-				errors.CodeValidationFormat,
-				"Invalid order parameter: must be 'asc' or 'desc'",
-			)
-		}
-		// Apply order direction to fields without explicit direction and filter out empty tokens
-		normalized := make([]string, 0, len(listArgs.OrderBy))
-		for _, field := range listArgs.OrderBy {
-			trimmedField := strings.TrimSpace(field)
-			if trimmedField == "" {
-				continue
-			}
-			parts := strings.Fields(trimmedField)
-			if len(parts) == 1 {
-				normalized = append(normalized, parts[0]+" "+v)
-				continue
-			}
-			normalized = append(normalized, strings.Join(parts, " "))
-		}
-		listArgs.OrderBy = normalized
-	}
-
 	// Set default sorting to created_time desc if orderBy not provided
 	if len(listArgs.OrderBy) == 0 {
 		listArgs.OrderBy = []string{"created_time desc"}

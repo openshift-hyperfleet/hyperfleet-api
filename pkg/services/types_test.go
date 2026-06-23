@@ -52,36 +52,6 @@ func TestNewListArguments_OrderBy(t *testing.T) {
 			expectedOrderBy: []string{"created_time desc"},
 		},
 		{
-			name:            "orderBy without direction + order=asc applies direction",
-			queryParams:     url.Values{"orderBy": []string{"name"}, "order": []string{"asc"}},
-			expectedOrderBy: []string{"name asc"},
-		},
-		{
-			name:            "orderBy without direction + order=desc applies direction",
-			queryParams:     url.Values{"orderBy": []string{"name"}, "order": []string{"desc"}},
-			expectedOrderBy: []string{"name desc"},
-		},
-		{
-			name:            "orderBy with direction + order parameter - orderBy takes precedence",
-			queryParams:     url.Values{"orderBy": []string{"name desc"}, "order": []string{"asc"}},
-			expectedOrderBy: []string{"name desc"},
-		},
-		{
-			name:            "multiple orderBy fields + order parameter",
-			queryParams:     url.Values{"orderBy": []string{"name,created_time"}, "order": []string{"desc"}},
-			expectedOrderBy: []string{"name desc", "created_time desc"},
-		},
-		{
-			name:            "mixed orderBy (with and without direction) + order parameter",
-			queryParams:     url.Values{"orderBy": []string{"name,created_time asc"}, "order": []string{"desc"}},
-			expectedOrderBy: []string{"name desc", "created_time asc"},
-		},
-		{
-			name:            "orderBy with leading/trailing spaces + order parameter - should trim",
-			queryParams:     url.Values{"orderBy": []string{"name, status , created_time"}, "order": []string{"asc"}},
-			expectedOrderBy: []string{"name asc", "status asc", "created_time asc"},
-		},
-		{
 			name:            "orderBy with whitespace only - should use default",
 			queryParams:     url.Values{"orderBy": []string{"   "}},
 			expectedOrderBy: []string{"created_time desc"},
@@ -90,31 +60,6 @@ func TestNewListArguments_OrderBy(t *testing.T) {
 			name:            "orderBy with empty tokens - should filter out",
 			queryParams:     url.Values{"orderBy": []string{"name,,created_time"}},
 			expectedOrderBy: []string{"name", "created_time"},
-		},
-		{
-			name:            "orderBy with empty tokens + order parameter - should filter and apply direction",
-			queryParams:     url.Values{"orderBy": []string{"name, , status"}, "order": []string{"desc"}},
-			expectedOrderBy: []string{"name desc", "status desc"},
-		},
-		{
-			name:            "orderBy with consecutive commas + order parameter - regression test for empty token bug",
-			queryParams:     url.Values{"orderBy": []string{"name,,created_time"}, "order": []string{"desc"}},
-			expectedOrderBy: []string{"name desc", "created_time desc"},
-		},
-		{
-			name:            "orderBy with multiple spaces in field + order parameter - should normalize",
-			queryParams:     url.Values{"orderBy": []string{"name   asc"}, "order": []string{"desc"}},
-			expectedOrderBy: []string{"name asc"},
-		},
-		{
-			name:            "order=asc without orderBy - should be ignored, use default",
-			queryParams:     url.Values{"order": []string{"asc"}},
-			expectedOrderBy: []string{"created_time desc"},
-		},
-		{
-			name:            "order=desc without orderBy - should be ignored, use default",
-			queryParams:     url.Values{"order": []string{"desc"}},
-			expectedOrderBy: []string{"created_time desc"},
 		},
 	}
 
@@ -362,29 +307,6 @@ func TestNewListArguments_Validation(t *testing.T) {
 			queryParams:   url.Values{"pageSize": []string{"xyz"}},
 			expectError:   true,
 			errorContains: "Invalid pageSize parameter",
-			errorCode:     "HYPERFLEET-VAL-003",
-		},
-
-		// Order parameter validation tests
-		{
-			name:          "invalid order value returns error",
-			queryParams:   url.Values{"order": []string{"invalid"}},
-			expectError:   true,
-			errorContains: "must be 'asc' or 'desc'",
-			errorCode:     "HYPERFLEET-VAL-003",
-		},
-		{
-			name:          "order with uppercase returns error",
-			queryParams:   url.Values{"order": []string{"ASC"}},
-			expectError:   true,
-			errorContains: "must be 'asc' or 'desc'",
-			errorCode:     "HYPERFLEET-VAL-003",
-		},
-		{
-			name:          "order with number returns error",
-			queryParams:   url.Values{"order": []string{"1"}},
-			expectError:   true,
-			errorContains: "must be 'asc' or 'desc'",
 			errorCode:     "HYPERFLEET-VAL-003",
 		},
 
