@@ -1,0 +1,75 @@
+{
+  "abc123-k8s": {
+    "apiVersion": "v1",
+    "kind": "Namespace",
+    "metadata": {
+      "name": "abc123-k8s",
+      "uid": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "resourceVersion": "100",
+      "creationTimestamp": "2026-02-18T10:22:10Z",
+      "labels": {
+        "hyperfleet.io/cluster-id": "abc123",
+        "hyperfleet.io/cluster-name": "abc123",
+        "hyperfleet.io/managed-by": "kubernetes-example",
+        "hyperfleet.io/resource-type": "namespace"
+      },
+      "annotations": {
+        "hyperfleet.io/created-by": "hyperfleet-adapter",
+        "hyperfleet.io/generation": "77"
+      }
+    },
+    "spec": {
+      "finalizers": ["kubernetes"]
+    },
+    "status": {
+      "phase": "Active"
+    }
+  },
+  "hello-world-job": {
+    "apiVersion": "batch/v1",
+    "kind": "Job",
+    "metadata": {
+      "name": "hello-world-job",
+      "namespace": "abc123-k8s",
+      "uid": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+      "resourceVersion": "200",
+      "creationTimestamp": "2026-02-18T10:22:11Z",
+      "labels": {
+        "hyperfleet.io/cluster-id": "abc123",
+        "hyperfleet.io/resource-type": "job"
+      },
+      "annotations": {
+        "hyperfleet.io/generation": "77"
+      }
+    },
+    "spec": {
+      "backoffLimit": 0,
+      "template": {
+        "spec": {
+          "restartPolicy": "Never",
+          "containers": [
+            {
+              "name": "hello-world",
+              "image": "alpine:3.19"
+            }
+          ]
+        }
+      }
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "Complete",
+          "status": "True",
+          "reason": "Completed",
+          "message": "Job completed successfully",
+          "lastTransitionTime": "2026-02-18T10:22:30Z"
+        }
+      ],
+      "startTime": "2026-02-18T10:22:12Z",
+      "completionTime": "2026-02-18T10:22:30Z",
+      "succeeded": 1,
+      "active": 0
+    }
+  }
+}
