@@ -290,6 +290,8 @@ func (s *sqlGenericService) loadList(listCtx *listContext, d *dao.GenericDao) *e
 
 	switch {
 	case args.Size > MaxListSize:
+		// Note: Currently unreachable via HTTP requests (capped at MaxPageSize=100),
+		// but kept as defensive check for direct service layer usage.
 		logger.Warn(listCtx.ctx, "A query with a size greater than the maximum was requested.")
 	case args.Size < 0:
 		logger.Warn(listCtx.ctx, "A query with an unbound size was requested.")

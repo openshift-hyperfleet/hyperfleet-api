@@ -19,13 +19,46 @@ type ListArguments struct {
 	Size     int64
 }
 
-// ~65500 is the maximum number of parameters that can be provided to a postgres WHERE IN clause
-// Use it as a sane max
+// MaxListSize defines the PostgreSQL WHERE IN clause parameter limit (~65500).
+// Note: This is currently unreachable via HTTP requests since MaxPageSize caps at 100,
+// but is kept as a defensive check for direct service layer usage and to document the
+// technical database constraint.
 const MaxListSize = 65500
 
-// MaxPageSize is the maximum allowed page size for pagination
-// Set to 100 to prevent excessive resource usage
+// MaxPageSize is the maximum allowed page size for pagination via HTTP requests.
+// Set to 100 to prevent excessive resource usage and ensure reasonable response times.
 const MaxPageSize = 100
+
+// ParseFieldsParameter extracts and parses the ?fields query parameter.
+// Returns a slice of field names with "id" always included when valid fields are provided.
+// Returns nil if no valid fields are specified (empty or whitespace-only parameter).
+func ParseFieldsParameter(params url.Values) []string {
+	if v := strings.TrimSpace(params.Get("fields")); v != "" {
+		fields := strings.Split(v, ",")
+		result := make([]string, 0, len(fields)+1)
+		idPresent := false
+		for _, field := range fields {
+			trimmed := strings.TrimSpace(field)
+			if trimmed == "" {
+				continue
+			}
+			if trimmed == "id" {
+				idPresent = true
+			}
+			result = append(result, trimmed)
+		}
+		// If no valid fields were provided (e.g., "fields=" or "fields=   "), return nil
+		if len(result) == 0 {
+			return nil
+		}
+		// Always include id field when user provided valid fields
+		if !idPresent {
+			result = append(result, "id")
+		}
+		return result
+	}
+	return nil
+}
 
 // NewListArguments Create ListArguments from url query parameters with sane defaults
 // Returns an error if page or size parameters are invalid (negative, non-numeric, or out of range)
@@ -110,23 +143,8 @@ func NewListArguments(params url.Values) (*ListArguments, *errors.ServiceError) 
 		listArgs.OrderBy = []string{"created_time desc"}
 	}
 
-	if v := strings.Trim(params.Get("fields"), " "); v != "" {
-		fields := strings.Split(v, ",")
-		idNotPresent := true
-		for i := 0; i < len(fields); i++ {
-			field := strings.Trim(fields[i], " ")
-			if field == "" { // skip leading/trailing commas and spaces
-				continue
-			}
-			if field == "id" {
-				idNotPresent = false
-			}
-			listArgs.Fields = append(listArgs.Fields, field)
-		}
-		if idNotPresent {
-			listArgs.Fields = append(listArgs.Fields, "id")
-		}
-	}
+	// Parse fields parameter using shared logic
+	listArgs.Fields = ParseFieldsParameter(params)
 
 	return listArgs, nil
 }
