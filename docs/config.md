@@ -258,6 +258,7 @@ HTTP server settings for the API endpoint.
 | `server.jwt.issuer_url` | string | `""` | Expected JWT issuer URL for token validation (required when JWT is enabled) |
 | `server.jwt.audience` | string | `""` | Expected JWT audience claim (optional) |
 | `server.jwt.identity_claim` | string | `email` | JWT claim used as request identity for audit (e.g. `email`, `preferred_username`, `sub`) |
+| `server.jwt.identity_claim_pattern` | string | `""` | Optional regex the resolved identity value must match; requests that don't match are rejected with 401. Invalid regex prevents startup. |
 | `server.identity_header` | string | `""` | HTTP header name for caller identity; when set and non-empty, overrides JWT claim for audit attribution |
 | `server.jwk.cert_file` | string | `""` | JWK certificate file path (optional) |
 | `server.jwk.cert_url` | string | `""` | JWK certificate URL (required when JWT is enabled and cert_file is not set) |
@@ -282,16 +283,17 @@ server:
 
 #### Caller Identity
 
-The API records who performed each mutation in the `created_by`, `updated_by`, and `deleted_by` audit fields. Two settings control how the caller identity is resolved:
+The API records who performed each mutation in the `created_by`, `updated_by`, and `deleted_by` audit fields. Three settings control how the caller identity is resolved:
 
 | Setting | Purpose |
 |---------|---------|
 | `server.identity_header` | HTTP header to read the caller identity from (e.g., `X-Forwarded-Email`) |
 | `server.jwt.identity_claim` | JWT claim to use as fallback (e.g., `email`, `preferred_username`, `sub`) |
+| `server.jwt.identity_claim_pattern` | Optional regex the resolved identity value must match |
 
-**Precedence:** If both are configured and the header is present in the request, the header value wins. The JWT claim is used only when the header is not configured or is empty in the request.
+**Precedence:** If both header and JWT claim are configured and the header is present in the request, the header value wins. The JWT claim is used only when the header is not configured or is empty in the request.
 
-**Validation:** Identity values are trimmed, must not exceed 256 characters, and must not contain control characters.
+**Validation:** Identity values are trimmed, must not exceed 256 characters, and must not contain control characters. If `identity_claim_pattern` is set, the value must also match the regex — requests that don't match are rejected with `401 Unauthorized`.
 
 **Example — header-based identity (behind an authenticating proxy):**
 ```yaml
@@ -308,6 +310,18 @@ server:
     enabled: true
     issuer_url: https://idp.example.com/realms/hyperfleet
     identity_claim: email
+  jwk:
+    cert_url: https://idp.example.com/realms/hyperfleet/protocol/openid-connect/certs
+```
+
+**Example — allow only specific service accounts:**
+```yaml
+server:
+  jwt:
+    enabled: true
+    issuer_url: https://idp.example.com/realms/hyperfleet
+    identity_claim: sub
+    identity_claim_pattern: '^(sentinel|adapter-namespace|adapter-locator)$'
   jwk:
     cert_url: https://idp.example.com/realms/hyperfleet/protocol/openid-connect/certs
 ```
@@ -386,6 +400,7 @@ Complete table of all configuration properties, their environment variables, and
 | `server.jwt.issuer_url` | `HYPERFLEET_SERVER_JWT_ISSUER_URL` | string | `""` |
 | `server.jwt.audience` | `HYPERFLEET_SERVER_JWT_AUDIENCE` | string | `""` |
 | `server.jwt.identity_claim` | `HYPERFLEET_SERVER_JWT_IDENTITY_CLAIM` | string | `email` |
+| `server.jwt.identity_claim_pattern` | `HYPERFLEET_SERVER_JWT_IDENTITY_CLAIM_PATTERN` | string | `""` |
 | `server.identity_header` | `HYPERFLEET_SERVER_IDENTITY_HEADER` | string | `""` |
 | `server.jwk.cert_file` | `HYPERFLEET_SERVER_JWK_CERT_FILE` | string | `""` |
 | `server.jwk.cert_url` | `HYPERFLEET_SERVER_JWK_CERT_URL` | string | `""` |
@@ -450,6 +465,7 @@ All CLI flags and their corresponding configuration paths.
 | `--server-jwt-issuer-url` | `server.jwt.issuer_url` | string |
 | `--server-jwt-audience` | `server.jwt.audience` | string |
 | `--server-jwt-identity-claim` | `server.jwt.identity_claim` | string |
+| `--server-jwt-identity-claim-pattern` | `server.jwt.identity_claim_pattern` | string |
 | `--server-identity-header` | `server.identity_header` | string |
 | `--server-jwk-cert-file` | `server.jwk.cert_file` | string |
 | `--server-jwk-cert-url` | `server.jwk.cert_url` | string |

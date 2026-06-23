@@ -64,10 +64,11 @@ func (c *TLSConfig) Validate() error {
 
 // JWTConfig holds JWT authentication configuration
 type JWTConfig struct {
-	IssuerURL     string `mapstructure:"issuer_url" json:"issuer_url" validate:"omitempty,url"`
-	Audience      string `mapstructure:"audience" json:"audience"`
-	IdentityClaim string `mapstructure:"identity_claim" json:"identity_claim"`
-	Enabled       bool   `mapstructure:"enabled" json:"enabled"`
+	IssuerURL            string `mapstructure:"issuer_url" json:"issuer_url" validate:"omitempty,url"`
+	Audience             string `mapstructure:"audience" json:"audience"`
+	IdentityClaim        string `mapstructure:"identity_claim" json:"identity_claim"`
+	IdentityClaimPattern string `mapstructure:"identity_claim_pattern" json:"identity_claim_pattern"`
+	Enabled              bool   `mapstructure:"enabled" json:"enabled"`
 }
 
 func (c *JWTConfig) Validate() error {

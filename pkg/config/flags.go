@@ -37,6 +37,11 @@ func AddServerFlags(cmd *cobra.Command) {
 		"JWT claim used as request identity for audit",
 	)
 	cmd.Flags().String(
+		"server-jwt-identity-claim-pattern",
+		defaults.JWT.IdentityClaimPattern,
+		"Optional regex pattern the resolved identity claim value must match (e.g. .+@.+ for email-like values)",
+	)
+	cmd.Flags().String(
 		"server-identity-header",
 		defaults.IdentityHeader,
 		"HTTP header name for caller identity (overrides JWT claim when set); leave empty to disable",

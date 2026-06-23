@@ -91,6 +91,7 @@ func (s *apiServer) routes(tracingEnabled bool) *mux.Router {
 	}
 	if env().Config.Server.JWT.Enabled && env().Config.Server.JWT.IdentityClaim != "" {
 		identityCfg.JWTIdentityClaim = env().Config.Server.JWT.IdentityClaim
+		identityCfg.IdentityClaimPattern = env().Config.Server.JWT.IdentityClaimPattern
 	}
 	if identityCfg.JWTIdentityClaim != "" || identityCfg.HeaderName != "" {
 		callerIdentityMW, mwErr := auth.NewCallerIdentityMiddleware(identityCfg)

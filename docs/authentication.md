@@ -184,6 +184,32 @@ server:
     identity_claim: email   # or preferred_username, sub, etc.
 ```
 
+If the configured claim is absent from the token the request is rejected with `401 Unauthorized`.
+
+### Identity claim pattern (optional)
+
+When set, the resolved identity value must match the configured regex. Requests whose identity does not match are rejected with `401 Unauthorized`. The pattern is compiled at startup — an invalid regex prevents the server from starting.
+
+```yaml
+server:
+  jwt:
+    identity_claim: email
+    identity_claim_pattern: '^[^@]+@[^@]+$'   # require email-like values
+```
+
+Use regex alternation to allow a fixed set of values (e.g., service accounts):
+
+```yaml
+server:
+  jwt:
+    identity_claim: sub
+    identity_claim_pattern: '^(sentinel|adapter-namespace|adapter-locator)$'
+```
+
+The `^` and `$` anchors ensure full-string matching; without them a value like `evil-sentinel` would also pass.
+
+When no pattern is set, any non-empty string that passes length and character validation is accepted.
+
 ### HTTP identity header (optional)
 
 When set, a trusted gateway can set the caller identity via HTTP header. **If the header is present and non-empty, it overrides the JWT claim** for audit fields. JWT validation is still required when `jwt.enabled=true`.
