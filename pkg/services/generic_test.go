@@ -67,11 +67,17 @@ func TestSQLTranslation(t *testing.T) {
 			"sql":    "spec->>'region' = ?",
 			"values": ConsistOf("us-east-1"),
 		},
-		// Test spec.xxx.yyy field mapping (nested, string value — no CAST)
+		// Test spec.xxx.yyy field mapping (2-level nested, string value — no CAST)
 		{
 			"search": "spec.release.version = '2'",
 			"sql":    "spec->'release'->>'version' = ?",
 			"values": ConsistOf("2"),
+		},
+		// Test spec.xxx.yyy.zzz field mapping (3-level nested, string value — no CAST)
+		{
+			"search": "spec.release.notes.url = 'https://example.com'",
+			"sql":    "spec->'release'->'notes'->>'url' = ?",
+			"values": ConsistOf("https://example.com"),
 		},
 		// Test spec field with unquoted number — CAST applied for correct numeric ordering
 		{
@@ -83,6 +89,12 @@ func TestSQLTranslation(t *testing.T) {
 		{
 			"search": "spec.release.version > 9",
 			"sql":    "CAST(spec->'release'->>'version' AS numeric) > ?",
+			"values": ConsistOf(float64(9)),
+		},
+		// Test 3-level nested spec field with unquoted number — CAST applied
+		{
+			"search": "spec.release.config.replicas > 9",
+			"sql":    "CAST(spec->'release'->'config'->>'replicas' AS numeric) > ?",
 			"values": ConsistOf(float64(9)),
 		},
 		// Test ID query (should be allowed)
@@ -101,7 +113,9 @@ func TestSQLTranslation(t *testing.T) {
 			context.Background(), &ListArguments{Search: search}, &list,
 		)
 		Expect(serviceErr).ToNot(HaveOccurred())
-		tslTree, err := tsl.ParseTSL(search)
+		// Mirror the production pipeline: pre-process spec deep paths before TSL parsing
+		preprocessed := db.PreprocessSpecSubfields(search)
+		tslTree, err := tsl.ParseTSL(preprocessed)
 		Expect(err).ToNot(HaveOccurred())
 		// Apply field name mapping (status.xxx -> status_xxx, labels.xxx -> labels->>'xxx')
 		// This must happen before converting to sqlizer

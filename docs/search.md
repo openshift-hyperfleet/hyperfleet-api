@@ -44,7 +44,7 @@ The HyperFleet API uses the [Tree Search Language (TSL)](https://github.com/yaac
 | `updated_by` | string | Last updater email | `updated_by='user@example.com'` |
 | `labels.<key>` | string | Label value | `labels.environment='production'` |
 | `spec.<key>` | string/number | Top-level spec field | `spec.provider='aws'` |
-| `spec.<key>.<nested>` | string/number | Nested spec field (2 levels max) | `spec.release.channel='dev'` |
+| `spec.<key>.<nested>...` | string/number | Nested spec field (arbitrary depth) | `spec.release.channel='dev'` |
 | `status.conditions.<Type>` | string | Condition status | `status.conditions.Reconciled='True'` |
 | `status.conditions.<Type>.<Subfield>` | varies | Condition subfield | `status.conditions.Reconciled.last_updated_time < '...'` |
 
@@ -93,6 +93,10 @@ curl -G "http://localhost:8000/api/hyperfleet/v1/clusters" \
 curl -G "http://localhost:8000/api/hyperfleet/v1/clusters" \
   --data-urlencode "search=spec.release.channel='dev'"
 
+# Filter by a deeply nested spec field (3+ levels)
+curl -G "http://localhost:8000/api/hyperfleet/v1/clusters" \
+  --data-urlencode "search=spec.release.config.zone='us-east-1a'"
+
 # Combine multiple spec fields with AND
 curl -G "http://localhost:8000/api/hyperfleet/v1/clusters" \
   --data-urlencode "search=spec.release.channel='dev' AND spec.release.version > 9"
@@ -119,7 +123,7 @@ All comparison operators work on spec fields: `=`, `!=`, `<`, `<=`, `>`, `>=`, `
 ### Constraints
 
 - Key names may only contain lowercase letters (`a-z`), digits (`0-9`), and underscores (`_`).
-- Nesting is limited to **two levels** (`spec.<key>.<nested>`) due to the TSL parser's 3-segment identifier limit.
+- Arbitrary nesting depth is supported: `spec.<key>`, `spec.<key>.<nested>`, `spec.<a>.<b>.<c>`, etc.
 - Values returned from spec fields are always text internally; use unquoted numbers for correct numeric comparisons.
 
 ## Labels Queries

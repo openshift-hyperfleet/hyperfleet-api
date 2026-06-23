@@ -169,9 +169,11 @@ func (s *sqlGenericService) buildSearchValues(
 		)
 	}
 
-	// Pre-process condition subfield paths (4-part -> 3-part encoding) before TSL parsing.
-	// The TSL parser only supports up to 3-part identifiers (database.table.column).
+	// Pre-process before TSL parsing — the parser only supports 3-part identifiers.
+	// Condition subfields: status.conditions.Reconciled.last_updated_time → 3-part encoding
+	// Spec deep paths: spec.a.b.c → spec.a__b__c (2 parts, decoded in getField)
 	preprocessedSearch := db.PreprocessConditionSubfields(listCtx.args.Search)
+	preprocessedSearch = db.PreprocessSpecSubfields(preprocessedSearch)
 
 	// create the TSL tree
 	tslTree, err := tsl.ParseTSL(preprocessedSearch)

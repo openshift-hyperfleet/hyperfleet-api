@@ -202,6 +202,72 @@ func TestSearchSpecSubfieldCombined(t *testing.T) {
 	Expect(foundDevV10).To(BeTrue(), "Expected to find dev channel cluster with version > 9")
 }
 
+// TestSearchDeepNestedSpecSubfield verifies that spec paths with 3+ levels
+// (e.g. spec.release.config.zone) map correctly to spec->'release'->'config'->>'zone'.
+func TestSearchDeepNestedSpecSubfield(t *testing.T) {
+	RegisterTestingT(t)
+	h, client := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+
+	// Create cluster with 3-level spec: release.config.zone=us-east-1a, replicas=10
+	deepCluster, err := factories.NewClusterWithSpec(&h.Factories, h.DBFactory, h.NewID(), map[string]interface{}{
+		"release": map[string]interface{}{
+			"config": map[string]interface{}{"zone": "us-east-1a", "replicas": 10},
+		},
+	})
+	Expect(err).NotTo(HaveOccurred())
+
+	// Create cluster with different zone (should not match string query)
+	_, err = factories.NewClusterWithSpec(&h.Factories, h.DBFactory, h.NewID(), map[string]interface{}{
+		"release": map[string]interface{}{
+			"config": map[string]interface{}{"zone": "eu-west-1b", "replicas": 2},
+		},
+	})
+	Expect(err).NotTo(HaveOccurred())
+
+	// 3-level string match
+	searchStr := "spec.release.config.zone = 'us-east-1a'"
+	search := openapi.SearchParams(searchStr)
+	params := &openapi.GetClustersParams{Search: &search}
+	resp, err := client.GetClustersWithResponse(ctx, params, test.WithAuthToken(ctx))
+
+	Expect(err).NotTo(HaveOccurred())
+	Expect(resp.StatusCode()).To(Equal(http.StatusOK))
+	list := resp.JSON200
+	Expect(list).NotTo(BeNil())
+	Expect(list.Total).To(BeNumerically(">=", 1))
+
+	foundDeep := false
+	for _, item := range list.Items {
+		if *item.Id == deepCluster.ID {
+			foundDeep = true
+		}
+	}
+	Expect(foundDeep).To(BeTrue(), "Expected to find the cluster with 3-level spec path")
+
+	// 3-level numeric comparison — CAST ensures 10 > 9 numerically
+	searchNumStr := "spec.release.config.replicas > 9"
+	searchNum := openapi.SearchParams(searchNumStr)
+	numParams := &openapi.GetClustersParams{Search: &searchNum}
+	numResp, err := client.GetClustersWithResponse(ctx, numParams, test.WithAuthToken(ctx))
+
+	Expect(err).NotTo(HaveOccurred())
+	Expect(numResp.StatusCode()).To(Equal(http.StatusOK))
+	numList := numResp.JSON200
+	Expect(numList).NotTo(BeNil())
+	Expect(numList.Total).To(BeNumerically(">=", 1))
+
+	foundDeepNum := false
+	for _, item := range numList.Items {
+		if *item.Id == deepCluster.ID {
+			foundDeepNum = true
+		}
+	}
+	Expect(foundDeepNum).To(BeTrue(), "Expected to find cluster with 3-level numeric spec path")
+}
+
 // TestSearchCombinedQuery verifies that combined queries (AND/OR)
 // work correctly with field mapping
 func TestSearchCombinedQuery(t *testing.T) {
