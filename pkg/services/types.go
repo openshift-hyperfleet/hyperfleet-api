@@ -106,6 +106,8 @@ func NewListArguments(params url.Values) (*ListArguments, *errors.ServiceError) 
 	}
 
 	// Validate and apply order parameter (asc/desc direction)
+	// Note: order parameter requires orderBy to be present. If only order is provided
+	// without orderBy, it will be ignored and the default ordering will be used instead.
 	if v := strings.Trim(params.Get("order"), " "); v != "" {
 		if v != "asc" && v != "desc" {
 			return nil, errors.New(

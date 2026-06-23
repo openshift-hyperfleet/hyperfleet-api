@@ -694,6 +694,7 @@ All list endpoints accept the following query parameters:
 - `orderBy` can include direction: `?orderBy=name desc` or `?orderBy=name asc,created_time desc`
 - `order` applies default direction to fields without explicit direction: `?orderBy=name&order=desc` → sorts by `name desc`
 - Fields with explicit direction in `orderBy` are not affected by `order` parameter
+- **Note**: `order` requires `orderBy` to be present. Using `order` alone (without `orderBy`) will be ignored and default ordering will apply
 - Default ordering: `created_time desc`
 
 **Note**: Violating constraints returns a `400 Bad Request` response with [RFC 9457 Problem Details](https://datatracker.ietf.org/doc/html/rfc9457) format.
