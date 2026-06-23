@@ -1,0 +1,209 @@
+{
+  "abc123-mw2-cm": {
+    "apiVersion": "work.open-cluster-management.io/v1",
+    "kind": "ManifestWork",
+    "metadata": {
+      "name": "abc123-mw2-cm",
+      "namespace": "cluster1",
+      "uid": "aa111111-36df-5ebf-9007-87a65a27dfab",
+      "resourceVersion": "1",
+      "creationTimestamp": "2026-02-18T10:22:10Z",
+      "generation": 1,
+      "labels": {
+        "hyperfleet.io/cluster-id": "abc123",
+        "hyperfleet.io/adapter": "maestro-two-resources-example",
+        "hyperfleet.io/component": "configuration",
+        "hyperfleet.io/generation": "77",
+        "maestro.io/source-id": "maestro-two-resources-example"
+      }
+    },
+    "spec": {
+      "workload": {
+        "manifests": [
+          {
+            "apiVersion": "v1",
+            "kind": "ConfigMap",
+            "metadata": {
+              "name": "cluster-config",
+              "namespace": "abc123-mw2",
+              "labels": {
+                "hyperfleet.io/cluster-id": "abc123",
+                "hyperfleet.io/cluster-name": "abc123",
+                "hyperfleet.io/managed-by": "maestro-two-resources-example"
+              }
+            },
+            "data": {
+              "cluster_id": "abc123",
+              "cluster_name": "abc123"
+            }
+          }
+        ]
+      },
+      "deleteOption": {
+        "propagationPolicy": "Background"
+      }
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "Applied",
+          "status": "True",
+          "reason": "AppliedManifestWorkComplete",
+          "message": "Apply manifest work complete",
+          "lastTransitionTime": "2026-02-18T10:22:10Z",
+          "observedGeneration": 1
+        },
+        {
+          "type": "Available",
+          "status": "True",
+          "reason": "ResourcesAvailable",
+          "message": "All resources are available",
+          "lastTransitionTime": "2026-02-18T10:22:10Z",
+          "observedGeneration": 1
+        }
+      ],
+      "resourceStatus": {
+        "manifests": [
+          {
+            "resourceMeta": {
+              "ordinal": 0,
+              "group": "",
+              "version": "v1",
+              "kind": "ConfigMap",
+              "resource": "configmaps",
+              "name": "cluster-config",
+              "namespace": "abc123-mw2"
+            },
+            "conditions": [
+              {
+                "type": "Applied",
+                "status": "True",
+                "reason": "AppliedManifestComplete",
+                "message": "Apply manifest complete",
+                "lastTransitionTime": "2026-02-18T10:22:10Z"
+              },
+              {
+                "type": "Available",
+                "status": "True",
+                "reason": "ResourceAvailable",
+                "message": "Resource is available",
+                "lastTransitionTime": "2026-02-18T10:22:10Z"
+              }
+            ],
+            "statusFeedback": {}
+          }
+        ]
+      }
+    }
+  },
+  "abc123-mw2": {
+    "apiVersion": "work.open-cluster-management.io/v1",
+    "kind": "ManifestWork",
+    "metadata": {
+      "name": "abc123-mw2",
+      "namespace": "cluster1",
+      "uid": "bb222222-36df-5ebf-9007-87a65a27dfab",
+      "resourceVersion": "1",
+      "creationTimestamp": "2026-02-18T10:22:10Z",
+      "generation": 1,
+      "labels": {
+        "hyperfleet.io/cluster-id": "abc123",
+        "hyperfleet.io/adapter": "maestro-two-resources-example",
+        "hyperfleet.io/component": "infrastructure",
+        "hyperfleet.io/generation": "77",
+        "maestro.io/source-id": "maestro-two-resources-example"
+      }
+    },
+    "spec": {
+      "workload": {
+        "manifests": [
+          {
+            "apiVersion": "v1",
+            "kind": "Namespace",
+            "metadata": {
+              "name": "abc123-mw2",
+              "labels": {
+                "hyperfleet.io/cluster-id": "abc123",
+                "hyperfleet.io/cluster-name": "abc123",
+                "hyperfleet.io/managed-by": "maestro-two-resources-example",
+                "hyperfleet.io/resource-type": "namespace"
+              }
+            }
+          }
+        ]
+      },
+      "deleteOption": {
+        "propagationPolicy": "Foreground"
+      }
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "Applied",
+          "status": "True",
+          "reason": "AppliedManifestWorkComplete",
+          "message": "Apply manifest work complete",
+          "lastTransitionTime": "2026-02-18T10:22:10Z",
+          "observedGeneration": 1
+        },
+        {
+          "type": "Available",
+          "status": "True",
+          "reason": "ResourcesAvailable",
+          "message": "All resources are available",
+          "lastTransitionTime": "2026-02-18T10:22:10Z",
+          "observedGeneration": 1
+        }
+      ],
+      "resourceStatus": {
+        "manifests": [
+          {
+            "resourceMeta": {
+              "ordinal": 0,
+              "group": "",
+              "version": "v1",
+              "kind": "Namespace",
+              "resource": "namespaces",
+              "name": "abc123-mw2",
+              "namespace": ""
+            },
+            "conditions": [
+              {
+                "type": "Applied",
+                "status": "True",
+                "reason": "AppliedManifestComplete",
+                "message": "Apply manifest complete",
+                "lastTransitionTime": "2026-02-18T10:22:10Z"
+              },
+              {
+                "type": "Available",
+                "status": "True",
+                "reason": "ResourceAvailable",
+                "message": "Resource is available",
+                "lastTransitionTime": "2026-02-18T10:22:10Z"
+              },
+              {
+                "type": "StatusFeedbackSynced",
+                "status": "True",
+                "reason": "StatusFeedbackSynced",
+                "message": "",
+                "lastTransitionTime": "2026-02-18T10:22:10Z"
+              }
+            ],
+            "statusFeedback": {
+              "values": [
+                {
+                  "name": "phase",
+                  "fieldValue": {
+                    "type": "String",
+                    "string": "Active"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  }
+}
