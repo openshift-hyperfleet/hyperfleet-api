@@ -273,8 +273,8 @@ func TestChannelPatch(t *testing.T) {
 	t.Run("NotFound", func(t *testing.T) {
 		svc, _ := setupResourceTest(t)
 
-		req := &api.ResourcePatchRequest{
-			Spec: &map[string]any{"enabled_regex": ".*"},
+		req := &api.ResourcePatch{
+			Spec: map[string]any{"enabled_regex": ".*"},
 		}
 
 		_, svcErr := svc.Patch(t.Context(), "Channel", "nonexistent-id", req)
@@ -294,8 +294,8 @@ func TestChannelPatch(t *testing.T) {
 			"is_default":    true,
 			"enabled_regex": "4\\.17\\..*",
 		}
-		req := &api.ResourcePatchRequest{
-			Spec: &newSpec,
+		req := &api.ResourcePatch{
+			Spec: newSpec,
 		}
 		patched, svcErr := svc.Patch(t.Context(), "Channel", channel.ID, req)
 		Expect(svcErr).To(BeNil(), "patch should succeed")
@@ -329,8 +329,8 @@ func TestChannelPatch(t *testing.T) {
 			"patched": "true",
 			"env":     "staging",
 		}
-		req := &api.ResourcePatchRequest{
-			Labels: &newLabels,
+		req := &api.ResourcePatch{
+			Labels: newLabels,
 		}
 		patched, svcErr := svc.Patch(t.Context(), "Channel", channel.ID, req)
 		Expect(svcErr).To(BeNil(), "patch should succeed")
@@ -354,8 +354,8 @@ func TestChannelPatch(t *testing.T) {
 
 		// Patch the channel
 		newSpec := map[string]any{"is_default": true}
-		req := &api.ResourcePatchRequest{
-			Spec: &newSpec,
+		req := &api.ResourcePatch{
+			Spec: newSpec,
 		}
 		patched, svcErr := svc.Patch(t.Context(), "Channel", channel.ID, req)
 

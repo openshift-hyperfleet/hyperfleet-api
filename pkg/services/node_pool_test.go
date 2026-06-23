@@ -1149,7 +1149,7 @@ func TestNodePoolPatch(t *testing.T) {
 		}
 
 		newSpec := map[string]interface{}{"new": "spec"}
-		result, svcErr := service.Patch(ctx, "np1", &api.NodePoolPatchRequest{Spec: &newSpec})
+		result, svcErr := service.Patch(ctx, "np1", &api.NodePoolPatch{Spec: newSpec})
 
 		g.Expect(svcErr).To(BeNil())
 		g.Expect(result.Generation).To(Equal(int32(2)))
@@ -1173,7 +1173,7 @@ func TestNodePoolPatch(t *testing.T) {
 		}
 
 		sameSpec := map[string]interface{}{"key": "value"}
-		result, svcErr := service.Patch(ctx, "np1", &api.NodePoolPatchRequest{Spec: &sameSpec})
+		result, svcErr := service.Patch(ctx, "np1", &api.NodePoolPatch{Spec: sameSpec})
 
 		g.Expect(svcErr).To(BeNil())
 		g.Expect(result.Generation).To(Equal(int32(3)))
@@ -1197,7 +1197,7 @@ func TestNodePoolPatch(t *testing.T) {
 		}
 
 		newLabels := map[string]string{"env": "prod"}
-		result, svcErr := service.Patch(ctx, "np1", &api.NodePoolPatchRequest{Labels: &newLabels})
+		result, svcErr := service.Patch(ctx, "np1", &api.NodePoolPatch{Labels: newLabels})
 
 		g.Expect(svcErr).To(BeNil())
 		g.Expect(result.Generation).To(Equal(int32(2)))
@@ -1221,7 +1221,7 @@ func TestNodePoolPatch(t *testing.T) {
 		}
 
 		sameSpec := map[string]interface{}{"z": "last", "a": "first", "m": "middle"}
-		result, svcErr := service.Patch(ctx, "np1", &api.NodePoolPatchRequest{Spec: &sameSpec})
+		result, svcErr := service.Patch(ctx, "np1", &api.NodePoolPatch{Spec: sameSpec})
 
 		g.Expect(svcErr).To(BeNil())
 		g.Expect(result.Generation).To(Equal(int32(5)))
@@ -1245,7 +1245,7 @@ func TestNodePoolPatch(t *testing.T) {
 		}
 
 		sameLabels := map[string]string{"z": "zulu", "a": "alpha"}
-		result, svcErr := service.Patch(ctx, "np1", &api.NodePoolPatchRequest{Labels: &sameLabels})
+		result, svcErr := service.Patch(ctx, "np1", &api.NodePoolPatch{Labels: sameLabels})
 
 		g.Expect(svcErr).To(BeNil())
 		g.Expect(result.Generation).To(Equal(int32(4)))
@@ -1260,7 +1260,7 @@ func TestNodePoolPatch(t *testing.T) {
 		ctx := context.Background()
 
 		newSpec := map[string]interface{}{"a": "b"}
-		_, svcErr := service.Patch(ctx, "nonexistent", &api.NodePoolPatchRequest{Spec: &newSpec})
+		_, svcErr := service.Patch(ctx, "nonexistent", &api.NodePoolPatch{Spec: newSpec})
 
 		g.Expect(svcErr).NotTo(BeNil())
 		g.Expect(svcErr.HTTPCode).To(Equal(404))

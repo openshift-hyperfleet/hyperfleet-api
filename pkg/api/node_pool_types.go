@@ -77,11 +77,6 @@ func (np *NodePool) BeforeUpdate(tx *gorm.DB) error {
 	return nil
 }
 
-type NodePoolPatchRequest struct {
-	Spec   *map[string]interface{} `json:"spec,omitempty"`
-	Labels *map[string]string      `json:"labels,omitempty"`
-}
-
 func (np *NodePool) MarkDeleted(by string, t time.Time) {
 	np.DeletedTime = &t
 	np.DeletedBy = &by
@@ -89,4 +84,9 @@ func (np *NodePool) MarkDeleted(by string, t time.Time) {
 
 func (np *NodePool) IncrementGeneration() {
 	np.Generation++
+}
+
+type NodePoolPatch struct {
+	Spec   map[string]interface{}
+	Labels map[string]string
 }

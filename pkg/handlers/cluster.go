@@ -61,19 +61,21 @@ func (h ClusterHandler) Create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h ClusterHandler) Patch(w http.ResponseWriter, r *http.Request) {
-	var patch api.ClusterPatchRequest
+	var req openapi.ClusterPatchRequest
 
 	cfg := &handlerConfig{
-		MarshalInto: &patch,
+		MarshalInto:     &req,
+		StrictUnmarshal: true,
 		Validate: []validate{
-			validatePatchRequest(&patch),
-			validateLabels(&patch, "Labels"),
+			validatePatchRequest(&req),
+			validateLabels(&req, "Labels"),
 		},
 		Action: func() (interface{}, *errors.ServiceError) {
 			ctx := r.Context()
 			id := mux.Vars(r)["id"]
 
-			clusterModel, err := h.cluster.Patch(ctx, id, &patch)
+			patch := convertClusterPatch(&req)
+			clusterModel, err := h.cluster.Patch(ctx, id, patch)
 			if err != nil {
 				return nil, err
 			}
@@ -87,6 +89,17 @@ func (h ClusterHandler) Patch(w http.ResponseWriter, r *http.Request) {
 	}
 
 	handle(w, r, cfg, http.StatusOK)
+}
+
+func convertClusterPatch(req *openapi.ClusterPatchRequest) *api.ClusterPatch {
+	patch := &api.ClusterPatch{}
+	if req.Spec != nil {
+		patch.Spec = *req.Spec
+	}
+	if req.Labels != nil {
+		patch.Labels = *req.Labels
+	}
+	return patch
 }
 
 func (h ClusterHandler) List(w http.ResponseWriter, r *http.Request) {

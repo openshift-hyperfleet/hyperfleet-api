@@ -7,6 +7,7 @@ import (
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/registry"
 )
 
@@ -31,9 +32,10 @@ type Resource struct {
 	Generation  int32          `json:"generation" gorm:"default:1;not null"`
 }
 
-type ResourcePatchRequest struct {
-	Spec   *map[string]interface{} `json:"spec,omitempty"`
-	Labels *map[string]string      `json:"labels,omitempty"`
+type ResourcePatch struct {
+	Spec       map[string]interface{}
+	Labels     map[string]string
+	References map[string][]openapi.ObjectReference
 }
 
 type ResourceList []*Resource

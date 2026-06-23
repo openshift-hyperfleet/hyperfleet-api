@@ -271,16 +271,12 @@ func validatePatchRequest(i interface{}) validate {
 		v := reflect.ValueOf(i).Elem()
 
 		spec := v.FieldByName("Spec")
-		if spec.Kind() == reflect.Ptr {
-			spec = spec.Elem()
-		}
-
 		labels := v.FieldByName("Labels")
-		if labels.Kind() == reflect.Ptr {
-			labels = labels.Elem()
-		}
 
-		if !spec.IsValid() && !labels.IsValid() {
+		specPresent := spec.IsValid() && !spec.IsNil()
+		labelsPresent := labels.IsValid() && !labels.IsNil()
+
+		if !specPresent && !labelsPresent {
 			return errors.BadRequest("at least one field must be provided for update")
 		}
 		return nil

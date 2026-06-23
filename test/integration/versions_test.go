@@ -41,7 +41,8 @@ func createTestVersion(t *testing.T, svc services.ResourceService, name, channel
 }
 
 func expectCreateError(t *testing.T, svc services.ResourceService,
-	resource *api.Resource, expectedCode int, msg string) {
+	resource *api.Resource, expectedCode int, msg string,
+) {
 	t.Helper()
 	_, svcErr := svc.Create(t.Context(), resource.Kind, resource)
 	Expect(svcErr).ToNot(BeNil(), msg)
@@ -157,7 +158,6 @@ func TestVersionCreate(t *testing.T) {
 
 // Version Delete
 func TestVersionDelete(t *testing.T) {
-
 	t.Run("VersionDeleteWithChannel", func(t *testing.T) {
 		svc, h := setupResourceTest(t)
 
@@ -260,7 +260,6 @@ func TestVersionDelete(t *testing.T) {
 		dbErr := checkResourceCount(t.Context(), h, []string{version.ID}, 0)
 		Expect(dbErr).To(BeNil())
 	})
-
 }
 
 // Version List
@@ -463,8 +462,8 @@ func TestVersionPatch(t *testing.T) {
 	t.Run("NotFound", func(t *testing.T) {
 		svc, _ := setupResourceTest(t)
 
-		req := &api.ResourcePatchRequest{
-			Spec: &map[string]any{"enabled": true},
+		req := &api.ResourcePatch{
+			Spec: map[string]any{"enabled": true},
 		}
 
 		_, svcErr := svc.Patch(t.Context(), "Version", "nonexistent-id", req)
@@ -486,8 +485,8 @@ func TestVersionPatch(t *testing.T) {
 			"is_default":    false,
 			"release_image": "quay.io/openshift-release-dev/ocp-release:4.18.0",
 		}
-		req := &api.ResourcePatchRequest{
-			Spec: &newSpec,
+		req := &api.ResourcePatch{
+			Spec: newSpec,
 		}
 		_, svcErr := svc.Patch(t.Context(), "Version", version.ID, req)
 
@@ -517,8 +516,8 @@ func TestVersionPatch(t *testing.T) {
 			"patched":     "true",
 			"environment": "test",
 		}
-		req := &api.ResourcePatchRequest{
-			Labels: &newLabels,
+		req := &api.ResourcePatch{
+			Labels: newLabels,
 		}
 		_, svcErr := svc.Patch(t.Context(), "Version", version.ID, req)
 		Expect(svcErr).To(BeNil())
@@ -531,7 +530,6 @@ func TestVersionPatch(t *testing.T) {
 		jsonErr := json.Unmarshal(retrieved.Labels, &retrievedLabelValues)
 		Expect(jsonErr).To(BeNil())
 		Expect(retrievedLabelValues).To(Equal(newLabels), "patched labels should match retrieved labels")
-
 	})
 
 	t.Run("UpdatesTimestamps", func(t *testing.T) {
@@ -543,8 +541,8 @@ func TestVersionPatch(t *testing.T) {
 
 		// Patch the version
 		newSpec := map[string]any{"enabled": false}
-		req := &api.ResourcePatchRequest{
-			Spec: &newSpec,
+		req := &api.ResourcePatch{
+			Spec: newSpec,
 		}
 		time.Sleep(5 * time.Millisecond)
 		patched, svcErr := svc.Patch(t.Context(), "Version", version.ID, req)

@@ -87,16 +87,18 @@ func (h *ResourceHandler) List(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ResourceHandler) Patch(w http.ResponseWriter, r *http.Request) {
-	var patch api.ResourcePatchRequest
+	var req openapi.ResourcePatchRequest
 	cfg := &handlerConfig{
-		MarshalInto: &patch,
+		MarshalInto:     &req,
+		StrictUnmarshal: true,
 		Validate: []validate{
-			validatePatchRequest(&patch),
-			validateLabels(&patch, "Labels"),
+			validatePatchRequest(&req),
+			validateLabels(&req, "Labels"),
 		},
 		Action: func() (interface{}, *errors.ServiceError) {
 			id := mux.Vars(r)["id"]
-			resource, err := h.service.Patch(r.Context(), h.descriptor.Kind, id, &patch)
+			patch := convertResourcePatch(&req)
+			resource, err := h.service.Patch(r.Context(), h.descriptor.Kind, id, patch)
 			if err != nil {
 				return nil, err
 			}
@@ -207,12 +209,13 @@ func (h *ResourceHandler) ListByOwner(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ResourceHandler) PatchByOwner(w http.ResponseWriter, r *http.Request) {
-	var patch api.ResourcePatchRequest
+	var req openapi.ResourcePatchRequest
 	cfg := &handlerConfig{
-		MarshalInto: &patch,
+		MarshalInto:     &req,
+		StrictUnmarshal: true,
 		Validate: []validate{
-			validatePatchRequest(&patch),
-			validateLabels(&patch, "Labels"),
+			validatePatchRequest(&req),
+			validateLabels(&req, "Labels"),
 		},
 		Action: func() (interface{}, *errors.ServiceError) {
 			vars := mux.Vars(r)
@@ -222,7 +225,8 @@ func (h *ResourceHandler) PatchByOwner(w http.ResponseWriter, r *http.Request) {
 				return nil, err
 			}
 
-			resource, err := h.service.Patch(r.Context(), h.descriptor.Kind, id, &patch)
+			patch := convertResourcePatch(&req)
+			resource, err := h.service.Patch(r.Context(), h.descriptor.Kind, id, patch)
 			if err != nil {
 				return nil, err
 			}
@@ -230,6 +234,20 @@ func (h *ResourceHandler) PatchByOwner(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 	handle(w, r, cfg, http.StatusOK)
+}
+
+func convertResourcePatch(req *openapi.ResourcePatchRequest) *api.ResourcePatch {
+	patch := &api.ResourcePatch{}
+	if req.Spec != nil {
+		patch.Spec = *req.Spec
+	}
+	if req.Labels != nil {
+		patch.Labels = *req.Labels
+	}
+	if req.References != nil {
+		patch.References = *req.References
+	}
+	return patch
 }
 
 func (h *ResourceHandler) DeleteByOwner(w http.ResponseWriter, r *http.Request) {

@@ -19,7 +19,7 @@ import (
 type NodePoolService interface {
 	Get(ctx context.Context, id string) (*api.NodePool, *errors.ServiceError)
 	Create(ctx context.Context, nodePool *api.NodePool) (*api.NodePool, *errors.ServiceError)
-	Patch(ctx context.Context, id string, patch *api.NodePoolPatchRequest) (*api.NodePool, *errors.ServiceError)
+	Patch(ctx context.Context, id string, patch *api.NodePoolPatch) (*api.NodePool, *errors.ServiceError)
 	GetByIDAndOwner(ctx context.Context, id string, ownerID string) (*api.NodePool, *errors.ServiceError)
 	ListByCluster(
 		ctx context.Context, clusterID string, args *ListArguments,
@@ -96,7 +96,7 @@ func (s *sqlNodePoolService) Create(ctx context.Context, nodePool *api.NodePool)
 }
 
 func (s *sqlNodePoolService) Patch(
-	ctx context.Context, nodePoolID string, patch *api.NodePoolPatchRequest,
+	ctx context.Context, nodePoolID string, patch *api.NodePoolPatch,
 ) (*api.NodePool, *errors.ServiceError) {
 	nodePool, err := s.nodePoolDao.GetForUpdate(ctx, nodePoolID)
 	if err != nil {
@@ -270,16 +270,16 @@ func (s *sqlNodePoolService) ForceDelete(ctx context.Context, id string, reason 
 	return nil
 }
 
-func applyNodePoolPatch(nodePool *api.NodePool, patch *api.NodePoolPatchRequest) error {
+func applyNodePoolPatch(nodePool *api.NodePool, patch *api.NodePoolPatch) error {
 	if patch.Spec != nil {
-		specJSON, err := json.Marshal(*patch.Spec)
+		specJSON, err := json.Marshal(patch.Spec)
 		if err != nil {
 			return fmt.Errorf("failed to marshal nodepool spec: %w", err)
 		}
 		nodePool.Spec = specJSON
 	}
 	if patch.Labels != nil {
-		labelsJSON, err := json.Marshal(*patch.Labels)
+		labelsJSON, err := json.Marshal(patch.Labels)
 		if err != nil {
 			return fmt.Errorf("failed to marshal nodepool labels: %w", err)
 		}
