@@ -56,10 +56,12 @@ func handleError(r *http.Request, w http.ResponseWriter, err *errors.ServiceErro
 // applyFieldFilter applies field filtering to a presented resource based on the ?fields query parameter.
 // If no fields are specified, it returns the original presented resource.
 // If fields are specified, it filters the resource and returns only the requested fields.
+// Note: This function only validates the fields parameter, not pagination parameters,
+// to avoid rejecting irrelevant query params on single-resource GET endpoints.
 func applyFieldFilter(r *http.Request, presented interface{}) (interface{}, *errors.ServiceError) {
-	listArgs := services.NewListArguments(r.URL.Query())
-	if listArgs.Fields != nil {
-		filtered, filterErr := presenters.FilterSingle(listArgs.Fields, presented)
+	fields := services.ParseFieldsParameter(r.URL.Query())
+	if fields != nil {
+		filtered, filterErr := presenters.FilterSingle(fields, presented)
 		if filterErr != nil {
 			return nil, filterErr
 		}

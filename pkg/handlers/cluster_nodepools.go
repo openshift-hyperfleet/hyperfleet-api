@@ -38,7 +38,10 @@ func (h ClusterNodePoolsHandler) List(w http.ResponseWriter, r *http.Request) {
 				return nil, err
 			}
 
-			listArgs := services.NewListArguments(r.URL.Query())
+			listArgs, err := services.NewListArguments(r.URL.Query())
+			if err != nil {
+				return nil, err
+			}
 
 			nodePools, paging, err := h.nodePoolService.ListByCluster(ctx, clusterID, listArgs)
 			if err != nil {

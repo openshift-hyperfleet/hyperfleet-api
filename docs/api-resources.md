@@ -682,13 +682,19 @@ The status object contains synthesized conditions computed from adapter reports:
 
 All list endpoints accept the following query parameters:
 
-| Parameter  | Type           | Required | Default        | Constraints          |
-|------------|----------------|----------|----------------|----------------------|
-| `search`   | string         | No       | -              | TSL query syntax     |
-| `page`     | integer (int32)| No       | `1`            | -                    |
-| `pageSize` | integer (int32)| No       | `20`           | -                    |
-| `orderBy`  | string         | No       | `created_time` | -                    |
-| `order`    | string         | No       | -              | Must be `asc` or `desc` |
+| Parameter  | Type           | Required | Default             | Constraints          |
+|------------|----------------|----------|---------------------|----------------------|
+| `search`   | string         | No       | -                   | TSL query syntax     |
+| `page`     | integer (int32)| No       | `1`                 | Must be >= 1         |
+| `pageSize` | integer (int32)| No       | `20`                | Must be between 1 and 100 |
+| `orderBy`  | string         | No       | `created_time desc` | Field name(s) with optional direction (asc/desc) |
+
+**Ordering behavior**:
+- Include direction in `orderBy`: `?orderBy=name desc` or `?orderBy=name asc,created_time desc`
+- Fields without direction default to ascending: `?orderBy=name` → sorts by `name asc`
+- Default ordering when `orderBy` is omitted: `created_time desc`
+
+**Note**: Violating constraints returns a `400 Bad Request` response with [RFC 9457 Problem Details](https://datatracker.ietf.org/doc/html/rfc9457) format.
 
 ### Path Parameters
 

@@ -34,7 +34,10 @@ func (h NodePoolStatusHandler) List(w http.ResponseWriter, r *http.Request) {
 		Action: func() (interface{}, *errors.ServiceError) {
 			ctx := r.Context()
 			nodePoolID := mux.Vars(r)[logger.FieldNodePoolID]
-			listArgs := services.NewListArguments(r.URL.Query())
+			listArgs, err := services.NewListArguments(r.URL.Query())
+			if err != nil {
+				return nil, err
+			}
 
 			// Fetch adapter statuses with pagination
 			adapterStatuses, total, err := h.adapterStatusService.FindByResourcePaginated(
