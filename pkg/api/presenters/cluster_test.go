@@ -9,7 +9,6 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/util"
 )
 
 const (
@@ -23,7 +22,7 @@ func createTestClusterRequest() *openapi.ClusterCreateRequest {
 
 	return &openapi.ClusterCreateRequest{
 		Labels: &labels,
-		Kind:   util.PtrString("Cluster"),
+		Kind:   "Cluster",
 		Name:   "test-cluster",
 		Spec: map[string]interface{}{
 			"region":   "us-central1",
@@ -76,7 +75,7 @@ func TestConvertCluster_WithLabels(t *testing.T) {
 
 	req := &openapi.ClusterCreateRequest{
 		Labels: &labels,
-		Kind:   util.PtrString("Cluster"),
+		Kind:   "Cluster",
 		Name:   "labeled-cluster",
 		Spec:   map[string]interface{}{"test": "spec"},
 	}
@@ -97,7 +96,7 @@ func TestConvertCluster_WithoutLabels(t *testing.T) {
 
 	req := &openapi.ClusterCreateRequest{
 		Labels: nil, // Nil labels
-		Kind:   util.PtrString("Cluster"),
+		Kind:   "Cluster",
 		Name:   "unlabeled-cluster",
 		Spec:   map[string]interface{}{"test": "spec"},
 	}
@@ -128,7 +127,7 @@ func TestConvertCluster_SpecMarshaling(t *testing.T) {
 	}
 
 	req := &openapi.ClusterCreateRequest{
-		Kind: util.PtrString("Cluster"),
+		Kind: "Cluster",
 		Name: "complex-cluster",
 		Spec: complexSpec,
 	}
@@ -203,7 +202,7 @@ func TestPresentCluster_Complete(t *testing.T) {
 
 	// Verify basic fields
 	Expect(*result.Id).To(Equal("cluster-abc123"))
-	Expect(*result.Kind).To(Equal("Cluster"))
+	Expect(result.Kind).To(Equal("Cluster"))
 	Expect(*result.Href).To(Equal("/api/hyperfleet/v1/clusters/cluster-abc123"))
 	Expect(result.Name).To(Equal("presented-cluster"))
 	Expect(result.Generation).To(Equal(int32(10)))

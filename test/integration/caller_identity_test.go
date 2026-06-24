@@ -9,7 +9,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/util"
+
 	"github.com/openshift-hyperfleet/hyperfleet-api/test"
 )
 
@@ -56,7 +56,7 @@ func TestCallerIdentityCreate(t *testing.T) {
 			}
 
 			clusterInput := openapi.ClusterCreateRequest{
-				Kind: util.PtrString("Cluster"),
+				Kind: "Cluster",
 				Name: shortClusterName(tc.namePrefix, h.NewID()),
 				Spec: map[string]interface{}{"test": "spec"},
 			}
@@ -116,7 +116,7 @@ func TestCallerIdentityPatch(t *testing.T) {
 			createCtx := h.NewAuthenticatedContext(createAccount)
 
 			clusterInput := openapi.ClusterCreateRequest{
-				Kind: util.PtrString("Cluster"),
+				Kind: "Cluster",
 				Name: shortClusterName(tc.namePrefix, h.NewID()),
 				Spec: map[string]interface{}{"test": "spec"},
 			}
@@ -168,7 +168,7 @@ func TestCallerIdentityMultiplePatches(t *testing.T) {
 	ctxA := h.NewAuthenticatedContext(accountA)
 
 	clusterInput := openapi.ClusterCreateRequest{
-		Kind: util.PtrString("Cluster"),
+		Kind: "Cluster",
 		Name: shortClusterName("ci-multi", h.NewID()),
 		Spec: map[string]interface{}{"version": "1"},
 	}
@@ -234,7 +234,7 @@ func TestCallerIdentityDelete(t *testing.T) {
 	ctx := h.NewAuthenticatedContext(account)
 
 	clusterInput := openapi.ClusterCreateRequest{
-		Kind: util.PtrString("Cluster"),
+		Kind: "Cluster",
 		Name: shortClusterName("ci-del", h.NewID()),
 		Spec: map[string]interface{}{"test": "spec"},
 	}
@@ -271,7 +271,7 @@ func TestCallerIdentityEmptyHeaderFallback(t *testing.T) {
 
 	// Create with an empty identity header — should fall back to JWT claim.
 	clusterInput := openapi.ClusterCreateRequest{
-		Kind: util.PtrString("Cluster"),
+		Kind: "Cluster",
 		Name: shortClusterName("ci-empty", h.NewID()),
 		Spec: map[string]interface{}{"test": "spec"},
 	}
@@ -296,7 +296,7 @@ func TestCallerIdentityOversizedHeader(t *testing.T) {
 
 	// Create with an oversized identity header (>256 chars) — should be rejected.
 	clusterInput := openapi.ClusterCreateRequest{
-		Kind: util.PtrString("Cluster"),
+		Kind: "Cluster",
 		Name: shortClusterName("ci-long", h.NewID()),
 		Spec: map[string]interface{}{"test": "spec"},
 	}

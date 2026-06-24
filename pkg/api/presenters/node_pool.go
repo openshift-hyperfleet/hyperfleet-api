@@ -28,9 +28,9 @@ func ConvertNodePool(req *openapi.NodePoolCreateRequest, ownerID string) (*api.N
 		return nil, fmt.Errorf("failed to marshal nodepool labels: %w", err)
 	}
 
-	kind := nodePoolKind
-	if req.Kind != nil {
-		kind = *req.Kind
+	kind := req.Kind
+	if kind == "" {
+		kind = nodePoolKind
 	}
 
 	return &api.NodePool{
@@ -96,7 +96,6 @@ func PresentNodePool(nodePool *api.NodePool) (openapi.NodePool, error) {
 		}
 	}
 
-	kind := nodePool.Kind
 	result := openapi.NodePool{
 		CreatedBy:   toEmail(nodePool.CreatedBy),
 		CreatedTime: nodePool.CreatedTime,
@@ -105,12 +104,12 @@ func PresentNodePool(nodePool *api.NodePool) (openapi.NodePool, error) {
 		Generation:  nodePool.Generation,
 		Href:        &href,
 		Id:          &nodePool.ID,
-		Kind:        &kind,
+		Kind:        nodePool.Kind,
 		Labels:      &labels,
 		Name:        nodePool.Name,
 		OwnerReferences: openapi.ObjectReference{
 			Id:   &nodePool.OwnerID,
-			Kind: &nodePool.OwnerKind,
+			Kind: nodePool.OwnerKind,
 			Href: &ownerHref,
 		},
 		Spec: spec,

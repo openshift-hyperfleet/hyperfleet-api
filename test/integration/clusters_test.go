@@ -48,7 +48,7 @@ func TestClusterGet(t *testing.T) {
 	clusterOutput := resp.JSON200
 	Expect(clusterOutput).NotTo(BeNil())
 	Expect(*clusterOutput.Id).To(Equal(clusterModel.ID), "found object does not match test object")
-	Expect(*clusterOutput.Kind).To(Equal("Cluster"))
+	Expect(clusterOutput.Kind).To(Equal("Cluster"))
 	Expect(*clusterOutput.Href).To(Equal(fmt.Sprintf("/api/hyperfleet/v1/clusters/%s", clusterModel.ID)))
 	Expect(clusterOutput.CreatedTime).To(BeTemporally("~", clusterModel.CreatedTime))
 	Expect(clusterOutput.UpdatedTime).To(BeTemporally("~", clusterModel.UpdatedTime))
@@ -62,7 +62,7 @@ func TestClusterPost(t *testing.T) {
 
 	// POST responses per openapi spec: 201, 409, 500
 	clusterInput := openapi.ClusterCreateRequest{
-		Kind: util.PtrString("Cluster"),
+		Kind: "Cluster",
 		Name: "test-name",
 		Spec: map[string]interface{}{"test": "spec"},
 	}
@@ -80,7 +80,7 @@ func TestClusterPost(t *testing.T) {
 	Expect(len(*clusterOutput.Id)).To(Equal(36), "Expected UUID v7 length of 36 characters")
 	Expect(*clusterOutput.Id).
 		To(MatchRegexp(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`), "Expected UUID v7 format")
-	Expect(*clusterOutput.Kind).To(Equal("Cluster"))
+	Expect(clusterOutput.Kind).To(Equal("Cluster"))
 	Expect(*clusterOutput.Href).To(Equal(fmt.Sprintf("/api/hyperfleet/v1/clusters/%s", *clusterOutput.Id)))
 
 	// 400 bad request. posting junk json is one way to trigger 400.
@@ -123,7 +123,7 @@ func TestClusterPatch(t *testing.T) {
 	updated := patchResp.JSON200
 	Expect(updated).NotTo(BeNil())
 	Expect(*updated.Id).To(Equal(clusterModel.ID))
-	Expect(*updated.Kind).To(Equal("Cluster"))
+	Expect(updated.Kind).To(Equal("Cluster"))
 	Expect(updated.Generation).To(Equal(initialGeneration+1), "Generation should increment when spec changes")
 	Expect(updated.Spec).To(HaveKeyWithValue("region", "us-east-1"))
 	Expect(updated.Spec).To(HaveKeyWithValue("provider", "aws"))
@@ -304,7 +304,7 @@ func TestClusterDuplicateNames(t *testing.T) {
 
 	// Create first cluster with a specific name
 	clusterInput := openapi.ClusterCreateRequest{
-		Kind: util.PtrString("Cluster"),
+		Kind: "Cluster",
 		Name: "duplicate-name-test",
 		Spec: map[string]interface{}{"test": "spec1"},
 	}
@@ -347,7 +347,7 @@ func TestClusterBoundaryValues(t *testing.T) {
 	}
 
 	longNameInput := openapi.ClusterCreateRequest{
-		Kind: util.PtrString("Cluster"),
+		Kind: "Cluster",
 		Name: longName,
 		Spec: map[string]interface{}{"test": "spec"},
 	}
@@ -362,7 +362,7 @@ func TestClusterBoundaryValues(t *testing.T) {
 	// Test exceeding max length (54 characters should fail)
 	tooLongName := longName + "a"
 	tooLongInput := openapi.ClusterCreateRequest{
-		Kind: util.PtrString("Cluster"),
+		Kind: "Cluster",
 		Name: tooLongName,
 		Spec: map[string]interface{}{"test": "spec"},
 	}
@@ -375,7 +375,7 @@ func TestClusterBoundaryValues(t *testing.T) {
 
 	// Test 2: Empty name
 	emptyNameInput := openapi.ClusterCreateRequest{
-		Kind: util.PtrString("Cluster"),
+		Kind: "Cluster",
 		Name: "",
 		Spec: map[string]interface{}{"test": "spec"},
 	}
@@ -394,7 +394,7 @@ func TestClusterBoundaryValues(t *testing.T) {
 	}
 
 	largeSpecInput := openapi.ClusterCreateRequest{
-		Kind: util.PtrString("Cluster"),
+		Kind: "Cluster",
 		Name: "large-spec-test",
 		Spec: largeSpec,
 	}
@@ -414,7 +414,7 @@ func TestClusterBoundaryValues(t *testing.T) {
 
 	// Test 4: Unicode in name (should be rejected - pattern only allows [a-z0-9-])
 	unicodeNameInput := openapi.ClusterCreateRequest{
-		Kind: util.PtrString("Cluster"),
+		Kind: "Cluster",
 		Name: "テスト-δοκιμή-🚀",
 		Spec: map[string]interface{}{"test": "spec"},
 	}
@@ -444,7 +444,7 @@ func TestClusterSchemaValidation(t *testing.T) {
 	}
 
 	validInput := openapi.ClusterCreateRequest{
-		Kind: util.PtrString("Cluster"),
+		Kind: "Cluster",
 		Name: "schema-valid-test",
 		Spec: validSpec,
 	}
@@ -488,7 +488,7 @@ func TestClusterSchemaValidation(t *testing.T) {
 
 	// Test 3: Empty spec (should be valid as spec is optional in base schema)
 	emptySpecInput := openapi.ClusterCreateRequest{
-		Kind: util.PtrString("Cluster"),
+		Kind: "Cluster",
 		Name: "schema-empty-spec",
 		Spec: map[string]interface{}{},
 	}
@@ -534,7 +534,7 @@ func TestClusterSchemaValidationWithProviderSchema(t *testing.T) {
 	}
 
 	invalidInput := openapi.ClusterCreateRequest{
-		Kind: util.PtrString("Cluster"),
+		Kind: "Cluster",
 		Name: "provider-schema-invalid",
 		Spec: invalidSpec,
 	}
@@ -642,7 +642,7 @@ func TestClusterList_DefaultSorting(t *testing.T) {
 	var createdClusters []openapi.Cluster
 	for i := 1; i <= 3; i++ {
 		clusterInput := openapi.ClusterCreateRequest{
-			Kind: util.PtrString("Cluster"),
+			Kind: "Cluster",
 			Name: fmt.Sprintf("sort-test-%d-%s", i, strings.ToLower(h.NewID())),
 			Spec: map[string]interface{}{"test": fmt.Sprintf("value-%d", i)},
 		}
@@ -705,7 +705,7 @@ func TestClusterList_OrderByName(t *testing.T) {
 
 	for _, name := range names {
 		clusterInput := openapi.ClusterCreateRequest{
-			Kind: util.PtrString("Cluster"),
+			Kind: "Cluster",
 			Name: name,
 			Spec: map[string]interface{}{"test": "value"},
 		}
@@ -763,7 +763,7 @@ func TestClusterList_OrderByNameDesc(t *testing.T) {
 
 	for _, name := range names {
 		clusterInput := openapi.ClusterCreateRequest{
-			Kind: util.PtrString("Cluster"),
+			Kind: "Cluster",
 			Name: name,
 			Spec: map[string]interface{}{"test": "value"},
 		}
@@ -975,7 +975,7 @@ func TestClusterSoftDelete(t *testing.T) {
 		cluster, err := h.Factories.NewClusters(h.NewID())
 		Expect(err).NotTo(HaveOccurred())
 		npInput := openapi.NodePoolCreateRequest{
-			Kind: util.PtrString("NodePool"),
+			Kind: "NodePool",
 			Name: "cascade-np",
 			Spec: map[string]interface{}{"test": "spec"},
 		}
@@ -1088,7 +1088,7 @@ func TestClusterSoftDelete(t *testing.T) {
 		cluster, err := h.Factories.NewClusters(h.NewID())
 		Expect(err).NotTo(HaveOccurred())
 		npInput := openapi.NodePoolCreateRequest{
-			Kind: util.PtrString("NodePool"),
+			Kind: "NodePool",
 			Name: "idem-np",
 			Spec: map[string]interface{}{"test": "spec"},
 		}
@@ -1589,7 +1589,7 @@ func TestClusterCreateNodePoolUnderSoftDeleted(t *testing.T) {
 
 	// Attempt to create a nodepool under the soft-deleted cluster
 	npInput := openapi.NodePoolCreateRequest{
-		Kind: util.PtrString("NodePool"),
+		Kind: "NodePool",
 		Name: "should-fail-np",
 		Spec: map[string]interface{}{"test": "spec"},
 	}

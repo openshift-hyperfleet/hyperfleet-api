@@ -86,7 +86,7 @@ func PresentResource(r *api.Resource) openapi.Resource {
 		}{
 			ObjectReference: openapi.ObjectReference{
 				Id:   r.OwnerID,
-				Kind: r.OwnerKind,
+				Kind: util.NilToEmptyString(r.OwnerKind),
 				Href: r.OwnerHref,
 			},
 		}

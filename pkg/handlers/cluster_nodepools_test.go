@@ -179,8 +179,8 @@ func TestClusterNodePoolsHandler_Get(t *testing.T) {
 				err := json.Unmarshal(rr.Body.Bytes(), &response)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(*response.Id).To(Equal(nodePoolID))
-				Expect(response.Kind).NotTo(BeNil())
-				Expect(*response.Kind).To(Equal("NodePool"))
+				Expect(response.Kind).NotTo(BeEmpty())
+				Expect(response.Kind).To(Equal("NodePool"))
 			}
 		})
 	}
@@ -425,8 +425,8 @@ func TestClusterNodePoolsHandler_Create(t *testing.T) {
 				err := json.Unmarshal(rr.Body.Bytes(), &response)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(*response.Id).To(Equal(nodePoolID))
-				Expect(response.Kind).NotTo(BeNil())
-				Expect(*response.Kind).To(Equal("NodePool"))
+				Expect(response.Kind).NotTo(BeEmpty())
+				Expect(response.Kind).To(Equal("NodePool"))
 			}
 
 			if tt.expectedStatusCode == http.StatusConflict {
@@ -581,8 +581,8 @@ func TestClusterNodePoolsHandler_Patch(t *testing.T) {
 				err := json.Unmarshal(rr.Body.Bytes(), &response)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(*response.Id).To(Equal(nodePoolID))
-				Expect(response.Kind).NotTo(BeNil())
-				Expect(*response.Kind).To(Equal("NodePool"))
+				Expect(response.Kind).NotTo(BeEmpty())
+				Expect(response.Kind).To(Equal("NodePool"))
 			}
 
 			if tt.expectedStatusCode == http.StatusConflict {

@@ -135,7 +135,7 @@ func TestPresentResource_WithOwner(t *testing.T) {
 	resp := PresentResource(resource)
 	Expect(resp.OwnerReferences).NotTo(BeNil())
 	Expect(*resp.OwnerReferences.Id).To(Equal("parent-id"))
-	Expect(*resp.OwnerReferences.Kind).To(Equal("Channel"))
+	Expect(resp.OwnerReferences.Kind).To(Equal("Channel"))
 }
 
 func TestPresentResource_EmptySpec(t *testing.T) {
