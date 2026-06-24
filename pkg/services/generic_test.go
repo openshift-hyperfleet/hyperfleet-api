@@ -9,7 +9,7 @@ import (
 	dbmocks "github.com/openshift-hyperfleet/hyperfleet-api/pkg/db/mocks"
 
 	"github.com/onsi/gomega/types"
-	"github.com/yaacov/tree-search-language/pkg/tsl"
+	"github.com/yaacov/tree-search-language/v6/pkg/tsl"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
@@ -26,13 +26,15 @@ func TestSQLTranslation(t *testing.T) {
 	genericService := sqlGenericService{genericDao: g}
 
 	// ill-formatted search should be rejected
-	tests := []map[string]interface{}{
+	// Note: v6 accepts bare identifiers like "garbage" as valid expressions,
+	// so we use a truly unparseable input instead.
+	errorTests := []map[string]interface{}{
 		{
-			"search": "garbage",
-			"error":  errors.CodeBadRequest + ": Failed to parse search query: garbage",
+			"search": "= = =",
+			"error":  errors.CodeBadRequest + ": Failed to parse search query: = = =",
 		},
 	}
-	for _, test := range tests {
+	for _, test := range errorTests {
 		var list []api.Cluster
 		search := test["search"].(string)
 		errorMsg := test["error"].(string)
@@ -48,13 +50,12 @@ func TestSQLTranslation(t *testing.T) {
 	}
 
 	// tests for sql parsing
-	tests = []map[string]interface{}{
+	sqlTests := []map[string]interface{}{
 		{
-			"search": "username in ('ooo.openshift')",
+			"search": "username in ['ooo.openshift']",
 			"sql":    "username IN (?)",
 			"values": ConsistOf("ooo.openshift"),
 		},
-		// Test status.conditions field mapping (use status.conditions.<Type>='<Status>' syntax for condition queries)
 		// Test labels.xxx field mapping
 		{
 			"search": "labels.environment = 'production'",
@@ -104,7 +105,7 @@ func TestSQLTranslation(t *testing.T) {
 			"values": ConsistOf("cls-123"),
 		},
 	}
-	for _, test := range tests {
+	for _, test := range sqlTests {
 		var list []api.Cluster
 		search := test["search"].(string)
 		sqlReal := test["sql"].(string)
@@ -113,17 +114,61 @@ func TestSQLTranslation(t *testing.T) {
 			context.Background(), &ListArguments{Search: search}, &list,
 		)
 		Expect(serviceErr).ToNot(HaveOccurred())
-		// Mirror the production pipeline: pre-process spec deep paths before TSL parsing
-		preprocessed := db.PreprocessSpecSubfields(search)
-		tslTree, err := tsl.ParseTSL(preprocessed)
+		// v6 handles deep identifiers natively — no preprocessing needed
+		tslTreeWrapper, err := tsl.ParseTSL(search)
 		Expect(err).ToNot(HaveOccurred())
-		// Apply field name mapping (status.xxx -> status_xxx, labels.xxx -> labels->>'xxx')
-		// This must happen before converting to sqlizer
+		tslTree := tslTreeWrapper.Node
+		// Apply field name mapping (includes numeric CAST for spec fields)
 		tslTree, serviceErr = db.FieldNameWalk(tslTree, *listCtx.disallowedFields)
 		Expect(serviceErr).ToNot(HaveOccurred())
-		// Wrap spec fields in CAST(... AS numeric) when compared against a number
-		tslTree = db.WrapSpecNumericCasts(tslTree)
-		sqlizer, serviceErr := genericService.treeWalkForSqlizer(listCtx, tslTree)
+		sqlizer, serviceErr := genericService.treeWalkForSqlizer(listCtx, &tsl.TSLNode{Node: tslTree})
+		Expect(serviceErr).ToNot(HaveOccurred())
+		sql, values, err := sqlizer.ToSql()
+		Expect(err).ToNot(HaveOccurred())
+		Expect(sql).To(Equal(sqlReal))
+		Expect(values).To(valuesReal)
+	}
+
+	// Verify JSONB-mapped fields survive treeWalkForRelatedTables without
+	// being misclassified as related-resource paths (the "->" substring
+	// signals an already-mapped JSONB expression that should be skipped).
+	jsonbRelatedTableTests := []map[string]interface{}{
+		{
+			"search": "labels.environment = 'production'",
+			"sql":    "labels->>'environment' = ?",
+			"values": ConsistOf("production"),
+		},
+		{
+			"search": "spec.release.version = '2'",
+			"sql":    "spec->'release'->>'version' = ?",
+			"values": ConsistOf("2"),
+		},
+		{
+			"search": "properties.owner = 'team_a'",
+			"sql":    "properties ->> 'owner' = ?",
+			"values": ConsistOf("team_a"),
+		},
+	}
+	for _, test := range jsonbRelatedTableTests {
+		var list []api.Cluster
+		search := test["search"].(string)
+		sqlReal := test["sql"].(string)
+		valuesReal := test["values"].(types.GomegaMatcher)
+		listCtx, _, serviceErr := genericService.newListContext(
+			context.Background(), &ListArguments{Search: search}, &list,
+		)
+		Expect(serviceErr).ToNot(HaveOccurred())
+		tslTreeWrapper, err := tsl.ParseTSL(search)
+		Expect(err).ToNot(HaveOccurred())
+		tslTree := tslTreeWrapper.Node
+		tslTree, serviceErr = db.FieldNameWalk(tslTree, *listCtx.disallowedFields)
+		Expect(serviceErr).ToNot(HaveOccurred())
+		d := g.GetInstanceDao(context.Background(), &api.Cluster{})
+		tslTree, serviceErr = genericService.treeWalkForRelatedTables(listCtx, tslTree, &d)
+		Expect(serviceErr).ToNot(HaveOccurred(), "JSONB field should not be misclassified as related table: %s", search)
+		tslTree, serviceErr = genericService.treeWalkForAddingTableName(listCtx, tslTree, &d)
+		Expect(serviceErr).ToNot(HaveOccurred())
+		sqlizer, serviceErr := genericService.treeWalkForSqlizer(listCtx, &tsl.TSLNode{Node: tslTree})
 		Expect(serviceErr).ToNot(HaveOccurred())
 		sql, values, err := sqlizer.ToSql()
 		Expect(err).ToNot(HaveOccurred())
