@@ -1322,3 +1322,69 @@ func TestClusterStatusPut_ValidStatusesStillWork(t *testing.T) {
 		Expect(resp.JSON201.Adapter).To(Equal(fmt.Sprintf("valid-adapter-%d", i)))
 	}
 }
+
+// TestClusterStatusPut_ReadyConditionAbsentAfterReconciliation verifies that the v1.0.0
+// aggregation logic does not produce a resource-level "Ready" condition. Partners polling
+// for Ready=True will hang forever; the correct conditions are Reconciled and LastKnownReconciled.
+func TestClusterStatusPut_ReadyConditionAbsentAfterReconciliation(t *testing.T) {
+	h, client := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+
+	cluster, err := h.Factories.NewClusters(h.NewID())
+	Expect(err).NotTo(HaveOccurred())
+
+	statusInput := newAdapterStatusRequest(
+		"adapter1",
+		cluster.Generation,
+		[]openapi.ConditionRequest{
+			{
+				Type:   api.AdapterConditionTypeAvailable,
+				Status: openapi.AdapterConditionStatusTrue,
+			},
+			{
+				Type:   api.AdapterConditionTypeApplied,
+				Status: openapi.AdapterConditionStatusTrue,
+			},
+			{
+				Type:   api.AdapterConditionTypeHealth,
+				Status: openapi.AdapterConditionStatusTrue,
+			},
+			{
+				Type:   api.AdapterConditionTypeReconciled,
+				Status: openapi.AdapterConditionStatusTrue,
+			},
+		},
+		nil,
+	)
+
+	resp, err := client.PutClusterStatusesWithResponse(
+		ctx, cluster.ID,
+		openapi.PutClusterStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
+	)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(resp.StatusCode()).To(Equal(http.StatusCreated))
+
+	getResp, err := client.GetClusterByIdWithResponse(ctx, cluster.ID, nil, test.WithAuthToken(ctx))
+	Expect(err).NotTo(HaveOccurred())
+	Expect(getResp.StatusCode()).To(Equal(http.StatusOK))
+	Expect(getResp.JSON200).NotTo(BeNil())
+
+	for _, c := range getResp.JSON200.Status.Conditions {
+		Expect(c.Type).NotTo(Equal("Ready"),
+			"v1.0.0 removed the Ready condition; only Reconciled and LastKnownReconciled should exist")
+	}
+
+	var hasReconciled, hasLastKnownReconciled bool
+	for _, c := range getResp.JSON200.Status.Conditions {
+		if c.Type == api.ResourceConditionTypeReconciled {
+			hasReconciled = true
+		}
+		if c.Type == api.ResourceConditionTypeLastKnownReconciled {
+			hasLastKnownReconciled = true
+		}
+	}
+	Expect(hasReconciled).To(BeTrue(), "Reconciled condition should be present")
+	Expect(hasLastKnownReconciled).To(BeTrue(), "LastKnownReconciled condition should be present")
+}
