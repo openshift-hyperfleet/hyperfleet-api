@@ -6,7 +6,7 @@ This guide explains how to configure and deploy an adapter instance using the He
 
 ## Configuration Overview
 
-The HyperFleet Adapter Helm chart is released as an oci artifact at : oci://quay.io/redhat-services-prod/hyperfleet-tenant/hyperfleet/hyperfleet-adapter-chart. 
+The HyperFleet Adapter Helm chart is released as an OCI artifact at `oci://quay.io/redhat-services-prod/hyperfleet-tenant/hyperfleet/hyperfleet-adapter-chart`.
 
 An adapter deployment requires three pieces of configuration, all settable through Helm values:
 
