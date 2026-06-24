@@ -107,7 +107,7 @@ export HYPERFLEET_DATABASE_SSL_MODE=require   # for remote databases
 make run-no-auth
 ```
 
-**Note**: The default runtime environment is `production`. For local development without authentication, use `make run-no-auth` or set `HYPERFLEET_ENV=development` see [Development Environment Configuration](#development-environment-configuration) below).
+**Note**: The default runtime environment is `production`. For local development without authentication, use `make run-no-auth` or set `HYPERFLEET_ENV=development` (see [Development Environment Configuration](#development-environment-configuration) below).
 
 The service starts on `localhost:8000` — see [Accessing the API](../README.md#accessing-the-api) for all available endpoints.
 
