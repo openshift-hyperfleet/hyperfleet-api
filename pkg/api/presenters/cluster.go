@@ -7,7 +7,6 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/util"
 )
 
 const clusterKind = "Cluster"
@@ -30,10 +29,9 @@ func ConvertCluster(req *openapi.ClusterCreateRequest) (*api.Cluster, error) {
 		return nil, fmt.Errorf("failed to marshal cluster labels: %w", err)
 	}
 
-	// Get Kind value, use default if not provided
-	kind := clusterKind
-	if req.Kind != nil {
-		kind = *req.Kind
+	kind := req.Kind
+	if kind == "" {
+		kind = clusterKind
 	}
 
 	return &api.Cluster{
@@ -114,7 +112,7 @@ func PresentCluster(cluster *api.Cluster) (openapi.Cluster, error) {
 		Generation:  cluster.Generation,
 		Href:        &href,
 		Id:          &cluster.ID,
-		Kind:        util.PtrString(cluster.Kind),
+		Kind:        cluster.Kind,
 		Labels:      &labels,
 		Name:        cluster.Name,
 		Spec:        spec,

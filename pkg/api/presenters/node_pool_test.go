@@ -14,10 +14,8 @@ import (
 // Helper function to create test NodePoolCreateRequest
 func createTestNodePoolRequest() *openapi.NodePoolCreateRequest {
 	labels := map[string]string{"env": "test"}
-	kind := "NodePool"
-
 	return &openapi.NodePoolCreateRequest{
-		Kind: &kind,
+		Kind: "NodePool",
 		Name: "test-nodepool",
 		Spec: map[string]interface{}{
 			"replicas":     3,
@@ -64,9 +62,8 @@ func TestConvertNodePool_Complete(t *testing.T) {
 func TestConvertNodePool_WithKind(t *testing.T) {
 	RegisterTestingT(t)
 
-	customKind := "CustomNodePool"
 	req := &openapi.NodePoolCreateRequest{
-		Kind:   &customKind,
+		Kind:   "CustomNodePool",
 		Name:   "custom-nodepool",
 		Spec:   map[string]interface{}{"test": "spec"},
 		Labels: nil,
@@ -83,7 +80,7 @@ func TestConvertNodePool_WithoutKind(t *testing.T) {
 	RegisterTestingT(t)
 
 	req := &openapi.NodePoolCreateRequest{
-		Kind:   nil, // Nil Kind
+		Kind:   "", // empty Kind falls back to default in ConvertNodePool
 		Name:   "default-kind-nodepool",
 		Spec:   map[string]interface{}{"test": "spec"},
 		Labels: nil,
@@ -192,7 +189,7 @@ func TestPresentNodePool_Complete(t *testing.T) {
 
 	// Verify basic fields
 	Expect(*result.Id).To(Equal("nodepool-xyz"))
-	Expect(*result.Kind).To(Equal("NodePool"))
+	Expect(result.Kind).To(Equal("NodePool"))
 	Expect(*result.Href).To(Equal("/api/hyperfleet/v1/clusters/cluster-abc/nodepools/nodepool-xyz"))
 	Expect(result.Name).To(Equal("presented-nodepool"))
 	Expect(result.CreatedBy).To(Equal(openapi_types.Email("user123@example.com")))
@@ -206,7 +203,7 @@ func TestPresentNodePool_Complete(t *testing.T) {
 
 	// Verify OwnerReferences
 	Expect(*result.OwnerReferences.Id).To(Equal("cluster-abc"))
-	Expect(*result.OwnerReferences.Kind).To(Equal("Cluster"))
+	Expect(result.OwnerReferences.Kind).To(Equal("Cluster"))
 	Expect(*result.OwnerReferences.Href).To(Equal("/api/hyperfleet/v1/clusters/cluster-abc"))
 
 	// Verify Status
@@ -281,8 +278,8 @@ func TestPresentNodePool_OwnerReferences(t *testing.T) {
 
 	Expect(result.OwnerReferences.Id).ToNot(BeNil())
 	Expect(*result.OwnerReferences.Id).To(Equal("cluster-ref-123"))
-	Expect(result.OwnerReferences.Kind).ToNot(BeNil())
-	Expect(*result.OwnerReferences.Kind).To(Equal("Cluster"))
+	Expect(result.OwnerReferences.Kind).ToNot(BeEmpty())
+	Expect(result.OwnerReferences.Kind).To(Equal("Cluster"))
 	Expect(result.OwnerReferences.Href).ToNot(BeNil())
 }
 
@@ -375,7 +372,7 @@ func TestConvertAndPresentNodePool_RoundTrip(t *testing.T) {
 
 	// Verify data integrity
 	Expect(*result.Id).To(Equal("nodepool-roundtrip-123"))
-	Expect(*result.Kind).To(Equal(*originalReq.Kind))
+	Expect(result.Kind).To(Equal(originalReq.Kind))
 	Expect(result.Name).To(Equal(originalReq.Name))
 
 	// Verify Spec preserved
@@ -387,7 +384,7 @@ func TestConvertAndPresentNodePool_RoundTrip(t *testing.T) {
 
 	// Verify OwnerReferences set
 	Expect(*result.OwnerReferences.Id).To(Equal(ownerID))
-	Expect(*result.OwnerReferences.Kind).To(Equal("Cluster"))
+	Expect(result.OwnerReferences.Kind).To(Equal("Cluster"))
 
 	// Status initialization is handled by the service layer on create, not presenters.
 	Expect(len(result.Status.Conditions)).To(Equal(0))

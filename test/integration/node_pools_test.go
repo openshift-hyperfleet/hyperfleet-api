@@ -49,7 +49,7 @@ const (
 // 	Expect(resp.StatusCode).To(Equal(http.StatusOK))
 //
 // 	Expect(*nodePoolOutput.Id).To(Equal(nodePoolModel.ID), "found object does not match test object")
-// 	Expect(*nodePoolOutput.Kind).To(Equal("NodePool"))
+// 	Expect(nodePoolOutput.Kind).To(Equal("NodePool"))
 // 	Expect(*nodePoolOutput.Href).To(Equal(fmt.Sprintf("/api/hyperfleet/v1/node_pools/%s", nodePoolModel.ID)))
 // 	Expect(nodePoolOutput.CreatedAt).To(BeTemporally("~", nodePoolModel.CreatedAt))
 // 	Expect(nodePoolOutput.UpdatedAt).To(BeTemporally("~", nodePoolModel.UpdatedAt))
@@ -68,7 +68,7 @@ func TestNodePoolPost(t *testing.T) {
 	// POST responses per openapi spec: 201, 409, 500
 	kind := kindNodePool
 	nodePoolInput := openapi.NodePoolCreateRequest{
-		Kind: &kind,
+		Kind: kind,
 		Name: "test-name",
 		Spec: map[string]interface{}{"test": "spec"},
 	}
@@ -86,7 +86,7 @@ func TestNodePoolPost(t *testing.T) {
 	Expect(len(*nodePoolOutput.Id)).To(Equal(36), "Expected UUID v7 length of 36 characters")
 	Expect(*nodePoolOutput.Id).
 		To(MatchRegexp(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`), "Expected UUID v7 format")
-	Expect(*nodePoolOutput.Kind).To(Equal("NodePool"))
+	Expect(nodePoolOutput.Kind).To(Equal("NodePool"))
 	Expect(*nodePoolOutput.Href).
 		To(Equal(fmt.Sprintf("/api/hyperfleet/v1/clusters/%s/nodepools/%s", cluster.ID, *nodePoolOutput.Id)))
 
@@ -117,7 +117,7 @@ func TestNodePoolPatch(t *testing.T) {
 	createResp, err := client.CreateNodePoolWithResponse(
 		ctx, cluster.ID,
 		openapi.CreateNodePoolJSONRequestBody{
-			Kind: &kind,
+			Kind: kind,
 			Name: "patch-test-np",
 			Spec: openapi.NodePoolSpec{"instance_type": "m5.large"},
 		},
@@ -163,7 +163,7 @@ func TestNodePoolPatch(t *testing.T) {
 	updated := patchResp.JSON200
 	Expect(updated).NotTo(BeNil())
 	Expect(*updated.Id).To(Equal(nodePoolID))
-	Expect(*updated.Kind).To(Equal("NodePool"))
+	Expect(updated.Kind).To(Equal("NodePool"))
 	Expect(updated.Generation).To(Equal(initialGeneration+1), "Generation should increment when spec changes")
 	Expect(updated.Spec).To(HaveKeyWithValue("instance_type", "m5.xlarge"))
 	Expect(updated.Spec).To(HaveKeyWithValue("replicas", float64(3)))
@@ -318,7 +318,7 @@ func TestGetNodePoolByClusterIdAndNodePoolId(t *testing.T) {
 	// Create a nodepool for this cluster using the API
 	kind := kindNodePool
 	nodePoolInput := openapi.NodePoolCreateRequest{
-		Kind: &kind,
+		Kind: kind,
 		Name: "test-np-get",
 		Spec: map[string]interface{}{"instance_type": "m5.large", "replicas": 2},
 	}
@@ -339,7 +339,7 @@ func TestGetNodePoolByClusterIdAndNodePoolId(t *testing.T) {
 	retrieved := getResp.JSON200
 	Expect(retrieved).NotTo(BeNil())
 	Expect(*retrieved.Id).To(Equal(nodePoolID), "Retrieved nodepool ID should match")
-	Expect(*retrieved.Kind).To(Equal("NodePool"))
+	Expect(retrieved.Kind).To(Equal("NodePool"))
 	Expect(retrieved.Name).To(Equal("test-np-get"))
 
 	// Test 2: Try to get with non-existent nodepool ID (404)
@@ -460,7 +460,7 @@ func TestNodePoolDuplicateNames(t *testing.T) {
 	// Create first nodepool with a specific name
 	kind := kindNodePool
 	nodePoolInput := openapi.NodePoolCreateRequest{
-		Kind: &kind,
+		Kind: kind,
 		Name: "test-duplicate",
 		Spec: map[string]interface{}{"test": "spec"},
 	}
@@ -572,7 +572,7 @@ func TestNodePoolPost_MissingSpec(t *testing.T) {
 
 func newNodePoolInput(name string) openapi.NodePoolCreateRequest {
 	return openapi.NodePoolCreateRequest{
-		Kind: util.PtrString("NodePool"),
+		Kind: "NodePool",
 		Name: name,
 		Spec: map[string]interface{}{"test": "spec"},
 	}

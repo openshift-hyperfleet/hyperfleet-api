@@ -8,7 +8,6 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/util"
 )
 
 func TestValidateName_Valid(t *testing.T) {
@@ -102,7 +101,7 @@ func TestValidateKind_Valid(t *testing.T) {
 	RegisterTestingT(t)
 
 	req := openapi.ClusterCreateRequest{
-		Kind: util.PtrString("Cluster"),
+		Kind: "Cluster",
 	}
 	validator := validateKind(&req, "Kind", "kind", "Cluster")
 	err := validator()
@@ -121,7 +120,7 @@ func TestValidateKind_Invalid(t *testing.T) {
 
 	for _, kind := range invalidKinds {
 		req := openapi.ClusterCreateRequest{
-			Kind: &kind,
+			Kind: kind,
 		}
 		validator := validateKind(&req, "Kind", "kind", "Cluster")
 		err := validator()
@@ -133,7 +132,7 @@ func TestValidateKind_Empty(t *testing.T) {
 	RegisterTestingT(t)
 
 	req := openapi.ClusterCreateRequest{
-		Kind: util.PtrString(""),
+		Kind: "",
 	}
 	validator := validateKind(&req, "Kind", "kind", "Cluster")
 	err := validator()
@@ -145,7 +144,7 @@ func TestValidateKind_WrongKind(t *testing.T) {
 	RegisterTestingT(t)
 
 	req := openapi.ClusterCreateRequest{
-		Kind: util.PtrString("WrongKind"),
+		Kind: "WrongKind",
 	}
 	validator := validateKind(&req, "Kind", "kind", "Cluster")
 	err := validator()

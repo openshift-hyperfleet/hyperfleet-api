@@ -65,7 +65,7 @@ func createTestClusterList() openapi.ClusterList {
 		Items: []openapi.Cluster{
 			{
 				Id:          &id1,
-				Kind:        &kind,
+				Kind:        kind,
 				Name:        "test-cluster",
 				Generation:  1,
 				Labels:      &labels1,
@@ -76,7 +76,7 @@ func createTestClusterList() openapi.ClusterList {
 			},
 			{
 				Id:          &id2,
-				Kind:        &kind,
+				Kind:        kind,
 				Name:        "development-cluster",
 				Generation:  2,
 				Labels:      &labels2,
@@ -486,7 +486,7 @@ func createTestCluster() openapi.Cluster {
 
 	return openapi.Cluster{
 		Id:          &id,
-		Kind:        &kind,
+		Kind:        kind,
 		Name:        "test-cluster",
 		Generation:  1,
 		Labels:      &labels,
@@ -733,11 +733,11 @@ func createTestNodePool() openapi.NodePool {
 
 	return openapi.NodePool{
 		Id:   &id,
-		Kind: &kind,
+		Kind: kind,
 		Name: "worker-pool",
 		OwnerReferences: openapi.ObjectReference{
 			Id:   &ownerID,
-			Kind: &ownerKind,
+			Kind: ownerKind,
 			Href: &ownerHref,
 		},
 		Spec:        openapi.NodePoolSpec{"replicas": 3, "instanceType": "m5.large"},
