@@ -40,6 +40,7 @@ const (
 	CodeAuthExpiredToken       = "HYPERFLEET-AUT-003" //nolint:gosec // Not actual credentials, just error code names
 
 	// Not Found errors (NTF) - 404
+	CodeNotFoundEndpoint = "HYPERFLEET-NTF-000"
 	CodeNotFoundGeneric  = "HYPERFLEET-NTF-001"
 	CodeNotFoundCluster  = "HYPERFLEET-NTF-002"
 	CodeNotFoundNodePool = "HYPERFLEET-NTF-003"
@@ -136,6 +137,9 @@ var errorDefinitions = map[string]errorDefinition{
 	},
 
 	// Not Found errors (NTF) - 404
+	CodeNotFoundEndpoint: {
+		ErrorTypeNotFound, "Endpoint Not Found", "The requested endpoint does not exist", http.StatusNotFound,
+	},
 	CodeNotFoundGeneric: {
 		ErrorTypeNotFound, "Resource Not Found", "Resource not found", http.StatusNotFound,
 	},

@@ -349,6 +349,7 @@ func TestErrorFind(t *testing.T) {
 		expectFound bool
 	}{
 		{"known code", CodeNotFoundGeneric, ErrorTypeNotFound, true},
+		{"endpoint not found code", CodeNotFoundEndpoint, ErrorTypeNotFound, true},
 		{"unknown code", "INVALID-CODE-999", "", false},
 	}
 	for _, tt := range tests {
