@@ -785,24 +785,29 @@ The resource executor treats apply and delete operations differently when they f
 
 This means a list containing both apply and delete operations behaves predictably: a delete failure does not prevent the next resource from being deleted, but an apply failure stops further processing.
 
-### Force-deleted resources (404 handling)
+### Resource not found (404 handling)
 
-When a resource is force-deleted externally (e.g., removed from the HyperFleet API while the adapter is running), the precondition API call returns a `404 Not Found`. Instead of treating this as a hard failure, the adapter handles it gracefully:
+When a precondition API call returns `404 Not Found`, it can mean the resource no longer exists (e.g., deleted externally, incorrect ID in the event, direct DB removal) or that the precondition URL itself is misconfigured. The adapter distinguishes between two types of 404:
+
+- **Resource not found** (default): any 404 is treated as a legitimate "resource does not exist" unless proven otherwise. This includes responses with specific error codes (`HYPERFLEET-NTF-001`, `HYPERFLEET-NTF-002`, `HYPERFLEET-NTF-003`), as well as 404s where the response body was stripped by a proxy or gateway. The adapter handles this gracefully — resources are skipped and post-actions still execute.
+- **Broken endpoint** (error code `HYPERFLEET-NTF-000`): the catch-all 404 handler confirms no route matched the URL. The adapter treats this as a configuration error and reports failure status.
+
+When the adapter detects a resource-not-found 404:
 
 - `adapter.resourcesSkipped` is set to `true`
 - `adapter.skipReason` is set to `"ResourceNotFound"`
 - The resources phase is skipped entirely
 - Post-actions still execute, so the adapter can report the skip back to the API
 
-This means your post-action CEL expressions can detect force-deletion and report an appropriate status:
+This means your post-action CEL expressions can detect the missing resource and report an appropriate status:
 
 ```cel
 adapter.?skipReason.orValue("") == "ResourceNotFound"
-  ? "Resource was deleted externally"
+  ? "Resource does not exist"
   : adapter.?skipReason.orValue("unknown reason")
 ```
 
-The same 404 handling applies during post-action execution: if a post-action API call returns 404, remaining post-actions are skipped gracefully rather than failed.
+The same 404 handling applies during post-action execution: a post-action 404 is treated as resource-not-found and remaining post-actions are skipped gracefully, unless the response contains error code `HYPERFLEET-NTF-000` indicating a misconfigured URL.
 
 ### Partial delete failures
 
@@ -1753,4 +1758,4 @@ See also [Preconditions — Supported operators](#supported-operators).
 | `CEL expression parse error` | Invalid CEL syntax | Verify parentheses, string quoting, and optional chaining syntax (`?.` for safe field access). |
 | Discovery returns empty | Labels don't match or wrong namespace | Verify `discovery.namespace` is correct. Use `by_name` for a simpler lookup. Check resource labels match the selector exactly. |
 | `observed_generation` is a string | Using Go Template instead of CEL expression | Use `expression: "generation"` instead of `"{{ .generation }}"`. |
-| Post-action API call returns 404 | Wrong status endpoint path | Cluster statuses: `/clusters/{id}/statuses`. NodePool statuses: `/clusters/{id}/nodepools/{id}/statuses`. |
+| Post-action API call returns 404 with error status | Wrong status endpoint path (error code `HYPERFLEET-NTF-000`) | Cluster statuses: `/clusters/{id}/statuses`. NodePool statuses: `/clusters/{id}/nodepools/{id}/statuses`. |

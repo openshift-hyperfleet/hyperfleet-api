@@ -9,14 +9,16 @@
         {
           "statusCode": 404,
           "headers": {
-            "Content-Type": "application/json"
+            "Content-Type": "application/problem+json"
           },
           "body": {
-            "kind": "Error",
-            "id": "404",
-            "href": "/api/hyperfleet/v1/errors/404",
-            "code": "HYPERFLEET-NTF-001",
-            "reason": "Cluster 'abc123' not found"
+            "type": "https://api.hyperfleet.io/errors/resource-not-found",
+            "title": "Resource Not Found",
+            "status": 404,
+            "detail": "Cluster with id='abc123' not found",
+            "instance": "/api/hyperfleet/v1/clusters/abc123",
+            "code": "HYPERFLEET-NTF-002",
+            "trace_id": "019ed716-f3cf-7b8e-b400-0796be4722c3"
           }
         }
       ]
@@ -30,14 +32,16 @@
         {
           "statusCode": 404,
           "headers": {
-            "Content-Type": "application/json"
+            "Content-Type": "application/problem+json"
           },
           "body": {
-            "kind": "Error",
-            "id": "404",
-            "href": "/api/hyperfleet/v1/errors/404",
-            "code": "HYPERFLEET-NTF-001",
-            "reason": "Cluster 'abc123' not found"
+            "type": "https://api.hyperfleet.io/errors/resource-not-found",
+            "title": "Resource Not Found",
+            "status": 404,
+            "detail": "Cluster with id='abc123' not found",
+            "instance": "/api/hyperfleet/v1/clusters/abc123/statuses",
+            "code": "HYPERFLEET-NTF-002",
+            "trace_id": "019ed716-f3cf-7b8e-b400-0796be4722c3"
           }
         }
       ]

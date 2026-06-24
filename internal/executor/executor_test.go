@@ -41,16 +41,44 @@ func mockErrorResponse(statusCode int) (*hyperfleetapi.Response, error) {
 	return resp, apiErr
 }
 
-// mock404Response returns a 404 response without an error. The MockClient only
-// returns (nil, error) when an error is set, so using mockErrorResponse for 404
-// tests causes ExecuteAPICall to wrap the error in a new APIError with StatusCode=0,
-// which breaks IsNotFoundError detection. Setting only the response lets
-// ValidateAPIResponse create the correct APIError{StatusCode:404}.
+// mock404Response returns a 404 response with code HYPERFLEET-NTF-002,
+// representing a real resource that was not found.
+// The MockClient only returns (nil, error) when an error is set, so using
+// mockErrorResponse for 404 tests causes ExecuteAPICall to wrap the error
+// in a new APIError with StatusCode=0, which breaks detection. Setting
+// only the response lets ValidateAPIResponse create the correct APIError.
 func mock404Response() *hyperfleetapi.Response {
+	body := `{
+		"type": "https://api.hyperfleet.io/errors/resource-not-found",
+		"title": "Resource Not Found",
+		"status": 404,
+		"detail": "Cluster with id='abc123' not found",
+		"code": "HYPERFLEET-NTF-002",
+		"trace_id": "019ed716-f3cf-7b8e-b400-0796be4722c3"
+	}`
 	return &hyperfleetapi.Response{
 		StatusCode: 404,
 		Status:     "404 Not Found",
-		Body:       []byte(`{"error":"not found"}`),
+		Body:       []byte(body),
+		Attempts:   1,
+	}
+}
+
+// mockBrokenEndpoint404Response returns a 404 with code HYPERFLEET-NTF-000,
+// representing a misconfigured/broken precondition URL.
+func mockBrokenEndpoint404Response() *hyperfleetapi.Response {
+	body := `{
+		"type": "https://api.hyperfleet.io/errors/endpoint-not-found",
+		"title": "Endpoint Not Found",
+		"status": 404,
+		"detail": "The requested endpoint does not exist",
+		"code": "HYPERFLEET-NTF-000",
+		"trace_id": ""
+	}`
+	return &hyperfleetapi.Response{
+		StatusCode: 404,
+		Status:     "404 Not Found",
+		Body:       []byte(body),
 		Attempts:   1,
 	}
 }
@@ -1454,7 +1482,7 @@ func findFamily(families []*dto.MetricFamily, name string) *dto.MetricFamily {
 }
 
 // TestPrecondition404_GracefulStop verifies that when a precondition API call returns 404
-// (resource force-deleted), the executor stops gracefully: status remains "success",
+// (resource no longer exists), the executor stops gracefully: status remains "success",
 // resources are skipped, and no error state is set.
 func new404PreconditionConfig() *configloader.Config {
 	return &configloader.Config{
@@ -1533,7 +1561,7 @@ func TestPrecondition404_GracefulStop(t *testing.T) {
 }
 
 // TestPostAction404_GracefulHandling verifies that when a post-action API call returns 404
-// (resource force-deleted), the executor does not mark the execution as failed.
+// (resource no longer exists), the executor does not mark the execution as failed.
 func TestPostAction404_GracefulHandling(t *testing.T) {
 	mockClient := newMockAPIClient()
 	mockClient.GetResponse = &hyperfleetapi.Response{
@@ -1626,6 +1654,56 @@ func TestPreconditionFail_PostAction404(t *testing.T) {
 	// No post-action error recorded (404 is handled gracefully)
 	assert.Nil(t, result.Errors[PhasePostActions],
 		"post-action 404 should not add an error")
+}
+
+// TestPreconditionBrokenURL404_ReportsError verifies that when a
+// precondition API call returns 404 due to a misconfigured URL (error
+// code HYPERFLEET-NTF-000), the adapter treats it as an error rather than a graceful stop.
+func TestPreconditionBrokenURL404_ReportsError(t *testing.T) {
+	mockClient := newMockAPIClient()
+	mockClient.GetResponse = mockBrokenEndpoint404Response()
+
+	config := new404PreconditionConfig()
+	exec := build404TestExecutor(t, config, mockClient)
+
+	ctx := logger.WithEventID(context.Background(), "test-broken-url-404")
+	result := exec.Execute(ctx, map[string]interface{}{"id": "cls-123"})
+
+	assert.Equal(t, StatusFailed, result.Status,
+		"broken URL 404 should mark execution as failed")
+
+	assert.True(t, result.ResourcesSkipped,
+		"resources should be skipped on precondition failure")
+
+	assert.NotEmpty(t, result.Errors,
+		"errors should be recorded for a broken URL 404")
+}
+
+// TestPostActionBrokenURL404_ReportsError verifies that when a post-action
+// API call returns 404 due to a misconfigured URL (error code
+// HYPERFLEET-NTF-000), the adapter treats it as an error instead of a graceful stop.
+func TestPostActionBrokenURL404_ReportsError(t *testing.T) {
+	mockClient := newMockAPIClient()
+	mockClient.GetResponse = &hyperfleetapi.Response{
+		StatusCode: 200,
+		Body: []byte(
+			`{"id":"cluster-456","status":{"conditions":` +
+				`[{"type":"Reconciled","status":"False"}]}}`,
+		),
+	}
+	mockClient.PutResponse = mockBrokenEndpoint404Response()
+
+	config := new404PostActionConfig()
+	exec := build404TestExecutor(t, config, mockClient)
+
+	ctx := logger.WithEventID(context.Background(), "test-post-broken-url-404")
+	result := exec.Execute(ctx, map[string]interface{}{"id": "cls-123"})
+
+	assert.Equal(t, StatusFailed, result.Status,
+		"broken URL 404 in post-actions should mark execution as failed")
+
+	assert.NotNil(t, result.Errors[PhasePostActions],
+		"post-action error should be recorded for a broken URL 404")
 }
 
 func getCounterValue(t *testing.T, families []*dto.MetricFamily, metricName, labelName, labelValue string) float64 {
