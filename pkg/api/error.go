@@ -19,15 +19,15 @@ func SendNotFound(w http.ResponseWriter, r *http.Request) {
 
 	traceID, _ := logger.GetRequestID(r.Context())
 	now := time.Now().UTC()
-	detail := fmt.Sprintf("The requested resource '%s' doesn't exist", r.URL.Path)
+	detail := fmt.Sprintf("The requested endpoint '%s' does not exist", r.URL.Path)
 
 	body := openapi.ProblemDetails{
 		Type:      errors.ErrorTypeNotFound,
-		Title:     "Resource Not Found",
+		Title:     "Endpoint Not Found",
 		Status:    http.StatusNotFound,
 		Detail:    &detail,
 		Instance:  &r.URL.Path,
-		Code:      ptrString(errors.CodeNotFoundGeneric),
+		Code:      ptrString(errors.CodeNotFoundEndpoint),
 		Timestamp: &now,
 		TraceId:   &traceID,
 	}
