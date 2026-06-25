@@ -30,7 +30,7 @@ func NewClusterService(dao, adapterStatusDao, config) ClusterService
 ## GenericService
 
 `generic.go` provides `List()` with pagination, search, and ordering.
-- `ListArguments` has Page, Size, Search, OrderBy, Fields, Preloads
+- `ListArguments` has Page, Size, Search, Order, Fields, Preloads
 - Search validation: `SearchDisallowedFields` map blocks searching certain fields per resource type
 - Default ordering: `created_time desc`
 

@@ -219,9 +219,9 @@ func TestChannelList(t *testing.T) {
 
 		// Test ordering by name ascending
 		args := &services.ListArguments{
-			Page:    1,
-			Size:    100,
-			OrderBy: []string{"name asc"},
+			Page:  1,
+			Size:  100,
+			Order: []string{"name asc"},
 		}
 		list, _, svcErr := svc.List(t.Context(), "Channel", args)
 		Expect(svcErr).To(BeNil(), "list should succeed")

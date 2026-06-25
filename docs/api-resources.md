@@ -147,7 +147,7 @@ PUT    /api/hyperfleet/v1/clusters/{cluster_id}/statuses
 
 ### List Clusters
 
-**GET** `/api/hyperfleet/v1/clusters?page=1&pageSize=10`
+**GET** `/api/hyperfleet/v1/clusters?page=1&size=10`
 
 **Response (200 OK):**
 
@@ -603,13 +603,13 @@ Active ──(DELETE)──▶ Finalizing ──(adapters report Finalized=True)
 All list endpoints support pagination:
 
 ```text
-GET /api/hyperfleet/v1/clusters?page=1&pageSize=10
+GET /api/hyperfleet/v1/clusters?page=1&size=10
 ```
 
 **Parameters:**
 
 - `page` - Page number (default: 1)
-- `pageSize` - Items per page (default: 20)
+- `size` - Items per page (default: 20)
 
 **Response:**
 
@@ -686,13 +686,13 @@ All list endpoints accept the following query parameters:
 |------------|----------------|----------|---------------------|----------------------|
 | `search`   | string         | No       | -                   | TSL query syntax     |
 | `page`     | integer (int32)| No       | `1`                 | Must be >= 1         |
-| `pageSize` | integer (int32)| No       | `20`                | Must be between 1 and 100 |
-| `orderBy`  | string         | No       | `created_time desc` | Field name(s) with optional direction (asc/desc) |
+| `size`     | integer (int32)| No       | `20`                | Must be between 1 and 100 |
+| `order`    | string         | No       | `created_time desc` | Field name(s) with optional direction (asc/desc) |
 
 **Ordering behavior**:
-- Include direction in `orderBy`: `?orderBy=name desc` or `?orderBy=name asc,created_time desc`
-- Fields without direction default to ascending: `?orderBy=name` → sorts by `name asc`
-- Default ordering when `orderBy` is omitted: `created_time desc`
+- Include direction in `order`: `?order=name desc` or `?order=name asc,created_time desc`
+- Fields without direction default to ascending: `?order=name` → sorts by `name asc`
+- Default ordering when `order` is omitted: `created_time desc`
 
 **Note**: Violating constraints returns a `400 Bad Request` response with [RFC 9457 Problem Details](https://datatracker.ietf.org/doc/html/rfc9457) format.
 
@@ -753,7 +753,6 @@ Same naming rules as cluster, but with a shorter maximum length.
 
 - **AdapterConditionStatus** (used in adapter status reports): `True`, `False`, `Unknown`
 - **ResourceConditionStatus** (used in cluster/nodepool conditions): `True`, `False`
-- **OrderDirection**: `asc`, `desc`
 
 ## Spec Validation
 

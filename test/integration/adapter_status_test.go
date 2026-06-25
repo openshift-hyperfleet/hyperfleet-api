@@ -304,10 +304,10 @@ func TestAdapterStatusPaging(t *testing.T) {
 
 	// Test paging
 	page := openapi.QueryParamsPage(1)
-	pageSize := openapi.QueryParamsPageSize(5)
+	size := openapi.QueryParamsSize(5)
 	params := &openapi.GetClusterStatusesParams{
-		Page:     &page,
-		PageSize: &pageSize,
+		Page: &page,
+		Size: &size,
 	}
 	resp, err := client.GetClusterStatusesWithResponse(ctx, cluster.ID, params, test.WithAuthToken(ctx))
 	Expect(err).NotTo(HaveOccurred())
@@ -690,10 +690,10 @@ func TestAdapterStatusPagingEdgeCases(t *testing.T) {
 
 	// Test 2: Page beyond total pages
 	page100 := openapi.QueryParamsPage(100)
-	pageSize5 := openapi.QueryParamsPageSize(5)
+	size5 := openapi.QueryParamsSize(5)
 	beyondParams := &openapi.GetClusterStatusesParams{
-		Page:     &page100,
-		PageSize: &pageSize5,
+		Page: &page100,
+		Size: &size5,
 	}
 	beyondResp, err := client.GetClusterStatusesWithResponse(ctx, cluster.ID, beyondParams, test.WithAuthToken(ctx))
 	Expect(err).NotTo(HaveOccurred())
@@ -744,12 +744,12 @@ func TestAdapterStatusPagingEdgeCases(t *testing.T) {
 	// Test 4: Pagination consistency - verify no duplicates and no missing items
 	allItems := make(map[string]bool)
 	pageNum := openapi.QueryParamsPage(1)
-	pageSz := openapi.QueryParamsPageSize(3)
+	pageSz := openapi.QueryParamsSize(3)
 
 	for {
 		params := &openapi.GetClusterStatusesParams{
-			Page:     &pageNum,
-			PageSize: &pageSz,
+			Page: &pageNum,
+			Size: &pageSz,
 		}
 		listResp, err := client.GetClusterStatusesWithResponse(ctx, cluster.ID, params, test.WithAuthToken(ctx))
 		Expect(err).NotTo(HaveOccurred())

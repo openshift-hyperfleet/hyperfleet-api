@@ -8,58 +8,58 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-func TestNewListArguments_OrderBy(t *testing.T) {
+func TestNewListArguments_Order(t *testing.T) {
 	RegisterTestingT(t)
 
 	tests := []struct {
-		name            string
-		queryParams     url.Values
-		expectedOrderBy []string
+		name          string
+		queryParams   url.Values
+		expectedOrder []string
 	}{
 		{
-			name:            "no orderBy - should use default created_time desc",
-			queryParams:     url.Values{},
-			expectedOrderBy: []string{"created_time desc"},
+			name:          "no order - should use default created_time desc",
+			queryParams:   url.Values{},
+			expectedOrder: []string{"created_time desc"},
 		},
 		{
-			name:            "orderBy with asc direction",
-			queryParams:     url.Values{"orderBy": []string{"name asc"}},
-			expectedOrderBy: []string{"name asc"},
+			name:          "order with asc direction",
+			queryParams:   url.Values{"order": []string{"name asc"}},
+			expectedOrder: []string{"name asc"},
 		},
 		{
-			name:            "orderBy with desc direction",
-			queryParams:     url.Values{"orderBy": []string{"name desc"}},
-			expectedOrderBy: []string{"name desc"},
+			name:          "order with desc direction",
+			queryParams:   url.Values{"order": []string{"name desc"}},
+			expectedOrder: []string{"name desc"},
 		},
 		{
-			name:            "orderBy without direction",
-			queryParams:     url.Values{"orderBy": []string{"name"}},
-			expectedOrderBy: []string{"name"},
+			name:          "order without direction",
+			queryParams:   url.Values{"order": []string{"name"}},
+			expectedOrder: []string{"name"},
 		},
 		{
-			name:            "multiple orderBy fields",
-			queryParams:     url.Values{"orderBy": []string{"name asc,created_time desc"}},
-			expectedOrderBy: []string{"name asc", "created_time desc"},
+			name:          "multiple order fields",
+			queryParams:   url.Values{"order": []string{"name asc,created_time desc"}},
+			expectedOrder: []string{"name asc", "created_time desc"},
 		},
 		{
-			name:            "orderBy with spaces should be trimmed",
-			queryParams:     url.Values{"orderBy": []string{" name asc "}},
-			expectedOrderBy: []string{"name asc"},
+			name:          "order with spaces should be trimmed",
+			queryParams:   url.Values{"order": []string{" name asc "}},
+			expectedOrder: []string{"name asc"},
 		},
 		{
-			name:            "empty orderBy string - should use default",
-			queryParams:     url.Values{"orderBy": []string{""}},
-			expectedOrderBy: []string{"created_time desc"},
+			name:          "empty order string - should use default",
+			queryParams:   url.Values{"order": []string{""}},
+			expectedOrder: []string{"created_time desc"},
 		},
 		{
-			name:            "orderBy with whitespace only - should use default",
-			queryParams:     url.Values{"orderBy": []string{"   "}},
-			expectedOrderBy: []string{"created_time desc"},
+			name:          "order with whitespace only - should use default",
+			queryParams:   url.Values{"order": []string{"   "}},
+			expectedOrder: []string{"created_time desc"},
 		},
 		{
-			name:            "orderBy with empty tokens - should filter out",
-			queryParams:     url.Values{"orderBy": []string{"name,,created_time"}},
-			expectedOrderBy: []string{"name", "created_time"},
+			name:          "order with empty tokens - should filter out",
+			queryParams:   url.Values{"order": []string{"name,,created_time"}},
+			expectedOrder: []string{"name", "created_time"},
 		},
 	}
 
@@ -67,9 +67,9 @@ func TestNewListArguments_OrderBy(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			RegisterTestingT(t)
 			listArgs, err := NewListArguments(tt.queryParams)
-			Expect(err).To(BeNil(), "Should not return error for valid orderBy parameters")
-			Expect(listArgs.OrderBy).To(Equal(tt.expectedOrderBy),
-				"OrderBy mismatch for test case: %s", tt.name)
+			Expect(err).To(BeNil(), "Should not return error for valid order parameters")
+			Expect(listArgs.Order).To(Equal(tt.expectedOrder),
+				"Order mismatch for test case: %s", tt.name)
 		})
 	}
 }
@@ -83,10 +83,10 @@ func TestNewListArguments_DefaultValues(t *testing.T) {
 	Expect(listArgs.Page).To(Equal(1), "Default page should be 1")
 	Expect(listArgs.Size).To(Equal(int64(20)), "Default size should be 20")
 	Expect(listArgs.Search).To(Equal(""), "Default search should be empty")
-	Expect(listArgs.OrderBy).To(Equal([]string{"created_time desc"}), "Default orderBy should be created_time desc")
+	Expect(listArgs.Order).To(Equal([]string{"created_time desc"}), "Default order should be created_time desc")
 }
 
-func TestNewListArguments_PageSize(t *testing.T) {
+func TestNewListArguments_Size(t *testing.T) {
 	RegisterTestingT(t)
 
 	tests := []struct {
@@ -96,22 +96,16 @@ func TestNewListArguments_PageSize(t *testing.T) {
 		expectedSize int64
 	}{
 		{
-			name:         "custom page and pageSize",
-			queryParams:  url.Values{"page": []string{"2"}, "pageSize": []string{"50"}},
+			name:         "custom page and size",
+			queryParams:  url.Values{"page": []string{"2"}, "size": []string{"50"}},
 			expectedPage: 2,
 			expectedSize: 50,
 		},
 		{
-			name:         "custom page and size (legacy)",
+			name:         "custom page and size (different values)",
 			queryParams:  url.Values{"page": []string{"3"}, "size": []string{"25"}},
 			expectedPage: 3,
 			expectedSize: 25,
-		},
-		{
-			name:         "pageSize takes precedence over size",
-			queryParams:  url.Values{"pageSize": []string{"30"}, "size": []string{"60"}},
-			expectedPage: 1,
-			expectedSize: 30,
 		},
 	}
 
@@ -278,36 +272,25 @@ func TestNewListArguments_Validation(t *testing.T) {
 			errorCode:     "HYPERFLEET-VAL-003",
 		},
 
-		// PageSize validation tests (OpenAPI spec parameter)
-		// PageSize boundary checks — VAL-004 (CodeValidationRange) for values outside valid range (1-100)
+		// Additional size edge cases
 		{
-			name:          "negative pageSize returns error",
-			queryParams:   url.Values{"pageSize": []string{"-1"}},
+			name:          "size with special characters returns error",
+			queryParams:   url.Values{"size": []string{"<script>"}},
 			expectError:   true,
-			errorContains: "Invalid pageSize parameter",
-			errorCode:     "HYPERFLEET-VAL-004",
+			errorContains: "Invalid size parameter",
+			errorCode:     "HYPERFLEET-VAL-003",
 		},
 		{
-			name:          "zero pageSize returns error",
-			queryParams:   url.Values{"pageSize": []string{"0"}},
-			expectError:   true,
-			errorContains: "Invalid pageSize parameter",
-			errorCode:     "HYPERFLEET-VAL-004",
-		},
-		{
-			name:          "pageSize exceeding MaxPageSize returns error",
-			queryParams:   url.Values{"pageSize": []string{"101"}},
+			name:          "very large size returns error",
+			queryParams:   url.Values{"size": []string{"999999"}},
 			expectError:   true,
 			errorContains: "exceeds maximum allowed value",
 			errorCode:     "HYPERFLEET-VAL-004",
 		},
-		// PageSize parse errors — VAL-003 (CodeValidationFormat) for non-numeric input
 		{
-			name:          "non-numeric pageSize returns error",
-			queryParams:   url.Values{"pageSize": []string{"xyz"}},
-			expectError:   true,
-			errorContains: "Invalid pageSize parameter",
-			errorCode:     "HYPERFLEET-VAL-003",
+			name:        "pageSize is ignored (no longer a valid parameter)",
+			queryParams: url.Values{"pageSize": []string{"50"}},
+			expectError: false,
 		},
 
 		// Valid cases
