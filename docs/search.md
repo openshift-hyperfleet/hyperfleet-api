@@ -20,7 +20,7 @@ The HyperFleet API uses the [Tree Search Language (TSL)](https://github.com/yaac
 | `<=` | Less than or equal | `generation<=5` |
 | `>` | Greater than | `generation>1` |
 | `>=` | Greater than or equal | `generation>=1` |
-| `in` | In list | `name in ('c1','c2')` |
+| `in` | In list | `name in ['c1','c2']` |
 | `and` | Logical AND | `a='1' and b='2'` |
 | `or` | Logical OR | `a='1' or a='2'` |
 | `not` | Logical NOT | `not name='test'` |
@@ -29,7 +29,7 @@ The HyperFleet API uses the [Tree Search Language (TSL)](https://github.com/yaac
 
 - **String values**: Must be enclosed in single quotes: `name='my-cluster'`
 - **Numeric values**: No quotes required: `generation>5`
-- **Lists**: Comma-separated values in parentheses: `id in ('019466a0-8f8e-7abc-9def-0123456789ab', '019466a1-2b3c-7def-8abc-456789abcdef')`
+- **Lists**: Comma-separated values in square brackets: `id in ['019466a0-8f8e-7abc-9def-0123456789ab', '019466a1-2b3c-7def-8abc-456789abcdef']`
 
 ## Searchable Fields
 
@@ -55,7 +55,7 @@ curl -G "http://localhost:8000/api/hyperfleet/v1/clusters" \
 
 # Find clusters by multiple names
 curl -G "http://localhost:8000/api/hyperfleet/v1/clusters" \
-  --data-urlencode "search=name in ('cluster1', 'cluster2', 'cluster3')"
+  --data-urlencode "search=name in ['cluster1', 'cluster2', 'cluster3']"
 ```
 
 ### NodePools
@@ -210,7 +210,7 @@ curl -G "http://localhost:8000/api/hyperfleet/v1/clusters" \
 
 # Find clusters in dev or staging
 curl -G "http://localhost:8000/api/hyperfleet/v1/clusters" \
-  --data-urlencode "search=labels.environment in ('dev', 'staging')"
+  --data-urlencode "search=labels.environment in ['dev', 'staging']"
 
 # Find reconciled clusters in production or staging
 curl -G "http://localhost:8000/api/hyperfleet/v1/clusters" \
@@ -228,7 +228,7 @@ Operator precedence: `()` > comparisons > `not` > `and` > `or`
 ```bash
 # Find non-production clusters
 curl -G "http://localhost:8000/api/hyperfleet/v1/clusters" \
-  --data-urlencode "search=labels.environment in ('dev', 'staging', 'test')"
+  --data-urlencode "search=labels.environment in ['dev', 'staging', 'test']"
 
 # Find clusters created by specific user
 curl -G "http://localhost:8000/api/hyperfleet/v1/clusters" \
@@ -236,7 +236,7 @@ curl -G "http://localhost:8000/api/hyperfleet/v1/clusters" \
 
 # Find clusters by multiple IDs
 curl -G "http://localhost:8000/api/hyperfleet/v1/clusters" \
-  --data-urlencode "search=id in ('019466a0-8f8e-7abc-9def-0123456789ab', '019466a1-2b3c-7def-8abc-456789abcdef', '019466a2-4c5d-7ef0-9abc-123456789def')"
+  --data-urlencode "search=id in ['019466a0-8f8e-7abc-9def-0123456789ab', '019466a1-2b3c-7def-8abc-456789abcdef', '019466a2-4c5d-7ef0-9abc-123456789def']"
 ```
 
 ## Error Handling
