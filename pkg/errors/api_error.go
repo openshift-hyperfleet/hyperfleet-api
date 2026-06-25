@@ -2,6 +2,7 @@ package errors
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -30,6 +31,28 @@ type APIError struct {
 	StatusCode int
 	// Attempts is how many attempts were made (including retries)
 	Attempts int
+}
+
+// brokenEndpointCode is the RFC 9457 error code the HyperFleet API returns
+// from its catch-all 404 handler when no route matched the request URL.
+const brokenEndpointCode = "HYPERFLEET-NTF-000"
+
+// problemDetails is a subset of RFC 9457 Problem Details used to distinguish
+// resource-not-found from broken-endpoint 404 responses.
+type problemDetails struct {
+	Code string `json:"code"`
+}
+
+// parseProblemDetails attempts to parse the response body as RFC 9457 Problem Details.
+func (e *APIError) parseProblemDetails() (problemDetails, bool) {
+	if !e.HasResponseBody() {
+		return problemDetails{}, false
+	}
+	var pd problemDetails
+	if err := json.Unmarshal(e.ResponseBody, &pd); err != nil {
+		return problemDetails{}, false
+	}
+	return pd, true
 }
 
 // Error implements the error interface.
@@ -71,6 +94,22 @@ func (e *APIError) IsClientError() bool {
 // IsNotFound returns true if the error was a 404 Not Found
 func (e *APIError) IsNotFound() bool {
 	return e.StatusCode == 404
+}
+
+// IsResourceNotFound returns true when the 404 represents a real resource that
+// was not found, as opposed to a broken/misconfigured URL.
+// It defaults to true for any 404 (safe fallback if proxies strip the response
+// body), and only returns false when the RFC 9457 body contains the catch-all
+// error code HYPERFLEET-NTF-000, which signals no route matched the request URL.
+func (e *APIError) IsResourceNotFound() bool {
+	if !e.IsNotFound() {
+		return false
+	}
+	pd, ok := e.parseProblemDetails()
+	if !ok {
+		return true
+	}
+	return pd.Code != brokenEndpointCode
 }
 
 // IsUnauthorized returns true if the error was a 401 Unauthorized
@@ -162,4 +201,11 @@ func IsAPIError(err error) (*APIError, bool) {
 func IsNotFoundError(err error) bool {
 	apiErr, ok := IsAPIError(err)
 	return ok && apiErr.IsNotFound()
+}
+
+// IsResourceNotFoundError checks whether err is a 404 APIError that represents
+// a real resource not found (not a broken/misconfigured endpoint URL).
+func IsResourceNotFoundError(err error) bool {
+	apiErr, ok := IsAPIError(err)
+	return ok && apiErr.IsResourceNotFound()
 }

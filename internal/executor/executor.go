@@ -129,9 +129,9 @@ func (e *Executor) Execute(ctx context.Context, data interface{}) *ExecutionResu
 	result.PreconditionResults = precondOutcome.Results
 
 	switch {
-	case precondOutcome.Error != nil && apierrors.IsNotFoundError(precondOutcome.Error):
-		// Resource was force-deleted: API returned 404. Log and stop processing gracefully.
-		// No point running resources or post-actions for a resource that no longer exists.
+	case precondOutcome.Error != nil && apierrors.IsResourceNotFoundError(precondOutcome.Error):
+		// Resource no longer exists (e.g. deleted externally, wrong ID in event).
+		// Stop processing gracefully.
 		e.log.Infof(ctx, "Phase %s: resource not found, stopping processing gracefully",
 			result.CurrentPhase)
 		result.ResourcesSkipped = true
@@ -203,8 +203,8 @@ func (e *Executor) Execute(ctx context.Context, data interface{}) *ExecutionResu
 	result.PostActionResults = postResults
 
 	if err != nil {
-		if apierrors.IsNotFoundError(err) {
-			// Resource was force-deleted mid-execution. Log and continue, don't fail.
+		if apierrors.IsResourceNotFoundError(err) {
+			// Resource no longer exists. Log and continue, don't fail.
 			e.log.Infof(ctx, "Phase %s: resource not found, skipping remaining post-actions",
 				result.CurrentPhase)
 			result.ResourcesSkipped = true
