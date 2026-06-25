@@ -10,9 +10,8 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/Masterminds/squirrel"
-	"github.com/yaacov/tree-search-language/pkg/tsl"
-	"github.com/yaacov/tree-search-language/pkg/walkers/ident"
-	sqlFilter "github.com/yaacov/tree-search-language/pkg/walkers/sql"
+	"github.com/yaacov/tree-search-language/v6/pkg/tsl"
+	sqlFilter "github.com/yaacov/tree-search-language/v6/pkg/walkers/sql"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/dao"
@@ -169,35 +168,24 @@ func (s *sqlGenericService) buildSearchValues(
 		)
 	}
 
-	// Pre-process before TSL parsing — the parser only supports 3-part identifiers.
-	// Condition subfields: status.conditions.Reconciled.last_updated_time → 3-part encoding
-	// Spec deep paths: spec.a.b.c → spec.a__b__c (2 parts, decoded in getField)
-	preprocessedSearch := db.PreprocessConditionSubfields(listCtx.args.Search)
-	preprocessedSearch = db.PreprocessSpecSubfields(preprocessedSearch)
-
-	// create the TSL tree
-	tslTree, err := tsl.ParseTSL(preprocessedSearch)
+	tslTreeWrapper, err := tsl.ParseTSL(listCtx.args.Search)
 	if err != nil {
 		return "", nil, errors.BadRequest("Failed to parse search query: %s", listCtx.args.Search)
 	}
+	tslTree := tslTreeWrapper.Node
 
 	// Extract condition queries (status.conditions.xxx) before field name mapping
-	// These require special JSONB containment handling that TSL doesn't support
-	tableName := (*d).GetTableName()
-	tslTree, conditionExprs, serviceErr := db.ExtractConditionQueries(tslTree, tableName)
+	tslTree, conditionExprs, serviceErr := db.ExtractConditionQueries(tslTree)
 	if serviceErr != nil {
 		return "", nil, serviceErr
 	}
 
-	// apply field name mapping first (status.xxx -> status_xxx, labels.xxx -> labels->>'xxx')
-	// this must happen before treeWalkForRelatedTables to prevent treating "status" and "labels" as related resources
+	// apply field name mapping (status.xxx -> status_xxx, labels.xxx -> labels->>'xxx', spec.xxx -> spec->>'xxx')
+	// also wraps spec JSONB fields in CAST(... AS numeric) when compared against a number
 	tslTree, serviceErr = db.FieldNameWalk(tslTree, *listCtx.disallowedFields)
 	if serviceErr != nil {
 		return "", nil, serviceErr
 	}
-	// wrap spec field identifiers in CAST(... AS numeric) when compared against a number,
-	// so that multi-digit values sort correctly instead of using text ordering
-	tslTree = db.WrapSpecNumericCasts(tslTree)
 	// find all related tables
 	tslTree, serviceErr = s.treeWalkForRelatedTables(listCtx, tslTree, d)
 	if serviceErr != nil {
@@ -208,8 +196,8 @@ func (s *sqlGenericService) buildSearchValues(
 	if serviceErr != nil {
 		return "", nil, serviceErr
 	}
-	// convert to sqlizer
-	sqlizer, serviceErr := s.treeWalkForSqlizer(listCtx, tslTree)
+	// convert to sqlizer — wrap back to TSLNode for v6's sql.Walk
+	sqlizer, serviceErr := s.treeWalkForSqlizer(listCtx, &tsl.TSLNode{Node: tslTree})
 	if serviceErr != nil {
 		return "", nil, serviceErr
 	}
@@ -229,7 +217,6 @@ func (s *sqlGenericService) buildSearchValues(
 			if err != nil {
 				return "", nil, errors.GeneralError("%s", err.Error())
 			}
-			// Append condition to the main SQL with AND
 			if sql == "" {
 				sql = condSQL
 			} else {
@@ -337,13 +324,19 @@ func zeroSlice(i interface{}, cap int64) *errors.ServiceError {
 // (1) look up the related table by its 1st part - creator
 // (2) replace it by table name - creator.username -> accounts.username
 func (s *sqlGenericService) treeWalkForRelatedTables(
-	listCtx *listContext, tslTree tsl.Node, genericDao *dao.GenericDao,
-) (tsl.Node, *errors.ServiceError) {
+	listCtx *listContext, tslTree *tsl.Node, genericDao *dao.GenericDao,
+) (*tsl.Node, *errors.ServiceError) {
 	resourceTable := (*genericDao).GetTableName()
 	if listCtx.joins == nil {
 		listCtx.joins = map[string]dao.TableRelation{}
 	}
 	walkFn := func(field string) (string, error) {
+		// After FieldNameWalk, JSONB-mapped fields (e.g. labels->>'env',
+		// spec->'release'->>'channel') are no longer relation paths.
+		// Skip dot-splitting for any already-mapped JSONB expression.
+		if strings.Contains(field, "->") {
+			return field, nil
+		}
 		fieldParts := strings.Split(field, ".")
 		if len(fieldParts) > 1 && fieldParts[0] != resourceTable {
 			fieldName := fieldParts[0]
@@ -365,7 +358,7 @@ func (s *sqlGenericService) treeWalkForRelatedTables(
 		return field, nil
 	}
 
-	tslTree, err := ident.Walk(tslTree, walkFn)
+	tslTree, err := db.IdentWalk(tslTree, walkFn)
 	if err != nil {
 		return tslTree, errors.BadRequest("%s", err.Error())
 	}
@@ -376,9 +369,9 @@ func (s *sqlGenericService) treeWalkForRelatedTables(
 // prepend table name to these "free" identifiers since they could cause "ambiguous" errors
 func (s *sqlGenericService) treeWalkForAddingTableName(
 	_ *listContext,
-	tslTree tsl.Node,
+	tslTree *tsl.Node,
 	dao *dao.GenericDao,
-) (tsl.Node, *errors.ServiceError) {
+) (*tsl.Node, *errors.ServiceError) {
 	resourceTable := (*dao).GetTableName()
 
 	walkFn := func(field string) (string, error) {
@@ -392,7 +385,7 @@ func (s *sqlGenericService) treeWalkForAddingTableName(
 		return field, nil
 	}
 
-	tslTree, err := ident.Walk(tslTree, walkFn)
+	tslTree, err := db.IdentWalk(tslTree, walkFn)
 	if err != nil {
 		return tslTree, errors.BadRequest("%s", err.Error())
 	}
@@ -402,12 +395,8 @@ func (s *sqlGenericService) treeWalkForAddingTableName(
 
 func (s *sqlGenericService) treeWalkForSqlizer(
 	_ *listContext,
-	tslTree tsl.Node,
+	tslTree *tsl.TSLNode,
 ) (squirrel.Sqlizer, *errors.ServiceError) {
-	// Note: FieldNameWalk is now called earlier in buildSearchValues to ensure field mapping
-	// happens before related table detection. No need to call it again here.
-
-	// Convert the search tree into SQL [Squirrel] filter
 	sqlizer, err := sqlFilter.Walk(tslTree)
 	if err != nil {
 		return nil, errors.BadRequest("%s", err.Error())

@@ -2,9 +2,10 @@ package db
 
 import (
 	"testing"
+	"time"
 
 	. "github.com/onsi/gomega"
-	"github.com/yaacov/tree-search-language/pkg/tsl"
+	"github.com/yaacov/tree-search-language/v6/pkg/tsl"
 )
 
 func TestConditionsNodeConverterStatus(t *testing.T) {
@@ -46,13 +47,6 @@ func TestConditionsNodeConverterStatus(t *testing.T) {
 			expectedArgs: []interface{}{`$[*] ? (@.type == "Available")`, "Unknown"},
 		},
 		{
-			name:         "Reconciled condition",
-			field:        "status.conditions.Reconciled",
-			value:        "True",
-			expectedSQL:  "jsonb_path_query_first(status_conditions, ?::jsonpath) ->> 'status' = ?",
-			expectedArgs: []interface{}{`$[*] ? (@.type == "Reconciled")`, "True"},
-		},
-		{
 			name:          "Invalid condition status",
 			field:         "status.conditions.Reconciled",
 			value:         "Invalid",
@@ -79,16 +73,11 @@ func TestConditionsNodeConverterStatus(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			RegisterTestingT(t)
 
-			node := tsl.Node{
-				Func: tsl.EqOp,
-				Left: tsl.Node{
-					Func: tsl.IdentOp,
-					Left: tt.field,
-				},
-				Right: tsl.Node{
-					Func: tsl.StringOp,
-					Left: tt.value,
-				},
+			node := &tsl.Node{
+				Kind:     tsl.KindBinaryExpr,
+				Operator: tsl.OpEQ,
+				Left:     &tsl.Node{Kind: tsl.KindIdentifier, Value: tt.field},
+				Right:    &tsl.Node{Kind: tsl.KindStringLiteral, Value: tt.value},
 			}
 
 			result, err := conditionsNodeConverter(node)
@@ -119,20 +108,19 @@ func TestConditionsNodeConverterStatus(t *testing.T) {
 
 func TestConditionsNodeConverterSubfields(t *testing.T) {
 	tests := []struct {
-		value         interface{}
 		name          string
 		field         string
-		op            string
 		expectedSQL   string
 		errorContains string
+		value         interface{}
 		expectedArgs  []interface{}
+		op            tsl.Operator
 		expectError   bool
 	}{
-		// Time subfield: last_updated_time (encoded with __ after preprocessing)
 		{
 			name:        "last_updated_time less than",
-			field:       "status.conditions.Reconciled__last_updated_time",
-			op:          tsl.LtOp,
+			field:       "status.conditions.Reconciled.last_updated_time",
+			op:          tsl.OpLT,
 			value:       "2026-03-06T00:00:00Z",
 			expectedSQL: "CAST(jsonb_path_query_first(status_conditions, ?::jsonpath) ->> ? AS TIMESTAMPTZ) < ?::timestamptz",
 			expectedArgs: []interface{}{
@@ -143,8 +131,8 @@ func TestConditionsNodeConverterSubfields(t *testing.T) {
 		},
 		{
 			name:        "last_updated_time greater than",
-			field:       "status.conditions.Reconciled__last_updated_time",
-			op:          tsl.GtOp,
+			field:       "status.conditions.Reconciled.last_updated_time",
+			op:          tsl.OpGT,
 			value:       "2026-03-06T00:00:00Z",
 			expectedSQL: "CAST(jsonb_path_query_first(status_conditions, ?::jsonpath) ->> ? AS TIMESTAMPTZ) > ?::timestamptz",
 			expectedArgs: []interface{}{
@@ -155,8 +143,8 @@ func TestConditionsNodeConverterSubfields(t *testing.T) {
 		},
 		{
 			name:        "last_updated_time less than or equal",
-			field:       "status.conditions.Reconciled__last_updated_time",
-			op:          tsl.LteOp,
+			field:       "status.conditions.Reconciled.last_updated_time",
+			op:          tsl.OpLE,
 			value:       "2026-03-06T00:00:00Z",
 			expectedSQL: "CAST(jsonb_path_query_first(status_conditions, ?::jsonpath) ->> ? AS TIMESTAMPTZ) <= ?::timestamptz",
 			expectedArgs: []interface{}{
@@ -167,8 +155,8 @@ func TestConditionsNodeConverterSubfields(t *testing.T) {
 		},
 		{
 			name:        "last_updated_time greater than or equal",
-			field:       "status.conditions.Reconciled__last_updated_time",
-			op:          tsl.GteOp,
+			field:       "status.conditions.Reconciled.last_updated_time",
+			op:          tsl.OpGE,
 			value:       "2026-03-06T00:00:00Z",
 			expectedSQL: "CAST(jsonb_path_query_first(status_conditions, ?::jsonpath) ->> ? AS TIMESTAMPTZ) >= ?::timestamptz",
 			expectedArgs: []interface{}{
@@ -179,8 +167,8 @@ func TestConditionsNodeConverterSubfields(t *testing.T) {
 		},
 		{
 			name:        "last_updated_time equal",
-			field:       "status.conditions.Reconciled__last_updated_time",
-			op:          tsl.EqOp,
+			field:       "status.conditions.Reconciled.last_updated_time",
+			op:          tsl.OpEQ,
 			value:       "2026-03-06T00:00:00Z",
 			expectedSQL: "CAST(jsonb_path_query_first(status_conditions, ?::jsonpath) ->> ? AS TIMESTAMPTZ) = ?::timestamptz",
 			expectedArgs: []interface{}{
@@ -191,8 +179,8 @@ func TestConditionsNodeConverterSubfields(t *testing.T) {
 		},
 		{
 			name:        "last_updated_time not equal",
-			field:       "status.conditions.Reconciled__last_updated_time",
-			op:          tsl.NotEqOp,
+			field:       "status.conditions.Reconciled.last_updated_time",
+			op:          tsl.OpNE,
 			value:       "2026-03-06T00:00:00Z",
 			expectedSQL: "CAST(jsonb_path_query_first(status_conditions, ?::jsonpath) ->> ? AS TIMESTAMPTZ) != ?::timestamptz",
 			expectedArgs: []interface{}{
@@ -201,11 +189,10 @@ func TestConditionsNodeConverterSubfields(t *testing.T) {
 				"2026-03-06T00:00:00Z",
 			},
 		},
-		// Time subfield: last_transition_time
 		{
 			name:        "last_transition_time less than",
-			field:       "status.conditions.Available__last_transition_time",
-			op:          tsl.LtOp,
+			field:       "status.conditions.Available.last_transition_time",
+			op:          tsl.OpLT,
 			value:       "2026-03-06T00:00:00Z",
 			expectedSQL: "CAST(jsonb_path_query_first(status_conditions, ?::jsonpath) ->> ? AS TIMESTAMPTZ) < ?::timestamptz",
 			expectedArgs: []interface{}{
@@ -214,11 +201,10 @@ func TestConditionsNodeConverterSubfields(t *testing.T) {
 				"2026-03-06T00:00:00Z",
 			},
 		},
-		// Integer subfield: observed_generation
 		{
 			name:        "observed_generation less than",
-			field:       "status.conditions.Reconciled__observed_generation",
-			op:          tsl.LtOp,
+			field:       "status.conditions.Reconciled.observed_generation",
+			op:          tsl.OpLT,
 			value:       float64(5),
 			expectedSQL: "CAST(jsonb_path_query_first(status_conditions, ?::jsonpath) ->> ? AS INTEGER) < ?",
 			expectedArgs: []interface{}{
@@ -229,8 +215,8 @@ func TestConditionsNodeConverterSubfields(t *testing.T) {
 		},
 		{
 			name:        "observed_generation equal",
-			field:       "status.conditions.Reconciled__observed_generation",
-			op:          tsl.EqOp,
+			field:       "status.conditions.Reconciled.observed_generation",
+			op:          tsl.OpEQ,
 			value:       float64(3),
 			expectedSQL: "CAST(jsonb_path_query_first(status_conditions, ?::jsonpath) ->> ? AS INTEGER) = ?",
 			expectedArgs: []interface{}{
@@ -239,51 +225,74 @@ func TestConditionsNodeConverterSubfields(t *testing.T) {
 				3,
 			},
 		},
-		// Error cases
+		{
+			name:        "KindTimestampLiteral preserves fractional seconds",
+			field:       "status.conditions.Reconciled.last_updated_time",
+			op:          tsl.OpLT,
+			value:       time.Date(2026, 3, 6, 12, 30, 45, 123456789, time.UTC),
+			expectedSQL: "CAST(jsonb_path_query_first(status_conditions, ?::jsonpath) ->> ? AS TIMESTAMPTZ) < ?::timestamptz",
+			expectedArgs: []interface{}{
+				`$[*] ? (@.type == "Reconciled")`,
+				"last_updated_time",
+				"2026-03-06T12:30:45.123456789Z",
+			},
+		},
+		{
+			name:        "KindTimestampLiteral without fractional seconds",
+			field:       "status.conditions.Reconciled.last_updated_time",
+			op:          tsl.OpGE,
+			value:       time.Date(2026, 3, 6, 0, 0, 0, 0, time.UTC),
+			expectedSQL: "CAST(jsonb_path_query_first(status_conditions, ?::jsonpath) ->> ? AS TIMESTAMPTZ) >= ?::timestamptz",
+			expectedArgs: []interface{}{
+				`$[*] ? (@.type == "Reconciled")`,
+				"last_updated_time",
+				"2026-03-06T00:00:00Z",
+			},
+		},
 		{
 			name:          "Invalid subfield name",
-			field:         "status.conditions.Reconciled__unknown_field",
-			op:            tsl.LtOp,
+			field:         "status.conditions.Reconciled.unknown_field",
+			op:            tsl.OpLT,
 			value:         "2026-03-06T00:00:00Z",
 			expectError:   true,
 			errorContains: "not supported",
 		},
 		{
 			name:          "Invalid operator for subfield",
-			field:         "status.conditions.Reconciled__last_updated_time",
-			op:            tsl.LikeOp,
+			field:         "status.conditions.Reconciled.last_updated_time",
+			op:            tsl.OpLike,
 			value:         "2026%",
 			expectError:   true,
 			errorContains: "not supported for condition subfield",
 		},
 		{
 			name:          "Invalid condition type in subfield query",
-			field:         "status.conditions.ready__last_updated_time",
-			op:            tsl.LtOp,
+			field:         "status.conditions.ready.last_updated_time",
+			op:            tsl.OpLT,
 			value:         "2026-03-06T00:00:00Z",
 			expectError:   true,
 			errorContains: "must be PascalCase",
 		},
 		{
 			name:          "Invalid timestamp format",
-			field:         "status.conditions.Reconciled__last_updated_time",
-			op:            tsl.LtOp,
+			field:         "status.conditions.Reconciled.last_updated_time",
+			op:            tsl.OpLT,
 			value:         "not-a-timestamp",
 			expectError:   true,
 			errorContains: "expected RFC3339 format",
 		},
 		{
 			name:          "Float value for integer subfield",
-			field:         "status.conditions.Reconciled__observed_generation",
-			op:            tsl.LtOp,
+			field:         "status.conditions.Reconciled.observed_generation",
+			op:            tsl.OpLT,
 			value:         float64(3.5),
 			expectError:   true,
 			errorContains: "expected integer value",
 		},
 		{
 			name:          "Integer overflow for integer subfield",
-			field:         "status.conditions.Reconciled__observed_generation",
-			op:            tsl.LtOp,
+			field:         "status.conditions.Reconciled.observed_generation",
+			op:            tsl.OpLT,
 			value:         float64(3000000000),
 			expectError:   true,
 			errorContains: "out of 32-bit integer range",
@@ -294,21 +303,21 @@ func TestConditionsNodeConverterSubfields(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			RegisterTestingT(t)
 
-			var rightNode tsl.Node
+			var rightNode *tsl.Node
 			switch v := tt.value.(type) {
 			case string:
-				rightNode = tsl.Node{Func: tsl.StringOp, Left: v}
+				rightNode = &tsl.Node{Kind: tsl.KindStringLiteral, Value: v}
 			case float64:
-				rightNode = tsl.Node{Func: tsl.NumberOp, Left: v}
+				rightNode = &tsl.Node{Kind: tsl.KindNumericLiteral, Value: v}
+			case time.Time:
+				rightNode = &tsl.Node{Kind: tsl.KindTimestampLiteral, Value: v}
 			}
 
-			node := tsl.Node{
-				Func: tt.op,
-				Left: tsl.Node{
-					Func: tsl.IdentOp,
-					Left: tt.field,
-				},
-				Right: rightNode,
+			node := &tsl.Node{
+				Kind:     tsl.KindBinaryExpr,
+				Operator: tt.op,
+				Left:     &tsl.Node{Kind: tsl.KindIdentifier, Value: tt.field},
+				Right:    rightNode,
 			}
 
 			result, err := conditionsNodeConverter(node)
@@ -337,73 +346,6 @@ func TestConditionsNodeConverterSubfields(t *testing.T) {
 	}
 }
 
-func TestPreprocessConditionSubfields(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    string
-		expected string
-	}{
-		{
-			name:     "4-part path is encoded",
-			input:    "status.conditions.Reconciled.last_updated_time < '2026-03-06T00:00:00Z'",
-			expected: "status.conditions.Reconciled__last_updated_time < '2026-03-06T00:00:00Z'",
-		},
-		{
-			name:     "3-part path is unchanged",
-			input:    "status.conditions.Reconciled='True'",
-			expected: "status.conditions.Reconciled='True'",
-		},
-		{
-			name: "Mixed 3-part and 4-part",
-			input: "status.conditions.Reconciled='False' AND " +
-				"status.conditions.Reconciled.last_updated_time < '2026-03-06T00:00:00Z'",
-			expected: "status.conditions.Reconciled='False' AND " +
-				"status.conditions.Reconciled__last_updated_time < '2026-03-06T00:00:00Z'",
-		},
-		{
-			name:     "Labels are unchanged",
-			input:    "labels.environment='production'",
-			expected: "labels.environment='production'",
-		},
-		{
-			name:     "last_transition_time is encoded",
-			input:    "status.conditions.Available.last_transition_time > '2026-01-01T00:00:00Z'",
-			expected: "status.conditions.Available__last_transition_time > '2026-01-01T00:00:00Z'",
-		},
-		{
-			name:     "observed_generation is encoded",
-			input:    "status.conditions.Reconciled.observed_generation < 5",
-			expected: "status.conditions.Reconciled__observed_generation < 5",
-		},
-		{
-			name:     "Text inside single quotes is not encoded",
-			input:    "name='status.conditions.Reconciled.last_updated_time'",
-			expected: "name='status.conditions.Reconciled.last_updated_time'",
-		},
-		{
-			name:     "Text inside double quotes is not encoded",
-			input:    `name="status.conditions.Reconciled.last_updated_time"`,
-			expected: `name="status.conditions.Reconciled.last_updated_time"`,
-		},
-		{
-			name: "Mixed quoted and unquoted segments",
-			input: "status.conditions.Reconciled.last_updated_time < '2026-03-06T00:00:00Z'" +
-				" AND name='status.conditions.Reconciled.last_updated_time'",
-			expected: "status.conditions.Reconciled__last_updated_time < '2026-03-06T00:00:00Z'" +
-				" AND name='status.conditions.Reconciled.last_updated_time'",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			RegisterTestingT(t)
-
-			result := PreprocessConditionSubfields(tt.input)
-			Expect(result).To(Equal(tt.expected))
-		})
-	}
-}
-
 func TestHasConditionWithSubfields(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -416,8 +358,8 @@ func TestHasConditionWithSubfields(t *testing.T) {
 			expected: true,
 		},
 		{
-			name:     "Encoded subfield (after preprocessing)",
-			field:    "status.conditions.Reconciled__last_updated_time",
+			name:     "4-part subfield (v6 native)",
+			field:    "status.conditions.Reconciled.last_updated_time",
 			expected: true,
 		},
 		{
@@ -431,16 +373,11 @@ func TestHasConditionWithSubfields(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			RegisterTestingT(t)
 
-			node := tsl.Node{
-				Func: tsl.EqOp,
-				Left: tsl.Node{
-					Func: tsl.IdentOp,
-					Left: tt.field,
-				},
-				Right: tsl.Node{
-					Func: tsl.StringOp,
-					Left: "value",
-				},
+			node := &tsl.Node{
+				Kind:     tsl.KindBinaryExpr,
+				Operator: tsl.OpEQ,
+				Left:     &tsl.Node{Kind: tsl.KindIdentifier, Value: tt.field},
+				Right:    &tsl.Node{Kind: tsl.KindStringLiteral, Value: "value"},
 			}
 
 			result := hasCondition(node)
@@ -478,12 +415,12 @@ func TestExtractConditionQueriesWithSubfields(t *testing.T) {
 		},
 		{
 			name:        "NOT operator on condition query returns error",
-			searchQuery: "NOT status.conditions.Reconciled='True'",
+			searchQuery: "NOT (status.conditions.Reconciled='True')",
 			expectError: true,
 		},
 		{
 			name:        "NOT operator on condition subfield query returns error",
-			searchQuery: "NOT status.conditions.Reconciled.last_updated_time < '2026-03-06T00:00:00Z'",
+			searchQuery: "NOT (status.conditions.Reconciled.last_updated_time < '2026-03-06T00:00:00Z')",
 			expectError: true,
 		},
 		{
@@ -497,11 +434,11 @@ func TestExtractConditionQueriesWithSubfields(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			RegisterTestingT(t)
 
-			preprocessed := PreprocessConditionSubfields(tt.searchQuery)
-			tslTree, err := tsl.ParseTSL(preprocessed)
+			// v6 handles deep identifiers natively — no preprocessing needed
+			tslTreeWrapper, err := tsl.ParseTSL(tt.searchQuery)
 			Expect(err).ToNot(HaveOccurred())
 
-			_, conditions, serviceErr := ExtractConditionQueries(tslTree, "clusters")
+			_, conditions, serviceErr := ExtractConditionQueries(tslTreeWrapper.Node)
 
 			if tt.expectError {
 				Expect(serviceErr).ToNot(BeNil())
@@ -549,19 +486,45 @@ func TestExtractConditionQueries(t *testing.T) {
 			searchQuery:        "status.conditions.Reconciled='True' AND status.conditions.Available='True'",
 			expectedConditions: 2,
 		},
+		{
+			name:        "OR with condition on right side is rejected",
+			searchQuery: "name='test' OR status.conditions.Reconciled='True'",
+			expectError: true,
+		},
+		{
+			name:        "OR with condition on left side is rejected",
+			searchQuery: "status.conditions.Available='True' OR name='test'",
+			expectError: true,
+		},
+		{
+			name:        "OR with conditions on both sides is rejected",
+			searchQuery: "status.conditions.Reconciled='True' OR status.conditions.Available='True'",
+			expectError: true,
+		},
+		{
+			name:        "Nested OR with condition is rejected",
+			searchQuery: "name='a' AND (region='us' OR status.conditions.Reconciled='True')",
+			expectError: true,
+		},
+		{
+			name:               "OR without conditions is allowed",
+			searchQuery:        "name='test' OR region='us'",
+			expectedConditions: 0,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			RegisterTestingT(t)
 
-			tslTree, err := tsl.ParseTSL(tt.searchQuery)
+			tslTreeWrapper, err := tsl.ParseTSL(tt.searchQuery)
 			Expect(err).ToNot(HaveOccurred())
 
-			_, conditions, serviceErr := ExtractConditionQueries(tslTree, "clusters")
+			_, conditions, serviceErr := ExtractConditionQueries(tslTreeWrapper.Node)
 
 			if tt.expectError {
 				Expect(serviceErr).ToNot(BeNil())
+				Expect(serviceErr.Error()).To(ContainSubstring("OR operator is not supported with condition queries"))
 				return
 			}
 
@@ -609,16 +572,11 @@ func TestHasCondition(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			RegisterTestingT(t)
 
-			node := tsl.Node{
-				Func: tsl.EqOp,
-				Left: tsl.Node{
-					Func: tsl.IdentOp,
-					Left: tt.field,
-				},
-				Right: tsl.Node{
-					Func: tsl.StringOp,
-					Left: "value",
-				},
+			node := &tsl.Node{
+				Kind:     tsl.KindBinaryExpr,
+				Operator: tsl.OpEQ,
+				Left:     &tsl.Node{Kind: tsl.KindIdentifier, Value: tt.field},
+				Right:    &tsl.Node{Kind: tsl.KindStringLiteral, Value: "value"},
 			}
 
 			result := hasCondition(node)
@@ -724,167 +682,17 @@ func TestGetField_SpecDisallowed(t *testing.T) {
 	Expect(err.Reason).To(ContainSubstring("not a valid field name"))
 }
 
-func TestPreprocessSpecSubfields(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    string
-		expected string
-	}{
-		{
-			name:     "1-level path is unchanged",
-			input:    "spec.region = 'us-east-1'",
-			expected: "spec.region = 'us-east-1'",
-		},
-		{
-			name:     "2-level path is encoded",
-			input:    "spec.release.channel = 'dev'",
-			expected: "spec.release__channel = 'dev'",
-		},
-		{
-			name:     "3-level path is encoded",
-			input:    "spec.release.config.zone = 'us-east-1a'",
-			expected: "spec.release__config__zone = 'us-east-1a'",
-		},
-		{
-			name:     "non-spec path is unchanged",
-			input:    "labels.environment = 'production'",
-			expected: "labels.environment = 'production'",
-		},
-		{
-			name:     "spec path inside single quotes is not encoded",
-			input:    "name='spec.release.channel'",
-			expected: "name='spec.release.channel'",
-		},
-		{
-			name:     "spec path inside double quotes is not encoded",
-			input:    `name="spec.release.channel"`,
-			expected: `name="spec.release.channel"`,
-		},
-		{
-			name:     "multiple occurrences all encoded",
-			input:    "spec.release.channel = 'dev' AND spec.release.version > 9",
-			expected: "spec.release__channel = 'dev' AND spec.release__version > 9",
-		},
-		{
-			name:     "mixed quoted and unquoted",
-			input:    "spec.release.channel = 'dev' AND name = 'spec.release.channel'",
-			expected: "spec.release__channel = 'dev' AND name = 'spec.release.channel'",
-		},
-		{
-			name:     "adjacent paren before spec path",
-			input:    "(spec.release.channel = 'dev')",
-			expected: "(spec.release__channel = 'dev')",
-		},
-		{
-			name:     "empty input",
-			input:    "",
-			expected: "",
-		},
-		{
-			name:     "no spec paths",
-			input:    "name = 'my-cluster'",
-			expected: "name = 'my-cluster'",
-		},
-	}
+func TestGetField_PropertiesDisallowed(t *testing.T) {
+	RegisterTestingT(t)
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			RegisterTestingT(t)
+	disallowed := map[string]string{"properties": "properties"}
 
-			result := PreprocessSpecSubfields(tt.input)
-			Expect(result).To(Equal(tt.expected))
-		})
-	}
+	_, err := getField("properties.foo", disallowed)
+	Expect(err).ToNot(BeNil())
+	Expect(err.Reason).To(ContainSubstring("not a valid field name"))
 }
 
-func TestWrapSpecNumericCasts(t *testing.T) {
-	// helper: build a comparison node with an ident LHS and a value RHS
-	identNode := func(field string) tsl.Node {
-		return tsl.Node{Func: tsl.IdentOp, Left: field}
-	}
-	numNode := func(v float64) tsl.Node {
-		return tsl.Node{Func: tsl.NumberOp, Left: v}
-	}
-	strNode := func(v string) tsl.Node {
-		return tsl.Node{Func: tsl.StringOp, Left: v}
-	}
-	cmpNode := func(op string, left, right tsl.Node) tsl.Node {
-		return tsl.Node{Func: op, Left: left, Right: right}
-	}
-
-	checkIdent := func(t *testing.T, result tsl.Node, expected string) {
-		t.Helper()
-		leftNode, ok := result.Left.(tsl.Node)
-		Expect(ok).To(BeTrue())
-		ident, ok := leftNode.Left.(string)
-		Expect(ok).To(BeTrue())
-		Expect(ident).To(Equal(expected))
-	}
-
-	t.Run("spec field with numeric RHS — CAST applied", func(t *testing.T) {
-		RegisterTestingT(t)
-		checkIdent(t,
-			WrapSpecNumericCasts(cmpNode(tsl.GtOp, identNode("spec->>'replicas'"), numNode(9))),
-			"CAST(spec->>'replicas' AS numeric)",
-		)
-	})
-
-	t.Run("nested spec field with numeric RHS — CAST applied", func(t *testing.T) {
-		RegisterTestingT(t)
-		checkIdent(t,
-			WrapSpecNumericCasts(cmpNode(tsl.GtOp, identNode("spec->'release'->>'version'"), numNode(9))),
-			"CAST(spec->'release'->>'version' AS numeric)",
-		)
-	})
-
-	t.Run("spec field with string RHS — no CAST", func(t *testing.T) {
-		RegisterTestingT(t)
-		checkIdent(t,
-			WrapSpecNumericCasts(cmpNode(tsl.EqOp, identNode("spec->>'channel'"), strNode("dev"))),
-			"spec->>'channel'",
-		)
-	})
-
-	t.Run("non-spec field with numeric RHS — no CAST", func(t *testing.T) {
-		RegisterTestingT(t)
-		checkIdent(t,
-			WrapSpecNumericCasts(cmpNode(tsl.GtOp, identNode("generation"), numNode(1))),
-			"generation",
-		)
-	})
-
-	t.Run("AND tree: only spec+numeric nodes get CAST", func(t *testing.T) {
-		RegisterTestingT(t)
-
-		// spec->>'replicas' > 9 AND generation > 1 AND spec->>'channel' = 'dev'
-		tree := cmpNode(tsl.AndOp,
-			cmpNode(tsl.AndOp,
-				cmpNode(tsl.GtOp, identNode("spec->>'replicas'"), numNode(9)),
-				cmpNode(tsl.GtOp, identNode("generation"), numNode(1)),
-			),
-			cmpNode(tsl.EqOp, identNode("spec->>'channel'"), strNode("dev")),
-		)
-
-		result := WrapSpecNumericCasts(tree)
-
-		// left AND subtree
-		andLeft := result.Left.(tsl.Node)
-		specNode := andLeft.Left.(tsl.Node)
-		specIdent := specNode.Left.(tsl.Node).Left.(string)
-		Expect(specIdent).To(Equal("CAST(spec->>'replicas' AS numeric)"))
-
-		genNode := andLeft.Right.(tsl.Node)
-		genIdent := genNode.Left.(tsl.Node).Left.(string)
-		Expect(genIdent).To(Equal("generation")) // unchanged
-
-		// right: string RHS — no CAST
-		chanNode := result.Right.(tsl.Node)
-		chanIdent := chanNode.Left.(tsl.Node).Left.(string)
-		Expect(chanIdent).To(Equal("spec->>'channel'")) // unchanged
-	})
-}
-
-func TestGetField_SpecNestedEncoded(t *testing.T) {
+func TestGetField_SpecNested(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    string
@@ -896,18 +704,18 @@ func TestGetField_SpecNestedEncoded(t *testing.T) {
 			expected: "spec->>'region'",
 		},
 		{
-			name:     "2-level encoded: spec.release__channel",
-			input:    "spec.release__channel",
+			name:     "2-level: spec.release.channel",
+			input:    "spec.release.channel",
 			expected: "spec->'release'->>'channel'",
 		},
 		{
-			name:     "3-level encoded: spec.release__config__zone",
-			input:    "spec.release__config__zone",
+			name:     "3-level: spec.release.config.zone",
+			input:    "spec.release.config.zone",
 			expected: "spec->'release'->'config'->>'zone'",
 		},
 		{
-			name:     "2-level encoded with underscore in key: spec.release__image_v2",
-			input:    "spec.release__image_v2",
+			name:     "2-level with underscore in key: spec.release.image_v2",
+			input:    "spec.release.image_v2",
 			expected: "spec->'release'->>'image_v2'",
 		},
 		{
@@ -926,6 +734,79 @@ func TestGetField_SpecNestedEncoded(t *testing.T) {
 			Expect(field).To(Equal(tt.expected))
 		})
 	}
+}
+
+// TestFieldNameWalk_NumericCast verifies that FieldNameWalk applies CAST(... AS numeric)
+// to spec JSONB fields when compared against a number. This logic was previously in a
+// separate WrapSpecNumericCasts tree walk and is now integrated into FieldNameWalk.
+func TestFieldNameWalk_NumericCast(t *testing.T) {
+	noDisallowed := map[string]string{}
+
+	parseAndWalk := func(t *testing.T, search string) *tsl.Node {
+		t.Helper()
+		tree, err := tsl.ParseTSL(search)
+		Expect(err).ToNot(HaveOccurred())
+		result, serviceErr := FieldNameWalk(tree.Node, noDisallowed)
+		Expect(serviceErr).To(BeNil())
+		return result
+	}
+
+	t.Run("spec field with numeric RHS — CAST applied", func(t *testing.T) {
+		RegisterTestingT(t)
+		result := parseAndWalk(t, "spec.replicas > 9")
+		Expect(result.Left.Value).To(Equal("CAST(spec->>'replicas' AS numeric)"))
+	})
+
+	t.Run("nested spec field with numeric RHS — CAST applied", func(t *testing.T) {
+		RegisterTestingT(t)
+		result := parseAndWalk(t, "spec.release.version > 9")
+		Expect(result.Left.Value).To(Equal("CAST(spec->'release'->>'version' AS numeric)"))
+	})
+
+	t.Run("spec field with string RHS — no CAST", func(t *testing.T) {
+		RegisterTestingT(t)
+		result := parseAndWalk(t, "spec.channel = 'dev'")
+		Expect(result.Left.Value).To(Equal("spec->>'channel'"))
+	})
+
+	t.Run("non-spec field with numeric RHS — no CAST", func(t *testing.T) {
+		RegisterTestingT(t)
+		result := parseAndWalk(t, "generation > 1")
+		Expect(result.Left.Value).To(Equal("generation"))
+	})
+
+	t.Run("numeric LHS with spec field RHS — CAST applied", func(t *testing.T) {
+		RegisterTestingT(t)
+		result := parseAndWalk(t, "9 < spec.replicas")
+		Expect(result.Right.Value).To(Equal("CAST(spec->>'replicas' AS numeric)"))
+	})
+
+	t.Run("numeric LHS with nested spec field RHS — CAST applied", func(t *testing.T) {
+		RegisterTestingT(t)
+		result := parseAndWalk(t, "9 < spec.release.version")
+		Expect(result.Right.Value).To(Equal("CAST(spec->'release'->>'version' AS numeric)"))
+	})
+
+	t.Run("numeric LHS with non-spec field RHS — no CAST", func(t *testing.T) {
+		RegisterTestingT(t)
+		result := parseAndWalk(t, "1 < generation")
+		Expect(result.Right.Value).To(Equal("generation"))
+	})
+
+	t.Run("AND tree: only spec+numeric nodes get CAST", func(t *testing.T) {
+		RegisterTestingT(t)
+		result := parseAndWalk(t, "spec.replicas > 9 AND generation > 1 AND spec.channel = 'dev'")
+
+		andLeft := result.Left
+		specIdent := andLeft.Left.Left.Value.(string)
+		Expect(specIdent).To(Equal("CAST(spec->>'replicas' AS numeric)"))
+
+		genIdent := andLeft.Right.Left.Value.(string)
+		Expect(genIdent).To(Equal("generation"))
+
+		chanIdent := result.Right.Left.Value.(string)
+		Expect(chanIdent).To(Equal("spec->>'channel'"))
+	})
 }
 
 func TestConditionStatusValidation(t *testing.T) {

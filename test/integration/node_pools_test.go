@@ -266,7 +266,7 @@ func TestNodePoolListSearch(t *testing.T) {
 	nodePools, err := h.Factories.NewNodePoolsList("bronto", 20)
 	Expect(err).NotTo(HaveOccurred(), "Error creating test nodepools: %v", err)
 
-	searchStr := fmt.Sprintf("id in ('%s')", nodePools[0].ID)
+	searchStr := fmt.Sprintf("id in ['%s']", nodePools[0].ID)
 	search := openapi.SearchParams(searchStr)
 	params := &openapi.GetNodePoolsParams{
 		Search: &search,

@@ -226,7 +226,7 @@ func TestClusterListSearch(t *testing.T) {
 	clusters, err := h.Factories.NewClustersList("bronto", 20)
 	Expect(err).NotTo(HaveOccurred(), "Error creating test clusters: %v", err)
 
-	searchStr := fmt.Sprintf("id in ('%s')", clusters[0].ID)
+	searchStr := fmt.Sprintf("id in ['%s']", clusters[0].ID)
 	search := openapi.SearchParams(searchStr)
 	params := &openapi.GetClustersParams{
 		Search: &search,
