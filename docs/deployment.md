@@ -29,14 +29,7 @@ Before deploying, ensure you have:
 - **PostgreSQL database** — either:
   - An external managed instance (Cloud SQL, RDS, Azure Database) for production, or
   - The chart's built-in PostgreSQL pod for evaluation and testing
-- **Container image** — a released hyperfleet-api image, a pre-built image from your registry, or build your own:
-  ```bash
-  make image \
-    IMAGE_REGISTRY=quay.io/yourorg \
-    IMAGE_TAG=v1.0.0
-
-  podman push quay.io/yourorg/hyperfleet-api:v1.0.0
-  ```
+- **Container image** — a released hyperfleet-api image, a pre-built image from your registry, or build your own. See [development.md](./development.md) for more.
 
 ---
 
@@ -49,19 +42,21 @@ The fastest path to a running deployment. This uses the chart's built-in Postgre
 | Value | What to set | Example |
 |-------|-------------|---------|
 | `image.registry` | Container registry domain | `quay.io` |
-| `image.repository` | Organization and image name | `openshift-hyperfleet/hyperfleet-api` |
+| `image.repository` | Organization and image name | `redhat-services-prod/hyperfleet-tenant/hyperfleet/hyperfleet-api` |
 | `image.tag` | Image version | `v1.0.0` |
 
 **Deploy:**
 
 ```bash
-helm install hyperfleet-api ./charts/ \
+helm install hyperfleet-api oci://quay.io/redhat-services-prod/hyperfleet-tenant/hyperfleet/hyperfleet-api-chart:<tag> \
   --namespace hyperfleet-system \
   --create-namespace \
   --set image.registry=quay.io \
-  --set image.repository=openshift-hyperfleet/hyperfleet-api \
-  --set image.tag=v1.0.0
+  --set image.repository=redhat-services-prod/hyperfleet-tenant/hyperfleet/hyperfleet-api \
+  --set image.tag=<tag>
 ```
+
+> **Note:** You may also choose to install from the ./charts folder, if you've cloned this repository locally. 
 
 **Verify:**
 
@@ -94,12 +89,12 @@ kubectl create secret generic hyperfleet-db-external \
 ### Step 2: Deploy with external database
 
 ```bash
-helm install hyperfleet-api ./charts/ \
+helm install hyperfleet-api oci://quay.io/redhat-services-prod/hyperfleet-tenant/hyperfleet/hyperfleet-api-chart:<tag> \
   --namespace hyperfleet-system \
   --create-namespace \
   --set image.registry=quay.io \
-  --set image.repository=openshift-hyperfleet/hyperfleet-api \
-  --set image.tag=v1.0.0 \
+  --set image.repository=redhat-services-prod/hyperfleet-tenant/hyperfleet/hyperfleet-api \
+  --set image.tag=<tag> \
   --set database.postgresql.enabled=false \
   --set database.external.enabled=true \
   --set database.external.secretName=hyperfleet-db-external
@@ -172,10 +167,10 @@ The chart injects database credentials as environment variables using `secretKey
 JWT authentication is **disabled by default** in the Helm chart. To enable it, set the `config.server.jwt.*` properties, like so:
 
 ```bash
-helm install hyperfleet-api ./charts/ \
+helm install hyperfleet-api oci://quay.io/redhat-services-prod/hyperfleet-tenant/hyperfleet/hyperfleet-api-chart:<tag> \
   --namespace hyperfleet-system \
   --set image.registry=quay.io \
-  --set image.repository=openshift-hyperfleet/hyperfleet-api \
+  --set image.repository=redhat-services-prod/hyperfleet-tenant/hyperfleet/hyperfleet-api \
   --set image.tag=v1.0.0 \
   --set config.server.jwt.enabled=true \
   --set config.server.jwt.issuer_url=https://your-idp.example.com/auth/realms/your-realm \
@@ -275,7 +270,7 @@ When enabled, the chart creates (or references) a ConfigMap with the schema, mou
 ### Upgrade
 
 ```bash
-helm upgrade hyperfleet-api ./charts/ \
+helm upgrade hyperfleet-api oci://quay.io/redhat-services-prod/hyperfleet-tenant/hyperfleet/hyperfleet-api-chart:<tag> \
   --namespace hyperfleet-system \
   --set image.tag=v1.1.0
 ```
@@ -325,8 +320,8 @@ For repeatable deployments, create a `values.yaml` file:
 ```yaml
 image:
   registry: quay.io
-  repository: openshift-hyperfleet/hyperfleet-api
-  tag: v1.0.0
+  repository: redhat-services-prod/hyperfleet-tenant/hyperfleet/hyperfleet-api
+  tag: <version>
 
 config:
   server:
@@ -366,7 +361,7 @@ resources:
 ```
 
 ```bash
-helm install hyperfleet-api ./charts/ \
+helm install hyperfleet-api oci://quay.io/redhat-services-prod/hyperfleet-tenant/hyperfleet/hyperfleet-api-chart:<tag> \
   --namespace hyperfleet-system \
   --values values.yaml
 ```
@@ -448,7 +443,7 @@ The deployment includes:
 kubectl scale deployment hyperfleet-api --replicas=3 --namespace hyperfleet-system
 
 # Via Helm
-helm upgrade hyperfleet-api ./charts/ \
+helm upgrade hyperfleet-api oci://quay.io/redhat-services-prod/hyperfleet-tenant/hyperfleet/hyperfleet-api-chart:<tag> \
   --namespace hyperfleet-system \
   --set replicaCount=3
 ```
@@ -463,11 +458,11 @@ Prometheus metrics are available at `http://<service>:9090/metrics`.
 
 ```bash
 # Enable ServiceMonitor
-helm install hyperfleet-api ./charts/ \
+helm install hyperfleet-api oci://quay.io/redhat-services-prod/hyperfleet-tenant/hyperfleet/hyperfleet-api-chart:<tag> \
   --namespace hyperfleet-system \
   --set image.registry=quay.io \
-  --set image.repository=openshift-hyperfleet/hyperfleet-api \
-  --set image.tag=v1.0.0 \
+  --set image.repository=redhat-services-prod/hyperfleet-tenant/hyperfleet/hyperfleet-api \
+  --set image.tag=<tag> \
   --set serviceMonitor.enabled=true
 
 # With custom Prometheus selector labels

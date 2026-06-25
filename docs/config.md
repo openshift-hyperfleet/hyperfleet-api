@@ -14,10 +14,12 @@ hyperfleet-api serve --config=config.yaml
 
 **Production (Kubernetes):**
 ```bash
-helm install hyperfleet-api ./charts/ \
+helm install hyperfleet-api oci://quay.io/redhat-services-prod/hyperfleet-tenant/hyperfleet/hyperfleet-api-chart:<tag> \
   --set 'config.adapters.required.cluster={validation,dns}' \
   --set 'config.adapters.required.nodepool={validation}'
 ```
+
+> **Note:** You may also choose to install from the ./charts folder, if you've cloned this repository locally. 
 
 See [Configuration Examples](#configuration-examples) for complete setup.
 

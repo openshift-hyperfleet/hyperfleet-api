@@ -162,10 +162,10 @@ To manually run migrations (rarely needed):
 ```bash
 # Run a one-off migration job
 kubectl run hyperfleet-migrate --rm -it \
-  --image=quay.io/openshift-hyperfleet/hyperfleet-api:latest \
+  --image=quay.io/redhat-services-prod/hyperfleet-tenant/hyperfleet/hyperfleet-api:<tag> \
   --restart=Never \
   -n hyperfleet-system \
-  --overrides='{"spec":{"containers":[{"name":"hyperfleet-migrate","image":"quay.io/openshift-hyperfleet/hyperfleet-api:latest","command":["/app/hyperfleet-api","migrate"],"volumeMounts":[{"name":"secrets","mountPath":"/build/secrets","readOnly":true}]}],"volumes":[{"name":"secrets","secret":{"secretName":"hyperfleet-db-external"}}]}}' \
+  --overrides='{"spec":{"containers":[{"name":"hyperfleet-migrate","image":"quay.io/redhat-services-prod/hyperfleet-tenant/hyperfleet/hyperfleet-api:<tag>","command":["/app/hyperfleet-api","migrate"],"volumeMounts":[{"name":"secrets","mountPath":"/build/secrets","readOnly":true}]}],"volumes":[{"name":"secrets","secret":{"secretName":"hyperfleet-db-external"}}]}}' \
   -- /app/hyperfleet-api migrate
 ```
 
