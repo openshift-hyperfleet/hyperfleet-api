@@ -242,10 +242,10 @@ func TestNodePoolPaging(t *testing.T) {
 	Expect(list.Page).To(Equal(int32(1)))
 
 	page := openapi.QueryParamsPage(2)
-	pageSize := openapi.QueryParamsPageSize(5)
+	size := openapi.QueryParamsSize(5)
 	params := &openapi.GetNodePoolsParams{
-		Page:     &page,
-		PageSize: &pageSize,
+		Page: &page,
+		Size: &size,
 	}
 	resp, err = client.GetNodePoolsWithResponse(ctx, params, test.WithAuthToken(ctx))
 	Expect(err).NotTo(HaveOccurred(), "Error getting nodePool list: %v", err)

@@ -202,10 +202,10 @@ func TestClusterPaging(t *testing.T) {
 	Expect(list.Page).To(Equal(int32(1)))
 
 	page := openapi.QueryParamsPage(2)
-	pageSize := openapi.QueryParamsPageSize(5)
+	size := openapi.QueryParamsSize(5)
 	params := &openapi.GetClustersParams{
-		Page:     &page,
-		PageSize: &pageSize,
+		Page: &page,
+		Size: &size,
 	}
 	resp, err = client.GetClustersWithResponse(ctx, params, test.WithAuthToken(ctx))
 	Expect(err).NotTo(HaveOccurred(), "Error getting cluster list: %v", err)
@@ -657,7 +657,7 @@ func TestClusterList_DefaultSorting(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 	}
 
-	// List clusters without orderBy parameter - should default to created_time desc
+	// List clusters without order parameter - should default to created_time desc
 	listResp, err := client.GetClustersWithResponse(
 		ctx, nil, test.WithAuthToken(ctx),
 	)
@@ -689,7 +689,7 @@ func TestClusterList_DefaultSorting(t *testing.T) {
 }
 
 // TestClusterList_OrderByName tests custom sorting by name
-func TestClusterList_OrderByName(t *testing.T) {
+func TestClusterList_OrderName(t *testing.T) {
 	h, client := test.RegisterIntegration(t)
 
 	account := h.NewRandAccount()
@@ -716,14 +716,13 @@ func TestClusterList_OrderByName(t *testing.T) {
 		Expect(err).NotTo(HaveOccurred(), "Failed to create cluster %s", name)
 	}
 
-	// List with orderBy=name asc
-	orderByStr := "name asc"
-	orderBy := openapi.QueryParamsOrderBy(orderByStr)
+	// List with order=name asc
+	orderStr := openapi.QueryParamsOrder("name asc")
 	params := &openapi.GetClustersParams{
-		OrderBy: &orderBy,
+		Order: &orderStr,
 	}
 	listResp, err := client.GetClustersWithResponse(ctx, params, test.WithAuthToken(ctx))
-	Expect(err).NotTo(HaveOccurred(), "Failed to list clusters with orderBy")
+	Expect(err).NotTo(HaveOccurred(), "Failed to list clusters with order")
 	list := listResp.JSON200
 	Expect(list).NotTo(BeNil())
 	Expect(len(list.Items)).To(BeNumerically(">=", 3), "Should have at least 3 clusters")
@@ -746,8 +745,8 @@ func TestClusterList_OrderByName(t *testing.T) {
 	t.Logf("✓ Custom sorting works: clusters sorted by name asc")
 }
 
-// TestClusterList_OrderByNameDesc tests sorting by name descending
-func TestClusterList_OrderByNameDesc(t *testing.T) {
+// TestClusterList_OrderNameDesc tests sorting by name descending
+func TestClusterList_OrderNameDesc(t *testing.T) {
 	h, client := test.RegisterIntegration(t)
 
 	account := h.NewRandAccount()
@@ -774,14 +773,13 @@ func TestClusterList_OrderByNameDesc(t *testing.T) {
 		Expect(err).NotTo(HaveOccurred(), "Failed to create cluster %s", name)
 	}
 
-	// List with orderBy=name desc
-	orderByStr := "name desc"
-	orderBy := openapi.QueryParamsOrderBy(orderByStr)
+	// List with order=name desc
+	orderStr := openapi.QueryParamsOrder("name desc")
 	params := &openapi.GetClustersParams{
-		OrderBy: &orderBy,
+		Order: &orderStr,
 	}
 	listResp, err := client.GetClustersWithResponse(ctx, params, test.WithAuthToken(ctx))
-	Expect(err).NotTo(HaveOccurred(), "Failed to list clusters with orderBy desc")
+	Expect(err).NotTo(HaveOccurred(), "Failed to list clusters with order desc")
 	list := listResp.JSON200
 
 	// Find our test clusters in the response

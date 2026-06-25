@@ -13,7 +13,7 @@ import (
 type ListArguments struct {
 	Search   string
 	Preloads []string
-	OrderBy  []string
+	Order    []string
 	Fields   []string
 	Page     int
 	Size     int64
@@ -88,38 +88,27 @@ func NewListArguments(params url.Values) (*ListArguments, *errors.ServiceError) 
 		listArgs.Page = page
 	}
 
-	// Validate size parameter (support both "size" legacy and "pageSize" OpenAPI spec)
-	var sizeParam string
-	var sizeValue string
-	if v := strings.Trim(params.Get("pageSize"), " "); v != "" {
-		sizeParam = "pageSize"
-		sizeValue = v
-	} else if v := strings.Trim(params.Get("size"), " "); v != "" {
-		sizeParam = "size"
-		sizeValue = v
-	}
-
-	if sizeValue != "" {
-		size, err := strconv.ParseInt(sizeValue, 10, 64)
+	// Validate size parameter
+	if v := strings.Trim(params.Get("size"), " "); v != "" {
+		size, err := strconv.ParseInt(v, 10, 64)
 		if err != nil {
 			return nil, errors.New(
 				errors.CodeValidationFormat,
-				"Invalid %s parameter: must be a positive integer",
-				sizeParam,
+				"Invalid size parameter: must be a positive integer",
 			)
 		}
 		if size < 1 {
 			return nil, errors.New(
 				errors.CodeValidationRange,
-				"Invalid %s parameter: %d is less than 1",
-				sizeParam, size,
+				"Invalid size parameter: %d is less than 1",
+				size,
 			)
 		}
 		if size > MaxPageSize {
 			return nil, errors.New(
 				errors.CodeValidationRange,
-				"Invalid %s parameter: %d exceeds maximum allowed value of %d",
-				sizeParam, size, MaxPageSize,
+				"Invalid size parameter: %d exceeds maximum allowed value of %d",
+				size, MaxPageSize,
 			)
 		}
 		listArgs.Size = size
@@ -128,19 +117,17 @@ func NewListArguments(params url.Values) (*ListArguments, *errors.ServiceError) 
 	if v := strings.Trim(params.Get("search"), " "); v != "" {
 		listArgs.Search = v
 	}
-	if v := strings.Trim(params.Get("orderBy"), " "); v != "" {
+	if v := strings.Trim(params.Get("order"), " "); v != "" {
 		rawFields := strings.Split(v, ",")
-		// Filter out empty tokens from malformed input like "name,,created_time"
 		for _, field := range rawFields {
 			if trimmed := strings.TrimSpace(field); trimmed != "" {
-				listArgs.OrderBy = append(listArgs.OrderBy, strings.Join(strings.Fields(trimmed), " "))
+				listArgs.Order = append(listArgs.Order, strings.Join(strings.Fields(trimmed), " "))
 			}
 		}
 	}
 
-	// Set default sorting to created_time desc if orderBy not provided
-	if len(listArgs.OrderBy) == 0 {
-		listArgs.OrderBy = []string{"created_time desc"}
+	if len(listArgs.Order) == 0 {
+		listArgs.Order = []string{"created_time desc"}
 	}
 
 	// Parse fields parameter using shared logic
