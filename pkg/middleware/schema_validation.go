@@ -135,6 +135,17 @@ func SchemaValidationMiddleware(validator *validators.SchemaValidator) func(http
 				return
 			}
 
+			if len(specMap) == 0 {
+				serviceErr := errors.ValidationWithDetails(
+					"spec must not be empty",
+					[]errors.ValidationDetail{
+						{Field: "spec", Message: "spec must not be empty"},
+					},
+				)
+				handleValidationError(w, r, serviceErr)
+				return
+			}
+
 			validationErr := validator.Validate(resourcePlural, specMap)
 
 			// If validation failed, return 400 error

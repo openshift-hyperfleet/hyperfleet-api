@@ -483,7 +483,9 @@ func TestSchemaValidationMiddleware_RegisteredEntityUsesValidator(t *testing.T) 
 		invalidRequest := map[string]interface{}{
 			"kind": "Foo",
 			"name": "test-foo-invalid",
-			"spec": map[string]interface{}{},
+			"spec": map[string]interface{}{
+				"baz": "wrong",
+			},
 		}
 
 		body, err := json.Marshal(invalidRequest)
