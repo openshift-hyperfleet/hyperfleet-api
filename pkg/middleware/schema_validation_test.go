@@ -90,11 +90,11 @@ func TestSchemaValidationMiddleware_PostRequestInvalidSpec(t *testing.T) {
 	validator := setupTestValidator(t)
 	middleware := SchemaValidationMiddleware(validator)
 
-	// Create an invalid cluster creation request (missing required field)
+	// Create an invalid cluster creation request (missing required field "region")
 	invalidRequest := map[string]interface{}{
 		"name": "test-cluster",
 		"spec": map[string]interface{}{
-			// missing "region"
+			"unknownField": "value",
 		},
 	}
 
