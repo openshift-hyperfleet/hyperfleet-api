@@ -12,8 +12,6 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/test"
 )
 
-// TestNodePoolPatch_EmptySpec tests that patching a nodepool with an empty spec {}
-// returns 400 with HYPERFLEET-VAL-000 error code.
 func TestNodePoolPatch_EmptySpec(t *testing.T) {
 	h, _ := test.RegisterIntegration(t)
 	RegisterTestingT(t)
@@ -51,8 +49,6 @@ func TestNodePoolPatch_EmptySpec(t *testing.T) {
 	Expect(detail).To(ContainSubstring("spec must not be empty"))
 }
 
-// TestNodePoolPost_EmptySpec tests that creating a nodepool with an empty spec {}
-// returns 400 with HYPERFLEET-VAL-000 error code.
 func TestNodePoolPost_EmptySpec(t *testing.T) {
 	h, _ := test.RegisterIntegration(t)
 	RegisterTestingT(t)
@@ -61,11 +57,9 @@ func TestNodePoolPost_EmptySpec(t *testing.T) {
 	ctx := h.NewAuthenticatedContext(account)
 	jwtToken := test.GetAccessTokenFromContext(ctx)
 
-	// Create a parent cluster first
 	cluster, err := h.Factories.NewClusters(h.NewID())
 	Expect(err).NotTo(HaveOccurred())
 
-	// Send request with empty spec
 	invalidInput := `{
 		"kind": "NodePool",
 		"name": "test-nodepool-empty-spec",

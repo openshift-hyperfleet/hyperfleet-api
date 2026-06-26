@@ -12,8 +12,6 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/test"
 )
 
-// TestClusterPost_EmptySpec tests that creating a cluster with an empty spec {}
-// returns 400 with HYPERFLEET-VAL-000 error code.
 func TestClusterPost_EmptySpec(t *testing.T) {
 	h, _ := test.RegisterIntegration(t)
 	RegisterTestingT(t)
@@ -22,7 +20,6 @@ func TestClusterPost_EmptySpec(t *testing.T) {
 	ctx := h.NewAuthenticatedContext(account)
 	jwtToken := test.GetAccessTokenFromContext(ctx)
 
-	// Send request with empty spec
 	invalidInput := `{
 		"kind": "Cluster",
 		"name": "test-cluster-empty-spec",
@@ -51,8 +48,6 @@ func TestClusterPost_EmptySpec(t *testing.T) {
 	Expect(detail).To(ContainSubstring("spec must not be empty"))
 }
 
-// TestClusterPatch_EmptySpec tests that patching a cluster with an empty spec {}
-// returns 400 with HYPERFLEET-VAL-000 error code.
 func TestClusterPatch_EmptySpec(t *testing.T) {
 	h, _ := test.RegisterIntegration(t)
 	RegisterTestingT(t)
@@ -61,11 +56,9 @@ func TestClusterPatch_EmptySpec(t *testing.T) {
 	ctx := h.NewAuthenticatedContext(account)
 	jwtToken := test.GetAccessTokenFromContext(ctx)
 
-	// Create a cluster to patch
 	cluster, err := h.Factories.NewClusters(h.NewID())
 	Expect(err).NotTo(HaveOccurred())
 
-	// Send PATCH with empty spec
 	invalidInput := `{
 		"spec": {}
 	}`

@@ -14,9 +14,8 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/validators"
 )
 
-// testPermissiveSchema defines an OpenAPI schema with no required fields or properties
-// on ClusterSpec and NodePoolSpec. This isolates the empty-spec len==0 guard from any
-// VisitJSON validation that would catch missing required fields first.
+// Permissive schema isolates the len==0 guard from VisitJSON — production
+// ClusterSpec/NodePoolSpec have no required fields either.
 const testPermissiveSchema = `
 openapi: 3.0.0
 info:
@@ -31,9 +30,6 @@ components:
       type: object
 `
 
-// setupPermissiveTestValidator creates a SchemaValidator using the permissive schema
-// (no required fields, no properties). This ensures the only thing catching an empty
-// spec {} is the len(specMap) == 0 guard, not OpenAPI field validation.
 func setupPermissiveTestValidator(t *testing.T) *validators.SchemaValidator {
 	t.Helper()
 
@@ -52,155 +48,92 @@ func setupPermissiveTestValidator(t *testing.T) *validators.SchemaValidator {
 	return validator
 }
 
-// TestSchemaValidationMiddleware_EmptySpecRejected_Post verifies that POST /clusters
-// with an empty spec {} is rejected with 400 and HYPERFLEET-VAL-000 even when the
-// schema has no required fields.
-func TestSchemaValidationMiddleware_EmptySpecRejected_Post(t *testing.T) {
+func TestSchemaValidationMiddleware_EmptySpecRejection(t *testing.T) {
 	RegisterTestingT(t)
 
 	validator := setupPermissiveTestValidator(t)
 	middleware := SchemaValidationMiddleware(validator)
 
-	emptySpecRequest := map[string]interface{}{
-		"name": "test-cluster",
-		"spec": map[string]interface{}{},
-	}
-
-	body, _ := json.Marshal(emptySpecRequest)
-	req := httptest.NewRequest(http.MethodPost, "/api/hyperfleet/v1/clusters", bytes.NewBuffer(body))
-	req.Header.Set("Content-Type", "application/json")
-	rr := httptest.NewRecorder()
-
-	nextHandlerCalled := false
-	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		nextHandlerCalled = true
-	})
-
-	middleware(nextHandler).ServeHTTP(rr, req)
-
-	Expect(nextHandlerCalled).To(BeFalse(), "next handler must not be called for empty spec")
-	Expect(rr.Code).To(Equal(http.StatusBadRequest))
-
-	var errorResponse openapi.ProblemDetails
-	err := json.Unmarshal(rr.Body.Bytes(), &errorResponse)
-	Expect(err).To(BeNil())
-	Expect(errorResponse.Code).ToNot(BeNil())
-	Expect(*errorResponse.Code).To(Equal("HYPERFLEET-VAL-000"))
-	Expect(errorResponse.Detail).ToNot(BeNil())
-	Expect(*errorResponse.Detail).To(ContainSubstring("spec must not be empty"))
-}
-
-// TestSchemaValidationMiddleware_EmptySpecRejected_Patch verifies that PATCH /clusters/<uuid>
-// with an empty spec {} is rejected with 400 and HYPERFLEET-VAL-000.
-func TestSchemaValidationMiddleware_EmptySpecRejected_Patch(t *testing.T) {
-	RegisterTestingT(t)
-
-	validator := setupPermissiveTestValidator(t)
-	middleware := SchemaValidationMiddleware(validator)
-
-	emptySpecRequest := map[string]interface{}{
-		"spec": map[string]interface{}{},
-	}
-
-	body, _ := json.Marshal(emptySpecRequest)
-	req := httptest.NewRequest(
-		http.MethodPatch,
-		"/api/hyperfleet/v1/clusters/550e8400-e29b-41d4-a716-446655440000",
-		bytes.NewBuffer(body),
-	)
-	req.Header.Set("Content-Type", "application/json")
-	rr := httptest.NewRecorder()
-
-	nextHandlerCalled := false
-	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		nextHandlerCalled = true
-	})
-
-	middleware(nextHandler).ServeHTTP(rr, req)
-
-	Expect(nextHandlerCalled).To(BeFalse(), "next handler must not be called for empty spec on PATCH")
-	Expect(rr.Code).To(Equal(http.StatusBadRequest))
-
-	var errorResponse openapi.ProblemDetails
-	err := json.Unmarshal(rr.Body.Bytes(), &errorResponse)
-	Expect(err).To(BeNil())
-	Expect(errorResponse.Code).ToNot(BeNil())
-	Expect(*errorResponse.Code).To(Equal("HYPERFLEET-VAL-000"))
-	Expect(errorResponse.Detail).ToNot(BeNil())
-	Expect(*errorResponse.Detail).To(ContainSubstring("spec must not be empty"))
-}
-
-// TestSchemaValidationMiddleware_EmptySpecRejected_Nodepool verifies that POST
-// /clusters/<uuid>/nodepools with an empty spec {} is rejected with 400 and
-// HYPERFLEET-VAL-000.
-func TestSchemaValidationMiddleware_EmptySpecRejected_Nodepool(t *testing.T) {
-	RegisterTestingT(t)
-
-	validator := setupPermissiveTestValidator(t)
-	middleware := SchemaValidationMiddleware(validator)
-
-	emptySpecRequest := map[string]interface{}{
-		"name": "test-nodepool",
-		"spec": map[string]interface{}{},
-	}
-
-	body, _ := json.Marshal(emptySpecRequest)
-	req := httptest.NewRequest(
-		http.MethodPost,
-		"/api/hyperfleet/v1/clusters/550e8400-e29b-41d4-a716-446655440000/nodepools",
-		bytes.NewBuffer(body),
-	)
-	req.Header.Set("Content-Type", "application/json")
-	rr := httptest.NewRecorder()
-
-	nextHandlerCalled := false
-	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		nextHandlerCalled = true
-	})
-
-	middleware(nextHandler).ServeHTTP(rr, req)
-
-	Expect(nextHandlerCalled).To(BeFalse(), "next handler must not be called for empty nodepool spec")
-	Expect(rr.Code).To(Equal(http.StatusBadRequest))
-
-	var errorResponse openapi.ProblemDetails
-	err := json.Unmarshal(rr.Body.Bytes(), &errorResponse)
-	Expect(err).To(BeNil())
-	Expect(errorResponse.Code).ToNot(BeNil())
-	Expect(*errorResponse.Code).To(Equal("HYPERFLEET-VAL-000"))
-	Expect(errorResponse.Detail).ToNot(BeNil())
-	Expect(*errorResponse.Detail).To(ContainSubstring("spec must not be empty"))
-}
-
-// TestSchemaValidationMiddleware_NonEmptySpecPassesPermissive verifies that a non-empty
-// spec with arbitrary fields passes validation when using the permissive schema (no
-// required fields). This confirms the guard only blocks truly empty specs.
-func TestSchemaValidationMiddleware_NonEmptySpecPassesPermissive(t *testing.T) {
-	RegisterTestingT(t)
-
-	validator := setupPermissiveTestValidator(t)
-	middleware := SchemaValidationMiddleware(validator)
-
-	validRequest := map[string]interface{}{
-		"name": "test-cluster",
-		"spec": map[string]interface{}{
-			"foo": "bar",
+	tests := []struct {
+		requestBody map[string]any
+		name        string
+		method      string
+		path        string
+		expectBlock bool
+	}{
+		{
+			name:   "POST cluster with empty spec rejected",
+			method: http.MethodPost,
+			path:   "/api/hyperfleet/v1/clusters",
+			requestBody: map[string]any{
+				"name": "test-cluster",
+				"spec": map[string]any{},
+			},
+			expectBlock: true,
+		},
+		{
+			name:   "PATCH cluster with empty spec rejected",
+			method: http.MethodPatch,
+			path:   "/api/hyperfleet/v1/clusters/550e8400-e29b-41d4-a716-446655440000",
+			requestBody: map[string]any{
+				"spec": map[string]any{},
+			},
+			expectBlock: true,
+		},
+		{
+			name:   "POST nodepool with empty spec rejected",
+			method: http.MethodPost,
+			path:   "/api/hyperfleet/v1/clusters/550e8400-e29b-41d4-a716-446655440000/nodepools",
+			requestBody: map[string]any{
+				"name": "test-nodepool",
+				"spec": map[string]any{},
+			},
+			expectBlock: true,
+		},
+		{
+			name:   "POST cluster with non-empty spec passes permissive schema",
+			method: http.MethodPost,
+			path:   "/api/hyperfleet/v1/clusters",
+			requestBody: map[string]any{
+				"name": "test-cluster",
+				"spec": map[string]any{"foo": "bar"},
+			},
+			expectBlock: false,
 		},
 	}
 
-	body, _ := json.Marshal(validRequest)
-	req := httptest.NewRequest(http.MethodPost, "/api/hyperfleet/v1/clusters", bytes.NewBuffer(body))
-	req.Header.Set("Content-Type", "application/json")
-	rr := httptest.NewRecorder()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			RegisterTestingT(t)
 
-	nextHandlerCalled := false
-	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		nextHandlerCalled = true
-		w.WriteHeader(http.StatusCreated)
-	})
+			body, _ := json.Marshal(tt.requestBody)
+			req := httptest.NewRequest(tt.method, tt.path, bytes.NewBuffer(body))
+			req.Header.Set("Content-Type", "application/json")
+			rr := httptest.NewRecorder()
 
-	middleware(nextHandler).ServeHTTP(rr, req)
+			nextHandlerCalled := false
+			nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				nextHandlerCalled = true
+				w.WriteHeader(http.StatusCreated)
+			})
 
-	Expect(nextHandlerCalled).To(BeTrue(), "non-empty spec should pass through with permissive schema")
-	Expect(rr.Code).To(Equal(http.StatusCreated))
+			middleware(nextHandler).ServeHTTP(rr, req)
+
+			if tt.expectBlock {
+				Expect(nextHandlerCalled).To(BeFalse())
+				Expect(rr.Code).To(Equal(http.StatusBadRequest))
+
+				var errorResponse openapi.ProblemDetails
+				err := json.Unmarshal(rr.Body.Bytes(), &errorResponse)
+				Expect(err).To(BeNil())
+				Expect(errorResponse.Code).ToNot(BeNil())
+				Expect(*errorResponse.Code).To(Equal("HYPERFLEET-VAL-000"))
+				Expect(errorResponse.Detail).ToNot(BeNil())
+				Expect(*errorResponse.Detail).To(ContainSubstring("spec must not be empty"))
+			} else {
+				Expect(nextHandlerCalled).To(BeTrue())
+				Expect(rr.Code).To(Equal(http.StatusCreated))
+			}
+		})
+	}
 }
