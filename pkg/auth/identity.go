@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strings"
 )
 
@@ -13,16 +14,22 @@ const maxCallerIdentityLen = 256
 // Identity resolution is enabled by setting the relevant fields:
 //   - HeaderName: when non-empty, the named HTTP header is checked first
 //   - JWTIdentityClaim: when non-empty, the JWT claim is used as fallback (or primary when no header is configured)
+//   - IdentityClaimPattern: when non-empty, the resolved identity must match this regex
 type CallerIdentityConfig struct {
-	JWTIdentityClaim string
-	HeaderName       string
+	JWTIdentityClaim     string
+	IdentityClaimPattern string
+	HeaderName           string
 }
 
 // CallerIdentityFromRequest resolves the caller identity with header-primary precedence.
 // When the identity header is configured and present, it overrides the JWT claim.
 // Both header and JWT identity values are normalized: trimmed, length-checked, and
 // validated for control characters before being accepted.
-func CallerIdentityFromRequest(ctx context.Context, r *http.Request, cfg CallerIdentityConfig) (string, error) {
+// compiledPattern is the pre-compiled form of CallerIdentityConfig.IdentityClaimPattern;
+// when non-nil the resolved JWT identity must match it.
+func CallerIdentityFromRequest(
+	ctx context.Context, r *http.Request, cfg CallerIdentityConfig, compiledPattern *regexp.Regexp,
+) (string, error) {
 	if cfg.HeaderName != "" {
 		raw := r.Header.Get(cfg.HeaderName)
 		if raw != "" {
@@ -41,7 +48,16 @@ func CallerIdentityFromRequest(ctx context.Context, r *http.Request, cfg CallerI
 		if err != nil {
 			return "", err
 		}
-		return normalizeIdentity(raw, fmt.Sprintf("JWT claim %q", cfg.JWTIdentityClaim))
+		identity, err := normalizeIdentity(raw, fmt.Sprintf("JWT claim %q", cfg.JWTIdentityClaim))
+		if err != nil {
+			return "", err
+		}
+		if identity != "" && compiledPattern != nil {
+			if !compiledPattern.MatchString(identity) {
+				return "", fmt.Errorf("identity claim value does not match required pattern %q", cfg.IdentityClaimPattern)
+			}
+		}
+		return identity, nil
 	}
 
 	return "", nil

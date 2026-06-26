@@ -3,6 +3,7 @@ package auth
 import (
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -120,6 +121,41 @@ func TestCallerIdentityFromRequest(t *testing.T) {
 			},
 			want: "user@example.com",
 		},
+		{
+			name:   "pattern matches email-like value",
+			claims: jwt.MapClaims{"email": "user@example.com"},
+			cfg: CallerIdentityConfig{
+				JWTIdentityClaim:     "email",
+				IdentityClaimPattern: `^[^@]+@[^@]+$`,
+			},
+			want: "user@example.com",
+		},
+		{
+			name:   "pattern rejects non-matching value",
+			claims: jwt.MapClaims{"sub": "svc-account-123"},
+			cfg: CallerIdentityConfig{
+				JWTIdentityClaim:     "sub",
+				IdentityClaimPattern: `^[^@]+@[^@]+$`,
+			},
+			wantErr: true,
+		},
+		{
+			name:   "no pattern accepts any non-empty value",
+			claims: jwt.MapClaims{"sub": "svc-account-123"},
+			cfg: CallerIdentityConfig{
+				JWTIdentityClaim: "sub",
+			},
+			want: "svc-account-123",
+		},
+		{
+			name:   "pattern accepts non-email identity claim",
+			claims: jwt.MapClaims{"sub": "svc-account-123"},
+			cfg: CallerIdentityConfig{
+				JWTIdentityClaim:     "sub",
+				IdentityClaimPattern: `^svc-`,
+			},
+			want: "svc-account-123",
+		},
 	}
 
 	for _, tc := range tests {
@@ -137,7 +173,11 @@ func TestCallerIdentityFromRequest(t *testing.T) {
 				r.Header.Set(headerName, tc.headerValue)
 			}
 
-			identity, err := CallerIdentityFromRequest(r.Context(), r, tc.cfg)
+			var compiledPattern *regexp.Regexp
+			if tc.cfg.IdentityClaimPattern != "" {
+				compiledPattern = regexp.MustCompile(tc.cfg.IdentityClaimPattern)
+			}
+			identity, err := CallerIdentityFromRequest(r.Context(), r, tc.cfg, compiledPattern)
 			if tc.wantErr {
 				Expect(err).To(HaveOccurred())
 				return
@@ -172,6 +212,26 @@ func TestNewCallerIdentityMiddleware(t *testing.T) {
 	t.Run("returns middleware with no config", func(t *testing.T) {
 		RegisterTestingT(t)
 		mw, err := NewCallerIdentityMiddleware(CallerIdentityConfig{})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(mw).NotTo(BeNil())
+	})
+
+	t.Run("rejects invalid identity claim pattern", func(t *testing.T) {
+		RegisterTestingT(t)
+		_, err := NewCallerIdentityMiddleware(CallerIdentityConfig{
+			JWTIdentityClaim:     "email",
+			IdentityClaimPattern: `[invalid`,
+		})
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("not a valid regex"))
+	})
+
+	t.Run("returns middleware with valid identity claim pattern", func(t *testing.T) {
+		RegisterTestingT(t)
+		mw, err := NewCallerIdentityMiddleware(CallerIdentityConfig{
+			JWTIdentityClaim:     "email",
+			IdentityClaimPattern: `^[^@]+@[^@]+$`,
+		})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(mw).NotTo(BeNil())
 	})
@@ -346,6 +406,51 @@ func TestResolveCallerIdentityMiddleware(t *testing.T) {
 		r := httptest.NewRequest(http.MethodPost, "/api/hyperfleet/v1/clusters", nil)
 		r = r.WithContext(contextWithClaims(jwt.MapClaims{"email": "jwt@example.com"}))
 		r.Header.Set("X-HyperFleet-Identity", "")
+		w := httptest.NewRecorder()
+		mw.ResolveCallerIdentity(next).ServeHTTP(w, r)
+
+		Expect(called).To(BeTrue())
+		Expect(w.Code).To(Equal(http.StatusOK))
+	})
+
+	t.Run("returns 401 when identity does not match pattern", func(t *testing.T) {
+		RegisterTestingT(t)
+		mw, err := NewCallerIdentityMiddleware(CallerIdentityConfig{
+			JWTIdentityClaim:     "sub",
+			IdentityClaimPattern: `^[^@]+@[^@]+$`,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		nextCalled := false
+		next := http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+			nextCalled = true
+		})
+
+		r := httptest.NewRequest(http.MethodPost, "/api/hyperfleet/v1/clusters", nil)
+		r = r.WithContext(contextWithClaims(jwt.MapClaims{"sub": "svc-account-123"}))
+		w := httptest.NewRecorder()
+		mw.ResolveCallerIdentity(next).ServeHTTP(w, r)
+
+		Expect(w.Code).To(Equal(http.StatusUnauthorized))
+		Expect(nextCalled).To(BeFalse())
+	})
+
+	t.Run("allows POST when identity matches pattern", func(t *testing.T) {
+		RegisterTestingT(t)
+		mw, err := NewCallerIdentityMiddleware(CallerIdentityConfig{
+			JWTIdentityClaim:     "sub",
+			IdentityClaimPattern: `^svc-`,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		called := false
+		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			called = true
+			Expect(GetUsernameFromContext(r.Context())).To(Equal("svc-account-123"))
+		})
+
+		r := httptest.NewRequest(http.MethodPost, "/api/hyperfleet/v1/clusters", nil)
+		r = r.WithContext(contextWithClaims(jwt.MapClaims{"sub": "svc-account-123"}))
 		w := httptest.NewRecorder()
 		mw.ResolveCallerIdentity(next).ServeHTTP(w, r)
 

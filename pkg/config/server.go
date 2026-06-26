@@ -5,8 +5,6 @@ import (
 	"net"
 	"strconv"
 	"time"
-
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/validation"
 )
 
 // ServerConfig holds HTTP/HTTPS server configuration
@@ -15,7 +13,6 @@ type ServerConfig struct {
 	Hostname          string         `mapstructure:"hostname" json:"hostname" validate:"omitempty,hostname|ip"`
 	Host              string         `mapstructure:"host" json:"host" validate:"required,hostname|ip"`
 	OpenAPISchemaPath string         `mapstructure:"openapi_schema_path" json:"openapi_schema_path"`
-	IdentityHeader    string         `mapstructure:"identity_header" json:"identity_header"`
 	JWK               JWKConfig      `mapstructure:"jwk" json:"jwk" validate:"required"`
 	TLS               TLSConfig      `mapstructure:"tls" json:"tls" validate:"required"`
 	JWT               JWTConfig      `mapstructure:"jwt" json:"jwt" validate:"required"`
@@ -62,39 +59,42 @@ func (c *TLSConfig) Validate() error {
 	return nil
 }
 
+// JWTIssuerConfig holds per-issuer JWT authentication and identity configuration.
+// Each entry represents a distinct identity provider. A request is accepted if
+// its token validates against any entry.
+type JWTIssuerConfig struct {
+	IssuerURL            string `mapstructure:"issuer_url" json:"issuer_url"`
+	Audience             string `mapstructure:"audience" json:"audience"`
+	JWKCertFile          string `mapstructure:"jwk_cert_file" json:"jwk_cert_file"`
+	JWKCertURL           string `mapstructure:"jwk_cert_url" json:"jwk_cert_url"`
+	IdentityClaim        string `mapstructure:"identity_claim" json:"identity_claim"`
+	IdentityClaimPattern string `mapstructure:"identity_claim_pattern" json:"identity_claim_pattern"`
+	Header               string `mapstructure:"header" json:"header"`
+}
+
 // JWTConfig holds JWT authentication configuration
 type JWTConfig struct {
-	IssuerURL     string `mapstructure:"issuer_url" json:"issuer_url" validate:"omitempty,url"`
-	Audience      string `mapstructure:"audience" json:"audience"`
-	IdentityClaim string `mapstructure:"identity_claim" json:"identity_claim"`
-	Enabled       bool   `mapstructure:"enabled" json:"enabled"`
+	Configs []JWTIssuerConfig `mapstructure:"configs" json:"configs"`
+	Enabled bool              `mapstructure:"enabled" json:"enabled"`
 }
 
 func (c *JWTConfig) Validate() error {
 	if !c.Enabled {
 		return nil
 	}
-	if c.IssuerURL == "" {
-		return fmt.Errorf("server.jwt.issuer_url is required when jwt is enabled")
-	}
-	if c.IdentityClaim == "" {
-		return fmt.Errorf("server.jwt.identity_claim is required when jwt is enabled")
-	}
-	return nil
-}
-
-// ValidateIdentityHeader validates the identity header name if set.
-func (s *ServerConfig) ValidateIdentityHeader() error {
-	if s.IdentityHeader == "" {
-		return nil
-	}
-	if validation.IsForbiddenIdentityHeaderName(s.IdentityHeader) {
-		return fmt.Errorf("server.identity_header %q is not allowed", s.IdentityHeader)
+	// Allow empty configs at load time; NewJWTHandler validates before starting.
+	for i, cfg := range c.Configs {
+		if cfg.IssuerURL == "" {
+			return fmt.Errorf("server.jwt.configs[%d].issuer_url is required", i)
+		}
+		if cfg.IdentityClaim == "" {
+			return fmt.Errorf("server.jwt.configs[%d].identity_claim is required", i)
+		}
 	}
 	return nil
 }
 
-// JWKConfig holds JWK certificate configuration
+// JWKConfig holds JWK certificate configuration (used for the identity-header-only dev mode)
 type JWKConfig struct {
 	CertFile string `mapstructure:"cert_file" json:"cert_file" validate:"omitempty,filepath"`
 	CertURL  string `mapstructure:"cert_url" json:"cert_url" validate:"omitempty,url"`
@@ -118,10 +118,8 @@ func NewServerConfig() *ServerConfig {
 			KeyFile:  "",
 		},
 		JWT: JWTConfig{
-			Enabled:       true,
-			IssuerURL:     "",
-			Audience:      "",
-			IdentityClaim: "email",
+			Enabled: true,
+			Configs: []JWTIssuerConfig{},
 		},
 		JWK: JWKConfig{
 			CertFile: "",

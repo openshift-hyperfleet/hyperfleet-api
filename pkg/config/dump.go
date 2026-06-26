@@ -16,7 +16,7 @@ func DumpConfig(config *ApplicationConfig) string {
     BindAddress: %s
     EnableHTTPS: %t
     EnableJWT: %t
-    IssuerURL: %s
+    JWTConfigs: %d
   Database:
     Host: %s
     Port: %d
@@ -39,7 +39,7 @@ func DumpConfig(config *ApplicationConfig) string {
 		config.Server.BindAddress(),
 		config.Server.TLS.Enabled,
 		config.Server.JWT.Enabled,
-		config.Server.JWT.IssuerURL,
+		len(config.Server.JWT.Configs),
 		config.Database.Host,
 		config.Database.Port,
 		config.Database.Name,

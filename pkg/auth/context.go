@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -11,12 +12,34 @@ import (
 type contextKey string
 
 const (
-	ContextUsernameKey contextKey = "username"
-	ContextJWTTokenKey contextKey = "jwt_token"
+	ContextUsernameKey              contextKey = "username"
+	ContextJWTTokenKey              contextKey = "jwt_token"
+	ContextMatchedIdentityConfigKey contextKey = "matched_identity_cfg"
 
 	// DefaultJWTIdentityClaim is used when server.jwt.identity_claim is unset.
 	DefaultJWTIdentityClaim = "email"
 )
+
+type matchedIdentityContext struct {
+	cfg     *CallerIdentityConfig
+	pattern *regexp.Regexp
+}
+
+// SetMatchedIdentityConfig stores the per-issuer identity config resolved by JWTHandler
+// in the request context so CallerIdentityMiddleware can read it.
+func SetMatchedIdentityConfig(ctx context.Context, cfg CallerIdentityConfig, pattern *regexp.Regexp) context.Context {
+	return context.WithValue(ctx, ContextMatchedIdentityConfigKey, matchedIdentityContext{cfg: &cfg, pattern: pattern})
+}
+
+// GetMatchedIdentityConfig retrieves the per-issuer identity config stored by JWTHandler.
+// Returns false if no config was set (JWT disabled or public path).
+func GetMatchedIdentityConfig(ctx context.Context) (CallerIdentityConfig, *regexp.Regexp, bool) {
+	v, ok := ctx.Value(ContextMatchedIdentityConfigKey).(matchedIdentityContext)
+	if !ok {
+		return CallerIdentityConfig{}, nil, false
+	}
+	return *v.cfg, v.pattern, true
+}
 
 // Payload defines the structure of the JWT payload we expect
 type Payload struct {

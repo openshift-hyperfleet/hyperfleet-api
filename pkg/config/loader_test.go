@@ -25,8 +25,6 @@ func TestConfigLoader_ExplicitConfigFlag(t *testing.T) {
 server:
   host: "config-file-host"
   port: 9999
-  jwt:
-    issuer_url: "https://test-idp.example.com/auth/realms/test"
   jwk:
     cert_url: "https://test-idp.example.com/certs"
 database:
@@ -269,8 +267,6 @@ func TestConfigLoader_CompletePriorityChain(t *testing.T) {
 server:
   host: "file-host"
   port: 7000
-  jwt:
-    issuer_url: "https://test-idp.example.com/auth/realms/test"
   jwk:
     cert_url: "https://test-idp.example.com/certs"
 database:
@@ -348,7 +344,6 @@ func TestConfigLoader_DefaultValues(t *testing.T) {
 	Expect(cfg.Server.Timeouts.Write.Seconds()).To(Equal(float64(30)), "Default write timeout")
 	Expect(cfg.Server.TLS.Enabled).To(BeFalse(), "Default TLS disabled")
 	Expect(cfg.Server.JWT.Enabled).To(BeTrue(), "Default JWT enabled")
-	Expect(cfg.Server.JWT.IdentityClaim).To(Equal("email"), "Default JWT identity claim")
 	Expect(cfg.Database.Dialect).To(Equal("postgres"), "Default database dialect")
 	Expect(cfg.Database.Port).To(Equal(5432), "Default database port")
 	Expect(cfg.Logging.Level).To(Equal("info"), "Default log level")
