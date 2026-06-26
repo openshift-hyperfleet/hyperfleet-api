@@ -688,7 +688,7 @@ func TestClusterList_DefaultSorting(t *testing.T) {
 	t.Logf("✓ Default sorting works: clusters sorted by created_time desc")
 }
 
-// TestClusterList_OrderByName tests custom sorting by name
+// TestClusterList_OrderName tests custom sorting by name
 func TestClusterList_OrderName(t *testing.T) {
 	h, client := test.RegisterIntegration(t)
 
