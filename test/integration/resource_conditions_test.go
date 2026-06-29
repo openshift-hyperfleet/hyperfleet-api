@@ -198,6 +198,66 @@ func TestResourceConditions_SaveDoesNotTouchConditions(t *testing.T) {
 	Expect(err).ToNot(HaveOccurred())
 	Expect(fetched.Conditions).To(HaveLen(1))
 	Expect(fetched.Conditions[0].Type).To(Equal("Available"))
+	Expect(fetched.Conditions[0].Status).To(Equal(api.ConditionTrue))
+	Expect(fetched.Conditions[0].ObservedGeneration).To(Equal(int32(1)))
+	Expect(fetched.Conditions[0].CreatedTime).To(BeTemporally("~", now, time.Second))
+}
+
+func TestResourceConditions_GetByOwnerPreload(t *testing.T) {
+	RegisterTestingT(t)
+
+	svc, h := setupResourceTest(t)
+	ctx := context.Background()
+
+	channel, svcErr := svc.Create(ctx, "Channel", newChannelResource("cond-test-owner-preload"))
+	Expect(svcErr).To(BeNil())
+
+	version, svcErr := svc.Create(ctx, "Version", newVersionResource("v1", channel.ID))
+	Expect(svcErr).To(BeNil())
+
+	condDao := dao.NewResourceConditionDao(h.DBFactory)
+	resourceDao := dao.NewResourceDao(h.DBFactory)
+
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	err := condDao.UpdateConditions(ctx, version.ID, []api.ResourceCondition{
+		{Type: "Available", Status: api.ConditionTrue, ObservedGeneration: 1,
+			CreatedTime: now, LastUpdatedTime: now, LastTransitionTime: now},
+	})
+	Expect(err).ToNot(HaveOccurred())
+
+	fetched, err := resourceDao.GetByOwner(ctx, "Version", version.ID, channel.ID)
+	Expect(err).ToNot(HaveOccurred())
+	Expect(fetched.Conditions).To(HaveLen(1))
+	Expect(fetched.Conditions[0].Type).To(Equal("Available"))
+	Expect(fetched.Conditions[0].Status).To(Equal(api.ConditionTrue))
+}
+
+func TestResourceConditions_ClearWithEmptySlice(t *testing.T) {
+	RegisterTestingT(t)
+
+	svc, h := setupResourceTest(t)
+	ctx := context.Background()
+
+	channel, svcErr := svc.Create(ctx, "Channel", newChannelResource("cond-test-clear"))
+	Expect(svcErr).To(BeNil())
+
+	condDao := dao.NewResourceConditionDao(h.DBFactory)
+	resourceDao := dao.NewResourceDao(h.DBFactory)
+
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	err := condDao.UpdateConditions(ctx, channel.ID, []api.ResourceCondition{
+		{Type: "Available", Status: api.ConditionTrue, ObservedGeneration: 1,
+			CreatedTime: now, LastUpdatedTime: now, LastTransitionTime: now},
+	})
+	Expect(err).ToNot(HaveOccurred())
+
+	// Clear all conditions with empty slice
+	err = condDao.UpdateConditions(ctx, channel.ID, []api.ResourceCondition{})
+	Expect(err).ToNot(HaveOccurred())
+
+	fetched, err := resourceDao.Get(ctx, "Channel", channel.ID)
+	Expect(err).ToNot(HaveOccurred())
+	Expect(fetched.Conditions).To(BeEmpty())
 }
 
 func TestResourceConditions_CreatedTimePreserved(t *testing.T) {
