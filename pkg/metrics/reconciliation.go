@@ -29,7 +29,18 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
-const labelIsDelete = "is_delete"
+const metricsSubsystem = "hyperfleet_api"
+
+const (
+	labelResourceType = "resource_type"
+	labelComponent    = "component"
+	labelVersion      = "version"
+	labelIsDelete     = "is_delete"
+)
+
+const componentValue = "api"
+
+const defaultQueryTimeout = 30 * time.Second
 
 var reconciliationLabels = []string{labelResourceType, labelIsDelete}
 

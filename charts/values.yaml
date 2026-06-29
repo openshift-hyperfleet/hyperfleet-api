@@ -178,8 +178,8 @@ config:
 
     # -- Duration window for label-based metric inclusion
     label_metrics_inclusion_duration: 168h
-    # -- Threshold after which a deletion is considered stuck
-    deletion_stuck_threshold: 30m
+    # -- Threshold after which a pending reconciliation is considered stuck
+    reconciliation_stuck_threshold: 10m
 
   # -- Health check endpoint settings
   health:

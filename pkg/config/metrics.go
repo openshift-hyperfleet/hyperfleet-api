@@ -14,7 +14,6 @@ type MetricsConfig struct {
 	TLS                           TLSConfig     `mapstructure:"tls" json:"tls" validate:"required"`
 	Port                          int           `mapstructure:"port" json:"port" validate:"required,min=1,max=65535"`
 	LabelMetricsInclusionDuration time.Duration `mapstructure:"label_metrics_inclusion_duration" json:"label_metrics_inclusion_duration" validate:"required"` //nolint:lll
-	DeletionStuckThreshold        time.Duration `mapstructure:"deletion_stuck_threshold" json:"deletion_stuck_threshold" validate:"required"`                 //nolint:lll
 	ReconciliationStuckThreshold  time.Duration `mapstructure:"reconciliation_stuck_threshold" json:"reconciliation_stuck_threshold" validate:"required"`     //nolint:lll
 }
 
@@ -28,16 +27,12 @@ func NewMetricsConfig() *MetricsConfig {
 			Enabled: false,
 		},
 		LabelMetricsInclusionDuration: 168 * time.Hour, // 7 days
-		DeletionStuckThreshold:        30 * time.Minute,
 		ReconciliationStuckThreshold:  10 * time.Minute,
 	}
 }
 
 // Validate validates MetricsConfig fields that struct tags cannot enforce
 func (m *MetricsConfig) Validate() error {
-	if m.DeletionStuckThreshold <= 0 {
-		return fmt.Errorf("DeletionStuckThreshold must be positive, got %v", m.DeletionStuckThreshold)
-	}
 	if m.ReconciliationStuckThreshold <= 0 {
 		return fmt.Errorf("ReconciliationStuckThreshold must be positive, got %v", m.ReconciliationStuckThreshold)
 	}

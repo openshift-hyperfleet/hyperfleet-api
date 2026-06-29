@@ -351,9 +351,9 @@
               "type": "string",
               "description": "Duration window for including label-based metrics (Go duration, e.g. 168h)"
             },
-            "deletion_stuck_threshold": {
+            "reconciliation_stuck_threshold": {
               "type": "string",
-              "description": "Duration after which a pending deletion is considered stuck (Go duration, e.g. 30m)"
+              "description": "Duration after which a pending reconciliation is considered stuck (Go duration, e.g. 10m)"
             }
           }
         },

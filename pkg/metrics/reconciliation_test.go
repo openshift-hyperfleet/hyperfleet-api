@@ -29,7 +29,17 @@ import (
 
 const (
 	testReconciliationStartedTotalMetric = "hyperfleet_api_reconciliation_started_total"
+	testResourceCluster                  = "cluster"
+	testResourceNodepool                 = "nodepool"
 )
+
+func labelsToMap(metric *dto.Metric) map[string]string {
+	labels := make(map[string]string)
+	for _, lp := range metric.GetLabel() {
+		labels[lp.GetName()] = lp.GetValue()
+	}
+	return labels
+}
 
 func TestReconciliationStartedTotalIsRegistered(t *testing.T) {
 	RegisterTestingT(t)
