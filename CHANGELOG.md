@@ -48,6 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Restricted `order` query parameter to only allow specific whitelisted fields ([#244](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/244))
 - Validated adapter status conditions in handler layer ([#88](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/88))
 - Removed org prefix from image.repository default ([#86](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/86))
 - Addressed revive linter violations from enabled linting standard ([#85](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/85))

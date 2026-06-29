@@ -142,12 +142,12 @@ func (s *sqlGenericService) buildPreload(listCtx *listContext, d *dao.GenericDao
 
 func (s *sqlGenericService) buildOrderBy(listCtx *listContext, d *dao.GenericDao) (bool, *errors.ServiceError) {
 	if len(listCtx.args.Order) != 0 {
-		orderByArgs, serviceErr := db.ArgsToOrderBy(listCtx.args.Order, *listCtx.disallowedFields)
+		cleanedOrderList, serviceErr := db.ArgsToOrder(listCtx.args.Order)
 		if serviceErr != nil {
 			return false, serviceErr
 		}
-		for _, orderByArg := range orderByArgs {
-			(*d).OrderBy(orderByArg)
+		for _, orderArg := range cleanedOrderList {
+			(*d).OrderBy(orderArg)
 		}
 	}
 	return false, nil
