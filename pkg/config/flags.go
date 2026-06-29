@@ -91,6 +91,8 @@ func AddMetricsFlags(cmd *cobra.Command) {
 		"Duration for cluster telemetry label inclusion")
 	cmd.Flags().Duration("metrics-deletion-stuck-threshold", defaults.DeletionStuckThreshold,
 		"Duration after which a pending deletion resource is considered stuck")
+	cmd.Flags().Duration("metrics-reconciliation-stuck-threshold", defaults.ReconciliationStuckThreshold,
+		"Duration after which a pending reconciliation resource is considered stuck")
 }
 
 // AddHealthFlags adds health check configuration flags following standard naming

@@ -354,6 +354,7 @@ func (l *ConfigLoader) bindAllEnvVars() {
 	l.bindEnv("metrics.tls.enabled")
 	l.bindEnv("metrics.label_metrics_inclusion_duration")
 	l.bindEnv("metrics.deletion_stuck_threshold")
+	l.bindEnv("metrics.reconciliation_stuck_threshold")
 
 	// Health config
 	l.bindEnv("health.host")
@@ -423,6 +424,8 @@ func (l *ConfigLoader) bindFlags(cmd *cobra.Command) {
 		cmd.Flags().Lookup("metrics-label-metrics-inclusion-duration"))
 	l.bindPFlag("metrics.deletion_stuck_threshold",
 		cmd.Flags().Lookup("metrics-deletion-stuck-threshold"))
+	l.bindPFlag("metrics.reconciliation_stuck_threshold",
+		cmd.Flags().Lookup("metrics-reconciliation-stuck-threshold"))
 
 	// Health flags: --health-* -> health.*
 	l.bindPFlag("health.host", cmd.Flags().Lookup("health-host"))
