@@ -961,7 +961,7 @@ func TestClusterSoftDelete(t *testing.T) {
 		Expect(*resp.JSON202.Id).To(Equal(cluster.ID))
 		Expect(resp.JSON202.DeletedTime).NotTo(BeNil())
 		Expect(resp.JSON202.DeletedBy).NotTo(BeNil())
-		Expect(string(*resp.JSON202.DeletedBy)).To(Equal(account.Email))
+		Expect(*resp.JSON202.DeletedBy).To(Equal(account.Email))
 	})
 
 	t.Run("given a cluster with child nodepools, when deleted, then nodepools are cascade soft-deleted in DB", func(t *testing.T) { //nolint:lll
@@ -989,7 +989,7 @@ func TestClusterSoftDelete(t *testing.T) {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(delResp.StatusCode()).To(Equal(http.StatusAccepted))
 		Expect(delResp.JSON202.DeletedTime).NotTo(BeNil())
-		Expect(string(*delResp.JSON202.DeletedBy)).To(Equal(account.Email))
+		Expect(*delResp.JSON202.DeletedBy).To(Equal(account.Email))
 		// Verify cascade via direct DB query
 		dbSession := h.DBFactory.New(ctx)
 		var nodePool api.NodePool

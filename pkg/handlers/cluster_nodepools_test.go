@@ -305,7 +305,7 @@ func TestClusterNodePoolsHandler_SoftDelete(t *testing.T) {
 				Expect(err).NotTo(HaveOccurred())
 				Expect(*response.Id).To(Equal(nodePoolID))
 				Expect(response.DeletedTime).NotTo(BeNil())
-				Expect(string(*response.DeletedBy)).To(Equal(testSystemUser))
+				Expect(*response.DeletedBy).To(Equal(testSystemUser))
 			}
 		})
 	}

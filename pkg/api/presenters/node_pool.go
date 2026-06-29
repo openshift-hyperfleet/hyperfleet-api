@@ -97,9 +97,9 @@ func PresentNodePool(nodePool *api.NodePool) (openapi.NodePool, error) {
 	}
 
 	result := openapi.NodePool{
-		CreatedBy:   toEmail(nodePool.CreatedBy),
+		CreatedBy:   nodePool.CreatedBy,
 		CreatedTime: nodePool.CreatedTime,
-		DeletedBy:   toEmailPtr(nodePool.DeletedBy),
+		DeletedBy:   nodePool.DeletedBy,
 		DeletedTime: nodePool.DeletedTime,
 		Generation:  nodePool.Generation,
 		Href:        &href,
@@ -116,7 +116,7 @@ func PresentNodePool(nodePool *api.NodePool) (openapi.NodePool, error) {
 		Status: openapi.NodePoolStatus{
 			Conditions: openapiConditions,
 		},
-		UpdatedBy:   toEmail(nodePool.UpdatedBy),
+		UpdatedBy:   nodePool.UpdatedBy,
 		UpdatedTime: nodePool.UpdatedTime,
 	}
 

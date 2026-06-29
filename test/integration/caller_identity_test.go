@@ -41,6 +41,18 @@ func TestCallerIdentityCreate(t *testing.T) {
 			namePrefix: "ci-jwt",
 			email:      "jwt-only-user@example.com",
 		},
+		{
+			name:        "non-email identity header is accepted",
+			namePrefix:  "ci-non-email-hdr",
+			email:       "jwt-user@example.com",
+			setHeader:   true,
+			headerActor: "service-account:sentinel",
+		},
+		{
+			name:       "non-email JWT claim is accepted",
+			namePrefix: "ci-non-email-jwt",
+			email:      "service-account:sentinel",
+		},
 	}
 
 	for _, tc := range cases {
@@ -74,7 +86,7 @@ func TestCallerIdentityCreate(t *testing.T) {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(resp.StatusCode()).To(Equal(http.StatusCreated))
 			Expect(resp.JSON201).NotTo(BeNil())
-			Expect(string(resp.JSON201.CreatedBy)).To(Equal(wantCreatedBy))
+			Expect(resp.JSON201.CreatedBy).To(Equal(wantCreatedBy))
 		})
 	}
 }
@@ -151,9 +163,9 @@ func TestCallerIdentityPatch(t *testing.T) {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(patchResp.StatusCode()).To(Equal(http.StatusOK))
 			Expect(patchResp.JSON200).NotTo(BeNil())
-			Expect(string(patchResp.JSON200.UpdatedBy)).To(Equal(tc.wantUpdatedBy))
+			Expect(patchResp.JSON200.UpdatedBy).To(Equal(tc.wantUpdatedBy))
 			// created_by must remain unchanged.
-			Expect(string(patchResp.JSON200.CreatedBy)).To(Equal(tc.createEmail))
+			Expect(patchResp.JSON200.CreatedBy).To(Equal(tc.createEmail))
 		})
 	}
 }
@@ -179,8 +191,8 @@ func TestCallerIdentityMultiplePatches(t *testing.T) {
 	Expect(createResp.StatusCode()).To(Equal(http.StatusCreated))
 	clusterID := *createResp.JSON201.Id
 
-	Expect(string(createResp.JSON201.CreatedBy)).To(Equal("user-a@example.com"))
-	Expect(string(createResp.JSON201.UpdatedBy)).To(Equal("user-a@example.com"))
+	Expect(createResp.JSON201.CreatedBy).To(Equal("user-a@example.com"))
+	Expect(createResp.JSON201.UpdatedBy).To(Equal("user-a@example.com"))
 	Expect(createResp.JSON201.Generation).To(Equal(int32(1)))
 
 	// Patch 1: user-b via JWT.
@@ -196,8 +208,8 @@ func TestCallerIdentityMultiplePatches(t *testing.T) {
 	Expect(err).NotTo(HaveOccurred())
 	Expect(patch1.StatusCode()).To(Equal(http.StatusOK))
 
-	Expect(string(patch1.JSON200.CreatedBy)).To(Equal("user-a@example.com"), "created_by must never change")
-	Expect(string(patch1.JSON200.UpdatedBy)).To(Equal("user-b@example.com"))
+	Expect(patch1.JSON200.CreatedBy).To(Equal("user-a@example.com"), "created_by must never change")
+	Expect(patch1.JSON200.UpdatedBy).To(Equal("user-b@example.com"))
 	Expect(patch1.JSON200.Generation).To(Equal(int32(2)))
 
 	// Patch 2: user-c via identity header.
@@ -211,16 +223,16 @@ func TestCallerIdentityMultiplePatches(t *testing.T) {
 	Expect(err).NotTo(HaveOccurred())
 	Expect(patch2.StatusCode()).To(Equal(http.StatusOK))
 
-	Expect(string(patch2.JSON200.CreatedBy)).To(Equal("user-a@example.com"), "created_by must never change")
-	Expect(string(patch2.JSON200.UpdatedBy)).To(Equal("user-c@gateway.com"))
+	Expect(patch2.JSON200.CreatedBy).To(Equal("user-a@example.com"), "created_by must never change")
+	Expect(patch2.JSON200.UpdatedBy).To(Equal("user-c@gateway.com"))
 	Expect(patch2.JSON200.Generation).To(Equal(int32(3)))
 
 	// GET confirms persisted state.
 	getResp, err := client.GetClusterByIdWithResponse(ctxA, clusterID, nil, test.WithAuthToken(ctxA))
 	Expect(err).NotTo(HaveOccurred())
 	Expect(getResp.StatusCode()).To(Equal(http.StatusOK))
-	Expect(string(getResp.JSON200.CreatedBy)).To(Equal("user-a@example.com"))
-	Expect(string(getResp.JSON200.UpdatedBy)).To(Equal("user-c@gateway.com"))
+	Expect(getResp.JSON200.CreatedBy).To(Equal("user-a@example.com"))
+	Expect(getResp.JSON200.UpdatedBy).To(Equal("user-c@gateway.com"))
 	Expect(getResp.JSON200.Generation).To(Equal(int32(3)))
 }
 
@@ -246,7 +258,7 @@ func TestCallerIdentityDelete(t *testing.T) {
 	Expect(err).NotTo(HaveOccurred())
 	Expect(createResp.StatusCode()).To(Equal(http.StatusCreated))
 	clusterID := *createResp.JSON201.Id
-	Expect(string(createResp.JSON201.CreatedBy)).To(Equal("header-creator@corp.com"))
+	Expect(createResp.JSON201.CreatedBy).To(Equal("header-creator@corp.com"))
 
 	// Soft-delete the cluster.
 	delResp, err := client.DeleteClusterByIdWithResponse(ctx, clusterID, test.WithAuthToken(ctx))
@@ -256,9 +268,9 @@ func TestCallerIdentityDelete(t *testing.T) {
 	Expect(delResp.JSON202.DeletedTime).NotTo(BeNil())
 	Expect(delResp.JSON202.DeletedBy).NotTo(BeNil())
 	// deleted_by reflects the caller identity.
-	Expect(string(*delResp.JSON202.DeletedBy)).To(Equal("creator@example.com"))
+	Expect(*delResp.JSON202.DeletedBy).To(Equal("creator@example.com"))
 	// created_by is preserved.
-	Expect(string(delResp.JSON202.CreatedBy)).To(Equal("header-creator@corp.com"))
+	Expect(delResp.JSON202.CreatedBy).To(Equal("header-creator@corp.com"))
 }
 
 func TestCallerIdentityEmptyHeaderFallback(t *testing.T) {
@@ -282,8 +294,8 @@ func TestCallerIdentityEmptyHeaderFallback(t *testing.T) {
 	)
 	Expect(err).NotTo(HaveOccurred())
 	Expect(resp.StatusCode()).To(Equal(http.StatusCreated))
-	Expect(string(resp.JSON201.CreatedBy)).To(Equal("jwt-fallback@example.com"))
-	Expect(string(resp.JSON201.UpdatedBy)).To(Equal("jwt-fallback@example.com"))
+	Expect(resp.JSON201.CreatedBy).To(Equal("jwt-fallback@example.com"))
+	Expect(resp.JSON201.UpdatedBy).To(Equal("jwt-fallback@example.com"))
 }
 
 func TestCallerIdentityOversizedHeader(t *testing.T) {
