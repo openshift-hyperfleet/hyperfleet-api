@@ -88,7 +88,7 @@ func TestPresentResource(t *testing.T) {
 	Expect(resp.Spec).To(HaveKeyWithValue("is_default", true))
 	Expect(*resp.Labels).To(HaveKeyWithValue("env", "prod"))
 	Expect(resp.Generation).To(Equal(int32(1)))
-	Expect(string(resp.CreatedBy)).To(Equal("user@test.com"))
+	Expect(resp.CreatedBy).To(Equal("user@test.com"))
 	Expect(resp.OwnerReferences).To(BeNil())
 	Expect(resp.Status.Conditions).NotTo(BeNil())
 	Expect(resp.Status.Conditions).To(BeEmpty())

@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	openapi_types "github.com/oapi-codegen/runtime/types"
 	. "github.com/onsi/gomega"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
@@ -192,8 +191,8 @@ func TestPresentNodePool_Complete(t *testing.T) {
 	Expect(result.Kind).To(Equal("NodePool"))
 	Expect(*result.Href).To(Equal("/api/hyperfleet/v1/clusters/cluster-abc/nodepools/nodepool-xyz"))
 	Expect(result.Name).To(Equal("presented-nodepool"))
-	Expect(result.CreatedBy).To(Equal(openapi_types.Email("user123@example.com")))
-	Expect(result.UpdatedBy).To(Equal(openapi_types.Email("user456@example.com")))
+	Expect(result.CreatedBy).To(Equal("user123@example.com"))
+	Expect(result.UpdatedBy).To(Equal("user456@example.com"))
 
 	// Verify Spec unmarshaled correctly
 	Expect(result.Spec["replicas"]).To(BeNumerically("==", 5))

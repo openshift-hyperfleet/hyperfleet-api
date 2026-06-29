@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 
-	openapi_types "github.com/oapi-codegen/runtime/types"
 	"gorm.io/datatypes"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
@@ -67,8 +66,8 @@ func PresentResource(r *api.Resource) openapi.Resource {
 		Generation:  r.Generation,
 		CreatedTime: r.CreatedTime,
 		UpdatedTime: r.UpdatedTime,
-		CreatedBy:   openapi_types.Email(r.CreatedBy),
-		UpdatedBy:   openapi_types.Email(r.UpdatedBy),
+		CreatedBy:   r.CreatedBy,
+		UpdatedBy:   r.UpdatedBy,
 		DeletedTime: r.DeletedTime,
 		Status: openapi.ResourceStatus{
 			Conditions: []openapi.ResourceCondition{},
@@ -76,8 +75,7 @@ func PresentResource(r *api.Resource) openapi.Resource {
 	}
 
 	if r.DeletedBy != nil {
-		email := openapi_types.Email(*r.DeletedBy)
-		resp.DeletedBy = &email
+		resp.DeletedBy = r.DeletedBy
 	}
 
 	if r.OwnerID != nil && *r.OwnerID != "" {
@@ -103,8 +101,8 @@ func PresentResourceList(resources api.ResourceList, paging *api.PagingMeta) ope
 	}
 	return openapi.ResourceList{
 		Items: items,
-		Page:  int32(paging.Page),
-		Size:  int32(paging.Size),
+		Page:  int32(paging.Page), //nolint:gosec
+		Size:  int32(paging.Size), //nolint:gosec
 		Total: paging.Total,
 	}
 }

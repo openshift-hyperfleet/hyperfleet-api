@@ -33,9 +33,9 @@ func SliceFilter(fields2Store []string, model interface{}) (*ProjectionList, *er
 
 	// Initialize result structure
 	result := &ProjectionList{
-		Page:  int32(reflectValue.FieldByName("Page").Int()),
-		Size:  int32(reflectValue.FieldByName("Size").Int()),
-		Total: int32(reflectValue.FieldByName("Total").Int()),
+		Page:  int32(reflectValue.FieldByName("Page").Int()),  //nolint:gosec
+		Size:  int32(reflectValue.FieldByName("Size").Int()),  //nolint:gosec
+		Total: int32(reflectValue.FieldByName("Total").Int()), //nolint:gosec
 		Items: nil,
 	}
 

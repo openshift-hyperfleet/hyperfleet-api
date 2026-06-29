@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 
-	openapi_types "github.com/oapi-codegen/runtime/types"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
 )
@@ -41,20 +40,6 @@ func ConvertCluster(req *openapi.ClusterCreateRequest) (*api.Cluster, error) {
 		Labels:     labelsJSON,
 		Generation: 1,
 	}, nil
-}
-
-// Helper to convert string to openapi_types.Email
-func toEmail(s string) openapi_types.Email {
-	return openapi_types.Email(s)
-}
-
-// Helper to convert *string to *openapi_types.Email (for optional email fields)
-func toEmailPtr(s *string) *openapi_types.Email {
-	if s == nil || *s == "" {
-		return nil
-	}
-	e := openapi_types.Email(*s)
-	return &e
 }
 
 // PresentCluster converts api.Cluster (GORM model) to openapi.Cluster
@@ -105,9 +90,9 @@ func PresentCluster(cluster *api.Cluster) (openapi.Cluster, error) {
 	}
 
 	result := openapi.Cluster{
-		CreatedBy:   toEmail(cluster.CreatedBy),
+		CreatedBy:   cluster.CreatedBy,
 		CreatedTime: cluster.CreatedTime,
-		DeletedBy:   toEmailPtr(cluster.DeletedBy),
+		DeletedBy:   cluster.DeletedBy,
 		DeletedTime: cluster.DeletedTime,
 		Generation:  cluster.Generation,
 		Href:        &href,
@@ -119,7 +104,7 @@ func PresentCluster(cluster *api.Cluster) (openapi.Cluster, error) {
 		Status: openapi.ClusterStatus{
 			Conditions: openapiConditions,
 		},
-		UpdatedBy:   toEmail(cluster.UpdatedBy),
+		UpdatedBy:   cluster.UpdatedBy,
 		UpdatedTime: cluster.UpdatedTime,
 	}
 

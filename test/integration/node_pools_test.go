@@ -602,7 +602,7 @@ func TestNodePoolSoftDelete(t *testing.T) {
 		Expect(*resp.JSON202.Id).To(Equal(nodePoolID))
 		Expect(resp.JSON202.DeletedTime).NotTo(BeNil())
 		Expect(resp.JSON202.DeletedBy).NotTo(BeNil())
-		Expect(string(*resp.JSON202.DeletedBy)).To(Equal(account.Email))
+		Expect(*resp.JSON202.DeletedBy).To(Equal(account.Email))
 	})
 
 	t.Run("given a nodepool with Reconciled=True, when deleted, then generation increments and Reconciled becomes False", func(t *testing.T) { //nolint:lll
