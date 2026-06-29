@@ -8,7 +8,16 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/dao"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/metrics"
 )
+
+func extractPrevReconciledStatus(ctx context.Context, raw []byte) *api.ResourceConditionStatus {
+	prevReconciled, _, _ := parsePrevConditions(ctx, raw)
+	if prevReconciled == nil {
+		return nil
+	}
+	return &prevReconciled.Status
+}
 
 // computeNodePoolConditionsJSON aggregates adapter statuses into marshaled conditions JSON.
 // Returns nil if conditions are unchanged relative to np.StatusConditions.
@@ -18,6 +27,8 @@ func computeNodePoolConditionsJSON(
 	adapterStatuses []*api.AdapterStatus,
 	requiredAdapters []string,
 ) ([]byte, *errors.ServiceError) {
+	prevReconciledStatus := extractPrevReconciledStatus(ctx, np.StatusConditions)
+
 	reconciled, lastKnownReconciled, adapterConditions := AggregateResourceStatus(ctx, AggregateResourceStatusInput{
 		ResourceGeneration: np.Generation,
 		RefTime:            nodePoolRefTime(np),
@@ -26,6 +37,11 @@ func computeNodePoolConditionsJSON(
 		RequiredAdapters:   requiredAdapters,
 		AdapterStatuses:    adapterStatuses,
 	})
+
+	if reconciled.Status == api.ConditionFalse &&
+		(prevReconciledStatus == nil || *prevReconciledStatus != api.ConditionFalse) {
+		metrics.RecordReconciliationStarted("nodepool", np.DeletedTime != nil)
+	}
 
 	allConditions := make([]api.ResourceCondition, 0, fixedConditionCount+len(adapterConditions))
 	allConditions = append(allConditions, reconciled, lastKnownReconciled)

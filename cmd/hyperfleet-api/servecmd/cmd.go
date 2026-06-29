@@ -131,11 +131,11 @@ func runServe(cmd *cobra.Command, args []string) {
 	).Info("Logger initialized")
 
 	if sf := environments.Environment().Database.SessionFactory; sf != nil {
-		if err := metrics.RegisterCollector(
+		if err := metrics.RegisterReconciliationCollector(
 			sf.DirectDB(),
-			environments.Environment().Config.Metrics.DeletionStuckThreshold,
+			environments.Environment().Config.Metrics.ReconciliationStuckThreshold,
 		); err != nil {
-			logger.WithError(ctx, err).Error("Failed to register pending deletion collector")
+			logger.WithError(ctx, err).Error("Failed to register reconciliation collector")
 		}
 	}
 

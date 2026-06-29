@@ -11,7 +11,6 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/dao"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/metrics"
 )
 
 //go:generate mockgen-v0.6.0 -source=node_pool.go -package=services -destination=node_pool_mock.go
@@ -187,8 +186,6 @@ func (s *sqlNodePoolService) SoftDelete(ctx context.Context, nodePoolID string) 
 		return nil, handleSoftDeleteError(api.ResourceTypeNodePool, err)
 	}
 
-	metrics.RecordPendingDeletion("nodepool")
-
 	updated, svcErr := s.UpdateNodePoolStatusFromAdapters(ctx, nodePool.ID)
 	if svcErr != nil {
 		return nil, svcErr
@@ -207,12 +204,10 @@ func (s *sqlNodePoolService) CascadeSoftDelete(
 		deletedTime = time.Now().UTC().Truncate(time.Microsecond)
 	}
 
-	var newlyDeleted int
 	for _, np := range nodePools {
 		if np.DeletedTime == nil {
 			np.MarkDeleted(deletedBy, deletedTime)
 			np.IncrementGeneration()
-			newlyDeleted++
 		}
 	}
 
@@ -222,10 +217,6 @@ func (s *sqlNodePoolService) CascadeSoftDelete(
 
 	if err := s.nodePoolDao.SaveAll(ctx, nodePools); err != nil {
 		return handleSoftDeleteError(api.ResourceTypeNodePool, err)
-	}
-
-	for range newlyDeleted {
-		metrics.RecordPendingDeletion("nodepool")
 	}
 
 	return nil
