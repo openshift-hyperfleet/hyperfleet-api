@@ -8,7 +8,27 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/dao"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/metrics"
 )
+
+// extractPrevReconciledStatus extracts the Reconciled condition status from JSONB.
+// Returns nil if conditions are empty, unparseable, or lack a Reconciled entry.
+func extractPrevReconciledStatus(raw []byte) *api.ResourceConditionStatus {
+	if len(raw) == 0 {
+		return nil
+	}
+	var conditions []api.ResourceCondition
+	if err := json.Unmarshal(raw, &conditions); err != nil {
+		return nil
+	}
+	for i := range conditions {
+		if conditions[i].Type == api.ResourceConditionTypeReconciled {
+			s := conditions[i].Status
+			return &s
+		}
+	}
+	return nil
+}
 
 // computeNodePoolConditionsJSON aggregates adapter statuses into marshaled conditions JSON.
 // Returns nil if conditions are unchanged relative to np.StatusConditions.
@@ -18,6 +38,8 @@ func computeNodePoolConditionsJSON(
 	adapterStatuses []*api.AdapterStatus,
 	requiredAdapters []string,
 ) ([]byte, *errors.ServiceError) {
+	prevReconciledStatus := extractPrevReconciledStatus(np.StatusConditions)
+
 	reconciled, lastKnownReconciled, adapterConditions := AggregateResourceStatus(ctx, AggregateResourceStatusInput{
 		ResourceGeneration: np.Generation,
 		RefTime:            nodePoolRefTime(np),
@@ -26,6 +48,11 @@ func computeNodePoolConditionsJSON(
 		RequiredAdapters:   requiredAdapters,
 		AdapterStatuses:    adapterStatuses,
 	})
+
+	if reconciled.Status == api.ConditionFalse &&
+		(prevReconciledStatus == nil || *prevReconciledStatus != api.ConditionFalse) {
+		metrics.RecordReconciliationStarted(api.ResourceTypeNodePool, np.DeletedTime != nil)
+	}
 
 	allConditions := make([]api.ResourceCondition, 0, fixedConditionCount+len(adapterConditions))
 	allConditions = append(allConditions, reconciled, lastKnownReconciled)
