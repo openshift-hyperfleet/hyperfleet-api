@@ -114,6 +114,7 @@ func ResetMetricCollectors() {
 	requestDurationMetric.Reset()
 	db_metrics.ResetMetrics()
 	metrics.ResetMetrics()
+	metrics.ResetReconciliationMetrics()
 	buildInfoMetric.Reset()
 	buildInfoMetric.With(prometheus.Labels{
 		metricsComponentLabel: metricsComponentValue,

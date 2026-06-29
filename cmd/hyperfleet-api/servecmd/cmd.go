@@ -137,6 +137,12 @@ func runServe(cmd *cobra.Command, args []string) {
 		); err != nil {
 			logger.WithError(ctx, err).Error("Failed to register pending deletion collector")
 		}
+		if err := metrics.RegisterReconciliationCollector(
+			sf.DirectDB(),
+			environments.Environment().Config.Metrics.ReconciliationStuckThreshold,
+		); err != nil {
+			logger.WithError(ctx, err).Error("Failed to register reconciliation collector")
+		}
 	}
 
 	apiServer := server.NewAPIServer(tracingEnabled)
