@@ -16,20 +16,21 @@ import (
 // differentiated by the Kind field. Existing Cluster and NodePool types
 // are NOT migrated to this model.
 type Resource struct {
+	OwnerID     *string    `json:"owner_id,omitempty" gorm:"size:255"`
+	OwnerHref   *string    `json:"owner_href,omitempty" gorm:"size:500"`
+	OwnerKind   *string    `json:"owner_kind,omitempty" gorm:"size:100"`
+	DeletedBy   *string    `json:"deleted_by,omitempty" gorm:"size:255"`
+	DeletedTime *time.Time `json:"deleted_time,omitempty"`
 	Meta
-	Kind        string         `json:"kind" gorm:"size:100;not null"`
-	Name        string         `json:"name" gorm:"size:100;not null"`
-	Href        string         `json:"href,omitempty" gorm:"size:500"`
-	CreatedBy   string         `json:"created_by" gorm:"size:255;not null"`
-	UpdatedBy   string         `json:"updated_by" gorm:"size:255;not null"`
-	DeletedBy   *string        `json:"deleted_by,omitempty" gorm:"size:255"`
-	DeletedTime *time.Time     `json:"deleted_time,omitempty"`
-	OwnerID     *string        `json:"owner_id,omitempty" gorm:"size:255"`
-	OwnerKind   *string        `json:"owner_kind,omitempty" gorm:"size:100"`
-	OwnerHref   *string        `json:"owner_href,omitempty" gorm:"size:500"`
-	Spec        datatypes.JSON `json:"spec" gorm:"type:jsonb;not null"`
-	Labels      datatypes.JSON `json:"labels,omitempty" gorm:"type:jsonb"`
-	Generation  int32          `json:"generation" gorm:"default:1;not null"`
+	Kind       string              `json:"kind" gorm:"size:100;not null"`
+	Name       string              `json:"name" gorm:"size:100;not null"`
+	Href       string              `json:"href,omitempty" gorm:"size:500"`
+	CreatedBy  string              `json:"created_by" gorm:"size:255;not null"`
+	UpdatedBy  string              `json:"updated_by" gorm:"size:255;not null"`
+	Labels     datatypes.JSON      `json:"labels,omitempty" gorm:"type:jsonb"`
+	Spec       datatypes.JSON      `json:"spec" gorm:"type:jsonb;not null"`
+	Conditions []ResourceCondition `json:"-" gorm:"foreignKey:ResourceID;references:ID"`
+	Generation int32               `json:"generation" gorm:"default:1;not null"`
 }
 
 type ResourcePatch struct {
