@@ -11,6 +11,7 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/dao"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/metrics"
 )
 
 //go:generate mockgen-v0.6.0 -source=node_pool.go -package=services -destination=node_pool_mock.go
@@ -211,12 +212,17 @@ func (s *sqlNodePoolService) CascadeSoftDelete(
 		}
 	}
 
-	if svcErr := recomputeNodePoolConditions(ctx, nodePools, s.adapterStatusDao, s.adapterConfig); svcErr != nil {
+	startedCount, svcErr := recomputeNodePoolConditions(ctx, nodePools, s.adapterStatusDao, s.adapterConfig)
+	if svcErr != nil {
 		return svcErr
 	}
 
 	if err := s.nodePoolDao.SaveAll(ctx, nodePools); err != nil {
 		return handleSoftDeleteError(api.ResourceTypeNodePool, err)
+	}
+
+	for range startedCount {
+		metrics.RecordReconciliationStarted("nodepool", true)
 	}
 
 	return nil
@@ -310,7 +316,7 @@ func (s *sqlNodePoolService) UpdateNodePoolStatusFromAdapters(
 func (s *sqlNodePoolService) recomputeAndSaveNodePoolStatus(
 	ctx context.Context, nodePool *api.NodePool, adapterStatuses api.AdapterStatusList,
 ) (*api.NodePool, *errors.ServiceError) {
-	conditionsJSON, svcErr := computeNodePoolConditionsJSON(
+	conditionsJSON, started, svcErr := computeNodePoolConditionsJSON(
 		ctx, nodePool, adapterStatuses, s.adapterConfig.RequiredNodePoolAdapters(),
 	)
 	if svcErr != nil {
@@ -325,6 +331,11 @@ func (s *sqlNodePoolService) recomputeAndSaveNodePoolStatus(
 	}
 
 	nodePool.StatusConditions = conditionsJSON
+
+	if started {
+		metrics.RecordReconciliationStarted("nodepool", nodePool.DeletedTime != nil)
+	}
+
 	return nodePool, nil
 }
 

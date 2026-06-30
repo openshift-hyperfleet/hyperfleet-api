@@ -238,11 +238,6 @@ func (s *sqlClusterService) recomputeAndSaveClusterStatus(
 		HasChildResources:  hasChildResources,
 	})
 
-	if reconciled.Status == api.ConditionFalse &&
-		(prevReconciledStatus == nil || *prevReconciledStatus != api.ConditionFalse) {
-		metrics.RecordReconciliationStarted("cluster", cluster.DeletedTime != nil)
-	}
-
 	allConditions := make([]api.ResourceCondition, 0, fixedConditionCount+len(adapterConditions))
 	allConditions = append(allConditions, reconciled, lastKnownReconciled)
 	allConditions = append(allConditions, adapterConditions...)
@@ -261,6 +256,12 @@ func (s *sqlClusterService) recomputeAndSaveClusterStatus(
 	}
 
 	cluster.StatusConditions = conditionsJSON
+
+	if reconciled.Status == api.ConditionFalse &&
+		(prevReconciledStatus == nil || *prevReconciledStatus != api.ConditionFalse) {
+		metrics.RecordReconciliationStarted("cluster", cluster.DeletedTime != nil)
+	}
+
 	return cluster, nil
 }
 

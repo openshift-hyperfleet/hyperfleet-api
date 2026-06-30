@@ -163,6 +163,7 @@ func (c *ReconciliationCollector) Collect(ch chan<- prometheus.Metric) {
 	rows, err := c.db.QueryContext(ctx, reconciliationQuery, threshold) //nolint:gosec // compile-time SQL
 	if err != nil {
 		logger.WithError(ctx, err).Error("Failed to query reconciliation metrics")
+		c.emitInvalid(ch, err)
 		return
 	}
 	defer rows.Close()
@@ -174,7 +175,8 @@ func (c *ReconciliationCollector) Collect(ch chan<- prometheus.Metric) {
 
 		if err := rows.Scan(&resourceType, &isDelete, &pending, &stuck, &maxDuration); err != nil {
 			logger.WithError(ctx, err).Error("Failed to scan reconciliation metric row")
-			continue
+			c.emitInvalid(ch, err)
+			return
 		}
 
 		labels := []string{resourceType, isDelete}
@@ -185,7 +187,14 @@ func (c *ReconciliationCollector) Collect(ch chan<- prometheus.Metric) {
 
 	if err := rows.Err(); err != nil {
 		logger.WithError(ctx, err).Error("Error iterating reconciliation metric rows")
+		c.emitInvalid(ch, err)
 	}
+}
+
+func (c *ReconciliationCollector) emitInvalid(ch chan<- prometheus.Metric, err error) {
+	ch <- prometheus.NewInvalidMetric(c.pendingDesc, err)
+	ch <- prometheus.NewInvalidMetric(c.stuckDesc, err)
+	ch <- prometheus.NewInvalidMetric(c.durationDesc, err)
 }
 
 func RegisterReconciliationCollector(db *sql.DB, stuckThreshold time.Duration) error {
