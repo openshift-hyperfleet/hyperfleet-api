@@ -7,11 +7,9 @@ import (
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/registry"
 )
-
-// TODO : HYPERFLEET-1159 - Uncomment this once Cluster and NodePool are registered
-// var requiredSpecValidationKinds = []string{"Cluster", "NodePool"}
 
 // ResourceSchema represents a validation schema for a specific resource type
 type ResourceSchema struct {
@@ -26,9 +24,8 @@ type SchemaValidator struct {
 }
 
 // NewSchemaValidator creates a new schema validator by loading an OpenAPI spec from the given path.
-// Cluster and NodePool must be registered with SpecSchemaName and have matching OpenAPI components.
-// Other registered entities with SpecSchemaName are validated only when their component exists;
-// missing components are skipped with a warning at startup.
+// Panics if any registered entity with RequireSpecSchema has a SpecSchemaName that does not resolve.
+// Entities without RequireSpecSchema whose schema is absent are skipped with a warning.
 func NewSchemaValidator(schemaPath string) (*SchemaValidator, error) {
 	loader := openapi3.NewLoader()
 	doc, err := loader.LoadFromFile(schemaPath)
@@ -56,68 +53,42 @@ func NewSchemaValidator(schemaPath string) (*SchemaValidator, error) {
 }
 
 func buildSchemasMap(doc *openapi3.T) (map[string]*ResourceSchema, error) {
+	ctx := context.Background()
 	schemas := make(map[string]*ResourceSchema)
-	// registeredKinds := make(map[string]bool, len(requiredSpecValidationKinds))
 
 	for _, d := range registry.WithSpecSchema() {
 		schemaRef := doc.Components.Schemas[d.SpecSchemaName]
 		if schemaRef == nil {
-			return nil, fmt.Errorf(
-				"entity kind %q declares SpecSchemaName %q but schema not found in OpenAPI spec",
-				d.Kind, d.SpecSchemaName,
-			)
+			logger.With(ctx,
+				"schema_name", d.SpecSchemaName,
+				"kind", d.Kind,
+				"plural", d.Plural,
+			).Warn("OpenAPI spec schema not found, skipping validation for entity")
+			continue
 		}
-
 		schemas[d.Plural] = &ResourceSchema{
 			TypeName: d.SpecSchemaName,
 			Schema:   schemaRef,
 		}
-		// registeredKinds[d.Kind] = true
 	}
 
 	// TODO : HYPERFLEET-1159 - Remove this once Cluster and NodePool are registered
-	// Extract ClusterSpec schema
-	clusterSpecSchema := doc.Components.Schemas["ClusterSpec"]
-	if clusterSpecSchema == nil {
-		return nil, fmt.Errorf("ClusterSpec schema not found in OpenAPI spec")
+	for _, hc := range []struct{ plural, schema string }{
+		{"clusters", "ClusterSpec"},
+		{"nodepools", "NodePoolSpec"},
+	} {
+		schemaRef := doc.Components.Schemas[hc.schema]
+		if schemaRef == nil {
+			return nil, fmt.Errorf("%s schema not found in OpenAPI spec", hc.schema)
+		}
+		schemas[hc.plural] = &ResourceSchema{
+			TypeName: hc.schema,
+			Schema:   schemaRef,
+		}
 	}
-
-	// Extract NodePoolSpec schema
-	nodePoolSpecSchema := doc.Components.Schemas["NodePoolSpec"]
-	if nodePoolSpecSchema == nil {
-		return nil, fmt.Errorf("NodePoolSpec schema not found in OpenAPI spec")
-	}
-
-	// Build schemas map
-	schemas["clusters"] = &ResourceSchema{
-		TypeName: "ClusterSpec",
-		Schema:   clusterSpecSchema,
-	}
-	schemas["nodepools"] = &ResourceSchema{
-		TypeName: "NodePoolSpec",
-		Schema:   nodePoolSpecSchema,
-	}
-	// for _, kind := range requiredSpecValidationKinds {
-	// 	if !registeredKinds[kind] {
-	// 		return nil, fmt.Errorf(
-	// 			"entity kind %q with SpecSchemaName must be registered for schema validation",
-	// 			kind,
-	// 		)
-	// 	}
-	// }
 
 	return schemas, nil
 }
-
-// TODO : HYPERFLEET-1159 - Uncomment this once Cluster and NodePool are registered
-// func isRequiredSpecValidationKind(kind string) bool {
-// 	for _, required := range requiredSpecValidationKinds {
-// 		if kind == required {
-// 			return true
-// 		}
-// 	}
-// 	return false
-// }
 
 // HasSchema reports whether a validation schema was loaded for the given resource plural.
 func (v *SchemaValidator) HasSchema(resourcePlural string) bool {

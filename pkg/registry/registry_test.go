@@ -184,6 +184,121 @@ func TestValidate_EmptyRegistry(t *testing.T) {
 	}).ToNot(Panic())
 }
 
+func TestValidateSpecSchemas_PanicsOnMissingSchema(t *testing.T) {
+	RegisterTestingT(t)
+	Reset()
+
+	Register(EntityDescriptor{
+		Kind:              "Channel",
+		Plural:            "channels",
+		SpecSchemaName:    "ChannelSpec",
+		RequireSpecSchema: true,
+	})
+
+	Expect(func() {
+		ValidateSpecSchemas(func(name string) bool { return false })
+	}).To(PanicWith(ContainSubstring("ChannelSpec")))
+}
+
+func TestValidateSpecSchemas_PassesWhenAllSchemasResolve(t *testing.T) {
+	RegisterTestingT(t)
+	Reset()
+
+	Register(EntityDescriptor{
+		Kind:              "Channel",
+		Plural:            "channels",
+		SpecSchemaName:    "ChannelSpec",
+		RequireSpecSchema: true,
+	})
+	Register(EntityDescriptor{
+		Kind:              "Version",
+		Plural:            "versions",
+		ParentKind:        "Channel",
+		SpecSchemaName:    "VersionSpec",
+		RequireSpecSchema: true,
+	})
+
+	Expect(func() {
+		ValidateSpecSchemas(func(name string) bool { return true })
+	}).ToNot(Panic())
+}
+
+func TestValidateSpecSchemas_SkipsDescriptorsWithoutSpecSchema(t *testing.T) {
+	RegisterTestingT(t)
+	Reset()
+
+	Register(EntityDescriptor{
+		Kind:   "Channel",
+		Plural: "channels",
+	})
+
+	called := false
+	ValidateSpecSchemas(func(name string) bool {
+		called = true
+		return false
+	})
+	Expect(called).To(BeFalse())
+}
+
+func TestValidateSpecSchemas_EmptyRegistry(t *testing.T) {
+	RegisterTestingT(t)
+	Reset()
+
+	Expect(func() {
+		ValidateSpecSchemas(func(name string) bool {
+			t.Fatal("callback should not be called on empty registry")
+			return false
+		})
+	}).ToNot(Panic())
+}
+
+func TestValidateSpecSchemas_MixedDescriptors(t *testing.T) {
+	RegisterTestingT(t)
+	Reset()
+
+	Register(EntityDescriptor{
+		Kind:   "Channel",
+		Plural: "channels",
+	})
+	Register(EntityDescriptor{
+		Kind:           "Version",
+		Plural:         "versions",
+		ParentKind:     "Channel",
+		SpecSchemaName: "VersionSpec",
+	})
+	Register(EntityDescriptor{
+		Kind:              "Cluster",
+		Plural:            "clusters",
+		SpecSchemaName:    "ClusterSpec",
+		RequireSpecSchema: true,
+	})
+
+	resolved := map[string]bool{"VersionSpec": true, "ClusterSpec": true}
+	Expect(func() {
+		ValidateSpecSchemas(func(name string) bool { return resolved[name] })
+	}).ToNot(Panic())
+
+	resolved["ClusterSpec"] = false
+	Expect(func() {
+		ValidateSpecSchemas(func(name string) bool { return resolved[name] })
+	}).To(PanicWith(ContainSubstring("ClusterSpec")))
+}
+
+func TestValidateSpecSchemas_SkipsNonRequiredMissingSchema(t *testing.T) {
+	RegisterTestingT(t)
+	Reset()
+
+	Register(EntityDescriptor{
+		Kind:           "Channel",
+		Plural:         "channels",
+		SpecSchemaName: "ChannelSpec",
+	})
+
+	Expect(func() {
+		ValidateSpecSchemas(func(name string) bool { return false })
+	}).ToNot(Panic())
+}
+
 func TestDescriptorFields(t *testing.T) {
 	RegisterTestingT(t)
 	Reset()

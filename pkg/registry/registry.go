@@ -98,13 +98,13 @@ func Validate() {
 	}
 }
 
-// ValidateSpecSchemas checks that every descriptor with a non-empty SpecSchemaName
-// resolves to an existing schema. Panics with a descriptive message if any
-// SpecSchemaName does not resolve. The schemaExists callback decouples registry
-// from the OpenAPI library.
+// ValidateSpecSchemas checks descriptors that set RequireSpecSchema and panics if
+// their SpecSchemaName is absent from the OpenAPI spec. Entities without
+// RequireSpecSchema are left to buildSchemasMap, which warns and skips them.
+// See also Validate, which checks registry structural integrity.
 func ValidateSpecSchemas(schemaExists func(string) bool) {
 	for _, d := range descriptors {
-		if d.SpecSchemaName != "" && !schemaExists(d.SpecSchemaName) {
+		if d.SpecSchemaName != "" && d.RequireSpecSchema && !schemaExists(d.SpecSchemaName) {
 			panic(fmt.Sprintf(
 				"entity kind %q declares SpecSchemaName %q but it does not resolve to an existing component in the OpenAPI spec",
 				d.Kind, d.SpecSchemaName,
