@@ -36,7 +36,7 @@ func NewResourceDao(sessionFactory db.SessionFactory) ResourceDao {
 func (d *sqlResourceDao) Get(ctx context.Context, kind, id string) (*api.Resource, error) {
 	g2 := d.sessionFactory.New(ctx)
 	var resource api.Resource
-	if err := g2.Take(&resource, "kind = ? AND id = ?", kind, id).Error; err != nil {
+	if err := g2.Preload("Conditions").Take(&resource, "kind = ? AND id = ?", kind, id).Error; err != nil {
 		return nil, err
 	}
 	return &resource, nil
@@ -55,7 +55,8 @@ func (d *sqlResourceDao) GetForUpdate(ctx context.Context, kind, id string) (*ap
 func (d *sqlResourceDao) GetByOwner(ctx context.Context, kind, id, ownerID string) (*api.Resource, error) {
 	g2 := d.sessionFactory.New(ctx)
 	var resource api.Resource
-	if err := g2.Take(&resource, "kind = ? AND id = ? AND owner_id = ?", kind, id, ownerID).Error; err != nil {
+	if err := g2.Preload("Conditions").
+		Take(&resource, "kind = ? AND id = ? AND owner_id = ?", kind, id, ownerID).Error; err != nil {
 		return nil, err
 	}
 	return &resource, nil

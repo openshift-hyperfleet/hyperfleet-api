@@ -155,6 +155,68 @@ func TestPresentResource_EmptySpec(t *testing.T) {
 	Expect(resp.Spec).To(BeEmpty())
 }
 
+func TestPresentResource_WithConditions(t *testing.T) {
+	RegisterTestingT(t)
+
+	now := time.Now().Truncate(time.Microsecond)
+	reason := "AllAdaptersReporting"
+	message := "All adapters are available"
+	resource := &api.Resource{
+		Meta:      api.Meta{ID: "cond-id", CreatedTime: now, UpdatedTime: now},
+		Kind:      "Channel",
+		Name:      "test",
+		Spec:      datatypes.JSON(`{}`),
+		CreatedBy: "user@test.com",
+		UpdatedBy: "user@test.com",
+		Conditions: []api.ResourceCondition{
+			{
+				Type:               "Available",
+				Status:             api.ConditionTrue,
+				Reason:             &reason,
+				Message:            &message,
+				ObservedGeneration: 3,
+				CreatedTime:        now,
+				LastUpdatedTime:    now,
+				LastTransitionTime: now,
+			},
+		},
+	}
+
+	resp := PresentResource(resource)
+	Expect(resp.Status.Conditions).To(HaveLen(1))
+
+	cond := resp.Status.Conditions[0]
+	Expect(cond.Type).To(Equal("Available"))
+	Expect(cond.Status).To(Equal(openapi.ResourceConditionStatusTrue))
+	Expect(*cond.Reason).To(Equal("AllAdaptersReporting"))
+	Expect(*cond.Message).To(Equal("All adapters are available"))
+	Expect(cond.ObservedGeneration).To(Equal(int32(3)))
+	Expect(cond.CreatedTime).To(BeTemporally("==", now))
+	Expect(cond.LastTransitionTime).To(BeTemporally("==", now))
+}
+
+func TestPresentResource_WithEmptyConditions(t *testing.T) {
+	RegisterTestingT(t)
+
+	now := time.Now()
+	resource := &api.Resource{
+		Meta:       api.Meta{ID: "empty-cond-id", CreatedTime: now, UpdatedTime: now},
+		Kind:       "Channel",
+		Name:       "test",
+		Spec:       datatypes.JSON(`{}`),
+		CreatedBy:  "user@test.com",
+		UpdatedBy:  "user@test.com",
+		Conditions: []api.ResourceCondition{},
+	}
+
+	resp := PresentResource(resource)
+	body, err := json.Marshal(resp)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(resp.Status.Conditions).NotTo(BeNil())
+	Expect(resp.Status.Conditions).To(BeEmpty())
+	Expect(string(body)).To(ContainSubstring(`"status":{"conditions":[]}`))
+}
+
 func TestPresentResourceList(t *testing.T) {
 	RegisterTestingT(t)
 

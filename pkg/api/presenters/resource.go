@@ -70,7 +70,7 @@ func PresentResource(r *api.Resource) openapi.Resource {
 		UpdatedBy:   r.UpdatedBy,
 		DeletedTime: r.DeletedTime,
 		Status: openapi.ResourceStatus{
-			Conditions: []openapi.ResourceCondition{},
+			Conditions: presentResourceConditions(r.Conditions),
 		},
 	}
 
@@ -105,6 +105,26 @@ func PresentResourceList(resources api.ResourceList, paging *api.PagingMeta) ope
 		Size:  int32(paging.Size), //nolint:gosec
 		Total: paging.Total,
 	}
+}
+
+func presentResourceConditions(conditions []api.ResourceCondition) []openapi.ResourceCondition {
+	if len(conditions) == 0 {
+		return []openapi.ResourceCondition{}
+	}
+	result := make([]openapi.ResourceCondition, len(conditions))
+	for i, c := range conditions {
+		result[i] = openapi.ResourceCondition{
+			Type:               c.Type,
+			Status:             openapi.ResourceConditionStatus(c.Status),
+			Reason:             c.Reason,
+			Message:            c.Message,
+			ObservedGeneration: c.ObservedGeneration,
+			CreatedTime:        c.CreatedTime,
+			LastUpdatedTime:    c.LastUpdatedTime,
+			LastTransitionTime: c.LastTransitionTime,
+		}
+	}
+	return result
 }
 
 func marshalLabels(labels *map[string]string) (datatypes.JSON, error) {

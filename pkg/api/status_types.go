@@ -50,18 +50,23 @@ const (
 	ResourceConditionTypeLastKnownReconciled = "LastKnownReconciled"
 )
 
-// ResourceCondition represents a condition of a resource
-// Domain equivalent of openapi.ResourceCondition
-// JSON tags match database JSONB structure
+// ResourceCondition is the GORM model for the resource_conditions table and
+// the domain type for JSONB deserialization in clusters/node pools.
+// ResourceID is excluded from JSON to preserve JSONB backward compat.
 type ResourceCondition struct {
-	CreatedTime        time.Time               `json:"created_time"`
-	LastUpdatedTime    time.Time               `json:"last_updated_time"`
-	LastTransitionTime time.Time               `json:"last_transition_time"`
-	Reason             *string                 `json:"reason,omitempty"`
-	Message            *string                 `json:"message,omitempty"`
-	Type               string                  `json:"type"`
-	Status             ResourceConditionStatus `json:"status"`
-	ObservedGeneration int32                   `json:"observed_generation"`
+	CreatedTime        time.Time               `json:"created_time" gorm:"not null"`
+	LastUpdatedTime    time.Time               `json:"last_updated_time" gorm:"not null"`
+	LastTransitionTime time.Time               `json:"last_transition_time" gorm:"not null"`
+	Reason             *string                 `json:"reason,omitempty" gorm:"type:text"`
+	Message            *string                 `json:"message,omitempty" gorm:"type:text"`
+	ResourceID         string                  `json:"-" gorm:"primaryKey;size:255;not null"`
+	Type               string                  `json:"type" gorm:"primaryKey;size:100;not null"`
+	Status             ResourceConditionStatus `json:"status" gorm:"size:10;not null"`
+	ObservedGeneration int32                   `json:"observed_generation" gorm:"default:0;not null"`
+}
+
+func (ResourceCondition) TableName() string {
+	return "resource_conditions"
 }
 
 // AdapterCondition represents a condition of an adapter
