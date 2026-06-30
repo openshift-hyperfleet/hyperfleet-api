@@ -17,6 +17,11 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/registry"
 )
 
+const (
+	testDeletedBy = "someone"
+	testChannelID = "ch-1"
+)
+
 func setupTestDescriptors() {
 	registry.Reset()
 	registry.Register(registry.EntityDescriptor{
@@ -562,7 +567,7 @@ func TestResourceService_Delete_AlreadyDeleted_Idempotent(t *testing.T) {
 	now := time.Now()
 	existing := testResource("Channel", "ch-1", "stable")
 	existing.DeletedTime = &now
-	deletedBy := "someone"
+	deletedBy := testDeletedBy
 	existing.DeletedBy = &deletedBy
 	existing.Generation = 3
 	mockDao.addResource(existing)
@@ -1118,4 +1123,241 @@ func TestResourceService_ListByOwner_UnknownKind(t *testing.T) {
 	Expect(paging).To(BeNil())
 	Expect(svcErr).ToNot(BeNil())
 	Expect(svcErr.HTTPCode).To(Equal(400))
+}
+
+// --- ForceDelete ---
+
+func TestResourceService_ForceDelete_HappyPath_NoChildren(t *testing.T) {
+	RegisterTestingT(t)
+	setupTestDescriptors()
+
+	mockDao := newMockResourceDao()
+	svc, _, _ := newTestResourceService(mockDao)
+
+	now := time.Now()
+	existing := testResource("Channel", testChannelID, "stable")
+	existing.DeletedTime = &now
+	deletedBy := testDeletedBy
+	existing.DeletedBy = &deletedBy
+	mockDao.addResource(existing)
+
+	svcErr := svc.ForceDelete(context.Background(), "Channel", testChannelID, "Stuck in finalizing")
+	Expect(svcErr).To(BeNil())
+
+	_, exists := mockDao.resources[resourceKey("Channel", testChannelID)]
+	Expect(exists).To(BeFalse())
+}
+
+func TestResourceService_ForceDelete_CascadesAllChildren(t *testing.T) {
+	RegisterTestingT(t)
+	setupTestDescriptors()
+
+	mockDao := newMockResourceDao()
+	svc, _, _ := newTestResourceService(mockDao)
+
+	now := time.Now()
+	channel := testResource("Channel", testChannelID, "stable")
+	channel.DeletedTime = &now
+	deletedBy := testDeletedBy
+	channel.DeletedBy = &deletedBy
+	mockDao.addResource(channel)
+
+	chID := testChannelID
+	v1 := testResource("Version", "v-1", "v1.0")
+	v1.OwnerID = &chID
+	mockDao.addResource(v1)
+
+	v2 := testResource("Version", "v-2", "v2.0")
+	v2.OwnerID = &chID
+	mockDao.addResource(v2)
+
+	svcErr := svc.ForceDelete(context.Background(), "Channel", testChannelID, "stuck")
+	Expect(svcErr).To(BeNil())
+
+	_, chExists := mockDao.resources[resourceKey("Channel", testChannelID)]
+	Expect(chExists).To(BeFalse())
+	_, v1Exists := mockDao.resources[resourceKey("Version", "v-1")]
+	Expect(v1Exists).To(BeFalse())
+	_, v2Exists := mockDao.resources[resourceKey("Version", "v-2")]
+	Expect(v2Exists).To(BeFalse())
+}
+
+func TestResourceService_ForceDelete_BypassesRestrict(t *testing.T) {
+	RegisterTestingT(t)
+	setupTestDescriptors()
+
+	mockDao := newMockResourceDao()
+	svc, _, _ := newTestResourceService(mockDao)
+
+	channel := testResource("Channel", testChannelID, "stable")
+	mockDao.addResource(channel)
+
+	chID := testChannelID
+	version := testResource("Version", "v-1", "v1.0")
+	version.OwnerID = &chID
+	mockDao.addResource(version)
+
+	// Normal delete blocked by Restrict policy (active children)
+	_, normalDeleteErr := svc.Delete(context.Background(), "Channel", testChannelID)
+	Expect(normalDeleteErr).ToNot(BeNil())
+	Expect(normalDeleteErr.HTTPCode).To(Equal(409))
+
+	// Simulate reaching Finalizing state (e.g., via admin override)
+	now := time.Now()
+	channel.DeletedTime = &now
+	deletedBy := "admin"
+	channel.DeletedBy = &deletedBy
+
+	// Force-delete bypasses Restrict and cascades everything
+	svcErr := svc.ForceDelete(context.Background(), "Channel", testChannelID, "bypass restrict")
+	Expect(svcErr).To(BeNil())
+
+	_, chExists := mockDao.resources[resourceKey("Channel", testChannelID)]
+	Expect(chExists).To(BeFalse())
+	_, vExists := mockDao.resources[resourceKey("Version", "v-1")]
+	Expect(vExists).To(BeFalse())
+}
+
+func TestResourceService_ForceDelete_NotInFinalizingState(t *testing.T) {
+	RegisterTestingT(t)
+	setupTestDescriptors()
+
+	mockDao := newMockResourceDao()
+	svc, _, _ := newTestResourceService(mockDao)
+
+	existing := testResource("Channel", testChannelID, "stable")
+	mockDao.addResource(existing)
+
+	svcErr := svc.ForceDelete(context.Background(), "Channel", testChannelID, "some reason")
+	Expect(svcErr).ToNot(BeNil())
+	Expect(svcErr.HTTPCode).To(Equal(409))
+}
+
+func TestResourceService_ForceDelete_NotFound(t *testing.T) {
+	RegisterTestingT(t)
+	setupTestDescriptors()
+
+	mockDao := newMockResourceDao()
+	svc, _, _ := newTestResourceService(mockDao)
+
+	svcErr := svc.ForceDelete(context.Background(), "Channel", "nonexistent", "some reason")
+	Expect(svcErr).ToNot(BeNil())
+	Expect(svcErr.HTTPCode).To(Equal(404))
+}
+
+func TestResourceService_ForceDelete_RecursiveGrandchildren(t *testing.T) {
+	RegisterTestingT(t)
+	registry.Reset()
+	registry.Register(registry.EntityDescriptor{Kind: "Root", Plural: "roots"})
+	registry.Register(registry.EntityDescriptor{
+		Kind: "Child", Plural: "children", ParentKind: "Root",
+		OnParentDelete: registry.OnParentDeleteCascade,
+	})
+	registry.Register(registry.EntityDescriptor{
+		Kind: "Grandchild", Plural: "grandchildren", ParentKind: "Child",
+		OnParentDelete: registry.OnParentDeleteRestrict,
+	})
+
+	mockDao := newMockResourceDao()
+	svc, _, _ := newTestResourceService(mockDao)
+
+	now := time.Now()
+	root := testResource("Root", "r-1", "root")
+	root.DeletedTime = &now
+	deletedBy := testDeletedBy
+	root.DeletedBy = &deletedBy
+	mockDao.addResource(root)
+
+	rootID := "r-1"
+	child := testResource("Child", "c-1", "child")
+	child.OwnerID = &rootID
+	mockDao.addResource(child)
+
+	childID := "c-1"
+	grandchild := testResource("Grandchild", "gc-1", "grandchild")
+	grandchild.OwnerID = &childID
+	mockDao.addResource(grandchild)
+
+	svcErr := svc.ForceDelete(context.Background(), "Root", "r-1", "force all")
+	Expect(svcErr).To(BeNil())
+
+	Expect(mockDao.resources).To(HaveLen(0))
+}
+
+func TestResourceService_ForceDelete_RequiredAdaptersBlocked(t *testing.T) {
+	RegisterTestingT(t)
+	setupManagedDescriptor()
+
+	mockDao := newMockResourceDao()
+	svc, _, _ := newTestResourceService(mockDao)
+
+	now := time.Now()
+	existing := testResource("Managed", "m-1", "managed-1")
+	existing.DeletedTime = &now
+	deletedBy := testDeletedBy
+	existing.DeletedBy = &deletedBy
+	mockDao.addResource(existing)
+
+	svcErr := svc.ForceDelete(context.Background(), "Managed", "m-1", "some reason")
+	Expect(svcErr).ToNot(BeNil())
+	Expect(svcErr.HTTPCode).To(Equal(500))
+}
+
+func TestResourceService_ForceDelete_ChildWithRequiredAdapters(t *testing.T) {
+	RegisterTestingT(t)
+	registry.Reset()
+	registry.Register(registry.EntityDescriptor{Kind: "Parent", Plural: "parents"})
+	registry.Register(registry.EntityDescriptor{
+		Kind: "ManagedChild", Plural: "managedchildren", ParentKind: "Parent",
+		OnParentDelete:   registry.OnParentDeleteCascade,
+		RequiredAdapters: []string{"provisioner"},
+	})
+
+	mockDao := newMockResourceDao()
+	svc, _, _ := newTestResourceService(mockDao)
+
+	now := time.Now()
+	parent := testResource("Parent", "p-1", "parent")
+	parent.DeletedTime = &now
+	deletedBy := testDeletedBy
+	parent.DeletedBy = &deletedBy
+	mockDao.addResource(parent)
+
+	childID := "p-1"
+	child := testResource("ManagedChild", "mc-1", "managed-child")
+	child.OwnerID = &childID
+	mockDao.addResource(child)
+
+	svcErr := svc.ForceDelete(context.Background(), "Parent", "p-1", "force it")
+	Expect(svcErr).ToNot(BeNil())
+	Expect(svcErr.HTTPCode).To(Equal(500))
+
+	_, parentExists := mockDao.resources[resourceKey("Parent", "p-1")]
+	Expect(parentExists).To(BeTrue(), "parent should NOT be deleted when child cascade fails")
+	_, childExists := mockDao.resources[resourceKey("ManagedChild", "mc-1")]
+	Expect(childExists).To(BeTrue(), "child should NOT be deleted when guard fires")
+}
+
+func TestResourceService_ForceDelete_InvalidKind(t *testing.T) {
+	RegisterTestingT(t)
+	setupTestDescriptors()
+
+	mockDao := newMockResourceDao()
+	svc, _, _ := newTestResourceService(mockDao)
+
+	svcErr := svc.ForceDelete(context.Background(), "Bogus", testChannelID, "some reason")
+	Expect(svcErr).ToNot(BeNil())
+	Expect(svcErr.HTTPCode).To(Equal(400))
+}
+
+func TestAllGenericDescriptors_HaveNoRequiredAdapters(t *testing.T) {
+	RegisterTestingT(t)
+	setupTestDescriptors()
+
+	for _, d := range registry.All() {
+		Expect(d.RequiredAdapters).To(BeEmpty(),
+			"Descriptor %q has RequiredAdapters=%v. "+
+				"ForceDelete does not yet handle adapter_status cleanup. "+
+				"See HYPERFLEET-1154.", d.Kind, d.RequiredAdapters)
+	}
 }
