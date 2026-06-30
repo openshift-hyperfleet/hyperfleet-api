@@ -1,15 +1,12 @@
 package validators
 
 import (
-	"bytes"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
 
 	. "github.com/onsi/gomega"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/registry"
 )
 
@@ -149,10 +146,10 @@ components:
 	err := os.WriteFile(schemaPath, []byte(invalidSchema), 0600)
 	Expect(err).To(BeNil())
 
-	// Should fail because ClusterSpec is missing
-	_, err = NewSchemaValidator(schemaPath)
-	Expect(err).ToNot(BeNil())
-	Expect(err.Error()).To(ContainSubstring("ClusterSpec schema not found"))
+	// Should panic because registered entity's SpecSchemaName doesn't resolve
+	Expect(func() {
+		_, _ = NewSchemaValidator(schemaPath)
+	}).To(PanicWith(ContainSubstring("ClusterSpec")))
 }
 
 // TODO : HYPERFLEET-1159 - Uncomment this once Cluster and NodePool are registered
@@ -176,16 +173,8 @@ components:
 // 	Expect(err.Error()).To(ContainSubstring(`entity kind "NodePool" with SpecSchemaName must be registered`))
 // }
 
-func TestNewSchemaValidator_OptionalEntityMissingOpenAPISchema_SkipsWithWarning(t *testing.T) {
+func TestNewSchemaValidator_RegisteredEntityMissingSchema_Panics(t *testing.T) {
 	RegisterTestingT(t)
-
-	var logBuf bytes.Buffer
-	logger.ReconfigureGlobalLogger(&logger.LogConfig{
-		Level:     slog.LevelWarn,
-		Format:    logger.FormatText,
-		Output:    &logBuf,
-		Component: "validators-test",
-	})
 
 	registerRequiredSpecValidationEntities()
 	registry.Register(registry.EntityDescriptor{
@@ -219,16 +208,9 @@ components:
 	err := os.WriteFile(schemaPath, []byte(schemaWithoutWifConfig), 0600)
 	Expect(err).To(BeNil())
 
-	validator, err := NewSchemaValidator(schemaPath)
-	Expect(err).To(BeNil())
-	Expect(validator.HasSchema("clusters")).To(BeTrue())
-	Expect(validator.HasSchema("nodepools")).To(BeTrue())
-	Expect(validator.HasSchema("wifconfigs")).To(BeFalse())
-
-	logOutput := logBuf.String()
-	Expect(logOutput).To(ContainSubstring("skipping validation for entity"))
-	Expect(logOutput).To(ContainSubstring("WifConfigSpec"))
-	Expect(logOutput).To(ContainSubstring("WifConfig"))
+	Expect(func() {
+		_, _ = NewSchemaValidator(schemaPath)
+	}).To(PanicWith(ContainSubstring("WifConfigSpec")))
 }
 
 func TestNewSchemaValidator_RequiredEntityMissingOpenAPISchema_Fails(t *testing.T) {
@@ -256,21 +238,13 @@ components:
 	err := os.WriteFile(schemaPath, []byte(schemaWithoutNodePool), 0600)
 	Expect(err).To(BeNil())
 
-	_, err = NewSchemaValidator(schemaPath)
-	Expect(err).ToNot(BeNil())
-	Expect(err.Error()).To(ContainSubstring("NodePoolSpec schema not found"))
+	Expect(func() {
+		_, _ = NewSchemaValidator(schemaPath)
+	}).To(PanicWith(ContainSubstring("NodePoolSpec")))
 }
 
-func TestValidate_SkipsWhenOptionalEntitySchemaNotLoaded(t *testing.T) {
+func TestValidate_RegisteredEntityMissingSchema_PanicsAtConstruction(t *testing.T) {
 	RegisterTestingT(t)
-
-	var logBuf bytes.Buffer
-	logger.ReconfigureGlobalLogger(&logger.LogConfig{
-		Level:     slog.LevelWarn,
-		Format:    logger.FormatText,
-		Output:    &logBuf,
-		Component: "validators-test",
-	})
 
 	registerRequiredSpecValidationEntities()
 	registry.Register(registry.EntityDescriptor{
@@ -304,12 +278,9 @@ components:
 	err := os.WriteFile(schemaPath, []byte(schemaWithoutWifConfig), 0600)
 	Expect(err).To(BeNil())
 
-	validator, err := NewSchemaValidator(schemaPath)
-	Expect(err).To(BeNil())
-
-	// Invalid spec would fail validation if WifConfigSpec were loaded.
-	err = validator.Validate("wifconfigs", map[string]interface{}{})
-	Expect(err).To(BeNil())
+	Expect(func() {
+		_, _ = NewSchemaValidator(schemaPath)
+	}).To(PanicWith(ContainSubstring("WifConfigSpec")))
 }
 
 func TestValidate_WifConfigSpec_Valid(t *testing.T) {

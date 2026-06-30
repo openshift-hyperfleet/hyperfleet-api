@@ -7,7 +7,6 @@ import (
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/registry"
 )
 
@@ -41,6 +40,10 @@ func NewSchemaValidator(schemaPath string) (*SchemaValidator, error) {
 		return nil, fmt.Errorf("invalid OpenAPI schema: %w", validateErr)
 	}
 
+	registry.ValidateSpecSchemas(func(name string) bool {
+		return doc.Components.Schemas[name] != nil
+	})
+
 	schemas, err := buildSchemasMap(doc)
 	if err != nil {
 		return nil, err
@@ -53,27 +56,16 @@ func NewSchemaValidator(schemaPath string) (*SchemaValidator, error) {
 }
 
 func buildSchemasMap(doc *openapi3.T) (map[string]*ResourceSchema, error) {
-	ctx := context.Background()
 	schemas := make(map[string]*ResourceSchema)
 	// registeredKinds := make(map[string]bool, len(requiredSpecValidationKinds))
 
 	for _, d := range registry.WithSpecSchema() {
 		schemaRef := doc.Components.Schemas[d.SpecSchemaName]
 		if schemaRef == nil {
-			// TODO : HYPERFLEET-1159 - Uncomment this once Cluster and NodePool are registered
-			// if isRequiredSpecValidationKind(d.Kind) {
-			// 	return nil, fmt.Errorf(
-			// 		"%s schema not found in OpenAPI spec (required for entity kind %q)",
-			// 		d.SpecSchemaName, d.Kind,
-			// 	)
-			// }
-
-			logger.With(ctx,
-				"schema_name", d.SpecSchemaName,
-				"kind", d.Kind,
-				"plural", d.Plural,
-			).Warn("OpenAPI spec schema not found, skipping validation for entity")
-			continue
+			return nil, fmt.Errorf(
+				"entity kind %q declares SpecSchemaName %q but schema not found in OpenAPI spec",
+				d.Kind, d.SpecSchemaName,
+			)
 		}
 
 		schemas[d.Plural] = &ResourceSchema{

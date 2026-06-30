@@ -15,6 +15,7 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/handlers"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/middleware"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/registry"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/validators"
 )
 
@@ -106,6 +107,8 @@ func (s *apiServer) routes(tracingEnabled bool) *mux.Router {
 
 func registerAPIMiddleware(router *mux.Router) error {
 	router.Use(MetricsMiddleware)
+
+	registry.Validate()
 
 	schemaPath := env().Config.Server.OpenAPISchemaPath
 	ctx := context.Background()
