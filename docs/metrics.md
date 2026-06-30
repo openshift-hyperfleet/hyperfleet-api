@@ -99,68 +99,78 @@ hyperfleet_api_request_duration_seconds_sum{component="api",version="abc123",cod
 hyperfleet_api_request_duration_seconds_count{component="api",version="abc123",code="200",method="GET",path="/api/hyperfleet/v1/clusters"} 1523
 ```
 
-### Deletion Observability Metrics
+### Reconciliation Observability Metrics
 
-These metrics track resources in the Pending Deletion state (`deleted_time` set, pending hard-delete by adapters).
+These metrics track resources pending reconciliation — both normal lifecycle (create/update) and deletion lifecycle. The `is_delete` label distinguishes the two.
 
-#### `hyperfleet_api_resource_pending_deletion_total`
+#### `hyperfleet_api_reconciliation_started_total`
 
 **Type:** Counter
 
-**Description:** Total number of resources that entered the Pending Deletion state (`deleted_time` set).
+**Description:** Total number of resources that entered the unreconciled state (Reconciled condition transitioned to False). Incremented only after the transition is persisted to the database.
 
 **Labels:**
 
 | Label | Description | Example Values |
 |-------|-------------|----------------|
 | `resource_type` | Type of resource | `cluster`, `nodepool` |
-| `component` | Component name | `api` |
-| `version` | Application version | `abc123` |
+| `is_delete` | Whether this is a deletion reconciliation | `true`, `false` |
+| `component` | Component name (const) | `api` |
+| `version` | Application version (const) | `abc123` |
 
 **Example output:**
 
 ```text
-hyperfleet_api_resource_pending_deletion_total{component="api",resource_type="cluster",version="abc123"} 42
-hyperfleet_api_resource_pending_deletion_total{component="api",resource_type="nodepool",version="abc123"} 156
+hyperfleet_api_reconciliation_started_total{component="api",is_delete="false",resource_type="cluster",version="abc123"} 42
+hyperfleet_api_reconciliation_started_total{component="api",is_delete="true",resource_type="nodepool",version="abc123"} 12
 ```
 
-#### `hyperfleet_api_resource_pending_deletion_duration_seconds`
-
-**Type:** Histogram
-
-**Description:** Duration from pending deletion (`deleted_time` set) to hard-delete completion in seconds. Observed when a resource is hard-deleted after all adapters report `Finalized=True`.
-
-**Labels:** Same as `hyperfleet_api_resource_pending_deletion_total`
-
-**Buckets:** `1s`, `5s`, `10s`, `30s`, `60s`, `120s`, `300s`, `600s`, `1800s`, `3600s`
-
-**Note:** This metric is populated when the hard-delete flow is active. See the [hard-delete design](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/components/api-service/hard-delete-design.md) for details.
-
-#### `hyperfleet_api_resource_pending_deletion_stuck`
+#### `hyperfleet_api_resource_pending_reconciliation`
 
 **Type:** Gauge (Collector)
 
-**Description:** Number of resources in Pending Deletion state beyond the stuck threshold (default 30 minutes). This gauge is computed on each Prometheus scrape by querying the database for resources with `deleted_time` set before the threshold.
+**Description:** Number of resources currently pending reconciliation (Reconciled=False). Computed on each Prometheus scrape via a SQL query against the database.
 
-**Labels:** Same as `hyperfleet_api_resource_pending_deletion_total`
+**Labels:** Same as `hyperfleet_api_reconciliation_started_total`
 
-**Configuration:** The stuck threshold is configurable via `--metrics-deletion-stuck-threshold` (default `30m`).
+**Behavior at zero:** When no resources are pending for a given `(resource_type, is_delete)` combination, the series is absent rather than emitting 0. The `> 0` alert expressions handle this correctly.
+
+#### `hyperfleet_api_resource_pending_reconciliation_stuck`
+
+**Type:** Gauge (Collector)
+
+**Description:** Number of resources pending reconciliation beyond the stuck threshold (default 10 minutes). Identifies resources whose Reconciled condition has been False for longer than the configured threshold.
+
+**Labels:** Same as `hyperfleet_api_reconciliation_started_total`
+
+**Configuration:** The stuck threshold is configurable via `--metrics-reconciliation-stuck-threshold` (default `10m`).
+
+#### `hyperfleet_api_resource_pending_reconciliation_stuck_duration_seconds`
+
+**Type:** Gauge (Collector)
+
+**Description:** Maximum duration in seconds that any resource has been stuck pending reconciliation, per `(resource_type, is_delete)` combination.
+
+**Labels:** Same as `hyperfleet_api_reconciliation_started_total`
 
 **Example output:**
 
 ```text
-hyperfleet_api_resource_pending_deletion_stuck{component="api",resource_type="cluster",version="abc123"} 2
-hyperfleet_api_resource_pending_deletion_stuck{component="api",resource_type="nodepool",version="abc123"} 0
+hyperfleet_api_resource_pending_reconciliation{component="api",is_delete="false",resource_type="cluster",version="abc123"} 5
+hyperfleet_api_resource_pending_reconciliation_stuck{component="api",is_delete="false",resource_type="cluster",version="abc123"} 2
+hyperfleet_api_resource_pending_reconciliation_stuck_duration_seconds{component="api",is_delete="false",resource_type="cluster",version="abc123"} 1847.3
 ```
 
-### Deletion Alerts
+### Reconciliation Alerts
 
 Two alerts are available via the PrometheusRule (requires `monitoring.prometheusRule.enabled=true` in Helm values):
 
 | Alert | Severity | Condition | Description |
 |-------|----------|-----------|-------------|
-| `HyperFleetResourceDeletionStuckWarning` | Warning | `hyperfleet_api_resource_pending_deletion_stuck > 0` for 5m | Resources stuck in Pending Deletion beyond 35 minutes |
-| `HyperFleetResourceDeletionStuckCritical` | Critical | `hyperfleet_api_resource_pending_deletion_stuck > 0` for 30m | Resources stuck in Pending Deletion beyond 1 hour |
+| `HyperFleetResourceReconciliationStuckWarning` | Warning | `stuck > 0` for 5m | Resources stuck pending reconciliation beyond threshold + 5m |
+| `HyperFleetResourceReconciliationStuckCritical` | Critical | `stuck_duration_seconds > 1800` for 5m | Elapsed stuck duration exceeds 30m timeout (survives Prometheus restarts) |
+
+**Note:** The critical alert uses the collector-reported `stuck_duration_seconds` gauge rather than Prometheus `for` duration, so it fires immediately after a Prometheus restart if a resource has been stuck beyond the timeout. Both alerts cover deletion and normal (create/update) reconciliation. The `is_delete` label allows separate alerting rules if needed.
 
 ## Go Runtime Metrics
 
@@ -318,24 +328,23 @@ rate(process_cpu_seconds_total[5m])
 process_open_fds / process_max_fds * 100
 ```
 
-### Deletion Observability
+### Reconciliation Observability
 
 ```promql
-# Resources entering Pending Deletion state per minute
-sum by (resource_type) (rate(hyperfleet_api_resource_pending_deletion_total[5m])) * 60
+# Resources entering unreconciled state per minute
+sum by (resource_type, is_delete) (rate(hyperfleet_api_reconciliation_started_total[5m])) * 60
 
-# Resources currently stuck in Pending Deletion state (total)
-sum(hyperfleet_api_resource_pending_deletion_stuck)
+# Resources currently stuck pending reconciliation
+hyperfleet_api_resource_pending_reconciliation_stuck
 
-# Stuck resources by type
-hyperfleet_api_resource_pending_deletion_stuck
+# Stuck resources — deletion only
+hyperfleet_api_resource_pending_reconciliation_stuck{is_delete="true"}
 
-# Average pending deletion duration (once hard-delete is active)
-sum by (resource_type) (rate(hyperfleet_api_resource_pending_deletion_duration_seconds_sum[5m])) /
-sum by (resource_type) (rate(hyperfleet_api_resource_pending_deletion_duration_seconds_count[5m]))
+# Maximum stuck duration by type
+hyperfleet_api_resource_pending_reconciliation_stuck_duration_seconds
 
-# P99 pending deletion duration
-histogram_quantile(0.99, sum by (le, resource_type) (rate(hyperfleet_api_resource_pending_deletion_duration_seconds_bucket[5m])))
+# All pending resources by type
+hyperfleet_api_resource_pending_reconciliation
 ```
 
 ### Common Investigation Queries

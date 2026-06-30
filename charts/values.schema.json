@@ -764,9 +764,9 @@
               "type": "object",
               "description": "Alert rule definitions",
               "properties": {
-                "deletionStuck": {
+                "reconciliationStuck": {
                   "type": "object",
-                  "description": "Alert when a resource deletion is stuck beyond threshold",
+                  "description": "Alert when resource reconciliation is stuck beyond threshold",
                   "properties": {
                     "for": {
                       "type": "string",
@@ -778,13 +778,18 @@
                     }
                   }
                 },
-                "deletionTimeout": {
+                "reconciliationTimeout": {
                   "type": "object",
-                  "description": "Alert when a resource deletion exceeds the timeout window",
+                  "description": "Critical alert based on actual stuck duration (survives Prometheus restarts)",
                   "properties": {
+                    "durationSeconds": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "description": "Stuck duration in seconds that triggers the critical alert (default 1800)"
+                    },
                     "for": {
                       "type": "string",
-                      "description": "Duration the condition must hold before firing (e.g. 30m)"
+                      "description": "Stabilization window before firing (e.g. 5m)"
                     },
                     "runbookUrl": {
                       "type": "string",

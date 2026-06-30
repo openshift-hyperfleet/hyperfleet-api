@@ -155,7 +155,7 @@ helm install hyperfleet-api oci://REGISTRY/hyperfleet-api \
 | database.postgresql.persistence.enabled | bool | `false` | Enable persistent storage (uses emptyDir when disabled) |
 | database.postgresql.persistence.size | string | `"1Gi"` | Volume size |
 | database.postgresql.persistence.storageClass | string | `""` | StorageClass name (empty for cluster default) |
-| monitoring | object | `{"podMonitoring":{"additionalLabels":{},"enabled":false,"interval":"30s","metricRelabeling":[],"tlsConfig":{"insecureSkipVerify":false}},"prometheusRule":{"additionalLabels":{},"enabled":false,"namespace":"","rules":{"deletionStuck":{"for":"5m","runbookUrl":""},"deletionTimeout":{"for":"30m","runbookUrl":""}}}}` | Monitoring and alerting configuration |
+| monitoring | object | `{"podMonitoring":{"additionalLabels":{},"enabled":false,"interval":"30s","metricRelabeling":[],"tlsConfig":{"insecureSkipVerify":false}},"prometheusRule":{"additionalLabels":{},"enabled":false,"namespace":"","rules":{"reconciliationStuck":{"for":"5m","runbookUrl":""},"reconciliationTimeout":{"durationSeconds":1800,"for":"5m","runbookUrl":""}}}}` | Monitoring and alerting configuration |
 | monitoring.podMonitoring | object | `{"additionalLabels":{},"enabled":false,"interval":"30s","metricRelabeling":[],"tlsConfig":{"insecureSkipVerify":false}}` | PodMonitoring for Google Managed Prometheus (GMP) scraping |
 | monitoring.podMonitoring.enabled | bool | `false` | Create a PodMonitoring resource |
 | monitoring.podMonitoring.interval | string | `"30s"` | Scrape interval |
@@ -163,17 +163,18 @@ helm install hyperfleet-api oci://REGISTRY/hyperfleet-api \
 | monitoring.podMonitoring.metricRelabeling | list | `[]` | Metric relabel configs to apply to samples before ingestion |
 | monitoring.podMonitoring.tlsConfig | object | `{"insecureSkipVerify":false}` | TLS configuration when config.metrics.tls.enabled=true |
 | monitoring.podMonitoring.tlsConfig.insecureSkipVerify | bool | `false` | Disable target certificate validation (e.g. for self-signed certs) |
-| monitoring.prometheusRule | object | `{"additionalLabels":{},"enabled":false,"namespace":"","rules":{"deletionStuck":{"for":"5m","runbookUrl":""},"deletionTimeout":{"for":"30m","runbookUrl":""}}}` | PrometheusRule for alerting |
+| monitoring.prometheusRule | object | `{"additionalLabels":{},"enabled":false,"namespace":"","rules":{"reconciliationStuck":{"for":"5m","runbookUrl":""},"reconciliationTimeout":{"durationSeconds":1800,"for":"5m","runbookUrl":""}}}` | PrometheusRule for alerting |
 | monitoring.prometheusRule.enabled | bool | `false` | Create PrometheusRule resources |
 | monitoring.prometheusRule.additionalLabels | object | `{}` | Additional labels for PrometheusRule discovery |
 | monitoring.prometheusRule.namespace | string | `""` | Namespace to create the PrometheusRule in (defaults to release namespace) |
-| monitoring.prometheusRule.rules | object | `{"deletionStuck":{"for":"5m","runbookUrl":""},"deletionTimeout":{"for":"30m","runbookUrl":""}}` | Alert rule configuration |
-| monitoring.prometheusRule.rules.deletionStuck | object | `{"for":"5m","runbookUrl":""}` | Alert when a deletion is stuck |
-| monitoring.prometheusRule.rules.deletionStuck.for | string | `"5m"` | Duration before the alert fires |
-| monitoring.prometheusRule.rules.deletionStuck.runbookUrl | string | `""` | Runbook URL included in the alert |
-| monitoring.prometheusRule.rules.deletionTimeout | object | `{"for":"30m","runbookUrl":""}` | Alert when a deletion times out |
-| monitoring.prometheusRule.rules.deletionTimeout.for | string | `"30m"` | Duration before the alert fires |
-| monitoring.prometheusRule.rules.deletionTimeout.runbookUrl | string | `""` | Runbook URL included in the alert |
+| monitoring.prometheusRule.rules | object | `{"reconciliationStuck":{"for":"5m","runbookUrl":""},"reconciliationTimeout":{"durationSeconds":1800,"for":"5m","runbookUrl":""}}` | Alert rule configuration |
+| monitoring.prometheusRule.rules.reconciliationStuck | object | `{"for":"5m","runbookUrl":""}` | Alert when reconciliation is stuck |
+| monitoring.prometheusRule.rules.reconciliationStuck.for | string | `"5m"` | Duration before the alert fires |
+| monitoring.prometheusRule.rules.reconciliationStuck.runbookUrl | string | `""` | Runbook URL included in the alert |
+| monitoring.prometheusRule.rules.reconciliationTimeout | object | `{"durationSeconds":1800,"for":"5m","runbookUrl":""}` | Alert when reconciliation exceeds timeout (based on actual stuck duration, survives Prometheus restarts) |
+| monitoring.prometheusRule.rules.reconciliationTimeout.durationSeconds | int | `1800` | Stuck duration in seconds that triggers the critical alert |
+| monitoring.prometheusRule.rules.reconciliationTimeout.for | string | `"5m"` | Stabilization window before firing (short — the duration check is the real gate) |
+| monitoring.prometheusRule.rules.reconciliationTimeout.runbookUrl | string | `""` | Runbook URL included in the alert |
 | serviceMonitor | object | `{"enabled":false,"interval":"30s","labels":{},"namespace":"","scrapeTimeout":"10s"}` | ServiceMonitor for Prometheus Operator scrape configuration |
 | serviceMonitor.enabled | bool | `false` | Create a ServiceMonitor resource |
 | serviceMonitor.interval | string | `"30s"` | Scrape interval |
