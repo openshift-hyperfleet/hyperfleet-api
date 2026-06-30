@@ -178,8 +178,8 @@ config:
 
     # -- Duration window for label-based metric inclusion
     label_metrics_inclusion_duration: 168h
-    # -- Threshold after which a deletion is considered stuck
-    deletion_stuck_threshold: 30m
+    # -- Threshold after which a pending reconciliation is considered stuck
+    reconciliation_stuck_threshold: 10m
 
   # -- Health check endpoint settings
   health:
@@ -367,16 +367,18 @@ monitoring:
     namespace: ""
     # -- Alert rule configuration
     rules:
-      # -- Alert when a deletion is stuck
-      deletionStuck:
+      # -- Alert when reconciliation is stuck
+      reconciliationStuck:
         # -- Duration before the alert fires
         for: "5m"
         # -- Runbook URL included in the alert
         runbookUrl: ""
-      # -- Alert when a deletion times out
-      deletionTimeout:
-        # -- Duration before the alert fires
-        for: "30m"
+      # -- Alert when reconciliation exceeds timeout (based on actual stuck duration, survives Prometheus restarts)
+      reconciliationTimeout:
+        # -- Stuck duration in seconds that triggers the critical alert
+        durationSeconds: 1800
+        # -- Stabilization window before firing (short — the duration check is the real gate)
+        for: "5m"
         # -- Runbook URL included in the alert
         runbookUrl: ""
 

@@ -44,7 +44,7 @@ helm install hyperfleet-api oci://REGISTRY/hyperfleet-api \
 | ports.api | int | `8000` | API server port |
 | ports.health | int | `8080` | Health check endpoint port |
 | ports.metrics | int | `9090` | Prometheus metrics endpoint port |
-| config | object | `{"adapters":{"required":{"cluster":[],"nodepool":[]}},"database":{"debug":false,"dialect":"postgres","host":"","name":"hyperfleet","pool":{"conn_max_idle_time":"1m","conn_max_lifetime":"5m","conn_retry_attempts":10,"conn_retry_interval":"3s","max_connections":50,"max_idle_connections":10,"request_timeout":"30s"},"port":5432,"ssl":{"mode":"disable","root_cert_file":""}},"existingConfigMap":"","health":{"db_ping_timeout":"2s","host":"0.0.0.0","port":8080,"shutdown_timeout":"20s","tls":{"enabled":false}},"logging":{"format":"json","level":"info","masking":{"enabled":true,"fields":["password","secret","token","api_key","access_token","refresh_token","client_secret"],"headers":["Authorization","X-API-Key","Cookie","X-Auth-Token","X-Forwarded-Authorization","X-HyperFleet-Identity"]},"otel":{"enabled":false},"output":"stdout"},"metrics":{"deletion_stuck_threshold":"30m","host":"0.0.0.0","label_metrics_inclusion_duration":"168h","port":9090,"tls":{"enabled":false}},"server":{"host":"0.0.0.0","hostname":"","identity_header":"","jwk":{"cert_file":"","cert_url":""},"jwt":{"audience":"","enabled":false,"identity_claim":"email","issuer_url":""},"port":8000,"timeouts":{"read":"5s","write":"30s"},"tls":{"cert_file":"","enabled":false,"key_file":""}}}` | Application configuration. All settings in this section generate the ConfigMap consumed by the API server. Set `config.existingConfigMap` to use a pre-existing ConfigMap instead. |
+| config | object | `{"adapters":{"required":{"cluster":[],"nodepool":[]}},"database":{"debug":false,"dialect":"postgres","host":"","name":"hyperfleet","pool":{"conn_max_idle_time":"1m","conn_max_lifetime":"5m","conn_retry_attempts":10,"conn_retry_interval":"3s","max_connections":50,"max_idle_connections":10,"request_timeout":"30s"},"port":5432,"ssl":{"mode":"disable","root_cert_file":""}},"existingConfigMap":"","health":{"db_ping_timeout":"2s","host":"0.0.0.0","port":8080,"shutdown_timeout":"20s","tls":{"enabled":false}},"logging":{"format":"json","level":"info","masking":{"enabled":true,"fields":["password","secret","token","api_key","access_token","refresh_token","client_secret"],"headers":["Authorization","X-API-Key","Cookie","X-Auth-Token","X-Forwarded-Authorization","X-HyperFleet-Identity"]},"otel":{"enabled":false},"output":"stdout"},"metrics":{"host":"0.0.0.0","label_metrics_inclusion_duration":"168h","port":9090,"reconciliation_stuck_threshold":"10m","tls":{"enabled":false}},"server":{"host":"0.0.0.0","hostname":"","identity_header":"","jwk":{"cert_file":"","cert_url":""},"jwt":{"audience":"","enabled":false,"identity_claim":"email","issuer_url":""},"port":8000,"timeouts":{"read":"5s","write":"30s"},"tls":{"cert_file":"","enabled":false,"key_file":""}}}` | Application configuration. All settings in this section generate the ConfigMap consumed by the API server. Set `config.existingConfigMap` to use a pre-existing ConfigMap instead. |
 | config.existingConfigMap | string | `""` | Use an existing ConfigMap instead of generating one. When set, all other `config.*` values are ignored. |
 | config.server | object | `{"host":"0.0.0.0","hostname":"","identity_header":"","jwk":{"cert_file":"","cert_url":""},"jwt":{"audience":"","enabled":false,"identity_claim":"email","issuer_url":""},"port":8000,"timeouts":{"read":"5s","write":"30s"},"tls":{"cert_file":"","enabled":false,"key_file":""}}` | HTTP server settings |
 | config.server.hostname | string | `""` | Public hostname advertised by the API (leave empty for auto-detect) |
@@ -93,13 +93,13 @@ helm install hyperfleet-api oci://REGISTRY/hyperfleet-api \
 | config.logging.masking.enabled | bool | `true` | Enable log masking |
 | config.logging.masking.headers | list | `["Authorization","X-API-Key","Cookie","X-Auth-Token","X-Forwarded-Authorization","X-HyperFleet-Identity"]` | HTTP headers whose values are redacted in logs |
 | config.logging.masking.fields | list | `["password","secret","token","api_key","access_token","refresh_token","client_secret"]` | Field names whose values are redacted in logs |
-| config.metrics | object | `{"deletion_stuck_threshold":"30m","host":"0.0.0.0","label_metrics_inclusion_duration":"168h","port":9090,"tls":{"enabled":false}}` | Prometheus metrics endpoint settings |
+| config.metrics | object | `{"host":"0.0.0.0","label_metrics_inclusion_duration":"168h","port":9090,"reconciliation_stuck_threshold":"10m","tls":{"enabled":false}}` | Prometheus metrics endpoint settings |
 | config.metrics.host | string | `"0.0.0.0"` | Listen address (must be `0.0.0.0` for in-cluster access) |
 | config.metrics.port | int | `9090` | Listen port (must match `ports.metrics`) |
 | config.metrics.tls | object | `{"enabled":false}` | TLS configuration for the metrics endpoint |
 | config.metrics.tls.enabled | bool | `false` | Enable TLS on the metrics endpoint |
 | config.metrics.label_metrics_inclusion_duration | string | `"168h"` | Duration window for label-based metric inclusion |
-| config.metrics.deletion_stuck_threshold | string | `"30m"` | Threshold after which a deletion is considered stuck |
+| config.metrics.reconciliation_stuck_threshold | string | `"10m"` | Threshold after which a pending reconciliation is considered stuck |
 | config.health | object | `{"db_ping_timeout":"2s","host":"0.0.0.0","port":8080,"shutdown_timeout":"20s","tls":{"enabled":false}}` | Health check endpoint settings |
 | config.health.host | string | `"0.0.0.0"` | Listen address (must be `0.0.0.0` for probe access) |
 | config.health.port | int | `8080` | Listen port (must match `ports.health`) |
@@ -155,7 +155,7 @@ helm install hyperfleet-api oci://REGISTRY/hyperfleet-api \
 | database.postgresql.persistence.enabled | bool | `false` | Enable persistent storage (uses emptyDir when disabled) |
 | database.postgresql.persistence.size | string | `"1Gi"` | Volume size |
 | database.postgresql.persistence.storageClass | string | `""` | StorageClass name (empty for cluster default) |
-| monitoring | object | `{"podMonitoring":{"additionalLabels":{},"enabled":false,"interval":"30s","metricRelabeling":[],"tlsConfig":{"insecureSkipVerify":false}},"prometheusRule":{"additionalLabels":{},"enabled":false,"namespace":"","rules":{"deletionStuck":{"for":"5m","runbookUrl":""},"deletionTimeout":{"for":"30m","runbookUrl":""}}}}` | Monitoring and alerting configuration |
+| monitoring | object | `{"podMonitoring":{"additionalLabels":{},"enabled":false,"interval":"30s","metricRelabeling":[],"tlsConfig":{"insecureSkipVerify":false}},"prometheusRule":{"additionalLabels":{},"enabled":false,"namespace":"","rules":{"reconciliationStuck":{"for":"5m","runbookUrl":""},"reconciliationTimeout":{"durationSeconds":1800,"for":"5m","runbookUrl":""}}}}` | Monitoring and alerting configuration |
 | monitoring.podMonitoring | object | `{"additionalLabels":{},"enabled":false,"interval":"30s","metricRelabeling":[],"tlsConfig":{"insecureSkipVerify":false}}` | PodMonitoring for Google Managed Prometheus (GMP) scraping |
 | monitoring.podMonitoring.enabled | bool | `false` | Create a PodMonitoring resource |
 | monitoring.podMonitoring.interval | string | `"30s"` | Scrape interval |
@@ -163,17 +163,18 @@ helm install hyperfleet-api oci://REGISTRY/hyperfleet-api \
 | monitoring.podMonitoring.metricRelabeling | list | `[]` | Metric relabel configs to apply to samples before ingestion |
 | monitoring.podMonitoring.tlsConfig | object | `{"insecureSkipVerify":false}` | TLS configuration when config.metrics.tls.enabled=true |
 | monitoring.podMonitoring.tlsConfig.insecureSkipVerify | bool | `false` | Disable target certificate validation (e.g. for self-signed certs) |
-| monitoring.prometheusRule | object | `{"additionalLabels":{},"enabled":false,"namespace":"","rules":{"deletionStuck":{"for":"5m","runbookUrl":""},"deletionTimeout":{"for":"30m","runbookUrl":""}}}` | PrometheusRule for alerting |
+| monitoring.prometheusRule | object | `{"additionalLabels":{},"enabled":false,"namespace":"","rules":{"reconciliationStuck":{"for":"5m","runbookUrl":""},"reconciliationTimeout":{"durationSeconds":1800,"for":"5m","runbookUrl":""}}}` | PrometheusRule for alerting |
 | monitoring.prometheusRule.enabled | bool | `false` | Create PrometheusRule resources |
 | monitoring.prometheusRule.additionalLabels | object | `{}` | Additional labels for PrometheusRule discovery |
 | monitoring.prometheusRule.namespace | string | `""` | Namespace to create the PrometheusRule in (defaults to release namespace) |
-| monitoring.prometheusRule.rules | object | `{"deletionStuck":{"for":"5m","runbookUrl":""},"deletionTimeout":{"for":"30m","runbookUrl":""}}` | Alert rule configuration |
-| monitoring.prometheusRule.rules.deletionStuck | object | `{"for":"5m","runbookUrl":""}` | Alert when a deletion is stuck |
-| monitoring.prometheusRule.rules.deletionStuck.for | string | `"5m"` | Duration before the alert fires |
-| monitoring.prometheusRule.rules.deletionStuck.runbookUrl | string | `""` | Runbook URL included in the alert |
-| monitoring.prometheusRule.rules.deletionTimeout | object | `{"for":"30m","runbookUrl":""}` | Alert when a deletion times out |
-| monitoring.prometheusRule.rules.deletionTimeout.for | string | `"30m"` | Duration before the alert fires |
-| monitoring.prometheusRule.rules.deletionTimeout.runbookUrl | string | `""` | Runbook URL included in the alert |
+| monitoring.prometheusRule.rules | object | `{"reconciliationStuck":{"for":"5m","runbookUrl":""},"reconciliationTimeout":{"durationSeconds":1800,"for":"5m","runbookUrl":""}}` | Alert rule configuration |
+| monitoring.prometheusRule.rules.reconciliationStuck | object | `{"for":"5m","runbookUrl":""}` | Alert when reconciliation is stuck |
+| monitoring.prometheusRule.rules.reconciliationStuck.for | string | `"5m"` | Duration before the alert fires |
+| monitoring.prometheusRule.rules.reconciliationStuck.runbookUrl | string | `""` | Runbook URL included in the alert |
+| monitoring.prometheusRule.rules.reconciliationTimeout | object | `{"durationSeconds":1800,"for":"5m","runbookUrl":""}` | Alert when reconciliation exceeds timeout (based on actual stuck duration, survives Prometheus restarts) |
+| monitoring.prometheusRule.rules.reconciliationTimeout.durationSeconds | int | `1800` | Stuck duration in seconds that triggers the critical alert |
+| monitoring.prometheusRule.rules.reconciliationTimeout.for | string | `"5m"` | Stabilization window before firing (short — the duration check is the real gate) |
+| monitoring.prometheusRule.rules.reconciliationTimeout.runbookUrl | string | `""` | Runbook URL included in the alert |
 | serviceMonitor | object | `{"enabled":false,"interval":"30s","labels":{},"namespace":"","scrapeTimeout":"10s"}` | ServiceMonitor for Prometheus Operator scrape configuration |
 | serviceMonitor.enabled | bool | `false` | Create a ServiceMonitor resource |
 | serviceMonitor.interval | string | `"30s"` | Scrape interval |

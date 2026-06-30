@@ -15,30 +15,29 @@ metadata:
     {{- end }}
 spec:
   groups:
-    - name: hyperfleet-api-deletion
+    - name: hyperfleet-api-reconciliation
       rules:
-        - alert: HyperFleetResourceDeletionStuckWarning
-          expr: max by (namespace, resource_type)(hyperfleet_api_resource_pending_deletion_stuck) > 0
-          for: {{ .Values.monitoring.prometheusRule.rules.deletionStuck.for | default "5m" }}
+        - alert: HyperFleetResourceReconciliationStuckWarning
+          expr: max by (namespace, resource_type, is_delete)(hyperfleet_api_resource_pending_reconciliation_stuck) > 0
+          for: {{ .Values.monitoring.prometheusRule.rules.reconciliationStuck.for | default "5m" }}
           labels:
             severity: warning
           annotations:
-            summary: "HyperFleet resources stuck in Pending Deletion state"
+            summary: "HyperFleet resources stuck pending reconciliation"
             description: >-
-              {{ "{{ $value }}" }} {{ "{{ $labels.resource_type }}" }} resource(s) have been in
-              Pending Deletion state for more than {{ .Values.config.metrics.deletion_stuck_threshold | default "30m" }}
-              (stuck threshold) + {{ .Values.monitoring.prometheusRule.rules.deletionStuck.for | default "5m" }} (alert delay).
-            runbook_url: {{ .Values.monitoring.prometheusRule.rules.deletionStuck.runbookUrl | default "" | quote }}
-        - alert: HyperFleetResourceDeletionStuckCritical
-          expr: max by (namespace, resource_type)(hyperfleet_api_resource_pending_deletion_stuck) > 0
-          for: {{ .Values.monitoring.prometheusRule.rules.deletionTimeout.for | default "30m" }}
+              {{ "{{ $value }}" }} {{ "{{ $labels.resource_type }}" }} resource(s) (is_delete={{ "{{ $labels.is_delete }}" }}) have been
+              pending reconciliation for more than {{ .Values.config.metrics.reconciliation_stuck_threshold | default "10m" }}
+              (stuck threshold) + {{ .Values.monitoring.prometheusRule.rules.reconciliationStuck.for | default "5m" }} (alert delay).
+            runbook_url: {{ .Values.monitoring.prometheusRule.rules.reconciliationStuck.runbookUrl | default "" | quote }}
+        - alert: HyperFleetResourceReconciliationStuckCritical
+          expr: max by (namespace, resource_type, is_delete)(hyperfleet_api_resource_pending_reconciliation_stuck_duration_seconds) > {{ .Values.monitoring.prometheusRule.rules.reconciliationTimeout.durationSeconds | default 1800 }}
+          for: {{ .Values.monitoring.prometheusRule.rules.reconciliationTimeout.for | default "5m" }}
           labels:
             severity: critical
           annotations:
-            summary: "HyperFleet resources timed out in Pending Deletion state"
+            summary: "HyperFleet resources timed out pending reconciliation"
             description: >-
-              {{ "{{ $value }}" }} {{ "{{ $labels.resource_type }}" }} resource(s) have been in
-              Pending Deletion state for more than {{ .Values.config.metrics.deletion_stuck_threshold | default "30m" }}
-              (stuck threshold) + {{ .Values.monitoring.prometheusRule.rules.deletionTimeout.for | default "30m" }} (alert delay). Immediate investigation required.
-            runbook_url: {{ .Values.monitoring.prometheusRule.rules.deletionTimeout.runbookUrl | default "" | quote }}
+              {{ "{{ $labels.resource_type }}" }} resource(s) (is_delete={{ "{{ $labels.is_delete }}" }}) stuck for {{ "{{ $value | humanizeDuration }}" }},
+              exceeding the {{ .Values.monitoring.prometheusRule.rules.reconciliationTimeout.durationSeconds | default 1800 }}s timeout. Immediate investigation required.
+            runbook_url: {{ .Values.monitoring.prometheusRule.rules.reconciliationTimeout.runbookUrl | default "" | quote }}
 {{- end }}

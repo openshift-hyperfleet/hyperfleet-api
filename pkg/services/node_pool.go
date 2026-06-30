@@ -187,8 +187,6 @@ func (s *sqlNodePoolService) SoftDelete(ctx context.Context, nodePoolID string) 
 		return nil, handleSoftDeleteError(api.ResourceTypeNodePool, err)
 	}
 
-	metrics.RecordPendingDeletion("nodepool")
-
 	updated, svcErr := s.UpdateNodePoolStatusFromAdapters(ctx, nodePool.ID)
 	if svcErr != nil {
 		return nil, svcErr
@@ -207,16 +205,15 @@ func (s *sqlNodePoolService) CascadeSoftDelete(
 		deletedTime = time.Now().UTC().Truncate(time.Microsecond)
 	}
 
-	var newlyDeleted int
 	for _, np := range nodePools {
 		if np.DeletedTime == nil {
 			np.MarkDeleted(deletedBy, deletedTime)
 			np.IncrementGeneration()
-			newlyDeleted++
 		}
 	}
 
-	if svcErr := recomputeNodePoolConditions(ctx, nodePools, s.adapterStatusDao, s.adapterConfig); svcErr != nil {
+	startedCount, svcErr := recomputeNodePoolConditions(ctx, nodePools, s.adapterStatusDao, s.adapterConfig)
+	if svcErr != nil {
 		return svcErr
 	}
 
@@ -224,8 +221,8 @@ func (s *sqlNodePoolService) CascadeSoftDelete(
 		return handleSoftDeleteError(api.ResourceTypeNodePool, err)
 	}
 
-	for range newlyDeleted {
-		metrics.RecordPendingDeletion("nodepool")
+	for range startedCount {
+		metrics.RecordReconciliationStarted("nodepool", true)
 	}
 
 	return nil
@@ -319,7 +316,7 @@ func (s *sqlNodePoolService) UpdateNodePoolStatusFromAdapters(
 func (s *sqlNodePoolService) recomputeAndSaveNodePoolStatus(
 	ctx context.Context, nodePool *api.NodePool, adapterStatuses api.AdapterStatusList,
 ) (*api.NodePool, *errors.ServiceError) {
-	conditionsJSON, svcErr := computeNodePoolConditionsJSON(
+	conditionsJSON, started, svcErr := computeNodePoolConditionsJSON(
 		ctx, nodePool, adapterStatuses, s.adapterConfig.RequiredNodePoolAdapters(),
 	)
 	if svcErr != nil {
@@ -334,6 +331,11 @@ func (s *sqlNodePoolService) recomputeAndSaveNodePoolStatus(
 	}
 
 	nodePool.StatusConditions = conditionsJSON
+
+	if started {
+		metrics.RecordReconciliationStarted("nodepool", nodePool.DeletedTime != nil)
+	}
+
 	return nodePool, nil
 }
 
