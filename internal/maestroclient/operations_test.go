@@ -6,11 +6,15 @@
 package maestroclient
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/manifest"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/constants"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/logger"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	workv1 "open-cluster-management.io/api/work/v1"
 )
@@ -206,4 +210,127 @@ func TestGenerationComparison(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestIsTransientGRPCError(t *testing.T) {
+	tests := []struct {
+		err      error
+		name     string
+		expected bool
+	}{
+		{
+			name:     "nil returns false",
+			err:      nil,
+			expected: false,
+		},
+		{
+			name:     "Unavailable returns true",
+			err:      status.Error(codes.Unavailable, "connection refused"),
+			expected: true,
+		},
+		{
+			name:     "InvalidArgument returns false",
+			err:      status.Error(codes.InvalidArgument, "bad request"),
+			expected: false,
+		},
+		{
+			name:     "NotFound returns false",
+			err:      status.Error(codes.NotFound, "not found"),
+			expected: false,
+		},
+		{
+			name:     "PermissionDenied returns false",
+			err:      status.Error(codes.PermissionDenied, "denied"),
+			expected: false,
+		},
+		{
+			name:     "non-gRPC error returns false",
+			err:      fmt.Errorf("plain error"),
+			expected: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isTransientGRPCError(tt.err); got != tt.expected {
+				t.Errorf("isTransientGRPCError() = %v, want %v", got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestRetryOnTransientGRPC(t *testing.T) {
+	client := &Client{log: logger.NewTestLogger()}
+	ctx := context.Background()
+
+	t.Run("succeeds first try", func(t *testing.T) {
+		calls := 0
+		err := client.retryOnTransientGRPC(ctx, func() error {
+			calls++
+			return nil
+		})
+		if err != nil {
+			t.Errorf("expected nil, got %v", err)
+		}
+		if calls != 1 {
+			t.Errorf("expected 1 call, got %d", calls)
+		}
+	})
+
+	t.Run("succeeds on second try", func(t *testing.T) {
+		calls := 0
+		err := client.retryOnTransientGRPC(ctx, func() error {
+			calls++
+			if calls == 1 {
+				return status.Error(codes.Unavailable, "transient")
+			}
+			return nil
+		})
+		if err != nil {
+			t.Errorf("expected nil, got %v", err)
+		}
+		if calls != 2 {
+			t.Errorf("expected 2 calls, got %d", calls)
+		}
+	})
+
+	t.Run("gives up after max attempts", func(t *testing.T) {
+		calls := 0
+		err := client.retryOnTransientGRPC(ctx, func() error {
+			calls++
+			return status.Error(codes.Unavailable, "always failing")
+		})
+		if err == nil {
+			t.Error("expected error, got nil")
+		}
+		if calls != grpcRetryMaxAttempts {
+			t.Errorf("expected %d calls, got %d", grpcRetryMaxAttempts, calls)
+		}
+	})
+
+	t.Run("no retry on non-transient error", func(t *testing.T) {
+		calls := 0
+		err := client.retryOnTransientGRPC(ctx, func() error {
+			calls++
+			return status.Error(codes.InvalidArgument, "bad request")
+		})
+		if err == nil {
+			t.Error("expected error, got nil")
+		}
+		if calls != 1 {
+			t.Errorf("expected 1 call, got %d", calls)
+		}
+	})
+
+	t.Run("respects context cancellation", func(t *testing.T) {
+		cancelCtx, cancel := context.WithCancel(ctx)
+		cancel()
+		calls := 0
+		err := client.retryOnTransientGRPC(cancelCtx, func() error {
+			calls++
+			return status.Error(codes.Unavailable, "transient")
+		})
+		if err != context.Canceled {
+			t.Errorf("expected context.Canceled, got %v", err)
+		}
+	})
 }

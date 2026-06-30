@@ -31,7 +31,7 @@ require (
 	k8s.io/apimachinery v0.36.2
 	k8s.io/client-go v0.36.2
 	open-cluster-management.io/api v1.3.0
-	open-cluster-management.io/sdk-go v1.3.0
+	open-cluster-management.io/sdk-go v1.3.1-0.20260630085947-ac9666c85f0a
 	sigs.k8s.io/controller-runtime v0.24.1
 	sigs.k8s.io/yaml v1.6.0
 )

@@ -557,7 +557,7 @@ func runServe(flags *pflag.FlagSet) error {
 	}
 
 	// Create the event handler and subscribe to broker
-	handler := executor.AlwaysAck(executor.WithMetrics(exec.CreateHandler(), metricsRecorder, log))
+	handler := executor.AlwaysAck(executor.WithMetrics(exec.CreateHandler(), metricsRecorder, log), log)
 
 	// Handle signals for graceful shutdown
 	sigCh := make(chan os.Signal, 1)
