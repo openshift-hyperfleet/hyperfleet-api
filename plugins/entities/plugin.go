@@ -38,21 +38,18 @@ func RegisterEntityRoutes(apiV1Router *mux.Router, resourceService services.Reso
 	for _, descriptor := range descriptors {
 		h := handlers.NewResourceHandler(descriptor, resourceService)
 
-		if descriptor.ParentKind == "" {
-			r := apiV1Router.PathPrefix("/" + descriptor.Plural).Subrouter()
-			r.HandleFunc("", h.List).Methods(http.MethodGet)
-			r.HandleFunc("", h.Create).Methods(http.MethodPost)
-			r.HandleFunc("/{id}", h.Get).Methods(http.MethodGet)
-			r.HandleFunc("/{id}", h.Patch).Methods(http.MethodPatch)
-			r.HandleFunc("/{id}", h.Delete).Methods(http.MethodDelete)
-		} else {
+		prefix := "/" + descriptor.Plural
+		if descriptor.ParentKind != "" {
 			parent := registry.MustGet(descriptor.ParentKind)
-			pr := apiV1Router.PathPrefix("/" + parent.Plural + "/{parent_id}/" + descriptor.Plural).Subrouter()
-			pr.HandleFunc("", h.ListByOwner).Methods(http.MethodGet)
-			pr.HandleFunc("", h.CreateWithOwner).Methods(http.MethodPost)
-			pr.HandleFunc("/{id}", h.GetByOwner).Methods(http.MethodGet)
-			pr.HandleFunc("/{id}", h.PatchByOwner).Methods(http.MethodPatch)
-			pr.HandleFunc("/{id}", h.DeleteByOwner).Methods(http.MethodDelete)
+			prefix = "/" + parent.Plural + "/{parent_id}/" + descriptor.Plural
 		}
+
+		r := apiV1Router.PathPrefix(prefix).Subrouter()
+		r.HandleFunc("", h.List).Methods(http.MethodGet)
+		r.HandleFunc("", h.Create).Methods(http.MethodPost)
+		r.HandleFunc("/{id}", h.Get).Methods(http.MethodGet)
+		r.HandleFunc("/{id}", h.Patch).Methods(http.MethodPatch)
+		r.HandleFunc("/{id}", h.Delete).Methods(http.MethodDelete)
+		r.HandleFunc("/{id}/force-delete", h.ForceDelete).Methods(http.MethodPost)
 	}
 }
