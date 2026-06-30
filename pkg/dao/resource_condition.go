@@ -2,16 +2,25 @@ package dao
 
 import (
 	"context"
+	"time"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
 )
 
 type ResourceConditionDao interface {
-	// UpdateConditions must be called within a write transaction — it performs
-	// delete+insert which is not atomic without one. Per ADR-0008, this is called
-	// from the adapter status upsert path (PUT), which has a transaction from
-	// TransactionMiddleware.
+	// UpdateConditions atomically replaces all condition rows for a resource.
+	//
+	// Prerequisites:
+	//   - Write transaction (delete+insert is not atomic without one).
+	//   - Caller holds a row lock on the parent resource (e.g. via GetForUpdate).
+	//     Without it, concurrent callers read stale state and the loser's
+	//     timestamp preservation computes against a pre-delete snapshot.
+	//
+	// Timestamp contract: for existing condition types, CreatedTime is always
+	// preserved and LastTransitionTime is preserved when status is unchanged.
+	// For new condition types, both are used as-is from the input — caller
+	// must populate them. Zero timestamps are defaulted to now.
 	UpdateConditions(ctx context.Context, resourceID string, conditions []api.ResourceCondition) error
 }
 
@@ -32,6 +41,7 @@ func (d *sqlResourceConditionDao) UpdateConditions(
 
 	var existing []api.ResourceCondition
 	if err := g2.Where("resource_id = ?", resourceID).Find(&existing).Error; err != nil {
+		db.MarkForRollback(ctx, err)
 		return err
 	}
 
@@ -40,6 +50,7 @@ func (d *sqlResourceConditionDao) UpdateConditions(
 		prevByType[c.Type] = c
 	}
 
+	now := time.Now().UTC().Truncate(time.Microsecond)
 	for i := range conditions {
 		conditions[i].ResourceID = resourceID
 		if prev, ok := prevByType[conditions[i].Type]; ok {
@@ -47,6 +58,15 @@ func (d *sqlResourceConditionDao) UpdateConditions(
 				conditions[i].LastTransitionTime = prev.LastTransitionTime
 			}
 			conditions[i].CreatedTime = prev.CreatedTime
+		}
+		if conditions[i].CreatedTime.IsZero() {
+			conditions[i].CreatedTime = now
+		}
+		if conditions[i].LastTransitionTime.IsZero() {
+			conditions[i].LastTransitionTime = now
+		}
+		if conditions[i].LastUpdatedTime.IsZero() {
+			conditions[i].LastUpdatedTime = now
 		}
 	}
 

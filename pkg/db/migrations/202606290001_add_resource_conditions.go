@@ -25,13 +25,6 @@ func addResourceConditions() *gormigrate.Migration {
 				return err
 			}
 
-			if err := tx.Exec(
-				"CREATE INDEX IF NOT EXISTS idx_resource_conditions_resource_id " +
-					"ON resource_conditions (resource_id);",
-			).Error; err != nil {
-				return err
-			}
-
 			return nil
 		},
 	}
