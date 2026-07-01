@@ -18,4 +18,5 @@ type EntityDescriptor struct {
 	OnParentDelete         OnParentDeletePolicy // only meaningful when ParentKind != ""
 	SearchDisallowedFields []string             // fields blocked from TSL search
 	RequiredAdapters       []string             // adapters that must finalize before hard-delete
+	RequireSpecSchema      bool                 // panic at startup if SpecSchemaName missing from spec
 }
