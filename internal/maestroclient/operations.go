@@ -36,23 +36,28 @@ func isTransientGRPCError(err error) bool {
 }
 
 func (c *Client) retryOnTransientGRPC(ctx context.Context, fn func() error) error {
+	var lastErr error
 	backoff := wait.Backoff{
 		Duration: grpcRetryBaseDelay,
 		Factor:   float64(grpcRetryMultiplier),
 		Steps:    grpcRetryMaxAttempts,
 	}
-	return wait.ExponentialBackoffWithContext(ctx, backoff, func(ctx context.Context) (bool, error) {
-		err := fn()
-		if err == nil {
+	waitErr := wait.ExponentialBackoffWithContext(ctx, backoff, func(ctx context.Context) (bool, error) {
+		lastErr = fn()
+		if lastErr == nil {
 			return true, nil
 		}
-		if !isTransientGRPCError(err) {
-			return false, err
+		if !isTransientGRPCError(lastErr) {
+			return false, lastErr
 		}
-		retryCtx := logger.WithErrorField(ctx, err)
+		retryCtx := logger.WithErrorField(ctx, lastErr)
 		c.log.Warn(retryCtx, "transient gRPC error, retrying")
 		return false, nil
 	})
+	if wait.Interrupted(waitErr) && lastErr != nil {
+		return lastErr
+	}
+	return waitErr
 }
 
 // CreateManifestWork creates a new ManifestWork for a target cluster (consumer)

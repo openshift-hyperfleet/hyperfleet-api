@@ -58,9 +58,11 @@ func AlwaysAck(h HandlerFunc, log logger.Logger) func(ctx context.Context, evt *
 			errCtx = logger.WithErrorField(errCtx, err)
 			log.Warn(errCtx, "event handler error (acked)")
 		} else if result != nil && result.Status == StatusFailed {
-			errCtx = logger.WithLogFields(errCtx, logger.LogFields{
-				"errors": result.Errors,
-			})
+			phases := make([]string, 0, len(result.Errors))
+			for phase := range result.Errors {
+				phases = append(phases, string(phase))
+			}
+			errCtx = logger.WithLogField(errCtx, "failed_phases", phases)
 			log.Warn(errCtx, "event handler failed (acked)")
 		}
 		return nil

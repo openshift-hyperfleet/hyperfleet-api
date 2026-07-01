@@ -2,7 +2,7 @@
 # Pre-built integration test image with envtest binaries
 # This eliminates the need for dynamic installation during test runtime
 
-FROM registry.access.redhat.com/ubi9/go-toolset:1.25
+FROM registry.access.redhat.com/ubi9/go-toolset:1.26
 
 # Install runtime dependencies as root, then switch back to non-root.
 USER root
