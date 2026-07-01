@@ -287,9 +287,12 @@ strategy:
   type: RollingUpdate
 
 # -- Seconds Kubernetes waits after SIGTERM before SIGKILL.
-# Must be > preStop sleep (5s) + API server shutdown (10s) + buffer.
-# The health server uses a separate 20s timeout for OTel cleanup.
-terminationGracePeriodSeconds: 30
+# Shutdown sequence is sequential: preStop sleep (5s) + health server (20s max)
+# + API server (10s max) + metrics server (10s max) + OTel (20s max) + DB close
+# (no timeout). Typical shutdown is ~8s total; worst case exceeds 60s.
+# Set to 70s to cover worst case with buffer. If the DB close hangs beyond
+# this, Kubernetes sends SIGKILL — acceptable as a last resort.
+terminationGracePeriodSeconds: 70
 
 # -- Node selector constraints for pod scheduling
 nodeSelector: {}

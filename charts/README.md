@@ -129,7 +129,7 @@ helm install hyperfleet-api oci://REGISTRY/hyperfleet-api \
 | resources | object | `{"limits":{"cpu":"500m","memory":"512Mi"},"requests":{"cpu":"100m","memory":"128Mi"}}` | CPU and memory resource requests and limits |
 | lifecycle | object | `{"preStop":{"exec":{"command":["/bin/sh","-c","sleep 5"]}}}` | Container lifecycle hooks. Use `preStop` to delay SIGTERM during rolling updates, giving the LoadBalancer time to drain the old pod. See HYPERFLEET-1306. |
 | strategy | object | `{"rollingUpdate":{"maxSurge":1,"maxUnavailable":0},"type":"RollingUpdate"}` | Deployment rollout strategy. `maxUnavailable: 0` ensures zero-downtime during rolling updates — the old pod stays until the new one is Ready. |
-| terminationGracePeriodSeconds | int | `30` | Seconds Kubernetes waits after SIGTERM before SIGKILL. Must be > preStop sleep (5s) + API server shutdown (10s) + buffer. The health server uses a separate 20s timeout for OTel cleanup. |
+| terminationGracePeriodSeconds | int | `70` | Seconds Kubernetes waits after SIGTERM before SIGKILL. Shutdown sequence is sequential: preStop sleep (5s) + health server (20s max) + API server (10s max) + metrics server (10s max) + OTel (20s max) + DB close (no timeout). Typical shutdown is ~8s total; worst case exceeds 60s. Set to 70s to cover worst case with buffer. If the DB close hangs beyond this, Kubernetes sends SIGKILL — acceptable as a last resort. |
 | nodeSelector | object | `{}` | Node selector constraints for pod scheduling |
 | tolerations | list | `[]` | Tolerations for pod scheduling |
 | affinity | object | `{}` | Affinity rules for pod scheduling |
