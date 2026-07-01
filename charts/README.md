@@ -128,7 +128,7 @@ helm install hyperfleet-api oci://REGISTRY/hyperfleet-api \
 | service.type | string | `"ClusterIP"` | Service type (`ClusterIP`, `LoadBalancer`, `NodePort`) |
 | resources | object | `{"limits":{"cpu":"500m","memory":"512Mi"},"requests":{"cpu":"100m","memory":"128Mi"}}` | CPU and memory resource requests and limits |
 | lifecycle | object | `{"preStop":{"exec":{"command":["/bin/sh","-c","sleep 5"]}}}` | Container lifecycle hooks. Use `preStop` to delay SIGTERM during rolling updates, giving the LoadBalancer time to drain the old pod. See HYPERFLEET-1306. |
-| strategy | object | Kubernetes default (25% maxUnavailable, 25% maxSurge) | Deployment rollout strategy. `maxUnavailable: 0` ensures zero-downtime during rolling updates — the old pod stays until the new one is Ready. |
+| strategy | object | `{"rollingUpdate":{"maxSurge":1,"maxUnavailable":0},"type":"RollingUpdate"}` | Deployment rollout strategy. `maxUnavailable: 0` ensures zero-downtime during rolling updates — the old pod stays until the new one is Ready. |
 | terminationGracePeriodSeconds | int | `30` | Seconds Kubernetes waits after SIGTERM before SIGKILL. Must be > preStop sleep (5s) + API server shutdown (10s) + buffer. The health server uses a separate 20s timeout for OTel cleanup. |
 | nodeSelector | object | `{}` | Node selector constraints for pod scheduling |
 | tolerations | list | `[]` | Tolerations for pod scheduling |

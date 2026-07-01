@@ -280,7 +280,6 @@ lifecycle:
 
 # -- Deployment rollout strategy. `maxUnavailable: 0` ensures zero-downtime
 # during rolling updates — the old pod stays until the new one is Ready.
-# @default -- Kubernetes default (25% maxUnavailable, 25% maxSurge)
 strategy:
   rollingUpdate:
     maxSurge: 1
