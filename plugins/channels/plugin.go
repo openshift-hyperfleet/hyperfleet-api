@@ -40,5 +40,6 @@ func init() {
 		r.HandleFunc("/{id}", h.Get).Methods(http.MethodGet)
 		r.HandleFunc("/{id}", h.Patch).Methods(http.MethodPatch)
 		r.HandleFunc("/{id}", h.Delete).Methods(http.MethodDelete)
+		r.HandleFunc("/{id}/force-delete", h.ForceDelete).Methods(http.MethodPost)
 	})
 }

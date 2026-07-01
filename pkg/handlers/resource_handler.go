@@ -275,3 +275,47 @@ func (h *ResourceHandler) DeleteByOwner(w http.ResponseWriter, r *http.Request) 
 	}
 	handleSoftDelete(w, r, cfg)
 }
+
+func (h *ResourceHandler) ForceDelete(w http.ResponseWriter, r *http.Request) {
+	var req openapi.ForceDeleteRequest
+	cfg := &handlerConfig{
+		MarshalInto: &req,
+		Validate: []validate{
+			validateNotEmpty(&req, "Reason", "reason"),
+			validateMaxLength(&req, "Reason", "reason", maxReasonLength),
+		},
+		Action: func() (interface{}, *errors.ServiceError) {
+			id := mux.Vars(r)["id"]
+			if err := h.service.ForceDelete(r.Context(), h.descriptor.Kind, id, req.Reason); err != nil {
+				return nil, err
+			}
+			return nil, nil
+		},
+	}
+	handleForceDelete(w, r, cfg)
+}
+
+func (h *ResourceHandler) ForceDeleteByOwner(w http.ResponseWriter, r *http.Request) {
+	var req openapi.ForceDeleteRequest
+	cfg := &handlerConfig{
+		MarshalInto: &req,
+		Validate: []validate{
+			validateNotEmpty(&req, "Reason", "reason"),
+			validateMaxLength(&req, "Reason", "reason", maxReasonLength),
+		},
+		Action: func() (interface{}, *errors.ServiceError) {
+			vars := mux.Vars(r)
+			parentID, id := vars["parent_id"], vars["id"]
+
+			if _, err := h.service.GetByOwner(r.Context(), h.descriptor.Kind, id, parentID); err != nil {
+				return nil, err
+			}
+
+			if err := h.service.ForceDelete(r.Context(), h.descriptor.Kind, id, req.Reason); err != nil {
+				return nil, err
+			}
+			return nil, nil
+		},
+	}
+	handleForceDelete(w, r, cfg)
+}
