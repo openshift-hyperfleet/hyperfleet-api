@@ -414,6 +414,73 @@
               }
             }
           }
+        },
+        "entities": {
+          "type": "array",
+          "description": "Entity descriptors registered at startup. Each entry auto-generates REST endpoints, spec validation, and delete policies.",
+          "items": {
+            "type": "object",
+            "required": ["kind", "plural"],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "description": "Discriminator value stored in Resource.Kind (e.g. Channel, Version)"
+              },
+              "plural": {
+                "type": "string",
+                "description": "URL path segment for this entity (e.g. channels, versions)"
+              },
+              "parent_kind": {
+                "type": "string",
+                "description": "Kind of the parent entity (empty for top-level entities)"
+              },
+              "on_parent_delete": {
+                "type": "string",
+                "enum": ["restrict", "cascade"],
+                "description": "Child behavior when parent is deleted (restrict or cascade)"
+              },
+              "spec_schema_name": {
+                "type": "string",
+                "description": "OpenAPI component name for spec field validation (e.g. ChannelSpec)"
+              },
+              "search_disallowed_fields": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Fields blocked from TSL search queries"
+              },
+              "required_adapters": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Adapters that must finalize before hard-delete"
+              },
+              "references": {
+                "type": "array",
+                "description": "Non-ownership associations to other entity types (HYPERFLEET-1156)",
+                "items": {
+                  "type": "object",
+                  "required": ["ref_type", "target_kind"],
+                  "properties": {
+                    "ref_type": {
+                      "type": "string",
+                      "description": "Key in the references map (e.g. wif_config)"
+                    },
+                    "target_kind": {
+                      "type": "string",
+                      "description": "Kind of the referenced entity (e.g. WifConfig)"
+                    },
+                    "min": {
+                      "type": "integer",
+                      "description": "Minimum references of this type (0 = optional)"
+                    },
+                    "max": {
+                      "type": "integer",
+                      "description": "Maximum references of this type (0 = unlimited)"
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },

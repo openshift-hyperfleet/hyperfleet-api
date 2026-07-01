@@ -19,6 +19,7 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/health"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/metrics"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/registry"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/telemetry"
 )
 
@@ -54,6 +55,12 @@ func runServe(cmd *cobra.Command, args []string) {
 	// Initialize() will apply environment-specific overrides (e.g., development disables JWT/TLS)
 	// and ensure SessionFactory, clients, services, handlers all use the correct config
 	environments.Environment().Config = cfg
+
+	// Load entity descriptors from config before services and routes are built.
+	// Descriptors must be registered before Initialize() because services call
+	// registry.MustGet() at construction time.
+	registry.LoadDescriptors(cfg.Entities)
+	registry.Validate()
 
 	// Initialize environment (applies overrides, creates SessionFactory, loads clients, services, handlers)
 	err = environments.Environment().Initialize()

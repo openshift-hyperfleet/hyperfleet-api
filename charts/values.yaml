@@ -208,6 +208,25 @@ config:
       # -- Required nodepool adapters (e.g. `["validation", "hypershift"]`)
       nodepool: []
 
+  # -- Entity descriptors registered at startup. Each entry auto-generates
+  # REST endpoints, spec validation, and delete policies.
+  # Cluster and NodePool use legacy typed handlers and are NOT listed here.
+  entities:
+    - kind: Channel
+      plural: channels
+      spec_schema_name: ChannelSpec
+      search_disallowed_fields: [spec]
+    - kind: Version
+      plural: versions
+      parent_kind: Channel
+      on_parent_delete: restrict
+      spec_schema_name: VersionSpec
+      search_disallowed_fields: [spec]
+    - kind: WifConfig
+      plural: wifconfigs
+      spec_schema_name: WifConfigSpec
+      search_disallowed_fields: [spec]
+
 # -- ServiceAccount configuration
 serviceAccount:
   # -- Create a ServiceAccount for the API server

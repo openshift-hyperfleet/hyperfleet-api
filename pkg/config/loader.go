@@ -365,6 +365,9 @@ func (l *ConfigLoader) bindAllEnvVars() {
 	// Adapters config
 	l.bindEnv("adapters.required.cluster")
 	l.bindEnv("adapters.required.nodepool")
+
+	// Entities: config-file-only (complex list-of-struct type).
+	// No env var or CLI flag bindings — loaded exclusively via YAML config.
 }
 
 // bindFlags binds command-line flags to their corresponding Viper config keys

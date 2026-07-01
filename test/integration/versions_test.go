@@ -11,9 +11,6 @@ import (
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/services"
-
-	_ "github.com/openshift-hyperfleet/hyperfleet-api/plugins/channels"
-	_ "github.com/openshift-hyperfleet/hyperfleet-api/plugins/versions"
 )
 
 func createTestChannel(t *testing.T, svc services.ResourceService) *api.Resource {

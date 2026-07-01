@@ -124,12 +124,9 @@ func (v *SchemaValidator) ValidateNodePoolSpec(spec map[string]interface{}) erro
 func (v *SchemaValidator) validateSpec(
 	spec map[string]interface{}, schemaRef *openapi3.SchemaRef, specTypeName string,
 ) error {
-	// Cast spec to interface{} for VisitJSON
 	var specData interface{} = spec
 
-	// Validate against schema
 	if err := schemaRef.Value.VisitJSON(specData); err != nil {
-		// Convert validation error to our error format with details
 		validationDetails := convertValidationError(err, "spec")
 		return errors.ValidationWithDetails(
 			fmt.Sprintf("Invalid %s", specTypeName),
@@ -146,36 +143,23 @@ func convertValidationError(err error, prefix string) []errors.ValidationDetail 
 
 	switch e := err.(type) {
 	case openapi3.MultiError:
-		// Recursively process each sub-error
 		for _, subErr := range e {
 			subDetails := convertValidationError(subErr, prefix)
 			details = append(details, subDetails...)
 		}
 	case *openapi3.SchemaError:
-		// Extract field path from SchemaError
 		field := prefix
-
-		// Use JSONPointer which contains the actual data path
-		// JSONPointer returns the path like ["platform", "gcp", "diskSize"]
 		if len(e.JSONPointer()) > 0 {
 			jsonPath := strings.Join(e.JSONPointer(), ".")
 			if jsonPath != "" {
 				field = prefix + "." + jsonPath
 			}
 		}
-
-		// Use the error message (Reason) which already contains field information
-		// Examples:
-		//   - "property 'region' is missing"
-		//   - "property 'unknownField' is unsupported"
-		//   - "number must be at least 10"
 		details = append(details, errors.ValidationDetail{
 			Field:   field,
 			Message: e.Reason,
 		})
 	default:
-		// Fallback for unknown error types
-		// Error message already contains the full description
 		details = append(details, errors.ValidationDetail{
 			Field:   prefix,
 			Message: err.Error(),
