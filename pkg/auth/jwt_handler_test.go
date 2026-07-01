@@ -19,6 +19,11 @@ import (
 
 const testKID = "test-key-1"
 
+// issuer1 builds a JWTIssuerHandlerConfig for the given server URL.
+func issuer1(keysURL, issuerURL string) JWTIssuerHandlerConfig {
+	return JWTIssuerHandlerConfig{KeysURL: keysURL, IssuerURL: issuerURL}
+}
+
 func TestJWTHandler(t *testing.T) {
 	RegisterTestingT(t)
 
@@ -34,8 +39,7 @@ func TestJWTHandler(t *testing.T) {
 	})
 
 	handler, err := NewJWTHandler(t.Context(), JWTHandlerConfig{
-		KeysURL:     jwksServer.URL,
-		IssuerURL:   "https://test-issuer.example.com",
+		Issuers:     []JWTIssuerHandlerConfig{issuer1(jwksServer.URL, "https://test-issuer.example.com")},
 		PublicPaths: []string{"^/healthz$", "^/openapi$"},
 		Next:        nextHandler,
 	})
@@ -64,9 +68,8 @@ func TestJWTHandler(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 		})
 		h, err := NewJWTHandler(t.Context(), JWTHandlerConfig{
-			KeysURL:   jwksServer.URL,
-			IssuerURL: "https://test-issuer.example.com",
-			Next:      claimsHandler,
+			Issuers: []JWTIssuerHandlerConfig{issuer1(jwksServer.URL, "https://test-issuer.example.com")},
+			Next:    claimsHandler,
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -173,6 +176,89 @@ func TestJWTHandler(t *testing.T) {
 	})
 }
 
+func TestJWTHandler_MultiIssuer(t *testing.T) {
+	RegisterTestingT(t)
+
+	keyA, err := rsa.GenerateKey(rand.Reader, 2048)
+	Expect(err).NotTo(HaveOccurred())
+	keyB, err := rsa.GenerateKey(rand.Reader, 2048)
+	Expect(err).NotTo(HaveOccurred())
+
+	serverA := newJWKSServer(t, &keyA.PublicKey)
+	defer serverA.Close()
+	serverB := newJWKSServer(t, &keyB.PublicKey)
+	defer serverB.Close()
+
+	handler, err := NewJWTHandler(t.Context(), JWTHandlerConfig{
+		Issuers: []JWTIssuerHandlerConfig{
+			{KeysURL: serverA.URL, IssuerURL: "https://idp-a.example.com"},
+			{KeysURL: serverB.URL, IssuerURL: "https://idp-b.example.com"},
+		},
+		Next: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			fmt.Fprint(w, "ok")
+		}),
+	})
+	Expect(err).NotTo(HaveOccurred())
+
+	t.Run("token from issuer A accepted", func(t *testing.T) {
+		RegisterTestingT(t)
+		token := signToken(t, keyA, jwt.MapClaims{
+			"iss": "https://idp-a.example.com",
+			"exp": time.Now().Add(time.Hour).Unix(),
+		})
+		rr := serve(handler, "/protected", "Bearer "+token)
+		Expect(rr.Code).To(Equal(http.StatusOK))
+	})
+
+	t.Run("token from issuer B accepted", func(t *testing.T) {
+		RegisterTestingT(t)
+		token := signToken(t, keyB, jwt.MapClaims{
+			"iss": "https://idp-b.example.com",
+			"exp": time.Now().Add(time.Hour).Unix(),
+		})
+		rr := serve(handler, "/protected", "Bearer "+token)
+		Expect(rr.Code).To(Equal(http.StatusOK))
+	})
+
+	t.Run("token from unknown issuer rejected", func(t *testing.T) {
+		RegisterTestingT(t)
+		unknownKey, err := rsa.GenerateKey(rand.Reader, 2048)
+		Expect(err).NotTo(HaveOccurred())
+		token := signToken(t, unknownKey, jwt.MapClaims{
+			"iss": "https://idp-c.example.com",
+			"exp": time.Now().Add(time.Hour).Unix(),
+		})
+		rr := serve(handler, "/protected", "Bearer "+token)
+		Expect(rr.Code).To(Equal(http.StatusUnauthorized))
+	})
+
+	t.Run("matched identity config stored in context", func(t *testing.T) {
+		RegisterTestingT(t)
+		identityHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			cfg, _, ok := GetMatchedIdentityConfig(r.Context())
+			Expect(ok).To(BeTrue())
+			fmt.Fprint(w, cfg.JWTIdentityClaim)
+			w.WriteHeader(http.StatusOK)
+		})
+		h, err := NewJWTHandler(t.Context(), JWTHandlerConfig{
+			Issuers: []JWTIssuerHandlerConfig{
+				{KeysURL: serverA.URL, IssuerURL: "https://idp-a.example.com", IdentityClaim: "email"},
+				{KeysURL: serverB.URL, IssuerURL: "https://idp-b.example.com", IdentityClaim: "sub"},
+			},
+			Next: identityHandler,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		token := signToken(t, keyB, jwt.MapClaims{
+			"iss": "https://idp-b.example.com",
+			"exp": time.Now().Add(time.Hour).Unix(),
+		})
+		rr := serve(h, "/protected", "Bearer "+token)
+		Expect(rr.Body.String()).To(Equal("sub"))
+	})
+}
+
 func TestJWTHandler_FailClosed_NoValidKeys(t *testing.T) {
 	RegisterTestingT(t)
 
@@ -185,8 +271,7 @@ func TestJWTHandler_FailClosed_NoValidKeys(t *testing.T) {
 	defer badServer.Close()
 
 	handler, err := NewJWTHandler(t.Context(), JWTHandlerConfig{
-		KeysURL:   badServer.URL,
-		IssuerURL: "https://test-issuer.example.com",
+		Issuers: []JWTIssuerHandlerConfig{issuer1(badServer.URL, "https://test-issuer.example.com")},
 		Next: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
 		}),
@@ -201,12 +286,22 @@ func TestJWTHandler_FailClosed_NoValidKeys(t *testing.T) {
 	Expect(rr.Code).To(Equal(http.StatusUnauthorized))
 }
 
+func TestJWTHandler_RequiresIssuers(t *testing.T) {
+	RegisterTestingT(t)
+
+	_, err := NewJWTHandler(t.Context(), JWTHandlerConfig{
+		Next: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}),
+	})
+	Expect(err).To(HaveOccurred())
+	Expect(err.Error()).To(ContainSubstring("at least one issuer"))
+}
+
 func TestJWTHandler_RequiresKeysConfig(t *testing.T) {
 	RegisterTestingT(t)
 
 	_, err := NewJWTHandler(t.Context(), JWTHandlerConfig{
-		IssuerURL: "https://test-issuer.example.com",
-		Next:      http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}),
+		Issuers: []JWTIssuerHandlerConfig{{IssuerURL: "https://test-issuer.example.com"}},
+		Next:    http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}),
 	})
 	Expect(err).To(HaveOccurred())
 	Expect(err.Error()).To(ContainSubstring("KeysFile or KeysURL"))
@@ -222,9 +317,11 @@ func TestJWTHandler_WithAudience(t *testing.T) {
 	defer jwksServer.Close()
 
 	handler, err := NewJWTHandler(t.Context(), JWTHandlerConfig{
-		KeysURL:   jwksServer.URL,
-		IssuerURL: "https://test-issuer.example.com",
-		Audience:  "my-api",
+		Issuers: []JWTIssuerHandlerConfig{{
+			KeysURL:   jwksServer.URL,
+			IssuerURL: "https://test-issuer.example.com",
+			Audience:  "my-api",
+		}},
 		Next: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
 		}),
@@ -264,8 +361,7 @@ func TestJWTHandler_WithoutAudience_AcceptsAny(t *testing.T) {
 	defer jwksServer.Close()
 
 	handler, err := NewJWTHandler(t.Context(), JWTHandlerConfig{
-		KeysURL:   jwksServer.URL,
-		IssuerURL: "https://test-issuer.example.com",
+		Issuers: []JWTIssuerHandlerConfig{issuer1(jwksServer.URL, "https://test-issuer.example.com")},
 		Next: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
 		}),
@@ -290,8 +386,10 @@ func TestJWTHandler_FileOnlyKeyfunc(t *testing.T) {
 	jwksFile := writeJWKSFile(t, &privateKey.PublicKey)
 
 	handler, err := NewJWTHandler(t.Context(), JWTHandlerConfig{
-		KeysFile:  jwksFile,
-		IssuerURL: "https://test-issuer.example.com",
+		Issuers: []JWTIssuerHandlerConfig{{
+			KeysFile:  jwksFile,
+			IssuerURL: "https://test-issuer.example.com",
+		}},
 		Next: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
 			fmt.Fprint(w, "ok")
@@ -336,9 +434,11 @@ func TestJWTHandler_CombinedKeyfunc(t *testing.T) {
 	defer jwksServer.Close()
 
 	handler, err := NewJWTHandler(t.Context(), JWTHandlerConfig{
-		KeysFile:  jwksFile,
-		KeysURL:   jwksServer.URL,
-		IssuerURL: "https://test-issuer.example.com",
+		Issuers: []JWTIssuerHandlerConfig{{
+			KeysFile:  jwksFile,
+			KeysURL:   jwksServer.URL,
+			IssuerURL: "https://test-issuer.example.com",
+		}},
 		Next: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
 		}),
@@ -383,9 +483,8 @@ func TestJWTHandler_Close(t *testing.T) {
 	defer jwksServer.Close()
 
 	handler, err := NewJWTHandler(t.Context(), JWTHandlerConfig{
-		KeysURL:   jwksServer.URL,
-		IssuerURL: "https://test-issuer.example.com",
-		Next:      http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}),
+		Issuers: []JWTIssuerHandlerConfig{issuer1(jwksServer.URL, "https://test-issuer.example.com")},
+		Next:    http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}),
 	})
 	Expect(err).NotTo(HaveOccurred())
 
@@ -403,9 +502,8 @@ func TestJWTHandler_ResponseBody(t *testing.T) {
 	defer jwksServer.Close()
 
 	handler, err := NewJWTHandler(t.Context(), JWTHandlerConfig{
-		KeysURL:   jwksServer.URL,
-		IssuerURL: "https://test-issuer.example.com",
-		Next:      http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) }),
+		Issuers: []JWTIssuerHandlerConfig{issuer1(jwksServer.URL, "https://test-issuer.example.com")},
+		Next:    http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) }),
 	})
 	Expect(err).NotTo(HaveOccurred())
 

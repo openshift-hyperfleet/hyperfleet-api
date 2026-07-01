@@ -3,6 +3,7 @@ package auth
 import (
 	"fmt"
 	"net/http"
+	"regexp"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/validation"
@@ -14,7 +15,8 @@ type CallerIdentityMiddleware interface {
 }
 
 type callerIdentityMiddleware struct {
-	cfg CallerIdentityConfig
+	compiledPattern *regexp.Regexp
+	cfg             CallerIdentityConfig
 }
 
 var _ CallerIdentityMiddleware = &callerIdentityMiddleware{}
@@ -25,11 +27,21 @@ func NewCallerIdentityMiddleware(cfg CallerIdentityConfig) (CallerIdentityMiddle
 			return nil, fmt.Errorf("identity header name %q is not allowed", cfg.HeaderName)
 		}
 	}
-	return &callerIdentityMiddleware{cfg: cfg}, nil
+	var compiledPattern *regexp.Regexp
+	if cfg.IdentityClaimPattern != "" {
+		var err error
+		compiledPattern, err = regexp.Compile(cfg.IdentityClaimPattern)
+		if err != nil {
+			return nil, fmt.Errorf("identity_claim_pattern is not a valid regex: %w", err)
+		}
+	}
+	return &callerIdentityMiddleware{cfg: cfg, compiledPattern: compiledPattern}, nil
 }
 
 // ResolveCallerIdentity attaches the resolved caller identity to the request context.
 // JWT validation is performed by JWTHandler; this middleware only resolves attribution.
+// When JWT is enabled, the matched issuer's identity config is read from the request context
+// (set by JWTHandler). When JWT is disabled, the static middleware config is used instead.
 func (m *callerIdentityMiddleware) ResolveCallerIdentity(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if shouldSkipCallerIdentity(r.URL.Path) {
@@ -38,7 +50,12 @@ func (m *callerIdentityMiddleware) ResolveCallerIdentity(next http.Handler) http
 		}
 
 		ctx := r.Context()
-		identity, err := CallerIdentityFromRequest(ctx, r, m.cfg)
+		cfg, pattern, ok := GetMatchedIdentityConfig(ctx)
+		if !ok {
+			cfg = m.cfg
+			pattern = m.compiledPattern
+		}
+		identity, err := CallerIdentityFromRequest(ctx, r, cfg, pattern)
 
 		if identity != "" {
 			ctx = SetUsernameContext(ctx, identity)

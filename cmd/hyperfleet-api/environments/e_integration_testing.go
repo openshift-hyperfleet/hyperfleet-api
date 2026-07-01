@@ -38,6 +38,15 @@ func (e *integrationTestingEnvImpl) OverrideConfig(c *config.ApplicationConfig) 
 		c.Database.SSL.Mode = SSLModeDisable
 	}
 
+	// JWT issuer config for integration tests.
+	// JWKCertURL is filled in later by StartJWKCertServerMock once the mock server is running.
+	c.Server.JWT.Enabled = true
+	c.Server.JWT.Configs = []config.JWTIssuerConfig{{
+		IssuerURL:     "https://hyperfleet.test/auth",
+		IdentityClaim: "email",
+		Header:        "X-HyperFleet-Identity",
+	}}
+
 	return nil
 }
 
