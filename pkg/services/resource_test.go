@@ -1151,6 +1151,21 @@ func setupDescriptorsWithRequiredAdapters() {
 	})
 }
 
+func setupDescriptorsWithCascadeAndRequiredAdapters() {
+	registry.Reset()
+	registry.Register(registry.EntityDescriptor{
+		Kind:   "Workspace",
+		Plural: "workspaces",
+	})
+	registry.Register(registry.EntityDescriptor{
+		Kind:             "Task",
+		Plural:           "tasks",
+		ParentKind:       "Workspace",
+		OnParentDelete:   registry.OnParentDeleteCascade,
+		RequiredAdapters: []string{"adapter1"},
+	})
+}
+
 func testResourceWithOwner(kind, id, name, ownerID string) *api.Resource {
 	spec, _ := json.Marshal(map[string]interface{}{"key": "value"})
 	r := &api.Resource{
@@ -1259,8 +1274,7 @@ func TestResourceService_Delete_DAOErrorCheckingSoftDeletedChildren(t *testing.T
 
 	// Create parent and child
 	parent := testResource("Channel", "ch-1", "beta")
-	child := testResource("Version", "v-1", "1.0.0")
-	child.OwnerID = &parent.ID
+	child := testResourceWithOwner("Version", "v-1", "1.0.0", parent.ID)
 	mockDao.addResource(parent)
 	mockDao.addResource(child)
 
@@ -1277,4 +1291,37 @@ func TestResourceService_Delete_DAOErrorCheckingSoftDeletedChildren(t *testing.T
 	Expect(svcErr).NotTo(BeNil())
 	Expect(svcErr.RFC9457Code).To(Equal("HYPERFLEET-INT-001"))
 	Expect(svcErr.Reason).To(ContainSubstring("Unable to check soft-deleted Version children"))
+}
+
+// TestResourceService_Delete_CascadeParentSoftDeletedWhileChildSoftDeleted validates AC #4:
+// "For generic resources using OnParentDeleteCascade, a parent with a soft-deleted child
+// that has RequiredAdapters is not hard-deleted while the child row remains."
+func TestResourceService_Delete_CascadeParentSoftDeletedWhileChildSoftDeleted(t *testing.T) {
+	RegisterTestingT(t)
+	setupDescriptorsWithCascadeAndRequiredAdapters()
+
+	mockDao := newMockResourceDao()
+	svc, _, _ := newTestResourceService(mockDao)
+
+	// Create parent and child
+	workspace := testResource("Workspace", "ws-1", "dev")
+	mockDao.addResource(workspace)
+
+	task := testResourceWithOwner("Task", "t-1", "build", "ws-1")
+	mockDao.addResource(task)
+
+	// Delete Workspace → cascade-deletes Task (soft-delete because Task has RequiredAdapters)
+	// → Workspace should be soft-deleted (soft-deleted child exists)
+	_, svcErr := svc.Delete(context.Background(), "Workspace", "ws-1")
+	Expect(svcErr).To(BeNil())
+
+	// Verify Workspace is soft-deleted (not hard-deleted)
+	ws := mockDao.resources[resourceKey("Workspace", "ws-1")]
+	Expect(ws).ToNot(BeNil(), "Workspace should still exist (soft-deleted)")
+	Expect(ws.DeletedTime).ToNot(BeNil(), "Workspace should have deleted_time set")
+
+	// Verify Task was cascade-deleted and is also soft-deleted
+	tk := mockDao.resources[resourceKey("Task", "t-1")]
+	Expect(tk).ToNot(BeNil(), "Task should still exist (soft-deleted)")
+	Expect(tk.DeletedTime).ToNot(BeNil(), "Task should have deleted_time set")
 }

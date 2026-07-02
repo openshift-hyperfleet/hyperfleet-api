@@ -19,19 +19,15 @@ func TestResourceDelete_ParentChildWithRequiredAdapters(t *testing.T) {
 		RegisterTestingT(t)
 		svc, h := setupResourceTest(t)
 
-		// Ensure Version has RequiredAdapters for this test
-		versionDesc := registry.MustGet("Version")
-		originalAdapters := versionDesc.RequiredAdapters
-		if len(originalAdapters) == 0 {
+		// Temporarily add RequiredAdapters to Version for this test
+		registry.UpdateDescriptor("Version", func(d *registry.EntityDescriptor) {
+			d.RequiredAdapters = []string{"test-adapter"}
+		})
+		t.Cleanup(func() {
 			registry.UpdateDescriptor("Version", func(d *registry.EntityDescriptor) {
-				d.RequiredAdapters = []string{"test-adapter"}
+				d.RequiredAdapters = nil
 			})
-			defer func() {
-				registry.UpdateDescriptor("Version", func(d *registry.EntityDescriptor) {
-					d.RequiredAdapters = originalAdapters
-				})
-			}()
-		}
+		})
 
 		// Create Channel (parent)
 		channelName := fmt.Sprintf("test-delete-channel-%s", uuid.NewString()[:8])
@@ -117,18 +113,14 @@ func TestResourceDelete_ParentChildWithRequiredAdapters(t *testing.T) {
 		svc, h := setupResourceTest(t)
 
 		// Ensure Channel has NO RequiredAdapters for this test
-		channelDesc := registry.MustGet("Channel")
-		originalAdapters := channelDesc.RequiredAdapters
-		if len(originalAdapters) > 0 {
+		registry.UpdateDescriptor("Channel", func(d *registry.EntityDescriptor) {
+			d.RequiredAdapters = nil
+		})
+		t.Cleanup(func() {
 			registry.UpdateDescriptor("Channel", func(d *registry.EntityDescriptor) {
-				d.RequiredAdapters = []string{}
+				d.RequiredAdapters = nil
 			})
-			defer func() {
-				registry.UpdateDescriptor("Channel", func(d *registry.EntityDescriptor) {
-					d.RequiredAdapters = originalAdapters
-				})
-			}()
-		}
+		})
 
 		// Create Channel without children
 		channelName := fmt.Sprintf("test-delete-orphan-%s", uuid.NewString()[:8])
@@ -185,18 +177,14 @@ func TestResourceDelete_WithoutRequiredAdapters(t *testing.T) {
 		RegisterTestingT(t)
 
 		// Ensure Version has NO RequiredAdapters for this test
-		versionDesc := registry.MustGet("Version")
-		originalAdapters := versionDesc.RequiredAdapters
-		if len(originalAdapters) > 0 {
+		registry.UpdateDescriptor("Version", func(d *registry.EntityDescriptor) {
+			d.RequiredAdapters = nil
+		})
+		t.Cleanup(func() {
 			registry.UpdateDescriptor("Version", func(d *registry.EntityDescriptor) {
-				d.RequiredAdapters = []string{}
+				d.RequiredAdapters = nil
 			})
-			defer func() {
-				registry.UpdateDescriptor("Version", func(d *registry.EntityDescriptor) {
-					d.RequiredAdapters = originalAdapters
-				})
-			}()
-		}
+		})
 
 		svc, h := setupResourceTest(t)
 
