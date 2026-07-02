@@ -23,11 +23,13 @@ func TestResourceDelete_ParentChildWithRequiredAdapters(t *testing.T) {
 		versionDesc := registry.MustGet("Version")
 		originalAdapters := versionDesc.RequiredAdapters
 		if len(originalAdapters) == 0 {
-			versionDesc.RequiredAdapters = []string{"test-adapter"}
-			registry.Register(versionDesc)
+			registry.UpdateDescriptor("Version", func(d *registry.EntityDescriptor) {
+				d.RequiredAdapters = []string{"test-adapter"}
+			})
 			defer func() {
-				versionDesc.RequiredAdapters = originalAdapters
-				registry.Register(versionDesc)
+				registry.UpdateDescriptor("Version", func(d *registry.EntityDescriptor) {
+					d.RequiredAdapters = originalAdapters
+				})
 			}()
 		}
 
@@ -118,11 +120,13 @@ func TestResourceDelete_ParentChildWithRequiredAdapters(t *testing.T) {
 		channelDesc := registry.MustGet("Channel")
 		originalAdapters := channelDesc.RequiredAdapters
 		if len(originalAdapters) > 0 {
-			channelDesc.RequiredAdapters = []string{}
-			registry.Register(channelDesc)
+			registry.UpdateDescriptor("Channel", func(d *registry.EntityDescriptor) {
+				d.RequiredAdapters = []string{}
+			})
 			defer func() {
-				channelDesc.RequiredAdapters = originalAdapters
-				registry.Register(channelDesc)
+				registry.UpdateDescriptor("Channel", func(d *registry.EntityDescriptor) {
+					d.RequiredAdapters = originalAdapters
+				})
 			}()
 		}
 
@@ -184,11 +188,13 @@ func TestResourceDelete_WithoutRequiredAdapters(t *testing.T) {
 		versionDesc := registry.MustGet("Version")
 		originalAdapters := versionDesc.RequiredAdapters
 		if len(originalAdapters) > 0 {
-			versionDesc.RequiredAdapters = []string{}
-			registry.Register(versionDesc)
+			registry.UpdateDescriptor("Version", func(d *registry.EntityDescriptor) {
+				d.RequiredAdapters = []string{}
+			})
 			defer func() {
-				versionDesc.RequiredAdapters = originalAdapters
-				registry.Register(versionDesc)
+				registry.UpdateDescriptor("Version", func(d *registry.EntityDescriptor) {
+					d.RequiredAdapters = originalAdapters
+				})
 			}()
 		}
 
