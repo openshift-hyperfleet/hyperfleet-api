@@ -121,7 +121,7 @@ func (d *sqlResourceDao) ExistsSoftDeletedByOwner(ctx context.Context, kinds []s
 	if err := g2.Raw(
 		"SELECT EXISTS(SELECT 1 FROM resources WHERE kind IN (?) AND owner_id = ? AND deleted_time IS NOT NULL)",
 		kinds, ownerID).Scan(&exists).Error; err != nil {
-		return false, err
+		return false, fmt.Errorf("failed to check soft-deleted children: %w", err)
 	}
 	return exists, nil
 }
