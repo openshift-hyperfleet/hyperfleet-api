@@ -58,3 +58,11 @@ func newVersionResource(name, channelID string) *api.Resource {
 		UpdatedBy: "test@example.com",
 	}
 }
+
+// hardDeleteResource directly deletes a resource from the database, bypassing service layer.
+// Used to simulate adapter finalization in tests.
+func hardDeleteResource(ctx context.Context, h *test.Helper, kind, id string) error {
+	dbSession := h.DBFactory.New(ctx)
+	result := dbSession.Where("kind = ? AND id = ?", kind, id).Delete(&api.Resource{})
+	return result.Error
+}

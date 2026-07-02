@@ -19,10 +19,16 @@ func TestResourceDelete_ParentChildWithRequiredAdapters(t *testing.T) {
 		RegisterTestingT(t)
 		svc, h := setupResourceTest(t)
 
-		// Verify Version has RequiredAdapters configured
+		// Ensure Version has RequiredAdapters for this test
 		versionDesc := registry.MustGet("Version")
-		if len(versionDesc.RequiredAdapters) == 0 {
-			t.Skip("Version does not have RequiredAdapters - cannot test soft-delete behavior")
+		originalAdapters := versionDesc.RequiredAdapters
+		if len(originalAdapters) == 0 {
+			versionDesc.RequiredAdapters = []string{"test-adapter"}
+			registry.Register(versionDesc)
+			defer func() {
+				versionDesc.RequiredAdapters = originalAdapters
+				registry.Register(versionDesc)
+			}()
 		}
 
 		// Create Channel (parent)
@@ -76,11 +82,49 @@ func TestResourceDelete_ParentChildWithRequiredAdapters(t *testing.T) {
 		Expect(err).To(BeNil(), "Both Channel and Version should still exist in DB (soft-deleted)")
 
 		t.Logf("✓ Channel was soft-deleted while Version is soft-deleted (fix working)")
+
+		// CONVERGENCE TEST: Simulate adapter finalization and verify parent can be hard-deleted
+		// This tests the re-evaluation path: soft-deleted parent → child removed → hard-delete
+		err = hardDeleteResource(t.Context(), h, "Version", createdVersion.ID)
+		Expect(err).To(BeNil(), "Direct DB deletion should succeed (simulates adapter finalization)")
+
+		// Verify Version is gone from database
+		err = checkResourceCount(t.Context(), h, []string{createdVersion.ID}, 0)
+		Expect(err).To(BeNil(), "Version should be hard-deleted from DB")
+
+		// Re-delete the soft-deleted Channel - should now hard-delete
+		// This exercises the re-evaluation: Channel was soft-deleted, child is now gone,
+		// so Delete() should detect no blockers and hard-delete the parent
+		_, svcErr = svc.Delete(t.Context(), "Channel", createdChannel.ID)
+		Expect(svcErr).To(BeNil(), "Channel re-delete should succeed")
+
+		// Verify Channel is hard-deleted (404)
+		_, svcErr = svc.Get(t.Context(), "Channel", createdChannel.ID)
+		Expect(svcErr).ToNot(BeNil(), "Should not retrieve hard-deleted Channel")
+		Expect(svcErr.HTTPCode).To(Equal(404), "Should return 404 for hard-deleted Channel")
+
+		// Verify Channel is gone from database
+		err = checkResourceCount(t.Context(), h, []string{createdChannel.ID}, 0)
+		Expect(err).To(BeNil(), "Channel should be hard-deleted after re-evaluation")
+
+		t.Logf("✓ Channel hard-deleted after child finalization (convergence working)")
 	})
 
 	t.Run("ParentHardDeletedAfterChildrenGone", func(t *testing.T) {
 		RegisterTestingT(t)
 		svc, h := setupResourceTest(t)
+
+		// Ensure Channel has NO RequiredAdapters for this test
+		channelDesc := registry.MustGet("Channel")
+		originalAdapters := channelDesc.RequiredAdapters
+		if len(originalAdapters) > 0 {
+			channelDesc.RequiredAdapters = []string{}
+			registry.Register(channelDesc)
+			defer func() {
+				channelDesc.RequiredAdapters = originalAdapters
+				registry.Register(channelDesc)
+			}()
+		}
 
 		// Create Channel without children
 		channelName := fmt.Sprintf("test-delete-orphan-%s", uuid.NewString()[:8])
@@ -88,28 +132,20 @@ func TestResourceDelete_ParentChildWithRequiredAdapters(t *testing.T) {
 		createdChannel, svcErr := svc.Create(t.Context(), "Channel", channel)
 		Expect(svcErr).To(BeNil(), "Channel creation should succeed")
 
-		// Delete Channel (no children) - should be HARD-DELETED
-		deletedChannel, svcErr := svc.Delete(t.Context(), "Channel", createdChannel.ID)
+		// Delete Channel (no children, no RequiredAdapters) - should be HARD-DELETED
+		_, svcErr = svc.Delete(t.Context(), "Channel", createdChannel.ID)
 		Expect(svcErr).To(BeNil(), "Channel deletion should succeed")
 
-		// Channel has no RequiredAdapters and no children, so it should be hard-deleted
-		channelDesc := registry.MustGet("Channel")
-		if len(channelDesc.RequiredAdapters) == 0 {
-			// Verify Channel is hard-deleted (removed from DB)
-			_, svcErr := svc.Get(t.Context(), "Channel", createdChannel.ID)
-			Expect(svcErr).ToNot(BeNil(), "Should not retrieve hard-deleted Channel")
-			Expect(svcErr.HTTPCode).To(Equal(404), "Should return 404 for hard-deleted resource")
+		// Verify Channel is hard-deleted (removed from DB)
+		_, svcErr = svc.Get(t.Context(), "Channel", createdChannel.ID)
+		Expect(svcErr).ToNot(BeNil(), "Should not retrieve hard-deleted Channel")
+		Expect(svcErr.HTTPCode).To(Equal(404), "Should return 404 for hard-deleted resource")
 
-			// Verify Channel no longer exists in database
-			err := checkResourceCount(t.Context(), h, []string{createdChannel.ID}, 0)
-			Expect(err).To(BeNil(), "Channel should be hard-deleted (not in DB)")
+		// Verify Channel no longer exists in database
+		err := checkResourceCount(t.Context(), h, []string{createdChannel.ID}, 0)
+		Expect(err).To(BeNil(), "Channel should be hard-deleted (not in DB)")
 
-			t.Logf("✓ Channel was hard-deleted when it has no children (no regression)")
-		} else {
-			// Channel has RequiredAdapters - will be soft-deleted
-			Expect(deletedChannel.DeletedTime).ToNot(BeNil(), "Channel should be soft-deleted")
-			t.Logf("ℹ Channel has RequiredAdapters - soft-deleted (expected)")
-		}
+		t.Logf("✓ Channel was hard-deleted when it has no children (no regression)")
 	})
 
 	t.Run("ActiveChildBlocksParentDelete", func(t *testing.T) {
@@ -144,10 +180,16 @@ func TestResourceDelete_WithoutRequiredAdapters(t *testing.T) {
 	t.Run("ChildHardDeletedImmediately", func(t *testing.T) {
 		RegisterTestingT(t)
 
-		// Check if Version has RequiredAdapters
+		// Ensure Version has NO RequiredAdapters for this test
 		versionDesc := registry.MustGet("Version")
-		if len(versionDesc.RequiredAdapters) > 0 {
-			t.Skip("Version has RequiredAdapters - this test requires no RequiredAdapters")
+		originalAdapters := versionDesc.RequiredAdapters
+		if len(originalAdapters) > 0 {
+			versionDesc.RequiredAdapters = []string{}
+			registry.Register(versionDesc)
+			defer func() {
+				versionDesc.RequiredAdapters = originalAdapters
+				registry.Register(versionDesc)
+			}()
 		}
 
 		svc, h := setupResourceTest(t)
