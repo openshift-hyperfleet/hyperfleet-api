@@ -119,6 +119,15 @@ func SchemaValidationMiddleware(validator *validators.SchemaValidator) func(http
 				return
 			}
 
+			// For root /resources endpoint, resolve the entity plural from body's kind field
+			if resourcePlural == "" {
+				resourcePlural = resolveRootResourcePlural(requestData)
+				if resourcePlural == "" {
+					next.ServeHTTP(w, r)
+					return
+				}
+			}
+
 			// Extract spec field
 			spec, ok := requestData["spec"]
 			if !ok {
@@ -156,11 +165,19 @@ func SchemaValidationMiddleware(validator *validators.SchemaValidator) func(http
 	}
 }
 
+// rootResourcePattern matches the /resources root endpoint (with or without a trailing UUID).
+var rootResourcePattern = regexp.MustCompile(
+	`/resources(?:/?|/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$`,
+)
+
 // shouldValidateRequest determines if the request requires spec validation.
 //
 // Each matcher's regex anchors at the end of the path, so when a path contains
 // multiple registered plurals (e.g. /clusters/{id}/nodepools), only the
 // rightmost (deepest) segment can match, and that match wins automatically.
+//
+// The root /resources endpoint is also matched; the caller must resolve the
+// entity plural from the request body's "kind" field (see resolveRootResourcePlural).
 func shouldValidateRequest(
 	method, path string, matchers []specEntityMatcher,
 ) (shouldValidate bool, resourcePlural string) {
@@ -168,14 +185,29 @@ func shouldValidateRequest(
 		return false, ""
 	}
 
-	shouldValidate = false
 	for _, m := range matchers {
-		shouldValidate = m.re.MatchString(path)
-		if shouldValidate {
-			resourcePlural = m.plural
-			break
+		if m.re.MatchString(path) {
+			return true, m.plural
 		}
 	}
 
-	return shouldValidate, resourcePlural
+	if rootResourcePattern.MatchString(path) {
+		return true, ""
+	}
+
+	return false, ""
+}
+
+// resolveRootResourcePlural extracts the entity kind from a parsed request body
+// and maps it to the descriptor's Plural for schema lookup.
+func resolveRootResourcePlural(requestData map[string]interface{}) string {
+	kind, ok := requestData["kind"].(string)
+	if !ok || kind == "" {
+		return ""
+	}
+	descriptor, found := registry.Get(kind)
+	if !found {
+		return ""
+	}
+	return descriptor.Plural
 }

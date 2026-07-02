@@ -1,6 +1,10 @@
 package registry
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
+)
 
 var descriptors = make(map[string]EntityDescriptor)
 
@@ -39,6 +43,17 @@ func MustGet(entityKind string) EntityDescriptor {
 		panic(fmt.Sprintf("entity kind %q not registered", entityKind))
 	}
 	return d
+}
+
+// Validated returns a descriptor by Kind, or a 400 ServiceError if kind is unregistered.
+// Shared by callers (services, handlers) that need to turn an unknown kind into a
+// client-facing validation error rather than a panic or a bare bool.
+func Validated(entityKind string) (EntityDescriptor, *errors.ServiceError) {
+	d, ok := Get(entityKind)
+	if !ok {
+		return EntityDescriptor{}, errors.Validation("Unknown entity kind: %s", entityKind)
+	}
+	return d, nil
 }
 
 // All returns a snapshot of all registered descriptors.

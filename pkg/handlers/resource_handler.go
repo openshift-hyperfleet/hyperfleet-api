@@ -56,6 +56,8 @@ func (h *ResourceHandler) Create(w http.ResponseWriter, r *http.Request) {
 					return nil, svcErr
 				}
 				resource, err = presenters.ConvertResourceWithOwner(&req, parent.ID, parent.Kind, parent.Href)
+			} else if h.descriptor.ParentKind != "" {
+				return nil, childCreateRejection(h.descriptor)
 			} else {
 				resource, err = presenters.ConvertResource(&req)
 			}
@@ -227,4 +229,14 @@ func (h *ResourceHandler) ForceDelete(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 	handleForceDelete(w, r, cfg)
+}
+
+func childCreateRejection(descriptor registry.EntityDescriptor) *errors.ServiceError {
+	parent := registry.MustGet(descriptor.ParentKind)
+	svcErr := errors.Validation(
+		"Cannot create %s here. Use POST /%s/{%s_id}/%s",
+		descriptor.Kind, parent.Plural, parent.Kind, descriptor.Plural,
+	)
+	svcErr.HTTPCode = http.StatusUnprocessableEntity
+	return svcErr
 }

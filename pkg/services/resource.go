@@ -26,6 +26,8 @@ type ResourceService interface {
 	GetByOwner(ctx context.Context, kind, id, ownerID string) (*api.Resource, *errors.ServiceError)
 	ListByOwner(ctx context.Context, kind, ownerID string, args *ListArguments) (api.ResourceList, *api.PagingMeta, *errors.ServiceError) // nolint:lll
 	ForceDelete(ctx context.Context, kind, id, reason string) *errors.ServiceError
+	GetByID(ctx context.Context, id string) (*api.Resource, *errors.ServiceError)
+	ListAll(ctx context.Context, args *ListArguments) (api.ResourceList, *api.PagingMeta, *errors.ServiceError)
 }
 
 func NewResourceService(resourceDao dao.ResourceDao, generic GenericService) ResourceService {
@@ -329,6 +331,30 @@ func (s *sqlResourceService) ListByOwner(
 
 	var resources []api.Resource
 	paging, svcErr := s.generic.List(ctx, &scopedArgs, &resources)
+	if svcErr != nil {
+		return nil, nil, svcErr
+	}
+
+	result := make(api.ResourceList, len(resources))
+	for i := range resources {
+		result[i] = &resources[i]
+	}
+	return result, paging, nil
+}
+
+func (s *sqlResourceService) GetByID(ctx context.Context, id string) (*api.Resource, *errors.ServiceError) {
+	resource, err := s.resourceDao.GetByID(ctx, id)
+	if err != nil {
+		return nil, handleGetError("Resource", "id", id, err)
+	}
+	return resource, nil
+}
+
+func (s *sqlResourceService) ListAll(
+	ctx context.Context, args *ListArguments,
+) (api.ResourceList, *api.PagingMeta, *errors.ServiceError) {
+	var resources []api.Resource
+	paging, svcErr := s.generic.List(ctx, args, &resources)
 	if svcErr != nil {
 		return nil, nil, svcErr
 	}
