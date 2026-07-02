@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"gorm.io/datatypes"
-
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/registry"
@@ -20,16 +18,16 @@ func ConvertResource(req *openapi.ResourceCreateRequest) (*api.Resource, error) 
 		return nil, fmt.Errorf("failed to marshal spec: %w", err)
 	}
 
-	labelsJSON, err := marshalLabels(req.Labels)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal labels: %w", err)
+	labels, labelErr := convertLabelsToModel(req.Labels)
+	if labelErr != nil {
+		return nil, fmt.Errorf("invalid labels: %w", labelErr)
 	}
 
 	return &api.Resource{
 		Kind:   req.Kind,
 		Name:   req.Name,
 		Spec:   specJSON,
-		Labels: labelsJSON,
+		Labels: labels,
 	}, nil
 }
 
@@ -55,7 +53,7 @@ func PresentResource(r *api.Resource) openapi.Resource {
 		}
 	}
 
-	labels := unmarshalLabels(r.Labels)
+	labels := presentLabels(r.Labels)
 
 	resp := openapi.Resource{
 		Id:          r.ID,
@@ -150,27 +148,27 @@ func presentResourceConditions(conditions []api.ResourceCondition) []openapi.Res
 	return result
 }
 
-func marshalLabels(labels *map[string]string) (datatypes.JSON, error) {
-	if labels == nil {
-		return datatypes.JSON("{}"), nil
+func convertLabelsToModel(labels *map[string]string) ([]api.ResourceLabel, error) {
+	if labels == nil || len(*labels) == 0 {
+		return nil, nil
 	}
-	b, err := json.Marshal(*labels)
-	if err != nil {
-		return nil, err
+	result := make([]api.ResourceLabel, 0, len(*labels))
+	for k, v := range *labels {
+		if err := api.ValidateLabel(k, v); err != nil {
+			return nil, err
+		}
+		result = append(result, api.ResourceLabel{Key: k, Value: v})
 	}
-	return datatypes.JSON(b), nil
+	return result, nil
 }
 
-func unmarshalLabels(raw datatypes.JSON) *map[string]string {
-	if len(raw) == 0 {
+func presentLabels(labels []api.ResourceLabel) *map[string]string {
+	if len(labels) == 0 {
 		return nil
 	}
-	var m map[string]string
-	if err := json.Unmarshal(raw, &m); err != nil {
-		return nil
-	}
-	if len(m) == 0 {
-		return nil
+	m := make(map[string]string, len(labels))
+	for _, l := range labels {
+		m[l.Key] = l.Value
 	}
 	return &m
 }

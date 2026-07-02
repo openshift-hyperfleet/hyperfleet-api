@@ -55,25 +55,19 @@ func TestChannelCreate(t *testing.T) {
 
 		channelName := fmt.Sprintf("channel-with-labels-%s", uuid.NewString()[:8])
 		channel := newChannelResource(channelName)
-		labels := map[string]string{
-			"environment": "test",
-			"team":        "platform",
+		channel.Labels = []api.ResourceLabel{
+			{Key: "environment", Value: "test"},
+			{Key: "team", Value: "platform"},
 		}
 
-		var err error
-		channel.Labels, err = json.Marshal(labels)
-		Expect(err).To(BeNil(), "should marshal labels")
 		createdChannel, svcErr := svc.Create(t.Context(), "Channel", channel, nil)
 		Expect(svcErr).To(BeNil())
-		Expect(createdChannel.Labels).NotTo(BeNil())
+		Expect(createdChannel.Labels).NotTo(BeEmpty())
 
-		// Get the resource and verify labels persisted
 		retrieved, getErr := svc.Get(t.Context(), "Channel", createdChannel.ID)
 		Expect(getErr).To(BeNil(), "should retrieve channel")
-		var retrievedLabels map[string]string
-		err = json.Unmarshal(retrieved.Labels, &retrievedLabels)
-		Expect(err).To(BeNil(), "should unmarshal retrieved labels")
-		Expect(retrievedLabels).To(Equal(labels), "retrieved labels should match")
+		retrievedLabels := labelsToMap(retrieved.Labels)
+		Expect(retrievedLabels).To(Equal(map[string]string{"environment": "test", "team": "platform"}))
 	})
 
 	t.Run("SetsTimestamps", func(t *testing.T) {
@@ -337,9 +331,49 @@ func TestChannelPatch(t *testing.T) {
 		Expect(patched.Generation).To(Equal(int32(2)), "generation should increment to 2")
 
 		// Verify labels
-		var patchedLabels map[string]string
-		json.Unmarshal(patched.Labels, &patchedLabels)
+		patchedLabels := labelsToMap(patched.Labels)
 		Expect(patchedLabels).To(Equal(newLabels))
+	})
+
+	t.Run("LabelReplace", func(t *testing.T) {
+		svc, _ := setupResourceTest(t)
+
+		channelName := fmt.Sprintf("patch-label-replace-%s", uuid.NewString()[:8])
+		channel := createChannel(t, svc, channelName)
+
+		// First patch: set labels a=1, b=2
+		firstLabels := map[string]string{
+			"a": "1",
+			"b": "2",
+		}
+		req := &api.ResourcePatch{
+			Labels: firstLabels,
+		}
+		patched, svcErr := svc.Patch(t.Context(), "Channel", channel.ID, req)
+		Expect(svcErr).To(BeNil(), "first patch should succeed")
+		Expect(labelsToMap(patched.Labels)).To(Equal(firstLabels))
+
+		// Second patch: replace labels with a=1, c=3 (b should be dropped)
+		secondLabels := map[string]string{
+			"a": "1",
+			"c": "3",
+		}
+		req2 := &api.ResourcePatch{
+			Labels: secondLabels,
+		}
+		patched2, svcErr2 := svc.Patch(t.Context(), "Channel", channel.ID, req2)
+		Expect(svcErr2).To(BeNil(), "second patch should succeed")
+
+		patchedLabels := labelsToMap(patched2.Labels)
+		Expect(patchedLabels).To(Equal(secondLabels))
+		Expect(patchedLabels).ToNot(HaveKey("b"), "stale label b should be gone after replace")
+
+		// Verify persisted via Get
+		retrieved, getErr := svc.Get(t.Context(), "Channel", channel.ID)
+		Expect(getErr).To(BeNil())
+		retrievedLabels := labelsToMap(retrieved.Labels)
+		Expect(retrievedLabels).To(Equal(secondLabels))
+		Expect(retrievedLabels).ToNot(HaveKey("b"), "stale label b should not persist")
 	})
 
 	t.Run("UpdatesTimestamps", func(t *testing.T) {

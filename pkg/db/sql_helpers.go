@@ -16,18 +16,15 @@ import (
 	"gorm.io/gorm"
 )
 
-// Label key validation pattern: only lowercase letters, digits, and underscores to prevent SQL injection
-var labelKeyPattern = regexp.MustCompile(`^[a-z0-9_]+$`)
+// jsonbKeyPattern guards keys interpolated into JSONB paths (spec->>'%s', properties->>'%s').
+var jsonbKeyPattern = regexp.MustCompile(`^[a-z0-9_]+$`)
 
-// validateFieldKey validates a JSONB field key to prevent SQL injection through field
-// name interpolation. Only allows lowercase letters, digits, and underscores.
-// fieldType is used in error messages (e.g. "label key", "spec field segment").
-func validateFieldKey(key, fieldType string) *errors.ServiceError {
+func validateJSONBKey(key, fieldType string) *errors.ServiceError {
 	if key == "" {
 		return errors.BadRequest("%s cannot be empty", fieldType)
 	}
 
-	if !labelKeyPattern.MatchString(key) {
+	if !jsonbKeyPattern.MatchString(key) {
 		return errors.BadRequest(
 			"%s '%s' is invalid: must contain only lowercase letters, digits, and underscores", fieldType, key,
 		)
@@ -36,8 +33,9 @@ func validateFieldKey(key, fieldType string) *errors.ServiceError {
 	return nil
 }
 
-func validateLabelKey(key string) *errors.ServiceError {
-	return validateFieldKey(key, "label key")
+// TODO(HYPERFLEET-1159): remove once Cluster/NodePool are migrated to Resource-kind entities.
+func validateLegacyLabelKey(key string) *errors.ServiceError {
+	return validateJSONBKey(key, "label key")
 }
 
 // Field mapping rules for user-friendly syntax to database columns
@@ -55,7 +53,7 @@ func getField(name string, disallowedFields map[string]string) (field string, er
 			return
 		}
 		key := strings.TrimPrefix(trimmedName, "properties.")
-		if validationErr := validateFieldKey(key, "property key"); validationErr != nil {
+		if validationErr := validateJSONBKey(key, "property key"); validationErr != nil {
 			err = validationErr
 			return
 		}
@@ -76,7 +74,7 @@ func getField(name string, disallowedFields map[string]string) (field string, er
 
 		parts := strings.Split(strings.TrimPrefix(trimmedName, "spec."), ".")
 		for _, part := range parts {
-			if validationErr := validateFieldKey(part, "spec field segment"); validationErr != nil {
+			if validationErr := validateJSONBKey(part, "spec field segment"); validationErr != nil {
 				err = validationErr
 				return
 			}
@@ -93,11 +91,16 @@ func getField(name string, disallowedFields map[string]string) (field string, er
 		return
 	}
 
-	// Map user-friendly labels.xxx syntax to JSONB query: labels->>'xxx'
+	// TODO(HYPERFLEET-1159): remove this legacy JSONB branch once Cluster/NodePool
+	// are migrated to Resource-kind entities with the resource_labels table.
 	if strings.HasPrefix(trimmedName, "labels.") {
+		if _, disallowed := disallowedFields["labels"]; disallowed {
+			err = errors.BadRequest("%s is not a valid field name", name)
+			return
+		}
 		key := strings.TrimPrefix(trimmedName, "labels.")
 
-		if validationErr := validateLabelKey(key); validationErr != nil {
+		if validationErr := validateLegacyLabelKey(key); validationErr != nil {
 			err = validationErr
 			return
 		}
@@ -339,66 +342,74 @@ func conditionSubfieldConverter(n *tsl.Node, conditionType, subfield string) (in
 // returning the modified tree (with condition nodes replaced) and the extracted conditions.
 func ExtractConditionQueries(n *tsl.Node) (*tsl.Node, []sq.Sqlizer, *errors.ServiceError) {
 	var conditions []sq.Sqlizer
-	modifiedTree, err := extractConditionsWalk(n, &conditions)
+	modifiedTree, err := extractMatchingQueries(
+		n, hasCondition, conditionsNodeConverter,
+		"NOT operator is not supported with condition queries; "+
+			"use the inverse condition instead (e.g., Reconciled='False')",
+		"OR operator is not supported with condition queries (status.conditions.*); "+
+			"use separate requests or combine conditions with AND",
+		&conditions,
+	)
 	return modifiedTree, conditions, err
 }
 
-// subtreeHasCondition returns true if any node in the subtree is a condition query
-func subtreeHasCondition(n *tsl.Node) bool {
+// subtreeHasMatch returns true if any node in the subtree satisfies predicate.
+func subtreeHasMatch(n *tsl.Node, predicate func(*tsl.Node) bool) bool {
 	if n == nil {
 		return false
 	}
-	if hasCondition(n) {
+	if predicate(n) {
 		return true
 	}
-	if subtreeHasCondition(n.Left) {
+	if subtreeHasMatch(n.Left, predicate) {
 		return true
 	}
-	if subtreeHasCondition(n.Right) {
+	if subtreeHasMatch(n.Right, predicate) {
 		return true
 	}
-	return slices.ContainsFunc(n.Children, subtreeHasCondition)
+	return slices.ContainsFunc(n.Children, func(c *tsl.Node) bool { return subtreeHasMatch(c, predicate) })
 }
 
-// extractConditionsWalk recursively walks the tree and extracts condition queries
-func extractConditionsWalk(n *tsl.Node, conditions *[]sq.Sqlizer) (*tsl.Node, *errors.ServiceError) {
+// extractMatchingQueries recursively walks the tree, replacing every node matching
+// predicate with a `1=1` placeholder and collecting converter(node) into exprs.
+// NOT and OR are rejected over a subtree containing a match: extracting a match from
+// an OR/NOT branch and replacing it with 1=1 changes the query semantics (e.g.
+// "name='x' OR condition" becomes "(name='x' OR 1=1) AND condition", which collapses
+// the OR to always-true). notMsg/orMsg are the operator-specific error messages.
+func extractMatchingQueries(
+	n *tsl.Node,
+	predicate func(*tsl.Node) bool,
+	converter func(*tsl.Node) (any, *errors.ServiceError),
+	notMsg, orMsg string,
+	exprs *[]sq.Sqlizer,
+) (*tsl.Node, *errors.ServiceError) {
 	if n == nil {
 		return nil, nil
 	}
 
 	// NOT is unary in v6: child is in Right, Left is nil
 	if n.Kind == tsl.KindUnaryExpr && n.Operator == tsl.OpNot {
-		if subtreeHasCondition(n.Right) {
-			return n, errors.BadRequest(
-				"NOT operator is not supported with condition queries; " +
-					"use the inverse condition instead (e.g., Reconciled='False')",
-			)
+		if subtreeHasMatch(n.Right, predicate) {
+			return n, errors.BadRequest("%s", notMsg)
 		}
 	}
 
-	// OR with condition queries is not supported: extracting conditions from
-	// an OR branch and replacing them with 1=1 changes the query semantics
-	// (e.g. "name='x' OR condition" becomes "(name='x' OR 1=1) AND condition",
-	// which collapses the OR to always-true).
 	if n.Kind == tsl.KindBinaryExpr && n.Operator == tsl.OpOr {
-		if subtreeHasCondition(n.Left) || subtreeHasCondition(n.Right) {
-			return n, errors.BadRequest(
-				"OR operator is not supported with condition queries (status.conditions.*); " +
-					"use separate requests or combine conditions with AND",
-			)
+		if subtreeHasMatch(n.Left, predicate) || subtreeHasMatch(n.Right, predicate) {
+			return n, errors.BadRequest("%s", orMsg)
 		}
 	}
 
-	if hasCondition(n) {
-		expr, err := conditionsNodeConverter(n)
+	if predicate(n) {
+		expr, err := converter(n)
 		if err != nil {
 			return n, err
 		}
 		sqlizer, ok := expr.(sq.Sqlizer)
 		if !ok {
-			return n, errors.GeneralError("unexpected type %T in condition expression", expr)
+			return n, errors.GeneralError("unexpected type %T in extracted expression", expr)
 		}
-		*conditions = append(*conditions, sqlizer)
+		*exprs = append(*exprs, sqlizer)
 
 		// Replace with a placeholder that always evaluates to true
 		return &tsl.Node{
@@ -409,12 +420,12 @@ func extractConditionsWalk(n *tsl.Node, conditions *[]sq.Sqlizer) (*tsl.Node, *e
 		}, nil
 	}
 
-	// For non-condition nodes, recursively process children
+	// For non-matching nodes, recursively process children
 	var newLeft, newRight *tsl.Node
 
 	if n.Left != nil {
 		var err *errors.ServiceError
-		newLeft, err = extractConditionsWalk(n.Left, conditions)
+		newLeft, err = extractMatchingQueries(n.Left, predicate, converter, notMsg, orMsg, exprs)
 		if err != nil {
 			return n, err
 		}
@@ -422,7 +433,7 @@ func extractConditionsWalk(n *tsl.Node, conditions *[]sq.Sqlizer) (*tsl.Node, *e
 
 	if n.Right != nil {
 		var err *errors.ServiceError
-		newRight, err = extractConditionsWalk(n.Right, conditions)
+		newRight, err = extractMatchingQueries(n.Right, predicate, converter, notMsg, orMsg, exprs)
 		if err != nil {
 			return n, err
 		}
@@ -430,7 +441,7 @@ func extractConditionsWalk(n *tsl.Node, conditions *[]sq.Sqlizer) (*tsl.Node, *e
 
 	var newChildren []*tsl.Node
 	for _, child := range n.Children {
-		newChild, childErr := extractConditionsWalk(child, conditions)
+		newChild, childErr := extractMatchingQueries(child, predicate, converter, notMsg, orMsg, exprs)
 		if childErr != nil {
 			return n, childErr
 		}
@@ -446,6 +457,131 @@ func extractConditionsWalk(n *tsl.Node, conditions *[]sq.Sqlizer) (*tsl.Node, *e
 		Children: newChildren,
 		Position: n.Position,
 	}, nil
+}
+
+// hasLabel returns true if node has a labels.<key> identifier on the left hand side.
+func hasLabel(n *tsl.Node) bool {
+	if n.Left == nil || n.Left.Kind != tsl.KindIdentifier {
+		return false
+	}
+	leftStr, ok := n.Left.Value.(string)
+	if !ok {
+		return false
+	}
+	return strings.HasPrefix(leftStr, "labels.")
+}
+
+func labelsNodeConverter(n *tsl.Node, resourceTable string) (any, *errors.ServiceError) {
+	if n.Left == nil || n.Left.Kind != tsl.KindIdentifier {
+		return nil, errors.BadRequest("invalid label query structure")
+	}
+
+	leftStr, ok := n.Left.Value.(string)
+	if !ok {
+		return nil, errors.BadRequest("expected string for left side of label query")
+	}
+
+	parts := strings.Split(leftStr, ".")
+	if len(parts) != 2 || parts[0] != "labels" {
+		return nil, errors.BadRequest("invalid label field path: %s", leftStr)
+	}
+
+	key := parts[1]
+
+	// Supported operators for label queries on the resource_labels table:
+	// =, != use a simple value comparison; IN uses array binding.
+	// Other operators (LIKE, range) would need different SQL patterns
+	// and can be added when needed.
+	switch n.Operator {
+	case tsl.OpEQ, tsl.OpNE:
+		sqlOp := comparisonOperators[n.Operator]
+
+		if n.Right == nil || n.Right.Kind != tsl.KindStringLiteral {
+			return nil, errors.BadRequest("expected string value for label '%s'", key)
+		}
+		rightStr, ok := n.Right.Value.(string)
+		if !ok {
+			return nil, errors.BadRequest("expected string value for label '%s'", key)
+		}
+
+		query := fmt.Sprintf(
+			"EXISTS (SELECT 1 FROM resource_labels WHERE resource_labels.resource_id = %s.id "+
+				"AND resource_labels.key = ? AND resource_labels.value %s ?)",
+			resourceTable, sqlOp,
+		)
+		return sq.Expr(query, key, rightStr), nil
+
+	case tsl.OpIn:
+		if n.Right == nil || n.Right.Kind != tsl.KindArrayLiteral {
+			return nil, errors.BadRequest("expected array value for label '%s' IN query", key)
+		}
+		values := make([]interface{}, 0, len(n.Right.Children))
+		for _, child := range n.Right.Children {
+			s, ok := child.Value.(string)
+			if !ok {
+				return nil, errors.BadRequest("expected string values in label '%s' IN list", key)
+			}
+			values = append(values, s)
+		}
+		if len(values) == 0 {
+			return nil, errors.BadRequest("empty IN list for label '%s'", key)
+		}
+
+		query := fmt.Sprintf(
+			"EXISTS (SELECT 1 FROM resource_labels WHERE resource_labels.resource_id = %s.id "+
+				"AND resource_labels.key = ? AND resource_labels.value IN (%s))",
+			resourceTable, sq.Placeholders(len(values)),
+		)
+		args := make([]interface{}, 0, 1+len(values))
+		args = append(args, key)
+		args = append(args, values...)
+		return sq.Expr(query, args...), nil
+
+	default:
+		return nil, errors.BadRequest(
+			"operator '%s' is not supported for label queries; use =, !=, or IN", n.Operator,
+		)
+	}
+}
+
+// isLabelIdentifier returns true for a bare labels.<key> identifier node, regardless
+// of its position in the tree — unlike hasLabel, which only matches when the
+// identifier is the direct left side of a comparison.
+func isLabelIdentifier(n *tsl.Node) bool {
+	if n == nil || n.Kind != tsl.KindIdentifier {
+		return false
+	}
+	s, ok := n.Value.(string)
+	return ok && strings.HasPrefix(s, "labels.")
+}
+
+func ExtractLabelQueries(n *tsl.Node, resourceTable string) (*tsl.Node, []sq.Sqlizer, *errors.ServiceError) {
+	var labels []sq.Sqlizer
+	converter := func(n *tsl.Node) (any, *errors.ServiceError) {
+		return labelsNodeConverter(n, resourceTable)
+	}
+	modifiedTree, err := extractMatchingQueries(
+		n, hasLabel, converter,
+		"NOT operator is not supported with label queries",
+		"OR operator is not supported with label queries (labels.*); "+
+			"use separate requests or combine label filters with AND",
+		&labels,
+	)
+	if err != nil {
+		return n, nil, err
+	}
+
+	// "not labels.env='x'" parses as "(NOT labels.env) = 'x'" due to TSL precedence,
+	// so hasLabel never matches it and it survives into modifiedTree. Without this
+	// guard it falls through to getField's JSONB branch and hits a missing column.
+	if subtreeHasMatch(modifiedTree, isLabelIdentifier) {
+		return n, nil, errors.BadRequest(
+			"labels.<key> must be used in a direct comparison, e.g. labels.env=\"prod\"; " +
+				"wrap NOT in parentheses, e.g. not (labels.env=\"prod\")",
+		)
+	}
+
+	return modifiedTree, labels, nil
 }
 
 // FieldNameWalk walks the filter tree, maps user-facing field names to SQL columns

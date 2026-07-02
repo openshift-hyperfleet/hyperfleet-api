@@ -31,6 +31,14 @@ func checkResourceCount(ctx context.Context, h *test.Helper, ids []string, expec
 	return nil
 }
 
+func labelsToMap(labels []api.ResourceLabel) map[string]string {
+	m := make(map[string]string, len(labels))
+	for _, l := range labels {
+		m[l.Key] = l.Value
+	}
+	return m
+}
+
 // newChannelResource creates a Channel resource struct with default spec.
 // Does NOT persist to database - use svc.Create() to persist.
 func newChannelResource(name string) *api.Resource {
