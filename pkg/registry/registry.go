@@ -18,6 +18,14 @@ func Register(d EntityDescriptor) {
 	descriptors[d.Kind] = d
 }
 
+// LoadDescriptors registers entity descriptors loaded from the application config.
+// Called during startup after config is parsed and before services/routes are built.
+func LoadDescriptors(descriptors []EntityDescriptor) {
+	for _, d := range descriptors {
+		Register(d)
+	}
+}
+
 // Get returns a descriptor by Kind, or (zero, false) if not found.
 func Get(entityKind string) (EntityDescriptor, bool) {
 	d, ok := descriptors[entityKind]
@@ -68,6 +76,9 @@ func ChildrenOf(parentKind string) []EntityDescriptor {
 //   - empty Kind or Plural on any descriptor
 //   - any ParentKind that references an unregistered kind
 //   - duplicate Plural values across descriptors
+//   - ReferenceDescriptor with TargetKind that doesn't resolve
+//   - duplicate RefType within a single entity's References
+//   - Max < Min (when Max > 0)
 func Validate() {
 	plurals := make(map[string]string, len(descriptors))
 
@@ -95,6 +106,30 @@ func Validate() {
 			))
 		}
 		plurals[d.Plural] = d.Kind
+
+		// Track seen RefType values to detect duplicates within this entity's References
+		refTypes := make(map[string]bool, len(d.References))
+		for _, ref := range d.References {
+			if _, ok := descriptors[ref.TargetKind]; !ok {
+				panic(fmt.Sprintf(
+					"entity %q: reference %q targets unregistered kind %q",
+					d.Kind, ref.RefType, ref.TargetKind,
+				))
+			}
+			if refTypes[ref.RefType] {
+				panic(fmt.Sprintf(
+					"entity %q: duplicate ref_type %q in references",
+					d.Kind, ref.RefType,
+				))
+			}
+			refTypes[ref.RefType] = true
+			if ref.Max > 0 && ref.Max < ref.Min {
+				panic(fmt.Sprintf(
+					"entity %q: reference %q has max (%d) < min (%d)",
+					d.Kind, ref.RefType, ref.Max, ref.Min,
+				))
+			}
+		}
 	}
 }
 

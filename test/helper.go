@@ -27,8 +27,11 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/registry"
 	"github.com/openshift-hyperfleet/hyperfleet-api/test/factories"
 	"github.com/openshift-hyperfleet/hyperfleet-api/test/mocks"
+
+	_ "github.com/openshift-hyperfleet/hyperfleet-api/plugins/entities"
 )
 
 const (
@@ -89,6 +92,12 @@ func NewHelper(t *testing.T) *Helper {
 
 		env := environments.Environment()
 		env.Config = cfg
+
+		registry.LoadDescriptors(cfg.Entities)
+		if len(cfg.Entities) == 0 {
+			loadDefaultTestEntities()
+		}
+		registry.Validate()
 
 		err = env.SetEnvironmentDefaults(pflag.CommandLine)
 		if err != nil {
@@ -741,4 +750,31 @@ func initTestLogger() {
 		Hostname:  "test-host",
 	}
 	logger.InitGlobalLogger(cfg)
+}
+
+// loadDefaultTestEntities registers the standard entity descriptors that
+// integration tests need when no config file provides them.
+func loadDefaultTestEntities() {
+	registry.LoadDescriptors([]registry.EntityDescriptor{
+		{
+			Kind:                   "Channel",
+			Plural:                 "channels",
+			SpecSchemaName:         "ChannelSpec",
+			SearchDisallowedFields: []string{"spec"},
+		},
+		{
+			Kind:                   "Version",
+			Plural:                 "versions",
+			ParentKind:             "Channel",
+			OnParentDelete:         registry.OnParentDeleteRestrict,
+			SpecSchemaName:         "VersionSpec",
+			SearchDisallowedFields: []string{"spec"},
+		},
+		{
+			Kind:                   "WifConfig",
+			Plural:                 "wifconfigs",
+			SpecSchemaName:         "WifConfigSpec",
+			SearchDisallowedFields: []string{"spec"},
+		},
+	})
 }

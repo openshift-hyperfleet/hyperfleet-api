@@ -136,4 +136,48 @@ data:
 {{- else }}
           []
 {{- end }}
+
+    # NOTE: When EntityDescriptor gains many more fields, consider replacing
+    # the explicit range below with: {{ .Values.config.entities | toYaml | indent 6 }}
+{{- if .Values.config.entities }}
+    entities:
+{{- range .Values.config.entities }}
+      - kind: {{ .kind }}
+        plural: {{ .plural }}
+{{- if .parent_kind }}
+        parent_kind: {{ .parent_kind }}
+{{- end }}
+{{- if .on_parent_delete }}
+        on_parent_delete: {{ .on_parent_delete }}
+{{- end }}
+        spec_schema_name: {{ .spec_schema_name }}
+{{- if .search_disallowed_fields }}
+        search_disallowed_fields:
+{{- range .search_disallowed_fields }}
+          - {{ . }}
+{{- end }}
+{{- end }}
+{{- if .required_adapters }}
+        required_adapters:
+{{- range .required_adapters }}
+          - {{ . }}
+{{- end }}
+{{- end }}
+{{- if .references }}
+        references:
+{{- range .references }}
+          - ref_type: {{ .ref_type }}
+            target_kind: {{ .target_kind }}
+{{- if .min }}
+            min: {{ .min }}
+{{- end }}
+{{- if .max }}
+            max: {{ .max }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- else }}
+    entities: []
+{{- end }}
 {{- end }}

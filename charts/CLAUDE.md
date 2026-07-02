@@ -14,6 +14,12 @@ Adapter arrays are required — templates fail without them:
 --set 'adapters.nodepool=["validation"]'
 ```
 
+## Entity Registration
+
+Entity descriptors are configured in `config.entities`. Default values include Channel, Version, and WifConfig.
+Override with `--set-json 'config.entities=[...]'` for custom entity sets. An empty list disables all
+generic entity routes.
+
 ## Database Modes
 
 Two database configurations supported:
