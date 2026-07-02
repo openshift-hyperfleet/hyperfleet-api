@@ -1240,20 +1240,15 @@ func TestResourceService_Delete_ParentHardDeletedAfterChildGone(t *testing.T) {
 	Expect(err).To(BeNil())
 	Expect(mockDao.resources[resourceKey("Version", "v-1")]).To(BeNil(), "Version should be gone from DB")
 
-	// Note: In production, a cleanup job would detect that Channel has no children
-	// and hard-delete it. For now, we verify that a fresh delete (of a non-deleted Channel)
-	// with no children does hard-delete.
-
-	// Test with fresh Channel (no children)
-	channel2 := testResource("Channel", "ch-2", "beta")
-	mockDao.addResource(channel2)
-
-	_, svcErr = svc.Delete(context.Background(), "Channel", "ch-2")
+	// Re-delete the already soft-deleted Channel - should now hard-delete
+	// This exercises the re-evaluation path: parent was soft-deleted, child is now gone,
+	// so calling Delete() again should detect no blockers and hard-delete the parent.
+	_, svcErr = svc.Delete(context.Background(), "Channel", "ch-1")
 	Expect(svcErr).To(BeNil())
 
-	// Channel2 should be hard-deleted immediately (no children)
-	channel2Gone := mockDao.resources[resourceKey("Channel", "ch-2")]
-	Expect(channel2Gone).To(BeNil(), "Channel should be hard-deleted when no children exist")
+	// Channel should now be hard-deleted (removed from DB)
+	channelAfterRedelete := mockDao.resources[resourceKey("Channel", "ch-1")]
+	Expect(channelAfterRedelete).To(BeNil(), "Channel should be hard-deleted after re-evaluation with no children")
 }
 
 func TestResourceService_Delete_DAOErrorCheckingSoftDeletedChildren(t *testing.T) {
