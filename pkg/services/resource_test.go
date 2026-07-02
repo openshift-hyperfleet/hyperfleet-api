@@ -106,12 +106,19 @@ func (d *mockResourceDao) ExistsByOwner(_ context.Context, kind, ownerID string)
 	return false, nil
 }
 
-func (d *mockResourceDao) ExistsSoftDeletedByOwner(_ context.Context, kind, ownerID string) (bool, error) {
+func (d *mockResourceDao) ExistsSoftDeletedByOwner(_ context.Context, kinds []string, ownerID string) (bool, error) {
 	if d.existsSoftDeletedByOwnerErr != nil {
 		return false, d.existsSoftDeletedByOwnerErr
 	}
+	if len(kinds) == 0 {
+		return false, nil
+	}
+	kindSet := make(map[string]bool, len(kinds))
+	for _, k := range kinds {
+		kindSet[k] = true
+	}
 	for _, r := range d.resources {
-		if r.Kind == kind && r.OwnerID != nil && *r.OwnerID == ownerID && r.DeletedTime != nil {
+		if kindSet[r.Kind] && r.OwnerID != nil && *r.OwnerID == ownerID && r.DeletedTime != nil {
 			return true, nil
 		}
 	}
@@ -1290,7 +1297,7 @@ func TestResourceService_Delete_DAOErrorCheckingSoftDeletedChildren(t *testing.T
 	_, svcErr := svc.Delete(context.Background(), "Channel", "ch-1")
 	Expect(svcErr).NotTo(BeNil())
 	Expect(svcErr.RFC9457Code).To(Equal("HYPERFLEET-INT-001"))
-	Expect(svcErr.Reason).To(ContainSubstring("Unable to check soft-deleted Version children"))
+	Expect(svcErr.Reason).To(ContainSubstring("Unable to check soft-deleted children"))
 }
 
 // TestResourceService_Delete_CascadeParentSoftDeletedWhileChildSoftDeleted validates AC #4:

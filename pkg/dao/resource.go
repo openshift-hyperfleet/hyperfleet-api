@@ -18,7 +18,7 @@ type ResourceDao interface {
 	Save(ctx context.Context, resource *api.Resource) error
 	Delete(ctx context.Context, kind, id string) error
 	ExistsByOwner(ctx context.Context, kind, ownerID string) (bool, error)
-	ExistsSoftDeletedByOwner(ctx context.Context, kind, ownerID string) (bool, error)
+	ExistsSoftDeletedByOwner(ctx context.Context, kinds []string, ownerID string) (bool, error)
 	FindByKind(ctx context.Context, kind string) (api.ResourceList, error)
 	FindByKindAndOwner(ctx context.Context, kind, ownerID string) (api.ResourceList, error)
 	FindByKindAndOwnerForUpdate(ctx context.Context, kind, ownerID string) (api.ResourceList, error)
@@ -112,12 +112,15 @@ func (d *sqlResourceDao) ExistsByOwner(ctx context.Context, kind, ownerID string
 	return exists, nil
 }
 
-func (d *sqlResourceDao) ExistsSoftDeletedByOwner(ctx context.Context, kind, ownerID string) (bool, error) {
+func (d *sqlResourceDao) ExistsSoftDeletedByOwner(ctx context.Context, kinds []string, ownerID string) (bool, error) {
+	if len(kinds) == 0 {
+		return false, nil
+	}
 	g2 := d.sessionFactory.New(ctx)
 	var exists bool
 	if err := g2.Raw(
-		"SELECT EXISTS(SELECT 1 FROM resources WHERE kind = ? AND owner_id = ? AND deleted_time IS NOT NULL)",
-		kind, ownerID).Scan(&exists).Error; err != nil {
+		"SELECT EXISTS(SELECT 1 FROM resources WHERE kind IN (?) AND owner_id = ? AND deleted_time IS NOT NULL)",
+		kinds, ownerID).Scan(&exists).Error; err != nil {
 		return false, err
 	}
 	return exists, nil

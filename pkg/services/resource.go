@@ -229,11 +229,15 @@ func (s *sqlResourceService) shouldSoftDelete(
 
 	// Reason 2: Resource has soft-deleted children
 	// Parent must remain in DB until all children (active or soft-deleted) are gone
-	for _, child := range children {
-		exists, err := s.resourceDao.ExistsSoftDeletedByOwner(ctx, child.Kind, resource.ID)
+	if len(children) > 0 {
+		childKinds := make([]string, len(children))
+		for i, child := range children {
+			childKinds[i] = child.Kind
+		}
+		exists, err := s.resourceDao.ExistsSoftDeletedByOwner(ctx, childKinds, resource.ID)
 		if err != nil {
 			return false, errors.GeneralError(
-				"Unable to check soft-deleted %s children: %s", child.Kind, err,
+				"Unable to check soft-deleted children: %s", err,
 			)
 		}
 		if exists {
