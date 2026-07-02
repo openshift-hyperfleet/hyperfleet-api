@@ -80,13 +80,11 @@ func TestNewSchemaValidator(t *testing.T) {
 
 	registerRequiredSpecValidationEntities()
 
-	// Create temporary schema file
 	tmpDir := t.TempDir()
 	schemaPath := filepath.Join(tmpDir, "test-schema.yaml")
 	err := os.WriteFile(schemaPath, []byte(testSchema), 0600)
 	Expect(err).To(BeNil())
 
-	// Test successful schema loading
 	validator, err := NewSchemaValidator(schemaPath)
 	Expect(err).To(BeNil())
 	Expect(validator).ToNot(BeNil())
@@ -104,7 +102,6 @@ func TestNewSchemaValidator(t *testing.T) {
 func TestNewSchemaValidator_InvalidPath(t *testing.T) {
 	RegisterTestingT(t)
 
-	// Test with non-existent file
 	_, err := NewSchemaValidator("/nonexistent/path/schema.yaml")
 	Expect(err).ToNot(BeNil())
 	Expect(err.Error()).To(ContainSubstring("failed to load OpenAPI schema"))
@@ -128,7 +125,6 @@ func TestNewSchemaValidator_MissingSchemas(t *testing.T) {
 
 	registerRequiredSpecValidationEntities()
 
-	// Schema without required components
 	invalidSchema := `
 openapi: 3.0.0
 info:
@@ -148,7 +144,7 @@ components:
 
 	_, err = NewSchemaValidator(schemaPath)
 	Expect(err).ToNot(BeNil())
-	Expect(err.Error()).To(ContainSubstring("ClusterSpec schema not found"))
+	Expect(err.Error()).To(ContainSubstring("not found in OpenAPI spec"))
 }
 
 func TestNewSchemaValidator_RegisteredEntityMissingSchema_Panics(t *testing.T) {
@@ -289,7 +285,8 @@ components:
 
 	_, err = NewSchemaValidator(schemaPath)
 	Expect(err).ToNot(BeNil())
-	Expect(err.Error()).To(ContainSubstring("NodePoolSpec schema not found"))
+	Expect(err.Error()).To(ContainSubstring("NodePoolSpec"))
+	Expect(err.Error()).To(ContainSubstring("not found"))
 }
 
 func TestValidate_WifConfigSpec_Valid(t *testing.T) {
@@ -345,52 +342,36 @@ func TestValidate_ChannelSpec_MissingRequiredField(t *testing.T) {
 
 func TestValidateClusterSpec_Valid(t *testing.T) {
 	RegisterTestingT(t)
-
 	validator := setupTestValidator(t)
 
-	// Test valid cluster spec
-	validSpec := map[string]interface{}{
+	err := validator.ValidateClusterSpec(map[string]interface{}{
 		"region":   "us-central1",
 		"provider": "gcp",
-	}
-
-	err := validator.ValidateClusterSpec(validSpec)
+	})
 	Expect(err).To(BeNil())
 }
 
 func TestValidateClusterSpec_ValidWithOptionalFields(t *testing.T) {
 	RegisterTestingT(t)
-
 	validator := setupTestValidator(t)
 
-	// Test valid cluster spec with optional network field
-	validSpec := map[string]interface{}{
+	err := validator.ValidateClusterSpec(map[string]interface{}{
 		"region":   "europe-west1",
 		"provider": "aws",
-		"network": map[string]interface{}{
-			"vpc_id": "vpc-12345",
-		},
-	}
-
-	err := validator.ValidateClusterSpec(validSpec)
+		"network":  map[string]interface{}{"vpc_id": "vpc-12345"},
+	})
 	Expect(err).To(BeNil())
 }
 
 func TestValidateClusterSpec_MissingRequiredField(t *testing.T) {
 	RegisterTestingT(t)
-
 	validator := setupTestValidator(t)
 
-	// Test spec missing required field
-	invalidSpec := map[string]interface{}{
+	err := validator.ValidateClusterSpec(map[string]interface{}{
 		"region": "us-central1",
-		// missing "provider"
-	}
-
-	err := validator.ValidateClusterSpec(invalidSpec)
+	})
 	Expect(err).ToNot(BeNil())
 
-	// Check that error is a ServiceError with details
 	serviceErr := getServiceError(err)
 	Expect(serviceErr).ToNot(BeNil())
 	Expect(serviceErr.Details).ToNot(BeEmpty())
@@ -398,41 +379,29 @@ func TestValidateClusterSpec_MissingRequiredField(t *testing.T) {
 
 func TestValidateClusterSpec_InvalidEnum(t *testing.T) {
 	RegisterTestingT(t)
-
 	validator := setupTestValidator(t)
 
-	// Test spec with invalid enum value
-	invalidSpec := map[string]interface{}{
-		"region":   "asia-southeast1", // not in enum
+	err := validator.ValidateClusterSpec(map[string]interface{}{
+		"region":   "asia-southeast1",
 		"provider": "gcp",
-	}
-
-	err := validator.ValidateClusterSpec(invalidSpec)
+	})
 	Expect(err).ToNot(BeNil())
 
 	serviceErr := getServiceError(err)
 	Expect(serviceErr).ToNot(BeNil())
 	Expect(serviceErr.Details).ToNot(BeEmpty())
-
-	// Verify we get validation details (field path extraction is tested separately)
 	Expect(serviceErr.Details[0].Message).ToNot(BeEmpty())
 }
 
 func TestValidateClusterSpec_InvalidNestedField(t *testing.T) {
 	RegisterTestingT(t)
-
 	validator := setupTestValidator(t)
 
-	// Test spec with invalid nested field (empty vpc_id)
-	invalidSpec := map[string]interface{}{
+	err := validator.ValidateClusterSpec(map[string]interface{}{
 		"region":   "us-central1",
 		"provider": "gcp",
-		"network": map[string]interface{}{
-			"vpc_id": "", // violates minLength: 1
-		},
-	}
-
-	err := validator.ValidateClusterSpec(invalidSpec)
+		"network":  map[string]interface{}{"vpc_id": ""},
+	})
 	Expect(err).ToNot(BeNil())
 
 	serviceErr := getServiceError(err)
@@ -441,47 +410,34 @@ func TestValidateClusterSpec_InvalidNestedField(t *testing.T) {
 
 func TestValidateNodePoolSpec_Valid(t *testing.T) {
 	RegisterTestingT(t)
-
 	validator := setupTestValidator(t)
 
-	// Test valid nodepool spec
-	validSpec := map[string]interface{}{
+	err := validator.ValidateNodePoolSpec(map[string]interface{}{
 		"machine_type": "n1-standard-4",
 		"replicas":     3,
-	}
-
-	err := validator.ValidateNodePoolSpec(validSpec)
+	})
 	Expect(err).To(BeNil())
 }
 
 func TestValidateNodePoolSpec_ValidWithOptional(t *testing.T) {
 	RegisterTestingT(t)
-
 	validator := setupTestValidator(t)
 
-	// Test valid nodepool spec with optional autoscaling
-	validSpec := map[string]interface{}{
+	err := validator.ValidateNodePoolSpec(map[string]interface{}{
 		"machine_type": "n1-standard-4",
 		"replicas":     5,
 		"autoscaling":  true,
-	}
-
-	err := validator.ValidateNodePoolSpec(validSpec)
+	})
 	Expect(err).To(BeNil())
 }
 
 func TestValidateNodePoolSpec_MissingRequiredField(t *testing.T) {
 	RegisterTestingT(t)
-
 	validator := setupTestValidator(t)
 
-	// Test spec missing required field
-	invalidSpec := map[string]interface{}{
+	err := validator.ValidateNodePoolSpec(map[string]interface{}{
 		"machine_type": "n1-standard-4",
-		// missing "replicas"
-	}
-
-	err := validator.ValidateNodePoolSpec(invalidSpec)
+	})
 	Expect(err).ToNot(BeNil())
 
 	serviceErr := getServiceError(err)
@@ -491,67 +447,47 @@ func TestValidateNodePoolSpec_MissingRequiredField(t *testing.T) {
 
 func TestValidateNodePoolSpec_InvalidType(t *testing.T) {
 	RegisterTestingT(t)
-
 	validator := setupTestValidator(t)
 
-	// Test spec with wrong type (replicas should be integer)
-	invalidSpec := map[string]interface{}{
+	err := validator.ValidateNodePoolSpec(map[string]interface{}{
 		"machine_type": "n1-standard-4",
-		"replicas":     "three", // should be integer
-	}
-
-	err := validator.ValidateNodePoolSpec(invalidSpec)
+		"replicas":     "three",
+	})
 	Expect(err).ToNot(BeNil())
-
-	serviceErr := getServiceError(err)
-	Expect(serviceErr).ToNot(BeNil())
+	Expect(getServiceError(err)).ToNot(BeNil())
 }
 
 func TestValidateNodePoolSpec_OutOfRange(t *testing.T) {
 	RegisterTestingT(t)
-
 	validator := setupTestValidator(t)
 
-	// Test spec with value out of range
-	invalidSpec := map[string]interface{}{
+	err := validator.ValidateNodePoolSpec(map[string]interface{}{
 		"machine_type": "n1-standard-4",
-		"replicas":     150, // exceeds maximum: 100
-	}
-
-	err := validator.ValidateNodePoolSpec(invalidSpec)
+		"replicas":     150,
+	})
 	Expect(err).ToNot(BeNil())
-
-	serviceErr := getServiceError(err)
-	Expect(serviceErr).ToNot(BeNil())
+	Expect(getServiceError(err)).ToNot(BeNil())
 }
 
 func TestValidateNodePoolSpec_BelowMinimum(t *testing.T) {
 	RegisterTestingT(t)
-
 	validator := setupTestValidator(t)
 
-	// Test spec with value below minimum
-	invalidSpec := map[string]interface{}{
+	err := validator.ValidateNodePoolSpec(map[string]interface{}{
 		"machine_type": "n1-standard-4",
-		"replicas":     0, // below minimum: 1
-	}
-
-	err := validator.ValidateNodePoolSpec(invalidSpec)
+		"replicas":     0,
+	})
 	Expect(err).ToNot(BeNil())
 }
 
 func TestValidateNodePoolSpec_EmptyMachineType(t *testing.T) {
 	RegisterTestingT(t)
-
 	validator := setupTestValidator(t)
 
-	// Test spec with empty machine_type (violates minLength)
-	invalidSpec := map[string]interface{}{
+	err := validator.ValidateNodePoolSpec(map[string]interface{}{
 		"machine_type": "",
 		"replicas":     3,
-	}
-
-	err := validator.ValidateNodePoolSpec(invalidSpec)
+	})
 	Expect(err).ToNot(BeNil())
 }
 
@@ -631,12 +567,8 @@ func getServiceError(err error) *errors.ServiceError {
 	if err == nil {
 		return nil
 	}
-
-	// Import errors package at the top
-	// This is a type assertion to check if err is a *errors.ServiceError
 	if serviceErr, ok := err.(*errors.ServiceError); ok {
 		return serviceErr
 	}
-
 	return nil
 }

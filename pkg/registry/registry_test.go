@@ -318,3 +318,159 @@ func TestDescriptorFields(t *testing.T) {
 	Expect(d.SpecSchemaName).To(Equal("VersionSpec"))
 	Expect(d.SearchDisallowedFields).To(ConsistOf("spec"))
 }
+
+func TestLoadDescriptors_RegistersAll(t *testing.T) {
+	RegisterTestingT(t)
+	Reset()
+
+	descriptors := []EntityDescriptor{
+		{Kind: "Channel", Plural: "channels", SpecSchemaName: "ChannelSpec"},
+		{Kind: "Version", Plural: "versions", ParentKind: "Channel", SpecSchemaName: "VersionSpec"},
+	}
+
+	LoadDescriptors(descriptors)
+
+	ch, ok := Get("Channel")
+	Expect(ok).To(BeTrue())
+	Expect(ch.Plural).To(Equal("channels"))
+	Expect(ch.SpecSchemaName).To(Equal("ChannelSpec"))
+
+	ver, ok := Get("Version")
+	Expect(ok).To(BeTrue())
+	Expect(ver.Plural).To(Equal("versions"))
+	Expect(ver.ParentKind).To(Equal("Channel"))
+}
+
+func TestLoadDescriptors_EmptySlice(t *testing.T) {
+	RegisterTestingT(t)
+	Reset()
+
+	LoadDescriptors(nil)
+	Expect(All()).To(BeEmpty())
+
+	LoadDescriptors([]EntityDescriptor{})
+	Expect(All()).To(BeEmpty())
+}
+
+func TestLoadDescriptors_DuplicateKind_Panics(t *testing.T) {
+	RegisterTestingT(t)
+	Reset()
+
+	Register(EntityDescriptor{Kind: "Channel", Plural: "channels"})
+
+	Expect(func() {
+		LoadDescriptors([]EntityDescriptor{
+			{Kind: "Channel", Plural: "ch"},
+		})
+	}).To(PanicWith(ContainSubstring("already registered")))
+}
+
+func TestLoadDescriptors_AllFields(t *testing.T) {
+	RegisterTestingT(t)
+	Reset()
+
+	LoadDescriptors([]EntityDescriptor{
+		{
+			Kind:                   "Cluster",
+			Plural:                 "clusters",
+			SpecSchemaName:         "ClusterSpec",
+			SearchDisallowedFields: []string{"spec"},
+			RequiredAdapters:       []string{"provisioner"},
+		},
+		{
+			Kind:                   "NodePool",
+			Plural:                 "nodepools",
+			ParentKind:             "Cluster",
+			OnParentDelete:         OnParentDeleteCascade,
+			SpecSchemaName:         "NodePoolSpec",
+			SearchDisallowedFields: []string{"spec"},
+			RequiredAdapters:       []string{"provisioner", "lifecycle"},
+		},
+	})
+
+	cluster := MustGet("Cluster")
+	Expect(cluster.SpecSchemaName).To(Equal("ClusterSpec"))
+	Expect(cluster.SearchDisallowedFields).To(ConsistOf("spec"))
+	Expect(cluster.RequiredAdapters).To(ConsistOf("provisioner"))
+	Expect(cluster.ParentKind).To(BeEmpty())
+
+	np := MustGet("NodePool")
+	Expect(np.ParentKind).To(Equal("Cluster"))
+	Expect(np.OnParentDelete).To(Equal(OnParentDeleteCascade))
+	Expect(np.SpecSchemaName).To(Equal("NodePoolSpec"))
+	Expect(np.RequiredAdapters).To(ConsistOf("provisioner", "lifecycle"))
+}
+
+func TestValidate_ReferenceTargetKindUnregistered_Panics(t *testing.T) {
+	RegisterTestingT(t)
+	Reset()
+
+	Register(EntityDescriptor{
+		Kind:   "Cluster",
+		Plural: "clusters",
+		References: []ReferenceDescriptor{
+			{RefType: "wif_config", TargetKind: "WifConfig"},
+		},
+	})
+
+	Expect(func() {
+		Validate()
+	}).To(PanicWith(ContainSubstring("targets unregistered kind")))
+}
+
+func TestValidate_DuplicateRefType_Panics(t *testing.T) {
+	RegisterTestingT(t)
+	Reset()
+
+	Register(EntityDescriptor{Kind: "WifConfig", Plural: "wifconfigs"})
+	Register(EntityDescriptor{
+		Kind:   "Cluster",
+		Plural: "clusters",
+		References: []ReferenceDescriptor{
+			{RefType: "wif_config", TargetKind: "WifConfig"},
+			{RefType: "wif_config", TargetKind: "WifConfig"},
+		},
+	})
+
+	Expect(func() {
+		Validate()
+	}).To(PanicWith(ContainSubstring("duplicate ref_type")))
+}
+
+func TestValidate_ReferenceMaxLessThanMin_Panics(t *testing.T) {
+	RegisterTestingT(t)
+	Reset()
+
+	Register(EntityDescriptor{Kind: "WifConfig", Plural: "wifconfigs"})
+	Register(EntityDescriptor{
+		Kind:   "Cluster",
+		Plural: "clusters",
+		References: []ReferenceDescriptor{
+			{RefType: "wif_config", TargetKind: "WifConfig", Min: 2, Max: 1},
+		},
+	})
+
+	Expect(func() {
+		Validate()
+	}).To(PanicWith(ContainSubstring("max (1) < min (2)")))
+}
+
+func TestValidate_ValidReferences_Success(t *testing.T) {
+	RegisterTestingT(t)
+	Reset()
+
+	Register(EntityDescriptor{Kind: "WifConfig", Plural: "wifconfigs"})
+	Register(EntityDescriptor{Kind: "Network", Plural: "networks"})
+	Register(EntityDescriptor{
+		Kind:   "Cluster",
+		Plural: "clusters",
+		References: []ReferenceDescriptor{
+			{RefType: "wif_config", TargetKind: "WifConfig", Min: 1, Max: 1},
+			{RefType: "network", TargetKind: "Network", Min: 0, Max: 0},
+		},
+	})
+
+	Expect(func() {
+		Validate()
+	}).ToNot(Panic())
+}

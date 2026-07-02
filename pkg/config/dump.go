@@ -2,6 +2,8 @@ package config
 
 import (
 	"fmt"
+
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/registry"
 )
 
 // DumpConfig returns a human-readable string representation of configuration
@@ -35,6 +37,7 @@ func DumpConfig(config *ApplicationConfig) string {
   Adapters:
     ClusterAdapters: %v
     NodePoolAdapters: %v
+  Entities: %d registered (kinds: %v)
 `,
 		config.Server.BindAddress(),
 		config.Server.TLS.Enabled,
@@ -53,7 +56,18 @@ func DumpConfig(config *ApplicationConfig) string {
 		config.Health.BindAddress(),
 		safeAdapterList(config.Adapters, true),
 		safeAdapterList(config.Adapters, false),
+		len(config.Entities),
+		entityKindNames(config.Entities),
 	)
+}
+
+// entityKindNames extracts Kind strings from entity descriptors for logging.
+func entityKindNames(entities []registry.EntityDescriptor) []string {
+	kinds := make([]string, len(entities))
+	for i, e := range entities {
+		kinds[i] = e.Kind
+	}
+	return kinds
 }
 
 // safeAdapterList safely extracts adapter list, handling nil config

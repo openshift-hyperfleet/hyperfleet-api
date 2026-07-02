@@ -13,8 +13,6 @@ import (
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
 	"github.com/openshift-hyperfleet/hyperfleet-api/test"
-
-	_ "github.com/openshift-hyperfleet/hyperfleet-api/plugins/wifconfigs"
 )
 
 const wifConfigsPath = "/wifconfigs"

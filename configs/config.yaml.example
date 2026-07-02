@@ -115,6 +115,28 @@ adapters:
       - validation
       - hypershift
 
+# Entity Registration
+# Generic resource types registered at startup. Each entry auto-generates
+# REST endpoints, spec validation, and delete policies.
+# Cluster and NodePool use legacy typed handlers and are NOT listed here.
+entities:
+  - kind: Channel
+    plural: channels
+    spec_schema_name: ChannelSpec
+    search_disallowed_fields: [spec]
+
+  - kind: Version
+    plural: versions
+    parent_kind: Channel
+    on_parent_delete: restrict
+    spec_schema_name: VersionSpec
+    search_disallowed_fields: [spec]
+
+  - kind: WifConfig
+    plural: wifconfigs
+    spec_schema_name: WifConfigSpec
+    search_disallowed_fields: [spec]
+
 # ----------------------------------------------------------------------------
 # Configuration Priority (highest to lowest):
 # 1. Command-line flags (e.g., --server-host=0.0.0.0 --server-port=8000)
