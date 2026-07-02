@@ -38,10 +38,11 @@ func setupTestDescriptors() {
 // mockResourceDao implements dao.ResourceDao for testing.
 
 type mockResourceDao struct {
-	resources map[string]*api.Resource
-	createErr error
-	saveErr   error
-	deleteErr error
+	resources                   map[string]*api.Resource
+	createErr                   error
+	saveErr                     error
+	deleteErr                   error
+	existsSoftDeletedByOwnerErr error
 }
 
 func newMockResourceDao() *mockResourceDao {
@@ -106,6 +107,9 @@ func (d *mockResourceDao) ExistsByOwner(_ context.Context, kind, ownerID string)
 }
 
 func (d *mockResourceDao) ExistsSoftDeletedByOwner(_ context.Context, kind, ownerID string) (bool, error) {
+	if d.existsSoftDeletedByOwnerErr != nil {
+		return false, d.existsSoftDeletedByOwnerErr
+	}
 	for _, r := range d.resources {
 		if r.Kind == kind && r.OwnerID != nil && *r.OwnerID == ownerID && r.DeletedTime != nil {
 			return true, nil
@@ -1250,4 +1254,32 @@ func TestResourceService_Delete_ParentHardDeletedAfterChildGone(t *testing.T) {
 	// Channel2 should be hard-deleted immediately (no children)
 	channel2Gone := mockDao.resources[resourceKey("Channel", "ch-2")]
 	Expect(channel2Gone).To(BeNil(), "Channel should be hard-deleted when no children exist")
+}
+
+func TestResourceService_Delete_DAOErrorCheckingSoftDeletedChildren(t *testing.T) {
+	RegisterTestingT(t)
+	setupDescriptorsWithRequiredAdapters()
+
+	svc, mockDao, _ := newTestResourceService(newMockResourceDao())
+
+	// Create parent and child
+	parent := testResource("Channel", "ch-1", "beta")
+	child := testResource("Version", "v-1", "1.0.0")
+	child.OwnerID = &parent.ID
+	mockDao.addResource(parent)
+	mockDao.addResource(child)
+
+	// First delete: child is soft-deleted
+	_, err := svc.Delete(context.Background(), "Version", "v-1")
+	Expect(err).To(BeNil())
+	Expect(mockDao.resources[resourceKey("Version", "v-1")].DeletedTime).NotTo(BeNil())
+
+	// Inject DAO error for ExistsSoftDeletedByOwner
+	mockDao.existsSoftDeletedByOwnerErr = gorm.ErrInvalidDB
+
+	// Attempt to delete parent - should fail with GeneralError
+	_, svcErr := svc.Delete(context.Background(), "Channel", "ch-1")
+	Expect(svcErr).NotTo(BeNil())
+	Expect(svcErr.RFC9457Code).To(Equal("HYPERFLEET-INT-001"))
+	Expect(svcErr.Reason).To(ContainSubstring("Unable to check soft-deleted Version children"))
 }
