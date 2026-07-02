@@ -72,6 +72,15 @@ func (d *resourceDaoMock) ExistsByOwner(_ context.Context, kind, ownerID string)
 	return false, nil
 }
 
+func (d *resourceDaoMock) ExistsSoftDeletedByOwner(_ context.Context, kind, ownerID string) (bool, error) {
+	for _, r := range d.resources {
+		if r.Kind == kind && r.OwnerID != nil && *r.OwnerID == ownerID && r.DeletedTime != nil {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 func (d *resourceDaoMock) FindByKind(_ context.Context, kind string) (api.ResourceList, error) {
 	var result api.ResourceList
 	for _, r := range d.resources {

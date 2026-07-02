@@ -195,8 +195,37 @@ func (s *sqlResourceService) deleteResourceTree(
 		}
 	}
 
+	// Determine whether to soft-delete or hard-delete this resource.
+	// Soft-delete is required when:
+	// 1. Resource has RequiredAdapters (existing behavior)
+	// 2. Resource has soft-deleted children waiting for adapter finalization
 	desc := registry.MustGet(resource.Kind)
+	shouldSoftDelete := false
+
+	// Reason 1: Resource has RequiredAdapters
 	if len(desc.RequiredAdapters) > 0 {
+		shouldSoftDelete = true
+	}
+
+	// Reason 2: Resource has soft-deleted children
+	// Parent must remain in DB until all children (active or soft-deleted) are gone
+	if !shouldSoftDelete {
+		for _, child := range children {
+			exists, err := s.resourceDao.ExistsSoftDeletedByOwner(ctx, child.Kind, resource.ID)
+			if err != nil {
+				return errors.GeneralError(
+					"Unable to check soft-deleted %s children: %s", child.Kind, err,
+				)
+			}
+			if exists {
+				shouldSoftDelete = true
+				break
+			}
+		}
+	}
+
+	// Execute delete based on decision
+	if shouldSoftDelete {
 		if saveErr := s.resourceDao.Save(ctx, resource); saveErr != nil {
 			return handleSoftDeleteError(resource.Kind, saveErr)
 		}
