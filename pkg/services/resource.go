@@ -142,15 +142,14 @@ func (s *sqlResourceService) Delete(ctx context.Context, kind, id string) (*api.
 		return nil, handleSoftDeleteError(kind, err)
 	}
 
-	if resource.DeletedTime != nil {
-		return resource, nil
-	}
-
 	deletedBy := actorFromContext(ctx)
 	deletedAt := time.Now().UTC().Truncate(time.Microsecond)
 
-	resource.MarkDeleted(deletedBy, deletedAt)
-	resource.IncrementGeneration()
+	// Mark for deletion if not already soft-deleted
+	if resource.DeletedTime == nil {
+		resource.MarkDeleted(deletedBy, deletedAt)
+		resource.IncrementGeneration()
+	}
 
 	if svcErr := s.deleteResourceTree(ctx, resource, deletedBy, deletedAt); svcErr != nil {
 		db.MarkForRollback(ctx, svcErr)
@@ -200,12 +199,9 @@ func (s *sqlResourceService) deleteResourceTree(
 	// 1. Resource has RequiredAdapters (existing behavior)
 	// 2. Resource has soft-deleted children waiting for adapter finalization
 	desc := registry.MustGet(resource.Kind)
-	shouldSoftDelete := false
 
 	// Reason 1: Resource has RequiredAdapters
-	if len(desc.RequiredAdapters) > 0 {
-		shouldSoftDelete = true
-	}
+	shouldSoftDelete := len(desc.RequiredAdapters) > 0
 
 	// Reason 2: Resource has soft-deleted children
 	// Parent must remain in DB until all children (active or soft-deleted) are gone
