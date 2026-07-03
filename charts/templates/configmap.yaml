@@ -138,7 +138,7 @@ data:
 {{- end }}
 
     # NOTE: When EntityDescriptor gains many more fields, consider replacing
-    # the explicit range below with: {{ .Values.config.entities | toYaml | indent 6 }}
+    # the explicit range below with: .Values.config.entities | toYaml | indent 6
 {{- if .Values.config.entities }}
     entities:
 {{- range .Values.config.entities }}
