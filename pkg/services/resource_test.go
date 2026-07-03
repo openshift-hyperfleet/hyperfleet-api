@@ -38,10 +38,11 @@ func setupTestDescriptors() {
 // mockResourceDao implements dao.ResourceDao for testing.
 
 type mockResourceDao struct {
-	resources map[string]*api.Resource
-	createErr error
-	saveErr   error
-	deleteErr error
+	resources                   map[string]*api.Resource
+	createErr                   error
+	saveErr                     error
+	deleteErr                   error
+	existsSoftDeletedByOwnerErr error
 }
 
 func newMockResourceDao() *mockResourceDao {
@@ -99,6 +100,25 @@ func (d *mockResourceDao) Delete(_ context.Context, kind, id string) error {
 func (d *mockResourceDao) ExistsByOwner(_ context.Context, kind, ownerID string) (bool, error) {
 	for _, r := range d.resources {
 		if r.Kind == kind && r.OwnerID != nil && *r.OwnerID == ownerID && r.DeletedTime == nil {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (d *mockResourceDao) ExistsSoftDeletedByOwner(_ context.Context, kinds []string, ownerID string) (bool, error) {
+	if d.existsSoftDeletedByOwnerErr != nil {
+		return false, d.existsSoftDeletedByOwnerErr
+	}
+	if len(kinds) == 0 {
+		return false, nil
+	}
+	kindSet := make(map[string]bool, len(kinds))
+	for _, k := range kinds {
+		kindSet[k] = true
+	}
+	for _, r := range d.resources {
+		if kindSet[r.Kind] && r.OwnerID != nil && *r.OwnerID == ownerID && r.DeletedTime != nil {
 			return true, nil
 		}
 	}
@@ -1118,4 +1138,197 @@ func TestResourceService_ListByOwner_UnknownKind(t *testing.T) {
 	Expect(paging).To(BeNil())
 	Expect(svcErr).ToNot(BeNil())
 	Expect(svcErr.HTTPCode).To(Equal(400))
+}
+
+// --- Parent/Child Delete with RequiredAdapters ---
+
+// setupDescriptorsWithRequiredAdapters creates Channel (parent) and Version (child with RequiredAdapters)
+func setupDescriptorsWithRequiredAdapters() {
+	registry.Reset()
+	registry.Register(registry.EntityDescriptor{
+		Kind:   "Channel",
+		Plural: "channels",
+	})
+	registry.Register(registry.EntityDescriptor{
+		Kind:             "Version",
+		Plural:           "versions",
+		ParentKind:       "Channel",
+		OnParentDelete:   registry.OnParentDeleteRestrict,
+		RequiredAdapters: []string{"adapter1"}, // Version needs adapter finalization
+	})
+}
+
+func setupDescriptorsWithCascadeAndRequiredAdapters() {
+	registry.Reset()
+	registry.Register(registry.EntityDescriptor{
+		Kind:   "Workspace",
+		Plural: "workspaces",
+	})
+	registry.Register(registry.EntityDescriptor{
+		Kind:             "Task",
+		Plural:           "tasks",
+		ParentKind:       "Workspace",
+		OnParentDelete:   registry.OnParentDeleteCascade,
+		RequiredAdapters: []string{"adapter1"},
+	})
+}
+
+func testResourceWithOwner(kind, id, name, ownerID string) *api.Resource {
+	spec, _ := json.Marshal(map[string]interface{}{"key": "value"})
+	r := &api.Resource{
+		Kind:       kind,
+		Name:       name,
+		Spec:       spec,
+		Generation: 1,
+		OwnerID:    &ownerID,
+	}
+	r.ID = id
+	return r
+}
+
+// TestResourceService_Delete_ParentSoftDeletedWhileChildSoftDeleted verifies that when a child
+// resource with RequiredAdapters is soft-deleted (waiting for adapter finalization), deleting
+// the parent soft-deletes the parent instead of hard-deleting it.
+//
+// Parent should be soft-deleted (not hard-deleted) while any child row exists in the database,
+// regardless of whether the child is active or soft-deleted.
+func TestResourceService_Delete_ParentSoftDeletedWhileChildSoftDeleted(t *testing.T) {
+	RegisterTestingT(t)
+	setupDescriptorsWithRequiredAdapters()
+
+	mockDao := newMockResourceDao()
+	svc, _, _ := newTestResourceService(mockDao)
+
+	// Setup: Create Channel (parent)
+	channel := testResource("Channel", "ch-1", "stable")
+	mockDao.addResource(channel)
+
+	// Setup: Create Version (child with RequiredAdapters)
+	version := testResourceWithOwner("Version", "v-1", "1.0.0", "ch-1")
+	mockDao.addResource(version)
+
+	// Step 1: Delete the Version (soft-delete because of RequiredAdapters)
+	versionResult, svcErr := svc.Delete(context.Background(), "Version", "v-1")
+	Expect(svcErr).To(BeNil(), "Version delete should succeed")
+	Expect(versionResult.DeletedTime).ToNot(BeNil(), "Version should be soft-deleted")
+
+	// Verify Version is still in the DAO (soft-deleted)
+	versionAfterDelete := mockDao.resources[resourceKey("Version", "v-1")]
+	Expect(versionAfterDelete).ToNot(BeNil(), "Version row should still exist after soft-delete")
+	Expect(versionAfterDelete.DeletedTime).ToNot(BeNil(), "Version should have deleted_time set")
+
+	// Step 2: Delete the Channel
+	// Expected: Channel should be soft-deleted (not hard-deleted) because Version still exists in DB
+	_, svcErr = svc.Delete(context.Background(), "Channel", "ch-1")
+	Expect(svcErr).To(BeNil(), "Channel delete should succeed")
+
+	// Verify: Channel should be soft-deleted (row still exists)
+	channelAfterDelete := mockDao.resources[resourceKey("Channel", "ch-1")]
+	Expect(channelAfterDelete).ToNot(BeNil(), "Channel should still exist in DB (soft-deleted)")
+	Expect(channelAfterDelete.DeletedTime).ToNot(BeNil(), "Channel should have deleted_time set")
+}
+
+// TestResourceService_Delete_ParentHardDeletedAfterChildGone verifies that after all children
+// are hard-deleted (adapter finalized), deleting a parent with no children hard-deletes it.
+func TestResourceService_Delete_ParentHardDeletedAfterChildGone(t *testing.T) {
+	RegisterTestingT(t)
+	setupDescriptorsWithRequiredAdapters()
+
+	mockDao := newMockResourceDao()
+	svc, _, _ := newTestResourceService(mockDao)
+
+	// Setup
+	channel := testResource("Channel", "ch-1", "stable")
+	mockDao.addResource(channel)
+
+	version := testResourceWithOwner("Version", "v-1", "1.0.0", "ch-1")
+	mockDao.addResource(version)
+
+	// Delete Version (soft-delete)
+	_, svcErr := svc.Delete(context.Background(), "Version", "v-1")
+	Expect(svcErr).To(BeNil())
+
+	// Delete Channel (soft-delete because Version still exists)
+	_, svcErr = svc.Delete(context.Background(), "Channel", "ch-1")
+	Expect(svcErr).To(BeNil())
+
+	// Verify Channel is soft-deleted
+	channelSoftDeleted := mockDao.resources[resourceKey("Channel", "ch-1")]
+	Expect(channelSoftDeleted).ToNot(BeNil(), "Channel should be soft-deleted")
+	Expect(channelSoftDeleted.DeletedTime).ToNot(BeNil())
+
+	// Simulate adapter finalization: hard-delete Version directly from DB
+	err := mockDao.Delete(context.Background(), "Version", "v-1")
+	Expect(err).To(BeNil())
+	Expect(mockDao.resources[resourceKey("Version", "v-1")]).To(BeNil(), "Version should be gone from DB")
+
+	// Re-delete the already soft-deleted Channel - should now hard-delete
+	// This exercises the re-evaluation path: parent was soft-deleted, child is now gone,
+	// so calling Delete() again should detect no blockers and hard-delete the parent.
+	_, svcErr = svc.Delete(context.Background(), "Channel", "ch-1")
+	Expect(svcErr).To(BeNil())
+
+	// Channel should now be hard-deleted (removed from DB)
+	channelAfterRedelete := mockDao.resources[resourceKey("Channel", "ch-1")]
+	Expect(channelAfterRedelete).To(BeNil(), "Channel should be hard-deleted after re-evaluation with no children")
+}
+
+func TestResourceService_Delete_DAOErrorCheckingSoftDeletedChildren(t *testing.T) {
+	RegisterTestingT(t)
+	setupDescriptorsWithRequiredAdapters()
+
+	svc, mockDao, _ := newTestResourceService(newMockResourceDao())
+
+	// Create parent and child
+	parent := testResource("Channel", "ch-1", "beta")
+	child := testResourceWithOwner("Version", "v-1", "1.0.0", parent.ID)
+	mockDao.addResource(parent)
+	mockDao.addResource(child)
+
+	// First delete: child is soft-deleted
+	_, err := svc.Delete(context.Background(), "Version", "v-1")
+	Expect(err).To(BeNil())
+	Expect(mockDao.resources[resourceKey("Version", "v-1")].DeletedTime).NotTo(BeNil())
+
+	// Inject DAO error for ExistsSoftDeletedByOwner
+	mockDao.existsSoftDeletedByOwnerErr = gorm.ErrInvalidDB
+
+	// Attempt to delete parent - should fail with GeneralError
+	_, svcErr := svc.Delete(context.Background(), "Channel", "ch-1")
+	Expect(svcErr).NotTo(BeNil())
+	Expect(svcErr.RFC9457Code).To(Equal("HYPERFLEET-INT-001"))
+	Expect(svcErr.Reason).To(ContainSubstring("Unable to check soft-deleted children"))
+}
+
+// TestResourceService_Delete_CascadeParentSoftDeletedWhileChildSoftDeleted validates AC #4:
+// "For generic resources using OnParentDeleteCascade, a parent with a soft-deleted child
+// that has RequiredAdapters is not hard-deleted while the child row remains."
+func TestResourceService_Delete_CascadeParentSoftDeletedWhileChildSoftDeleted(t *testing.T) {
+	RegisterTestingT(t)
+	setupDescriptorsWithCascadeAndRequiredAdapters()
+
+	mockDao := newMockResourceDao()
+	svc, _, _ := newTestResourceService(mockDao)
+
+	// Create parent and child
+	workspace := testResource("Workspace", "ws-1", "dev")
+	mockDao.addResource(workspace)
+
+	task := testResourceWithOwner("Task", "t-1", "build", "ws-1")
+	mockDao.addResource(task)
+
+	// Delete Workspace → cascade-deletes Task (soft-delete because Task has RequiredAdapters)
+	// → Workspace should be soft-deleted (soft-deleted child exists)
+	_, svcErr := svc.Delete(context.Background(), "Workspace", "ws-1")
+	Expect(svcErr).To(BeNil())
+
+	// Verify Workspace is soft-deleted (not hard-deleted)
+	ws := mockDao.resources[resourceKey("Workspace", "ws-1")]
+	Expect(ws).ToNot(BeNil(), "Workspace should still exist (soft-deleted)")
+	Expect(ws.DeletedTime).ToNot(BeNil(), "Workspace should have deleted_time set")
+
+	// Verify Task was cascade-deleted and is also soft-deleted
+	tk := mockDao.resources[resourceKey("Task", "t-1")]
+	Expect(tk).ToNot(BeNil(), "Task should still exist (soft-deleted)")
+	Expect(tk.DeletedTime).ToNot(BeNil(), "Task should have deleted_time set")
 }

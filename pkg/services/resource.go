@@ -142,15 +142,14 @@ func (s *sqlResourceService) Delete(ctx context.Context, kind, id string) (*api.
 		return nil, handleSoftDeleteError(kind, err)
 	}
 
-	if resource.DeletedTime != nil {
-		return resource, nil
-	}
-
 	deletedBy := actorFromContext(ctx)
 	deletedAt := time.Now().UTC().Truncate(time.Microsecond)
 
-	resource.MarkDeleted(deletedBy, deletedAt)
-	resource.IncrementGeneration()
+	// Mark for deletion if not already soft-deleted
+	if resource.DeletedTime == nil {
+		resource.MarkDeleted(deletedBy, deletedAt)
+		resource.IncrementGeneration()
+	}
 
 	if svcErr := s.deleteResourceTree(ctx, resource, deletedBy, deletedAt); svcErr != nil {
 		db.MarkForRollback(ctx, svcErr)
@@ -195,8 +194,12 @@ func (s *sqlResourceService) deleteResourceTree(
 		}
 	}
 
-	desc := registry.MustGet(resource.Kind)
-	if len(desc.RequiredAdapters) > 0 {
+	shouldSoftDelete, svcErr := s.shouldSoftDelete(ctx, resource, children)
+	if svcErr != nil {
+		return svcErr
+	}
+
+	if shouldSoftDelete {
 		if saveErr := s.resourceDao.Save(ctx, resource); saveErr != nil {
 			return handleSoftDeleteError(resource.Kind, saveErr)
 		}
@@ -208,6 +211,41 @@ func (s *sqlResourceService) deleteResourceTree(
 	}
 
 	return nil
+}
+
+// shouldSoftDelete determines whether a resource requires soft-deletion.
+// Soft-delete is required when:
+// 1. Resource has RequiredAdapters (must wait for adapter finalization)
+// 2. Resource has soft-deleted children (parent must remain until children are gone)
+func (s *sqlResourceService) shouldSoftDelete(
+	ctx context.Context, resource *api.Resource, children []registry.EntityDescriptor,
+) (bool, *errors.ServiceError) {
+	desc := registry.MustGet(resource.Kind)
+
+	// Reason 1: Resource has RequiredAdapters
+	if len(desc.RequiredAdapters) > 0 {
+		return true, nil
+	}
+
+	// Reason 2: Resource has soft-deleted children
+	// Parent must remain in DB until all children (active or soft-deleted) are gone
+	if len(children) > 0 {
+		childKinds := make([]string, len(children))
+		for i, child := range children {
+			childKinds[i] = child.Kind
+		}
+		exists, err := s.resourceDao.ExistsSoftDeletedByOwner(ctx, childKinds, resource.ID)
+		if err != nil {
+			return false, errors.GeneralError(
+				"Unable to check soft-deleted children: %s", err,
+			)
+		}
+		if exists {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 func (s *sqlResourceService) checkCanDelete(

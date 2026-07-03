@@ -152,3 +152,14 @@ func ValidateSpecSchemas(schemaExists func(string) bool) {
 func Reset() {
 	descriptors = make(map[string]EntityDescriptor)
 }
+
+// UpdateDescriptor modifies an existing descriptor in-place. Panics if kind not found.
+// Used by tests to temporarily override descriptor fields.
+func UpdateDescriptor(kind string, updateFn func(*EntityDescriptor)) {
+	desc, ok := descriptors[kind]
+	if !ok {
+		panic(fmt.Sprintf("entity kind %q not registered", kind))
+	}
+	updateFn(&desc)
+	descriptors[kind] = desc
+}
