@@ -728,7 +728,7 @@ func TestPostActionWhenCondition(t *testing.T) {
 			execCtx := NewExecutionContext(context.Background(), map[string]interface{}{}, nil)
 			execCtx.Adapter.ResourcesSkipped = tt.resourcesSkipped
 
-			result, err := pae.executePostAction(context.Background(), action, execCtx)
+			result, err := pae.executePostAction(context.Background(), action, execCtx, nil)
 
 			if tt.wantErr {
 				assert.Error(t, err)
@@ -743,6 +743,149 @@ func TestPostActionWhenCondition(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestPayloadWhenCondition(t *testing.T) {
+	tests := []struct {
+		when             *configloader.PostActionWhen
+		name             string
+		resourcesSkipped bool
+		wantBuilt        bool
+		wantErr          bool
+	}{
+		{
+			name:      "no when condition — payload always built",
+			when:      nil,
+			wantBuilt: true,
+		},
+		{
+			name:      "when expression true — payload built",
+			when:      &configloader.PostActionWhen{Expression: "!adapter.resourcesSkipped"},
+			wantBuilt: true,
+		},
+		{
+			name:             "when expression false — payload skipped",
+			when:             &configloader.PostActionWhen{Expression: "!adapter.resourcesSkipped"},
+			resourcesSkipped: true,
+			wantBuilt:        false,
+		},
+		{
+			name:      "when expression literal false — payload skipped",
+			when:      &configloader.PostActionWhen{Expression: "false"},
+			wantBuilt: false,
+		},
+		{
+			name:    "when expression parse error — returns error",
+			when:    &configloader.PostActionWhen{Expression: "=== invalid ==="},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pae := testPAE()
+			execCtx := NewExecutionContext(context.Background(), map[string]interface{}{}, nil)
+			execCtx.Adapter.ResourcesSkipped = tt.resourcesSkipped
+
+			payloads := []configloader.Payload{
+				{
+					Name: "testPayload",
+					Build: map[string]interface{}{
+						"status": "ok",
+					},
+					When: tt.when,
+				},
+			}
+
+			skipped, err := pae.buildPostPayloads(context.Background(), payloads, execCtx)
+
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+
+			_, payloadInParams := execCtx.Params["testPayload"]
+			assert.Equal(t, tt.wantBuilt, payloadInParams, "payload presence in params")
+
+			if !tt.wantBuilt {
+				assert.True(t, skipped["testPayload"], "skipped payload should be in skipped set")
+			} else {
+				assert.False(t, skipped["testPayload"], "built payload should not be in skipped set")
+			}
+		})
+	}
+}
+
+func TestPostActionSkippedWhenReferencedPayloadSkipped(t *testing.T) {
+	mockClient := hyperfleetapi.NewMockClient()
+	mockClient.DoResponse = &hyperfleetapi.Response{
+		StatusCode: http.StatusOK,
+		Status:     "200 OK",
+		Body:       []byte(`{}`),
+	}
+
+	pae := newPostActionExecutor(&ExecutorConfig{
+		APIClient: mockClient,
+		Logger:    logger.NewTestLogger(),
+	})
+
+	action := configloader.PostAction{
+		ActionBase: configloader.ActionBase{
+			Name: "reportStatus",
+			APICall: &configloader.APICall{
+				Method: "PUT",
+				URL:    "http://api.example.com/statuses",
+				Body:   "{{ .skippedPayload }}",
+			},
+		},
+	}
+
+	execCtx := NewExecutionContext(context.Background(), map[string]interface{}{}, nil)
+	skippedPayloads := map[string]bool{"skippedPayload": true}
+
+	result, err := pae.executePostAction(context.Background(), action, execCtx, skippedPayloads)
+
+	require.NoError(t, err)
+	assert.True(t, result.Skipped, "action should be skipped")
+	assert.Equal(t, StatusSkipped, result.Status)
+	assert.False(t, result.APICallMade, "no API call should be made")
+	assert.Contains(t, result.SkipReason, "skippedPayload")
+}
+
+func TestPostActionNotSkippedWhenPayloadBuilt(t *testing.T) {
+	mockClient := hyperfleetapi.NewMockClient()
+	mockClient.DoResponse = &hyperfleetapi.Response{
+		StatusCode: http.StatusOK,
+		Status:     "200 OK",
+		Body:       []byte(`{}`),
+	}
+
+	pae := newPostActionExecutor(&ExecutorConfig{
+		APIClient: mockClient,
+		Logger:    logger.NewTestLogger(),
+	})
+
+	action := configloader.PostAction{
+		ActionBase: configloader.ActionBase{
+			Name: "reportStatus",
+			APICall: &configloader.APICall{
+				Method: "PUT",
+				URL:    "http://api.example.com/statuses",
+				Body:   "{{ .builtPayload }}",
+			},
+		},
+	}
+
+	execCtx := NewExecutionContext(context.Background(), map[string]interface{}{}, nil)
+	execCtx.Params["builtPayload"] = `{"status":"ok"}`
+
+	result, err := pae.executePostAction(context.Background(), action, execCtx, nil)
+
+	require.NoError(t, err)
+	assert.False(t, result.Skipped, "action should execute")
+	assert.True(t, result.APICallMade, "API call should be made")
 }
 
 func TestBuildPostPayloads_WithResourceDiscoveryCELHelpers(t *testing.T) {
@@ -773,7 +916,7 @@ func TestBuildPostPayloads_WithResourceDiscoveryCELHelpers(t *testing.T) {
 		},
 	}
 
-	err := pae.buildPostPayloads(context.Background(), payloads, execCtx)
+	_, err := pae.buildPostPayloads(context.Background(), payloads, execCtx)
 	require.NoError(t, err)
 
 	rawPayload, ok := execCtx.Params["inspectPayload"].(string)

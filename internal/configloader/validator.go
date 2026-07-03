@@ -510,10 +510,21 @@ func (v *TaskConfigValidator) validateCELExpressions() {
 
 	if v.config.Post != nil {
 		for i, payload := range v.config.Post.Payloads {
+			if payload.When != nil && payload.When.Expression != "" {
+				path := fmt.Sprintf("%s.%s[%d].%s.%s", FieldPost, FieldPayloads, i, FieldLifecycleWhen, FieldExpression)
+				v.validateCELExpression(payload.When.Expression, path)
+			}
 			if payload.Build != nil {
 				if buildMap, ok := payload.Build.(map[string]interface{}); ok {
 					v.validateBuildExpressions(buildMap, fmt.Sprintf("%s.%s[%d].%s", FieldPost, FieldPayloads, i, FieldBuild))
 				}
+			}
+		}
+
+		for i, action := range v.config.Post.PostActions {
+			if action.When != nil && action.When.Expression != "" {
+				path := fmt.Sprintf("%s.%s[%d].%s.%s", FieldPost, FieldPostActions, i, FieldLifecycleWhen, FieldExpression)
+				v.validateCELExpression(action.When.Expression, path)
 			}
 		}
 	}

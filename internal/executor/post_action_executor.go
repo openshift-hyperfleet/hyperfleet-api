@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"text/template/parse"
 
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/configloader"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/criteria"
@@ -39,9 +40,12 @@ func (pae *PostActionExecutor) ExecuteAll(
 	}
 
 	// Step 1: Build post payloads (like clusterStatusPayload)
+	var skippedPayloads map[string]bool
 	if len(postConfig.Payloads) > 0 {
 		pae.log.Infof(ctx, "Building %d post payloads", len(postConfig.Payloads))
-		if err := pae.buildPostPayloads(ctx, postConfig.Payloads, execCtx); err != nil {
+		var err error
+		skippedPayloads, err = pae.buildPostPayloads(ctx, postConfig.Payloads, execCtx)
+		if err != nil {
 			errCtx := logger.WithErrorField(ctx, err)
 			pae.log.Errorf(errCtx, "Failed to build post payloads")
 			execCtx.Adapter.ExecutionError = &ExecutionError{
@@ -53,14 +57,16 @@ func (pae *PostActionExecutor) ExecuteAll(
 				PhasePostActions, "build_payloads", "failed to build post payloads", err)
 		}
 		for _, payload := range postConfig.Payloads {
-			pae.log.Debugf(ctx, "payload[%s] built successfully", payload.Name)
+			if !skippedPayloads[payload.Name] {
+				pae.log.Debugf(ctx, "payload[%s] built successfully", payload.Name)
+			}
 		}
 	}
 
 	// Step 2: Execute post actions (sequential - stop on first failure)
 	results := make([]PostActionResult, 0, len(postConfig.PostActions))
 	for _, action := range postConfig.PostActions {
-		result, err := pae.executePostAction(ctx, action, execCtx)
+		result, err := pae.executePostAction(ctx, action, execCtx, skippedPayloads)
 		results = append(results, result)
 
 		if err != nil {
@@ -87,23 +93,41 @@ func (pae *PostActionExecutor) ExecuteAll(
 	return results, nil
 }
 
-// buildPostPayloads builds all post payloads and stores them in execCtx.Params
-// Payloads are complex structures built from CEL expressions and templates
+// buildPostPayloads builds all post payloads and stores them in execCtx.Params.
+// Returns the set of payload names that were skipped due to their when condition evaluating to false.
 func (pae *PostActionExecutor) buildPostPayloads(
 	ctx context.Context,
 	payloads []configloader.Payload,
 	execCtx *ExecutionContext,
-) error {
+) (map[string]bool, error) {
+	skippedPayloads := make(map[string]bool)
+
 	// Create evaluation context with all CEL variables (params, adapter, resources)
 	evalCtx := criteria.NewEvaluationContext()
 	evalCtx.SetVariablesFromMap(execCtx.GetCELVariables())
 
 	evaluator, err := criteria.NewEvaluator(ctx, evalCtx, pae.log)
 	if err != nil {
-		return fmt.Errorf("failed to create evaluator: %w", err)
+		return nil, fmt.Errorf("failed to create evaluator: %w", err)
 	}
 
 	for _, payload := range payloads {
+		// Evaluate when condition if configured
+		if payload.When != nil {
+			celResult, err := evaluator.EvaluateCEL(payload.When.Expression)
+			if err != nil {
+				return nil, fmt.Errorf("failed to evaluate when condition for payload '%s': %w", payload.Name, err)
+			}
+			if celResult.HasError() {
+				return nil, fmt.Errorf("when condition evaluation error for payload '%s': %w", payload.Name, celResult.Error)
+			}
+			if !celResult.Matched {
+				pae.log.Infof(ctx, "Payload '%s' skipped: when condition is false", payload.Name)
+				skippedPayloads[payload.Name] = true
+				continue
+			}
+		}
+
 		// Determine build source (inline Build or BuildRef)
 		var buildDef any
 		switch {
@@ -112,26 +136,26 @@ func (pae *PostActionExecutor) buildPostPayloads(
 		case payload.BuildRefContent != nil:
 			buildDef = payload.BuildRefContent
 		default:
-			return fmt.Errorf("payload '%s' has neither Build nor BuildRefContent", payload.Name)
+			return nil, fmt.Errorf("payload '%s' has neither Build nor BuildRefContent", payload.Name)
 		}
 
 		// Build the payload
 		builtPayload, err := pae.buildPayload(ctx, buildDef, evaluator, execCtx.Params)
 		if err != nil {
-			return fmt.Errorf("failed to build payload '%s': %w", payload.Name, err)
+			return nil, fmt.Errorf("failed to build payload '%s': %w", payload.Name, err)
 		}
 
 		// Convert to JSON for template rendering (templates will render maps as "map[...]" otherwise)
 		jsonBytes, err := json.Marshal(builtPayload)
 		if err != nil {
-			return fmt.Errorf("failed to marshal payload '%s' to JSON: %w", payload.Name, err)
+			return nil, fmt.Errorf("failed to marshal payload '%s' to JSON: %w", payload.Name, err)
 		}
 
 		// Store as JSON string in params for use in post action templates
 		execCtx.Params[payload.Name] = string(jsonBytes)
 	}
 
-	return nil
+	return skippedPayloads, nil
 }
 
 // buildPayload builds a payload from a build definition
@@ -240,10 +264,24 @@ func (pae *PostActionExecutor) executePostAction(
 	ctx context.Context,
 	action configloader.PostAction,
 	execCtx *ExecutionContext,
+	skippedPayloads map[string]bool,
 ) (PostActionResult, error) {
 	result := PostActionResult{
 		Name:   action.Name,
 		Status: StatusSuccess,
+	}
+
+	// Skip post-action if its API call body references a skipped payload
+	if action.APICall != nil && len(skippedPayloads) > 0 {
+		for payloadName := range skippedPayloads {
+			if referencesPayload(action.APICall.Body, payloadName) {
+				result.Skipped = true
+				result.Status = StatusSkipped
+				result.SkipReason = fmt.Sprintf("referenced payload '%s' was skipped", payloadName)
+				pae.log.Infof(ctx, "PostAction[%s] skipped: payload '%s' was not built", action.Name, payloadName)
+				return result, nil
+			}
+		}
 	}
 
 	// Evaluate when condition if configured
@@ -325,4 +363,66 @@ func (pae *PostActionExecutor) executeAPICall(
 	}
 
 	return nil
+}
+
+// referencesPayload checks if a template string references a payload name
+// by parsing the template AST and inspecting all field access nodes.
+func referencesPayload(templateStr, payloadName string) bool {
+	trees, err := parse.Parse("check", templateStr, "{{", "}}")
+	if err != nil {
+		return true
+	}
+	tree, ok := trees["check"]
+	if !ok || tree == nil || tree.Root == nil {
+		return true
+	}
+	return containsFieldAccessInList(tree.Root, payloadName)
+}
+
+func containsFieldAccess(node parse.Node, name string) bool {
+	switch n := node.(type) {
+	case *parse.ActionNode:
+		return containsPipeField(n.Pipe, name)
+	case *parse.IfNode:
+		return containsPipeField(n.Pipe, name) ||
+			containsFieldAccessInList(n.List, name) ||
+			containsFieldAccessInList(n.ElseList, name)
+	case *parse.WithNode:
+		return containsPipeField(n.Pipe, name) ||
+			containsFieldAccessInList(n.List, name) ||
+			containsFieldAccessInList(n.ElseList, name)
+	case *parse.RangeNode:
+		return containsPipeField(n.Pipe, name) ||
+			containsFieldAccessInList(n.List, name) ||
+			containsFieldAccessInList(n.ElseList, name)
+	}
+	return false
+}
+
+func containsFieldAccessInList(list *parse.ListNode, name string) bool {
+	if list == nil {
+		return false
+	}
+	for _, node := range list.Nodes {
+		if containsFieldAccess(node, name) {
+			return true
+		}
+	}
+	return false
+}
+
+func containsPipeField(pipe *parse.PipeNode, name string) bool {
+	if pipe == nil {
+		return false
+	}
+	for _, cmd := range pipe.Cmds {
+		for _, arg := range cmd.Args {
+			if field, ok := arg.(*parse.FieldNode); ok {
+				if len(field.Ident) > 0 && field.Ident[0] == name {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }

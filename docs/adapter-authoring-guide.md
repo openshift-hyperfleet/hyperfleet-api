@@ -1080,6 +1080,43 @@ post_actions:
 
 The `when` expression has access to the full execution context: all `adapter.*` metadata, extracted params, and `resources.*`. If `when` is omitted, the action always executes (existing behavior). If the expression fails to parse or evaluate, the action is marked as **failed**.
 
+### Conditional payloads (`when`)
+
+Individual payloads can also be gated with a CEL expression. When the expression evaluates to `false`, the payload is **not built** and its name is absent from the template context — useful for skipping CEL evaluation of `resources.*` values that don't exist when preconditions are not met, or for building entirely different payloads for creation vs. deletion paths without deeply nested ternaries. A post-action that references a skipped payload is **silently skipped** (not failed).
+
+```yaml
+post:
+  payloads:
+    - name: "statusPayload"
+      when:
+        expression: "!adapter.resourcesSkipped"
+      build:
+        namespace:
+          expression: 'resources.?clusterNamespace.?status.?phase.orValue("Pending")'
+
+    - name: "skippedStatusPayload"
+      when:
+        expression: "adapter.resourcesSkipped"
+      build:
+        reason:
+          expression: 'adapter.skipReason'
+
+  post_actions:
+    - name: "reportStatus"
+      api_call:
+        method: "PUT"
+        url: "/api/hyperfleet/v1/clusters/{{ .clusterId }}/statuses"
+        body: "{{ .statusPayload }}"
+
+    - name: "reportSkipped"
+      api_call:
+        method: "PUT"
+        url: "/api/hyperfleet/v1/clusters/{{ .clusterId }}/statuses"
+        body: "{{ .skippedStatusPayload }}"
+```
+
+The `when` expression has access to the full execution context: all `adapter.*` metadata, extracted params, and `resources.*`. If `when` is omitted, the payload is always built (existing behavior). If the expression fails to parse or evaluate, the payload build is marked as **failed**. Evaluation order: payload `when` → build → post-action `when` → execute. Both gates are independent.
+
 ### Building payloads
 
 A payload is a JSON structure built from CEL expressions and Go Templates. Each field can be specified in three ways:

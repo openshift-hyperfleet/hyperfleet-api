@@ -303,6 +303,81 @@ func TestValidateCELExpressions(t *testing.T) {
 	})
 }
 
+func TestValidatePayloadWhenCELExpression(t *testing.T) {
+	t.Run("valid payload when expression", func(t *testing.T) {
+		cfg := baseTaskConfig()
+		cfg.Post = &PostConfig{
+			Payloads: []Payload{{
+				Name:  "testPayload",
+				Build: map[string]interface{}{"status": "ok"},
+				When:  &PostActionWhen{Expression: `!adapter.resourcesSkipped`},
+			}},
+		}
+		v := newTaskValidator(cfg)
+		require.NoError(t, v.ValidateStructure())
+		require.NoError(t, v.ValidateSemantic())
+	})
+
+	t.Run("invalid payload when expression - syntax error", func(t *testing.T) {
+		cfg := baseTaskConfig()
+		cfg.Post = &PostConfig{
+			Payloads: []Payload{{
+				Name:  "testPayload",
+				Build: map[string]interface{}{"status": "ok"},
+				When:  &PostActionWhen{Expression: `=== invalid ===`},
+			}},
+		}
+		v := newTaskValidator(cfg)
+		_ = v.ValidateStructure()
+		err := v.ValidateSemantic()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "CEL parse error")
+	})
+
+	t.Run("payload without when - no validation error", func(t *testing.T) {
+		cfg := baseTaskConfig()
+		cfg.Post = &PostConfig{
+			Payloads: []Payload{{
+				Name:  "testPayload",
+				Build: map[string]interface{}{"status": "ok"},
+			}},
+		}
+		v := newTaskValidator(cfg)
+		require.NoError(t, v.ValidateStructure())
+		require.NoError(t, v.ValidateSemantic())
+	})
+}
+
+func TestValidatePostActionWhenCELExpression(t *testing.T) {
+	t.Run("valid post-action when expression", func(t *testing.T) {
+		cfg := baseTaskConfig()
+		cfg.Post = &PostConfig{
+			PostActions: []PostAction{{
+				ActionBase: ActionBase{Name: "reportStatus"},
+				When:       &PostActionWhen{Expression: `adapter.?executionStatus.orValue("") == "success"`},
+			}},
+		}
+		v := newTaskValidator(cfg)
+		require.NoError(t, v.ValidateStructure())
+		require.NoError(t, v.ValidateSemantic())
+	})
+
+	t.Run("invalid post-action when expression - syntax error", func(t *testing.T) {
+		cfg := baseTaskConfig()
+		cfg.Post = &PostConfig{
+			PostActions: []PostAction{{
+				ActionBase: ActionBase{Name: "reportStatus"},
+				When:       &PostActionWhen{Expression: `=== invalid ===`},
+			}},
+		}
+		v := newTaskValidator(cfg)
+		_ = v.ValidateStructure()
+		err := v.ValidateSemantic()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "CEL parse error")
+	})
+}
+
 func TestValidateK8sManifests(t *testing.T) {
 	// Helper to create config with a resource manifest
 	withResource := func(manifest map[string]interface{}) *AdapterTaskConfig {
@@ -485,9 +560,9 @@ func TestBuiltinVariables(t *testing.T) {
 
 func TestPayloadValidate(t *testing.T) {
 	tests := []struct {
+		payload   Payload
 		name      string
 		errorMsg  string
-		payload   Payload
 		wantError bool
 	}{
 		{
