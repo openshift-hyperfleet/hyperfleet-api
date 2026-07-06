@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bxcodec/faker/v3"
+	"github.com/brianvoe/gofakeit/v7"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
@@ -327,7 +327,7 @@ type TestAccount struct {
 }
 
 func (helper *Helper) NewRandAccount() *TestAccount {
-	return helper.NewAccount(helper.NewID(), faker.Name(), faker.Email())
+	return helper.NewAccount(helper.NewID(), gofakeit.Name(), gofakeit.Email())
 }
 
 func (helper *Helper) NewAccount(username, name, email string) *TestAccount {
