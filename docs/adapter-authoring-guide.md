@@ -439,6 +439,26 @@ preconditions:
 - `clusterReconciledTTL` → Captures whether the cluster has been Reconciled for >5 minutes (300 seconds) since the last status transition
 - `validationCheck` → Evaluates both conditions: run resource phase when cluster is NOT Reconciled OR when cluster has been Reconciled and stable for >5 minutes (self-healing)
 
+**Simplified version** using domain-specific CEL helpers:
+
+```yaml
+preconditions:
+  - name: "checkClusterState"
+    api_call:
+      url: "/api/hyperfleet/v1/clusters/{{ .clusterId }}"
+    capture:
+      - name: "clusterNotReconciled"
+        expression: |
+          conditionStatus(status.conditions, "Reconciled") != "True"
+      - name: "clusterReconciledTTL"
+        expression: |
+          stableFor(status.conditions, "Reconciled", 300)
+
+  - name: "validationCheck"
+    expression: |
+      clusterNotReconciled || clusterReconciledTTL
+```
+
 **Important notes:**
 
 - The `now()` function returns the current time in RFC3339 format as a string.
@@ -1663,10 +1683,25 @@ status.conditions.filter(c, c.type == "Reconciled")
 # Array existence check
 status.conditions.exists(c, c.type == "Reconciled" && c.status == "True")
 
-# Get first matching element with fallback
+# Get first matching element with fallback (verbose)
 status.conditions.filter(c, c.type == "Reconciled").size() > 0
   ? status.conditions.filter(c, c.type == "Reconciled")[0].status
-  : "False"
+  : "Unknown"
+
+# Same, using domain-specific helper (preferred)
+conditionStatus(conditions, "Reconciled")
+
+# Stability window — condition True for at least 5 minutes
+stableFor(conditions, "Reconciled", 300)
+
+# Tri-state mapping — "True" / "False" / "Unknown"
+triState(isReady, isFailed)
+
+# Maestro statusFeedback value extraction
+statusFeedbackValue(statusFeedback, "phase")
+
+# Condition age in seconds (-1 if absent)
+conditionAge(conditions, "Reconciled")
 
 # Ternary
 condition ? "yes" : "no"
@@ -1704,6 +1739,10 @@ resources.?myResource.?metadata.?name.orValue("").trim()
 <summary>Extract a condition status from a Kubernetes-style conditions array</summary>
 
 ```cel
+# Using conditionStatus() helper (preferred):
+conditionStatus(conditions, "Available")
+
+# Equivalent verbose form:
 resources.?myResource.?status.?conditions.orValue([])
   .exists(c, c.type == "Available")
 ? resources.myResource.status.conditions
@@ -1717,6 +1756,12 @@ resources.?myResource.?status.?conditions.orValue([])
 <summary>Check ManifestWork statusFeedback for a namespace phase</summary>
 
 ```cel
+# Using statusFeedbackValue() helper (preferred):
+has(resources.namespace0) && has(resources.namespace0.statusFeedback)
+  ? statusFeedbackValue(resources.namespace0.statusFeedback, "phase")
+  : ""
+
+# Equivalent verbose form:
 has(resources.namespace0)
   && has(resources.namespace0.statusFeedback)
   && has(resources.namespace0.statusFeedback.values)
