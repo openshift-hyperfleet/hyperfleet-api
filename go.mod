@@ -46,7 +46,7 @@ require (
 
 require (
 	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
-	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
+	github.com/cenkalti/backoff/v7 v7.0.0 // indirect
 	go.opentelemetry.io/contrib/propagators/aws v1.43.0 // indirect
 	go.opentelemetry.io/contrib/propagators/b3 v1.43.0 // indirect
 	go.opentelemetry.io/contrib/propagators/jaeger v1.43.0 // indirect
