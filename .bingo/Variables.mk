@@ -58,3 +58,10 @@ $(OAPI_CODEGEN): $(BINGO_DIR)/oapi-codegen.mod
 	@# Install binary/ries using Go 1.14+ build command. This is using bwplotka/bingo-controlled, separate go module with pinned dependencies.
 	@echo "(re)installing $(GOBIN)/oapi-codegen-v2.6.0"
 	@cd $(BINGO_DIR) && GOWORK=off GOOS=$(GOHOSTOS) GOARCH=$(GOHOSTARCH) GOARM=$(GOHOSTARM) $(GO) build -mod=mod -modfile=oapi-codegen.mod -o=$(GOBIN)/oapi-codegen-v2.6.0 "github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen"
+
+YQ := $(GOBIN)/yq-v4.53.3
+$(YQ): $(BINGO_DIR)/yq.mod
+	@# Install binary/ries using Go 1.14+ build command. This is using bwplotka/bingo-controlled, separate go module with pinned dependencies.
+	@echo "(re)installing $(GOBIN)/yq-v4.53.3"
+	@cd $(BINGO_DIR) && GOWORK=off GOOS=$(GOHOSTOS) GOARCH=$(GOHOSTARCH) GOARM=$(GOHOSTARM) $(GO) build -mod=mod -modfile=yq.mod -o=$(GOBIN)/yq-v4.53.3 "github.com/mikefarah/yq/v4"
+
