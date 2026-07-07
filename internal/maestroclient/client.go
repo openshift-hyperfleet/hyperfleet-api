@@ -21,6 +21,8 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/version"
 	"github.com/openshift-online/maestro/pkg/api/openapi"
 	"github.com/openshift-online/maestro/pkg/client/cloudevents/grpcsource"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/backoff"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -35,6 +37,7 @@ import (
 const (
 	DefaultHTTPTimeout              = 10 * time.Second
 	DefaultServerHealthinessTimeout = 20 * time.Second
+	DefaultGRPCBackoffMaxDelay      = 5 * time.Second
 )
 
 // Client is the Maestro client for managing ManifestWorks via CloudEvents gRPC
@@ -187,7 +190,19 @@ func NewMaestroClient(ctx context.Context, config *Config, log logger.Logger) (*
 
 	// Create gRPC options
 	grpcOptions := &grpcopts.GRPCOptions{
-		Dialer:                   &grpcopts.GRPCDialer{},
+		Dialer: &grpcopts.GRPCDialer{
+			ExtraDialOpts: []grpc.DialOption{
+				grpc.WithConnectParams(grpc.ConnectParams{
+					Backoff: backoff.Config{
+						BaseDelay:  1 * time.Second,
+						Multiplier: 1.6,
+						Jitter:     0.2,
+						MaxDelay:   DefaultGRPCBackoffMaxDelay,
+					},
+					MinConnectTimeout: 3 * time.Second,
+				}),
+			},
+		},
 		ServerHealthinessTimeout: &serverHealthinessTimeout,
 	}
 	grpcOptions.Dialer.URL = config.GRPCServerAddr

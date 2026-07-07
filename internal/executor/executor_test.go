@@ -925,7 +925,7 @@ func TestCreateHandler_MetricsRecording(t *testing.T) {
 				Build()
 			require.NoError(t, err)
 
-			handler := AlwaysAck(WithMetrics(exec.CreateHandler(), recorder, logger.NewTestLogger()))
+			handler := AlwaysAck(WithMetrics(exec.CreateHandler(), recorder, logger.NewTestLogger()), logger.NewTestLogger())
 
 			evt := event.New()
 			evt.SetID("test-event-1")
@@ -974,7 +974,7 @@ func TestCreateHandler_MetricsRecording_Failed(t *testing.T) {
 		Build()
 	require.NoError(t, err)
 
-	handler := AlwaysAck(WithMetrics(exec.CreateHandler(), recorder, logger.NewTestLogger()))
+	handler := AlwaysAck(WithMetrics(exec.CreateHandler(), recorder, logger.NewTestLogger()), logger.NewTestLogger())
 
 	evt := event.New()
 	evt.SetID("test-event-fail")
@@ -1013,7 +1013,7 @@ func TestCreateHandler_NilMetricsRecorder(t *testing.T) {
 		Build()
 	require.NoError(t, err)
 
-	handler := AlwaysAck(WithMetrics(exec.CreateHandler(), nil, logger.NewTestLogger()))
+	handler := AlwaysAck(WithMetrics(exec.CreateHandler(), nil, logger.NewTestLogger()), logger.NewTestLogger())
 
 	evt := event.New()
 	evt.SetID("test-event-nil")
@@ -1172,7 +1172,7 @@ func TestAlwaysAck_AlwaysReturnsNil(t *testing.T) {
 				return tt.result, tt.err
 			})
 
-			handler := AlwaysAck(inner)
+			handler := AlwaysAck(inner, logger.NewTestLogger())
 
 			evt := event.New()
 			evt.SetID("test-ack")

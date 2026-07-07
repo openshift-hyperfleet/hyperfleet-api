@@ -708,7 +708,7 @@ func TestExecutor_Handler_Integration(t *testing.T) {
 	}
 
 	// Get the handler function
-	handler := executor.AlwaysAck(exec.CreateHandler())
+	handler := executor.AlwaysAck(exec.CreateHandler(), logger.NewTestLogger())
 
 	// Simulate broker calling the handler
 	evt := createTestEvent("cluster-handler-test")
@@ -759,7 +759,7 @@ func TestExecutor_Handler_PreconditionNotMet_ReturnsNil(t *testing.T) {
 		t.Fatalf("Failed to create executor: %v", err)
 	}
 
-	handler := executor.AlwaysAck(exec.CreateHandler())
+	handler := executor.AlwaysAck(exec.CreateHandler(), logger.NewTestLogger())
 	evt := createTestEvent("cluster-skip")
 
 	// Handler should return nil even when precondition not met
@@ -862,7 +862,7 @@ func TestExecutor_MissingRequiredParam(t *testing.T) {
 	}
 
 	// Test handler behavior: should ACK (not NACK) invalid events
-	handler := executor.AlwaysAck(exec.CreateHandler())
+	handler := executor.AlwaysAck(exec.CreateHandler(), logger.NewTestLogger())
 	err = handler(context.Background(), evt)
 	if err != nil {
 		t.Errorf("Handler should ACK (return nil) for param extraction failures, got error: %v", err)
@@ -918,7 +918,7 @@ func TestExecutor_InvalidEventJSON(t *testing.T) {
 	assert.Empty(t, result.ResourceResults, "Resources should not execute for invalid event")
 
 	// Test handler behavior: should ACK (not NACK) invalid events
-	handler := executor.AlwaysAck(exec.CreateHandler())
+	handler := executor.AlwaysAck(exec.CreateHandler(), logger.NewTestLogger())
 	err = handler(context.Background(), &evt)
 	assert.Nil(t, err, "Handler should ACK (return nil) for invalid events, not NACK")
 
@@ -976,7 +976,7 @@ func TestExecutor_MissingEventFields(t *testing.T) {
 	assert.Empty(t, result.ResourceResults, "Resources should not execute for missing required field")
 
 	// Test handler behavior: should ACK (not NACK) events with missing required fields
-	handler := executor.AlwaysAck(exec.CreateHandler())
+	handler := executor.AlwaysAck(exec.CreateHandler(), logger.NewTestLogger())
 	errPhase = handler(context.Background(), &evt)
 	assert.Nil(t, errPhase, "Handler should ACK (return nil) for missing required fields, not NACK")
 

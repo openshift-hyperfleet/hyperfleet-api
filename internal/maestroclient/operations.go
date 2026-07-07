@@ -4,19 +4,61 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"time"
 
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/manifest"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/constants"
 	apperrors "github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/errors"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/logger"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	kubetypes "k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/wait"
 	workv1 "open-cluster-management.io/api/work/v1"
 )
+
+const (
+	grpcRetryMaxAttempts = 3
+	grpcRetryBaseDelay   = 1 * time.Second
+	grpcRetryMultiplier  = 2
+)
+
+func isTransientGRPCError(err error) bool {
+	if err == nil {
+		return false
+	}
+	return status.Code(err) == codes.Unavailable
+}
+
+func (c *Client) retryOnTransientGRPC(ctx context.Context, fn func() error) error {
+	var lastErr error
+	backoff := wait.Backoff{
+		Duration: grpcRetryBaseDelay,
+		Factor:   float64(grpcRetryMultiplier),
+		Steps:    grpcRetryMaxAttempts,
+	}
+	waitErr := wait.ExponentialBackoffWithContext(ctx, backoff, func(ctx context.Context) (bool, error) {
+		lastErr = fn()
+		if lastErr == nil {
+			return true, nil
+		}
+		if !isTransientGRPCError(lastErr) {
+			return false, lastErr
+		}
+		retryCtx := logger.WithErrorField(ctx, lastErr)
+		c.log.Warn(retryCtx, "transient gRPC error, retrying")
+		return false, nil
+	})
+	if wait.Interrupted(waitErr) && lastErr != nil {
+		return lastErr
+	}
+	return waitErr
+}
 
 // CreateManifestWork creates a new ManifestWork for a target cluster (consumer)
 //
@@ -54,8 +96,13 @@ func (c *Client) CreateManifestWork(
 	// Set namespace to consumer name (required by Maestro)
 	work.Namespace = consumerName
 
-	// Create via the work client
-	created, err := c.workClient.ManifestWorks(consumerName).Create(ctx, work, metav1.CreateOptions{})
+	// Create via the work client with retry on transient gRPC errors
+	var created *workv1.ManifestWork
+	err := c.retryOnTransientGRPC(ctx, func() error {
+		var createErr error
+		created, createErr = c.workClient.ManifestWorks(consumerName).Create(ctx, work, metav1.CreateOptions{})
+		return createErr
+	})
 	if err != nil {
 		if isConsumerNotFoundError(err) {
 			return nil, apperrors.NotFound("consumer %q is not registered in Maestro", consumerName)
@@ -76,9 +123,13 @@ func (c *Client) GetManifestWork(
 	ctx = logger.WithMaestroConsumer(ctx, consumerName)
 	ctx = logger.WithLogField(ctx, "manifestwork", workName)
 
-	work, err := c.workClient.ManifestWorks(consumerName).Get(ctx, workName, metav1.GetOptions{})
+	var work *workv1.ManifestWork
+	err := c.retryOnTransientGRPC(ctx, func() error {
+		var getErr error
+		work, getErr = c.workClient.ManifestWorks(consumerName).Get(ctx, workName, metav1.GetOptions{})
+		return getErr
+	})
 	if err != nil {
-		// Return not found error without wrapping for callers to check
 		if apierrors.IsNotFound(err) {
 			return nil, err
 		}
@@ -99,13 +150,18 @@ func (c *Client) PatchManifestWork(
 	ctx = logger.WithMaestroConsumer(ctx, consumerName)
 	ctx = logger.WithLogField(ctx, "manifestwork", workName)
 
-	patched, err := c.workClient.ManifestWorks(consumerName).Patch(
-		ctx,
-		workName,
-		kubetypes.MergePatchType,
-		patchData,
-		metav1.PatchOptions{},
-	)
+	var patched *workv1.ManifestWork
+	err := c.retryOnTransientGRPC(ctx, func() error {
+		var patchErr error
+		patched, patchErr = c.workClient.ManifestWorks(consumerName).Patch(
+			ctx,
+			workName,
+			kubetypes.MergePatchType,
+			patchData,
+			metav1.PatchOptions{},
+		)
+		return patchErr
+	})
 	if err != nil {
 		return nil, apperrors.MaestroError("failed to patch ManifestWork %s/%s: %v",
 			consumerName, workName, err)
