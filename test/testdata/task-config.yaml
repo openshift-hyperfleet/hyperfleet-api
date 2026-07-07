@@ -109,8 +109,10 @@ post:
         observed_time: '{{ now | date "2006-01-02T15:04:05Z07:00" }}'
       name: clusterStatusPayload
   post_actions:
-    - api_call:
+    - name: updateStatus
+      when:
+        expression: "!adapter.resourcesSkipped"
+      api_call:
         body: '{{ .clusterStatusPayload }}'
         method: PUT
         url: /clusters/{{ .clusterId }}/statuses
-      name: updateStatus

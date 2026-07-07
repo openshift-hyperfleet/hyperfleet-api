@@ -204,6 +204,8 @@ post:
 
   post_actions:
     - name: "updateStatus"
+      when:
+        expression: "!adapter.resourcesSkipped"
       api_call:
         method: "PUT"
         url: "/api/hyperfleet/v1/clusters/{{ .clusterId }}/statuses"
