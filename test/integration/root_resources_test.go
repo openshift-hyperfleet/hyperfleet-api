@@ -393,3 +393,62 @@ func TestFlatChildRoutePostReturns422(t *testing.T) {
 	Expect(json.Unmarshal(resp.Body(), &problem)).To(Succeed())
 	Expect(*problem.Detail).To(ContainSubstring("channels"))
 }
+
+func TestRootResourcePostInvalidSpecReturns400(t *testing.T) {
+	RegisterTestingT(t)
+	_, h := setupResourceTest(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+
+	// POST /resources with spec as a string instead of an object.
+	// Middleware rejects this with "spec field must be an object".
+	body := fmt.Sprintf(
+		`{"kind":"Channel","name":"invalid-spec-%s","spec":"not-an-object"}`,
+		uuid.NewString()[:8],
+	)
+
+	resp, err := rootResourceRequest(ctx).
+		SetBody(body).
+		Post(h.RestURL(resourcesPath))
+	Expect(err).NotTo(HaveOccurred())
+	Expect(resp.StatusCode()).To(Equal(http.StatusBadRequest))
+
+	var problem openapi.ProblemDetails
+	Expect(json.Unmarshal(resp.Body(), &problem)).To(Succeed())
+	Expect(problem.Status).To(Equal(http.StatusBadRequest))
+}
+
+func TestRootResourcePatchInvalidSpecReturns400(t *testing.T) {
+	RegisterTestingT(t)
+	svc, h := setupResourceTest(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+
+	channel := createChannel(t, svc, fmt.Sprintf("patch-inv-%s", uuid.NewString()[:8]))
+
+	// PATCH /resources/{id} with spec as a string instead of an object.
+	// Both root and flat routes should return the same 400 problem-details shape.
+	patchBody := `{"spec":"not-an-object"}`
+	rootResp, err := rootResourceRequest(ctx).
+		SetBody(patchBody).
+		Patch(h.RestURL(fmt.Sprintf("%s/%s", resourcesPath, channel.ID)))
+	Expect(err).NotTo(HaveOccurred())
+	Expect(rootResp.StatusCode()).To(Equal(http.StatusBadRequest))
+
+	var rootProblem openapi.ProblemDetails
+	Expect(json.Unmarshal(rootResp.Body(), &rootProblem)).To(Succeed())
+	Expect(rootProblem.Status).To(Equal(http.StatusBadRequest))
+
+	// Verify flat route returns the same shape
+	flatResp, err := rootResourceRequest(ctx).
+		SetBody(patchBody).
+		Patch(h.RestURL(fmt.Sprintf("/channels/%s", channel.ID)))
+	Expect(err).NotTo(HaveOccurred())
+	Expect(flatResp.StatusCode()).To(Equal(http.StatusBadRequest))
+
+	var flatProblem openapi.ProblemDetails
+	Expect(json.Unmarshal(flatResp.Body(), &flatProblem)).To(Succeed())
+	Expect(flatProblem.Status).To(Equal(http.StatusBadRequest))
+}
