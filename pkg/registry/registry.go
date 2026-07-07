@@ -90,6 +90,7 @@ func ChildrenOf(parentKind string) []EntityDescriptor {
 // Validate checks registry integrity. Panics on:
 //   - empty Kind or Plural on any descriptor
 //   - any ParentKind that references an unregistered kind
+//   - cycles in the ParentKind ownership chain
 //   - duplicate Plural values across descriptors
 //   - ReferenceDescriptor with TargetKind that doesn't resolve
 //   - duplicate RefType within a single entity's References
@@ -113,6 +114,17 @@ func Validate() {
 					"entity kind %q references unregistered parent kind %q",
 					d.Kind, d.ParentKind,
 				))
+			}
+			visited := map[string]bool{d.Kind: true}
+			for cur := d.ParentKind; cur != ""; {
+				if visited[cur] {
+					panic(fmt.Sprintf(
+						"ownership cycle detected: kind %q participates in a ParentKind cycle",
+						d.Kind,
+					))
+				}
+				visited[cur] = true
+				cur = descriptors[cur].ParentKind
 			}
 		}
 

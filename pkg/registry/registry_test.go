@@ -142,6 +142,31 @@ func TestValidate_MissingParent_Panics(t *testing.T) {
 	}).To(PanicWith(ContainSubstring("unregistered parent kind")))
 }
 
+func TestValidate_ParentKindCycle_Panics(t *testing.T) {
+	RegisterTestingT(t)
+	Reset()
+
+	Register(EntityDescriptor{Kind: "A", Plural: "as", ParentKind: "B"})
+	Register(EntityDescriptor{Kind: "B", Plural: "bs", ParentKind: "A"})
+
+	Expect(func() {
+		Validate()
+	}).To(PanicWith(ContainSubstring("ownership cycle detected")))
+}
+
+func TestValidate_ParentKindCycle_ThreeNode_Panics(t *testing.T) {
+	RegisterTestingT(t)
+	Reset()
+
+	Register(EntityDescriptor{Kind: "A", Plural: "as", ParentKind: "B"})
+	Register(EntityDescriptor{Kind: "B", Plural: "bs", ParentKind: "C"})
+	Register(EntityDescriptor{Kind: "C", Plural: "cs", ParentKind: "A"})
+
+	Expect(func() {
+		Validate()
+	}).To(PanicWith(ContainSubstring("ownership cycle detected")))
+}
+
 func TestValidate_DuplicatePlural_Panics(t *testing.T) {
 	RegisterTestingT(t)
 	Reset()

@@ -112,6 +112,31 @@ func TestShouldValidateRequest_PostNestedVersionPrefersVersionOverChannel(t *tes
 	Expect(plural).To(Equal("versions"))
 }
 
+func TestShouldValidateRequest_PostRootResourceMatchesForBodyResolution(t *testing.T) {
+	RegisterTestingT(t)
+
+	should, plural := shouldValidateRequest(
+		http.MethodPost,
+		"/api/hyperfleet/v1/resources",
+		matchers,
+	)
+
+	Expect(should).To(BeTrue())
+	Expect(plural).To(BeEmpty())
+}
+
+func TestShouldValidateRequest_PatchRootResourceSkipsMiddleware(t *testing.T) {
+	RegisterTestingT(t)
+
+	should, _ := shouldValidateRequest(
+		http.MethodPatch,
+		"/api/hyperfleet/v1/resources/550e8400-e29b-41d4-a716-446655440000",
+		matchers,
+	)
+
+	Expect(should).To(BeFalse())
+}
+
 func TestShouldValidateRequest_GetSkipsValidation(t *testing.T) {
 	RegisterTestingT(t)
 
