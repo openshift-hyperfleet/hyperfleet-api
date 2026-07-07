@@ -19,6 +19,8 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/services"
 )
 
+const testChannelID = "ch-1"
+
 func newTestResourceStatusHandler(
 	ctrl *gomock.Controller,
 ) (*ResourceStatusHandler, *services.MockResourceService, *services.MockAdapterStatusService) {
@@ -35,26 +37,26 @@ func TestResourceStatusHandler_List(t *testing.T) {
 	handler, mockResourceSvc, mockAdapterSvc := newTestResourceStatusHandler(ctrl)
 
 	resource := &api.Resource{Kind: "Channel"}
-	resource.ID = "ch-1"
-	mockResourceSvc.EXPECT().Get(gomock.Any(), "Channel", "ch-1").Return(resource, nil)
+	resource.ID = testChannelID
+	mockResourceSvc.EXPECT().Get(gomock.Any(), "Channel", testChannelID).Return(resource, nil)
 
 	now := time.Now().UTC()
 	statuses := api.AdapterStatusList{
 		{
 			Adapter:            "adapter1",
 			ResourceType:       "Channel",
-			ResourceID:         "ch-1",
+			ResourceID:         testChannelID,
 			ObservedGeneration: 1,
 			LastReportTime:     now,
 			Conditions:         datatypes.JSON(`[{"type":"Available","status":"True"}]`),
 		},
 	}
 	mockAdapterSvc.EXPECT().FindByResourcePaginated(
-		gomock.Any(), "Channel", "ch-1", gomock.Any(),
+		gomock.Any(), "Channel", testChannelID, gomock.Any(),
 	).Return(statuses, int64(1), nil)
 
 	r := httptest.NewRequest(http.MethodGet, "/channels/ch-1/statuses", nil)
-	r = mux.SetURLVars(r, map[string]string{"id": "ch-1"})
+	r = mux.SetURLVars(r, map[string]string{"id": testChannelID})
 	w := httptest.NewRecorder()
 
 	handler.List(w, r)
@@ -73,11 +75,11 @@ func TestResourceStatusHandler_List_ResourceNotFound(t *testing.T) {
 
 	handler, mockResourceSvc, _ := newTestResourceStatusHandler(ctrl)
 
-	mockResourceSvc.EXPECT().Get(gomock.Any(), "Channel", "ch-1").
+	mockResourceSvc.EXPECT().Get(gomock.Any(), "Channel", testChannelID).
 		Return(nil, errors.NotFound("Channel 'ch-1' not found"))
 
 	r := httptest.NewRequest(http.MethodGet, "/channels/ch-1/statuses", nil)
-	r = mux.SetURLVars(r, map[string]string{"id": "ch-1"})
+	r = mux.SetURLVars(r, map[string]string{"id": testChannelID})
 	w := httptest.NewRecorder()
 
 	handler.List(w, r)
@@ -92,20 +94,21 @@ func TestResourceStatusHandler_Create_HappyPath(t *testing.T) {
 	handler, mockResourceSvc, _ := newTestResourceStatusHandler(ctrl)
 
 	resource := &api.Resource{Kind: "Channel"}
-	resource.ID = "ch-1"
-	mockResourceSvc.EXPECT().Get(gomock.Any(), "Channel", "ch-1").Return(resource, nil)
+	resource.ID = testChannelID
+	mockResourceSvc.EXPECT().Get(gomock.Any(), "Channel", testChannelID).Return(resource, nil)
 
 	now := time.Now().UTC()
 	returnedStatus := &api.AdapterStatus{
 		Adapter:            "adapter1",
 		ResourceType:       "Channel",
-		ResourceID:         "ch-1",
+		ResourceID:         testChannelID,
 		ObservedGeneration: 1,
 		LastReportTime:     now,
-		Conditions:         datatypes.JSON(`[{"type":"Available","status":"True"},{"type":"Applied","status":"True"},{"type":"Health","status":"True"}]`),
+		Conditions: datatypes.JSON( //nolint:lll
+			`[{"type":"Available","status":"True"},{"type":"Applied","status":"True"},{"type":"Health","status":"True"}]`),
 	}
 	mockResourceSvc.EXPECT().ProcessAdapterStatus(
-		gomock.Any(), "Channel", "ch-1", gomock.Any(),
+		gomock.Any(), "Channel", testChannelID, gomock.Any(),
 	).Return(returnedStatus, nil)
 
 	observedTime := now
@@ -123,7 +126,7 @@ func TestResourceStatusHandler_Create_HappyPath(t *testing.T) {
 
 	r := httptest.NewRequest(http.MethodPut, "/channels/ch-1/statuses", strings.NewReader(string(bodyJSON)))
 	r.Header.Set("Content-Type", "application/json")
-	r = mux.SetURLVars(r, map[string]string{"id": "ch-1"})
+	r = mux.SetURLVars(r, map[string]string{"id": testChannelID})
 	w := httptest.NewRecorder()
 
 	handler.Create(w, r)
@@ -138,10 +141,10 @@ func TestResourceStatusHandler_Create_Discarded_Returns204(t *testing.T) {
 	handler, mockResourceSvc, _ := newTestResourceStatusHandler(ctrl)
 
 	resource := &api.Resource{Kind: "Channel"}
-	resource.ID = "ch-1"
-	mockResourceSvc.EXPECT().Get(gomock.Any(), "Channel", "ch-1").Return(resource, nil)
+	resource.ID = testChannelID
+	mockResourceSvc.EXPECT().Get(gomock.Any(), "Channel", testChannelID).Return(resource, nil)
 	mockResourceSvc.EXPECT().ProcessAdapterStatus(
-		gomock.Any(), "Channel", "ch-1", gomock.Any(),
+		gomock.Any(), "Channel", testChannelID, gomock.Any(),
 	).Return(nil, nil)
 
 	now := time.Now().UTC()
@@ -159,7 +162,7 @@ func TestResourceStatusHandler_Create_Discarded_Returns204(t *testing.T) {
 
 	r := httptest.NewRequest(http.MethodPut, "/channels/ch-1/statuses", strings.NewReader(string(bodyJSON)))
 	r.Header.Set("Content-Type", "application/json")
-	r = mux.SetURLVars(r, map[string]string{"id": "ch-1"})
+	r = mux.SetURLVars(r, map[string]string{"id": testChannelID})
 	w := httptest.NewRecorder()
 
 	handler.Create(w, r)
@@ -183,7 +186,7 @@ func TestResourceStatusHandler_Create_MissingAdapter_Returns400(t *testing.T) {
 
 	r := httptest.NewRequest(http.MethodPut, "/channels/ch-1/statuses", strings.NewReader(string(bodyJSON)))
 	r.Header.Set("Content-Type", "application/json")
-	r = mux.SetURLVars(r, map[string]string{"id": "ch-1"})
+	r = mux.SetURLVars(r, map[string]string{"id": testChannelID})
 	w := httptest.NewRecorder()
 
 	handler.Create(w, r)
@@ -197,7 +200,7 @@ func TestResourceStatusHandler_Create_ResourceNotFound(t *testing.T) {
 
 	handler, mockResourceSvc, _ := newTestResourceStatusHandler(ctrl)
 
-	mockResourceSvc.EXPECT().Get(gomock.Any(), "Channel", "ch-1").
+	mockResourceSvc.EXPECT().Get(gomock.Any(), "Channel", testChannelID).
 		Return(nil, errors.NotFound("Channel 'ch-1' not found"))
 
 	now := time.Now().UTC()
@@ -215,7 +218,7 @@ func TestResourceStatusHandler_Create_ResourceNotFound(t *testing.T) {
 
 	r := httptest.NewRequest(http.MethodPut, "/channels/ch-1/statuses", strings.NewReader(string(bodyJSON)))
 	r.Header.Set("Content-Type", "application/json")
-	r = mux.SetURLVars(r, map[string]string{"id": "ch-1"})
+	r = mux.SetURLVars(r, map[string]string{"id": testChannelID})
 	w := httptest.NewRecorder()
 
 	handler.Create(w, r)

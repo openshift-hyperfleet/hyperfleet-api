@@ -18,9 +18,9 @@ import (
 // ClusterStatusHandler but uses descriptor.Kind as the resource type
 // and delegates to ResourceService.ProcessAdapterStatus.
 type ResourceStatusHandler struct {
-	descriptor           registry.EntityDescriptor
 	resourceService      services.ResourceService
 	adapterStatusService services.AdapterStatusService
+	descriptor           registry.EntityDescriptor
 }
 
 func NewResourceStatusHandler(
