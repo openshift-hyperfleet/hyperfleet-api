@@ -13,6 +13,14 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/services"
 )
 
+// ResourceHandler serves both flat and owner-nested routes for a single entity
+// kind. Every method branches on whether "parent_id" is present in mux.Vars(r)
+// rather than dispatching statically per route. This is only correct because
+// plugins/entities/plugin.go guarantees the invariant: a nested (ParentKind != "")
+// descriptor is registered exclusively under a {parent_id} subrouter, and a flat
+// descriptor never is. If that registration is ever bypassed — e.g. a nested kind
+// wired to a flat route — these branches take the wrong path silently (Create
+// would skip setting owner references instead of erroring).
 type ResourceHandler struct {
 	service    services.ResourceService
 	descriptor registry.EntityDescriptor
@@ -38,11 +46,26 @@ func (h *ResourceHandler) Create(w http.ResponseWriter, r *http.Request) {
 			validateLabels(&req, "Labels"),
 		},
 		Action: func() (interface{}, *errors.ServiceError) {
-			resource, err := presenters.ConvertResource(&req)
+			ctx := r.Context()
+
+			var resource *api.Resource
+			var err error
+			if parentID, hasParent := mux.Vars(r)["parent_id"]; hasParent {
+				parent, svcErr := h.service.Get(ctx, h.descriptor.ParentKind, parentID)
+				if svcErr != nil {
+					return nil, svcErr
+				}
+				resource, err = presenters.ConvertResourceWithOwner(&req, parent.ID, parent.Kind, parent.Href)
+			} else if h.descriptor.ParentKind != "" {
+				return nil, childCreateRejection(h.descriptor)
+			} else {
+				resource, err = presenters.ConvertResource(&req)
+			}
 			if err != nil {
 				return nil, errors.GeneralError("failed to convert resource: %v", err)
 			}
-			resource, svcErr := h.service.Create(r.Context(), h.descriptor.Kind, resource)
+
+			resource, svcErr := h.service.Create(ctx, h.descriptor.Kind, resource)
 			if svcErr != nil {
 				return nil, svcErr
 			}
@@ -55,14 +78,25 @@ func (h *ResourceHandler) Create(w http.ResponseWriter, r *http.Request) {
 func (h *ResourceHandler) Get(w http.ResponseWriter, r *http.Request) {
 	cfg := &handlerConfig{
 		Action: func() (interface{}, *errors.ServiceError) {
-			id := mux.Vars(r)["id"]
-			resource, err := h.service.Get(r.Context(), h.descriptor.Kind, id)
+			ctx := r.Context()
+			vars := mux.Vars(r)
+			id := vars["id"]
+
+			var resource *api.Resource
+			var err *errors.ServiceError
+			if parentID, hasParent := vars["parent_id"]; hasParent {
+				if _, err = h.service.Get(ctx, h.descriptor.ParentKind, parentID); err != nil {
+					return nil, err
+				}
+				resource, err = h.service.GetByOwner(ctx, h.descriptor.Kind, id, parentID)
+			} else {
+				resource, err = h.service.Get(ctx, h.descriptor.Kind, id)
+			}
 			if err != nil {
 				return nil, err
 			}
-			presented := presenters.PresentResource(resource)
 
-			return applyFieldFilter(r, presented)
+			return applyFieldFilter(r, presenters.PresentResource(resource))
 		},
 	}
 	handleGet(w, r, cfg)
@@ -71,14 +105,27 @@ func (h *ResourceHandler) Get(w http.ResponseWriter, r *http.Request) {
 func (h *ResourceHandler) List(w http.ResponseWriter, r *http.Request) {
 	cfg := &handlerConfig{
 		Action: func() (interface{}, *errors.ServiceError) {
+			ctx := r.Context()
+
 			listArgs, err := services.NewListArguments(r.URL.Query())
 			if err != nil {
 				return nil, err
 			}
-			resources, paging, err := h.service.List(r.Context(), h.descriptor.Kind, listArgs)
+
+			var resources api.ResourceList
+			var paging *api.PagingMeta
+			if parentID, hasParent := mux.Vars(r)["parent_id"]; hasParent {
+				if _, svcErr := h.service.Get(ctx, h.descriptor.ParentKind, parentID); svcErr != nil {
+					return nil, svcErr
+				}
+				resources, paging, err = h.service.ListByOwner(ctx, h.descriptor.Kind, parentID, listArgs)
+			} else {
+				resources, paging, err = h.service.List(ctx, h.descriptor.Kind, listArgs)
+			}
 			if err != nil {
 				return nil, err
 			}
+
 			result := presenters.PresentResourceList(resources, paging)
 			if listArgs.Fields != nil {
 				return presenters.SliceFilter(listArgs.Fields, result)
@@ -100,6 +147,11 @@ func (h *ResourceHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		},
 		Action: func() (interface{}, *errors.ServiceError) {
 			id := mux.Vars(r)["id"]
+
+			if err := h.verifyOwnership(r, id); err != nil {
+				return nil, err
+			}
+
 			patch := convertResourcePatch(&req)
 			resource, err := h.service.Patch(r.Context(), h.descriptor.Kind, id, patch)
 			if err != nil {
@@ -115,6 +167,11 @@ func (h *ResourceHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	cfg := &handlerConfig{
 		Action: func() (interface{}, *errors.ServiceError) {
 			id := mux.Vars(r)["id"]
+
+			if err := h.verifyOwnership(r, id); err != nil {
+				return nil, err
+			}
+
 			resource, svcErr := h.service.Delete(r.Context(), h.descriptor.Kind, id)
 			if svcErr != nil {
 				return nil, svcErr
@@ -125,121 +182,15 @@ func (h *ResourceHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	handleSoftDelete(w, r, cfg)
 }
 
-// --- Nested resource (ByOwner) methods ---
-
-func (h *ResourceHandler) CreateWithOwner(w http.ResponseWriter, r *http.Request) {
-	var req openapi.ResourceCreateRequest
-	cfg := &handlerConfig{
-		MarshalInto: &req,
-		Validate: []validate{
-			validateKind(&req, "Kind", "kind", h.descriptor.Kind),
-			validateSpec(&req, "Spec", "spec"),
-			validateLabels(&req, "Labels"),
-		},
-		Action: func() (interface{}, *errors.ServiceError) {
-			ctx := r.Context()
-			parentID := mux.Vars(r)["parent_id"]
-
-			parent, svcErr := h.service.Get(ctx, h.descriptor.ParentKind, parentID)
-			if svcErr != nil {
-				return nil, svcErr
-			}
-
-			resource, err := presenters.ConvertResourceWithOwner(
-				&req,
-				parent.ID, parent.Kind, parent.Href,
-			)
-			if err != nil {
-				return nil, errors.GeneralError("failed to convert resource: %v", err)
-			}
-
-			resource, svcErr = h.service.Create(ctx, h.descriptor.Kind, resource)
-			if svcErr != nil {
-				return nil, svcErr
-			}
-			return presenters.PresentResource(resource), nil
-		},
+// verifyOwnership confirms id belongs to the parent named by parent_id in the
+// request path. No-op for flat (non-nested) routes, where parent_id is absent.
+func (h *ResourceHandler) verifyOwnership(r *http.Request, id string) *errors.ServiceError {
+	if parentID, hasParent := mux.Vars(r)["parent_id"]; hasParent {
+		if _, err := h.service.GetByOwner(r.Context(), h.descriptor.Kind, id, parentID); err != nil {
+			return err
+		}
 	}
-	handle(w, r, cfg, http.StatusCreated)
-}
-
-func (h *ResourceHandler) GetByOwner(w http.ResponseWriter, r *http.Request) {
-	cfg := &handlerConfig{
-		Action: func() (interface{}, *errors.ServiceError) {
-			vars := mux.Vars(r)
-			parentID, id := vars["parent_id"], vars["id"]
-
-			if _, err := h.service.Get(r.Context(), h.descriptor.ParentKind, parentID); err != nil {
-				return nil, err
-			}
-
-			resource, err := h.service.GetByOwner(r.Context(), h.descriptor.Kind, id, parentID)
-			if err != nil {
-				return nil, err
-			}
-			presented := presenters.PresentResource(resource)
-
-			return applyFieldFilter(r, presented)
-		},
-	}
-	handleGet(w, r, cfg)
-}
-
-func (h *ResourceHandler) ListByOwner(w http.ResponseWriter, r *http.Request) {
-	cfg := &handlerConfig{
-		Action: func() (interface{}, *errors.ServiceError) {
-			parentID := mux.Vars(r)["parent_id"]
-
-			if _, err := h.service.Get(r.Context(), h.descriptor.ParentKind, parentID); err != nil {
-				return nil, err
-			}
-
-			listArgs, err := services.NewListArguments(r.URL.Query())
-			if err != nil {
-				return nil, err
-			}
-			resources, paging, err := h.service.ListByOwner(
-				r.Context(), h.descriptor.Kind, parentID, listArgs,
-			)
-			if err != nil {
-				return nil, err
-			}
-			result := presenters.PresentResourceList(resources, paging)
-			if listArgs.Fields != nil {
-				return presenters.SliceFilter(listArgs.Fields, result)
-			}
-			return result, nil
-		},
-	}
-	handleList(w, r, cfg)
-}
-
-func (h *ResourceHandler) PatchByOwner(w http.ResponseWriter, r *http.Request) {
-	var req openapi.ResourcePatchRequest
-	cfg := &handlerConfig{
-		MarshalInto:     &req,
-		StrictUnmarshal: true,
-		Validate: []validate{
-			validatePatchRequest(&req),
-			validateLabels(&req, "Labels"),
-		},
-		Action: func() (interface{}, *errors.ServiceError) {
-			vars := mux.Vars(r)
-			parentID, id := vars["parent_id"], vars["id"]
-
-			if _, err := h.service.GetByOwner(r.Context(), h.descriptor.Kind, id, parentID); err != nil {
-				return nil, err
-			}
-
-			patch := convertResourcePatch(&req)
-			resource, err := h.service.Patch(r.Context(), h.descriptor.Kind, id, patch)
-			if err != nil {
-				return nil, err
-			}
-			return presenters.PresentResource(resource), nil
-		},
-	}
-	handle(w, r, cfg, http.StatusOK)
+	return nil
 }
 
 func convertResourcePatch(req *openapi.ResourcePatchRequest) *api.ResourcePatch {
@@ -256,22 +207,36 @@ func convertResourcePatch(req *openapi.ResourcePatchRequest) *api.ResourcePatch 
 	return patch
 }
 
-func (h *ResourceHandler) DeleteByOwner(w http.ResponseWriter, r *http.Request) {
+func (h *ResourceHandler) ForceDelete(w http.ResponseWriter, r *http.Request) {
+	var req openapi.ForceDeleteRequest
 	cfg := &handlerConfig{
+		MarshalInto: &req,
+		Validate: []validate{
+			validateNotEmpty(&req, "Reason", "reason"),
+			validateMaxLength(&req, "Reason", "reason", maxReasonLength),
+		},
 		Action: func() (interface{}, *errors.ServiceError) {
-			vars := mux.Vars(r)
-			parentID, id := vars["parent_id"], vars["id"]
+			id := mux.Vars(r)["id"]
 
-			if _, err := h.service.GetByOwner(r.Context(), h.descriptor.Kind, id, parentID); err != nil {
+			if err := h.verifyOwnership(r, id); err != nil {
 				return nil, err
 			}
 
-			resource, svcErr := h.service.Delete(r.Context(), h.descriptor.Kind, id)
-			if svcErr != nil {
-				return nil, svcErr
+			if err := h.service.ForceDelete(r.Context(), h.descriptor.Kind, id, req.Reason); err != nil {
+				return nil, err
 			}
-			return presenters.PresentResource(resource), nil
+			return nil, nil
 		},
 	}
-	handleSoftDelete(w, r, cfg)
+	handleForceDelete(w, r, cfg)
+}
+
+func childCreateRejection(descriptor registry.EntityDescriptor) *errors.ServiceError {
+	parent := registry.MustGet(descriptor.ParentKind)
+	svcErr := errors.Validation(
+		"Cannot create %s here. Use POST /%s/{%s_id}/%s",
+		descriptor.Kind, parent.Plural, parent.Kind, descriptor.Plural,
+	)
+	svcErr.HTTPCode = http.StatusUnprocessableEntity
+	return svcErr
 }

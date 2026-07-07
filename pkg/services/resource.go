@@ -10,6 +10,7 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/dao"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/registry"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/util"
 )
@@ -24,6 +25,9 @@ type ResourceService interface {
 	List(ctx context.Context, kind string, args *ListArguments) (api.ResourceList, *api.PagingMeta, *errors.ServiceError)
 	GetByOwner(ctx context.Context, kind, id, ownerID string) (*api.Resource, *errors.ServiceError)
 	ListByOwner(ctx context.Context, kind, ownerID string, args *ListArguments) (api.ResourceList, *api.PagingMeta, *errors.ServiceError) // nolint:lll
+	ForceDelete(ctx context.Context, kind, id, reason string) *errors.ServiceError
+	GetByID(ctx context.Context, id string) (*api.Resource, *errors.ServiceError)
+	ListAll(ctx context.Context, args *ListArguments) (api.ResourceList, *api.PagingMeta, *errors.ServiceError)
 }
 
 func NewResourceService(resourceDao dao.ResourceDao, generic GenericService) ResourceService {
@@ -338,6 +342,30 @@ func (s *sqlResourceService) ListByOwner(
 	return result, paging, nil
 }
 
+func (s *sqlResourceService) GetByID(ctx context.Context, id string) (*api.Resource, *errors.ServiceError) {
+	resource, err := s.resourceDao.GetByID(ctx, id)
+	if err != nil {
+		return nil, handleGetError("Resource", "id", id, err)
+	}
+	return resource, nil
+}
+
+func (s *sqlResourceService) ListAll(
+	ctx context.Context, args *ListArguments,
+) (api.ResourceList, *api.PagingMeta, *errors.ServiceError) {
+	var resources []api.Resource
+	paging, svcErr := s.generic.List(ctx, args, &resources)
+	if svcErr != nil {
+		return nil, nil, svcErr
+	}
+
+	result := make(api.ResourceList, len(resources))
+	for i := range resources {
+		result[i] = &resources[i]
+	}
+	return result, paging, nil
+}
+
 // validateKind checks that the kind is a registered entity type.
 // Returns 400 if the kind is unknown, preventing invalid kinds from reaching the DAO.
 func validateKind(kind string) *errors.ServiceError {
@@ -391,5 +419,75 @@ func applyResourcePatch(resource *api.Resource, patch *api.ResourcePatch) error 
 	}
 	// TODO: handle patch.References — three-way semantics (nil=skip, {}=clear, map=replace)
 	// via dao.ReplaceReferences per generic-resource-registry-design.md §9.2
+	return nil
+}
+
+func (s *sqlResourceService) ForceDelete(ctx context.Context, kind, id, reason string) *errors.ServiceError {
+	if svcErr := validateKind(kind); svcErr != nil {
+		return svcErr
+	}
+
+	resource, err := s.resourceDao.GetForUpdate(ctx, kind, id)
+	if err != nil {
+		return handleGetError(kind, "id", id, err)
+	}
+
+	if resource.DeletedTime == nil {
+		return errors.ConflictState("%s '%s' is not in Finalizing state", kind, id)
+	}
+
+	caller := actorFromContext(ctx)
+	if svcErr := s.forceDeleteResourceTree(ctx, resource, caller, reason); svcErr != nil {
+		db.MarkForRollback(ctx, svcErr)
+		return svcErr
+	}
+	return nil
+}
+
+func (s *sqlResourceService) forceDeleteResourceTree(
+	ctx context.Context, resource *api.Resource, caller, reason string,
+) *errors.ServiceError {
+	desc := registry.MustGet(resource.Kind)
+	if len(desc.RequiredAdapters) > 0 {
+		// When HYPERFLEET-1154 adds adapter_status cleanup here, reuse
+		// buildAdapterSummaries (util.go) for the audit log, matching
+		// cluster.go's logForceDeleteAudit — don't hand-roll formatting again.
+		return errors.GeneralError(
+			"force-delete not implemented for resources with required adapters (kind=%s)"+
+				" — adapter_status cleanup needed, see HYPERFLEET-1154",
+			resource.Kind,
+		)
+	}
+
+	children := registry.ChildrenOf(resource.Kind)
+
+	childIDs := make([]string, 0)
+	for _, child := range children {
+		items, err := s.resourceDao.FindByKindAndOwnerForUpdate(ctx, child.Kind, resource.ID)
+		if err != nil {
+			logger.With(ctx, "resource_id", resource.ID, "child_kind", child.Kind).
+				WithError(err).Error("Failed to find children for force-delete")
+			return errors.GeneralError("Unable to find %s children for force-delete", child.Kind)
+		}
+		for _, item := range items {
+			childIDs = append(childIDs, item.ID)
+			if svcErr := s.forceDeleteResourceTree(ctx, item, caller, reason); svcErr != nil {
+				return svcErr
+			}
+		}
+	}
+
+	logger.With(ctx,
+		"resource_kind", resource.Kind,
+		"resource_id", resource.ID,
+		"caller", caller,
+		"reason", reason,
+		"child_resource_ids", childIDs,
+	).Info("Force-deleting resource")
+
+	if err := s.resourceDao.Delete(ctx, resource.Kind, resource.ID); err != nil {
+		return handleDeleteError(resource.Kind, err)
+	}
+
 	return nil
 }

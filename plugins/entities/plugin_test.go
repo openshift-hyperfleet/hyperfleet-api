@@ -21,7 +21,7 @@ func TestRegisterEntityRoutes_TopLevelEntity(t *testing.T) {
 
 	router := mux.NewRouter()
 	apiV1 := router.PathPrefix("/api/hyperfleet/v1").Subrouter()
-	RegisterEntityRoutes(apiV1, nil)
+	RegisterEntityRoutes(apiV1, nil, nil)
 
 	assertRouteMatches(t, router, "GET", "/api/hyperfleet/v1/channels")
 	assertRouteMatches(t, router, "POST", "/api/hyperfleet/v1/channels")
@@ -30,7 +30,7 @@ func TestRegisterEntityRoutes_TopLevelEntity(t *testing.T) {
 	assertRouteMatches(t, router, "DELETE", "/api/hyperfleet/v1/channels/00000000-0000-0000-0000-000000000001")
 }
 
-func TestRegisterEntityRoutes_ChildEntity_NestedOnly(t *testing.T) {
+func TestRegisterEntityRoutes_ChildEntity(t *testing.T) {
 	RegisterTestingT(t)
 	registry.Reset()
 	registry.Register(registry.EntityDescriptor{Kind: "Channel", Plural: "channels"})
@@ -42,20 +42,24 @@ func TestRegisterEntityRoutes_ChildEntity_NestedOnly(t *testing.T) {
 
 	router := mux.NewRouter()
 	apiV1 := router.PathPrefix("/api/hyperfleet/v1").Subrouter()
-	RegisterEntityRoutes(apiV1, nil)
+	RegisterEntityRoutes(apiV1, nil, nil)
 
 	parentID := "00000000-0000-0000-0000-000000000001"
 	childID := "00000000-0000-0000-0000-000000000002"
-	base := "/api/hyperfleet/v1/channels/" + parentID + "/versions"
+	nested := "/api/hyperfleet/v1/channels/" + parentID + "/versions"
 
-	assertRouteMatches(t, router, "GET", base)
-	assertRouteMatches(t, router, "POST", base)
-	assertRouteMatches(t, router, "GET", base+"/"+childID)
-	assertRouteMatches(t, router, "PATCH", base+"/"+childID)
-	assertRouteMatches(t, router, "DELETE", base+"/"+childID)
+	assertRouteMatches(t, router, "GET", nested)
+	assertRouteMatches(t, router, "POST", nested)
+	assertRouteMatches(t, router, "GET", nested+"/"+childID)
+	assertRouteMatches(t, router, "PATCH", nested+"/"+childID)
+	assertRouteMatches(t, router, "DELETE", nested+"/"+childID)
 
-	assertRouteNotFound(t, router, "GET", "/api/hyperfleet/v1/versions")
-	assertRouteNotFound(t, router, "POST", "/api/hyperfleet/v1/versions")
+	flat := "/api/hyperfleet/v1/versions"
+	assertRouteMatches(t, router, "GET", flat)
+	assertRouteMatches(t, router, "POST", flat)
+	assertRouteMatches(t, router, "GET", flat+"/"+childID)
+	assertRouteMatches(t, router, "PATCH", flat+"/"+childID)
+	assertRouteMatches(t, router, "DELETE", flat+"/"+childID)
 }
 
 func TestRegisterEntityRoutes_EmptyRegistry(t *testing.T) {
@@ -66,7 +70,7 @@ func TestRegisterEntityRoutes_EmptyRegistry(t *testing.T) {
 	apiV1 := router.PathPrefix("/api/hyperfleet/v1").Subrouter()
 
 	Expect(func() {
-		RegisterEntityRoutes(apiV1, nil)
+		RegisterEntityRoutes(apiV1, nil, nil)
 	}).ToNot(Panic())
 }
 
@@ -75,14 +79,4 @@ func assertRouteMatches(t *testing.T, router *mux.Router, method, path string) {
 	req := httptest.NewRequest(method, path, nil)
 	match := mux.RouteMatch{}
 	Expect(router.Match(req, &match)).To(BeTrue(), "expected route to match: %s %s", method, path)
-}
-
-func assertRouteNotFound(t *testing.T, router *mux.Router, method, path string) {
-	t.Helper()
-	req := httptest.NewRequest(method, path, nil)
-	match := mux.RouteMatch{}
-	matched := router.Match(req, &match)
-	if matched && match.MatchErr == nil && match.Handler != nil {
-		t.Errorf("expected no route match for %s %s but one was found", method, path)
-	}
 }

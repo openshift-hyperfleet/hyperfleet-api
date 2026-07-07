@@ -59,6 +59,16 @@ func newVersionResource(name, channelID string) *api.Resource {
 	}
 }
 
+func newWifConfigResource(name string) *api.Resource {
+	return &api.Resource{
+		Kind:      "WifConfig",
+		Name:      name,
+		Spec:      []byte(`{"project_id": "test-project", "pool_id": "test-pool"}`),
+		CreatedBy: "test@example.com",
+		UpdatedBy: "test@example.com",
+	}
+}
+
 // hardDeleteResource directly deletes a resource from the database, bypassing service layer.
 // Used to simulate adapter finalization in tests.
 func hardDeleteResource(ctx context.Context, h *test.Helper, kind, id string) error {
