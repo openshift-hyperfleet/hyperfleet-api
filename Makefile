@@ -133,7 +133,7 @@ generate: $(OAPI_CODEGEN) ## Generate OpenAPI types using oapi-codegen
 	@rm -f openapi/openapi.yaml
 	@cp "$$($(GO) list -m -f '{{.Dir}}' github.com/openshift-hyperfleet/hyperfleet-api-spec)/schemas/core/openapi.yaml" openapi/openapi.yaml
 	$(OAPI_CODEGEN) --config openapi/oapi-codegen.yaml openapi/openapi.yaml
-	@echo '// DO NOT REMOVE\npackage openapi' > pkg/api/openapi/stub.go
+	@printf '// DO NOT REMOVE\npackage openapi\n' > pkg/api/openapi/stub.go
 
 .PHONY: generate-mocks
 generate-mocks: $(MOCKGEN) ## Generate mock implementations for services
