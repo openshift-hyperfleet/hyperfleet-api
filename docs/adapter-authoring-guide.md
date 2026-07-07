@@ -1499,6 +1499,8 @@ Post-actions target the NodePool status endpoint instead of the cluster one:
 ```yaml
 post_actions:
   - name: "reportNodepoolStatus"
+    when:
+      expression: "!adapter.resourcesSkipped"
     api_call:
       method: "PUT"
       url: "/api/hyperfleet/v1/clusters/{{ .clusterId }}/nodepools/{{ .nodepoolId }}/statuses"

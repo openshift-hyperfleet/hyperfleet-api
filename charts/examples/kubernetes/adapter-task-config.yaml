@@ -162,6 +162,8 @@ post:
 
   post_actions:
     - name: "reportClusterStatus"
+      when:
+        expression: "!adapter.resourcesSkipped"
       api_call:
         method: "PUT"
         url: "/clusters/{{ .clusterId }}/statuses"
