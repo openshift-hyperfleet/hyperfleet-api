@@ -197,7 +197,11 @@ type Payload struct {
 	Build interface{} `yaml:"build,omitempty" validate:"required_without=BuildRef,excluded_with=BuildRef"`
 	// BuildRefContent holds the loaded content from BuildRef file (populated by loader)
 	BuildRefContent map[string]interface{} `yaml:"-"`
-	Name            string                 `yaml:"name" validate:"required"`
+	// When defines a CEL expression that gates construction of this payload.
+	// If the expression evaluates to false, the payload is not built and its name
+	// is absent from the post-actions template context.
+	When *PostActionWhen `yaml:"when,omitempty"`
+	Name string          `yaml:"name" validate:"required"`
 	// BuildRef references an external YAML file containing the build definition.
 	// Mutually exclusive with Build.
 	BuildRef string `yaml:"build_ref,omitempty" validate:"required_without=Build,excluded_with=Build"`

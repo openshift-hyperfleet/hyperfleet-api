@@ -1532,3 +1532,152 @@ func TestExecutor_PayloadBuildFailure(t *testing.T) {
 
 	t.Logf("Payload build failure test completed: post actions properly blocked, error logged")
 }
+
+// TestExecutor_PayloadWhenCondition tests that payload-level when conditions gate payload construction
+// and that post-actions referencing skipped payloads are silently skipped.
+func TestExecutor_PayloadWhenCondition(t *testing.T) {
+	mockAPI := testutil.NewMockAPIServer(t)
+	defer mockAPI.Close()
+
+	t.Setenv("HYPERFLEET_API_BASE_URL", mockAPI.URL())
+	t.Setenv("HYPERFLEET_API_VERSION", "v1")
+
+	k8sEnv := getK8sEnvForTest(t)
+
+	config := &configloader.Config{
+		Adapter: configloader.AdapterInfo{
+			Name:    "test-adapter",
+			Version: "1.0.0",
+		},
+		Clients: configloader.ClientsConfig{
+			HyperfleetAPI: configloader.HyperfleetAPIConfig{
+				Timeout:       10 * time.Second,
+				RetryAttempts: 1,
+				RetryBackoff:  hyperfleetapi.BackoffConstant,
+			},
+		},
+		Params: []configloader.Parameter{
+			{Name: "hyperfleetApiBaseUrl", Source: "env.HYPERFLEET_API_BASE_URL", Required: true},
+			{Name: "hyperfleetApiVersion", Source: "env.HYPERFLEET_API_VERSION", Default: "v1", Required: false},
+			{Name: "clusterID", Source: "event.id", Required: true},
+		},
+		Preconditions: []configloader.Precondition{
+			{
+				ActionBase: configloader.ActionBase{
+					Name: "clusterStatus",
+					APICall: &configloader.APICall{
+						Method:  "GET",
+						URL:     "{{ .hyperfleetApiBaseUrl }}/api/{{ .hyperfleetApiVersion }}/clusters/{{ .clusterID }}",
+						Timeout: "5s",
+					},
+				},
+				Capture: []configloader.CaptureField{
+					{Name: "clusterName", FieldExpressionDef: configloader.FieldExpressionDef{Field: "name"}},
+				},
+			},
+		},
+		Resources: []configloader.Resource{},
+		Post: &configloader.PostConfig{
+			Payloads: []configloader.Payload{
+				{
+					Name: "alwaysBuiltPayload",
+					Build: map[string]interface{}{
+						"status": "ok",
+						"clusterID": map[string]interface{}{
+							"value": "{{ .clusterID }}",
+						},
+					},
+				},
+				{
+					Name: "skippedPayload",
+					When: &configloader.PostActionWhen{
+						Expression: "adapter.resourcesSkipped",
+					},
+					Build: map[string]interface{}{
+						"status": "skipped-path",
+					},
+				},
+			},
+			PostActions: []configloader.PostAction{
+				{
+					ActionBase: configloader.ActionBase{
+						Name: "reportAlwaysBuilt",
+						APICall: &configloader.APICall{
+							Method:  "PUT",
+							URL:     "{{ .hyperfleetApiBaseUrl }}/api/{{ .hyperfleetApiVersion }}/clusters/{{ .clusterID }}/statuses",
+							Body:    "{{ .alwaysBuiltPayload }}",
+							Timeout: "5s",
+						},
+					},
+				},
+				{
+					ActionBase: configloader.ActionBase{
+						Name: "reportSkipped",
+						APICall: &configloader.APICall{
+							Method: "PUT",
+							URL: "{{ .hyperfleetApiBaseUrl }}/api/{{ .hyperfleetApiVersion }}" +
+								"/clusters/{{ .clusterID }}/skipped-statuses",
+							Body:    "{{ .skippedPayload }}",
+							Timeout: "5s",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	apiClient, err := hyperfleetapi.NewClient(testLog(),
+		hyperfleetapi.WithTimeout(10*time.Second),
+		hyperfleetapi.WithRetryAttempts(1),
+	)
+	require.NoError(t, err)
+
+	exec, err := executor.NewBuilder().
+		WithConfig(config).
+		WithAPIClient(apiClient).
+		WithLogger(k8sEnv.Log).
+		WithTransportClient(k8sEnv.Client).
+		Build()
+	require.NoError(t, err)
+
+	evt := createTestEvent("cluster-when-test")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	result := exec.Execute(ctx, evt)
+
+	require.Equal(t, executor.StatusSuccess, result.Status,
+		"Expected success; errors=%v", result.Errors)
+
+	// Two post-action results expected
+	require.Len(t, result.PostActionResults, 2)
+
+	// First post-action (alwaysBuiltPayload) should succeed
+	assert.Equal(t, executor.StatusSuccess, result.PostActionResults[0].Status,
+		"reportAlwaysBuilt should succeed")
+	assert.True(t, result.PostActionResults[0].APICallMade,
+		"reportAlwaysBuilt should make API call")
+
+	// Second post-action (skippedPayload) should be skipped
+	assert.Equal(t, executor.StatusSkipped, result.PostActionResults[1].Status,
+		"reportSkipped should be skipped because its payload was not built")
+	assert.False(t, result.PostActionResults[1].APICallMade,
+		"reportSkipped should NOT make an API call")
+
+	// Verify the status PUT was made only once (for alwaysBuiltPayload)
+	requests := mockAPI.GetRequests()
+	statusPUTs := 0
+	for _, req := range requests {
+		if req.Method == http.MethodPut {
+			statusPUTs++
+			assert.Contains(t, req.Path, "/statuses",
+				"PUT should be to /statuses endpoint")
+			assert.NotContains(t, req.Path, "/skipped-statuses",
+				"No PUT should reach /skipped-statuses")
+		}
+	}
+	assert.Equal(t, 1, statusPUTs, "Only one status PUT should be made")
+
+	t.Logf("Payload when condition test completed: skipped payload correctly prevented post-action execution")
+}
