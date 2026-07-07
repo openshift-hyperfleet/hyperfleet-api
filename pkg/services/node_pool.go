@@ -417,6 +417,8 @@ func (s *sqlNodePoolService) ProcessAdapterStatus(
 // validateAndClassifyNodePool performs all stateless validation and discard-rule checks on an
 // incoming adapter status for a node pool. Returns the parsed conditions and whether aggregation
 // should be triggered. Returns (nil, false, nil) when the update should be silently discarded.
+// validateAndClassifyNodePool delegates to the shared validateAndClassifyAdapterStatus
+// with nodepool-specific logger context.
 func (s *sqlNodePoolService) validateAndClassifyNodePool(
 	ctx context.Context,
 	nodePoolID string,
@@ -424,76 +426,8 @@ func (s *sqlNodePoolService) validateAndClassifyNodePool(
 	nodePool *api.NodePool,
 	existingStatus *api.AdapterStatus,
 ) ([]api.AdapterCondition, bool, *errors.ServiceError) {
-	l := logger.With(ctx, logger.FieldNodePoolID, nodePoolID, logger.FieldAdapter, adapterStatus.Adapter)
-
-	if adapterStatus.ObservedGeneration > nodePool.Generation {
-		l.Debug("Discarding adapter status update: future generation")
-		return nil, false, nil
-	}
-
-	if existingStatus != nil && adapterStatus.ObservedGeneration < existingStatus.ObservedGeneration {
-		l.Debug("Discarding adapter status update: stale generation")
-		return nil, false, nil
-	}
-
-	incomingObs := AdapterObservedTime(adapterStatus)
-	if incomingObs.IsZero() {
-		l.Debug("Discarding adapter status update: zero observed time")
-		return nil, false, nil
-	}
-
-	if existingStatus != nil && adapterStatus.ObservedGeneration == existingStatus.ObservedGeneration {
-		prevObs := AdapterObservedTime(existingStatus)
-		if !prevObs.IsZero() && incomingObs.Before(prevObs) {
-			l.Debug("Discarding adapter status update: stale observed time")
-			return nil, false, nil
-		}
-	}
-
-	var conditions []api.AdapterCondition
-	if len(adapterStatus.Conditions) > 0 {
-		if errUnmarshal := json.Unmarshal(adapterStatus.Conditions, &conditions); errUnmarshal != nil {
-			return nil, false, errors.GeneralError("Failed to unmarshal adapter status conditions: %s", errUnmarshal)
-		}
-	}
-
-	if errorType, conditionName := ValidateMandatoryConditions(conditions); errorType != "" {
-		return nil, false, errors.Validation(
-			"missing mandatory condition '%s': all adapters must report Available, Applied, and Health",
-			conditionName,
-		)
-	}
-
-	triggerAggregation := false
-	for _, cond := range conditions {
-		if cond.Type != api.AdapterConditionTypeAvailable {
-			continue
-		}
-
-		isValidStatus := cond.Status == api.AdapterConditionTrue ||
-			cond.Status == api.AdapterConditionFalse ||
-			cond.Status == api.AdapterConditionUnknown
-		if !isValidStatus {
-			return nil, false, errors.Validation(
-				"condition '%s' has invalid status '%s': must be True, False, or Unknown",
-				cond.Type, cond.Status,
-			)
-		}
-
-		if cond.Status != api.AdapterConditionTrue && cond.Status != api.AdapterConditionFalse {
-			if existingStatus != nil {
-				l.Debug("Discarding adapter status update: subsequent Unknown Available")
-				return nil, false, nil
-			}
-			triggerAggregation = false
-			break
-		}
-
-		triggerAggregation = true
-		break
-	}
-
-	return conditions, triggerAggregation, nil
+	log := logger.With(ctx, logger.FieldNodePoolID, nodePoolID, logger.FieldAdapter, adapterStatus.Adapter)
+	return validateAndClassifyAdapterStatus(nodePool.Generation, adapterStatus, existingStatus, log)
 }
 
 // tryHardDeleteNodePool checks whether all required adapters have reported Finalized=True at the current

@@ -4,6 +4,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	. "github.com/onsi/gomega"
 
@@ -21,13 +22,16 @@ func TestRegisterEntityRoutes_TopLevelEntity(t *testing.T) {
 
 	router := mux.NewRouter()
 	apiV1 := router.PathPrefix("/api/hyperfleet/v1").Subrouter()
-	RegisterEntityRoutes(apiV1, nil, nil)
+	RegisterEntityRoutes(apiV1, nil, nil, nil)
 
+	id := uuid.NewString()
 	assertRouteMatches(t, router, "GET", "/api/hyperfleet/v1/channels")
 	assertRouteMatches(t, router, "POST", "/api/hyperfleet/v1/channels")
-	assertRouteMatches(t, router, "GET", "/api/hyperfleet/v1/channels/00000000-0000-0000-0000-000000000001")
-	assertRouteMatches(t, router, "PATCH", "/api/hyperfleet/v1/channels/00000000-0000-0000-0000-000000000001")
-	assertRouteMatches(t, router, "DELETE", "/api/hyperfleet/v1/channels/00000000-0000-0000-0000-000000000001")
+	assertRouteMatches(t, router, "GET", "/api/hyperfleet/v1/channels/"+id)
+	assertRouteMatches(t, router, "PATCH", "/api/hyperfleet/v1/channels/"+id)
+	assertRouteMatches(t, router, "DELETE", "/api/hyperfleet/v1/channels/"+id)
+	assertRouteMatches(t, router, "GET", "/api/hyperfleet/v1/channels/"+id+"/statuses")
+	assertRouteMatches(t, router, "PUT", "/api/hyperfleet/v1/channels/"+id+"/statuses")
 }
 
 func TestRegisterEntityRoutes_ChildEntity(t *testing.T) {
@@ -42,10 +46,10 @@ func TestRegisterEntityRoutes_ChildEntity(t *testing.T) {
 
 	router := mux.NewRouter()
 	apiV1 := router.PathPrefix("/api/hyperfleet/v1").Subrouter()
-	RegisterEntityRoutes(apiV1, nil, nil)
+	RegisterEntityRoutes(apiV1, nil, nil, nil)
 
-	parentID := "00000000-0000-0000-0000-000000000001"
-	childID := "00000000-0000-0000-0000-000000000002"
+	parentID := uuid.NewString()
+	childID := uuid.NewString()
 	nested := "/api/hyperfleet/v1/channels/" + parentID + "/versions"
 
 	assertRouteMatches(t, router, "GET", nested)
@@ -53,6 +57,8 @@ func TestRegisterEntityRoutes_ChildEntity(t *testing.T) {
 	assertRouteMatches(t, router, "GET", nested+"/"+childID)
 	assertRouteMatches(t, router, "PATCH", nested+"/"+childID)
 	assertRouteMatches(t, router, "DELETE", nested+"/"+childID)
+	assertRouteMatches(t, router, "GET", nested+"/"+childID+"/statuses")
+	assertRouteMatches(t, router, "PUT", nested+"/"+childID+"/statuses")
 
 	flat := "/api/hyperfleet/v1/versions"
 	assertRouteMatches(t, router, "GET", flat)
@@ -60,6 +66,25 @@ func TestRegisterEntityRoutes_ChildEntity(t *testing.T) {
 	assertRouteMatches(t, router, "GET", flat+"/"+childID)
 	assertRouteMatches(t, router, "PATCH", flat+"/"+childID)
 	assertRouteMatches(t, router, "DELETE", flat+"/"+childID)
+	assertRouteMatches(t, router, "GET", flat+"/"+childID+"/statuses")
+	assertRouteMatches(t, router, "PUT", flat+"/"+childID+"/statuses")
+}
+
+func TestRegisterEntityRoutes_UnresolvableParentKind_Panics(t *testing.T) {
+	RegisterTestingT(t)
+	registry.Reset()
+	registry.Register(registry.EntityDescriptor{
+		Kind:       "Version",
+		Plural:     "versions",
+		ParentKind: "NonExistent",
+	})
+
+	router := mux.NewRouter()
+	apiV1 := router.PathPrefix("/api/hyperfleet/v1").Subrouter()
+
+	Expect(func() {
+		RegisterEntityRoutes(apiV1, nil, nil, nil)
+	}).To(PanicWith(ContainSubstring("not registered")))
 }
 
 func TestRegisterEntityRoutes_EmptyRegistry(t *testing.T) {
@@ -70,7 +95,7 @@ func TestRegisterEntityRoutes_EmptyRegistry(t *testing.T) {
 	apiV1 := router.PathPrefix("/api/hyperfleet/v1").Subrouter()
 
 	Expect(func() {
-		RegisterEntityRoutes(apiV1, nil, nil)
+		RegisterEntityRoutes(apiV1, nil, nil, nil)
 	}).ToNot(Panic())
 }
 

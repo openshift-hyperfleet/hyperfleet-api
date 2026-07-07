@@ -165,20 +165,6 @@ func (d *mockResourceDao) GetByID(_ context.Context, id string) (*api.Resource, 
 	return nil, gorm.ErrRecordNotFound
 }
 
-func (d *mockResourceDao) FindByIDs(_ context.Context, kind string, ids []string) (api.ResourceList, error) {
-	idSet := make(map[string]bool, len(ids))
-	for _, id := range ids {
-		idSet[id] = true
-	}
-	var result api.ResourceList
-	for _, r := range d.resources {
-		if r.Kind == kind && idSet[r.ID] {
-			result = append(result, r)
-		}
-	}
-	return result, nil
-}
-
 func (d *mockResourceDao) addResource(r *api.Resource) {
 	d.resources[resourceKey(r.Kind, r.ID)] = r
 }
@@ -204,10 +190,46 @@ func (g *resourceGenericMock) List(
 
 var _ GenericService = &resourceGenericMock{}
 
+// resourceConditionMock implements dao.ResourceConditionDao for testing.
+type resourceConditionMock struct {
+	conditions map[string][]api.ResourceCondition
+}
+
+func newResourceConditionMock() *resourceConditionMock {
+	return &resourceConditionMock{conditions: make(map[string][]api.ResourceCondition)}
+}
+
+func (d *resourceConditionMock) UpdateConditions(
+	_ context.Context, resourceID string, conditions []api.ResourceCondition,
+) error {
+	d.conditions[resourceID] = conditions
+	return nil
+}
+
+func (d *resourceConditionMock) DeleteByResource(_ context.Context, resourceID string) error {
+	delete(d.conditions, resourceID)
+	return nil
+}
+
+var _ dao.ResourceConditionDao = &resourceConditionMock{}
+
+// newTestResourceService creates a ResourceService for CRUD-only tests.
+// adapterStatusDao and resourceConditionDao are nil — tests that call
+// ProcessAdapterStatus must use newTestResourceServiceWithAdapterStatus.
 func newTestResourceService(mockDao *mockResourceDao) (ResourceService, *mockResourceDao, *resourceGenericMock) {
 	generic := &resourceGenericMock{}
-	svc := NewResourceService(mockDao, generic)
+	svc := NewResourceService(mockDao, nil, nil, generic)
 	return svc, mockDao, generic
+}
+
+func newTestResourceServiceWithAdapterStatus(
+	mockDao *mockResourceDao,
+) (ResourceService, *mockResourceDao, *mockAdapterStatusDao, *resourceConditionMock) {
+	asDao := newMockAdapterStatusDao()
+	rcDao := newResourceConditionMock()
+	generic := &resourceGenericMock{}
+	svc := NewResourceService(mockDao, asDao, rcDao, generic)
+	return svc, mockDao, asDao, rcDao
 }
 
 func testResource(kind, id, name string) *api.Resource {
@@ -1572,14 +1594,278 @@ func TestResourceService_ForceDelete_InvalidKind(t *testing.T) {
 	Expect(svcErr.HTTPCode).To(Equal(400))
 }
 
-func TestAllGenericDescriptors_HaveNoRequiredAdapters(t *testing.T) {
-	RegisterTestingT(t)
-	setupTestDescriptors()
+// ─── ProcessAdapterStatus tests ──────────────────────────────
 
-	for _, d := range registry.All() {
-		Expect(d.RequiredAdapters).To(BeEmpty(),
-			"Descriptor %q has RequiredAdapters=%v. "+
-				"ForceDelete does not yet handle adapter_status cleanup. "+
-				"See HYPERFLEET-1154.", d.Kind, d.RequiredAdapters)
+func setupAdapterStatusDescriptors() {
+	registry.Reset()
+	registry.Register(registry.EntityDescriptor{
+		Kind:             "TestResource",
+		Plural:           "testresources",
+		RequiredAdapters: []string{"adapter1"},
+	})
+}
+
+func testAdapterStatusRequest(gen int32) *api.AdapterStatus {
+	return &api.AdapterStatus{
+		Adapter:            "adapter1",
+		ObservedGeneration: gen,
+		LastReportTime:     time.Now().UTC(),
+		Conditions:         testConditionsJSON(testMandatoryConditions(api.AdapterConditionTrue)...),
 	}
+}
+
+func TestProcessAdapterStatus_HappyPath(t *testing.T) {
+	RegisterTestingT(t)
+	setupAdapterStatusDescriptors()
+
+	mockDao := newMockResourceDao()
+	svc, _, asDao, rcDao := newTestResourceServiceWithAdapterStatus(mockDao)
+
+	r := testResource("TestResource", "r-1", "test")
+	r.Generation = 1
+	mockDao.addResource(r)
+
+	result, svcErr := svc.ProcessAdapterStatus(
+		context.Background(), "TestResource", "r-1", testAdapterStatusRequest(1),
+	)
+
+	Expect(svcErr).To(BeNil())
+	Expect(result).ToNot(BeNil())
+	Expect(result.ResourceType).To(Equal("TestResource"))
+	Expect(result.ResourceID).To(Equal("r-1"))
+
+	// Adapter status should be stored
+	Expect(asDao.statuses).To(HaveLen(1))
+
+	// Conditions should be written (aggregation triggered by Available=True)
+	Expect(rcDao.conditions).To(HaveKey("r-1"))
+	Expect(rcDao.conditions["r-1"]).ToNot(BeEmpty())
+}
+
+func TestProcessAdapterStatus_UnknownKind_Returns400(t *testing.T) {
+	RegisterTestingT(t)
+	setupAdapterStatusDescriptors()
+
+	mockDao := newMockResourceDao()
+	svc, _, _, _ := newTestResourceServiceWithAdapterStatus(mockDao)
+
+	_, svcErr := svc.ProcessAdapterStatus(
+		context.Background(), "NonExistent", "r-1", testAdapterStatusRequest(1),
+	)
+
+	Expect(svcErr).ToNot(BeNil())
+	Expect(svcErr.HTTPCode).To(Equal(400))
+}
+
+func TestProcessAdapterStatus_ResourceNotFound_Returns404(t *testing.T) {
+	RegisterTestingT(t)
+	setupAdapterStatusDescriptors()
+
+	mockDao := newMockResourceDao()
+	svc, _, _, _ := newTestResourceServiceWithAdapterStatus(mockDao)
+
+	_, svcErr := svc.ProcessAdapterStatus(
+		context.Background(), "TestResource", "nonexistent", testAdapterStatusRequest(1),
+	)
+
+	Expect(svcErr).ToNot(BeNil())
+	Expect(svcErr.HTTPCode).To(Equal(404))
+}
+
+func TestProcessAdapterStatus_DiscardedStatus_ReturnsNil(t *testing.T) {
+	RegisterTestingT(t)
+	setupAdapterStatusDescriptors()
+
+	mockDao := newMockResourceDao()
+	svc, _, _, rcDao := newTestResourceServiceWithAdapterStatus(mockDao)
+
+	r := testResource("TestResource", "r-1", "test")
+	r.Generation = 1
+	mockDao.addResource(r)
+
+	// Future generation → discarded
+	result, svcErr := svc.ProcessAdapterStatus(
+		context.Background(), "TestResource", "r-1", testAdapterStatusRequest(99),
+	)
+
+	Expect(svcErr).To(BeNil())
+	Expect(result).To(BeNil())
+	Expect(rcDao.conditions).ToNot(HaveKey("r-1"))
+}
+
+func TestProcessAdapterStatus_UpsertSecondReport(t *testing.T) {
+	RegisterTestingT(t)
+	setupAdapterStatusDescriptors()
+
+	mockDao := newMockResourceDao()
+	svc, _, asDao, _ := newTestResourceServiceWithAdapterStatus(mockDao)
+
+	r := testResource("TestResource", "r-1", "test")
+	r.Generation = 1
+	mockDao.addResource(r)
+
+	// First report
+	_, svcErr := svc.ProcessAdapterStatus(
+		context.Background(), "TestResource", "r-1", testAdapterStatusRequest(1),
+	)
+	Expect(svcErr).To(BeNil())
+	Expect(asDao.statuses).To(HaveLen(1))
+
+	// Second report from same adapter
+	req2 := testAdapterStatusRequest(1)
+	req2.LastReportTime = time.Now().UTC().Add(time.Second)
+	_, svcErr = svc.ProcessAdapterStatus(
+		context.Background(), "TestResource", "r-1", req2,
+	)
+	Expect(svcErr).To(BeNil())
+	Expect(asDao.statuses).To(HaveLen(1))
+}
+
+func TestProcessAdapterStatus_SoftDeleted_AllFinalized_HardDeletes(t *testing.T) {
+	RegisterTestingT(t)
+	setupAdapterStatusDescriptors()
+
+	mockDao := newMockResourceDao()
+	svc, _, asDao, rcDao := newTestResourceServiceWithAdapterStatus(mockDao)
+
+	deletedAt := time.Now().UTC()
+	r := testResource("TestResource", "r-1", "test")
+	r.Generation = 1
+	r.DeletedTime = &deletedAt
+	mockDao.addResource(r)
+
+	// Report with Finalized=True
+	req := &api.AdapterStatus{
+		Adapter:            "adapter1",
+		ObservedGeneration: 1,
+		LastReportTime:     time.Now().UTC(),
+		Conditions: testConditionsJSON(
+			api.AdapterCondition{Type: api.AdapterConditionTypeAvailable, Status: api.AdapterConditionTrue},
+			api.AdapterCondition{Type: api.AdapterConditionTypeApplied, Status: api.AdapterConditionTrue},
+			api.AdapterCondition{Type: api.AdapterConditionTypeHealth, Status: api.AdapterConditionTrue},
+			api.AdapterCondition{Type: api.AdapterConditionTypeFinalized, Status: api.AdapterConditionTrue},
+		),
+	}
+
+	result, svcErr := svc.ProcessAdapterStatus(context.Background(), "TestResource", "r-1", req)
+
+	Expect(svcErr).To(BeNil())
+	Expect(result).ToNot(BeNil())
+
+	// Resource should be hard-deleted
+	_, exists := mockDao.resources[resourceKey("TestResource", "r-1")]
+	Expect(exists).To(BeFalse(), "Resource should be hard-deleted")
+
+	// Adapter statuses and conditions should be cleaned up
+	Expect(asDao.statuses).To(BeEmpty())
+	Expect(rcDao.conditions).ToNot(HaveKey("r-1"))
+}
+
+func TestProcessAdapterStatus_SoftDeleted_NotAllFinalized_NoHardDelete(t *testing.T) {
+	RegisterTestingT(t)
+	setupAdapterStatusDescriptors()
+
+	mockDao := newMockResourceDao()
+	svc, _, _, _ := newTestResourceServiceWithAdapterStatus(mockDao)
+
+	deletedAt := time.Now().UTC()
+	r := testResource("TestResource", "r-1", "test")
+	r.Generation = 1
+	r.DeletedTime = &deletedAt
+	mockDao.addResource(r)
+
+	// Report with Available=True but NO Finalized
+	result, svcErr := svc.ProcessAdapterStatus(
+		context.Background(), "TestResource", "r-1", testAdapterStatusRequest(1),
+	)
+
+	Expect(svcErr).To(BeNil())
+	Expect(result).ToNot(BeNil())
+
+	// Resource should NOT be hard-deleted
+	_, exists := mockDao.resources[resourceKey("TestResource", "r-1")]
+	Expect(exists).To(BeTrue(), "Resource should still exist")
+}
+
+func TestProcessAdapterStatus_EmptyRequiredAdapters_StillAggregates(t *testing.T) {
+	RegisterTestingT(t)
+	registry.Reset()
+	registry.Register(registry.EntityDescriptor{
+		Kind:   "NoAdapter",
+		Plural: "noadapters",
+	})
+
+	mockDao := newMockResourceDao()
+	svc, _, _, rcDao := newTestResourceServiceWithAdapterStatus(mockDao)
+
+	r := testResource("NoAdapter", "r-1", "test")
+	r.Generation = 1
+	mockDao.addResource(r)
+
+	req := &api.AdapterStatus{
+		Adapter:            "voluntary-adapter",
+		ObservedGeneration: 1,
+		LastReportTime:     time.Now().UTC(),
+		Conditions:         testConditionsJSON(testMandatoryConditions(api.AdapterConditionTrue)...),
+	}
+
+	result, svcErr := svc.ProcessAdapterStatus(context.Background(), "NoAdapter", "r-1", req)
+
+	Expect(svcErr).To(BeNil())
+	Expect(result).ToNot(BeNil())
+
+	// Conditions should still be aggregated
+	Expect(rcDao.conditions).To(HaveKey("r-1"))
+}
+
+func TestProcessAdapterStatus_SoftDeleted_ChildrenExist_NoHardDelete(t *testing.T) {
+	RegisterTestingT(t)
+	registry.Reset()
+	registry.Register(registry.EntityDescriptor{
+		Kind:             "Parent",
+		Plural:           "parents",
+		RequiredAdapters: []string{"adapter1"},
+	})
+	registry.Register(registry.EntityDescriptor{
+		Kind:             "Child",
+		Plural:           "children",
+		ParentKind:       "Parent",
+		OnParentDelete:   registry.OnParentDeleteCascade,
+		RequiredAdapters: []string{"child-adapter"},
+	})
+
+	mockDao := newMockResourceDao()
+	svc, _, _, _ := newTestResourceServiceWithAdapterStatus(mockDao)
+
+	deletedAt := time.Now().UTC()
+	parent := testResource("Parent", "p-1", "parent")
+	parent.Generation = 1
+	parent.DeletedTime = &deletedAt
+	mockDao.addResource(parent)
+
+	// Active child prevents hard-delete
+	childOwner := "p-1"
+	child := testResource("Child", "c-1", "child")
+	child.OwnerID = &childOwner
+	mockDao.addResource(child)
+
+	req := &api.AdapterStatus{
+		Adapter:            "adapter1",
+		ObservedGeneration: 1,
+		LastReportTime:     time.Now().UTC(),
+		Conditions: testConditionsJSON(
+			api.AdapterCondition{Type: api.AdapterConditionTypeAvailable, Status: api.AdapterConditionTrue},
+			api.AdapterCondition{Type: api.AdapterConditionTypeApplied, Status: api.AdapterConditionTrue},
+			api.AdapterCondition{Type: api.AdapterConditionTypeHealth, Status: api.AdapterConditionTrue},
+			api.AdapterCondition{Type: api.AdapterConditionTypeFinalized, Status: api.AdapterConditionTrue},
+		),
+	}
+
+	result, svcErr := svc.ProcessAdapterStatus(context.Background(), "Parent", "p-1", req)
+	Expect(svcErr).To(BeNil())
+	Expect(result).ToNot(BeNil())
+
+	// Parent should NOT be hard-deleted because child exists
+	_, exists := mockDao.resources[resourceKey("Parent", "p-1")]
+	Expect(exists).To(BeTrue(), "Parent should still exist — active child blocks hard-delete")
 }

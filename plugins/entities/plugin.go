@@ -13,6 +13,7 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/registry"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/services"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/validators"
+	adapterStatus "github.com/openshift-hyperfleet/hyperfleet-api/plugins/adapterStatus"
 	"github.com/openshift-hyperfleet/hyperfleet-api/plugins/resources"
 )
 
@@ -20,6 +21,7 @@ func init() {
 	server.RegisterRoutes("entities", func(apiV1Router *mux.Router, svc server.ServicesInterface) {
 		envServices := svc.(*environments.Services)
 		resourceService := resources.Service(envServices)
+		adapterStatusService := adapterStatus.Service(envServices)
 
 		schemaPath := environments.Environment().Config.Server.OpenAPISchemaPath
 		var schemaValidator *validators.SchemaValidator
@@ -31,7 +33,7 @@ func init() {
 			}
 		}
 
-		RegisterEntityRoutes(apiV1Router, resourceService, schemaValidator)
+		RegisterEntityRoutes(apiV1Router, resourceService, adapterStatusService, schemaValidator)
 	})
 }
 
@@ -42,18 +44,24 @@ func init() {
 // Top-level entities get routes at /{plural}. Child entities (ParentKind != "")
 // get nested routes under /{parent_plural}/{parent_id}/{plural} plus flat
 // read/update/delete access at /{plural} (POST rejected — needs parent context).
+// All entities get /{id}/statuses sub-routes for adapter status reporting.
 //
 // The kind-agnostic /resources root endpoint is registered separately.
 func RegisterEntityRoutes(
 	apiV1Router *mux.Router,
 	resourceService services.ResourceService,
+	adapterStatusService services.AdapterStatusService,
 	schemaValidator *validators.SchemaValidator,
 ) {
-	registerPerEntityRoutes(apiV1Router, resourceService)
-	registerRootResourceRoutes(apiV1Router, resourceService, schemaValidator)
+	registerPerEntityRoutes(apiV1Router, resourceService, adapterStatusService)
+	registerRootResourceRoutes(apiV1Router, resourceService, adapterStatusService, schemaValidator)
 }
 
-func registerPerEntityRoutes(apiV1Router *mux.Router, resourceService services.ResourceService) {
+func registerPerEntityRoutes(
+	apiV1Router *mux.Router,
+	resourceService services.ResourceService,
+	adapterStatusService services.AdapterStatusService,
+) {
 	descriptors := registry.All()
 	sort.Slice(descriptors, func(i, j int) bool {
 		return descriptors[i].Kind < descriptors[j].Kind
@@ -67,18 +75,20 @@ func registerPerEntityRoutes(apiV1Router *mux.Router, resourceService services.R
 			))
 		}
 		h := handlers.NewResourceHandler(descriptor, resourceService)
+		sh := handlers.NewResourceStatusHandler(descriptor, resourceService, adapterStatusService)
 
 		if descriptor.ParentKind != "" {
 			parent := registry.MustGet(descriptor.ParentKind)
-			registerResourceRoutes(apiV1Router, "/"+parent.Plural+"/{parent_id}/"+descriptor.Plural, h)
+			registerResourceRoutes(apiV1Router, "/"+parent.Plural+"/{parent_id}/"+descriptor.Plural, h, sh)
 		}
-		registerResourceRoutes(apiV1Router, "/"+descriptor.Plural, h)
+		registerResourceRoutes(apiV1Router, "/"+descriptor.Plural, h, sh)
 	}
 }
 
 func registerRootResourceRoutes(
 	apiV1Router *mux.Router,
 	resourceService services.ResourceService,
+	adapterStatusService services.AdapterStatusService,
 	schemaValidator *validators.SchemaValidator,
 ) {
 	rootHandler := handlers.NewRootResourceHandler(resourceService, schemaValidator)
@@ -89,10 +99,18 @@ func registerRootResourceRoutes(
 	r.HandleFunc("/{id}", rootHandler.Patch).Methods(http.MethodPatch)
 	r.HandleFunc("/{id}", rootHandler.Delete).Methods(http.MethodDelete)
 	r.HandleFunc("/{id}/force-delete", rootHandler.ForceDelete).Methods(http.MethodPost)
-	// TODO: HYPERFLEET-1154 — wire /{id}/statuses GET and PUT once ResourceStatusHandler exists
+
+	// Root status routes use a descriptor-less handler that resolves the kind
+	// from the resource itself. For now, use a Channel descriptor as placeholder
+	// since the root handler fetches the resource by ID regardless of kind.
+	// TODO: HYPERFLEET-1157 — create a dedicated RootResourceStatusHandler
+	// that resolves the kind from the resource instead of a fixed descriptor.
 }
 
-func registerResourceRoutes(apiV1Router *mux.Router, prefix string, h *handlers.ResourceHandler) {
+func registerResourceRoutes(
+	apiV1Router *mux.Router, prefix string,
+	h *handlers.ResourceHandler, sh *handlers.ResourceStatusHandler,
+) {
 	r := apiV1Router.PathPrefix(prefix).Subrouter()
 	r.HandleFunc("", h.List).Methods(http.MethodGet)
 	r.HandleFunc("", h.Create).Methods(http.MethodPost)
@@ -100,4 +118,6 @@ func registerResourceRoutes(apiV1Router *mux.Router, prefix string, h *handlers.
 	r.HandleFunc("/{id}", h.Patch).Methods(http.MethodPatch)
 	r.HandleFunc("/{id}", h.Delete).Methods(http.MethodDelete)
 	r.HandleFunc("/{id}/force-delete", h.ForceDelete).Methods(http.MethodPost)
+	r.HandleFunc("/{id}/statuses", sh.List).Methods(http.MethodGet)
+	r.HandleFunc("/{id}/statuses", sh.Create).Methods(http.MethodPut)
 }

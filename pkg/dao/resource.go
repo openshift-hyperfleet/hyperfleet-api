@@ -47,7 +47,7 @@ func (d *sqlResourceDao) Get(ctx context.Context, kind, id string) (*api.Resourc
 func (d *sqlResourceDao) GetForUpdate(ctx context.Context, kind, id string) (*api.Resource, error) {
 	g2 := d.sessionFactory.New(ctx)
 	var resource api.Resource
-	if err := g2.Clauses(clause.Locking{Strength: "UPDATE"}).Take(
+	if err := g2.Preload("Conditions").Clauses(clause.Locking{Strength: "UPDATE"}).Take(
 		&resource, "kind = ? AND id = ?", kind, id).Error; err != nil {
 		return nil, err
 	}

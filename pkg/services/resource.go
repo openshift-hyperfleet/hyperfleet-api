@@ -11,6 +11,7 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/metrics"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/registry"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/util"
 )
@@ -24,21 +25,34 @@ type ResourceService interface {
 	Delete(ctx context.Context, kind, id string) (*api.Resource, *errors.ServiceError)
 	List(ctx context.Context, kind string, args *ListArguments) (api.ResourceList, *api.PagingMeta, *errors.ServiceError)
 	GetByOwner(ctx context.Context, kind, id, ownerID string) (*api.Resource, *errors.ServiceError)
-	ListByOwner(ctx context.Context, kind, ownerID string, args *ListArguments) (api.ResourceList, *api.PagingMeta, *errors.ServiceError) // nolint:lll
+	ListByOwner(ctx context.Context, kind, ownerID string, args *ListArguments) (api.ResourceList, *api.PagingMeta, *errors.ServiceError)           // nolint:lll
 	ForceDelete(ctx context.Context, kind, id, reason string) *errors.ServiceError
 	GetByID(ctx context.Context, id string) (*api.Resource, *errors.ServiceError)
 	ListAll(ctx context.Context, args *ListArguments) (api.ResourceList, *api.PagingMeta, *errors.ServiceError)
+	ProcessAdapterStatus(ctx context.Context, kind, resourceID string, adapterStatus *api.AdapterStatus) (*api.AdapterStatus, *errors.ServiceError) // nolint:lll
 }
 
-func NewResourceService(resourceDao dao.ResourceDao, generic GenericService) ResourceService {
-	return &sqlResourceService{resourceDao: resourceDao, generic: generic}
+func NewResourceService(
+	resourceDao dao.ResourceDao,
+	adapterStatusDao dao.AdapterStatusDao,
+	resourceConditionDao dao.ResourceConditionDao,
+	generic GenericService,
+) ResourceService {
+	return &sqlResourceService{
+		resourceDao:          resourceDao,
+		adapterStatusDao:     adapterStatusDao,
+		resourceConditionDao: resourceConditionDao,
+		generic:              generic,
+	}
 }
 
 var _ ResourceService = &sqlResourceService{}
 
 type sqlResourceService struct {
-	resourceDao dao.ResourceDao
-	generic     GenericService
+	resourceDao          dao.ResourceDao
+	adapterStatusDao     dao.AdapterStatusDao
+	resourceConditionDao dao.ResourceConditionDao
+	generic              GenericService
 }
 
 // Get returns a single resource by kind and ID. Returns 404 if not found.
@@ -364,6 +378,262 @@ func (s *sqlResourceService) ListAll(
 		result[i] = &resources[i]
 	}
 	return result, paging, nil
+}
+
+// ProcessAdapterStatus validates, upserts an adapter status report, and triggers
+// status aggregation for a generic resource. Follows the same 4-DB-call pattern
+// as ClusterService.ProcessAdapterStatus:
+//  1. GetForUpdate        — lock + fetch resource with conditions
+//  2. FindByResource      — all adapter statuses (existing found in-memory)
+//  3. Upsert              — write adapter status
+//  4. UpdateConditions    — write aggregated conditions (if changed)
+func (s *sqlResourceService) ProcessAdapterStatus(
+	ctx context.Context, kind, resourceID string, adapterStatus *api.AdapterStatus,
+) (*api.AdapterStatus, *errors.ServiceError) {
+	if svcErr := validateKind(kind); svcErr != nil {
+		return nil, svcErr
+	}
+
+	// Step 1: Acquire a row-level exclusive lock on the resource. Concurrent
+	// adapter status updates for the same resource are serialized here.
+	// GetForUpdate also preloads Conditions (needed for aggregation diff).
+	resource, err := s.resourceDao.GetForUpdate(ctx, kind, resourceID)
+	if err != nil {
+		return nil, handleGetError(kind, "id", resourceID, err)
+	}
+
+	// Step 2: Fetch all existing adapter statuses for this resource.
+	// The existing status for the incoming adapter is found in-memory from
+	// this list — no additional DB call needed.
+	allStatuses, err := s.adapterStatusDao.FindByResource(ctx, kind, resourceID)
+	if err != nil {
+		return nil, errors.GeneralError("Failed to get adapter statuses: %s", err)
+	}
+
+	existingStatus := findAdapterStatusInList(allStatuses, adapterStatus.Adapter)
+
+	// Validate the incoming report: discard stale/future generations, zero
+	// observed times, subsequent Unknown Available, and missing mandatory
+	// conditions. Returns (nil, false, nil) when the update should be
+	// silently discarded (handler returns 204 No Content).
+	log := logger.With(ctx, "resource_type", kind, "resource_id", resourceID,
+		logger.FieldAdapter, adapterStatus.Adapter)
+	conditions, triggerAggregation, svcErr := validateAndClassifyAdapterStatus(
+		resource.Generation, adapterStatus, existingStatus, log,
+	)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	if conditions == nil && !triggerAggregation {
+		return nil, nil
+	}
+
+	// Step 3: Persist the adapter status. setConditionTransitionTimes preserves
+	// LastTransitionTime from the existing status when the condition status
+	// hasn't changed (Kubernetes-style semantics).
+	adapterStatus.ResourceType = kind
+	adapterStatus.ResourceID = resourceID
+	setConditionTransitionTimes(adapterStatus, existingStatus)
+
+	upsertedStatus, err := s.adapterStatusDao.Upsert(ctx, adapterStatus, existingStatus)
+	if err != nil {
+		return nil, handleCreateError("AdapterStatus", err)
+	}
+
+	// Build the post-upsert snapshot of all statuses. Using the pre-upsert
+	// list for hard-delete or aggregation would miss the just-written status.
+	updatedStatuses := replaceAdapterStatusInList(allStatuses, upsertedStatus)
+
+	// If the resource is soft-deleted, check whether all adapters have now
+	// reported Finalized=True — if so, hard-delete the resource.
+	if resource.DeletedTime != nil {
+		hardDeleted, hdErr := s.tryHardDeleteResource(ctx, resource, conditions, updatedStatuses)
+		if hdErr != nil {
+			return nil, hdErr
+		}
+		if hardDeleted {
+			return upsertedStatus, nil
+		}
+	}
+
+	// Step 4: Re-aggregate conditions from all adapter statuses and persist
+	// to the resource_conditions table. Only runs when the Available condition
+	// changed to True or False (not on Unknown or discarded updates).
+	if triggerAggregation {
+		if aggregateErr := s.recomputeAndSaveResourceConditions(
+			ctx, resource, updatedStatuses,
+		); aggregateErr != nil {
+			return nil, aggregateErr
+		}
+	}
+
+	return upsertedStatus, nil
+}
+
+// recomputeAndSaveResourceConditions runs AggregateResourceStatus and persists
+// the result to the resource_conditions table. Skips the write when conditions
+// are unchanged.
+func (s *sqlResourceService) recomputeAndSaveResourceConditions(
+	ctx context.Context,
+	resource *api.Resource,
+	adapterStatuses api.AdapterStatusList,
+) *errors.ServiceError {
+	desc := registry.MustGet(resource.Kind)
+
+	// Convert the GORM association ([]ResourceCondition) to JSON so it can be
+	// passed to AggregateResourceStatus via PrevConditionsJSON. This is needed
+	// because the aggregation function uses the previous conditions to preserve
+	// LastTransitionTime and the sticky LastKnownReconciled condition.
+	var prevConditionsJSON []byte
+	if len(resource.Conditions) > 0 {
+		var marshalErr error
+		prevConditionsJSON, marshalErr = json.Marshal(resource.Conditions)
+		if marshalErr != nil {
+			return errors.GeneralError("Failed to marshal previous conditions: %s", marshalErr)
+		}
+	}
+
+	// Extract previous Reconciled status for metric emission below.
+	prevReconciledStatus := extractPrevReconciledStatus(ctx, prevConditionsJSON)
+
+	// During deletion, check if child resources still exist. The aggregation
+	// function uses this to prevent premature Reconciled=True on a parent
+	// whose children haven't finished their own reconciliation.
+	hasChildResources := false
+	if resource.DeletedTime != nil {
+		for _, child := range registry.ChildrenOf(resource.Kind) {
+			exists, err := s.resourceDao.ExistsByOwner(ctx, child.Kind, resource.ID)
+			if err != nil {
+				return errors.GeneralError(
+					"Failed to check child %s for status aggregation: %s", child.Kind, err,
+				)
+			}
+			if exists {
+				hasChildResources = true
+				break
+			}
+		}
+	}
+
+	// Use UpdatedTime as the reference time for aggregation. Falls back to
+	// CreatedTime for resources that haven't been patched yet.
+	refTime := resource.UpdatedTime
+	if refTime.IsZero() {
+		refTime = resource.CreatedTime
+	}
+
+	reconciled, lastKnownReconciled, adapterConditions := AggregateResourceStatus(
+		ctx, AggregateResourceStatusInput{
+			ResourceGeneration: resource.Generation,
+			RefTime:            refTime,
+			DeletedTime:        resource.DeletedTime,
+			PrevConditionsJSON: prevConditionsJSON,
+			RequiredAdapters:   desc.RequiredAdapters,
+			AdapterStatuses:    adapterStatuses,
+			HasChildResources:  hasChildResources,
+		},
+	)
+
+	// Build the full conditions slice: Reconciled + LastKnownReconciled + per-adapter conditions.
+	newConditions := make([]api.ResourceCondition, 0, fixedConditionCount+len(adapterConditions))
+	newConditions = append(newConditions, reconciled, lastKnownReconciled)
+	newConditions = append(newConditions, adapterConditions...)
+
+	// Compare via JSON to detect actual changes (same approach as cluster.go).
+	newJSON, marshalErr := json.Marshal(newConditions)
+	if marshalErr != nil {
+		return errors.GeneralError("Failed to marshal conditions: %s", marshalErr)
+	}
+	if jsonEqual(prevConditionsJSON, newJSON) {
+		return nil
+	}
+
+	// Write to resource_conditions table (not JSONB on the resource row).
+	// MarkForRollback is handled by the DAO internally.
+	if err := s.resourceConditionDao.UpdateConditions(ctx, resource.ID, newConditions); err != nil {
+		return errors.GeneralError("Failed to update resource conditions: %s", err)
+	}
+
+	// Emit metric on Reconciled=False transition (reconciliation started).
+	if reconciled.Status == api.ConditionFalse &&
+		(prevReconciledStatus == nil || *prevReconciledStatus != api.ConditionFalse) {
+		metrics.RecordReconciliationStarted(resource.Kind, resource.DeletedTime != nil)
+	}
+
+	return nil
+}
+
+// tryHardDeleteResource checks whether all required adapters have reported
+// Finalized=True for a soft-deleted resource and no children remain, then
+// permanently removes the resource and its adapter statuses/conditions.
+func (s *sqlResourceService) tryHardDeleteResource(
+	ctx context.Context,
+	resource *api.Resource,
+	conditions []api.AdapterCondition,
+	allStatuses api.AdapterStatusList,
+) (bool, *errors.ServiceError) {
+	// Quick check: does the incoming report contain Finalized=True?
+	// If not, hard-delete is not possible regardless of other adapters.
+	if !incomingReportedFinalized(conditions) {
+		return false, nil
+	}
+
+	// Check that ALL required adapters (not just this one) have reported
+	// Finalized=True at the current generation.
+	desc := registry.MustGet(resource.Kind)
+	if !allAdaptersFinalized(desc.RequiredAdapters, allStatuses, resource.Generation) {
+		return false, nil
+	}
+
+	// Ensure no active children exist — hard-deleting a parent with active
+	// children would leave orphaned resources.
+	children := registry.ChildrenOf(resource.Kind)
+	for _, child := range children {
+		exists, err := s.resourceDao.ExistsByOwner(ctx, child.Kind, resource.ID)
+		if err != nil {
+			return false, errors.GeneralError(
+				"Failed to check %s children during hard-delete: %s", child.Kind, err,
+			)
+		}
+		if exists {
+			return false, nil
+		}
+	}
+
+	// Also check for soft-deleted children still pending adapter finalization.
+	if len(children) > 0 {
+		childKinds := make([]string, len(children))
+		for i, c := range children {
+			childKinds[i] = c.Kind
+		}
+		hasSoftDeleted, err := s.resourceDao.ExistsSoftDeletedByOwner(ctx, childKinds, resource.ID)
+		if err != nil {
+			return false, errors.GeneralError(
+				"Failed to check soft-deleted children during hard-delete: %s", err,
+			)
+		}
+		if hasSoftDeleted {
+			return false, nil
+		}
+	}
+
+	// All checks passed — clean up associated data and hard-delete the resource.
+	// Order matters: adapter statuses and conditions must be removed before the
+	// resource row, since they reference it.
+	if err := s.adapterStatusDao.DeleteByResource(ctx, resource.Kind, resource.ID); err != nil {
+		return false, errors.GeneralError("Failed to delete adapter statuses during hard-delete: %s", err)
+	}
+	if err := s.resourceConditionDao.DeleteByResource(ctx, resource.ID); err != nil {
+		return false, errors.GeneralError("Failed to delete resource conditions during hard-delete: %s", err)
+	}
+	if err := s.resourceDao.Delete(ctx, resource.Kind, resource.ID); err != nil {
+		return false, errors.GeneralError("Failed to hard-delete %s: %s", resource.Kind, err)
+	}
+
+	logger.With(ctx, "resource_type", resource.Kind, "resource_id", resource.ID).
+		Info("Hard-deleted resource after all required adapters reported Finalized=True")
+
+	return true, nil
 }
 
 // validateKind checks that the kind is a registered entity type.
