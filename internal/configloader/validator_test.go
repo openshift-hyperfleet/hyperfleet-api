@@ -185,18 +185,13 @@ func TestValidateTemplateVariables(t *testing.T) {
 	t.Run("defined variables", func(t *testing.T) {
 		cfg := baseTaskConfig()
 		cfg.Params = []Parameter{
-			{Name: "clusterId", Source: "event.id"},
-			{Name: "apiUrl", Source: "env.API_URL"},
+			{Name: "clusterId", Source: StringSource("event.id")},
+			{Name: "apiUrl", Source: StringSource("env.API_URL")},
+			{Name: "clusterData", Source: APICallSource(&APICall{
+				Method: "GET",
+				URL:    "{{ .apiUrl }}/clusters/{{ .clusterId }}",
+			})},
 		}
-		cfg.Preconditions = []Precondition{{
-			ActionBase: ActionBase{
-				Name: "checkCluster",
-				APICall: &APICall{
-					Method: "GET",
-					URL:    "{{ .apiUrl }}/clusters/{{ .clusterId }}",
-				},
-			},
-		}}
 		v := newTaskValidator(cfg)
 		require.NoError(t, v.ValidateStructure())
 		require.NoError(t, v.ValidateSemantic())
@@ -204,16 +199,13 @@ func TestValidateTemplateVariables(t *testing.T) {
 
 	t.Run("undefined variable in URL", func(t *testing.T) {
 		cfg := baseTaskConfig()
-		cfg.Params = []Parameter{{Name: "clusterId", Source: "event.id"}}
-		cfg.Preconditions = []Precondition{{
-			ActionBase: ActionBase{
-				Name: "checkCluster",
-				APICall: &APICall{
-					Method: "GET",
-					URL:    "{{ .undefinedVar }}/clusters/{{ .clusterId }}",
-				},
-			},
-		}}
+		cfg.Params = []Parameter{
+			{Name: "clusterId", Source: StringSource("event.id")},
+			{Name: "clusterData", Source: APICallSource(&APICall{
+				Method: "GET",
+				URL:    "{{ .undefinedVar }}/clusters/{{ .clusterId }}",
+			})},
+		}
 		v := newTaskValidator(cfg)
 		_ = v.ValidateStructure()
 		err := v.ValidateSemantic()
@@ -223,7 +215,7 @@ func TestValidateTemplateVariables(t *testing.T) {
 
 	t.Run("undefined variable in resource manifest", func(t *testing.T) {
 		cfg := baseTaskConfig()
-		cfg.Params = []Parameter{{Name: "clusterId", Source: "event.id"}}
+		cfg.Params = []Parameter{{Name: "clusterId", Source: StringSource("event.id")}}
 		cfg.Resources = []Resource{{
 			Name: "testNs",
 			Manifest: map[string]interface{}{
@@ -240,19 +232,13 @@ func TestValidateTemplateVariables(t *testing.T) {
 		assert.Contains(t, err.Error(), "undefined template variable \"undefinedVar\"")
 	})
 
-	t.Run("captured variable is available for resources", func(t *testing.T) {
+	t.Run("derived param variable is available for resources", func(t *testing.T) {
 		cfg := baseTaskConfig()
-		cfg.Params = []Parameter{{Name: "apiUrl", Source: "env.API_URL"}}
-		cfg.Preconditions = []Precondition{{
-			ActionBase: ActionBase{
-				Name:    "getCluster",
-				APICall: &APICall{Method: "GET", URL: "{{ .apiUrl }}/clusters"},
-			},
-			Capture: []CaptureField{{
-				Name:               "clusterName",
-				FieldExpressionDef: FieldExpressionDef{Field: "name"},
-			}},
-		}}
+		cfg.Params = []Parameter{
+			{Name: "apiUrl", Source: StringSource("env.API_URL")},
+			{Name: "clusterData", Source: APICallSource(&APICall{Method: "GET", URL: "{{ .apiUrl }}/clusters"})},
+			{Name: "clusterName", Source: StringSource("clusterData.name")},
+		}
 		cfg.Resources = []Resource{{
 			Name: "testNs",
 			Manifest: map[string]interface{}{
@@ -440,9 +426,9 @@ func TestValidateK8sManifests(t *testing.T) {
 		// until template rendering at execution time
 		cfg := baseTaskConfig()
 		cfg.Params = []Parameter{
-			{Name: "name", Source: "event.name", Type: "string"},
-			{Name: "addLabels", Source: "event.addLabels", Type: "bool"},
-			{Name: "appName", Source: "event.appName", Type: "string"},
+			{Name: "name", Source: StringSource("event.name"), Type: "string"},
+			{Name: "addLabels", Source: StringSource("event.addLabels"), Type: "bool"},
+			{Name: "appName", Source: StringSource("event.appName"), Type: "string"},
 		}
 		cfg.Resources = []Resource{{
 			Name: "testResource",
@@ -616,15 +602,13 @@ func TestPayloadValidate(t *testing.T) {
 }
 
 func TestValidateCaptureFields(t *testing.T) {
-	// Helper to create config with capture fields
+	// Helper to create config with capture fields on a precondition (legacy path)
 	withCapture := func(captures []CaptureField) *AdapterTaskConfig {
 		cfg := baseTaskConfig()
 		cfg.Preconditions = []Precondition{{
-			ActionBase: ActionBase{
-				Name:    "getStatus",
-				APICall: &APICall{Method: "GET", URL: "http://example.com/api"},
-			},
-			Capture: captures,
+			ActionBase: ActionBase{Name: "getStatus"},
+			Expression: "true",
+			Capture:    captures,
 		}}
 		return cfg
 	}
@@ -898,7 +882,7 @@ func TestValidateTransportConfig(t *testing.T) {
 
 	t.Run("maestro transport with template variable in targetCluster", func(t *testing.T) {
 		cfg := baseTaskConfig()
-		cfg.Params = []Parameter{{Name: "clusterName", Source: "event.name"}}
+		cfg.Params = []Parameter{{Name: "clusterName", Source: StringSource("event.name")}}
 		cfg.Resources = []Resource{{
 			Name: "testMW",
 			Transport: &TransportConfig{
@@ -1162,6 +1146,110 @@ func TestValidateLifecycleConfig(t *testing.T) {
 	t.Run("no lifecycle config is valid", func(t *testing.T) {
 		cfg := baseTaskConfig()
 		cfg.Resources = []Resource{{Name: "myResource", Discovery: minDiscovery, Manifest: minManifest}}
+		v := newTaskValidator(cfg)
+		require.NoError(t, v.ValidateStructure())
+		require.NoError(t, v.ValidateSemantic())
+	})
+}
+
+func TestValidateParamsAPICallSource(t *testing.T) {
+	t.Run("api_call source passes validation", func(t *testing.T) {
+		cfg := baseTaskConfig()
+		cfg.Params = []Parameter{
+			{Name: "clusterId", Source: StringSource("event.id")},
+			{Name: "clusterData", Source: APICallSource(&APICall{Method: "GET", URL: "/clusters/{{ .clusterId }}"})},
+		}
+		v := newTaskValidator(cfg)
+		require.NoError(t, v.ValidateStructure())
+		require.NoError(t, v.ValidateSemantic())
+	})
+
+	t.Run("api_call source URL can reference param defined before it", func(t *testing.T) {
+		cfg := baseTaskConfig()
+		cfg.Params = []Parameter{
+			{Name: "clusterId", Source: StringSource("event.id")},
+			{Name: "clusterData", Source: APICallSource(&APICall{Method: "GET", URL: "/clusters/{{ .clusterId }}"})},
+			{Name: "nodePoolData", Source: APICallSource(&APICall{Method: "GET", URL: "/clusters/{{ .clusterId }}/nodepools"})},
+		}
+		v := newTaskValidator(cfg)
+		require.NoError(t, v.ValidateStructure())
+		require.NoError(t, v.ValidateSemantic())
+	})
+
+	t.Run("api_call source URL cannot reference param defined after it", func(t *testing.T) {
+		cfg := baseTaskConfig()
+		cfg.Params = []Parameter{
+			// nodePoolName is defined AFTER nodePoolData uses it (order violation)
+			{Name: "nodePoolData", Source: APICallSource(&APICall{Method: "GET", URL: "/nodepools/{{ .nodePoolName }}"})},
+			{Name: "nodePoolName", Source: StringSource("event.nodePool")},
+		}
+		v := newTaskValidator(cfg)
+		_ = v.ValidateStructure()
+		err := v.ValidateSemantic()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "undefined template variable \"nodePoolName\"")
+	})
+
+	t.Run("expression source passes CEL validation", func(t *testing.T) {
+		cfg := baseTaskConfig()
+		cfg.Params = []Parameter{
+			{Name: "clusterId", Source: StringSource("event.id")},
+			{Name: "clusterData", Source: APICallSource(&APICall{Method: "GET", URL: "/clusters/{{ .clusterId }}"})},
+			{Name: "isActive", Source: ExpressionSource(`clusterData.status == "Active"`)},
+		}
+		v := newTaskValidator(cfg)
+		require.NoError(t, v.ValidateStructure())
+		require.NoError(t, v.ValidateSemantic())
+	})
+
+	t.Run("expression source with invalid CEL fails validation", func(t *testing.T) {
+		cfg := baseTaskConfig()
+		cfg.Params = []Parameter{
+			{Name: "bad", Source: ExpressionSource(`====invalid`)},
+		}
+		v := newTaskValidator(cfg)
+		_ = v.ValidateStructure()
+		err := v.ValidateSemantic()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "CEL parse error")
+	})
+
+	t.Run("empty string source fails validation", func(t *testing.T) {
+		cfg := baseTaskConfig()
+		cfg.Params = []Parameter{
+			{Name: "bad", Source: StringSource("")},
+		}
+		v := newTaskValidator(cfg)
+		_ = v.ValidateStructure()
+		err := v.ValidateSemantic()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "source is required")
+	})
+}
+
+func TestValidatePreconditionAPICallForbidden(t *testing.T) {
+	t.Run("precondition with api_call produces migration error", func(t *testing.T) {
+		cfg := baseTaskConfig()
+		cfg.Preconditions = []Precondition{{
+			ActionBase: ActionBase{
+				Name:    "fetchCluster",
+				APICall: &APICall{Method: "GET", URL: "/clusters/x"},
+			},
+		}}
+		v := newTaskValidator(cfg)
+		_ = v.ValidateStructure()
+		err := v.ValidateSemantic()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "api_call is no longer valid in the precondition phase")
+		assert.Contains(t, err.Error(), "fetchCluster")
+	})
+
+	t.Run("precondition without api_call passes", func(t *testing.T) {
+		cfg := baseTaskConfig()
+		cfg.Preconditions = []Precondition{{
+			ActionBase: ActionBase{Name: "check"},
+			Expression: "true",
+		}}
 		v := newTaskValidator(cfg)
 		require.NoError(t, v.ValidateStructure())
 		require.NoError(t, v.ValidateSemantic())

@@ -319,12 +319,12 @@ func TestExecute_ParamExtraction(t *testing.T) {
 		Params: []configloader.Parameter{
 			{
 				Name:     "testParam",
-				Source:   "env.TEST_VAR",
+				Source:   configloader.StringSource("env.TEST_VAR"),
 				Required: true,
 			},
 			{
 				Name:     "eventParam",
-				Source:   "event.id",
+				Source:   configloader.StringSource("event.id"),
 				Required: true,
 			},
 		},
@@ -361,6 +361,101 @@ func TestExecute_ParamExtraction(t *testing.T) {
 	}
 }
 
+// TestExecute_ParamsAPICallSource verifies the full executor pipeline when params use
+// api_call and expression sources
+func TestExecute_ParamsAPICallSource(t *testing.T) {
+	clusterBody := `{
+		"name": "unit-cluster",
+		"generation": 3,
+		"spec": {"region": "us-east-1"},
+		"status": {
+			"conditions": [{"type": "Reconciled", "status": "True"}]
+		}
+	}`
+
+	mockClient := newMockAPIClient()
+	mockClient.GetResponse = &hyperfleetapi.Response{StatusCode: 200, Body: []byte(clusterBody)}
+	mockClient.PutResponse = &hyperfleetapi.Response{StatusCode: 200, Body: []byte(`{}`)}
+
+	config := &configloader.Config{
+		Adapter: configloader.AdapterInfo{Name: "test-adapter", Version: "1.0.0"},
+		Params: []configloader.Parameter{
+			{Name: "clusterId", Source: configloader.StringSource("event.id"), Required: true},
+			{Name: "clusterData", Source: configloader.APICallSource(&configloader.APICall{
+				Method: "GET",
+				URL:    "/clusters/{{ .clusterId }}",
+			})},
+			{Name: "clusterName", Source: configloader.StringSource("clusterData.name")},
+			{Name: "clusterRegion", Source: configloader.StringSource("clusterData.spec.region")},
+			{Name: "isReconciled", Source: configloader.ExpressionSource(
+				`clusterData.status.conditions.filter(c, c.type == "Reconciled").size() > 0
+				  ? clusterData.status.conditions.filter(c, c.type == "Reconciled")[0].status == "True"
+				  : false`,
+			)},
+		},
+		// Precondition evaluates only params
+		Preconditions: []configloader.Precondition{
+			{
+				ActionBase: configloader.ActionBase{Name: "clusterReady"},
+				Expression: "isReconciled",
+			},
+		},
+		Resources: []configloader.Resource{},
+		Post: &configloader.PostConfig{
+			Payloads: []configloader.Payload{
+				{
+					Name: "statusPayload",
+					Build: map[string]interface{}{
+						"clusterName":   map[string]interface{}{"expression": "clusterName"},
+						"clusterRegion": map[string]interface{}{"expression": "clusterRegion"},
+						"isReconciled":  map[string]interface{}{"expression": "isReconciled"},
+					},
+				},
+			},
+			PostActions: []configloader.PostAction{
+				{
+					ActionBase: configloader.ActionBase{
+						Name: "reportStatus",
+						APICall: &configloader.APICall{
+							Method: "PUT",
+							URL:    "/clusters/{{ .clusterId }}/statuses",
+							Body:   "{{ .statusPayload }}",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	exec, err := NewBuilder().
+		WithConfig(config).
+		WithAPIClient(mockClient).
+		WithTransportClient(k8sclient.NewMockK8sClient()).
+		WithLogger(logger.NewTestLogger()).
+		Build()
+	require.NoError(t, err)
+
+	eventData := map[string]interface{}{"id": "cluster-unit"}
+	result := exec.Execute(context.Background(), eventData)
+
+	require.Equal(t, StatusSuccess, result.Status, "expected success; errors=%v", result.Errors)
+	assert.False(t, result.ResourcesSkipped, "precondition should match — resources not skipped")
+
+	// Derived params must be resolved
+	assert.Equal(t, "unit-cluster", result.Params["clusterName"])
+	assert.Equal(t, "us-east-1", result.Params["clusterRegion"])
+	assert.Equal(t, true, result.Params["isReconciled"])
+
+	// Precondition must have matched
+	require.Len(t, result.PreconditionResults, 1)
+	assert.True(t, result.PreconditionResults[0].Matched)
+
+	// Two API calls: one GET (params), one PUT (post-action)
+	require.Len(t, mockClient.Requests, 2)
+	assert.Equal(t, "GET", mockClient.Requests[0].Method)
+	assert.Equal(t, "PUT", mockClient.Requests[1].Method)
+}
+
 func TestParamExtractor(t *testing.T) {
 	t.Setenv("TEST_ENV", "env-value")
 
@@ -383,7 +478,7 @@ func TestParamExtractor(t *testing.T) {
 		{
 			name: "extract from env",
 			params: []configloader.Parameter{
-				{Name: "envVar", Source: "env.TEST_ENV"},
+				{Name: "envVar", Source: configloader.StringSource("env.TEST_ENV")},
 			},
 			expectKey:   "envVar",
 			expectValue: "env-value",
@@ -391,7 +486,7 @@ func TestParamExtractor(t *testing.T) {
 		{
 			name: "extract from event",
 			params: []configloader.Parameter{
-				{Name: "clusterId", Source: "event.id"},
+				{Name: "clusterId", Source: configloader.StringSource("event.id")},
 			},
 			expectKey:   "clusterId",
 			expectValue: "test-cluster",
@@ -399,7 +494,7 @@ func TestParamExtractor(t *testing.T) {
 		{
 			name: "extract nested from event",
 			params: []configloader.Parameter{
-				{Name: "nestedVal", Source: "event.nested.value"},
+				{Name: "nestedVal", Source: configloader.StringSource("event.nested.value")},
 			},
 			expectKey:   "nestedVal",
 			expectValue: "nested-value",
@@ -407,7 +502,7 @@ func TestParamExtractor(t *testing.T) {
 		{
 			name: "use default for missing optional",
 			params: []configloader.Parameter{
-				{Name: "optional", Source: "env.MISSING", Default: "default-val"},
+				{Name: "optional", Source: configloader.StringSource("env.MISSING"), Default: "default-val"},
 			},
 			expectKey:   "optional",
 			expectValue: "default-val",
@@ -415,14 +510,14 @@ func TestParamExtractor(t *testing.T) {
 		{
 			name: "fail on missing required",
 			params: []configloader.Parameter{
-				{Name: "required", Source: "env.MISSING", Required: true},
+				{Name: "required", Source: configloader.StringSource("env.MISSING"), Required: true},
 			},
 			expectError: true,
 		},
 		{
 			name: "extract from config",
 			params: []configloader.Parameter{
-				{Name: "adapterName", Source: "config.adapter.name"},
+				{Name: "adapterName", Source: configloader.StringSource("config.adapter.name")},
 			},
 			expectKey:   "adapterName",
 			expectValue: "test",
@@ -430,7 +525,7 @@ func TestParamExtractor(t *testing.T) {
 		{
 			name: "extract nested from config",
 			params: []configloader.Parameter{
-				{Name: "adapterVersion", Source: "config.adapter.version"},
+				{Name: "adapterVersion", Source: configloader.StringSource("config.adapter.version")},
 			},
 			expectKey:   "adapterVersion",
 			expectValue: "1.0.0",
@@ -438,7 +533,7 @@ func TestParamExtractor(t *testing.T) {
 		{
 			name: "use default for missing optional config field",
 			params: []configloader.Parameter{
-				{Name: "optional", Source: "config.nonexistent", Default: "fallback"},
+				{Name: "optional", Source: configloader.StringSource("config.nonexistent"), Default: "fallback"},
 			},
 			expectKey:   "optional",
 			expectValue: "fallback",
@@ -446,7 +541,7 @@ func TestParamExtractor(t *testing.T) {
 		{
 			name: "fail on missing required config field",
 			params: []configloader.Parameter{
-				{Name: "required", Source: "config.nonexistent", Required: true},
+				{Name: "required", Source: configloader.StringSource("config.nonexistent"), Required: true},
 			},
 			expectError: true,
 		},
@@ -469,7 +564,7 @@ func TestParamExtractor(t *testing.T) {
 			// Extract params using pure function
 			configMap, err := configToMap(config)
 			require.NoError(t, err)
-			err = extractConfigParams(config, execCtx, configMap)
+			err = extractConfigParams(context.Background(), config, execCtx, configMap, nil, logger.NewTestLogger())
 
 			if tt.expectError {
 				assert.Error(t, err)
@@ -485,6 +580,184 @@ func TestParamExtractor(t *testing.T) {
 			}
 		})
 	}
+}
+
+// runParamExtraction is a test helper that wires up the full param extraction
+// pipeline
+func runParamExtraction(
+	t *testing.T, config *configloader.Config, mockClient hyperfleetapi.Client, eventData map[string]interface{},
+) (*ExecutionContext, error) {
+	t.Helper()
+	execCtx := NewExecutionContext(context.Background(), eventData, nil)
+	configMap, err := configToMap(config)
+	require.NoError(t, err)
+	addAdapterParams(config, execCtx, configMap)
+	err = extractConfigParams(context.Background(), config, execCtx, configMap, mockClient, logger.NewTestLogger())
+	return execCtx, err
+}
+
+// TestParamExtractor_APICallSource tests params with source: api_call
+func TestParamExtractor_APICallSource(t *testing.T) {
+	eventData := map[string]interface{}{"id": "cluster-123"}
+
+	responseBody := `{"name":"my-cluster","generation":5,"status":{"phase":"Active"}}`
+
+	t.Run("single api_call stores full response map", func(t *testing.T) {
+		mockClient := newMockAPIClient()
+		mockClient.GetResponse = &hyperfleetapi.Response{StatusCode: 200, Body: []byte(responseBody)}
+
+		config := &configloader.Config{
+			Params: []configloader.Parameter{
+				{Name: "clusterId", Source: configloader.StringSource("event.id")},
+				{Name: "clusterData", Source: configloader.APICallSource(&configloader.APICall{
+					Method: "GET", URL: "/clusters/{{ .clusterId }}",
+				})},
+			},
+		}
+		execCtx, err := runParamExtraction(t, config, mockClient, eventData)
+		require.NoError(t, err)
+
+		val, ok := execCtx.Params["clusterData"]
+		require.True(t, ok, "clusterData should be in params")
+		m, ok := val.(map[string]interface{})
+		require.True(t, ok, "clusterData should be a map")
+		assert.Equal(t, "my-cluster", m["name"])
+	})
+
+	t.Run("dot-notation derivation extracts field from api_call param", func(t *testing.T) {
+		mockClient := newMockAPIClient()
+		mockClient.GetResponse = &hyperfleetapi.Response{StatusCode: 200, Body: []byte(responseBody)}
+
+		config := &configloader.Config{
+			Params: []configloader.Parameter{
+				{Name: "clusterId", Source: configloader.StringSource("event.id")},
+				{Name: "clusterData", Source: configloader.APICallSource(&configloader.APICall{
+					Method: "GET", URL: "/clusters/{{ .clusterId }}",
+				})},
+				{Name: "clusterName", Source: configloader.StringSource("clusterData.name"), Type: "string"},
+				{Name: "generationId", Source: configloader.StringSource("clusterData.generation"), Type: "int"},
+				{Name: "clusterPhase", Source: configloader.StringSource("clusterData.status.phase")},
+			},
+		}
+		execCtx, err := runParamExtraction(t, config, mockClient, eventData)
+		require.NoError(t, err)
+
+		assert.Equal(t, "my-cluster", execCtx.Params["clusterName"])
+		assert.Equal(t, int64(5), execCtx.Params["generationId"])
+		assert.Equal(t, "Active", execCtx.Params["clusterPhase"])
+	})
+
+	t.Run("chained api_calls — second URL uses first param", func(t *testing.T) {
+		mockClient := newMockAPIClient()
+		mockClient.GetResponse = &hyperfleetapi.Response{
+			StatusCode: 200,
+			Body:       []byte(`{"defaultNodePool":"np-primary","replicas":3}`),
+		}
+
+		config := &configloader.Config{
+			Params: []configloader.Parameter{
+				{Name: "clusterId", Source: configloader.StringSource("event.id")},
+				{Name: "clusterData", Source: configloader.APICallSource(&configloader.APICall{
+					Method: "GET", URL: "/clusters/{{ .clusterId }}",
+				})},
+				{Name: "defaultNodePool", Source: configloader.StringSource("clusterData.defaultNodePool")},
+				{Name: "nodePoolData", Source: configloader.APICallSource(&configloader.APICall{
+					Method: "GET", URL: "/clusters/{{ .clusterId }}/nodepools/{{ .defaultNodePool }}",
+				})},
+				{Name: "nodeCount", Source: configloader.StringSource("nodePoolData.replicas"), Type: "int"},
+			},
+		}
+		execCtx, err := runParamExtraction(t, config, mockClient, eventData)
+		require.NoError(t, err)
+
+		assert.Equal(t, "np-primary", execCtx.Params["defaultNodePool"])
+		assert.Equal(t, int64(3), execCtx.Params["nodeCount"])
+		require.Len(t, mockClient.Requests, 2)
+		assert.Contains(t, mockClient.Requests[1].URL, "np-primary")
+	})
+
+	t.Run("CEL expression source over resolved params", func(t *testing.T) {
+		mockClient := newMockAPIClient()
+		mockClient.GetResponse = &hyperfleetapi.Response{StatusCode: 200, Body: []byte(responseBody)}
+
+		config := &configloader.Config{
+			Params: []configloader.Parameter{
+				{Name: "clusterId", Source: configloader.StringSource("event.id")},
+				{Name: "clusterData", Source: configloader.APICallSource(&configloader.APICall{
+					Method: "GET", URL: "/clusters/{{ .clusterId }}",
+				})},
+				{Name: "isActive", Source: configloader.ExpressionSource(`clusterData.status.phase == "Active"`)},
+			},
+		}
+		execCtx, err := runParamExtraction(t, config, mockClient, eventData)
+		require.NoError(t, err)
+
+		assert.Equal(t, true, execCtx.Params["isActive"])
+	})
+
+	t.Run("required api_call failure returns error", func(t *testing.T) {
+		mockClient := newMockAPIClient()
+		mockClient.GetError = fmt.Errorf("connection refused")
+
+		config := &configloader.Config{
+			Params: []configloader.Parameter{
+				{Name: "clusterData", Source: configloader.APICallSource(&configloader.APICall{
+					Method: "GET", URL: "/clusters/x",
+				}), Required: true},
+			},
+		}
+		_, err := runParamExtraction(t, config, mockClient, eventData)
+		require.Error(t, err)
+	})
+
+	t.Run("non-required api_call failure falls back to default", func(t *testing.T) {
+		mockClient := newMockAPIClient()
+		mockClient.GetError = fmt.Errorf("connection refused")
+
+		config := &configloader.Config{
+			Params: []configloader.Parameter{
+				{Name: "clusterData", Source: configloader.APICallSource(&configloader.APICall{
+					Method: "GET", URL: "/clusters/x",
+				}), Default: map[string]interface{}{"name": "fallback"}},
+			},
+		}
+		execCtx, err := runParamExtraction(t, config, mockClient, eventData)
+		require.NoError(t, err)
+		assert.Equal(t, map[string]interface{}{"name": "fallback"}, execCtx.Params["clusterData"])
+	})
+
+	t.Run("api_call 200 with non-JSON body returns error", func(t *testing.T) {
+		mockClient := newMockAPIClient()
+		mockClient.GetResponse = &hyperfleetapi.Response{
+			StatusCode: 200,
+			Body:       []byte("not json at all"),
+		}
+
+		config := &configloader.Config{
+			Params: []configloader.Parameter{
+				{Name: "clusterData", Source: configloader.APICallSource(&configloader.APICall{
+					Method: "GET", URL: "/clusters/x",
+				}), Required: true},
+			},
+		}
+		_, err := runParamExtraction(t, config, mockClient, eventData)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to parse API response as JSON")
+	})
+
+	t.Run("dot-notation on non-map param returns error", func(t *testing.T) {
+		mockClient := newMockAPIClient()
+
+		config := &configloader.Config{
+			Params: []configloader.Parameter{
+				{Name: "clusterId", Source: configloader.StringSource("event.id")},
+				{Name: "clusterIdField", Source: configloader.StringSource("clusterId.nested"), Required: true},
+			},
+		}
+		_, err := runParamExtraction(t, config, mockClient, eventData)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "is not a map")
+	})
 }
 
 // TestSequentialExecution_Preconditions tests that preconditions stop on first failure
@@ -962,7 +1235,7 @@ func TestCreateHandler_MetricsRecording_Failed(t *testing.T) {
 	config := &configloader.Config{
 		Adapter: configloader.AdapterInfo{Name: "test-adapter", Version: "v0.1.0"},
 		Params: []configloader.Parameter{
-			{Name: "required", Source: "env.MISSING_VAR", Required: true},
+			{Name: "required", Source: configloader.StringSource("env.MISSING_VAR"), Required: true},
 		},
 	}
 
@@ -1207,7 +1480,7 @@ func TestPreconditionAPIFailure_ExecutionStatusRemainsFailed(t *testing.T) {
 			},
 		},
 		Params: []configloader.Parameter{
-			{Name: "clusterId", Source: "event.id", Required: true},
+			{Name: "clusterId", Source: configloader.StringSource("event.id"), Required: true},
 		},
 		Preconditions: []configloader.Precondition{
 			{
@@ -1497,7 +1770,7 @@ func new404PreconditionConfig() *configloader.Config {
 			},
 		},
 		Params: []configloader.Parameter{
-			{Name: "clusterId", Source: "event.id", Required: true},
+			{Name: "clusterId", Source: configloader.StringSource("event.id"), Required: true},
 		},
 		Preconditions: []configloader.Precondition{
 			{

@@ -158,18 +158,18 @@ func createK8sTestConfig(testNamespace string) *configloader.Config {
 		Params: []configloader.Parameter{
 			{
 				Name:     "hyperfleetApiBaseUrl",
-				Source:   "env.HYPERFLEET_API_BASE_URL",
+				Source:   configloader.StringSource("env.HYPERFLEET_API_BASE_URL"),
 				Required: true,
 			},
 			{
 				Name:     "hyperfleetApiVersion",
-				Source:   "env.HYPERFLEET_API_VERSION",
+				Source:   configloader.StringSource("env.HYPERFLEET_API_VERSION"),
 				Default:  "v1",
 				Required: false,
 			},
 			{
 				Name:     "clusterID",
-				Source:   "event.id",
+				Source:   configloader.StringSource("event.id"),
 				Required: true,
 			},
 			{
@@ -892,9 +892,9 @@ func TestExecutor_K8s_MultipleMatchingResources(t *testing.T) {
 			},
 		},
 		Params: []configloader.Parameter{
-			{Name: "hyperfleetApiBaseUrl", Source: "env.HYPERFLEET_API_BASE_URL", Required: true},
+			{Name: "hyperfleetApiBaseUrl", Source: configloader.StringSource("env.HYPERFLEET_API_BASE_URL"), Required: true},
 			{Name: "hyperfleetApiVersion", Default: "v1"},
-			{Name: "clusterID", Source: "event.id", Required: true},
+			{Name: "clusterID", Source: configloader.StringSource("event.id"), Required: true},
 		},
 		// No preconditions - this test focuses on resource creation
 		Resources: []configloader.Resource{

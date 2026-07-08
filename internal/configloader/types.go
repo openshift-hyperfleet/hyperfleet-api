@@ -172,15 +172,114 @@ type KubernetesConfig struct {
 	Burst int `yaml:"burst,omitempty" mapstructure:"burst"`
 }
 
-// Parameter represents a parameter extraction configuration.
-// Parameters are extracted from external sources (event data, env vars) using Source.
+// ParameterSource is the source field on Parameter
+// It unmarshals from either a YAML scalar (string) or a YAML mapping (api_call / expression)
+type ParameterSource struct {
+	// Kind is one of "string", "api_call", or "expression".
+	Kind       string   `yaml:"-"`
+	StringVal  string   `yaml:"-"`
+	APICall    *APICall `yaml:"api_call"`
+	Expression string   `yaml:"expression"`
+}
+
+const (
+	paramSourceKindString     = "string"
+	paramSourceKindAPICall    = "api_call"
+	paramSourceKindExpression = "expression"
+)
+
+// StringSource constructs a string-literal ParameterSource.
+func StringSource(s string) ParameterSource {
+	return ParameterSource{Kind: paramSourceKindString, StringVal: s}
+}
+
+// APICallSource constructs an api_call ParameterSource.
+func APICallSource(ac *APICall) ParameterSource {
+	return ParameterSource{Kind: paramSourceKindAPICall, APICall: ac}
+}
+
+// ExpressionSource constructs a CEL-expression ParameterSource.
+func ExpressionSource(expr string) ParameterSource {
+	return ParameterSource{Kind: paramSourceKindExpression, Expression: expr}
+}
+
+func (ps ParameterSource) IsZero() bool { return ps.Kind == "" }
+
+func (ps ParameterSource) IsString() bool { return ps.Kind == paramSourceKindString }
+
+func (ps ParameterSource) IsAPICall() bool { return ps.Kind == paramSourceKindAPICall }
+
+func (ps ParameterSource) IsExpression() bool { return ps.Kind == paramSourceKindExpression }
+
+// Describe returns a human-readable description for use in error messages
+func (ps ParameterSource) Describe() string {
+	switch ps.Kind {
+	case paramSourceKindAPICall:
+		if ps.APICall != nil {
+			return fmt.Sprintf("api_call(%s %s)", ps.APICall.Method, ps.APICall.URL)
+		}
+		return "api_call"
+	case paramSourceKindExpression:
+		return fmt.Sprintf("expression(%q)", strings.TrimSpace(ps.Expression))
+	default:
+		return ps.StringVal
+	}
+}
+
+func (ps ParameterSource) MarshalYAML() (interface{}, error) {
+	switch ps.Kind {
+	case paramSourceKindString:
+		return ps.StringVal, nil
+	case paramSourceKindAPICall:
+		return map[string]interface{}{"api_call": ps.APICall}, nil
+	case paramSourceKindExpression:
+		return map[string]interface{}{"expression": ps.Expression}, nil
+	default:
+		return nil, nil
+	}
+}
+
+func (ps *ParameterSource) UnmarshalYAML(node *yaml.Node) error {
+	switch node.Kind {
+	case yaml.ScalarNode:
+		ps.Kind = paramSourceKindString
+		ps.StringVal = node.Value
+		return nil
+	case yaml.MappingNode:
+		var raw struct {
+			APICall    *APICall `yaml:"api_call"`
+			Expression string   `yaml:"expression"`
+		}
+		if err := node.Decode(&raw); err != nil {
+			return fmt.Errorf("source: %w", err)
+		}
+		if raw.APICall != nil && raw.Expression != "" {
+			return fmt.Errorf("source: 'api_call' and 'expression' are mutually exclusive")
+		}
+		if raw.APICall != nil {
+			ps.Kind = paramSourceKindAPICall
+			ps.APICall = raw.APICall
+			return nil
+		}
+		if raw.Expression != "" {
+			ps.Kind = paramSourceKindExpression
+			ps.Expression = raw.Expression
+			return nil
+		}
+		return fmt.Errorf("source: mapping must contain either 'api_call' or 'expression'")
+	default:
+		return fmt.Errorf("source: expected string or mapping, got %v", node.Tag)
+	}
+}
+
+// Parameter represents a parameter extraction configuration
 type Parameter struct {
-	Default     interface{} `yaml:"default,omitempty"`
-	Name        string      `yaml:"name" validate:"required"`
-	Source      string      `yaml:"source,omitempty" validate:"required"`
-	Type        string      `yaml:"type,omitempty"`
-	Description string      `yaml:"description,omitempty"`
-	Required    bool        `yaml:"required,omitempty"`
+	Default     interface{}     `yaml:"default,omitempty"`
+	Name        string          `yaml:"name" validate:"required"`
+	Source      ParameterSource `yaml:"source,omitempty"`
+	Type        string          `yaml:"type,omitempty"`
+	Description string          `yaml:"description,omitempty"`
+	Required    bool            `yaml:"required,omitempty"`
 }
 
 // Payload represents a dynamically built payload for post-processing.

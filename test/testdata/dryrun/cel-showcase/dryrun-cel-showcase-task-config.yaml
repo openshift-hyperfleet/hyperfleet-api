@@ -52,140 +52,139 @@ params:
     type: "string"
     default: "dry-run-adapter"
 
+  - name: "fetchCluster"
+    source:
+      api_call:
+        method: "GET"
+        url: "/api/hyperfleet/v1/clusters/{{ .clusterId }}"
+        timeout: 10s
+
+  # ---------------------------------------------------------------
+  # Pattern 1: field — simple dot-notation extraction
+  # ---------------------------------------------------------------
+  - name: "clusterName"
+    source: "fetchCluster.name"
+
+  # ---------------------------------------------------------------
+  # Pattern 1b: field — nested dot-notation extraction
+  # ---------------------------------------------------------------
+  - name: "clusterRegion"
+    source: "fetchCluster.spec.region"
+
+  # ---------------------------------------------------------------
+  # Pattern 2: filter() + ternary — list filtering with fallback
+  # ---------------------------------------------------------------
+  - name: "clusterStatus"
+    source:
+      expression: |
+        fetchCluster.status.conditions.filter(c, c.type == "Reconciled").size() > 0
+          ? fetchCluster.status.conditions.filter(c, c.type == "Reconciled")[0].status
+          : "Unknown"
+
+  # ---------------------------------------------------------------
+  # Pattern 3: exists() — boolean check on list elements
+  # ---------------------------------------------------------------
+  - name: "isProduction"
+    source:
+      expression: |
+        fetchCluster.spec.tags.exists(t, t == "production")
+
+  # ---------------------------------------------------------------
+  # Pattern 4: size() — counting elements
+  # ---------------------------------------------------------------
+  - name: "nodePoolCount"
+    source:
+      expression: |
+        fetchCluster.spec.node_pools.size()
+
+  # ---------------------------------------------------------------
+  # Pattern 5: string concatenation — building derived values
+  # ---------------------------------------------------------------
+  - name: "resourcePrefix"
+    source:
+      expression: |
+        fetchCluster.spec.provider + "-" + fetchCluster.spec.region + "-" + fetchCluster.name
+
+  # ---------------------------------------------------------------
+  # Pattern 6: type coercion — string() and int()
+  # ---------------------------------------------------------------
+  - name: "computeNodesStr"
+    source:
+      expression: |
+        "compute=" + string(fetchCluster.nodes.compute)
+
+  # ---------------------------------------------------------------
+  # Pattern 7: in operator — membership check
+  # ---------------------------------------------------------------
+  - name: "isSupportedProvider"
+    source:
+      expression: |
+        fetchCluster.spec.provider in ["aws", "gcp", "azure"]
+
+  # ---------------------------------------------------------------
+  # Pattern 8: map() — list transformation
+  # ---------------------------------------------------------------
+  - name: "nodePoolNames"
+    source:
+      expression: |
+        fetchCluster.spec.node_pools.map(p, p.name)
+
+  # ---------------------------------------------------------------
+  # Pattern 4b: size() — counting with field extraction
+  # ---------------------------------------------------------------
+  - name: "computeNodes"
+    source: "fetchCluster.nodes.compute"
+
+  # Static timestamp for dry-run reproducibility
+  - name: "timestamp"
+    source:
+      expression: '"2006-01-02T15:04:05Z07:00"'
+
+  # ---------------------------------------------------------------
+  # Pattern 16: distinct() — deduplicate list elements
+  # ---------------------------------------------------------------
+  - name: "uniqueTags"
+    source:
+      expression: |
+        fetchCluster.spec.tags.distinct()
+
+  # ---------------------------------------------------------------
+  # Pattern 17: sort() — sort list elements alphabetically
+  # ---------------------------------------------------------------
+  - name: "sortedTags"
+    source:
+      expression: |
+        fetchCluster.spec.tags.distinct().sort()
+
+  # ---------------------------------------------------------------
+  # Pattern 18: slice() — extract a sub-list by index range
+  # ---------------------------------------------------------------
+  - name: "firstNodePoolName"
+    source:
+      expression: |
+        fetchCluster.spec.node_pools.map(p, p.name).slice(0, 1)
+
+  # ---------------------------------------------------------------
+  # Pattern 19: flatten() — collapse nested lists into one
+  # ---------------------------------------------------------------
+  - name: "conditionSummary"
+    source:
+      expression: |
+        fetchCluster.status.conditions.map(c, [c.type, c.status]).flatten()
+
+  # ---------------------------------------------------------------
+  # Pattern 20: sortBy() — sort objects by a derived key
+  # ---------------------------------------------------------------
+  - name: "nodePoolsByReplicas"
+    source:
+      expression: |
+        fetchCluster.spec.node_pools.sortBy(p, p.replicas).map(p, p.name)
+
 # ===========================================================================
-# Preconditions — CEL capture patterns
+# Preconditions
 # ===========================================================================
 preconditions:
   - name: "fetchCluster"
-    api_call:
-      method: "GET"
-      url: "/api/hyperfleet/v1/clusters/{{ .clusterId }}"
-      timeout: 10s
-    capture:
-      # ---------------------------------------------------------------
-      # Pattern 1: field — simple dot-notation extraction
-      # Extracts a top-level field from the API response by name.
-      # ---------------------------------------------------------------
-      - name: "clusterName"
-        field: "name"
-
-      # ---------------------------------------------------------------
-      # Pattern 1b: field — nested dot-notation extraction
-      # Extracts a nested field using dot-separated path.
-      # ---------------------------------------------------------------
-      - name: "clusterRegion"
-        field: "spec.region"
-
-      # ---------------------------------------------------------------
-      # Pattern 2: filter() + ternary — list filtering with fallback
-      # Filters the conditions list for type=="Reconciled", returns status
-      # or "Unknown" if not found.
-      # ---------------------------------------------------------------
-      - name: "clusterStatus"
-        expression: |
-          status.conditions.filter(c, c.type == "Reconciled").size() > 0
-            ? status.conditions.filter(c, c.type == "Reconciled")[0].status
-            : "Unknown"
-
-      # ---------------------------------------------------------------
-      # Pattern 3: exists() — boolean check on list elements
-      # Returns true if any tag matches "production".
-      # ---------------------------------------------------------------
-      - name: "isProduction"
-        expression: |
-          spec.tags.exists(t, t == "production")
-
-      # ---------------------------------------------------------------
-      # Pattern 4: size() — counting elements
-      # Returns the number of node pools defined in spec.
-      # ---------------------------------------------------------------
-      - name: "nodePoolCount"
-        expression: |
-          spec.node_pools.size()
-
-      # ---------------------------------------------------------------
-      # Pattern 5: string concatenation — building derived values
-      # Constructs a composite identifier from multiple fields.
-      # ---------------------------------------------------------------
-      - name: "resourcePrefix"
-        expression: |
-          spec.provider + "-" + spec.region + "-" + name
-
-      # ---------------------------------------------------------------
-      # Pattern 6: type coercion — string() and int()
-      # Converts the numeric compute node count to string.
-      # ---------------------------------------------------------------
-      - name: "computeNodesStr"
-        expression: |
-          "compute=" + string(nodes.compute)
-
-      # ---------------------------------------------------------------
-      # Pattern 7: in operator — membership check
-      # Checks if the provider is one of the supported cloud providers.
-      # ---------------------------------------------------------------
-      - name: "isSupportedProvider"
-        expression: |
-          spec.provider in ["aws", "gcp", "azure"]
-
-      # ---------------------------------------------------------------
-      # Pattern 8: map() — list transformation
-      # Transforms the node_pools list to extract just the names.
-      # ---------------------------------------------------------------
-      - name: "nodePoolNames"
-        expression: |
-          spec.node_pools.map(p, p.name)
-
-      # ---------------------------------------------------------------
-      # Pattern 4b: size() — counting with field extraction
-      # Extracts compute node count for use in conditions.
-      # ---------------------------------------------------------------
-      - name: "computeNodes"
-        field: "nodes.compute"
-
-      # Static timestamp for dry-run reproducibility
-      - name: "timestamp"
-        expression: "\"2006-01-02T15:04:05Z07:00\""
-
-      # ---------------------------------------------------------------
-      # Pattern 16: distinct() — deduplicate list elements
-      # Removes duplicate entries from the tags list.
-      # ---------------------------------------------------------------
-      - name: "uniqueTags"
-        expression: |
-          spec.tags.distinct()
-
-      # ---------------------------------------------------------------
-      # Pattern 17: sort() — sort list elements alphabetically
-      # Sorts the deduplicated tags list in ascending order.
-      # ---------------------------------------------------------------
-      - name: "sortedTags"
-        expression: |
-          spec.tags.distinct().sort()
-
-      # ---------------------------------------------------------------
-      # Pattern 18: slice() — extract a sub-list by index range
-      # Returns the first node pool name only (indices 0..1 exclusive).
-      # ---------------------------------------------------------------
-      - name: "firstNodePoolName"
-        expression: |
-          spec.node_pools.map(p, p.name).slice(0, 1)
-
-      # ---------------------------------------------------------------
-      # Pattern 19: flatten() — collapse nested lists into one
-      # Extracts type and status from each condition into a flat list.
-      # ---------------------------------------------------------------
-      - name: "conditionSummary"
-        expression: |
-          status.conditions.map(c, [c.type, c.status]).flatten()
-
-      # ---------------------------------------------------------------
-      # Pattern 20: sortBy() — sort objects by a derived key
-      # Sorts node pools by replica count ascending, then extracts names.
-      # ---------------------------------------------------------------
-      - name: "nodePoolsByReplicas"
-        expression: |
-          spec.node_pools.sortBy(p, p.replicas).map(p, p.name)
-
     conditions:
       - field: "clusterStatus"
         operator: "notEquals"

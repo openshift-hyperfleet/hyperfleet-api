@@ -78,92 +78,72 @@ params:
   #   default: false
   #   description: "Enable experimental feature"
 
+  # API call source fetches data from the HyperFleet API as a named param.
+  # The full JSON response is stored under the param name and can be referenced
+  # by later params using dot-notation (e.g. "clusterData.generation") 
+  - name: "clusterData"
+    source:
+      api_call:
+        method: "GET"
+        # The adapter prepends /api/hyperfleet/<version> automatically for relative paths
+        # Full paths (/api/hyperfleet/v1/...) are also accepted
+        url: "/clusters/{{ .clusterId }}"
+        timeout: 10s
+        retry_attempts: 3
+        retry_backoff: "exponential"
+
+  # Derivation from an api_call param
+  - name: "clusterName"
+    source: "clusterData.name"
+
+  # CEL expression source - evaluate over previously resolved params
+  # Expressions see all params resolved so far as top-level variables
+  - name: "reconciledConditionStatus"
+    source:
+      expression: |
+        clusterData.status.conditions.filter(c, c.type == "Reconciled").size() > 0
+          ? clusterData.status.conditions.filter(c, c.type == "Reconciled")[0].status
+          : "False"
+
+  - name: "generationId"
+    source: "clusterData.generation"
+
+  # DELETION SUPPORT — capture these two params when lifecycle.delete is used
+  # deleted_time: raw timestamp from the API (null when resource is not pending deletion).
+  # is_deleting: boolean convenience variable — use this in lifecycle.when expressions
+  #              and payload conditions instead of repeating "clusterData.?deleted_time.hasValue()".
+  # - name: "deleted_time"
+  #   source: "clusterData.deleted_time"
+  # - name: "is_deleting"
+  #   source:
+  #     expression: "clusterData.?deleted_time.hasValue()"
+
 
 # ============================================================================
 # Global Preconditions
 # ============================================================================
-# These preconditions run sequentially and validate cluster state before resource operations.
-#
-# DATA SCOPES:
-# ============
-# Capture scope (field/expression): API response data only
-#   - Access: status.conditions, items[0].name, etc.
-#
-# Conditions scope (conditions/expression): Full execution context
-#   - params.*             : Original extracted params
-#   - <precondition-name>.*: Full API response (e.g., clusterStatus.status.conditions)
-#   - capturedField        : Explicitly captured values
-#   - adapter.*            : Adapter metadata
-#   - resources.*          : Created resources (empty during preconditions)
-#
+# Preconditions decide whether the Resources phase executes
+# Expressions have access to all resolved params and adapter metadata
 preconditions:
   # ==========================================================================
-  # Step 1: Get cluster status
+  # Validate cluster state
   # ==========================================================================
   - name: "clusterStatus"
-    api_call:
-      method: "GET"
-      # NOTE: API path includes /api/hyperfleet/ prefix
-      url: "/clusters/{{ .clusterId }}"
-      timeout: 10s
-      retry_attempts: 3
-      retry_backoff: "exponential"
-    # Capture fields from the API response. Captured values become variables for use in resources section.
-    # SCOPE: API response data only
-    # Supports two modes:
-    #   - field: Simple dot notation or JSONPath expression for extracting values
-    #   - expression: CEL expression for computed values
-    # Only one of 'field' or 'expression' can be set per capture.
-    capture:
-      # Simple dot notation
-      - name: "clusterName"
-        field: "name"
-      - name: "reconciledConditionStatus"
-        expression: |
-          status.conditions.filter(c, c.type == "Reconciled").size() > 0
-            ? status.conditions.filter(c, c.type == "Reconciled")[0].status
-            : "False"
-      - name: "generationId"
-        field: "generation"
-
-      # JSONPath for complex extraction (filter by field value)
-      # See: https://kubernetes.io/docs/reference/kubectl/jsonpath/
-      # - name: "lzNamespaceStatus"
-      #   field: "{.items[?(@.adapter=='landing-zone-adapter')].data.namespace.status}"
-
-      # CEL expression for computed values
-      # - name: "activeItemCount"
-      #   expression: "items.filter(i, i.status == 'active').size()"
-
-      # DELETION SUPPORT — capture these two fields when lifecycle.delete is used.
-      # deleted_time: raw timestamp from the API (null when resource is not pending deletion).
-      # is_deleting: boolean convenience variable — use this in lifecycle.when expressions
-      #              and payload conditions instead of repeating "has(clusterStatus.deleted_time)".
-      # - name: "deleted_time"
-      #   field: "deleted_time"
-      # - name: "is_deleting"
-      #   expression: "has(clusterStatus.deleted_time)"
-
-    # Conditions to check. SCOPE: Full execution context
-    # You can access:
-    #   - Captured values: reconciledConditionStatus, clusterName, etc.
-    #   - Full API response: clusterStatus.status.conditions, clusterStatus.spec.nodeCount
-    #   - Params: clusterId, hyperfleetApiBaseUrl, etc.
+    # Conditions to check using params resolved above
     conditions:
-      # Using captured value
+      # Using param derived from clusterData
       - field: "reconciledConditionStatus"
         operator: "equals"
         value: "True"
 
-      # Or dig directly into API response using precondition name
-      # - field: "clusterStatus.status.nodeCount"
+      # Or check a numeric field
+      # - field: "clusterData.generation"
       #   operator: "greaterThan"
       #   value: 0
 
-    # Alternative: CEL expression with full access
+    # Alternative: CEL expression with full access to all params
     # expression: |
-    #   clusterStatus.status.conditions.filter(c, c.type == "Reconciled")[0].status == "True" &&
-    #   clusterStatus.spec.nodeCount > 0
+    #   reconciledConditionStatus == "True" && clusterData.generation > 0
 
 # ============================================================================
 # Resources (Create/Update Resources)

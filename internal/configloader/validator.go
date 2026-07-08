@@ -161,6 +161,9 @@ func (v *TaskConfigValidator) ValidateSemantic() error {
 	}
 
 	// Run all semantic validators
+	v.validatePreconditionAPICallForbidden()
+	v.validateParamSources()
+	v.validateParamAPICallTemplates()
 	v.validateTransportConfig()
 	v.validateConditionValues()
 	v.validateCaptureFieldExpressions()
@@ -173,6 +176,80 @@ func (v *TaskConfigValidator) ValidateSemantic() error {
 		return v.errors
 	}
 	return nil
+}
+
+func (v *TaskConfigValidator) validatePreconditionAPICallForbidden() {
+	for i, precond := range v.config.Preconditions {
+		if precond.APICall != nil {
+			path := fmt.Sprintf("%s[%d].%s", FieldPreconditions, i, FieldAPICall)
+			v.errors.Add(path, fmt.Sprintf(
+				"precondition %q contains api_call. api_call is no longer valid in the precondition phase.\n"+
+					"Move the api_call block to a params entry:\n"+
+					"  params:\n"+
+					"    - name: %q\n"+
+					"      source:\n"+
+					"        api_call:\n"+
+					"          ...",
+				precond.Name, precond.Name))
+		}
+	}
+}
+
+func (v *TaskConfigValidator) validateParamSources() {
+	for i, param := range v.config.Params {
+		if param.Source.IsZero() || (param.Source.IsString() && strings.TrimSpace(param.Source.StringVal) == "") {
+			v.errors.Add(fmt.Sprintf("%s[%d].%s", FieldParams, i, FieldSource), "source is required")
+		}
+	}
+}
+
+func (v *TaskConfigValidator) validateParamAPICallTemplates() {
+	available := make(map[string]bool)
+	for _, b := range BuiltinVariables() {
+		available[b] = true
+	}
+
+	for i, param := range v.config.Params {
+		if param.Source.IsAPICall() && param.Source.APICall != nil {
+			ac := param.Source.APICall
+			base := fmt.Sprintf("%s[%d].%s.%s", FieldParams, i, FieldSource, FieldAPICall)
+			v.validateTemplateStringWithVars(ac.URL, base+"."+FieldURL, available)
+			v.validateTemplateStringWithVars(ac.Body, base+"."+FieldBody, available)
+			for j, h := range ac.Headers {
+				v.validateTemplateStringWithVars(h.Value,
+					fmt.Sprintf("%s.%s[%d].%s", base, FieldHeaders, j, FieldHeaderValue), available)
+			}
+		}
+		if param.Name != "" {
+			available[param.Name] = true
+		}
+	}
+}
+
+func (v *TaskConfigValidator) validateTemplateStringWithVars(s, path string, vars map[string]bool) {
+	if s == "" {
+		return
+	}
+	matches := templateVarRegex.FindAllStringSubmatch(s, -1)
+	for _, match := range matches {
+		if len(match) > 1 {
+			varName := match[1]
+			if !v.isVariableDefinedIn(varName, vars) {
+				v.errors.Add(path, fmt.Sprintf("undefined template variable %q", varName))
+			}
+		}
+	}
+}
+
+func (v *TaskConfigValidator) isVariableDefinedIn(varName string, vars map[string]bool) bool {
+	if vars[varName] {
+		return true
+	}
+	parts := strings.Split(varName, ".")
+	if len(parts) > 0 && vars[parts[0]] {
+		return true
+	}
+	return false
 }
 
 func (v *TaskConfigValidator) collectDefinedVariables() {
@@ -499,6 +576,13 @@ func (v *TaskConfigValidator) validateTemplateMap(m map[string]interface{}, path
 func (v *TaskConfigValidator) validateCELExpressions() {
 	if v.celEnv == nil {
 		return
+	}
+
+	for i, param := range v.config.Params {
+		if param.Source.IsExpression() && param.Source.Expression != "" {
+			path := fmt.Sprintf("%s[%d].%s.%s", FieldParams, i, FieldSource, FieldExpression)
+			v.validateCELExpression(param.Source.Expression, path)
+		}
 	}
 
 	for i, precond := range v.config.Preconditions {

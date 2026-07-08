@@ -71,8 +71,19 @@ func TestLoadSplitConfig(t *testing.T) {
 	// Check specific params (using accessor method)
 	clusterIDParam := config.GetParamByName("clusterId")
 	require.NotNil(t, clusterIDParam, "clusterId parameter should exist")
-	assert.Equal(t, "event.id", clusterIDParam.Source)
+	assert.Equal(t, configloader.StringSource("event.id"), clusterIDParam.Source)
 	assert.True(t, clusterIDParam.Required)
+
+	// Check api_call param
+	clusterDataParam := config.GetParamByName("clusterData")
+	require.NotNil(t, clusterDataParam, "clusterData parameter should exist")
+	assert.True(t, clusterDataParam.Source.IsAPICall())
+	assert.Equal(t, "GET", clusterDataParam.Source.APICall.Method)
+
+	// Check expression param
+	reconciledParam := config.GetParamByName("reconciledConditionStatus")
+	require.NotNil(t, reconciledParam, "reconciledConditionStatus parameter should exist")
+	assert.True(t, reconciledParam.Source.IsExpression())
 
 	// Verify preconditions (from task config)
 	assert.NotEmpty(t, config.Preconditions)
@@ -81,15 +92,8 @@ func TestLoadSplitConfig(t *testing.T) {
 	// Check first precondition
 	firstPrecond := config.Preconditions[0]
 	assert.Equal(t, "clusterStatus", firstPrecond.Name)
-	assert.NotNil(t, firstPrecond.APICall)
-	assert.Equal(t, "GET", firstPrecond.APICall.Method)
-	assert.NotEmpty(t, firstPrecond.Capture)
+	assert.Nil(t, firstPrecond.APICall)
 	assert.NotEmpty(t, firstPrecond.Conditions)
-
-	// Verify captured fields
-	clusterNameCapture := findCaptureByName(firstPrecond.Capture, "clusterName")
-	require.NotNil(t, clusterNameCapture)
-	assert.Equal(t, "name", clusterNameCapture.Field)
 
 	// Verify conditions in precondition
 	assert.GreaterOrEqual(t, len(firstPrecond.Conditions), 1)
@@ -145,14 +149,4 @@ func TestLoadSplitConfigWithResourceByName(t *testing.T) {
 	configMapResource := config.GetResourceByName("clusterConfigMap")
 	require.NotNil(t, configMapResource, "clusterConfigMap resource should exist")
 	assert.Equal(t, "clusterConfigMap", configMapResource.Name)
-}
-
-// Helper function to find a capture field by name
-func findCaptureByName(captures []configloader.CaptureField, name string) *configloader.CaptureField {
-	for i := range captures {
-		if captures[i].Name == name {
-			return &captures[i]
-		}
-	}
-	return nil
 }

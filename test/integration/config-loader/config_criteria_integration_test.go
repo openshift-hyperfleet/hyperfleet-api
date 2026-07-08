@@ -6,7 +6,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -390,7 +389,7 @@ func TestConfigParameterExtraction(t *testing.T) {
 		requiredNames := make(map[string]bool)
 		for _, p := range requiredParams {
 			requiredNames[p.Name] = true
-			t.Logf("Required param: %s (source: %s)", p.Name, p.Source)
+			t.Logf("Required param: %s (source: %s)", p.Name, p.Source.Describe())
 		}
 
 		assert.True(t, requiredNames["clusterId"], "clusterId should be required")
@@ -398,12 +397,8 @@ func TestConfigParameterExtraction(t *testing.T) {
 
 	t.Run("verify parameter sources", func(t *testing.T) {
 		for _, param := range config.Params {
-			if param.Source != "" {
-				// Check source format
-				assert.True(t,
-					strings.HasPrefix(param.Source, "env.") || strings.HasPrefix(param.Source, "event."),
-					"param %s source should start with env. or event., got: %s", param.Name, param.Source)
-			}
+			assert.False(t, param.Source.IsZero(),
+				"param %s should have a source set", param.Name)
 		}
 	})
 }
