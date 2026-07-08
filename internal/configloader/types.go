@@ -155,6 +155,10 @@ type LogConfig struct {
 // Alias to hyperfleetapi.ClientConfig to ensure shared schema.
 type HyperfleetAPIConfig = hyperfleetapi.ClientConfig
 
+// HyperfleetAPIAuthConfig is the HyperFleet API auth configuration.
+// Alias to hyperfleetapi.AuthConfig to ensure shared schema.
+type HyperfleetAPIAuthConfig = hyperfleetapi.AuthConfig
+
 // BrokerConfig contains broker consumer configuration
 type BrokerConfig struct {
 	SubscriptionID string `yaml:"subscription_id,omitempty" mapstructure:"subscription_id"`

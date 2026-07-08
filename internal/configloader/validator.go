@@ -51,6 +51,27 @@ func (v *AdapterConfigValidator) ValidateStructure() error {
 		return fmt.Errorf("%s", errs.First())
 	}
 
+	if err := v.validateHyperfleetAuth(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (v *AdapterConfigValidator) validateHyperfleetAuth() error {
+	auth := v.config.Clients.HyperfleetAPI.Auth
+	if auth == nil {
+		return nil
+	}
+	if auth.TokenPath == "" {
+		return fmt.Errorf("clients.hyperfleet_api.auth.token_path must be set when auth is configured")
+	}
+	if !filepath.IsAbs(auth.TokenPath) {
+		return fmt.Errorf("clients.hyperfleet_api.auth.token_path must be an absolute path, got %q", auth.TokenPath)
+	}
+	if auth.TokenCacheTTL < 0 {
+		return fmt.Errorf("clients.hyperfleet_api.auth.token_cache_ttl must not be negative")
+	}
 	return nil
 }
 

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -682,5 +683,52 @@ func TestAPIErrorInRetryExhausted(t *testing.T) {
 		"expected response body to contain error message, got: %s", apiErr.ResponseBodyString())
 	if !apiErr.IsServerError() {
 		t.Error("expected IsServerError to return true")
+	}
+}
+
+func TestClientBearerTokenAuth(t *testing.T) {
+	dir := t.TempDir()
+	tokenFile := filepath.Join(dir, "token")
+	if err := os.WriteFile(tokenFile, []byte("test-jwt-token"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	var receivedAuth string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedAuth = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client, err := NewClient(testLog(),
+		WithBaseURL(server.URL),
+		WithAuth(&AuthConfig{TokenPath: tokenFile, TokenCacheTTL: 0}),
+	)
+	require.NoError(t, err)
+
+	_, err = client.Get(context.Background(), "/test")
+	require.NoError(t, err)
+
+	if receivedAuth != "Bearer test-jwt-token" {
+		t.Errorf("Authorization = %q, want %q", receivedAuth, "Bearer test-jwt-token")
+	}
+}
+
+func TestClientNoAuthHeader_WhenNoAuth(t *testing.T) {
+	var receivedAuth string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedAuth = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client, err := NewClient(testLog(), WithBaseURL(server.URL))
+	require.NoError(t, err)
+
+	_, err = client.Get(context.Background(), "/test")
+	require.NoError(t, err)
+
+	if receivedAuth != "" {
+		t.Errorf("expected no Authorization header, got %q", receivedAuth)
 	}
 }

@@ -1255,3 +1255,55 @@ func TestValidatePreconditionAPICallForbidden(t *testing.T) {
 		require.NoError(t, v.ValidateSemantic())
 	})
 }
+
+func TestAdapterConfigValidator_HyperfleetAuth(t *testing.T) {
+	baseAdapterConfig := func() *AdapterConfig {
+		return &AdapterConfig{
+			Adapter: AdapterInfo{Name: "test-adapter"},
+		}
+	}
+	newValidator := func(cfg *AdapterConfig) *AdapterConfigValidator {
+		return NewAdapterConfigValidator(cfg, "")
+	}
+
+	t.Run("nil auth is valid", func(t *testing.T) {
+		cfg := baseAdapterConfig()
+		require.NoError(t, newValidator(cfg).ValidateStructure())
+	})
+
+	t.Run("valid absolute token path", func(t *testing.T) {
+		cfg := baseAdapterConfig()
+		cfg.Clients.HyperfleetAPI.Auth = &HyperfleetAPIAuthConfig{
+			TokenPath:     "/var/run/secrets/token",
+			TokenCacheTTL: 30,
+		}
+		require.NoError(t, newValidator(cfg).ValidateStructure())
+	})
+
+	t.Run("empty token_path is an error", func(t *testing.T) {
+		cfg := baseAdapterConfig()
+		cfg.Clients.HyperfleetAPI.Auth = &HyperfleetAPIAuthConfig{TokenPath: ""}
+		err := newValidator(cfg).ValidateStructure()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "token_path must be set")
+	})
+
+	t.Run("relative token_path is an error", func(t *testing.T) {
+		cfg := baseAdapterConfig()
+		cfg.Clients.HyperfleetAPI.Auth = &HyperfleetAPIAuthConfig{TokenPath: "relative/path/token"}
+		err := newValidator(cfg).ValidateStructure()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "must be an absolute path")
+	})
+
+	t.Run("negative token_cache_ttl is an error", func(t *testing.T) {
+		cfg := baseAdapterConfig()
+		cfg.Clients.HyperfleetAPI.Auth = &HyperfleetAPIAuthConfig{
+			TokenPath:     "/var/run/secrets/token",
+			TokenCacheTTL: -1,
+		}
+		err := newValidator(cfg).ValidateStructure()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "token_cache_ttl must not be negative")
+	})
+}

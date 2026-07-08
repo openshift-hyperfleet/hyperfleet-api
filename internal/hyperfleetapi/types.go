@@ -34,6 +34,17 @@ const (
 // Client Configuration
 // -----------------------------------------------------------------------------
 
+// AuthConfig holds optional JWT bearer token authentication configuration.
+// When set, a bearer token is read from TokenPath and injected as an
+// Authorization header on every outbound request.
+type AuthConfig struct {
+	// TokenPath is the absolute path to a file containing the bearer token.
+	TokenPath string `yaml:"token_path,omitempty" mapstructure:"token_path"`
+	// TokenCacheTTL controls how long the token is cached in memory.
+	// Zero means the file is re-read on every request.
+	TokenCacheTTL time.Duration `yaml:"token_cache_ttl,omitempty" mapstructure:"token_cache_ttl"`
+}
+
 // ClientConfig holds the configuration for the HTTP client
 type ClientConfig struct {
 	// DefaultHeaders are headers added to all requests
@@ -53,6 +64,9 @@ type ClientConfig struct {
 	MaxDelay time.Duration `yaml:"max_delay,omitempty" mapstructure:"max_delay"`
 	// RetryAttempts is the number of retry attempts for failed requests
 	RetryAttempts int `yaml:"retry_attempts,omitempty" mapstructure:"retry_attempts"`
+	// Auth configures optional JWT bearer token authentication.
+	// When nil, requests are sent without an Authorization header.
+	Auth *AuthConfig `yaml:"auth,omitempty" mapstructure:"auth"`
 }
 
 // DefaultClientConfig returns a ClientConfig with default values

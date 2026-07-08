@@ -34,9 +34,10 @@ const (
 
 // httpClient implements the Client interface
 type httpClient struct {
-	client *http.Client
-	config *ClientConfig
-	log    logger.Logger
+	client      *http.Client
+	config      *ClientConfig
+	log         logger.Logger
+	tokenSource *fileTokenSource
 }
 
 // ClientOption is a functional option for configuring the client
@@ -110,6 +111,13 @@ func WithBaseURL(baseURL string) ClientOption {
 	}
 }
 
+// WithAuth configures JWT bearer token authentication from a file.
+func WithAuth(auth *AuthConfig) ClientOption {
+	return func(c *httpClient) {
+		c.config.Auth = auth
+	}
+}
+
 // NewClient creates a new HyperFleet API client.
 //
 // Base URL resolution order:
@@ -148,6 +156,11 @@ func NewClient(log logger.Logger, opts ...ClientOption) (Client, error) {
 		c.client = &http.Client{
 			Timeout: c.config.Timeout,
 		}
+	}
+
+	// Initialize token source for bearer token auth if configured
+	if c.config.Auth != nil && c.config.Auth.TokenPath != "" {
+		c.tokenSource = newFileTokenSource(c.config.Auth.TokenPath, c.config.Auth.TokenCacheTTL)
 	}
 
 	return c, nil
@@ -319,6 +332,15 @@ func (c *httpClient) doRequest(ctx context.Context, req *Request) (*Response, er
 	// Add request-specific headers (override defaults)
 	for k, v := range req.Headers {
 		httpReq.Header.Set(k, v)
+	}
+
+	// Inject bearer token auth header
+	if c.tokenSource != nil {
+		tok, err := c.tokenSource.get()
+		if err != nil {
+			return nil, fmt.Errorf("getting auth token: %w", err)
+		}
+		httpReq.Header.Set("Authorization", "Bearer "+tok)
 	}
 
 	// Set default Content-Type for requests with body
