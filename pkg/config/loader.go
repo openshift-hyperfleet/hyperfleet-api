@@ -176,19 +176,6 @@ func (l *ConfigLoader) validateConfig(config *ApplicationConfig) error {
 		if valErr := config.Server.TLS.Validate(); valErr != nil {
 			return fmt.Errorf("server TLS validation failed: %w", valErr)
 		}
-		if valErr := config.Server.JWT.Validate(); valErr != nil {
-			return fmt.Errorf("server JWT validation failed: %w", valErr)
-		}
-		if valErr := config.Server.ValidateIdentityHeader(); valErr != nil {
-			return fmt.Errorf("server identity header validation failed: %w", valErr)
-		}
-		if config.Server.JWT.Enabled &&
-			config.Server.JWK.CertFile == "" &&
-			config.Server.JWK.CertURL == "" {
-			return fmt.Errorf(
-				"server JWK validation failed: server.jwk.cert_file or server.jwk.cert_url required when jwt is enabled",
-			)
-		}
 		if valErr := config.Health.Validate(); valErr != nil {
 			return fmt.Errorf("health config validation failed: %w", valErr)
 		}
@@ -316,12 +303,8 @@ func (l *ConfigLoader) bindAllEnvVars() {
 	l.bindEnv("server.tls.cert_file")
 	l.bindEnv("server.tls.key_file")
 	l.bindEnv("server.jwt.enabled")
-	l.bindEnv("server.jwt.issuer_url")
-	l.bindEnv("server.jwt.audience")
-	l.bindEnv("server.jwt.identity_claim")
-	l.bindEnv("server.identity_header")
-	l.bindEnv("server.jwk.cert_file")
-	l.bindEnv("server.jwk.cert_url")
+	// server.jwt.configs is a list of structs — loaded from YAML config only.
+	// Viper cannot bind env vars to individual list elements.
 	// Database config
 	l.bindEnv("database.dialect")
 	l.bindEnv("database.host")
@@ -390,12 +373,7 @@ func (l *ConfigLoader) bindFlags(cmd *cobra.Command) {
 	l.bindPFlag("server.tls.key_file", cmd.Flags().Lookup("server-https-key-file"))
 	l.bindPFlag("server.tls.enabled", cmd.Flags().Lookup("server-https-enabled"))
 	l.bindPFlag("server.jwt.enabled", cmd.Flags().Lookup("server-jwt-enabled"))
-	l.bindPFlag("server.jwt.issuer_url", cmd.Flags().Lookup("server-jwt-issuer-url"))
-	l.bindPFlag("server.jwt.audience", cmd.Flags().Lookup("server-jwt-audience"))
-	l.bindPFlag("server.jwt.identity_claim", cmd.Flags().Lookup("server-jwt-identity-claim"))
-	l.bindPFlag("server.identity_header", cmd.Flags().Lookup("server-identity-header"))
-	l.bindPFlag("server.jwk.cert_file", cmd.Flags().Lookup("server-jwk-cert-file"))
-	l.bindPFlag("server.jwk.cert_url", cmd.Flags().Lookup("server-jwk-cert-url"))
+	// server.jwt.configs: no CLI flags — per-issuer config is YAML-only
 	// Database flags: --db-* -> database.*
 	l.bindPFlag("database.host", cmd.Flags().Lookup("db-host"))
 	l.bindPFlag("database.port", cmd.Flags().Lookup("db-port"))

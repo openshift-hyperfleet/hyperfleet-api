@@ -5,46 +5,64 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
 )
 
 const maxCallerIdentityLen = 256
 
-// CallerIdentityConfig controls how the caller identity is resolved for audit fields.
-// Identity resolution is enabled by setting the relevant fields:
-//   - HeaderName: when non-empty, the named HTTP header is checked first
-//   - JWTIdentityClaim: when non-empty, the JWT claim is used as fallback (or primary when no header is configured)
-type CallerIdentityConfig struct {
-	JWTIdentityClaim string
-	HeaderName       string
-}
-
-// CallerIdentityFromRequest resolves the caller identity with header-primary precedence.
-// When the identity header is configured and present, it overrides the JWT claim.
-// Both header and JWT identity values are normalized: trimmed, length-checked, and
-// validated for control characters before being accepted.
-func CallerIdentityFromRequest(ctx context.Context, r *http.Request, cfg CallerIdentityConfig) (string, error) {
-	if cfg.HeaderName != "" {
-		raw := r.Header.Get(cfg.HeaderName)
-		if raw != "" {
-			identity, err := normalizeIdentity(raw, "identity header")
-			if err != nil {
-				return "", err
-			}
-			if identity != "" {
-				return identity, nil
-			}
-		}
+// CallerIdentityFromRequest resolves the caller identity.
+// Priority: identity header (per-issuer, if configured and present) > JWT claim from matched issuer config.
+// The issuer config is set in context by JWTHandler when a token is validated.
+func CallerIdentityFromRequest(ctx context.Context, r *http.Request) (string, error) {
+	issuerCfg, ok := GetJWTIssuerConfigFromContext(ctx)
+	if !ok {
+		return "", nil
 	}
 
-	if cfg.JWTIdentityClaim != "" {
-		raw, err := GetIdentityFromContext(ctx, cfg.JWTIdentityClaim)
+	if issuerCfg.IdentityHeader != "" {
+		headerVal := r.Header.Get(issuerCfg.IdentityHeader)
+		identity, err := normalizeIdentity(headerVal, fmt.Sprintf("header %q", issuerCfg.IdentityHeader))
 		if err != nil {
 			return "", err
 		}
-		return normalizeIdentity(raw, fmt.Sprintf("JWT claim %q", cfg.JWTIdentityClaim))
+		if identity != "" {
+			if err := matchIdentityPattern(identity, "identity header value", issuerCfg); err != nil {
+				return "", err
+			}
+			return identity, nil
+		}
 	}
 
-	return "", nil
+	identityClaim := issuerCfg.IdentityClaim
+	if identityClaim == "" {
+		return "", nil
+	}
+
+	raw, err := GetIdentityFromContext(ctx, identityClaim)
+	if err != nil {
+		return "", err
+	}
+
+	identity, err := normalizeIdentity(raw, fmt.Sprintf("JWT claim %q", identityClaim))
+	if err != nil {
+		return "", err
+	}
+
+	if identity != "" {
+		if err := matchIdentityPattern(identity, "identity claim value", issuerCfg); err != nil {
+			return "", err
+		}
+	}
+
+	return identity, nil
+}
+
+func matchIdentityPattern(identity, source string, cfg config.JWTIssuerConfig) error {
+	if cfg.CompiledPattern != nil && !cfg.CompiledPattern.MatchString(identity) {
+		return fmt.Errorf("%s does not match required pattern", source)
+	}
+	return nil
 }
 
 // normalizeIdentity trims, length-checks, and validates a caller identity value

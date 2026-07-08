@@ -33,30 +33,25 @@ export HYPERFLEET_SERVER_JWT_ENABLED=false
 
 ### Caller identity in development mode
 
-When JWT is disabled and no `identity_header` is configured, caller identity resolution is inactive. Audit fields (`created_by`, `updated_by`, `deleted_by`) fall back to `system@hyperfleet.local`.
+When JWT is disabled, caller identity resolution is inactive. Audit fields (`created_by`, `updated_by`, `deleted_by`) fall back to `system@hyperfleet.local`.
 
-To get proper caller attribution without JWT, configure an identity header:
+When JWT is enabled, mutating requests (POST, PATCH, PUT, DELETE) that cannot resolve a caller identity are rejected with `401 Unauthorized`. Read requests (GET, LIST) are allowed without identity.
 
-```bash
-./bin/hyperfleet-api serve \
-  --server-jwt-enabled=false \
-  --server-identity-header=X-HyperFleet-Identity
-```
-
-Then pass the header in requests:
+The `identity_header` field is per-issuer and only takes effect when JWT is enabled. When configured, a trusted gateway can override the JWT claim by setting this header:
 
 ```bash
-# Create with attribution
+# Mutating request with identity header (JWT must still be valid)
 curl -X POST http://localhost:8000/api/hyperfleet/v1/clusters \
-  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
   -H "X-HyperFleet-Identity: dev-user@local" \
+  -H "Content-Type: application/json" \
   -d '{"kind":"Cluster","name":"my-cluster","spec":{}}'
 
-# Read requests work without the header
+# Read requests work without identity
 curl http://localhost:8000/api/hyperfleet/v1/clusters | jq
 ```
 
-When `identity_header` or `identity_claim` is configured, mutating requests (POST, PATCH, PUT, DELETE) that cannot resolve a caller identity are rejected with `401 Unauthorized`. Read requests (GET, LIST) are allowed without identity.
+See [Caller identity for audit](#caller-identity-for-audit) below for full details.
 
 **Important**: Never disable authentication in production environments.
 
@@ -71,14 +66,24 @@ For local development with real JWT validation, you can use Google Cloud identit
 
 ### Start the server
 
+Configure via YAML (per-issuer JWT config, no CLI flags for configs):
+
+```yaml
+server:
+  jwt:
+    enabled: true
+    configs:
+      - issuer_url: "https://accounts.google.com"
+        jwk_cert_url: "https://www.googleapis.com/oauth2/v3/certs"
+        header: Authorization
+        audience: "32555940559.apps.googleusercontent.com"
+        identity_claim: "email"
+        identity_claim_pattern: ""
+        identity_header: "X-HyperFleet-Identity"
+```
+
 ```bash
-./bin/hyperfleet-api serve \
-  --server-jwt-enabled=true \
-  --server-jwt-issuer-url="https://accounts.google.com" \
-  --server-jwk-cert-url="https://www.googleapis.com/oauth2/v3/certs" \
-  --server-jwt-audience="32555940559.apps.googleusercontent.com" \
-  --server-jwt-identity-claim="email" \
-  --server-identity-header=X-HyperFleet-Identity \
+./bin/hyperfleet-api serve --config config.yaml \
   --db-host localhost --db-port 5432 --db-name hyperfleet --db-username hyperfleet
 ```
 
@@ -112,7 +117,7 @@ curl -X POST http://localhost:8000/api/hyperfleet/v1/clusters \
 
 Google identity tokens are standard OIDC JWTs signed by Google's keys. The server validates them like any other JWT:
 
-1. Fetches Google's public keys from the `jwk_cert_url`
+1. Fetches Google's public keys from the configured `jwk_cert_url` in the issuer config
 2. Verifies the RS256 signature
 3. Checks `iss` matches `https://accounts.google.com`
 4. Checks `aud` matches the configured audience
@@ -144,60 +149,106 @@ curl -H "Authorization: Bearer ${TOKEN}" \
 HyperFleet API validates JWT tokens using RS256 signature verification.
 
 **Token validation checks:**
+
 1. Signature - Token signed by trusted issuer
-2. Issuer - Matches configured `HYPERFLEET_SERVER_JWT_ISSUER_URL`
-3. Audience - Matches configured `HYPERFLEET_SERVER_JWT_AUDIENCE`
+2. Issuer - Matches one of the configured `issuer_url` values in `server.jwt.configs`
+3. Audience - Matches the `audience` configured for that issuer
 4. Expiration - Token not expired
 5. Claims - Required claims present
 
 **Token format:**
+
 ```text
 Authorization: Bearer <jwt-token>
 ```
 
 Example request:
+
 ```bash
 curl -H "Authorization: Bearer ${TOKEN}" \
   http://localhost:8000/api/hyperfleet/v1/clusters
 ```
 
+### Issuer configuration reference
+
+Each entry in `server.jwt.configs` supports the following fields:
+
+| Field | Required | Default | Description |
+|-------|----------|---------|-------------|
+| `issuer_url` | Yes | | Expected `iss` claim for this issuer |
+| `jwk_cert_url` | One of `jwk_cert_url` / `jwk_cert_file` | | JWKS endpoint URL for this issuer's public keys |
+| `jwk_cert_file` | One of `jwk_cert_url` / `jwk_cert_file` | | Path to a local JWKS file |
+| `header` | No | `Authorization` | HTTP header to read the JWT from |
+| `audience` | No | `""` (any) | Expected `aud` claim; skipped if empty |
+| `identity_claim` | No | `email` | JWT claim used as audit identity |
+| `identity_claim_pattern` | No | `""` (none) | Regex the identity value must match; non-matching requests get 401 |
+| `identity_header` | No | `""` (disabled) | HTTP header that overrides the JWT claim for audit identity (gateway-set only) |
+
+**Complete example with all fields:**
+
+```yaml
+server:
+  jwt:
+    enabled: true
+    configs:
+      - issuer_url: https://idp.example.com/realms/hyperfleet
+        jwk_cert_url: https://idp.example.com/realms/hyperfleet/protocol/openid-connect/certs
+        jwk_cert_file: ""
+        header: Authorization
+        audience: ""
+        identity_claim: email
+        identity_claim_pattern: ""
+        identity_header: ""
+```
+
 ## Caller identity for audit
 
-Authentication (JWT validation) and caller identity (audit attribution) are separate concerns. Identity resolution is enabled by setting `identity_claim` (in the JWT config) and/or `identity_header`. When neither is set, no identity middleware is registered and audit fields fall back to `system@hyperfleet.local`.
+Authentication (JWT validation) and caller identity (audit attribution) are separate concerns. When JWT is enabled, identity resolution is always active because `identity_claim` defaults to `email`. Audit fields (`created_by`, `updated_by`, `deleted_by`) are populated from the matched issuer's identity settings. When JWT is disabled, audit fields fall back to `system@hyperfleet.local`.
 
 | Layer | Component | Responsibility |
 |-------|-----------|----------------|
 | Outer | `JWTHandler` | Validates `Authorization: Bearer` token |
 | Inner | `ResolveCallerIdentity` middleware | Resolves who is recorded as the actor |
 
-The resolved identity is written to `created_by` on create, `updated_by` on update, and `deleted_by` on delete. Precedence: identity header > JWT claim.
+The resolved identity is written to `created_by` on create, `updated_by` on update, and `deleted_by` on delete. Precedence: per-issuer identity header > JWT claim.
 
 When identity resolution is configured, mutating requests (POST, PATCH, PUT, DELETE) that cannot resolve a caller identity are rejected with `401 Unauthorized`. Read requests (GET, LIST) are allowed without identity.
 
-### JWT claim
+### JWT claim (per-issuer)
 
-Configure which JWT claim is used as the caller identity:
+Configure which JWT claim is used as the caller identity for each issuer:
 
 ```yaml
 server:
   jwt:
-    identity_claim: email   # or preferred_username, sub, etc.
+    configs:
+      - issuer_url: https://idp.example.com
+        jwk_cert_url: https://idp.example.com/certs
+        header: Authorization
+        audience: ""
+        identity_claim: email   # or preferred_username, sub, etc.
+        identity_claim_pattern: ""
+        identity_header: ""
 ```
 
-### HTTP identity header (optional)
+### HTTP identity header (per-issuer, optional)
 
-When set, a trusted gateway can set the caller identity via HTTP header. **If the header is present and non-empty, it overrides the JWT claim** for audit fields. JWT validation is still required when `jwt.enabled=true`.
+When `identity_header` is set on an issuer config, a trusted gateway can set the caller identity via HTTP header. **If the header is present and non-empty, it overrides the JWT claim** for audit fields. JWT validation is still required.
 
 ```yaml
 server:
-  identity_header: X-HyperFleet-Identity
+  jwt:
+    configs:
+      - issuer_url: https://idp.example.com
+        jwk_cert_url: https://idp.example.com/certs
+        header: Authorization
+        audience: ""
+        identity_claim: email
+        identity_claim_pattern: ""
+        identity_header: X-HyperFleet-Identity
 ```
 
 **Security:** Clients must not be able to set this header directly. Configure your ingress/gateway to strip the header from external requests and set it from the authenticated upstream user.
-
-```bash
-export HYPERFLEET_SERVER_IDENTITY_HEADER=X-HyperFleet-Identity
-```
 
 Identity values from both sources are validated: trimmed of whitespace, limited to 256 characters, and rejected if they contain control characters.
 
@@ -209,10 +260,9 @@ Identity values from both sources are validated: trimmed of whitespace, limited 
 # Development (no auth)
 export HYPERFLEET_SERVER_JWT_ENABLED=false
 
-# Production (with auth)
+# Production (with auth) - configure issuers in config.yaml
 export HYPERFLEET_SERVER_JWT_ENABLED=true
-export HYPERFLEET_SERVER_JWT_ISSUER_URL=https://your-idp.example.com/auth/realms/your-realm
-export HYPERFLEET_SERVER_JWT_AUDIENCE=https://your-api.example.com
+# Issuer configs must be set via YAML config file (server.jwt.configs list)
 ```
 
 See [Deployment](deployment.md) for complete configuration options.
@@ -222,32 +272,37 @@ See [Deployment](deployment.md) for complete configuration options.
 Configure via Helm values:
 
 ```yaml
-# values.yaml
+# values.yaml — see "Issuer configuration reference" above for all fields
 config:
   server:
     jwt:
       enabled: true
-      issuer_url: https://your-idp.example.com/auth/realms/your-realm
-      audience: https://your-api.example.com
+      configs:
+        - issuer_url: https://your-idp.example.com/auth/realms/your-realm
+          jwk_cert_url: https://your-idp.example.com/auth/realms/your-realm/protocol/openid-connect/certs
+          audience: https://your-api.example.com
 ```
 
 Deploy:
+
 ```bash
 helm install hyperfleet-api oci://quay.io/redhat-services-prod/hyperfleet-tenant/hyperfleet/hyperfleet-api-chart:<tag> --values values.yaml
 ```
 
-> **Note:** You may also choose to install from the ./charts folder, if you've cloned this repository locally. 
+> **Note:** You may also choose to install from the ./charts folder, if you've cloned this repository locally.
 
 ## Troubleshooting
 
 ### Common Issues
 
 **401 Unauthorized**
+
 - Check token is valid and not expired
-- Verify `HYPERFLEET_SERVER_JWT_ISSUER_URL` and `HYPERFLEET_SERVER_JWT_AUDIENCE` match token claims
+- Verify `issuer_url` and `audience` in `server.jwt.configs` match token claims
 - Ensure `Authorization` header is correctly formatted
 
 **Token debugging**
+
 ```bash
 # Decode JWT token (header and payload only, not verified)
 echo $TOKEN | cut -d. -f2 | base64 -d | jq

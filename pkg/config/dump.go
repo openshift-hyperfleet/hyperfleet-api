@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/registry"
 )
@@ -18,7 +19,7 @@ func DumpConfig(config *ApplicationConfig) string {
     BindAddress: %s
     EnableHTTPS: %t
     EnableJWT: %t
-    IssuerURL: %s
+    Issuers: %d configured%s
   Database:
     Host: %s
     Port: %d
@@ -42,7 +43,8 @@ func DumpConfig(config *ApplicationConfig) string {
 		config.Server.BindAddress(),
 		config.Server.TLS.Enabled,
 		config.Server.JWT.Enabled,
-		config.Server.JWT.IssuerURL,
+		len(config.Server.JWT.Configs),
+		formatIssuers(config.Server.JWT.Configs),
 		config.Database.Host,
 		config.Database.Port,
 		config.Database.Name,
@@ -59,6 +61,24 @@ func DumpConfig(config *ApplicationConfig) string {
 		len(config.Entities),
 		entityKindNames(config.Entities),
 	)
+}
+
+func formatIssuers(configs []JWTIssuerConfig) string {
+	if len(configs) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	for i, cfg := range configs {
+		jwkSource := "none"
+		if cfg.JWKCertURL != "" {
+			jwkSource = "url"
+		} else if cfg.JWKCertFile != "" {
+			jwkSource = "file"
+		}
+		fmt.Fprintf(&b, "\n      [%d] IssuerURL: %s, Header: %s, JWK: %s",
+			i, cfg.IssuerURL, cfg.Header, jwkSource)
+	}
+	return b.String()
 }
 
 // entityKindNames extracts Kind strings from entity descriptors for logging.

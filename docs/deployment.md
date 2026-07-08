@@ -56,7 +56,7 @@ helm install hyperfleet-api oci://quay.io/redhat-services-prod/hyperfleet-tenant
   --set image.tag=<tag>
 ```
 
-> **Note:** You may also choose to install from the ./charts folder, if you've cloned this repository locally. 
+> **Note:** You may also choose to install from the ./charts folder, if you've cloned this repository locally.
 
 **Verify:**
 
@@ -173,19 +173,15 @@ helm install hyperfleet-api oci://quay.io/redhat-services-prod/hyperfleet-tenant
   --set image.repository=redhat-services-prod/hyperfleet-tenant/hyperfleet/hyperfleet-api \
   --set image.tag=v1.0.0 \
   --set config.server.jwt.enabled=true \
-  --set config.server.jwt.issuer_url=https://your-idp.example.com/auth/realms/your-realm \
-  --set config.server.jwk.cert_url=https://your-idp.example.com/auth/realms/your-realm/protocol/openid-connect/certs
+  --set-json 'config.server.jwt.configs=[{"issuer_url":"https://your-idp.example.com/auth/realms/your-realm","jwk_cert_url":"https://your-idp.example.com/auth/realms/your-realm/protocol/openid-connect/certs"}]'
 ```
 
 | Value | Required when JWT enabled | Description |
 |-------|---------------------------|-------------|
 | `config.server.jwt.enabled` | Yes | Set to `true` |
-| `config.server.jwt.issuer_url` | Yes | Expected JWT issuer URL for token validation |
-| `config.server.jwk.cert_url` | Yes (unless `cert_file` is set) | URL to fetch JWK signing keys |
-| `config.server.jwt.audience` | No | Expected JWT audience claim |
-| `config.server.jwt.identity_claim` | No | JWT claim used as caller identity (default: `email`) |
+| `config.server.jwt.configs` | Yes | List of issuer configs. Each requires `issuer_url` and `jwk_cert_url` or `jwk_cert_file`. See link below for all optional fields. |
 
-See [Authentication](authentication.md) for full reference including identity header configuration and caller identity details.
+See [Issuer configuration reference](authentication.md#issuer-configuration-reference) for the full field table, defaults, and [Caller identity for audit](authentication.md#caller-identity-for-audit) for identity header and claim details.
 
 ---
 
@@ -327,9 +323,10 @@ config:
   server:
     jwt:
       enabled: true
-      issuer_url: https://your-idp.example.com/auth/realms/your-realm
-    jwk:
-      cert_url: https://your-idp.example.com/auth/realms/your-realm/protocol/openid-connect/certs
+      configs:
+        - issuer_url: https://your-idp.example.com/auth/realms/your-realm
+          jwk_cert_url: https://your-idp.example.com/auth/realms/your-realm/protocol/openid-connect/certs
+          # See "Issuer configuration reference" in authentication.md
 
   adapters:
     required:
@@ -432,6 +429,7 @@ kubectl get configmaps --namespace hyperfleet-system
 ### Health Checks
 
 The deployment includes:
+
 - Liveness probe: `GET /healthz` (port 8080) — returns 200 if the process is alive
 - Readiness probe: `GET /readyz` (port 8080) — returns 200 when ready to receive traffic, 503 during startup/shutdown
 - Metrics: `GET /metrics` (port 9090) — Prometheus metrics endpoint
@@ -508,6 +506,7 @@ Before deploying to production, ensure:
 The configuration file path — set via `--config` or `HYPERFLEET_CONFIG` — is a trust boundary. The API validates configuration **content** on startup (unknown fields are rejected, required values are enforced, TLS/JWT/timeout settings are checked) and will refuse to start with an invalid configuration. However, **path and permission safety is the operator's responsibility**. The API reads whatever file the process can access at the given path without checking permissions or ownership.
 
 Ensure configuration files are:
+
 - Owned by the service account running the API (e.g., `root:root` or a dedicated user)
 - Mode `0600` (owner read/write only) or `0640` if group-readable access is needed
 - Never world-writable

@@ -145,35 +145,47 @@
                   "type": "boolean",
                   "description": "Enable JWT token validation"
                 },
-                "issuer_url": {
-                  "type": "string",
-                  "description": "Expected JWT issuer URL"
-                },
-                "audience": {
-                  "type": "string",
-                  "description": "Expected JWT audience claim"
-                },
-                "identity_claim": {
-                  "type": "string",
-                  "description": "JWT claim to extract the caller identity from (e.g. email, sub)"
-                }
-              }
-            },
-            "identity_header": {
-              "type": "string",
-              "description": "HTTP header carrying a pre-authenticated identity (bypasses JWT when set)"
-            },
-            "jwk": {
-              "type": "object",
-              "description": "JWK key material for token verification",
-              "properties": {
-                "cert_file": {
-                  "type": "string",
-                  "description": "Path to a local JWK certificate file"
-                },
-                "cert_url": {
-                  "type": "string",
-                  "description": "URL to fetch JWK certificates from"
+                "configs": {
+                  "type": "array",
+                  "description": "List of JWT issuer configurations (multi-issuer support)",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "issuer_url": {
+                        "type": "string",
+                        "description": "OIDC issuer URL for token validation (required)"
+                      },
+                      "jwk_cert_url": {
+                        "type": "string",
+                        "description": "URL to fetch JWK certificates from"
+                      },
+                      "jwk_cert_file": {
+                        "type": "string",
+                        "description": "Path to a local JWK certificate file"
+                      },
+                      "header": {
+                        "type": "string",
+                        "description": "HTTP header to read the JWT from (default: Authorization)"
+                      },
+                      "audience": {
+                        "type": "string",
+                        "description": "Expected JWT audience claim"
+                      },
+                      "identity_claim": {
+                        "type": "string",
+                        "description": "JWT claim to extract the caller identity from (default: email)"
+                      },
+                      "identity_claim_pattern": {
+                        "type": "string",
+                        "description": "Regex pattern to validate the identity claim value"
+                      },
+                      "identity_header": {
+                        "type": "string",
+                        "description": "HTTP header carrying a pre-authenticated identity (bypasses JWT claim when set)"
+                      }
+                    },
+                    "required": ["issuer_url"]
+                  }
                 }
               }
             }

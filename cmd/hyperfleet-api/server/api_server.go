@@ -34,10 +34,7 @@ func NewAPIServer(tracingEnabled bool) Server {
 
 	if env().Config.Server.JWT.Enabled {
 		jwtHandler, err := auth.NewJWTHandler(context.Background(), auth.JWTHandlerConfig{
-			KeysFile:  env().Config.Server.JWK.CertFile,
-			KeysURL:   env().Config.Server.JWK.CertURL,
-			IssuerURL: env().Config.Server.JWT.IssuerURL,
-			Audience:  env().Config.Server.JWT.Audience,
+			Issuers: env().Config.Server.JWT.Configs,
 			PublicPaths: []string{
 				"^/api/hyperfleet/?$",
 				"^/api/hyperfleet/v1/?$",

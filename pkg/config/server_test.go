@@ -15,54 +15,157 @@ func TestJWTConfig_Validate(t *testing.T) {
 		Expect(cfg.Validate()).To(Succeed())
 	})
 
+	t.Run("enabled JWT with no configs fails", func(t *testing.T) {
+		RegisterTestingT(t)
+		cfg := JWTConfig{Enabled: true}
+		err := cfg.Validate()
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("at least one issuer"))
+	})
+
 	t.Run("enabled JWT without issuer URL fails", func(t *testing.T) {
 		RegisterTestingT(t)
-		cfg := JWTConfig{Enabled: true, IssuerURL: ""}
+		cfg := JWTConfig{Enabled: true, Configs: []JWTIssuerConfig{{JWKCertURL: "https://keys.example.com"}}}
 		err := cfg.Validate()
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("issuer_url"))
 	})
 
-	t.Run("enabled JWT with issuer URL passes", func(t *testing.T) {
+	t.Run("enabled JWT without JWK source fails", func(t *testing.T) {
 		RegisterTestingT(t)
-		cfg := JWTConfig{
-			Enabled:       true,
-			IssuerURL:     "https://sso.example.com/auth/realms/test",
-			IdentityClaim: "email",
-		}
+		cfg := JWTConfig{Enabled: true, Configs: []JWTIssuerConfig{{IssuerURL: "https://issuer.example.com"}}}
+		err := cfg.Validate()
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("jwk_cert_url or jwk_cert_file"))
+	})
+
+	t.Run("valid single issuer config with cert URL passes", func(t *testing.T) {
+		RegisterTestingT(t)
+		cfg := JWTConfig{Enabled: true, Configs: []JWTIssuerConfig{{
+			IssuerURL:  "https://issuer.example.com",
+			JWKCertURL: "https://keys.example.com",
+		}}}
 		Expect(cfg.Validate()).To(Succeed())
 	})
 
-	t.Run("enabled JWT without identity claim fails", func(t *testing.T) {
+	t.Run("valid single issuer config with cert file passes", func(t *testing.T) {
 		RegisterTestingT(t)
-		cfg := JWTConfig{Enabled: true, IssuerURL: "https://sso.example.com/auth/realms/test", IdentityClaim: ""}
+		cfg := JWTConfig{Enabled: true, Configs: []JWTIssuerConfig{{
+			IssuerURL:   "https://issuer.example.com",
+			JWKCertFile: "/etc/hyperfleet/jwks.json",
+		}}}
+		Expect(cfg.Validate()).To(Succeed())
+	})
+
+	t.Run("ApplyDefaults sets header and identity_claim when empty", func(t *testing.T) {
+		RegisterTestingT(t)
+		cfg := JWTConfig{Enabled: true, Configs: []JWTIssuerConfig{{
+			IssuerURL:  "https://issuer.example.com",
+			JWKCertURL: "https://keys.example.com",
+		}}}
+		cfg.ApplyDefaults()
+		Expect(cfg.Validate()).To(Succeed())
+		Expect(cfg.Configs[0].Header).To(Equal(DefaultJWTHeader))
+		Expect(cfg.Configs[0].IdentityClaim).To(Equal(DefaultJWTIdentityClaim))
+	})
+
+	t.Run("invalid identity_claim_pattern fails", func(t *testing.T) {
+		RegisterTestingT(t)
+		cfg := JWTConfig{Enabled: true, Configs: []JWTIssuerConfig{{
+			IssuerURL:            "https://issuer.example.com",
+			JWKCertURL:           "https://keys.example.com",
+			IdentityClaimPattern: "[invalid",
+		}}}
 		err := cfg.Validate()
 		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("identity_claim"))
+		Expect(err.Error()).To(ContainSubstring("identity_claim_pattern"))
+	})
+
+	t.Run("valid identity_claim_pattern passes", func(t *testing.T) {
+		RegisterTestingT(t)
+		cfg := JWTConfig{Enabled: true, Configs: []JWTIssuerConfig{{
+			IssuerURL:            "https://issuer.example.com",
+			JWKCertURL:           "https://keys.example.com",
+			IdentityClaimPattern: `^[^@]+@[^@]+$`,
+		}}}
+		Expect(cfg.Validate()).To(Succeed())
+	})
+
+	t.Run("multiple issuers all validated", func(t *testing.T) {
+		RegisterTestingT(t)
+		cfg := JWTConfig{Enabled: true, Configs: []JWTIssuerConfig{
+			{IssuerURL: "https://issuer1.example.com", JWKCertURL: "https://keys1.example.com"},
+			{IssuerURL: "", JWKCertURL: "https://keys2.example.com"},
+		}}
+		err := cfg.Validate()
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("configs[1]"))
 	})
 }
 
-func TestServerConfig_ValidateIdentityHeader(t *testing.T) {
+func TestJWTConfig_ValidateIdentityHeader(t *testing.T) {
 	RegisterTestingT(t)
+
+	base := func(header string) *JWTConfig {
+		return &JWTConfig{
+			Enabled: true,
+			Configs: []JWTIssuerConfig{{
+				IssuerURL:      "https://issuer.example.com",
+				JWKCertURL:     "https://issuer.example.com/.well-known/jwks.json",
+				IdentityHeader: header,
+			}},
+		}
+	}
 
 	t.Run("empty identity header requires nothing", func(t *testing.T) {
 		RegisterTestingT(t)
-		cfg := &ServerConfig{}
-		Expect(cfg.ValidateIdentityHeader()).To(Succeed())
+		cfg := base("")
+		Expect(cfg.Validate()).To(Succeed())
 	})
 
 	t.Run("forbidden header name fails", func(t *testing.T) {
 		RegisterTestingT(t)
-		cfg := &ServerConfig{IdentityHeader: "Authorization"}
-		err := cfg.ValidateIdentityHeader()
+		cfg := base("Authorization")
+		err := cfg.Validate()
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("not allowed"))
 	})
 
 	t.Run("valid header name passes", func(t *testing.T) {
 		RegisterTestingT(t)
-		cfg := &ServerConfig{IdentityHeader: "X-HyperFleet-Identity"}
-		Expect(cfg.ValidateIdentityHeader()).To(Succeed())
+		cfg := base("X-HyperFleet-Identity")
+		Expect(cfg.Validate()).To(Succeed())
+	})
+
+	t.Run("forbidden JWT source header fails", func(t *testing.T) {
+		RegisterTestingT(t)
+		cfg := &JWTConfig{
+			Enabled: true,
+			Configs: []JWTIssuerConfig{{
+				IssuerURL:  "https://issuer.example.com",
+				JWKCertURL: "https://keys.example.com",
+				Header:     "Cookie",
+			}},
+		}
+		err := cfg.Validate()
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("not allowed as a JWT source"))
+	})
+
+	t.Run("header equal to identity_header fails", func(t *testing.T) {
+		RegisterTestingT(t)
+		cfg := &JWTConfig{
+			Enabled: true,
+			Configs: []JWTIssuerConfig{{
+				IssuerURL:      "https://issuer.example.com",
+				JWKCertURL:     "https://keys.example.com",
+				Header:         "X-Token",
+				IdentityHeader: "x-token",
+			}},
+		}
+		err := cfg.Validate()
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("must differ from header"))
 	})
 }
 

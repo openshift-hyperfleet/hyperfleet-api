@@ -17,3 +17,14 @@ func IsForbiddenIdentityHeaderName(name string) bool {
 	_, ok := forbiddenIdentityHeaderNames[http.CanonicalHeaderKey(name)]
 	return ok
 }
+
+var forbiddenJWTSourceHeaderNames = map[string]struct{}{
+	"Cookie":     {},
+	"Set-Cookie": {},
+}
+
+// IsForbiddenJWTSourceHeaderName reports whether name must not be used as the JWT token source header.
+func IsForbiddenJWTSourceHeaderName(name string) bool {
+	_, ok := forbiddenJWTSourceHeaderNames[http.CanonicalHeaderKey(name)]
+	return ok
+}

@@ -18,24 +18,28 @@ Validation schema validation is ENABLED.
 {{- end }}
 
 Caller identity (audit attribution):
-  config.server.jwt.identity_claim: {{ .Values.config.server.jwt.identity_claim | default "" | quote }}
-  config.server.identity_header: {{ .Values.config.server.identity_header | default "" | quote }}
+  JWT issuers configured: {{ len .Values.config.server.jwt.configs }}
 
-When identity_header is set and a request includes a non-empty header with that name,
-the header value overrides the JWT claim for audit fields (created_by, updated_by).
-When identity_claim is set, the named JWT claim is used as the caller identity.
+Each JWT issuer config can specify its own identity_claim (defaults to "email") and
+identity_header. When identity_header is set per-issuer, a matching non-empty header
+value overrides the JWT claim for audit fields (created_by, updated_by, deleted_by).
 Only trusted gateways should set the identity header in production.
 
 Override in values.yaml:
   config:
     server:
       jwt:
-        identity_claim: preferred_username
-      identity_header: X-HyperFleet-Identity
+        enabled: true
+        configs:
+          - issuer_url: "https://idp.example.com/auth/realms/my-realm"
+            jwk_cert_url: "https://idp.example.com/certs"
 
 Or at install/upgrade:
-  --set config.server.jwt.identity_claim=preferred_username
-  --set config.server.identity_header=X-HyperFleet-Identity
+  --set config.server.jwt.enabled=true
+  --set-json 'config.server.jwt.configs=[{"issuer_url":"https://idp.example.com","jwk_cert_url":"https://idp.example.com/certs"}]'
+
+Full issuer field reference (header, audience, identity_claim, identity_claim_pattern, identity_header):
+  https://github.com/openshift-hyperfleet/hyperfleet-api/blob/main/docs/authentication.md#issuer-configuration-reference
 
 Documentation:
   https://github.com/openshift-hyperfleet/hyperfleet-api/blob/main/docs/deployment.md
