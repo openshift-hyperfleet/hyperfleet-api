@@ -9,41 +9,48 @@ params:
     required: true
     source: event.generation
     type: int
+
+  - name: clusterStatus
+    source:
+      api_call:
+        method: GET
+        retry_attempts: 3
+        retry_backoff: exponential
+        timeout: 10s
+        url: /clusters/{{ .clusterId }}
+
+  - name: clusterName
+    source: clusterStatus.name
+
+  - name: timestamp
+    source: clusterStatus.created_time
+
+  # is_deleting is the canonical deletion gate used throughout payload expressions.
+  # Optional chaining avoids errors when deleted_time is absent and prevents
+  # false-positive Finalized=True when resources are absent for unrelated reasons.
+  - name: is_deleting
+    source:
+      expression: "clusterStatus.?deleted_time.hasValue()"
+
+  - name: reconciledConditionStatus
+    source:
+      expression: |
+        clusterStatus.status.conditions.filter(c, c.type == "Reconciled").size() > 0
+          ? clusterStatus.status.conditions.filter(c, c.type == "Reconciled")[0].status
+          : "False"
+
+  - name: placementClusterName
+    source:
+      expression: '"cluster1"' # TBC coming from placement adapter
+
 # Preconditions with valid operators and CEL expressions
 preconditions:
-  - api_call:
-      method: GET
-      retry_attempts: 3
-      retry_backoff: exponential
-      timeout: 10s
-      url: /clusters/{{ .clusterId }}
-    capture:
-      - field: name
-        name: clusterName
-      - field: generation
-        name: generationId
-      - field: created_time
-        name: timestamp
-      # is_deleting is the canonical deletion gate used throughout payload expressions.
-      # Capturing it here avoids repeating "has(clusterStatus.deleted_time)" everywhere and
-      # prevents false-positive Finalized=True when resources are absent for
-      # unrelated reasons (e.g., first reconciliation before provisioning).
-      # has() safely checks map key presence without requiring deleted_time to exist.
-      - name: is_deleting
-        expression: "has(clusterStatus.deleted_time)"
-      - expression: |
-          status.conditions.filter(c, c.type == "Reconciled").size() > 0
-            ? status.conditions.filter(c, c.type == "Reconciled")[0].status
-            : "False"
-        name: reconciledConditionStatus
-      - name: placementClusterName
-        expression: '"cluster1"' # TBC coming from placement adapter
+  - name: clusterStatus
     # Structured conditions with valid operators
     conditions:
       - field: reconciledConditionStatus
         operator: equals
         value: "False"
-    name: clusterStatus
   - # Valid CEL expression
     expression: |
       reconciledConditionStatus == "False"

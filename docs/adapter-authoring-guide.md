@@ -104,7 +104,7 @@ The format of the event is CloudEvents.
 }
 ```
 
-The adapter fetches the full resource from the API during preconditions phase.
+The adapter fetches the full resource from the API during the params phase.
 This keeps the event schema stable and ensures the adapter always works with fresh data.
 
 ### Configuration languages
@@ -127,7 +127,7 @@ Three languages appear in adapter configs, each for a different purpose:
 
 ```yaml
 params: []            # Phase 1: Extract variables from event and environment
-preconditions: []     # Phase 2: Validate state via API calls
+preconditions: []     # Phase 2: Evaluate conditions against extracted params
 resources: []         # Phase 3: Create/update Kubernetes resources
 post:                 # Phase 4: Report status
   payloads: []        #   Build status JSON
@@ -142,7 +142,7 @@ flowchart TD
     PARAMS -->|required param missing| FAIL_PARAMS[Set adapter.executionError]
     FAIL_PARAMS --> POST
     PARAMS -->|success| PRECOND[Phase 2: Preconditions]
-    PRECOND -->|API call fails| FAIL_PRECOND[Set adapter.executionError]
+    PRECOND -->|condition error| FAIL_PRECOND[Set adapter.executionError]
     FAIL_PRECOND --> POST
     PRECOND -->|conditions not met| SKIP[Set adapter.resourcesSkipped=true]
     SKIP --> POST
@@ -173,7 +173,7 @@ The `adapter.*` context is populated automatically and available in your post-ac
 
 ## 4. Parameter Extraction
 
-Parameters are variables extracted from the incoming CloudEvent and the runtime environment. They become available as Go Template variables (`{{ .paramName }}`) and CEL variables throughout the rest of the config.
+Parameters are variables extracted from the CloudEvent, the environment, or the HyperFleet API. They become available as Go Template variables (`{{ .paramName }}`) and CEL variables throughout the rest of the config. Params are resolved in order, a param can reference the value of any param defined before it.
 
 ```yaml
 params:
@@ -193,6 +193,28 @@ params:
     source: "env.REGION"
     type: "string"
     default: "us-east-1"
+
+  # From the HyperFleet API — stores the full JSON response
+  - name: "clusterData"
+    source:
+      api_call:
+        method: "GET"
+        url: "/api/hyperfleet/v1/clusters/{{ .clusterId }}"
+        timeout: 10s
+        retry_attempts: 3
+        retry_backoff: "exponential"
+
+  # Dot-notation derivation from an api_call param
+  - name: "generationId"
+    source: "clusterData.generation"
+
+  # CEL expression over previously resolved params
+  - name: "reconciledStatus"
+    source:
+      expression: |
+        clusterData.status.conditions.filter(c, c.type == "Reconciled").size() > 0
+          ? clusterData.status.conditions.filter(c, c.type == "Reconciled")[0].status
+          : "False"
 ```
 
 ### Sources
@@ -203,6 +225,33 @@ params:
 | `env.` | Environment variables | `env.REGION`, `env.NAMESPACE` |
 | `secret.` | Kubernetes Secret | `secret.my-ns.my-secret.api-key` |
 | `configmap.` | Kubernetes ConfigMap | `configmap.my-ns.my-config.setting` |
+| `<param>.` | Dot-notation into an earlier api_call param | `clusterData.generation`, `clusterData.status.phase` |
+
+**Structured sources** - use a mapping value under `source:`:
+
+`api_call` - fetches data from the HyperFleet API and stores the full JSON response as a `map` under the param name. The URL is a Go Template rendered against all params resolved so far.
+
+```yaml
+- name: "clusterData"
+  source:
+    api_call:
+      method: "GET"
+      url: "/api/hyperfleet/v1/clusters/{{ .clusterId }}"
+      timeout: 10s
+      retry_attempts: 3
+      retry_backoff: "exponential"   # also: linear, constant
+```
+
+`expression` - evaluates a CEL expression over all params resolved so far. Useful for computed values and transformations.
+
+```yaml
+- name: "reconciledStatus"
+  source:
+    expression: |
+      clusterData.status.conditions.filter(c, c.type == "Reconciled").size() > 0
+        ? clusterData.status.conditions.filter(c, c.type == "Reconciled")[0].status
+        : "False"
+```
 
 ### Types and conversion
 
@@ -213,66 +262,24 @@ params:
 | `float`, `float64` | Numeric values |
 | `bool` | `true/false`, `yes/no`, `on/off`, `1/0` |
 
+Type conversion applies to string sources only. `api_call` params hold a structured map and `expression` params hold whatever the CEL expression returns — no conversion is applied.
+
 If type conversion fails on a **required** param, execution stops. On an optional param, the `default` value is used.
 
 ### Common parameters
 
-Most adapters need at least `clusterId` and `generation` from the event. These are the minimum to identify what cluster changed and at what generation.
+Most adapters need at least `clusterId` from the event and a `clusterData` api_call param to fetch the current cluster state. From `clusterData`, derive any fields you need as separate params using dot-notation or expression sources.
 
 ---
 
 ## 5. Preconditions
 
-A precondition is used to decide if the Resource phase executes or not.
+Preconditions decide whether the Resources phase executes. They run sequentially and evaluate params resolved in the previous phase.
 
-Preconditions validate cluster state before the adapter creates resources. They run **sequentially** — each precondition can use data captured by previous ones.
-
-Usually an API call to the HyperFleet API will be the first action of the Precondition phase, to extract values from the current state of the cluster.
-
-The state of the cluster contains information about all adapters in the form of `conditions[]`, so it can be used to make one adapter depend on the results of another adapter.
-
-### Making an API call
-
-```yaml
-preconditions:
-  - name: "clusterStatus"
-    api_call:
-      method: "GET"
-      url: "/api/hyperfleet/v1/clusters/{{ .clusterId }}"
-      timeout: 10s
-      retry_attempts: 3
-      retry_backoff: "exponential"    # also: linear, constant
-```
-
-URLs are **relative** — the base URL comes from the `AdapterConfig` `clients.hyperfleet_api.base_url` setting. You only write the path.
-
-### Capturing fields
-
-After the API call, capture values from the response for use in later phases. Two extraction modes are available (`field` or `expression`)— use one per capture, not both:
-
-```yaml
-    capture:
-      # Simple field extraction (dot notation or JSONPath)
-      - name: "clusterName"
-        field: "name"
-
-      # CEL expression for computed values
-      - name: "reconciledStatus"
-        expression: |
-          status.conditions.filter(c, c.type == "Reconciled").size() > 0
-            ? status.conditions.filter(c, c.type == "Reconciled")[0].status
-            : "False"
-
-      # JSONPath with filter
-      - name: "lzNamespaceStatus"
-        field: "{.items[?(@.adapter=='landing-zone')].data.namespace.status}"
-```
-
-> **Scope:** Capture expressions can only see the current API response. They cannot reference params or other captured values.
 
 ### Evaluating conditions
 
-After captures, evaluate conditions to decide whether to proceed. Two syntaxes are available:
+Two syntaxes are available:
 
 **Structured conditions** — declarative, readable for simple checks:
 
@@ -287,10 +294,10 @@ After captures, evaluate conditions to decide whether to proceed. Two syntaxes a
 
 ```yaml
     expression: |
-      reconciledStatus == "False" && clusterStatus.spec.nodeCount > 0
+      reconciledStatus == "False" && clusterData.generation > 0
 ```
 
-> **Scope:** Conditions see the **full execution context**: all params, all captured fields, and the full API response accessible via the precondition name (e.g., `clusterStatus.status.conditions`).
+> **Scope:** Conditions see all resolved params and adapter metadata.
 
 ### Supported operators
 
@@ -310,23 +317,29 @@ After captures, evaluate conditions to decide whether to proceed. Two syntaxes a
 
 ### Chaining preconditions
 
-Preconditions execute in order. Data flows forward — a captured field from precondition 1 is available in precondition 2's conditions:
+Preconditions execute in order. All params (including those from api_call sources) are available to every precondition's conditions and expression:
 
 ```yaml
-preconditions:
-  - name: "getCluster"
-    api_call:
-      url: "/api/hyperfleet/v1/clusters/{{ .clusterId }}"
-    capture:
-      - name: "clusterName"
-        field: "name"
+params:
+  - name: "clusterId"
+    source: "event.id"
+  - name: "clusterData"
+    source:
+      api_call:
+        url: "/api/hyperfleet/v1/clusters/{{ .clusterId }}"
+  - name: "clusterName"
+    source: "clusterData.name"
+  - name: "statusesData"
+    source:
+      api_call:
+        url: "/api/hyperfleet/v1/clusters/{{ .clusterId }}/statuses"
+  - name: "lzReconciled"
+    source:
+      expression: |
+        statusesData.items.filter(i, i.adapter == "landing-zone")[0].data.namespace.status
 
-  - name: "getStatuses"
-    api_call:
-      url: "/api/hyperfleet/v1/clusters/{{ .clusterId }}/statuses"
-    capture:
-      - name: "lzReconciled"
-        field: "{.items[?(@.adapter=='landing-zone')].data.namespace.status}"
+preconditions:
+  - name: "clusterReady"
     conditions:
       - field: "lzReconciled"
         operator: "equals"
@@ -348,16 +361,22 @@ A condition-only precondition (e.g., "only run when cluster is NOT Reconciled") 
 
 ```yaml
 # Condition-only pattern - INCOMPLETE
+params:
+  - name: "clusterId"
+    source: "event.id"
+  - name: "clusterData"
+    source:
+      api_call:
+        url: "/api/hyperfleet/v1/clusters/{{ .clusterId }}"
+  - name: "reconciledStatus"
+    source:
+      expression: |
+        clusterData.status.conditions.filter(c, c.type == "Reconciled").size() > 0
+          ? clusterData.status.conditions.filter(c, c.type == "Reconciled")[0].status
+          : "False"
+
 preconditions:
-  - name: "getCluster"
-    api_call:
-      url: "/api/hyperfleet/v1/clusters/{{ .clusterId }}"
-    capture:
-      - name: "reconciledStatus"
-        expression: |
-          status.conditions.filter(c, c.type == "Reconciled").size() > 0
-            ? status.conditions.filter(c, c.type == "Reconciled")[0].status
-            : "False"
+  - name: "checkCluster"
     conditions:
       - field: "reconciledStatus"
         operator: "equals"
@@ -385,24 +404,29 @@ To implement time-based stability checks, you need to know how long a cluster ha
 #### Correct pattern: Time-based stability precondition
 
 ```yaml
-preconditions:
-  - name: "checkClusterState"
-    api_call:
-      url: "/api/hyperfleet/v1/clusters/{{ .clusterId }}"
-    capture:
-      - name: "clusterNotReconciled"
-        expression: |
-          status.conditions.filter(c, c.type == "Reconciled").size() > 0
-            ? status.conditions.filter(c, c.type == "Reconciled")[0].status != "True"
-            : true
-      - name: "clusterReconciledTTL"
-        expression: |
-          (timestamp(now()) - timestamp(
-            status.conditions.filter(c, c.type == "Reconciled").size() > 0
-              ? status.conditions.filter(c, c.type == "Reconciled")[0].last_transition_time
-              : now()
-          )).getSeconds() > 300
+params:
+  - name: "clusterId"
+    source: "event.id"
+  - name: "clusterData"
+    source:
+      api_call:
+        url: "/api/hyperfleet/v1/clusters/{{ .clusterId }}"
+  - name: "clusterNotReconciled"
+    source:
+      expression: |
+        clusterData.status.conditions.filter(c, c.type == "Reconciled").size() > 0
+          ? clusterData.status.conditions.filter(c, c.type == "Reconciled")[0].status != "True"
+          : true
+  - name: "clusterReconciledTTL"
+    source:
+      expression: |
+        (timestamp(now()) - timestamp(
+          clusterData.status.conditions.filter(c, c.type == "Reconciled").size() > 0
+            ? clusterData.status.conditions.filter(c, c.type == "Reconciled")[0].last_transition_time
+            : now()
+        )).getSeconds() > 300
 
+preconditions:
   - name: "validationCheck"
     # Precondition passes if cluster is NOT Reconciled OR if cluster is Reconciled and stable for >300 seconds since last transition (enables self-healing)
     expression: |
@@ -497,7 +521,7 @@ resources:
 
 Note that the location of the referenced file is a path of the adapter pod, so it has to be mounted from a ConfigMap in the adapter deployment.
 
-The referenced file is a Go template and has access to all params and captured fields.
+The referenced file is a Go template and has access to all resolved params.
 
 ### Resource lifecycle
 
@@ -697,21 +721,23 @@ resources:
 
 #### The is_deleting pattern
 
-The standard way to detect pending deletion is to derive a boolean from the precondition response using the named-map-variable approach. The precondition name (e.g. `getCluster`) is automatically injected as a map variable in the capture CEL context, enabling safe optional-field access:
+The standard way to detect pending deletion is to derive a boolean from the cluster API response in the params phase using an `expression` source:
 
 ```yaml
-preconditions:
-  - name: "getCluster"
-    api_call:
-      url: "/api/hyperfleet/v1/clusters/{{ .clusterId }}"
-    capture:
-      - name: "is_deleting"
-        expression: "has(getCluster.deleted_time)"
+params:
+  - name: "clusterData"
+    source:
+      api_call:
+        method: "GET"
+        url: "/api/hyperfleet/v1/clusters/{{ .clusterId }}"
+  - name: "is_deleting"
+    source:
+      expression: "clusterData.?deleted_time.hasValue()"
 ```
 
 Then reference `is_deleting` in `lifecycle.delete.when.expression`.
 
-> **Why not `field: deleted_time`?** Capturing `deleted_time` as a `field:` capture without a default logs a `WARN` on every reconciliation where the field is absent — which is ~99% of the time when the cluster is not being deleted. The `has()` expression approach reads the field directly from the named response map and returns `false` cleanly when absent, with no log noise.
+> **Why not `source: "clusterData.deleted_time"`?** The dot-notation string source logs a `WARN` when the field is absent — which is ~99% of the time when the cluster is not being deleted. The `expression` source with `hasValue()` returns `false` cleanly when the field is absent, with no log noise.
 
 #### Dependency ordering
 
@@ -787,7 +813,7 @@ This means a list containing both apply and delete operations behaves predictabl
 
 ### Resource not found (404 handling)
 
-When a precondition API call returns `404 Not Found`, it can mean the resource no longer exists (e.g., deleted externally, incorrect ID in the event, direct DB removal) or that the precondition URL itself is misconfigured. The adapter distinguishes between two types of 404:
+When a params-phase API call returns `404 Not Found`, it can mean the resource no longer exists (e.g., deleted externally, incorrect ID in the event, direct DB removal) or that the API call URL itself is misconfigured. The adapter distinguishes between two types of 404:
 
 - **Resource not found** (default): any 404 is treated as a legitimate "resource does not exist" unless proven otherwise. This includes responses with specific error codes (`HYPERFLEET-NTF-001`, `HYPERFLEET-NTF-002`, `HYPERFLEET-NTF-003`), as well as 404s where the response body was stripped by a proxy or gateway. The adapter handles this gracefully — resources are skipped and post-actions still execute.
 - **Broken endpoint** (error code `HYPERFLEET-NTF-000`): the catch-all 404 handler confirms no route matched the URL. The adapter treats this as a configuration error and reports failure status.
@@ -946,7 +972,7 @@ The `Unknown` value is used when there the condition value is still pending and 
 
 When the HyperFleet API receives an status update with any of the mandatory condition's status to `Unknown` value, the API will not update the internal state. Therefore, Sentinel will keep emitting reconciliation events for status updates.
 
-**Applied** and **Available** are derived from your K8s object's status. **Health** reflects the adapter framework's own execution and uses the standard boilerplate (see section 8).
+**Applied** and **Available** are derived from your K8s object's status. **Health** reflects the adapter framework's own execution and uses the standard boilerplate (see section 9).
 
 ### Status patterns by resource type
 
@@ -1391,15 +1417,15 @@ Dry-Run Execution Trace
 Event: id=abc123 type=io.hyperfleet.cluster.updated
 
 Phase 1: Parameter Extraction .............. SUCCESS
-  clusterId        = "abc123"
-  generation       = 5
-  region           = "us-east-1"
+  clusterId             = "abc123"
+  generation            = 5
+  region                = "us-east-1"
+  clusterData           = {...}  (API Call: GET /api/hyperfleet/v1/clusters/abc123 -> 200)
+  clusterName           = "my-cluster"
+  reconciledStatus      = "False"
 
 Phase 2: Preconditions ..................... SUCCESS (MET)
-  [1/1] fetch-cluster                      PASS
-    API Call: GET /api/hyperfleet/v1/clusters/abc123 -> 200
-    Captured: clusterName = "my-cluster"
-    Captured: reconciledStatus = "False"
+  [1/1] clusterStatus                      PASS
 
 Phase 3: Resources ........................ SUCCESS
   [1/2] namespace0                         CREATE
@@ -1456,34 +1482,45 @@ params:
 
 ### Checking parent cluster readiness
 
-NodePool adapters typically wait for the parent cluster to be fully set up. Query the parent cluster's adapter statuses as a precondition:
+NodePool adapters typically wait for the parent cluster to be fully set up. Fetch data in the params phase and evaluate in preconditions:
 
-<details><summary>NodePool precondition example</summary>
+<details><summary>NodePool params and preconditions example</summary>
 
 ```yaml
+params:
+  - name: "clusterId"
+    source: "event.owner_references.id"
+  - name: "nodepoolId"
+    source: "event.id"
+  - name: "nodepoolData"
+    source:
+      api_call:
+        url: "/api/hyperfleet/v1/clusters/{{ .clusterId }}/nodepools/{{ .nodepoolId }}"
+  - name: "generation"
+    source: "nodepoolData.generation"
+  - name: "reconciledStatus"
+    source:
+      expression: |
+        nodepoolData.status.conditions.filter(c, c.type == "Reconciled").size() > 0
+          ? nodepoolData.status.conditions.filter(c, c.type == "Reconciled")[0].status
+          : "False"
+  - name: "clusterStatuses"
+    source:
+      api_call:
+        url: "/api/hyperfleet/v1/clusters/{{ .clusterId }}/statuses"
+  - name: "clusterNamespaceStatus"
+    source:
+      expression: |
+        clusterStatuses.items.filter(i, i.adapter == "landing-zone")[0].data.namespace.status
+
 preconditions:
-  - name: "nodepoolStatus"
-    api_call:
-      url: "/api/hyperfleet/v1/clusters/{{ .clusterId }}/nodepools/{{ .nodepoolId }}"
-    capture:
-      - name: "generation"
-        field: "generation"
-      - name: "reconciledStatus"
-        expression: |
-          status.conditions.filter(c, c.type == "Reconciled").size() > 0
-            ? status.conditions.filter(c, c.type == "Reconciled")[0].status
-            : "False"
+  - name: "nodepoolReady"
     conditions:
       - field: "reconciledStatus"
         operator: "equals"
         value: "False"
 
-  - name: "clusterAdapterStatus"
-    api_call:
-      url: "/api/hyperfleet/v1/clusters/{{ .clusterId }}/statuses"
-    capture:
-      - name: "clusterNamespaceStatus"
-        field: "{.items[?(@.adapter=='landing-zone')].data.namespace.status}"
+  - name: "clusterReady"
     conditions:
       - field: "clusterNamespaceStatus"
         operator: "equals"
@@ -1547,9 +1584,9 @@ The adapter will run preconditions, skip straight to post-actions, and report st
 | Error | Cause | Fix |
 |-------|-------|-----|
 | `required field missing` | Param without `name` or `source` | Add the required field |
-| `mutually exclusive` | Both `field` and `expression` on a capture | Use only one |
+| `mutually exclusive` | Both `field` and `expression` on a condition | Use only one |
 | `CEL parse error` | Invalid CEL syntax | Check parentheses, string escaping |
-| `template variable not found` | `{{ .foo }}` where `foo` is not a param or capture | Define it in params or captures |
+| `template variable not found` | `{{ .foo }}` where `foo` is not a defined param | Define it in params |
 | `invalid operator` | Typo in operator name | Use one from the supported list |
 
 ---
@@ -1741,7 +1778,7 @@ Structural directives do **not** work in plain inline manifests (without `|`) be
 
 **Iteration (`range`)**
 
-Use `range` to iterate over list-type values captured via CEL expressions:
+Use `range` to iterate over list-type params resolved via CEL expressions:
 
 ```yaml
 {{ range $i, $subnet := .subnets }}
@@ -1750,15 +1787,16 @@ Use `range` to iterate over list-type values captured via CEL expressions:
 {{ end }}
 ```
 
-> **Note:** To iterate over a list, the corresponding precondition capture must use a CEL expression that returns the list directly (not a string). For example:
+> **Note:** To iterate over a list, the corresponding param must use a CEL expression that returns the list directly (not a string). For example:
 >
 > ```yaml
-> captures:
+> params:
 >   - name: "subnets"
->     expression: |
->       has(spec.platform) && has(spec.platform.gcp) && has(spec.platform.gcp.subnets)
->         ? spec.platform.gcp.subnets
->         : []
+>     source:
+>       expression: |
+>         has(clusterData.spec.platform.gcp.subnets)
+>           ? clusterData.spec.platform.gcp.subnets
+>           : []
 > ```
 
 Go Templates are used in: URLs, manifest field values, direct string values in payloads, external template files (`manifest.ref`), and inline block scalars (`manifest: |`).
@@ -1793,7 +1831,7 @@ See also [Preconditions — Supported operators](#supported-operators).
 |---------|-------------|----------|
 | Resources skipped, Health=False with "ResourcesSkipped" | Precondition not met | Check precondition conditions — the cluster may not be in the expected state yet. This is often normal; the Sentinel will retry. |
 | Status update rejected by API | Stale `observed_generation` | Your adapter is reporting an older generation than what's already stored. Ensure `observed_generation` uses the generation from the API response, not the event. |
-| `template variable not found` | Variable referenced in `{{ .foo }}` but never defined | Add `foo` to params or captures. Check spelling. |
+| `template variable not found` | Variable referenced in `{{ .foo }}` but never defined | Add `foo` to params. Check spelling. |
 | `CEL expression parse error` | Invalid CEL syntax | Verify parentheses, string quoting, and optional chaining syntax (`?.` for safe field access). |
 | Discovery returns empty | Labels don't match or wrong namespace | Verify `discovery.namespace` is correct. Use `by_name` for a simpler lookup. Check resource labels match the selector exactly. |
 | `observed_generation` is a string | Using Go Template instead of CEL expression | Use `expression: "generation"` instead of `"{{ .generation }}"`. |

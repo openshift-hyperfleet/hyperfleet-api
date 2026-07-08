@@ -73,9 +73,10 @@ func createTestConfig(apiBaseURL string) *configloader.Config {
 			},
 		},
 		Params: []configloader.Parameter{
-			{Name: "hyperfleetApiBaseUrl", Source: "env.HYPERFLEET_API_BASE_URL", Required: true},
-			{Name: "hyperfleetApiVersion", Source: "env.HYPERFLEET_API_VERSION", Default: "v1", Required: false},
-			{Name: "clusterID", Source: "event.id", Required: true},
+			{Name: "hyperfleetApiBaseUrl", Source: configloader.StringSource("env.HYPERFLEET_API_BASE_URL"), Required: true},
+			{Name: "hyperfleetApiVersion", Source: configloader.StringSource("env.HYPERFLEET_API_VERSION"),
+				Default: "v1", Required: false},
+			{Name: "clusterID", Source: configloader.StringSource("event.id"), Required: true},
 		},
 		Preconditions: []configloader.Precondition{
 			{
@@ -1006,9 +1007,9 @@ func TestExecutor_LogAction(t *testing.T) {
 			},
 		},
 		Params: []configloader.Parameter{
-			{Name: "hyperfleetApiBaseUrl", Source: "env.HYPERFLEET_API_BASE_URL", Required: true},
+			{Name: "hyperfleetApiBaseUrl", Source: configloader.StringSource("env.HYPERFLEET_API_BASE_URL"), Required: true},
 			{Name: "hyperfleetApiVersion", Default: "v1"},
-			{Name: "clusterID", Source: "event.id", Required: true},
+			{Name: "clusterID", Source: configloader.StringSource("event.id"), Required: true},
 		},
 		Preconditions: []configloader.Precondition{
 			{
@@ -1254,9 +1255,9 @@ func TestExecutor_ExecutionError_CELAccess(t *testing.T) {
 			},
 		},
 		Params: []configloader.Parameter{
-			{Name: "hyperfleetApiBaseUrl", Source: "env.HYPERFLEET_API_BASE_URL", Required: true},
+			{Name: "hyperfleetApiBaseUrl", Source: configloader.StringSource("env.HYPERFLEET_API_BASE_URL"), Required: true},
 			{Name: "hyperfleetApiVersion", Default: "v1"},
-			{Name: "clusterID", Source: "event.id", Required: true},
+			{Name: "clusterID", Source: configloader.StringSource("event.id"), Required: true},
 		},
 		Preconditions: []configloader.Precondition{
 			{
@@ -1429,9 +1430,9 @@ func TestExecutor_PayloadBuildFailure(t *testing.T) {
 			},
 		},
 		Params: []configloader.Parameter{
-			{Name: "hyperfleetApiBaseUrl", Source: "env.HYPERFLEET_API_BASE_URL", Required: true},
+			{Name: "hyperfleetApiBaseUrl", Source: configloader.StringSource("env.HYPERFLEET_API_BASE_URL"), Required: true},
 			{Name: "hyperfleetApiVersion", Default: "v1"},
-			{Name: "clusterID", Source: "event.id", Required: true},
+			{Name: "clusterID", Source: configloader.StringSource("event.id"), Required: true},
 		},
 		Preconditions: []configloader.Precondition{
 			{
@@ -1557,9 +1558,10 @@ func TestExecutor_PayloadWhenCondition(t *testing.T) {
 			},
 		},
 		Params: []configloader.Parameter{
-			{Name: "hyperfleetApiBaseUrl", Source: "env.HYPERFLEET_API_BASE_URL", Required: true},
-			{Name: "hyperfleetApiVersion", Source: "env.HYPERFLEET_API_VERSION", Default: "v1", Required: false},
-			{Name: "clusterID", Source: "event.id", Required: true},
+			{Name: "hyperfleetApiBaseUrl", Source: configloader.StringSource("env.HYPERFLEET_API_BASE_URL"), Required: true},
+			{Name: "hyperfleetApiVersion", Source: configloader.StringSource("env.HYPERFLEET_API_VERSION"),
+				Default: "v1", Required: false},
+			{Name: "clusterID", Source: configloader.StringSource("event.id"), Required: true},
 		},
 		Preconditions: []configloader.Precondition{
 			{

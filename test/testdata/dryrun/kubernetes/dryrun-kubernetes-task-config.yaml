@@ -27,28 +27,37 @@ params:
     type: "string"
     default: "dry-run-adapter"
 
+  - name: "fetchCluster"
+    source:
+      api_call:
+        method: "GET"
+        url: "/api/hyperfleet/v1/clusters/{{ .clusterId }}"
+        timeout: 10s
+
+  - name: "clusterName"
+    source: "fetchCluster.name"
+
+  - name: "clusterStatus2"
+    source:
+      expression: |
+        non_existent
+
+  - name: "clusterStatus"
+    source:
+      expression: |
+        fetchCluster.status.conditions.filter(c, c.type == "Reconciled").size() > 0
+          ? fetchCluster.status.conditions.filter(c, c.type == "Reconciled")[0].status
+          : "False"
+
+  - name: "computeNodes"
+    source: "fetchCluster.nodes.compute"
+
+  - name: "timestamp"
+    source:
+      expression: '"2006-01-02T15:04:05Z07:00"'
+
 preconditions:
   - name: "fetchCluster"
-    api_call:
-      method: "GET"
-      url: "/api/hyperfleet/v1/clusters/{{ .clusterId }}"
-      timeout: 10s
-    capture:
-      - name: "clusterName"
-        field: "name"
-      - name: "clusterStatus2"
-        expression: |
-           non_existent
-      - name: "clusterStatus"
-        expression: |
-          status.conditions.filter(c, c.type == "Reconciled").size() > 0
-            ? status.conditions.filter(c, c.type == "Reconciled")[0].status
-            : "False"
-      - name: "computeNodes"
-        field: "nodes.compute"
-      - name: "timestamp"
-        expression:  "\"2006-01-02T15:04:05Z07:00\""
-
     conditions:
       - field: "clusterStatus"
         operator: "notEquals"

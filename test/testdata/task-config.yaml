@@ -5,30 +5,34 @@ params:
     required: true
     source: event.id
     type: string
-# Preconditions with valid operators and CEL expressions
+  # Fetch full cluster state from the API as a named param
+  - name: clusterData
+    source:
+      api_call:
+        method: GET
+        retry_attempts: 3
+        retry_backoff: exponential
+        timeout: 10s
+        url: /clusters/{{ .clusterId }}
+  # Derived params from clusterData
+  - name: clusterName
+    source: "clusterData.name"
+  - name: reconciledConditionStatus
+    source:
+      expression: |
+        clusterData.status.conditions.filter(c, c.type == "Reconciled").size() > 0
+          ? clusterData.status.conditions.filter(c, c.type == "Reconciled")[0].status
+          : "False"
+  - name: generation
+    source: "clusterData.generation"
+# Preconditions evaluate state using the params extracted above
 preconditions:
-  - api_call:
-      method: GET
-      retry_attempts: 3
-      retry_backoff: exponential
-      timeout: 10s
-      url: /clusters/{{ .clusterId }}
-    capture:
-      - field: name
-        name: clusterName
-      - expression: |
-          status.conditions.filter(c, c.type == "Reconciled").size() > 0
-            ? status.conditions.filter(c, c.type == "Reconciled")[0].status
-            : "False"
-        name: reconciledConditionStatus
-      - field: generation
-        name: generation
+  - name: clusterStatus
     # Structured conditions with valid operators
     conditions:
       - field: reconciledConditionStatus
         operator: equals
         value: "False"
-    name: clusterStatus
 # Resources
 resources:
   - discovery:

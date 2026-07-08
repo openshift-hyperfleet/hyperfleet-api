@@ -100,6 +100,21 @@ func (t *ExecutionTrace) FormatText() string {
 	b.WriteString("========================\n")
 	fmt.Fprintf(&b, "Event: id=%s type=%s\n\n", t.EventID, t.EventType)
 
+	// Compute how many API requests belong to each phase
+	precondAPICallCount := 0
+	for _, pr := range result.PreconditionResults {
+		if pr.APICallMade {
+			precondAPICallCount++
+		}
+	}
+	postActionAPICallCount := 0
+	for _, pa := range result.PostActionResults {
+		if pa.APICallMade {
+			postActionAPICallCount++
+		}
+	}
+	paramAPICallCount := max(0, len(t.APIClient.Requests)-precondAPICallCount-postActionAPICallCount)
+
 	// Phase 1: Parameter Extraction
 	paramStatus := statusSuccess
 	if _, ok := result.Errors[executor.PhaseParamExtraction]; ok {
@@ -109,6 +124,18 @@ func (t *ExecutionTrace) FormatText() string {
 	if paramStatus == statusSuccess {
 		for name, val := range result.Params {
 			fmt.Fprintf(&b, "  %-16s = %v\n", name, formatValue(val))
+		}
+		for i := range paramAPICallCount {
+			req := t.APIClient.Requests[i]
+			fmt.Fprintf(&b, "  API Call: %s %s -> %d\n", req.Method, req.URL, req.StatusCode)
+			if t.Verbose {
+				if len(req.Body) > 0 {
+					fmt.Fprintf(&b, "    [verbose] Request body:\n      %s\n", prettyJSON(req.Body))
+				}
+				if len(req.Response) > 0 {
+					fmt.Fprintf(&b, "    [verbose] Response body:\n      %s\n", prettyJSON(req.Response))
+				}
+			}
 		}
 	} else {
 		fmt.Fprintf(&b, "  Error: %v\n", result.Errors[executor.PhaseParamExtraction])
@@ -132,7 +159,7 @@ func (t *ExecutionTrace) FormatText() string {
 	}
 	fmt.Fprintf(&b, "Phase 2: Preconditions ..................... %s%s\n", precondStatus, precondDetail)
 
-	apiReqIdx := 0
+	apiReqIdx := paramAPICallCount
 	for i, pr := range result.PreconditionResults {
 		status := "PASS"
 		if pr.Status == executor.StatusFailed {

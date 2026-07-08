@@ -27,22 +27,23 @@ params:
     type: string
     default: dry-run-adapter
 
-preconditions:
   - name: fetchCluster
-    api_call:
-      method: GET
-      url: /api/hyperfleet/v1/clusters/{{ .clusterId }}
-      timeout: 10s
-    capture:
-      - name: clusterName
-        field: name
-      # is_deleting is the canonical deletion gate used throughout payload expressions.
-      # Capturing it here avoids repeating "has(fetchCluster.deleted_time)" everywhere and
-      # prevents false-positive Finalized=True when resources are absent for
-      # unrelated reasons (e.g., first reconciliation before provisioning).
-      # has() safely checks map key presence without requiring deleted_time to exist.
-      - name: is_deleting
-        expression: "has(fetchCluster.deleted_time)"
+    source:
+      api_call:
+        method: GET
+        url: /api/hyperfleet/v1/clusters/{{ .clusterId }}
+        timeout: 10s
+
+  - name: clusterName
+    source: fetchCluster.name
+
+  # is_deleting is the canonical deletion gate used throughout payload expressions.
+  # Using optional chaining avoids errors when deleted_time is absent and
+  # prevents false-positive Finalized=True when resources are absent for
+  # unrelated reasons (e.g., first reconciliation before provisioning).
+  - name: is_deleting
+    source:
+      expression: "fetchCluster.?deleted_time.hasValue()"
 
 resources:
   # Single ManifestWork resource — bundles all cluster sub-resources.

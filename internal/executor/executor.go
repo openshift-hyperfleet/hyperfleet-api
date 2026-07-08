@@ -274,7 +274,7 @@ func (e *Executor) executeParamExtraction(execCtx *ExecutionContext) error {
 
 	// config.* param sources resolve against the real (unredacted) config so that
 	// sensitive fields like cert paths can still be explicitly extracted when needed.
-	return extractConfigParams(e.config.Config, execCtx, configMap)
+	return extractConfigParams(execCtx.Ctx, e.config.Config, execCtx, configMap, e.config.APIClient, e.log)
 }
 
 // startTracedExecution creates an OTel span and adds trace context to logs.

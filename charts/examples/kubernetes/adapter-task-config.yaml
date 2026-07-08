@@ -4,19 +4,22 @@ params:
     type: "string"
     required: true
 
-preconditions:
-  - name: "checkClusterState"
-    api_call:
-      method: "GET"
-      url: "/clusters/{{ .clusterId }}"
-      timeout: 10s
-    capture:
-      - name: "generation"
-        field: "generation"
-      - name: "clusterName"
-        field: "name"
-      - name: "is_deleting"
-        expression: "has(checkClusterState.deleted_time)"
+  - name: checkClusterState
+    source:
+      api_call:
+        method: "GET"
+        url: "/clusters/{{ .clusterId }}"
+        timeout: 10s
+
+  - name: generation
+    source: checkClusterState.generation
+
+  - name: clusterName
+    source: checkClusterState.name
+
+  - name: is_deleting
+    source:
+      expression: "checkClusterState.?deleted_time.hasValue()"
 
 resources:
   - name: namespace

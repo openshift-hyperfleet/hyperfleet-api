@@ -20,29 +20,37 @@ params:
     name: adapterName
     source: env.ADAPTER_NAME
     type: string
+
+  - name: fetchCluster
+    source:
+      api_call:
+        method: GET
+        timeout: 10s
+        url: /api/hyperfleet/v1/clusters/{{ .clusterId }}
+
+  - name: clusterName
+    source: fetchCluster.name
+
+  - name: clusterStatus
+    source:
+      expression: |
+        fetchCluster.status.conditions.filter(c, c.type == "Reconciled").size() > 0
+          ? fetchCluster.status.conditions.filter(c, c.type == "Reconciled")[0].status
+          : "False"
+
+  - name: computeNodes
+    source: fetchCluster.nodes.compute
+
+  - name: timestamp
+    source:
+      expression: '"2006-01-02T15:04:05Z07:00"'
+
 preconditions:
-  - api_call:
-      method: GET
-      timeout: 10s
-      url: /api/hyperfleet/v1/clusters/{{ .clusterId }}
-    capture:
-      - field: name
-        name: clusterName
-      - expression: |
-          status.conditions.filter(c, c.type == "Reconciled").size() > 0
-            ? status.conditions.filter(c, c.type == "Reconciled")[0].status
-            : "False"
-        name: clusterStatus
-      - field: nodes.compute
-        name: computeNodes
-      #TODO: research why we can not have {{ now }} as expression
-      - expression: '"2006-01-02T15:04:05Z07:00"'
-        name: timestamp
+  - name: fetchCluster
     conditions:
       - field: clusterStatus
         operator: notEquals
         value: "True"
-    name: fetchCluster
 resources:
   - discovery:
       #by_name: "cluster-{{ .clusterId }}-config"

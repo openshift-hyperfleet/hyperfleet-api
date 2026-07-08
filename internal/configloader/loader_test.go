@@ -451,7 +451,7 @@ func TestMergeConfigs(t *testing.T) {
 
 	taskCfg := &AdapterTaskConfig{
 		Params: []Parameter{
-			{Name: "clusterId", Source: "event.id", Required: true},
+			{Name: "clusterId", Source: StringSource("event.id"), Required: true},
 		},
 		Preconditions: []Precondition{
 			{ActionBase: ActionBase{Name: "checkStatus"}},
@@ -482,8 +482,8 @@ func TestMergeConfigs(t *testing.T) {
 func TestGetRequiredParams(t *testing.T) {
 	config := &Config{
 		Params: []Parameter{
-			{Name: "clusterId", Source: "event.id", Required: true},
-			{Name: "optional", Source: "event.optional", Required: false},
+			{Name: "clusterId", Source: StringSource("event.id"), Required: true},
+			{Name: "optional", Source: StringSource("event.optional"), Required: false},
 		},
 	}
 
@@ -743,7 +743,7 @@ func TestValidateFileReferencesInTaskConfig(t *testing.T) {
 			name: "no file references - should pass",
 			config: &AdapterTaskConfig{
 				Params: []Parameter{
-					{Name: "test", Source: "event.test"},
+					{Name: "test", Source: StringSource("event.test")},
 				},
 			},
 			baseDir: tmpDir,
@@ -1686,4 +1686,88 @@ resources:
 	require.True(t, ok, "Manifest ref should be stored as raw string")
 	assert.Contains(t, manifestStr, "apiVersion: v1")
 	assert.Contains(t, manifestStr, "name: \"my-config\"")
+}
+
+func TestParameterSourceUnmarshal(t *testing.T) {
+	t.Run("string scalar source", func(t *testing.T) {
+		var cfg AdapterTaskConfig
+		err := yaml.Unmarshal([]byte(`
+params:
+  - name: clusterId
+    source: "event.id"
+`), &cfg)
+		require.NoError(t, err)
+		require.Len(t, cfg.Params, 1)
+		p := cfg.Params[0]
+		assert.True(t, p.Source.IsString())
+		assert.Equal(t, "event.id", p.Source.StringVal)
+		assert.False(t, p.Source.IsAPICall())
+		assert.False(t, p.Source.IsExpression())
+	})
+
+	t.Run("api_call mapping source", func(t *testing.T) {
+		var cfg AdapterTaskConfig
+		err := yaml.Unmarshal([]byte(`
+params:
+  - name: clusterData
+    source:
+      api_call:
+        method: GET
+        url: /clusters/abc
+        timeout: 10s
+`), &cfg)
+		require.NoError(t, err)
+		require.Len(t, cfg.Params, 1)
+		p := cfg.Params[0]
+		assert.True(t, p.Source.IsAPICall())
+		require.NotNil(t, p.Source.APICall)
+		assert.Equal(t, "GET", p.Source.APICall.Method)
+		assert.Equal(t, "/clusters/abc", p.Source.APICall.URL)
+		assert.False(t, p.Source.IsString())
+		assert.False(t, p.Source.IsExpression())
+	})
+
+	t.Run("expression mapping source", func(t *testing.T) {
+		var cfg AdapterTaskConfig
+		err := yaml.Unmarshal([]byte(`
+params:
+  - name: isActive
+    source:
+      expression: "clusterData.status == \"Active\""
+`), &cfg)
+		require.NoError(t, err)
+		require.Len(t, cfg.Params, 1)
+		p := cfg.Params[0]
+		assert.True(t, p.Source.IsExpression())
+		assert.Contains(t, p.Source.Expression, "clusterData.status")
+		assert.False(t, p.Source.IsString())
+		assert.False(t, p.Source.IsAPICall())
+	})
+
+	t.Run("both api_call and expression in mapping is an error", func(t *testing.T) {
+		var cfg AdapterTaskConfig
+		err := yaml.Unmarshal([]byte(`
+params:
+  - name: bad
+    source:
+      api_call:
+        method: GET
+        url: /clusters
+      expression: "true"
+`), &cfg)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "mutually exclusive")
+	})
+
+	t.Run("mapping with neither api_call nor expression is an error", func(t *testing.T) {
+		var cfg AdapterTaskConfig
+		err := yaml.Unmarshal([]byte(`
+params:
+  - name: bad
+    source:
+      unknown_key: value
+`), &cfg)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "mapping must contain either")
+	})
 }
