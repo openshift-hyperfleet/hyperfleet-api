@@ -44,6 +44,7 @@ func NewJWTHandler(ctx context.Context, cfg JWTHandlerConfig) (*JWTHandler, erro
 		return nil, fmt.Errorf("at least one issuer config is required")
 	}
 
+	// Enabled must be true so Validate() runs its checks; this handler is only created when JWT is already enabled.
 	jwtCfg := config.JWTConfig{Enabled: true, Configs: cfg.Issuers}
 	jwtCfg.ApplyDefaults()
 	if err := jwtCfg.Validate(); err != nil {
