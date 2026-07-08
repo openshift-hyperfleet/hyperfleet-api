@@ -336,9 +336,9 @@ func (c *httpClient) doRequest(ctx context.Context, req *Request) (*Response, er
 
 	// Inject bearer token auth header
 	if c.tokenSource != nil {
-		tok, err := c.tokenSource.get()
-		if err != nil {
-			return nil, fmt.Errorf("getting auth token: %w", err)
+		tok, authErr := c.tokenSource.get()
+		if authErr != nil {
+			return nil, fmt.Errorf("getting auth token: %w", authErr)
 		}
 		httpReq.Header.Set("Authorization", "Bearer "+tok)
 	}

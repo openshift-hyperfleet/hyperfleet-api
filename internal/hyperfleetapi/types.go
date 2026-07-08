@@ -49,6 +49,9 @@ type AuthConfig struct {
 type ClientConfig struct {
 	// DefaultHeaders are headers added to all requests
 	DefaultHeaders map[string]string `yaml:"default_headers,omitempty" mapstructure:"default_headers"`
+	// Auth configures optional JWT bearer token authentication.
+	// When nil, requests are sent without an Authorization header.
+	Auth *AuthConfig `yaml:"auth,omitempty" mapstructure:"auth"`
 	// BaseURL is the base URL for all API requests (must be set by caller)
 	// Relative URLs in requests will be prefixed with this
 	BaseURL string `yaml:"base_url,omitempty" mapstructure:"base_url"`
@@ -64,9 +67,6 @@ type ClientConfig struct {
 	MaxDelay time.Duration `yaml:"max_delay,omitempty" mapstructure:"max_delay"`
 	// RetryAttempts is the number of retry attempts for failed requests
 	RetryAttempts int `yaml:"retry_attempts,omitempty" mapstructure:"retry_attempts"`
-	// Auth configures optional JWT bearer token authentication.
-	// When nil, requests are sent without an Authorization header.
-	Auth *AuthConfig `yaml:"auth,omitempty" mapstructure:"auth"`
 }
 
 // DefaultClientConfig returns a ClientConfig with default values
