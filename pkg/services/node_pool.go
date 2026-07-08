@@ -414,9 +414,6 @@ func (s *sqlNodePoolService) ProcessAdapterStatus(
 	return upsertedStatus, nil
 }
 
-// validateAndClassifyNodePool performs all stateless validation and discard-rule checks on an
-// incoming adapter status for a node pool. Returns the parsed conditions and whether aggregation
-// should be triggered. Returns (nil, false, nil) when the update should be silently discarded.
 // validateAndClassifyNodePool delegates to the shared validateAndClassifyAdapterStatus
 // with nodepool-specific logger context.
 func (s *sqlNodePoolService) validateAndClassifyNodePool(

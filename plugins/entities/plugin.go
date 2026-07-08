@@ -99,12 +99,6 @@ func registerRootResourceRoutes(
 	r.HandleFunc("/{id}", rootHandler.Patch).Methods(http.MethodPatch)
 	r.HandleFunc("/{id}", rootHandler.Delete).Methods(http.MethodDelete)
 	r.HandleFunc("/{id}/force-delete", rootHandler.ForceDelete).Methods(http.MethodPost)
-
-	// Root status routes use a descriptor-less handler that resolves the kind
-	// from the resource itself. For now, use a Channel descriptor as placeholder
-	// since the root handler fetches the resource by ID regardless of kind.
-	// TODO: HYPERFLEET-1157 — create a dedicated RootResourceStatusHandler
-	// that resolves the kind from the resource instead of a fixed descriptor.
 }
 
 func registerResourceRoutes(

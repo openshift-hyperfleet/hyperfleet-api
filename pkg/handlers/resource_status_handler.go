@@ -9,6 +9,7 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/presenters"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/registry"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/services"
 )
@@ -155,7 +156,8 @@ func (h *ResourceStatusHandler) listStatuses(
 	for _, as := range adapterStatuses {
 		presented, presErr := presenters.PresentAdapterStatus(as)
 		if presErr != nil {
-			return nil, errors.GeneralError("Failed to present adapter status: %v", presErr)
+			logger.WithError(ctx, presErr).Error("Failed to present adapter status")
+			return nil, errors.GeneralError("Failed to present adapter status")
 		}
 		items = append(items, presented)
 	}
@@ -175,7 +177,8 @@ func (h *ResourceStatusHandler) processStatus(
 ) (interface{}, *errors.ServiceError) {
 	newStatus, convErr := presenters.ConvertAdapterStatus(h.descriptor.Kind, resourceID, req)
 	if convErr != nil {
-		return nil, errors.GeneralError("Failed to convert adapter status: %v", convErr)
+		logger.WithError(ctx, convErr).Error("Failed to convert adapter status")
+		return nil, errors.GeneralError("Failed to convert adapter status")
 	}
 
 	adapterStatus, err := h.resourceService.ProcessAdapterStatus(
@@ -191,7 +194,8 @@ func (h *ResourceStatusHandler) processStatus(
 
 	status, presErr := presenters.PresentAdapterStatus(adapterStatus)
 	if presErr != nil {
-		return nil, errors.GeneralError("Failed to present adapter status: %v", presErr)
+		logger.WithError(ctx, presErr).Error("Failed to present adapter status")
+		return nil, errors.GeneralError("Failed to present adapter status")
 	}
 	return &status, nil
 }

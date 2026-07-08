@@ -25,7 +25,7 @@ type ResourceService interface {
 	Delete(ctx context.Context, kind, id string) (*api.Resource, *errors.ServiceError)
 	List(ctx context.Context, kind string, args *ListArguments) (api.ResourceList, *api.PagingMeta, *errors.ServiceError)
 	GetByOwner(ctx context.Context, kind, id, ownerID string) (*api.Resource, *errors.ServiceError)
-	ListByOwner(ctx context.Context, kind, ownerID string, args *ListArguments) (api.ResourceList, *api.PagingMeta, *errors.ServiceError)           // nolint:lll
+	ListByOwner(ctx context.Context, kind, ownerID string, args *ListArguments) (api.ResourceList, *api.PagingMeta, *errors.ServiceError) // nolint:lll
 	ForceDelete(ctx context.Context, kind, id, reason string) *errors.ServiceError
 	GetByID(ctx context.Context, id string) (*api.Resource, *errors.ServiceError)
 	ListAll(ctx context.Context, args *ListArguments) (api.ResourceList, *api.PagingMeta, *errors.ServiceError)
@@ -501,17 +501,10 @@ func (s *sqlResourceService) recomputeAndSaveResourceConditions(
 	// whose children haven't finished their own reconciliation.
 	hasChildResources := false
 	if resource.DeletedTime != nil {
-		for _, child := range registry.ChildrenOf(resource.Kind) {
-			exists, err := s.resourceDao.ExistsByOwner(ctx, child.Kind, resource.ID)
-			if err != nil {
-				return errors.GeneralError(
-					"Failed to check child %s for status aggregation: %s", child.Kind, err,
-				)
-			}
-			if exists {
-				hasChildResources = true
-				break
-			}
+		var err error
+		hasChildResources, err = s.hasActiveChildren(ctx, resource)
+		if err != nil {
+			return errors.GeneralError("Failed to check children for status aggregation: %s", err)
 		}
 	}
 
@@ -585,32 +578,25 @@ func (s *sqlResourceService) tryHardDeleteResource(
 		return false, nil
 	}
 
-	// Ensure no active children exist — hard-deleting a parent with active
-	// children would leave orphaned resources.
-	children := registry.ChildrenOf(resource.Kind)
-	for _, child := range children {
-		exists, err := s.resourceDao.ExistsByOwner(ctx, child.Kind, resource.ID)
-		if err != nil {
-			return false, errors.GeneralError(
-				"Failed to check %s children during hard-delete: %s", child.Kind, err,
-			)
-		}
-		if exists {
-			return false, nil
-		}
+	// Ensure no children exist (active or soft-deleted) — hard-deleting a
+	// parent with remaining children would leave orphaned resources.
+	hasActive, err := s.hasActiveChildren(ctx, resource)
+	if err != nil {
+		return false, errors.GeneralError("Failed to check children during hard-delete: %s", err)
+	}
+	if hasActive {
+		return false, nil
 	}
 
-	// Also check for soft-deleted children still pending adapter finalization.
+	children := registry.ChildrenOf(resource.Kind)
 	if len(children) > 0 {
 		childKinds := make([]string, len(children))
 		for i, c := range children {
 			childKinds[i] = c.Kind
 		}
-		hasSoftDeleted, err := s.resourceDao.ExistsSoftDeletedByOwner(ctx, childKinds, resource.ID)
-		if err != nil {
-			return false, errors.GeneralError(
-				"Failed to check soft-deleted children during hard-delete: %s", err,
-			)
+		hasSoftDeleted, sdErr := s.resourceDao.ExistsSoftDeletedByOwner(ctx, childKinds, resource.ID)
+		if sdErr != nil {
+			return false, errors.GeneralError("Failed to check soft-deleted children during hard-delete: %s", sdErr)
 		}
 		if hasSoftDeleted {
 			return false, nil
@@ -634,6 +620,23 @@ func (s *sqlResourceService) tryHardDeleteResource(
 		Info("Hard-deleted resource after all required adapters reported Finalized=True")
 
 	return true, nil
+}
+
+// hasActiveChildren returns true if any registered child kind has at least one
+// active (non-deleted) resource owned by the given resource.
+func (s *sqlResourceService) hasActiveChildren(
+	ctx context.Context, resource *api.Resource,
+) (bool, error) {
+	for _, child := range registry.ChildrenOf(resource.Kind) {
+		exists, err := s.resourceDao.ExistsByOwner(ctx, child.Kind, resource.ID)
+		if err != nil {
+			return false, err
+		}
+		if exists {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // validateKind checks that the kind is a registered entity type.
