@@ -15,9 +15,9 @@ import (
 )
 
 // ResourceStatusHandler handles GET/PUT on /{plural}/{id}/statuses for
-// config-driven generic resources. Follows the same pattern as
-// ClusterStatusHandler but uses descriptor.Kind as the resource type
-// and delegates to ResourceService.ProcessAdapterStatus.
+// config-driven generic resources. Each method branches on whether "parent_id"
+// is present in mux.Vars(r) to handle both flat and nested routes — matching
+// the pattern established by ResourceHandler in HYPERFLEET-1157.
 type ResourceStatusHandler struct {
 	resourceService      services.ResourceService
 	adapterStatusService services.AdapterStatusService
@@ -37,6 +37,7 @@ func NewResourceStatusHandler(
 }
 
 // List returns all adapter statuses for a resource with pagination.
+// Verifies ownership when parent_id is present in the route.
 func (h *ResourceStatusHandler) List(w http.ResponseWriter, r *http.Request) {
 	cfg := &handlerConfig{
 		Action: func() (interface{}, *errors.ServiceError) {
@@ -47,8 +48,8 @@ func (h *ResourceStatusHandler) List(w http.ResponseWriter, r *http.Request) {
 				return nil, err
 			}
 
-			if _, err = h.resourceService.Get(ctx, h.descriptor.Kind, id); err != nil {
-				return nil, err
+			if svcErr := h.verifyResource(r, id); svcErr != nil {
+				return nil, svcErr
 			}
 
 			return h.listStatuses(ctx, id, listArgs)
@@ -60,6 +61,7 @@ func (h *ResourceStatusHandler) List(w http.ResponseWriter, r *http.Request) {
 }
 
 // Create creates or updates an adapter status for a resource.
+// Verifies ownership when parent_id is present in the route.
 func (h *ResourceStatusHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var req openapi.AdapterStatusCreateRequest
 
@@ -75,8 +77,8 @@ func (h *ResourceStatusHandler) Create(w http.ResponseWriter, r *http.Request) {
 			ctx := r.Context()
 			id := mux.Vars(r)["id"]
 
-			if _, err := h.resourceService.Get(ctx, h.descriptor.Kind, id); err != nil {
-				return nil, err
+			if svcErr := h.verifyResource(r, id); svcErr != nil {
+				return nil, svcErr
 			}
 
 			return h.processStatus(ctx, id, &req)
@@ -87,61 +89,24 @@ func (h *ResourceStatusHandler) Create(w http.ResponseWriter, r *http.Request) {
 	handleCreateWithNoContent(w, r, cfg)
 }
 
-// ListByOwner returns adapter statuses for a child resource, validating ownership.
-func (h *ResourceStatusHandler) ListByOwner(w http.ResponseWriter, r *http.Request) {
-	cfg := &handlerConfig{
-		Action: func() (interface{}, *errors.ServiceError) {
-			ctx := r.Context()
-			vars := mux.Vars(r)
-			parentID, id := vars["parent_id"], vars["id"]
-			listArgs, err := services.NewListArguments(r.URL.Query())
-			if err != nil {
-				return nil, err
-			}
-
-			if _, err = h.resourceService.GetByOwner(ctx, h.descriptor.Kind, id, parentID); err != nil {
-				return nil, err
-			}
-
-			return h.listStatuses(ctx, id, listArgs)
-		},
-		ErrorHandler: handleError,
+// verifyResource confirms the resource exists. For nested routes (parent_id
+// present), also verifies the resource belongs to the parent. No-op ownership
+// check for flat routes.
+func (h *ResourceStatusHandler) verifyResource(r *http.Request, id string) *errors.ServiceError {
+	ctx := r.Context()
+	if parentID, hasParent := mux.Vars(r)["parent_id"]; hasParent {
+		if _, err := h.resourceService.GetByOwner(ctx, h.descriptor.Kind, id, parentID); err != nil {
+			return err
+		}
+	} else {
+		if _, err := h.resourceService.Get(ctx, h.descriptor.Kind, id); err != nil {
+			return err
+		}
 	}
-
-	handleList(w, r, cfg)
-}
-
-// CreateByOwner creates or updates an adapter status for a child resource, validating ownership.
-func (h *ResourceStatusHandler) CreateByOwner(w http.ResponseWriter, r *http.Request) {
-	var req openapi.AdapterStatusCreateRequest
-
-	cfg := &handlerConfig{
-		MarshalInto: &req,
-		Validate: []validate{
-			validateNotEmpty(&req, "Adapter", "adapter"),
-			validateObservedGeneration(&req),
-			validateConditions(&req, "Conditions"),
-			validateObservedTimeRange(&req.ObservedTime),
-		},
-		Action: func() (interface{}, *errors.ServiceError) {
-			ctx := r.Context()
-			vars := mux.Vars(r)
-			parentID, id := vars["parent_id"], vars["id"]
-
-			if _, err := h.resourceService.GetByOwner(ctx, h.descriptor.Kind, id, parentID); err != nil {
-				return nil, err
-			}
-
-			return h.processStatus(ctx, id, &req)
-		},
-		ErrorHandler: handleError,
-	}
-
-	handleCreateWithNoContent(w, r, cfg)
+	return nil
 }
 
 // listStatuses fetches paginated adapter statuses and presents them as an OpenAPI response.
-// Shared by List and ListByOwner — the caller handles resource existence/ownership checks.
 func (h *ResourceStatusHandler) listStatuses(
 	ctx context.Context, resourceID string, listArgs *services.ListArguments,
 ) (interface{}, *errors.ServiceError) {

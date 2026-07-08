@@ -226,6 +226,111 @@ func TestResourceStatusHandler_Create_ResourceNotFound(t *testing.T) {
 	Expect(w.Code).To(Equal(http.StatusNotFound))
 }
 
+// ─── Nested (parent_id) branch tests ──────────────────────────────
+
+func newTestVersionStatusHandler(
+	ctrl *gomock.Controller,
+) (*ResourceStatusHandler, *services.MockResourceService, *services.MockAdapterStatusService) {
+	mockResourceSvc := services.NewMockResourceService(ctrl)
+	mockAdapterSvc := services.NewMockAdapterStatusService(ctrl)
+	handler := NewResourceStatusHandler(versionDescriptor, mockResourceSvc, mockAdapterSvc)
+	return handler, mockResourceSvc, mockAdapterSvc
+}
+
+func TestResourceStatusHandler_List_NestedWithParentID(t *testing.T) {
+	RegisterTestingT(t)
+	ctrl := gomock.NewController(t)
+
+	handler, mockResourceSvc, mockAdapterSvc := newTestVersionStatusHandler(ctrl)
+
+	parentID := "ch-parent"
+	versionID := "ver-1"
+
+	resource := &api.Resource{Kind: "Version"}
+	resource.ID = versionID
+	mockResourceSvc.EXPECT().GetByOwner(gomock.Any(), "Version", versionID, parentID).Return(resource, nil)
+
+	mockAdapterSvc.EXPECT().FindByResourcePaginated(
+		gomock.Any(), "Version", versionID, gomock.Any(),
+	).Return(api.AdapterStatusList{}, int64(0), nil)
+
+	r := httptest.NewRequest(http.MethodGet, "/channels/"+parentID+"/versions/"+versionID+"/statuses", nil)
+	r = mux.SetURLVars(r, map[string]string{"parent_id": parentID, "id": versionID})
+	w := httptest.NewRecorder()
+
+	handler.List(w, r)
+
+	Expect(w.Code).To(Equal(http.StatusOK))
+}
+
+func TestResourceStatusHandler_Create_NestedWithParentID(t *testing.T) {
+	RegisterTestingT(t)
+	ctrl := gomock.NewController(t)
+
+	handler, mockResourceSvc, _ := newTestVersionStatusHandler(ctrl)
+
+	parentID := "ch-parent"
+	versionID := "ver-1"
+
+	resource := &api.Resource{Kind: "Version"}
+	resource.ID = versionID
+	mockResourceSvc.EXPECT().GetByOwner(gomock.Any(), "Version", versionID, parentID).Return(resource, nil)
+
+	now := time.Now().UTC()
+	returnedStatus := &api.AdapterStatus{
+		Adapter:            "adapter1",
+		ResourceType:       "Version",
+		ResourceID:         versionID,
+		ObservedGeneration: 1,
+		LastReportTime:     now,
+		Conditions: datatypes.JSON( //nolint:lll
+			`[{"type":"Available","status":"True"},{"type":"Applied","status":"True"},{"type":"Health","status":"True"}]`),
+	}
+	mockResourceSvc.EXPECT().ProcessAdapterStatus(
+		gomock.Any(), "Version", versionID, gomock.Any(),
+	).Return(returnedStatus, nil)
+
+	body := openapi.AdapterStatusCreateRequest{
+		Adapter:            "adapter1",
+		ObservedGeneration: 1,
+		ObservedTime:       now,
+		Conditions: []openapi.ConditionRequest{
+			{Type: "Available", Status: openapi.AdapterConditionStatusTrue},
+			{Type: "Applied", Status: openapi.AdapterConditionStatusTrue},
+			{Type: "Health", Status: openapi.AdapterConditionStatusTrue},
+		},
+	}
+	bodyJSON, _ := json.Marshal(body)
+
+	r := httptest.NewRequest(http.MethodPut, "/channels/"+parentID+"/versions/"+versionID+"/statuses",
+		strings.NewReader(string(bodyJSON)))
+	r.Header.Set("Content-Type", "application/json")
+	r = mux.SetURLVars(r, map[string]string{"parent_id": parentID, "id": versionID})
+	w := httptest.NewRecorder()
+
+	handler.Create(w, r)
+
+	Expect(w.Code).To(Equal(http.StatusCreated))
+}
+
+func TestResourceStatusHandler_List_NestedWrongParent_Returns404(t *testing.T) {
+	RegisterTestingT(t)
+	ctrl := gomock.NewController(t)
+
+	handler, mockResourceSvc, _ := newTestVersionStatusHandler(ctrl)
+
+	mockResourceSvc.EXPECT().GetByOwner(gomock.Any(), "Version", "ver-1", "wrong-parent").
+		Return(nil, errors.NotFound("Version 'ver-1' not found under parent 'wrong-parent'"))
+
+	r := httptest.NewRequest(http.MethodGet, "/channels/wrong-parent/versions/ver-1/statuses", nil)
+	r = mux.SetURLVars(r, map[string]string{"parent_id": "wrong-parent", "id": "ver-1"})
+	w := httptest.NewRecorder()
+
+	handler.List(w, r)
+
+	Expect(w.Code).To(Equal(http.StatusNotFound))
+}
+
 // ─── RootResourceHandler status tests ──────────────────────────────
 
 func newTestRootResourceHandler(
