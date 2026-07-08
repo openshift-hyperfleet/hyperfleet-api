@@ -213,12 +213,9 @@ func (d *resourceConditionMock) DeleteByResource(_ context.Context, resourceID s
 
 var _ dao.ResourceConditionDao = &resourceConditionMock{}
 
-// newTestResourceService creates a ResourceService for CRUD-only tests.
-// adapterStatusDao and resourceConditionDao are nil — tests that call
-// ProcessAdapterStatus must use newTestResourceServiceWithAdapterStatus.
 func newTestResourceService(mockDao *mockResourceDao) (ResourceService, *mockResourceDao, *resourceGenericMock) {
 	generic := &resourceGenericMock{}
-	svc := NewResourceService(mockDao, nil, nil, generic)
+	svc := NewResourceService(mockDao, newMockAdapterStatusDao(), newResourceConditionMock(), generic)
 	return svc, mockDao, generic
 }
 
@@ -1528,7 +1525,7 @@ func TestResourceService_ForceDelete_RecursiveGrandchildren(t *testing.T) {
 	Expect(mockDao.resources).To(HaveLen(0))
 }
 
-func TestResourceService_ForceDelete_RequiredAdaptersBlocked(t *testing.T) {
+func TestResourceService_ForceDelete_WithRequiredAdapters_Succeeds(t *testing.T) {
 	RegisterTestingT(t)
 	setupManagedDescriptor()
 
@@ -1543,11 +1540,11 @@ func TestResourceService_ForceDelete_RequiredAdaptersBlocked(t *testing.T) {
 	mockDao.addResource(existing)
 
 	svcErr := svc.ForceDelete(context.Background(), "Managed", "m-1", "some reason")
-	Expect(svcErr).ToNot(BeNil())
-	Expect(svcErr.HTTPCode).To(Equal(500))
+	Expect(svcErr).To(BeNil())
+	Expect(mockDao.resources).To(HaveLen(0))
 }
 
-func TestResourceService_ForceDelete_ChildWithRequiredAdapters(t *testing.T) {
+func TestResourceService_ForceDelete_ChildWithRequiredAdapters_Succeeds(t *testing.T) {
 	RegisterTestingT(t)
 	registry.Reset()
 	registry.Register(registry.EntityDescriptor{Kind: "Parent", Plural: "parents"})
@@ -1573,13 +1570,8 @@ func TestResourceService_ForceDelete_ChildWithRequiredAdapters(t *testing.T) {
 	mockDao.addResource(child)
 
 	svcErr := svc.ForceDelete(context.Background(), "Parent", "p-1", "force it")
-	Expect(svcErr).ToNot(BeNil())
-	Expect(svcErr.HTTPCode).To(Equal(500))
-
-	_, parentExists := mockDao.resources[resourceKey("Parent", "p-1")]
-	Expect(parentExists).To(BeTrue(), "parent should NOT be deleted when child cascade fails")
-	_, childExists := mockDao.resources[resourceKey("ManagedChild", "mc-1")]
-	Expect(childExists).To(BeTrue(), "child should NOT be deleted when guard fires")
+	Expect(svcErr).To(BeNil())
+	Expect(mockDao.resources).To(HaveLen(0))
 }
 
 func TestResourceService_ForceDelete_InvalidKind(t *testing.T) {

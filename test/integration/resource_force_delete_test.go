@@ -261,15 +261,3 @@ func TestResourceForceDeleteHTTP(t *testing.T) {
 		Expect(resp.StatusCode()).To(Equal(http.StatusBadRequest))
 	})
 }
-
-func TestGenericDescriptors_HaveNoRequiredAdapters(t *testing.T) {
-	RegisterTestingT(t)
-	_, _ = setupResourceTest(t)
-
-	for _, d := range registry.All() {
-		Expect(d.RequiredAdapters).To(BeEmpty(),
-			"Descriptor %q has RequiredAdapters=%v. "+
-				"ForceDelete does not yet handle adapter_status cleanup. "+
-				"See HYPERFLEET-1154.", d.Kind, d.RequiredAdapters)
-	}
-}

@@ -720,18 +720,6 @@ func (s *sqlResourceService) ForceDelete(ctx context.Context, kind, id, reason s
 func (s *sqlResourceService) forceDeleteResourceTree(
 	ctx context.Context, resource *api.Resource, caller, reason string,
 ) *errors.ServiceError {
-	desc := registry.MustGet(resource.Kind)
-	if len(desc.RequiredAdapters) > 0 {
-		// When HYPERFLEET-1154 adds adapter_status cleanup here, reuse
-		// buildAdapterSummaries (util.go) for the audit log, matching
-		// cluster.go's logForceDeleteAudit — don't hand-roll formatting again.
-		return errors.GeneralError(
-			"force-delete not implemented for resources with required adapters (kind=%s)"+
-				" — adapter_status cleanup needed, see HYPERFLEET-1154",
-			resource.Kind,
-		)
-	}
-
 	children := registry.ChildrenOf(resource.Kind)
 
 	childIDs := make([]string, 0)
@@ -758,6 +746,12 @@ func (s *sqlResourceService) forceDeleteResourceTree(
 		"child_resource_ids", childIDs,
 	).Info("Force-deleting resource")
 
+	if err := s.adapterStatusDao.DeleteByResource(ctx, resource.Kind, resource.ID); err != nil {
+		return errors.GeneralError("Failed to delete adapter statuses during force-delete: %s", err)
+	}
+	if err := s.resourceConditionDao.DeleteByResource(ctx, resource.ID); err != nil {
+		return errors.GeneralError("Failed to delete resource conditions during force-delete: %s", err)
+	}
 	if err := s.resourceDao.Delete(ctx, resource.Kind, resource.ID); err != nil {
 		return handleDeleteError(resource.Kind, err)
 	}
