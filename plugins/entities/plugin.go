@@ -91,7 +91,7 @@ func registerRootResourceRoutes(
 	adapterStatusService services.AdapterStatusService,
 	schemaValidator *validators.SchemaValidator,
 ) {
-	rootHandler := handlers.NewRootResourceHandler(resourceService, schemaValidator)
+	rootHandler := handlers.NewRootResourceHandler(resourceService, adapterStatusService, schemaValidator)
 	r := apiV1Router.PathPrefix("/resources").Subrouter()
 	r.HandleFunc("", rootHandler.List).Methods(http.MethodGet)
 	r.HandleFunc("", rootHandler.Create).Methods(http.MethodPost)
@@ -99,6 +99,8 @@ func registerRootResourceRoutes(
 	r.HandleFunc("/{id}", rootHandler.Patch).Methods(http.MethodPatch)
 	r.HandleFunc("/{id}", rootHandler.Delete).Methods(http.MethodDelete)
 	r.HandleFunc("/{id}/force-delete", rootHandler.ForceDelete).Methods(http.MethodPost)
+	r.HandleFunc("/{id}/statuses", rootHandler.ListStatuses).Methods(http.MethodGet)
+	r.HandleFunc("/{id}/statuses", rootHandler.CreateStatus).Methods(http.MethodPut)
 }
 
 func registerResourceRoutes(

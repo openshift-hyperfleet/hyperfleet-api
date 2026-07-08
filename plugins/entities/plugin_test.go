@@ -32,6 +32,10 @@ func TestRegisterEntityRoutes_TopLevelEntity(t *testing.T) {
 	assertRouteMatches(t, router, "DELETE", "/api/hyperfleet/v1/channels/"+id)
 	assertRouteMatches(t, router, "GET", "/api/hyperfleet/v1/channels/"+id+"/statuses")
 	assertRouteMatches(t, router, "PUT", "/api/hyperfleet/v1/channels/"+id+"/statuses")
+
+	// Root /resources routes should also have statuses
+	assertRouteMatches(t, router, "GET", "/api/hyperfleet/v1/resources/"+id+"/statuses")
+	assertRouteMatches(t, router, "PUT", "/api/hyperfleet/v1/resources/"+id+"/statuses")
 }
 
 func TestRegisterEntityRoutes_ChildEntity(t *testing.T) {
