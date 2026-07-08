@@ -1703,6 +1703,147 @@ has(resources.namespace0) && has(resources.configmap0)
 
 </details>
 
+<details>
+<summary>has() vs hasValue() vs orValue() — when to use each</summary>
+
+| Function | Use when | Returns |
+|----------|----------|---------|
+| `has(resources.X)` | Check if a key exists in the CEL map (standard CEL) | `bool` |
+| `resources.?X.hasValue()` | Check if an optional value is present (works after `?` chaining) | `bool` |
+| `resources.?X.orValue(default)` | Get value or fallback if absent | value or default |
+
+```cel
+# has() — use for top-level existence checks and guards
+has(resources.namespace) && has(resources.namespace.status)
+
+# hasValue() — use in deletion checks (deleted resources are removed from the map)
+!resources.?namespace.hasValue()    # true when resource was deleted or never created
+
+# orValue() — use for safe field access with a fallback
+resources.?namespace.?status.?phase.orValue("")    # "" if any level is missing
+adapter.?resourcesSkipped.orValue(false)           # false if not set
+```
+
+</details>
+
+<details>
+<summary>Deletion guard — check if a resource has been deleted</summary>
+
+```cel
+# Capture is_deleting in preconditions (recommended pattern):
+#   - name: "is_deleting"
+#     expression: "has(clusterStatus.deleted_time)"
+
+# Single resource: delete when cluster is being deleted
+is_deleting
+
+# Dependency ordering: delete configmap only after namespace is gone
+is_deleting && !resources.?configMapManifestWork.hasValue()
+
+# Finalized condition: all resources confirmed deleted
+is_deleting
+  && adapter.?executionStatus.orValue("") == "success"
+  && !adapter.?resourcesSkipped.orValue(false)
+  && !resources.?namespace.hasValue()
+? "True" : "False"
+```
+
+</details>
+
+<details>
+<summary>Adapter metadata — available variables in post-action context</summary>
+
+```cel
+# Execution outcome
+adapter.?executionStatus.orValue("")         # "success" or "failed"
+adapter.?resourcesSkipped.orValue(false)     # true if preconditions skipped resources
+adapter.?skipReason.orValue("")              # reason string when skipped
+
+# Error details (available when executionStatus == "failed")
+adapter.?executionError.?phase.orValue("")   # "preconditions", "resources", "post_actions"
+adapter.?executionError.?step.orValue("")    # name of the failed step
+adapter.?executionError.?message.orValue("") # error message
+
+# Post-action gate: skip status report when no work was done
+when:
+  expression: "!adapter.resourcesSkipped"
+```
+
+</details>
+
+<details>
+<summary>Health condition boilerplate (copy-paste ready)</summary>
+
+```yaml
+- type: "Health"
+  status:
+    expression: |
+      adapter.?executionStatus.orValue("") == "success"
+        && !adapter.?resourcesSkipped.orValue(false)
+      ? "True"
+      : "False"
+  reason:
+    expression: |
+      adapter.?executionStatus.orValue("") != "success"
+      ? "ExecutionFailed:" + adapter.?executionError.?phase.orValue("unknown")
+      : adapter.?resourcesSkipped.orValue(false)
+        ? "ResourcesSkipped"
+        : "Healthy"
+  message:
+    expression: |
+      adapter.?executionStatus.orValue("") != "success"
+      ? "Adapter failed at phase ["
+          + adapter.?executionError.?phase.orValue("unknown")
+          + "] step ["
+          + adapter.?executionError.?step.orValue("unknown")
+          + "]: "
+          + adapter.?executionError.?message.orValue(adapter.?errorMessage.orValue("no details"))
+      : adapter.?resourcesSkipped.orValue(false)
+        ? "Resources skipped: " + adapter.?skipReason.orValue("unknown reason")
+        : "Adapter execution completed successfully"
+```
+
+</details>
+
+<details>
+<summary>Finalized condition boilerplate (copy-paste ready, with deletion)</summary>
+
+```yaml
+# Requires: is_deleting captured in preconditions
+# Replace resources.?myResource with your actual resource names
+- type: "Finalized"
+  status:
+    expression: |
+      is_deleting
+        && adapter.?executionStatus.orValue("") == "success"
+        && !adapter.?resourcesSkipped.orValue(false)
+        && !resources.?myResource.hasValue()
+      ? "True"
+      : "False"
+  reason:
+    expression: |
+      !is_deleting
+      ? ""
+      : adapter.?executionStatus.orValue("") != "success"
+        ? "AdapterUnhealthy"
+        : adapter.?resourcesSkipped.orValue(false)
+          ? "ResourcesSkipped"
+          : !resources.?myResource.hasValue()
+            ? "CleanupConfirmed"
+            : "CleanupInProgress"
+  message:
+    expression: |
+      !is_deleting
+      ? ""
+      : adapter.?executionStatus.orValue("") != "success"
+        ? "Cannot confirm cleanup while adapter is unhealthy"
+        : !resources.?myResource.hasValue()
+          ? "All managed resources deleted and verified"
+          : "Resource cleanup in progress"
+```
+
+</details>
+
 ---
 
 ## Appendix B: Go Template Quick Reference

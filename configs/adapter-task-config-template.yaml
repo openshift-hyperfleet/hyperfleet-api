@@ -1,7 +1,25 @@
-# HyperFleet Adapter Task Configuration Template (MVP)
+# HyperFleet Adapter Task Configuration Template
 #
-# This is a Configuration Template for configuring cloud provider adapters
+# This is a starting-point template for configuring cloud provider adapters
 # using the HyperFleet Adapter Framework with CEL (Common Expression Language).
+#
+# WORKING EXAMPLES:
+# =================
+# Before writing your own config, study these complete, tested examples:
+#
+#   charts/examples/kubernetes/   — Direct K8s resources (Namespace + Job)
+#                                   with lifecycle.delete and dependency ordering
+#   charts/examples/maestro/      — Single ManifestWork with nested discoveries
+#                                   and Maestro-specific status feedback
+#   charts/examples/maestro-two-resources/
+#                                 — Two ManifestWorks with deletion dependency
+#                                   ordering (!resources.?X.hasValue())
+#
+# DOCUMENTATION:
+# ==============
+# Full authoring guide:  docs/adapter-authoring-guide.md
+# CEL quick reference:   docs/adapter-authoring-guide.md#appendix-a-cel-quick-reference
+# CEL conventions:       docs/conventions/cel.md
 #
 # TEMPLATE SYNTAX:
 # ================
