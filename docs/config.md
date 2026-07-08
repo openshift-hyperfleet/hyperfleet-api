@@ -7,19 +7,21 @@ Complete reference for configuring HyperFleet API following the [HyperFleet Conf
 ## Quick Start
 
 **Development:**
+
 ```bash
 # Create config.yaml with database settings, then:
 hyperfleet-api serve --config=config.yaml
 ```
 
 **Production (Kubernetes):**
+
 ```bash
 helm install hyperfleet-api oci://quay.io/redhat-services-prod/hyperfleet-tenant/hyperfleet/hyperfleet-api-chart:<tag> \
   --set 'config.adapters.required.cluster={validation,dns}' \
   --set 'config.adapters.required.nodepool={validation}'
 ```
 
-> **Note:** You may also choose to install from the ./charts folder, if you've cloned this repository locally. 
+> **Note:** You may also choose to install from the ./charts folder, if you've cloned this repository locally.
 
 See [Configuration Examples](#configuration-examples) for complete setup.
 
@@ -36,6 +38,7 @@ HyperFleet API supports multiple configuration sources:
 | **CLI Flags** | Quick overrides, testing | `--server-port=9000` |
 
 All configuration follows these conventions:
+
 - **Environment variables**: `HYPERFLEET_*` prefix, uppercase, underscores (e.g., `HYPERFLEET_SERVER_PORT`)
 - **CLI flags**: `--kebab-case`, lowercase, hyphens (e.g., `--server-port`)
 - **YAML properties**: `snake_case`, lowercase, underscores (e.g., `server.port`)
@@ -59,6 +62,7 @@ Configuration sources are applied in the following order (highest to lowest prio
 **Examples**:
 
 *Flag overrides environment variable:*
+
 ```bash
 export HYPERFLEET_SERVER_PORT=8000
 hyperfleet-api serve --server-port=9000
@@ -66,6 +70,7 @@ hyperfleet-api serve --server-port=9000
 ```
 
 *Environment variable overrides config file:*
+
 ```bash
 # config.yaml has: database.password: "config-password"
 export HYPERFLEET_DATABASE_PASSWORD=secret-password
@@ -89,11 +94,13 @@ See [OpenTelemetry Configuration](#opentelemetry-configuration) for details.
 The configuration file is resolved in the following order:
 
 1. **`--config` flag** - Explicit path provided via CLI
+
    ```bash
    hyperfleet-api serve --config=/path/to/config.yaml
    ```
 
 2. **`HYPERFLEET_CONFIG` environment variable** - Path in environment
+
    ```bash
    export HYPERFLEET_CONFIG=/path/to/config.yaml
    ```
@@ -134,6 +141,7 @@ PostgreSQL database connection settings.
 | `database.debug` | bool | `false` | Enable SQL query logging |
 
 **Example:**
+
 ```yaml
 database:
   host: postgres.example.com
@@ -164,6 +172,7 @@ Specifies which adapters must be ready for resources to be marked as "Ready". Sh
 | `adapters.required.nodepool` | []string | `[]` | Nodepool adapters required for Ready state (e.g., `["validation"]`) |
 
 **Example:**
+
 ```yaml
 adapters:
   required:
@@ -178,6 +187,7 @@ adapters:
 ```
 
 **Environment variable (JSON array format):**
+
 ```bash
 export HYPERFLEET_ADAPTERS_REQUIRED_CLUSTER='["validation","dns","pullsecret","hypershift"]'
 export HYPERFLEET_ADAPTERS_REQUIRED_NODEPOOL='["validation","hypershift"]'
@@ -196,6 +206,7 @@ Logging behavior and output settings.
 | `logging.masking.enabled` | bool | `true` | Enable sensitive data masking in logs |
 
 **Example:**
+
 ```yaml
 logging:
   level: info
@@ -257,14 +268,10 @@ HTTP server settings for the API endpoint.
 | `server.tls.cert_file` | string | `""` | Path to TLS certificate file |
 | `server.tls.key_file` | string | `""` | Path to TLS key file |
 | `server.jwt.enabled` | bool | `true` | Enable JWT authentication |
-| `server.jwt.issuer_url` | string | `""` | Expected JWT issuer URL for token validation (required when JWT is enabled) |
-| `server.jwt.audience` | string | `""` | Expected JWT audience claim (optional) |
-| `server.jwt.identity_claim` | string | `email` | JWT claim used as request identity for audit (e.g. `email`, `preferred_username`, `sub`) |
-| `server.identity_header` | string | `""` | HTTP header name for caller identity; when set and non-empty, overrides JWT claim for audit attribution |
-| `server.jwk.cert_file` | string | `""` | JWK certificate file path (optional) |
-| `server.jwk.cert_url` | string | `""` | JWK certificate URL (required when JWT is enabled and cert_file is not set) |
+| `server.jwt.configs` | list | `[]` | YAML only. List of JWT issuer configurations (required when JWT is enabled). See [Issuer configuration reference](authentication.md#issuer-configuration-reference) for all fields and defaults. |
 
 **Example:**
+
 ```yaml
 server:
   hostname: api.example.com
@@ -276,43 +283,15 @@ server:
     key_file: /etc/certs/tls.key
   jwt:
     enabled: true
-    issuer_url: https://your-idp.example.com/auth/realms/your-realm
-    audience: ""
-  jwk:
-    cert_url: https://your-idp.example.com/auth/realms/your-realm/protocol/openid-connect/certs
+    configs:
+      - issuer_url: ...   # see field reference below
 ```
 
-#### Caller Identity
+See [Issuer configuration reference](authentication.md#issuer-configuration-reference) for the complete field table, defaults, and examples.
 
-The API records who performed each mutation in the `created_by`, `updated_by`, and `deleted_by` audit fields. Two settings control how the caller identity is resolved:
+### Caller Identity
 
-| Setting | Purpose |
-|---------|---------|
-| `server.identity_header` | HTTP header to read the caller identity from (e.g., `X-Forwarded-Email`) |
-| `server.jwt.identity_claim` | JWT claim to use as fallback (e.g., `email`, `preferred_username`, `sub`) |
-
-**Precedence:** If both are configured and the header is present in the request, the header value wins. The JWT claim is used only when the header is not configured or is empty in the request.
-
-**Validation:** Identity values are trimmed, must not exceed 256 characters, and must not contain control characters.
-
-**Example — header-based identity (behind an authenticating proxy):**
-```yaml
-server:
-  identity_header: X-Forwarded-Email
-  jwt:
-    enabled: false
-```
-
-**Example — JWT-based identity:**
-```yaml
-server:
-  jwt:
-    enabled: true
-    issuer_url: https://idp.example.com/realms/hyperfleet
-    identity_claim: email
-  jwk:
-    cert_url: https://idp.example.com/realms/hyperfleet/protocol/openid-connect/certs
-```
+See [Caller identity for audit](authentication.md#caller-identity-for-audit) for full details on identity resolution, precedence rules, and per-issuer configuration.
 
 </details>
 
@@ -329,6 +308,7 @@ Prometheus metrics endpoint settings.
 | `metrics.label_metrics_inclusion_duration` | duration | `168h` | Duration to include label metrics (7 days) |
 
 **Example:**
+
 ```yaml
 metrics:
   host: 0.0.0.0  # Required for Kubernetes Service access
@@ -353,6 +333,7 @@ Health check endpoint settings.
 | `health.db_ping_timeout` | duration | `2s` | Database ping timeout for readiness check |
 
 **Example:**
+
 ```yaml
 health:
   host: 0.0.0.0  # Required for Kubernetes probes
@@ -362,7 +343,6 @@ health:
 ```
 
 </details>
-
 
 ---
 
@@ -385,12 +365,7 @@ Complete table of all configuration properties, their environment variables, and
 | `server.tls.cert_file` | `HYPERFLEET_SERVER_TLS_CERT_FILE` | string | `""` |
 | `server.tls.key_file` | `HYPERFLEET_SERVER_TLS_KEY_FILE` | string | `""` |
 | `server.jwt.enabled` | `HYPERFLEET_SERVER_JWT_ENABLED` | bool | `true` |
-| `server.jwt.issuer_url` | `HYPERFLEET_SERVER_JWT_ISSUER_URL` | string | `""` |
-| `server.jwt.audience` | `HYPERFLEET_SERVER_JWT_AUDIENCE` | string | `""` |
-| `server.jwt.identity_claim` | `HYPERFLEET_SERVER_JWT_IDENTITY_CLAIM` | string | `email` |
-| `server.identity_header` | `HYPERFLEET_SERVER_IDENTITY_HEADER` | string | `""` |
-| `server.jwk.cert_file` | `HYPERFLEET_SERVER_JWK_CERT_FILE` | string | `""` |
-| `server.jwk.cert_url` | `HYPERFLEET_SERVER_JWK_CERT_URL` | string | `""` |
+| `server.jwt.configs` | (YAML only) | list | `[]` |
 | **Database** | | | |
 | `database.dialect` | `HYPERFLEET_DATABASE_DIALECT` | string | `postgres` |
 | `database.host` | `HYPERFLEET_DATABASE_HOST` | string | `localhost` |
@@ -449,12 +424,6 @@ All CLI flags and their corresponding configuration paths.
 | `--server-https-cert-file` | `server.tls.cert_file` | string |
 | `--server-https-key-file` | `server.tls.key_file` | string |
 | `--server-jwt-enabled` | `server.jwt.enabled` | bool |
-| `--server-jwt-issuer-url` | `server.jwt.issuer_url` | string |
-| `--server-jwt-audience` | `server.jwt.audience` | string |
-| `--server-jwt-identity-claim` | `server.jwt.identity_claim` | string |
-| `--server-identity-header` | `server.identity_header` | string |
-| `--server-jwk-cert-file` | `server.jwk.cert_file` | string |
-| `--server-jwk-cert-url` | `server.jwk.cert_url` | string |
 | **Database** | | |
 | `--db-dialect` | `database.dialect` | string |
 | `--db-host` | `database.host` | string |
@@ -489,6 +458,7 @@ All CLI flags and their corresponding configuration paths.
 ### Development
 
 Minimal config for local development (no authentication):
+
 ```yaml
 server:
   jwt:
@@ -530,11 +500,14 @@ The application performs comprehensive validation at startup.
 ### Validation Rules
 
 **Server**:
+
 - `server.port`: 1-65535
 - `server.timeouts.read`: ≥ 1s
 - `server.timeouts.write`: ≥ 1s
+- `server.jwt.configs`: required non-empty when `server.jwt.enabled=true`; see [Issuer configuration reference](authentication.md#issuer-configuration-reference) for per-field validation rules
 
 **Database**:
+
 - `database.host`: required
 - `database.port`: 1-65535
 - `database.name`: required
@@ -543,10 +516,12 @@ The application performs comprehensive validation at startup.
 - `database.ssl.mode`: must be `disable`, `require`, `verify-ca`, or `verify-full`
 
 **Logging**:
+
 - `logging.level`: must be `debug`, `info`, `warn`, or `error`
 - `logging.format`: must be `json` or `text`
 
 **Adapters**:
+
 - `adapters.required.cluster`: must be array of strings
 - `adapters.required.nodepool`: must be array of strings
 
@@ -568,6 +543,7 @@ Error: Configuration validation failed:
 ### Configuration not loading
 
 **Check configuration file path:**
+
 ```bash
 # Verify file exists
 ls -l /etc/hyperfleet/config.yaml
@@ -582,6 +558,7 @@ hyperfleet-api serve --config=/path/to/config.yaml
 ### Environment variables not working
 
 **Verify variable names:**
+
 ```bash
 # Check all HYPERFLEET_* variables
 env | grep HYPERFLEET_
@@ -598,32 +575,40 @@ export SERVER_PORT=8000  # ❌ Missing HYPERFLEET_ prefix
 **Common issues:**
 
 1. **Invalid log level:**
+
    ```text
    Error: Logging.Level must be one of: debug, info, warn, error
    ```
+
    Solution: Use lowercase: `info`, not `INFO`
 
 2. **Invalid port:**
+
    ```text
    Error: Server.Port must be between 1 and 65535
    ```
+
    Solution: Check port value in config file or environment variable
 
 3. **Missing required field:**
+
    ```text
    Error: Database.Host is required
    ```
+
    Solution: Set via config file, environment variable, or CLI flag
 
 ### Debugging configuration
 
 **Enable debug logging to see configuration loading:**
+
 ```bash
 export HYPERFLEET_LOGGING_LEVEL=debug
 hyperfleet-api serve
 ```
 
 **Check effective configuration:**
+
 ```bash
 # The application logs loaded configuration at startup (with secrets masked)
 # Look for log messages like:

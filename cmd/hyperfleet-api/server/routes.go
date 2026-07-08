@@ -87,15 +87,8 @@ func (s *apiServer) routes(tracingEnabled bool) *mux.Router {
 	err = registerAPIMiddleware(apiV1Router)
 	check(err, "Failed to initialize API middleware")
 
-	identityCfg := auth.CallerIdentityConfig{
-		HeaderName: env().Config.Server.IdentityHeader,
-	}
-	if env().Config.Server.JWT.Enabled && env().Config.Server.JWT.IdentityClaim != "" {
-		identityCfg.JWTIdentityClaim = env().Config.Server.JWT.IdentityClaim
-	}
-	if identityCfg.JWTIdentityClaim != "" || identityCfg.HeaderName != "" {
-		callerIdentityMW, mwErr := auth.NewCallerIdentityMiddleware(identityCfg)
-		check(mwErr, "Unable to create caller identity middleware")
+	if env().Config.Server.JWT.Enabled {
+		callerIdentityMW := auth.NewCallerIdentityMiddleware()
 		apiV1Router.Use(callerIdentityMW.ResolveCallerIdentity)
 	}
 

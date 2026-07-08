@@ -69,22 +69,19 @@ config:
     jwt:
       # -- Enable JWT authentication
       enabled: false
-      # -- OIDC issuer URL for token validation
-      issuer_url: ""
-      # -- Expected JWT audience claim
-      audience: ""
-      # -- JWT claim used as the caller identity
-      identity_claim: email
-
-    # -- HTTP header used to pass caller identity (bypasses JWT when set)
-    identity_header: ""
-
-    # -- JWK settings for token verification
-    jwk:
-      # -- Path to a local JWK certificate file
-      cert_file: ""
-      # -- URL to fetch JWK certificates from
-      cert_url: ""
+      # -- List of JWT issuer configurations (multi-issuer support)
+      configs: []
+      # Example:
+      # configs:
+      #   - issuer_url: "https://idp.example.com/auth/realms/my-realm"
+      #     jwk_cert_url: "https://idp.example.com/certs"
+      #     audience: "my-api"
+      #     identity_claim: "email"
+      #     identity_claim_pattern: "^[^@]+@example\\.com$"
+      #     identity_header: "X-HyperFleet-Identity"
+      #   - issuer_url: "https://other-idp.example.com"
+      #     jwk_cert_file: "/etc/hyperfleet/jwks.json"
+      #     header: "X-Custom-Auth"
 
   # -- Database connection settings. Credentials must be provided via a
   # Secret — see `database.external.secretName` or use the built-in

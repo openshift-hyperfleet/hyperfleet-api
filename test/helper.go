@@ -47,6 +47,8 @@ var (
 	once   sync.Once
 )
 
+const defaultTestIdentityHeader = "X-HyperFleet-Identity"
+
 // jwkURL stores the JWK mock server URL for testing
 var jwkURL string
 
@@ -163,10 +165,23 @@ func (helper *Helper) Teardown() {
 	}
 }
 
+func (helper *Helper) requireJWTIssuers() {
+	if helper.Env().Config.Server.JWT.Enabled && len(helper.Env().Config.Server.JWT.Configs) == 0 {
+		helper.T.Fatal("JWT enabled but no issuer configs defined")
+	}
+}
+
 func (helper *Helper) startAPIServer() {
 	ctx := context.Background()
 	// Configure JWK certificate URL for API server
-	helper.Env().Config.Server.JWK.CertURL = jwkURL
+	helper.requireJWTIssuers()
+	if len(helper.Env().Config.Server.JWT.Configs) > 0 {
+		cfg := &helper.Env().Config.Server.JWT.Configs[0]
+		cfg.JWKCertURL = jwkURL
+		if cfg.IdentityHeader == "" {
+			cfg.IdentityHeader = defaultTestIdentityHeader
+		}
+	}
 	// Disable tracing for integration tests (no OTLP collector required)
 	helper.APIServer = server.NewAPIServer(false)
 	listener, err := helper.APIServer.Listen()
@@ -388,14 +403,21 @@ func WithIdentityHeader(headerName, headerValue string) openapi.RequestEditorFn 
 	}
 }
 
-// IdentityHeaderName returns the configured identity header name for integration tests.
+// IdentityHeaderName returns the configured identity header name from the first JWT issuer config.
 func IdentityHeaderName() string {
-	return environments.Environment().Config.Server.IdentityHeader
+	configs := environments.Environment().Config.Server.JWT.Configs
+	if len(configs) > 0 {
+		return configs[0].IdentityHeader
+	}
+	return ""
 }
 
 func (helper *Helper) StartJWKCertServerMock() (teardown func() error) {
+	helper.requireJWTIssuers()
 	jwkURL, teardown = mocks.NewJWKCertServerMock(helper.T, helper.JWTCA, jwkKID, jwkAlg)
-	helper.Env().Config.Server.JWK.CertURL = jwkURL
+	if len(helper.Env().Config.Server.JWT.Configs) > 0 {
+		helper.Env().Config.Server.JWT.Configs[0].JWKCertURL = jwkURL
+	}
 	return teardown
 }
 
@@ -595,8 +617,14 @@ func (helper *Helper) ResetDB() error {
 }
 
 func (helper *Helper) CreateJWTString(account *TestAccount) string {
+	helper.requireJWTIssuers()
+	var issuerURL, audience string
+	if len(helper.Env().Config.Server.JWT.Configs) > 0 {
+		issuerURL = helper.Env().Config.Server.JWT.Configs[0].IssuerURL
+		audience = helper.Env().Config.Server.JWT.Configs[0].Audience
+	}
 	claims := jwt.MapClaims{
-		"iss":        helper.Env().Config.Server.JWT.IssuerURL,
+		"iss":        issuerURL,
 		"username":   strings.ToLower(account.Username),
 		"first_name": account.FirstName,
 		"last_name":  account.LastName,
@@ -604,8 +632,8 @@ func (helper *Helper) CreateJWTString(account *TestAccount) string {
 		"iat":        time.Now().Unix(),
 		"exp":        time.Now().Add(1 * time.Hour).Unix(),
 	}
-	if aud := helper.Env().Config.Server.JWT.Audience; aud != "" {
-		claims["aud"] = aud
+	if audience != "" {
+		claims["aud"] = audience
 	}
 	if account.Email != "" {
 		claims["email"] = account.Email

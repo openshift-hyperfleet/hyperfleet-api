@@ -19,15 +19,15 @@ server:
 
   jwt:
     enabled: true                   # Enable JWT authentication
-    issuer_url: ""                  # JWT issuer URL (required when jwt.enabled=true)
-    audience: ""                    # JWT audience claim (optional)
-    identity_claim: email           # JWT claim used as request identity for audit (e.g. email, preferred_username, sub)
-
-  identity_header: ""                  # HTTP header name for caller identity; leave empty to disable (e.g. X-HyperFleet-Identity)
-
-  jwk:
-    cert_file: ""                   # JWK certificate file path
-    cert_url: ""                    # JWK certificate URL (required when jwt.enabled=true and cert_file is not set)
+    configs:                        # List of JWT issuer configurations (required when jwt.enabled=true)
+      - issuer_url: ""              # OIDC issuer URL for token validation (required)
+        jwk_cert_url: ""            # URL to fetch JWK certificates from (required unless jwk_cert_file is set)
+        jwk_cert_file: ""           # Path to a local JWK certificate file (alternative to jwk_cert_url)
+        header: Authorization       # HTTP header to read the JWT from (default: Authorization)
+        audience: ""                # Expected JWT audience claim (optional)
+        identity_claim: email       # JWT claim used as request identity for audit (default: email)
+        identity_claim_pattern: ""  # Regex pattern to validate the identity claim value (optional)
+        identity_header: ""         # Per-issuer HTTP header for caller identity; overrides JWT claim when set (e.g. X-HyperFleet-Identity)
 
 # Database Configuration
 database:

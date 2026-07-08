@@ -15,6 +15,7 @@ import (
 	"github.com/MicahParks/keyfunc/v3"
 	"github.com/golang-jwt/jwt/v5"
 
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
 	hferrors "github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
@@ -26,20 +27,57 @@ const (
 
 type JWTHandlerConfig struct {
 	Next        http.Handler
-	KeysFile    string
-	KeysURL     string
-	IssuerURL   string
-	Audience    string
+	Issuers     []config.JWTIssuerConfig
 	PublicPaths []string
 }
 
+// issuerValidator holds the pre-built keyfunc and parser for a single JWT issuer.
+type issuerValidator struct {
+	keyfunc   keyfunc.Keyfunc
+	parser    *jwt.Parser
+	header    string
+	issuerCfg config.JWTIssuerConfig
+}
+
 func NewJWTHandler(ctx context.Context, cfg JWTHandlerConfig) (*JWTHandler, error) {
+	if len(cfg.Issuers) == 0 {
+		return nil, fmt.Errorf("at least one issuer config is required")
+	}
+
+	// Enabled must be true so Validate() runs its checks; this handler is only created when JWT is already enabled.
+	jwtCfg := config.JWTConfig{Enabled: true, Configs: cfg.Issuers}
+	jwtCfg.ApplyDefaults()
+	if err := jwtCfg.Validate(); err != nil {
+		return nil, fmt.Errorf("issuer config validation failed: %w", err)
+	}
+	cfg.Issuers = jwtCfg.Configs
+
 	ctx, cancel := context.WithCancel(ctx)
 
-	kf, err := buildKeyfunc(ctx, cfg)
-	if err != nil {
-		cancel()
-		return nil, fmt.Errorf("failed to build JWKS keyfunc: %w", err)
+	validators := make([]issuerValidator, 0, len(cfg.Issuers))
+	for i, issuer := range cfg.Issuers {
+		kf, err := buildKeyfunc(ctx, issuer)
+		if err != nil {
+			cancel()
+			return nil, fmt.Errorf("failed to build JWKS keyfunc for issuer %d (%s): %w", i, issuer.IssuerURL, err)
+		}
+
+		parserOpts := []jwt.ParserOption{
+			jwt.WithValidMethods([]string{defaultSigningAlgorithm}),
+			jwt.WithExpirationRequired(),
+			jwt.WithLeeway(defaultLeeway),
+			jwt.WithIssuer(issuer.IssuerURL),
+		}
+		if issuer.Audience != "" {
+			parserOpts = append(parserOpts, jwt.WithAudience(issuer.Audience))
+		}
+
+		validators = append(validators, issuerValidator{
+			keyfunc:   kf,
+			parser:    jwt.NewParser(parserOpts...),
+			header:    issuer.Header,
+			issuerCfg: issuer,
+		})
 	}
 
 	publicPatterns := make([]*regexp.Regexp, 0, len(cfg.PublicPaths))
@@ -52,23 +90,8 @@ func NewJWTHandler(ctx context.Context, cfg JWTHandlerConfig) (*JWTHandler, erro
 		publicPatterns = append(publicPatterns, re)
 	}
 
-	parserOpts := []jwt.ParserOption{
-		jwt.WithValidMethods([]string{defaultSigningAlgorithm}),
-		jwt.WithExpirationRequired(),
-		jwt.WithLeeway(defaultLeeway),
-	}
-	if cfg.IssuerURL != "" {
-		parserOpts = append(parserOpts, jwt.WithIssuer(cfg.IssuerURL))
-	} else {
-		logger.Warn(ctx, "JWT issuer validation disabled: no issuer_url configured")
-	}
-	if cfg.Audience != "" {
-		parserOpts = append(parserOpts, jwt.WithAudience(cfg.Audience))
-	}
-
 	return &JWTHandler{
-		keyfunc:        kf,
-		parser:         jwt.NewParser(parserOpts...),
+		validators:     validators,
 		publicPatterns: publicPatterns,
 		next:           cfg.Next,
 		cancel:         cancel,
@@ -78,9 +101,8 @@ func NewJWTHandler(ctx context.Context, cfg JWTHandlerConfig) (*JWTHandler, erro
 // JWTHandler validates JWT tokens on incoming requests. Call Close() during
 // shutdown to stop the background JWKS refresh goroutine.
 type JWTHandler struct {
-	keyfunc        keyfunc.Keyfunc
+	validators     []issuerValidator
 	next           http.Handler
-	parser         *jwt.Parser
 	cancel         context.CancelFunc
 	publicPatterns []*regexp.Regexp
 }
@@ -99,65 +121,85 @@ func (h *JWTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	authHeader := r.Header.Get("Authorization")
-	if authHeader == "" {
-		handleError(r.Context(), w, r, hferrors.CodeAuthNoCredentials, "missing Authorization header")
+	// Try each issuer's validator: check its header, extract Bearer token, validate
+	var lastErr error
+	sawNonBearer := false
+	for _, v := range h.validators {
+		headerVal := r.Header.Get(v.header)
+		if headerVal == "" {
+			continue
+		}
+
+		parts := strings.Fields(headerVal)
+		if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
+			sawNonBearer = true
+			continue
+		}
+
+		token, err := v.parser.Parse(parts[1], v.keyfunc.Keyfunc)
+		if err != nil {
+			if !errors.Is(lastErr, jwt.ErrTokenExpired) {
+				lastErr = err
+			}
+			continue
+		}
+
+		ctx := SetJWTTokenContext(r.Context(), token)
+		ctx = SetJWTIssuerConfigContext(ctx, v.issuerCfg)
+		h.next.ServeHTTP(w, r.WithContext(ctx))
 		return
 	}
 
-	parts := strings.Fields(authHeader)
-	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
-		handleError(r.Context(), w, r, hferrors.CodeAuthInvalidCredentials, "Authorization header must use Bearer scheme")
-		return
-	}
-	tokenString := parts[1]
-
-	token, err := h.parser.Parse(tokenString, h.keyfunc.Keyfunc)
-	if err != nil {
-		logger.WithError(r.Context(), err).Warn("JWT validation failed")
-		if errors.Is(err, jwt.ErrTokenExpired) {
+	// No validator matched — return the most appropriate error
+	if lastErr != nil {
+		logger.WithError(r.Context(), lastErr).Warn("JWT validation failed")
+		if errors.Is(lastErr, jwt.ErrTokenExpired) {
 			handleError(r.Context(), w, r, hferrors.CodeAuthExpiredToken, "JWT token has expired")
 		} else {
-			handleError(r.Context(), w, r, hferrors.CodeAuthInvalidCredentials, "invalid or expired JWT token")
+			handleError(r.Context(), w, r, hferrors.CodeAuthInvalidCredentials, "invalid JWT token")
 		}
 		return
 	}
 
-	ctx := SetJWTTokenContext(r.Context(), token)
-	h.next.ServeHTTP(w, r.WithContext(ctx))
+	if sawNonBearer {
+		handleError(r.Context(), w, r, hferrors.CodeAuthInvalidCredentials, "authorization header does not use Bearer scheme")
+		return
+	}
+
+	handleError(r.Context(), w, r, hferrors.CodeAuthNoCredentials, "missing authorization header")
 }
 
-func buildKeyfunc(ctx context.Context, cfg JWTHandlerConfig) (keyfunc.Keyfunc, error) {
-	hasFile := cfg.KeysFile != ""
-	hasURL := cfg.KeysURL != ""
+func buildKeyfunc(ctx context.Context, issuer config.JWTIssuerConfig) (keyfunc.Keyfunc, error) {
+	hasFile := issuer.JWKCertFile != ""
+	hasURL := issuer.JWKCertURL != ""
 
 	if !hasFile && !hasURL {
-		return nil, fmt.Errorf("at least one of KeysFile or KeysURL must be provided")
+		return nil, fmt.Errorf("at least one of jwk_cert_file or jwk_cert_url must be provided")
 	}
 
 	if hasFile && !hasURL {
-		data, err := os.ReadFile(cfg.KeysFile)
+		data, err := os.ReadFile(issuer.JWKCertFile)
 		if err != nil {
-			return nil, fmt.Errorf("failed to read JWKS file %q: %w", cfg.KeysFile, err)
+			return nil, fmt.Errorf("failed to read JWKS file %q: %w", issuer.JWKCertFile, err)
 		}
 		kf, err := keyfunc.NewJWKSetJSON(json.RawMessage(data))
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse JWKS file %q: %w", cfg.KeysFile, err)
+			return nil, fmt.Errorf("failed to parse JWKS file %q: %w", issuer.JWKCertFile, err)
 		}
 		return kf, nil
 	}
 
 	if !hasFile && hasURL {
-		kf, err := keyfunc.NewDefaultCtx(ctx, []string{cfg.KeysURL})
+		kf, err := keyfunc.NewDefaultCtx(ctx, []string{issuer.JWKCertURL})
 		if err != nil {
-			return nil, fmt.Errorf("failed to create JWKS client from URL %q: %w", cfg.KeysURL, err)
+			return nil, fmt.Errorf("failed to create JWKS client from URL %q: %w", issuer.JWKCertURL, err)
 		}
 		return kf, nil
 	}
 
-	data, err := os.ReadFile(cfg.KeysFile)
+	data, err := os.ReadFile(issuer.JWKCertFile)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read JWKS file %q: %w", cfg.KeysFile, err)
+		return nil, fmt.Errorf("failed to read JWKS file %q: %w", issuer.JWKCertFile, err)
 	}
 	fileKF, err := keyfunc.NewJWKSetJSON(json.RawMessage(data))
 	if err != nil {
@@ -167,7 +209,7 @@ func buildKeyfunc(ctx context.Context, cfg JWTHandlerConfig) (keyfunc.Keyfunc, e
 	httpStorage, err := jwkset.NewHTTPClient(jwkset.HTTPClientOptions{
 		Given: fileKF.Storage(),
 		HTTPURLs: map[string]jwkset.Storage{
-			cfg.KeysURL: jwkset.NewMemoryStorage(),
+			issuer.JWKCertURL: jwkset.NewMemoryStorage(),
 		},
 	})
 	if err != nil {

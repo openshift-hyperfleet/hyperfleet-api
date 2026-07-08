@@ -5,7 +5,6 @@ import (
 	"net/http"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/validation"
 )
 
 // CallerIdentityMiddleware resolves and attaches the caller identity used for audit fields.
@@ -13,23 +12,18 @@ type CallerIdentityMiddleware interface {
 	ResolveCallerIdentity(next http.Handler) http.Handler
 }
 
-type callerIdentityMiddleware struct {
-	cfg CallerIdentityConfig
-}
+type callerIdentityMiddleware struct{}
 
 var _ CallerIdentityMiddleware = &callerIdentityMiddleware{}
 
-func NewCallerIdentityMiddleware(cfg CallerIdentityConfig) (CallerIdentityMiddleware, error) {
-	if cfg.HeaderName != "" {
-		if validation.IsForbiddenIdentityHeaderName(cfg.HeaderName) {
-			return nil, fmt.Errorf("identity header name %q is not allowed", cfg.HeaderName)
-		}
-	}
-	return &callerIdentityMiddleware{cfg: cfg}, nil
+func NewCallerIdentityMiddleware() CallerIdentityMiddleware {
+	return &callerIdentityMiddleware{}
 }
 
 // ResolveCallerIdentity attaches the resolved caller identity to the request context.
 // JWT validation is performed by JWTHandler; this middleware only resolves attribution.
+// The matched issuer config (identity_claim, identity_claim_pattern) is read from context.
+// If an identity header is configured, it takes precedence over JWT claims.
 func (m *callerIdentityMiddleware) ResolveCallerIdentity(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if shouldSkipCallerIdentity(r.URL.Path) {
@@ -38,7 +32,7 @@ func (m *callerIdentityMiddleware) ResolveCallerIdentity(next http.Handler) http
 		}
 
 		ctx := r.Context()
-		identity, err := CallerIdentityFromRequest(ctx, r, m.cfg)
+		identity, err := CallerIdentityFromRequest(ctx, r)
 
 		if identity != "" {
 			ctx = SetUsernameContext(ctx, identity)

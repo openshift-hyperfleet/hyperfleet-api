@@ -27,17 +27,6 @@ func TestMain(m *testing.M) {
 		_ = os.Setenv("HYPERFLEET_ADAPTERS_REQUIRED_NODEPOOL", `["validation","hypershift"]`)
 	}
 
-	// JWT config - required for validation; integration tests use local test keys
-	if os.Getenv("HYPERFLEET_SERVER_JWT_ISSUER_URL") == "" {
-		_ = os.Setenv("HYPERFLEET_SERVER_JWT_ISSUER_URL", "https://test-idp.example.com/auth/realms/test")
-	}
-	if os.Getenv("HYPERFLEET_SERVER_JWK_CERT_URL") == "" {
-		_ = os.Setenv("HYPERFLEET_SERVER_JWK_CERT_URL", "https://test-idp.example.com/certs")
-	}
-	if os.Getenv("HYPERFLEET_SERVER_IDENTITY_HEADER") == "" {
-		_ = os.Setenv("HYPERFLEET_SERVER_IDENTITY_HEADER", "X-HyperFleet-Identity")
-	}
-
 	// Set OpenAPI schema path for integration tests if not already set
 	// This enables schema validation middleware during tests
 	// Uses HYPERFLEET_SERVER_OPENAPI_SCHEMA_PATH (config system standard)

@@ -37,9 +37,8 @@ func SetMinimalTestEnv(t *testing.T) {
 	t.Setenv("HYPERFLEET_HEALTH_HOST", "localhost")
 	t.Setenv("HYPERFLEET_HEALTH_PORT", "8080")
 
-	// JWT config - required when JWT is enabled (default)
-	t.Setenv("HYPERFLEET_SERVER_JWT_ISSUER_URL", "https://test-idp.example.com/auth/realms/test")
-	t.Setenv("HYPERFLEET_SERVER_JWK_CERT_URL", "https://test-idp.example.com/certs")
+	// JWT disabled for non-JWT tests (JWT-specific tests configure their own issuers)
+	t.Setenv("HYPERFLEET_SERVER_JWT_ENABLED", "false")
 
 	// Adapters config - empty arrays are valid
 	t.Setenv("HYPERFLEET_ADAPTERS_REQUIRED_CLUSTER", `[]`)

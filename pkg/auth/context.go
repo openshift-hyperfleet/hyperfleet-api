@@ -6,16 +6,16 @@ import (
 	"strings"
 
 	"github.com/golang-jwt/jwt/v5"
+
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
 )
 
 type contextKey string
 
 const (
-	ContextUsernameKey contextKey = "username"
-	ContextJWTTokenKey contextKey = "jwt_token"
-
-	// DefaultJWTIdentityClaim is used when server.jwt.identity_claim is unset.
-	DefaultJWTIdentityClaim = "email"
+	ContextUsernameKey        contextKey = "username"
+	ContextJWTTokenKey        contextKey = "jwt_token"
+	ContextJWTIssuerConfigKey contextKey = "jwt_issuer_config"
 )
 
 // Payload defines the structure of the JWT payload we expect
@@ -45,6 +45,15 @@ func GetUsernameFromContext(ctx context.Context) string {
 
 func SetJWTTokenContext(ctx context.Context, token *jwt.Token) context.Context {
 	return context.WithValue(ctx, ContextJWTTokenKey, token)
+}
+
+func SetJWTIssuerConfigContext(ctx context.Context, cfg config.JWTIssuerConfig) context.Context {
+	return context.WithValue(ctx, ContextJWTIssuerConfigKey, cfg)
+}
+
+func GetJWTIssuerConfigFromContext(ctx context.Context) (config.JWTIssuerConfig, bool) {
+	cfg, ok := ctx.Value(ContextJWTIssuerConfigKey).(config.JWTIssuerConfig)
+	return cfg, ok
 }
 
 func GetJWTTokenFromContext(ctx context.Context) *jwt.Token {
@@ -122,7 +131,7 @@ func GetAuthPayloadFromContext(ctx context.Context) (*Payload, error) {
 // GetIdentityFromContext returns the configured JWT claim value used as the request identity.
 func GetIdentityFromContext(ctx context.Context, identityClaim string) (string, error) {
 	if identityClaim == "" {
-		identityClaim = DefaultJWTIdentityClaim
+		identityClaim = config.DefaultJWTIdentityClaim
 	}
 
 	userToken := GetJWTTokenFromContext(ctx)

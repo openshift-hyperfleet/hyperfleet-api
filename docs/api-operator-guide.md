@@ -639,12 +639,13 @@ server:
     enabled: false
 
 # Production (with JWT authentication)
+# See "Issuer configuration reference" in docs/authentication.md
 server:
   jwt:
     enabled: true
-    issuer_url: https://your-idp.example.com/auth/realms/your-realm
-  jwk:
-    cert_url: https://your-idp.example.com/auth/realms/your-realm/protocol/openid-connect/certs
+    configs:
+      - issuer_url: https://your-idp.example.com/auth/realms/your-realm
+        jwk_cert_url: https://your-idp.example.com/auth/realms/your-realm/protocol/openid-connect/certs
 ```
 
 **Direct binary execution:**
@@ -654,10 +655,8 @@ server:
 ./hyperfleet-api serve --server-jwt-enabled=false
 
 # Production (with JWT authentication)
-./hyperfleet-api serve \
-  --server-jwt-enabled=true \
-  --server-jwt-issuer-url=https://your-idp.example.com/auth/realms/your-realm \
-  --server-jwk-cert-url=https://your-idp.example.com/auth/realms/your-realm/protocol/openid-connect/certs
+# Configure issuers in a config file
+./hyperfleet-api serve --config config.yaml
 ```
 
 See [Authentication Guide](authentication.md) for detailed JWT setup.
