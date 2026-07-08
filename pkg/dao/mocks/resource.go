@@ -127,7 +127,7 @@ func (d *resourceDaoMock) ReplaceReferences(_ context.Context, _ string, _ []api
 	return nil
 }
 
-func (d *resourceDaoMock) FindReferencers(_ context.Context, _ string) ([]api.ResourceSummary, error) {
+func (d *resourceDaoMock) FindReferencer(_ context.Context, _ string) (*api.ResourceSummary, error) {
 	return nil, nil
 }
 

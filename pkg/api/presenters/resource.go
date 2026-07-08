@@ -113,8 +113,8 @@ func PresentResourceList(resources api.ResourceList, paging *api.PagingMeta) ope
 	}
 }
 
-func presentResourceReferences(refs []api.ResourceReference) map[string][]openapi.ObjectReference {
-	result := make(map[string][]openapi.ObjectReference)
+func presentResourceReferences(refs []api.ResourceReference) api.ReferenceMap {
+	result := make(api.ReferenceMap)
 	for _, ref := range refs {
 		id := ref.TargetID
 		objRef := openapi.ObjectReference{

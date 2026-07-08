@@ -61,12 +61,12 @@ func newRefTestResource(kind, name string) *api.Resource {
 }
 
 // makeRefs builds a reference map with a single ref type and target(s).
-func makeRefs(refType string, targets ...struct{ id, kind string }) map[string][]openapi.ObjectReference {
+func makeRefs(refType string, targets ...struct{ id, kind string }) api.ReferenceMap {
 	refs := make([]openapi.ObjectReference, len(targets))
 	for i, t := range targets {
 		refs[i] = openapi.ObjectReference{Id: util.ToPtr(t.id), Kind: t.kind}
 	}
-	return map[string][]openapi.ObjectReference{refType: refs}
+	return api.ReferenceMap{refType: refs}
 }
 
 // --- Create ---
@@ -165,7 +165,7 @@ func TestResourceReferences_PatchReplacesAtomically(t *testing.T) {
 	Expect(svcErr).To(BeNil())
 
 	// Patch to point to target2.
-	patchRefs := map[string][]openapi.ObjectReference{
+	patchRefs := api.ReferenceMap{
 		"dep": {{Id: util.ToPtr(target2.ID), Kind: "RefTarget"}},
 	}
 	_, svcErr = svc.Patch(t.Context(), "RefSource", source.ID, &api.ResourcePatch{
@@ -221,7 +221,7 @@ func TestResourceReferences_PatchEmptyMapViolatesMin(t *testing.T) {
 
 	// Patch with empty references map — Min=1 should reject.
 	_, svcErr = svc.Patch(t.Context(), "RefSource", source.ID, &api.ResourcePatch{
-		References: map[string][]openapi.ObjectReference{},
+		References: api.ReferenceMap{},
 	})
 	Expect(svcErr).NotTo(BeNil(), "clearing required refs should fail")
 	Expect(svcErr.HTTPCode).To(Equal(400))
@@ -416,11 +416,57 @@ func TestResourceReferences_PatchClearOptionalRefs(t *testing.T) {
 
 	// Patch with empty references map — Min=0 should allow clearing.
 	_, svcErr = svc.Patch(t.Context(), "OptSource", source.ID, &api.ResourcePatch{
-		References: map[string][]openapi.ObjectReference{},
+		References: api.ReferenceMap{},
 	})
 	Expect(svcErr).To(BeNil(), "clearing optional refs should succeed")
 
 	retrieved, svcErr := svc.Get(t.Context(), "OptSource", source.ID)
 	Expect(svcErr).To(BeNil())
 	Expect(retrieved.References).To(BeEmpty(), "references should be cleared")
+}
+
+func TestResourceReferences_CreateDuplicateRefTarget(t *testing.T) {
+	RegisterTestingT(t)
+	svc, _ := setupRefTest(t)
+
+	target, svcErr := svc.Create(t.Context(), "RefTarget",
+		newRefTestResource("RefTarget", fmt.Sprintf("target-dup-%s", uuid.NewString()[:8])), nil)
+	Expect(svcErr).To(BeNil())
+
+	// Use OptSource (link ref type, Max=0 i.e. unlimited) so the duplicate
+	// check is reached before any max-count validation.
+	sourceName := fmt.Sprintf("source-dup-%s", uuid.NewString()[:8])
+	refs := api.ReferenceMap{
+		"link": {
+			{Id: util.ToPtr(target.ID), Kind: "RefTarget"},
+			{Id: util.ToPtr(target.ID), Kind: "RefTarget"}, // duplicate
+		},
+	}
+
+	_, svcErr = svc.Create(t.Context(), "OptSource", newRefTestResource("OptSource", sourceName), refs)
+	Expect(svcErr).NotTo(BeNil(), "duplicate ref target should fail")
+	Expect(svcErr.HTTPCode).To(Equal(400))
+	Expect(svcErr.Reason).To(ContainSubstring("duplicate target id"))
+}
+
+func TestResourceReferences_CreateRefToSoftDeletedTarget(t *testing.T) {
+	RegisterTestingT(t)
+	svc, h := setupRefTest(t)
+
+	// Create a target, then soft-delete it via direct DB update
+	// (svc.Delete would hard-delete since RefTarget has no required adapters).
+	target, svcErr := svc.Create(t.Context(), "RefTarget",
+		newRefTestResource("RefTarget", fmt.Sprintf("target-del-%s", uuid.NewString()[:8])), nil)
+	Expect(svcErr).To(BeNil())
+
+	markFinalizing(t, h, target.ID)
+
+	// Attempt to reference the soft-deleted target.
+	sourceName := fmt.Sprintf("source-del-%s", uuid.NewString()[:8])
+	refs := makeRefs("dep", struct{ id, kind string }{target.ID, "RefTarget"})
+
+	_, svcErr = svc.Create(t.Context(), "RefSource", newRefTestResource("RefSource", sourceName), refs)
+	Expect(svcErr).NotTo(BeNil(), "ref to soft-deleted target should fail")
+	Expect(svcErr.HTTPCode).To(Equal(400))
+	Expect(svcErr.Reason).To(ContainSubstring("marked for deletion"))
 }

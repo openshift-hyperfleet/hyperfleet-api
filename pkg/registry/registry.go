@@ -147,6 +147,51 @@ func Validate() {
 			}
 		}
 	}
+
+	// Detect cycles among required references (Min > 0).
+	// A cycle means two or more kinds mutually require each other, making
+	// Create impossible (each resource needs the other to exist first).
+	// Uses DFS with three-color marking: 0 = unvisited, 1 = in-stack, 2 = done.
+	color := make(map[string]int, len(descriptors))
+	var path []string
+	var dfs func(kind string)
+	dfs = func(kind string) {
+		color[kind] = 1
+		path = append(path, kind)
+		d := descriptors[kind]
+		for _, ref := range d.References {
+			if ref.Min <= 0 {
+				continue
+			}
+			switch color[ref.TargetKind] {
+			case 1: // back-edge → cycle
+				// Find the cycle start in path for a clear error message.
+				start := 0
+				for i, k := range path {
+					if k == ref.TargetKind {
+						start = i
+						break
+					}
+				}
+				cycle := make([]string, len(path[start:])+1)
+				copy(cycle, path[start:])
+				cycle[len(cycle)-1] = ref.TargetKind
+				panic(fmt.Sprintf(
+					"circular required references (Min > 0): %v",
+					cycle,
+				))
+			case 0:
+				dfs(ref.TargetKind)
+			}
+		}
+		path = path[:len(path)-1]
+		color[kind] = 2
+	}
+	for kind := range descriptors {
+		if color[kind] == 0 {
+			dfs(kind)
+		}
+	}
 }
 
 // ValidateSpecSchemas checks descriptors that set RequireSpecSchema and panics if

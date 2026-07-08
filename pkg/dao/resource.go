@@ -24,7 +24,7 @@ type ResourceDao interface {
 	FindByKindAndOwnerForUpdate(ctx context.Context, kind, ownerID string) (api.ResourceList, error)
 	GetByID(ctx context.Context, id string) (*api.Resource, error)
 	ReplaceReferences(ctx context.Context, sourceID string, refs []api.ResourceReference) error
-	FindReferencers(ctx context.Context, targetID string) ([]api.ResourceSummary, error)
+	FindReferencer(ctx context.Context, targetID string) (*api.ResourceSummary, error)
 	ClearTargetReferences(ctx context.Context, targetID string) error
 	FindSourceIDsByRef(ctx context.Context, refType, targetID string) ([]string, error)
 }
@@ -52,8 +52,9 @@ func (d *sqlResourceDao) Get(ctx context.Context, kind, id string) (*api.Resourc
 func (d *sqlResourceDao) GetForUpdate(ctx context.Context, kind, id string) (*api.Resource, error) {
 	g2 := d.sessionFactory.New(ctx)
 	var resource api.Resource
-	if err := g2.Preload("Conditions").Clauses(clause.Locking{Strength: "UPDATE"}).Take(
-		&resource, "kind = ? AND id = ?", kind, id).Error; err != nil {
+	if err := g2.Clauses(clause.Locking{Strength: "UPDATE"}).
+		Preload("Conditions").Preload("References").
+		Take(&resource, "kind = ? AND id = ?", kind, id).Error; err != nil {
 		return nil, err
 	}
 	return &resource, nil
@@ -179,6 +180,9 @@ func (d *sqlResourceDao) ReplaceReferences(
 		db.MarkForRollback(ctx, err)
 		return err
 	}
+	for i := range refs {
+		refs[i].SourceID = sourceID
+	}
 	if len(refs) > 0 {
 		if err := g2.Create(&refs).Error; err != nil {
 			db.MarkForRollback(ctx, err)
@@ -188,22 +192,26 @@ func (d *sqlResourceDao) ReplaceReferences(
 	return nil
 }
 
-func (d *sqlResourceDao) FindReferencers(
+// FindReferencer returns the first non-deleted resource that references targetID,
+// or nil if none exists. Used as an existence check for 409 conflict responses.
+func (d *sqlResourceDao) FindReferencer(
 	ctx context.Context, targetID string,
-) ([]api.ResourceSummary, error) {
+) (*api.ResourceSummary, error) {
 	g2 := d.sessionFactory.New(ctx)
-	var summaries []api.ResourceSummary
-	if err := g2.Raw(`
-		SELECT r.kind, r.name
-		FROM resource_references rr
-		JOIN resources r ON rr.source_id = r.id
-		WHERE rr.target_id = ? AND r.deleted_time IS NULL
-		LIMIT 1`,
-		targetID,
-	).Scan(&summaries).Error; err != nil {
+	var summary api.ResourceSummary
+	err := g2.Model(&api.ResourceReference{}).
+		Select("resources.kind, resources.name").
+		Joins("JOIN resources ON resource_references.source_id = resources.id").
+		Where("resource_references.target_id = ? AND resources.deleted_time IS NULL", targetID).
+		Limit(1).
+		Scan(&summary).Error
+	if err != nil {
 		return nil, err
 	}
-	return summaries, nil
+	if summary.Kind == "" {
+		return nil, nil
+	}
+	return &summary, nil
 }
 
 // ClearTargetReferences removes all inbound references pointing at targetID.

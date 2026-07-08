@@ -65,10 +65,7 @@ func (h *ResourceHandler) Create(w http.ResponseWriter, r *http.Request) {
 				return nil, errors.GeneralError("failed to convert resource: %v", err)
 			}
 
-			var refs map[string][]openapi.ObjectReference
-			if req.References != nil {
-				refs = *req.References
-			}
+			refs := extractReferences(req.References)
 			resource, svcErr := h.service.Create(ctx, h.descriptor.Kind, resource, refs)
 			if svcErr != nil {
 				return nil, svcErr
@@ -209,6 +206,15 @@ func convertResourcePatch(req *openapi.ResourcePatchRequest) *api.ResourcePatch 
 		patch.References = *req.References
 	}
 	return patch
+}
+
+// extractReferences unwraps the optional references pointer from an API request.
+// Returns nil when no references are supplied (nil pointer), or the map value.
+func extractReferences(refs *api.ReferenceMap) api.ReferenceMap {
+	if refs == nil {
+		return nil
+	}
+	return *refs
 }
 
 func (h *ResourceHandler) ForceDelete(w http.ResponseWriter, r *http.Request) {

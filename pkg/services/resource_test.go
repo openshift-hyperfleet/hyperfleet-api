@@ -11,7 +11,6 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/auth"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/dao"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
@@ -50,7 +49,7 @@ type mockResourceDao struct {
 	deleteErr                   error
 	existsSoftDeletedByOwnerErr error
 	replaceRefsErr              error
-	findReferencersResult       []api.ResourceSummary
+	findReferencerResult        *api.ResourceSummary
 	lastReplacedRefs            []api.ResourceReference
 	replaceRefsCalled           bool
 }
@@ -193,8 +192,8 @@ func (d *mockResourceDao) ReplaceReferences(_ context.Context, _ string, refs []
 	return nil
 }
 
-func (d *mockResourceDao) FindReferencers(_ context.Context, _ string) ([]api.ResourceSummary, error) {
-	return d.findReferencersResult, nil
+func (d *mockResourceDao) FindReferencer(_ context.Context, _ string) (*api.ResourceSummary, error) {
+	return d.findReferencerResult, nil
 }
 
 func (d *mockResourceDao) ClearTargetReferences(_ context.Context, _ string) error {
@@ -1899,6 +1898,8 @@ func TestProcessAdapterStatus_SoftDeleted_ChildrenExist_NoHardDelete(t *testing.
 	// Parent should NOT be hard-deleted because child exists
 	_, exists := mockDao.resources[resourceKey("Parent", "p-1")]
 	Expect(exists).To(BeTrue(), "Parent should still exist — active child blocks hard-delete")
+}
+
 // --- Resource References ---
 
 func setupRefDescriptors() {
@@ -1959,7 +1960,7 @@ func TestResourceService_Create_RefExceedsMax_Returns400(t *testing.T) {
 	mockDao.addResource(testResource("Target", "t-2", "target-2"))
 
 	resource := testResource("Parent", "p-1", "parent-1")
-	refs := map[string][]openapi.ObjectReference{
+	refs := api.ReferenceMap{
 		"dep": {
 			{Id: strPtr("t-1"), Kind: "Target"},
 			{Id: strPtr("t-2"), Kind: "Target"},
@@ -1984,7 +1985,7 @@ func TestResourceService_Create_WithValidRefs_Persists(t *testing.T) {
 	mockDao.addResource(target)
 
 	resource := testResource("Parent", "p-1", "parent-1")
-	refs := map[string][]openapi.ObjectReference{
+	refs := api.ReferenceMap{
 		"dep": {
 			{Id: strPtr("t-1"), Kind: "Target"},
 		},
@@ -2007,7 +2008,7 @@ func TestResourceService_Create_RefTargetNotFound_Returns400(t *testing.T) {
 	svc, _, _ := newTestResourceService(mockDao)
 
 	resource := testResource("Parent", "p-1", "parent-1")
-	refs := map[string][]openapi.ObjectReference{
+	refs := api.ReferenceMap{
 		"dep": {
 			{Id: strPtr("nonexistent"), Kind: "Target"},
 		},
@@ -2034,7 +2035,7 @@ func TestResourceService_Patch_ReferencesReplaced(t *testing.T) {
 	mockDao.addResource(target)
 
 	patch := &api.ResourcePatch{
-		References: map[string][]openapi.ObjectReference{
+		References: api.ReferenceMap{
 			"dep": {
 				{Id: strPtr("t-1"), Kind: "Target"},
 			},
@@ -2078,7 +2079,7 @@ func TestResourceService_Patch_EmptyMapClearsAndValidatesMin(t *testing.T) {
 	mockDao.addResource(existing)
 
 	patch := &api.ResourcePatch{
-		References: map[string][]openapi.ObjectReference{},
+		References: api.ReferenceMap{},
 	}
 
 	result, svcErr := svc.Patch(context.Background(), "Parent", "p-1", patch)
@@ -2097,9 +2098,7 @@ func TestResourceService_Delete_ReferencedResource_Returns409(t *testing.T) {
 
 	target := testResource("Target", "t-1", "target-1")
 	mockDao.addResource(target)
-	mockDao.findReferencersResult = []api.ResourceSummary{
-		{Kind: "Parent", Name: "parent-1"},
-	}
+	mockDao.findReferencerResult = &api.ResourceSummary{Kind: "Parent", Name: "parent-1"}
 
 	result, svcErr := svc.Delete(context.Background(), "Target", "t-1")
 	Expect(result).To(BeNil())
@@ -2118,10 +2117,61 @@ func TestResourceService_Delete_UnreferencedResource_Succeeds(t *testing.T) {
 
 	target := testResource("Target", "t-1", "target-1")
 	mockDao.addResource(target)
-	mockDao.findReferencersResult = nil
+	mockDao.findReferencerResult = nil
 
 	result, svcErr := svc.Delete(context.Background(), "Target", "t-1")
 	Expect(svcErr).To(BeNil())
 	Expect(result).ToNot(BeNil())
 	Expect(result.DeletedTime).ToNot(BeNil())
+}
+
+func TestResourceService_Create_DuplicateRefTargetID_Returns400(t *testing.T) {
+	RegisterTestingT(t)
+	setupOptionalRefDescriptors() // Max: 3 on "dep"
+
+	mockDao := newMockResourceDao()
+	svc, _, _ := newTestResourceService(mockDao)
+
+	target := testResource("Target", "t-1", "target-1")
+	mockDao.addResource(target)
+
+	resource := testResource("Parent", "p-1", "parent-1")
+	refs := api.ReferenceMap{
+		"dep": {
+			{Id: strPtr("t-1"), Kind: "Target"},
+			{Id: strPtr("t-1"), Kind: "Target"}, // duplicate
+		},
+	}
+
+	result, svcErr := svc.Create(context.Background(), "Parent", resource, refs)
+	Expect(result).To(BeNil())
+	Expect(svcErr).ToNot(BeNil())
+	Expect(svcErr.HTTPCode).To(Equal(400))
+	Expect(svcErr.Reason).To(ContainSubstring("duplicate target id"))
+}
+
+func TestResourceService_Create_SoftDeletedTarget_Returns400(t *testing.T) {
+	RegisterTestingT(t)
+	setupOptionalRefDescriptors()
+
+	mockDao := newMockResourceDao()
+	svc, _, _ := newTestResourceService(mockDao)
+
+	deletedAt := time.Now()
+	target := testResource("Target", "t-1", "target-1")
+	target.DeletedTime = &deletedAt
+	mockDao.addResource(target)
+
+	resource := testResource("Parent", "p-1", "parent-1")
+	refs := api.ReferenceMap{
+		"dep": {
+			{Id: strPtr("t-1"), Kind: "Target"},
+		},
+	}
+
+	result, svcErr := svc.Create(context.Background(), "Parent", resource, refs)
+	Expect(result).To(BeNil())
+	Expect(svcErr).ToNot(BeNil())
+	Expect(svcErr.HTTPCode).To(Equal(400))
+	Expect(svcErr.Reason).To(ContainSubstring("marked for deletion"))
 }

@@ -22,12 +22,15 @@ func addResourceReferences() *gormigrate.Migration {
 			}
 
 			if err := tx.Exec(
-				`CREATE INDEX idx_resource_references_target ON resource_references (target_id);`,
+				`CREATE INDEX IF NOT EXISTS idx_resource_references_target ON resource_references (target_id);`,
 			).Error; err != nil {
 				return err
 			}
 
 			return nil
+		},
+		Rollback: func(tx *gorm.DB) error {
+			return tx.Exec(`DROP TABLE IF EXISTS resource_references`).Error
 		},
 	}
 }
