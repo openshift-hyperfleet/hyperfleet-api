@@ -10,6 +10,7 @@ import (
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/registry"
 )
 
 func TestConvertResource(t *testing.T) {
@@ -215,6 +216,50 @@ func TestPresentResource_WithEmptyConditions(t *testing.T) {
 	Expect(resp.Status.Conditions).NotTo(BeNil())
 	Expect(resp.Status.Conditions).To(BeEmpty())
 	Expect(string(body)).To(ContainSubstring(`"status":{"conditions":[]}`))
+}
+
+func TestPresentResource_WithReferences(t *testing.T) {
+	RegisterTestingT(t)
+
+	registry.Reset()
+	registry.Register(registry.EntityDescriptor{
+		Kind:   "WifConfig",
+		Plural: "wifconfigs",
+	})
+
+	now := time.Now()
+	resource := &api.Resource{
+		Meta:      api.Meta{ID: "res-1", CreatedTime: now, UpdatedTime: now},
+		Kind:      "Cluster",
+		Name:      "my-cluster",
+		Spec:      datatypes.JSON(`{}`),
+		CreatedBy: "user@test.com",
+		UpdatedBy: "user@test.com",
+		References: []api.ResourceReference{
+			{
+				SourceID:   "res-1",
+				RefType:    "wif_config",
+				TargetID:   "wif-1",
+				TargetKind: "WifConfig",
+			},
+			{
+				SourceID:   "res-1",
+				RefType:    "wif_config",
+				TargetID:   "wif-2",
+				TargetKind: "WifConfig",
+			},
+		},
+	}
+
+	resp := PresentResource(resource)
+	Expect(resp.References).ToNot(BeNil())
+	refs := *resp.References
+	Expect(refs).To(HaveKey("wif_config"))
+	Expect(refs["wif_config"]).To(HaveLen(2))
+	Expect(*refs["wif_config"][0].Id).To(Equal("wif-1"))
+	Expect(refs["wif_config"][0].Kind).To(Equal("WifConfig"))
+	Expect(*refs["wif_config"][0].Href).To(Equal("/api/hyperfleet/v1/wifconfigs/wif-1"))
+	Expect(*refs["wif_config"][1].Id).To(Equal("wif-2"))
 }
 
 func TestPresentResourceList(t *testing.T) {

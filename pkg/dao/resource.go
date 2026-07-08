@@ -23,6 +23,10 @@ type ResourceDao interface {
 	FindByKindAndOwner(ctx context.Context, kind, ownerID string) (api.ResourceList, error)
 	FindByKindAndOwnerForUpdate(ctx context.Context, kind, ownerID string) (api.ResourceList, error)
 	GetByID(ctx context.Context, id string) (*api.Resource, error)
+	ReplaceReferences(ctx context.Context, sourceID string, refs []api.ResourceReference) error
+	FindReferencers(ctx context.Context, targetID string) ([]api.ResourceSummary, error)
+	ClearTargetReferences(ctx context.Context, targetID string) error
+	FindSourceIDsByRef(ctx context.Context, refType, targetID string) ([]string, error)
 }
 
 var _ ResourceDao = &sqlResourceDao{}
@@ -38,7 +42,8 @@ func NewResourceDao(sessionFactory db.SessionFactory) ResourceDao {
 func (d *sqlResourceDao) Get(ctx context.Context, kind, id string) (*api.Resource, error) {
 	g2 := d.sessionFactory.New(ctx)
 	var resource api.Resource
-	if err := g2.Preload("Conditions").Take(&resource, "kind = ? AND id = ?", kind, id).Error; err != nil {
+	if err := g2.Preload("Conditions").Preload("References").
+		Take(&resource, "kind = ? AND id = ?", kind, id).Error; err != nil {
 		return nil, err
 	}
 	return &resource, nil
@@ -57,7 +62,7 @@ func (d *sqlResourceDao) GetForUpdate(ctx context.Context, kind, id string) (*ap
 func (d *sqlResourceDao) GetByOwner(ctx context.Context, kind, id, ownerID string) (*api.Resource, error) {
 	g2 := d.sessionFactory.New(ctx)
 	var resource api.Resource
-	if err := g2.Preload("Conditions").
+	if err := g2.Preload("Conditions").Preload("References").
 		Take(&resource, "kind = ? AND id = ? AND owner_id = ?", kind, id, ownerID).Error; err != nil {
 		return nil, err
 	}
@@ -148,7 +153,7 @@ func (d *sqlResourceDao) FindByKindAndOwner(ctx context.Context, kind, ownerID s
 func (d *sqlResourceDao) GetByID(ctx context.Context, id string) (*api.Resource, error) {
 	g2 := d.sessionFactory.New(ctx)
 	var resource api.Resource
-	if err := g2.Preload("Conditions").Take(&resource, "id = ?", id).Error; err != nil {
+	if err := g2.Preload("Conditions").Preload("References").Take(&resource, "id = ?", id).Error; err != nil {
 		return nil, err
 	}
 	return &resource, nil
@@ -164,4 +169,64 @@ func (d *sqlResourceDao) FindByKindAndOwnerForUpdate(
 		return nil, err
 	}
 	return resources, nil
+}
+
+func (d *sqlResourceDao) ReplaceReferences(
+	ctx context.Context, sourceID string, refs []api.ResourceReference,
+) error {
+	g2 := d.sessionFactory.New(ctx)
+	if err := g2.Where("source_id = ?", sourceID).Delete(&api.ResourceReference{}).Error; err != nil {
+		db.MarkForRollback(ctx, err)
+		return err
+	}
+	if len(refs) > 0 {
+		if err := g2.Create(&refs).Error; err != nil {
+			db.MarkForRollback(ctx, err)
+			return err
+		}
+	}
+	return nil
+}
+
+func (d *sqlResourceDao) FindReferencers(
+	ctx context.Context, targetID string,
+) ([]api.ResourceSummary, error) {
+	g2 := d.sessionFactory.New(ctx)
+	var summaries []api.ResourceSummary
+	if err := g2.Raw(`
+		SELECT r.kind, r.name
+		FROM resource_references rr
+		JOIN resources r ON rr.source_id = r.id
+		WHERE rr.target_id = ? AND r.deleted_time IS NULL
+		LIMIT 1`,
+		targetID,
+	).Scan(&summaries).Error; err != nil {
+		return nil, err
+	}
+	return summaries, nil
+}
+
+// ClearTargetReferences removes all inbound references pointing at targetID.
+// Called by forceDeleteResourceTree before hard-deleting a referenced target,
+// because the target_id FK uses ON DELETE RESTRICT.
+func (d *sqlResourceDao) ClearTargetReferences(ctx context.Context, targetID string) error {
+	g2 := d.sessionFactory.New(ctx)
+	if err := g2.Where("target_id = ?", targetID).Delete(&api.ResourceReference{}).Error; err != nil {
+		db.MarkForRollback(ctx, err)
+		return err
+	}
+	return nil
+}
+
+func (d *sqlResourceDao) FindSourceIDsByRef(
+	ctx context.Context, refType, targetID string,
+) ([]string, error) {
+	g2 := d.sessionFactory.New(ctx)
+	var ids []string
+	if err := g2.Model(&api.ResourceReference{}).
+		Where("ref_type = ? AND target_id = ?", refType, targetID).
+		Pluck("source_id", &ids).Error; err != nil {
+		return nil, err
+	}
+	return ids, nil
 }

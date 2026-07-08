@@ -8,6 +8,7 @@ import (
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/registry"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/util"
 )
 
@@ -90,6 +91,11 @@ func PresentResource(r *api.Resource) openapi.Resource {
 		}
 	}
 
+	if len(r.References) > 0 {
+		refs := presentResourceReferences(r.References)
+		resp.References = &refs
+	}
+
 	return resp
 }
 
@@ -105,6 +111,23 @@ func PresentResourceList(resources api.ResourceList, paging *api.PagingMeta) ope
 		Size:  int32(paging.Size), //nolint:gosec
 		Total: paging.Total,
 	}
+}
+
+func presentResourceReferences(refs []api.ResourceReference) map[string][]openapi.ObjectReference {
+	result := make(map[string][]openapi.ObjectReference)
+	for _, ref := range refs {
+		id := ref.TargetID
+		objRef := openapi.ObjectReference{
+			Id:   &id,
+			Kind: ref.TargetKind,
+		}
+		if targetDesc, ok := registry.Get(ref.TargetKind); ok {
+			href := fmt.Sprintf("/api/hyperfleet/v1/%s/%s", targetDesc.Plural, ref.TargetID)
+			objRef.Href = &href
+		}
+		result[ref.RefType] = append(result[ref.RefType], objRef)
+	}
+	return result
 }
 
 func presentResourceConditions(conditions []api.ResourceCondition) []openapi.ResourceCondition {

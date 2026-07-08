@@ -122,3 +122,19 @@ func (d *resourceDaoMock) GetByID(_ context.Context, id string) (*api.Resource, 
 	}
 	return nil, gorm.ErrRecordNotFound
 }
+
+func (d *resourceDaoMock) ReplaceReferences(_ context.Context, _ string, _ []api.ResourceReference) error {
+	return nil
+}
+
+func (d *resourceDaoMock) FindReferencers(_ context.Context, _ string) ([]api.ResourceSummary, error) {
+	return nil, nil
+}
+
+func (d *resourceDaoMock) ClearTargetReferences(_ context.Context, _ string) error {
+	return nil
+}
+
+func (d *resourceDaoMock) FindSourceIDsByRef(_ context.Context, _, _ string) ([]string, error) {
+	return nil, nil
+}

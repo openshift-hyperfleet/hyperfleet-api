@@ -20,7 +20,7 @@ func createTestChannel(t *testing.T, svc services.ResourceService) *api.Resource
 	channelName := fmt.Sprintf("channel-%s", uniqueSuffix)
 
 	channel := newChannelResource(channelName)
-	created, err := svc.Create(t.Context(), "Channel", channel)
+	created, err := svc.Create(t.Context(), "Channel", channel, nil)
 	if err != nil {
 		t.Fatalf("Failed to create channel: %v", err)
 	}
@@ -30,7 +30,7 @@ func createTestChannel(t *testing.T, svc services.ResourceService) *api.Resource
 func createTestVersion(t *testing.T, svc services.ResourceService, name, channelID string) *api.Resource {
 	t.Helper()
 	version := newVersionResource(name, channelID)
-	created, err := svc.Create(t.Context(), "Version", version)
+	created, err := svc.Create(t.Context(), "Version", version, nil)
 	if err != nil {
 		t.Fatalf("Failed to create version: %v", err)
 	}
@@ -41,7 +41,7 @@ func expectCreateError(t *testing.T, svc services.ResourceService,
 	resource *api.Resource, expectedCode int, msg string,
 ) {
 	t.Helper()
-	_, svcErr := svc.Create(t.Context(), resource.Kind, resource)
+	_, svcErr := svc.Create(t.Context(), resource.Kind, resource, nil)
 	Expect(svcErr).ToNot(BeNil(), msg)
 	Expect(svcErr.HTTPCode).To(Equal(expectedCode))
 }
@@ -121,7 +121,7 @@ func TestVersionCreate(t *testing.T) {
 		var err error
 		version.Labels, err = json.Marshal(labels)
 		Expect(err).To(BeNil(), "should marshal labels")
-		createdVersion, svcErr := svc.Create(t.Context(), "Version", version)
+		createdVersion, svcErr := svc.Create(t.Context(), "Version", version, nil)
 		Expect(svcErr).To(BeNil())
 		Expect(createdVersion.Labels).NotTo(BeNil())
 
@@ -308,7 +308,7 @@ func TestVersionList(t *testing.T) {
 		var err error
 		version1.Labels, err = json.Marshal(labels)
 		Expect(err).To(BeNil(), "should marshal labels")
-		created1, svcErr := svc.Create(t.Context(), "Version", version1)
+		created1, svcErr := svc.Create(t.Context(), "Version", version1, nil)
 		Expect(svcErr).To(BeNil())
 		Expect(created1.Labels).NotTo(BeNil())
 
@@ -316,7 +316,7 @@ func TestVersionList(t *testing.T) {
 		version2 := newVersionResource("version-with-label-2", channel.ID)
 		version2.Labels, err = json.Marshal(labels)
 		Expect(err).To(BeNil(), "should marshal labels")
-		created2, svcErr := svc.Create(t.Context(), "Version", version2)
+		created2, svcErr := svc.Create(t.Context(), "Version", version2, nil)
 		Expect(svcErr).To(BeNil())
 		Expect(created2.Labels).NotTo(BeNil())
 

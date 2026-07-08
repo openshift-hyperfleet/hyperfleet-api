@@ -94,6 +94,7 @@ func ChildrenOf(parentKind string) []EntityDescriptor {
 //   - ReferenceDescriptor with TargetKind that doesn't resolve
 //   - duplicate RefType within a single entity's References
 //   - Max < Min (when Max > 0)
+//   - circular required references (Min > 0 cycle between two or more kinds)
 func Validate() {
 	plurals := make(map[string]string, len(descriptors))
 

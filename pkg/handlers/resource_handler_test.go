@@ -65,7 +65,9 @@ func TestResourceHandler_Create(t *testing.T) {
 			name: "Success - creates channel",
 			body: `{"kind":"Channel","name":"stable","spec":{"is_default":true}}`,
 			setupMock: func(mock *services.MockResourceService) {
-				mock.EXPECT().Create(gomock.Any(), "Channel", gomock.AssignableToTypeOf(&api.Resource{})).Return(&api.Resource{
+				mock.EXPECT().Create(
+					gomock.Any(), "Channel", gomock.AssignableToTypeOf(&api.Resource{}), gomock.Any(),
+				).Return(&api.Resource{
 					Meta:       api.Meta{ID: "ch-123", CreatedTime: now, UpdatedTime: now},
 					Kind:       "Channel",
 					Name:       "stable",
@@ -96,7 +98,7 @@ func TestResourceHandler_Create(t *testing.T) {
 			name: "Error 409 - duplicate name",
 			body: `{"kind":"Channel","name":"stable","spec":{"is_default":true}}`,
 			setupMock: func(mock *services.MockResourceService) {
-				mock.EXPECT().Create(gomock.Any(), "Channel", gomock.AssignableToTypeOf(&api.Resource{})).
+				mock.EXPECT().Create(gomock.Any(), "Channel", gomock.AssignableToTypeOf(&api.Resource{}), gomock.Any()).
 					Return(nil, errors.Conflict("Channel with name 'stable' already exists"))
 			},
 			expectedStatusCode: http.StatusConflict,
@@ -378,7 +380,7 @@ func TestResourceHandler_CreateWithOwner(t *testing.T) {
 					Href: "/api/hyperfleet/v1/channels/ch-1",
 					Spec: datatypes.JSON(`{}`), CreatedBy: "u@t.com", UpdatedBy: "u@t.com",
 				}, nil)
-				mock.EXPECT().Create(gomock.Any(), "Version", gomock.AssignableToTypeOf(&api.Resource{})).
+				mock.EXPECT().Create(gomock.Any(), "Version", gomock.AssignableToTypeOf(&api.Resource{}), gomock.Any()).
 					Return(&api.Resource{
 						Meta: api.Meta{ID: "v-1", CreatedTime: now, UpdatedTime: now},
 						Kind: "Version", Name: "4-17-3",

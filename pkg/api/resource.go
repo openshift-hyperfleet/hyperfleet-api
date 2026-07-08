@@ -30,6 +30,7 @@ type Resource struct {
 	Labels     datatypes.JSON      `json:"labels,omitempty" gorm:"type:jsonb"`
 	Spec       datatypes.JSON      `json:"spec" gorm:"type:jsonb;not null"`
 	Conditions []ResourceCondition `json:"-" gorm:"foreignKey:ResourceID;references:ID"`
+	References []ResourceReference `json:"-" gorm:"foreignKey:SourceID;references:ID"`
 	Generation int32               `json:"generation" gorm:"default:1;not null"`
 }
 

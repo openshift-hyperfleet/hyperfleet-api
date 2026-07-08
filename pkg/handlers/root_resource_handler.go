@@ -104,7 +104,11 @@ func (h *RootResourceHandler) Create(w http.ResponseWriter, r *http.Request) {
 			if convErr != nil {
 				return nil, errors.GeneralError("failed to convert resource: %v", convErr)
 			}
-			resource, svcErr := h.service.Create(r.Context(), descriptor.Kind, resource)
+			var refs map[string][]openapi.ObjectReference
+			if req.References != nil {
+				refs = *req.References
+			}
+			resource, svcErr := h.service.Create(r.Context(), descriptor.Kind, resource, refs)
 			if svcErr != nil {
 				return nil, svcErr
 			}

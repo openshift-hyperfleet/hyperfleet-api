@@ -17,7 +17,7 @@ func TestResourceConditions_UpdateAndPreload(t *testing.T) {
 	svc, h := setupResourceTest(t)
 	ctx := context.Background()
 
-	channel, svcErr := svc.Create(ctx, "Channel", newChannelResource("cond-test-update"))
+	channel, svcErr := svc.Create(ctx, "Channel", newChannelResource("cond-test-update"), nil)
 	Expect(svcErr).To(BeNil())
 
 	condDao := dao.NewResourceConditionDao(h.DBFactory)
@@ -65,7 +65,7 @@ func TestResourceConditions_LastTransitionTimePreserved(t *testing.T) {
 	svc, h := setupResourceTest(t)
 	ctx := context.Background()
 
-	channel, svcErr := svc.Create(ctx, "Channel", newChannelResource("cond-test-transition"))
+	channel, svcErr := svc.Create(ctx, "Channel", newChannelResource("cond-test-transition"), nil)
 	Expect(svcErr).To(BeNil())
 
 	condDao := dao.NewResourceConditionDao(h.DBFactory)
@@ -140,7 +140,7 @@ func TestResourceConditions_AtomicReplace(t *testing.T) {
 	svc, h := setupResourceTest(t)
 	ctx := context.Background()
 
-	channel, svcErr := svc.Create(ctx, "Channel", newChannelResource("cond-test-replace"))
+	channel, svcErr := svc.Create(ctx, "Channel", newChannelResource("cond-test-replace"), nil)
 	Expect(svcErr).To(BeNil())
 
 	condDao := dao.NewResourceConditionDao(h.DBFactory)
@@ -176,7 +176,7 @@ func TestResourceConditions_SaveDoesNotTouchConditions(t *testing.T) {
 	svc, h := setupResourceTest(t)
 	ctx := context.Background()
 
-	channel, svcErr := svc.Create(ctx, "Channel", newChannelResource("cond-test-save"))
+	channel, svcErr := svc.Create(ctx, "Channel", newChannelResource("cond-test-save"), nil)
 	Expect(svcErr).To(BeNil())
 
 	condDao := dao.NewResourceConditionDao(h.DBFactory)
@@ -209,10 +209,10 @@ func TestResourceConditions_GetByOwnerPreload(t *testing.T) {
 	svc, h := setupResourceTest(t)
 	ctx := context.Background()
 
-	channel, svcErr := svc.Create(ctx, "Channel", newChannelResource("cond-test-owner-preload"))
+	channel, svcErr := svc.Create(ctx, "Channel", newChannelResource("cond-test-owner-preload"), nil)
 	Expect(svcErr).To(BeNil())
 
-	version, svcErr := svc.Create(ctx, "Version", newVersionResource("v1", channel.ID))
+	version, svcErr := svc.Create(ctx, "Version", newVersionResource("v1", channel.ID), nil)
 	Expect(svcErr).To(BeNil())
 
 	condDao := dao.NewResourceConditionDao(h.DBFactory)
@@ -238,7 +238,7 @@ func TestResourceConditions_ClearWithEmptySlice(t *testing.T) {
 	svc, h := setupResourceTest(t)
 	ctx := context.Background()
 
-	channel, svcErr := svc.Create(ctx, "Channel", newChannelResource("cond-test-clear"))
+	channel, svcErr := svc.Create(ctx, "Channel", newChannelResource("cond-test-clear"), nil)
 	Expect(svcErr).To(BeNil())
 
 	condDao := dao.NewResourceConditionDao(h.DBFactory)
@@ -266,7 +266,7 @@ func TestResourceConditions_CreatedTimePreserved(t *testing.T) {
 	svc, h := setupResourceTest(t)
 	ctx := context.Background()
 
-	channel, svcErr := svc.Create(ctx, "Channel", newChannelResource("cond-test-created"))
+	channel, svcErr := svc.Create(ctx, "Channel", newChannelResource("cond-test-created"), nil)
 	Expect(svcErr).To(BeNil())
 
 	condDao := dao.NewResourceConditionDao(h.DBFactory)

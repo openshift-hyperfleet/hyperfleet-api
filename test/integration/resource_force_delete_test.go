@@ -18,7 +18,7 @@ func createVersionForChannel(
 ) {
 	t.Helper()
 	version := newVersionResource(name, channelID)
-	_, err := svc.Create(t.Context(), "Version", version)
+	_, err := svc.Create(t.Context(), "Version", version, nil)
 	if err != nil {
 		t.Fatalf("Failed to create version: %v", err)
 	}
@@ -221,7 +221,7 @@ func TestResourceForceDeleteHTTP(t *testing.T) {
 		token := test.GetAccessTokenFromContext(ctx)
 
 		wifConfig := newWifConfigResource(fmt.Sprintf("fd-wif-%s", prefix))
-		created, createErr := svc.Create(t.Context(), "WifConfig", wifConfig)
+		created, createErr := svc.Create(t.Context(), "WifConfig", wifConfig, nil)
 		Expect(createErr).To(BeNil())
 
 		markFinalizing(t, h, created.ID)
