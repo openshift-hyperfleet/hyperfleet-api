@@ -7,7 +7,7 @@ hyperfleet-api requires the following tools to be pre-installed:
 `Go` is an open-source programming language that makes it easy to build simple, reliable, and efficient software.
 
 - **Purpose**: Required for building and running the `hyperfleet` binary
-- **Version**: Go 1.24 or higher (FIPS-compliant crypto support)
+- **Version**: Go 1.26 or higher (FIPS-compliant crypto support)
 - **Installation**: Install Go from the [official Go website](https://golang.org/dl/)
 - **Verification**: Run `go version` to verify installation
 
@@ -38,16 +38,27 @@ PostgreSQL client tools provide the `psql` command-line interface for database i
 - **Installation**: Follow the instructions on the [jq official website](https://jqlang.github.io/jq/)
 - **Verification**: Run `jq --version`
 
+## pre-commit
+
+`pre-commit` is a framework for managing and maintaining multi-language pre-commit hooks.
+
+- **Purpose**: Runs commit message validation and code quality checks locally before each commit
+- **Installation**:
+  - macOS: `brew install pre-commit`
+  - pip: `pip install pre-commit`
+- **Verification**: Run `pre-commit --version`
+
 ## Quick Verification
 
 Run these commands to verify all prerequisites are installed:
 
 ```bash
 # Required tools
-go version              # Should show 1.24 or higher
+go version              # Should show 1.26 or higher
 podman --version
 psql --version          # PostgreSQL client
 jq --version            # JSON processor
+pre-commit --version    # Pre-commit hooks
 ```
 
 ## Getting Started

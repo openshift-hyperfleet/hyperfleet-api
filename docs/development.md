@@ -6,16 +6,18 @@ This guide covers the complete development workflow for HyperFleet API, from ini
 
 Before running hyperfleet-api, ensure these prerequisites are installed. See [PREREQUISITES.md](../PREREQUISITES.md) for detailed installation instructions.
 
-- **Go 1.25 or higher**
+- **Go 1.26 or higher**
 - **Podman**
 - **PostgreSQL 14+**
 - **Make**
+- **pre-commit**
 
 Verify installations:
 ```bash
-go version      # Should show 1.25+
+go version          # Should show 1.26+
 podman version
 make --version
+pre-commit --version
 ```
 
 ## Initial Setup
@@ -38,7 +40,10 @@ make db/setup
 # 5. Run database migrations
 make db/migrate
 
-# 6. Verify database schema
+# 6. Install git hooks
+make install-hooks
+
+# 7. Verify database schema
 make db/login
 \dt
 ```
