@@ -47,6 +47,7 @@ This project follows the [Contributor Covenant Code of Conduct](https://www.cont
 - Docker (for building Docker images)
 - `golangci-lint` (for linting)
 - `make` (for running Makefile targets)
+- `pre-commit` (for local git hooks)
 
 ### Installing Dependencies
 
@@ -61,6 +62,14 @@ This project follows the [Contributor Covenant Code of Conduct](https://www.cont
    ```bash
    go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
    ```
+
+3. **Install git hooks**:
+
+   ```bash
+   make install-hooks
+   ```
+
+   This installs pre-commit hooks configured in `.pre-commit-config.yaml` for commit message and code quality validation on every commit.
 
 ### Building the Project
 
