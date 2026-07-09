@@ -9,21 +9,28 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/presenters"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/registry"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/services"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/validators"
 )
 
 type RootResourceHandler struct {
-	service   services.ResourceService
-	validator *validators.SchemaValidator
+	service              services.ResourceService
+	adapterStatusService services.AdapterStatusService
+	validator            *validators.SchemaValidator
 }
 
 func NewRootResourceHandler(
 	service services.ResourceService,
+	adapterStatusService services.AdapterStatusService,
 	validator *validators.SchemaValidator,
 ) *RootResourceHandler {
-	return &RootResourceHandler{service: service, validator: validator}
+	return &RootResourceHandler{
+		service:              service,
+		adapterStatusService: adapterStatusService,
+		validator:            validator,
+	}
 }
 
 func (h *RootResourceHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -186,4 +193,95 @@ func (h *RootResourceHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 	handleSoftDelete(w, r, cfg)
+}
+
+// ListStatuses returns adapter statuses for a resource resolved by ID.
+func (h *RootResourceHandler) ListStatuses(w http.ResponseWriter, r *http.Request) {
+	cfg := &handlerConfig{
+		Action: func() (interface{}, *errors.ServiceError) {
+			ctx := r.Context()
+			id := mux.Vars(r)["id"]
+			listArgs, err := services.NewListArguments(r.URL.Query())
+			if err != nil {
+				return nil, err
+			}
+
+			resource, err := h.service.GetByID(ctx, id)
+			if err != nil {
+				return nil, err
+			}
+
+			statuses, total, svcErr := h.adapterStatusService.FindByResourcePaginated(
+				ctx, resource.Kind, id, listArgs,
+			)
+			if svcErr != nil {
+				return nil, svcErr
+			}
+
+			items := make([]openapi.AdapterStatus, 0, len(statuses))
+			for _, as := range statuses {
+				presented, presErr := presenters.PresentAdapterStatus(as)
+				if presErr != nil {
+					logger.WithError(ctx, presErr).Error("Failed to present adapter status")
+					return nil, errors.GeneralError("Failed to present adapter status")
+				}
+				items = append(items, presented)
+			}
+
+			return openapi.AdapterStatusList{
+				Items: items,
+				Page:  int32(listArgs.Page),
+				Size:  int32(len(items)),
+				Total: int32(total),
+			}, nil
+		},
+	}
+	handleList(w, r, cfg)
+}
+
+// CreateStatus creates or updates an adapter status for a resource resolved by ID.
+func (h *RootResourceHandler) CreateStatus(w http.ResponseWriter, r *http.Request) {
+	var req openapi.AdapterStatusCreateRequest
+
+	cfg := &handlerConfig{
+		MarshalInto: &req,
+		Validate: []validate{
+			validateNotEmpty(&req, "Adapter", "adapter"),
+			validateObservedGeneration(&req),
+			validateConditions(&req, "Conditions"),
+			validateObservedTimeRange(&req.ObservedTime),
+		},
+		Action: func() (interface{}, *errors.ServiceError) {
+			ctx := r.Context()
+			id := mux.Vars(r)["id"]
+
+			resource, err := h.service.GetByID(ctx, id)
+			if err != nil {
+				return nil, err
+			}
+
+			newStatus, convErr := presenters.ConvertAdapterStatus(resource.Kind, id, &req)
+			if convErr != nil {
+				logger.WithError(ctx, convErr).Error("Failed to convert adapter status")
+				return nil, errors.GeneralError("Failed to convert adapter status")
+			}
+
+			adapterStatus, svcErr := h.service.ProcessAdapterStatus(ctx, resource.Kind, id, newStatus)
+			if svcErr != nil {
+				return nil, svcErr
+			}
+
+			if adapterStatus == nil {
+				return nil, nil
+			}
+
+			status, presErr := presenters.PresentAdapterStatus(adapterStatus)
+			if presErr != nil {
+				logger.WithError(ctx, presErr).Error("Failed to present adapter status")
+				return nil, errors.GeneralError("Failed to present adapter status")
+			}
+			return &status, nil
+		},
+	}
+	handleCreateWithNoContent(w, r, cfg)
 }

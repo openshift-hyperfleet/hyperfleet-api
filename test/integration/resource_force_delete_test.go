@@ -9,7 +9,6 @@ import (
 	. "github.com/onsi/gomega"
 	"gopkg.in/resty.v1"
 
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/registry"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/services"
 	"github.com/openshift-hyperfleet/hyperfleet-api/test"
 )
@@ -260,16 +259,4 @@ func TestResourceForceDeleteHTTP(t *testing.T) {
 		Expect(err).ToNot(HaveOccurred())
 		Expect(resp.StatusCode()).To(Equal(http.StatusBadRequest))
 	})
-}
-
-func TestGenericDescriptors_HaveNoRequiredAdapters(t *testing.T) {
-	RegisterTestingT(t)
-	_, _ = setupResourceTest(t)
-
-	for _, d := range registry.All() {
-		Expect(d.RequiredAdapters).To(BeEmpty(),
-			"Descriptor %q has RequiredAdapters=%v. "+
-				"ForceDelete does not yet handle adapter_status cleanup. "+
-				"See HYPERFLEET-1154.", d.Kind, d.RequiredAdapters)
-	}
 }

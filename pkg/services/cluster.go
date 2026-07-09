@@ -337,9 +337,8 @@ func (s *sqlClusterService) ProcessAdapterStatus(
 	return upsertedStatus, nil
 }
 
-// validateAndClassify performs all stateless validation and discard-rule checks on an incoming
-// adapter status. Returns the parsed conditions and whether aggregation should be triggered.
-// Returns (nil, false, nil) when the update should be silently discarded.
+// validateAndClassify delegates to the shared validateAndClassifyAdapterStatus
+// with cluster-specific logger context.
 func (s *sqlClusterService) validateAndClassify(
 	ctx context.Context,
 	clusterID string,
@@ -348,75 +347,7 @@ func (s *sqlClusterService) validateAndClassify(
 	existingStatus *api.AdapterStatus,
 ) ([]api.AdapterCondition, bool, *errors.ServiceError) {
 	log := logger.With(logger.WithClusterID(ctx, clusterID), logger.FieldAdapter, adapterStatus.Adapter)
-
-	if adapterStatus.ObservedGeneration > cluster.Generation {
-		log.Debug("Discarding adapter status update: future generation")
-		return nil, false, nil
-	}
-
-	if existingStatus != nil && adapterStatus.ObservedGeneration < existingStatus.ObservedGeneration {
-		log.Debug("Discarding adapter status update: stale generation")
-		return nil, false, nil
-	}
-
-	incomingObs := AdapterObservedTime(adapterStatus)
-	if incomingObs.IsZero() {
-		log.Debug("Discarding adapter status update: zero observed time")
-		return nil, false, nil
-	}
-
-	if existingStatus != nil && adapterStatus.ObservedGeneration == existingStatus.ObservedGeneration {
-		prevObs := AdapterObservedTime(existingStatus)
-		if !prevObs.IsZero() && incomingObs.Before(prevObs) {
-			log.Debug("Discarding adapter status update: stale observed time")
-			return nil, false, nil
-		}
-	}
-
-	var conditions []api.AdapterCondition
-	if len(adapterStatus.Conditions) > 0 {
-		if errUnmarshal := json.Unmarshal(adapterStatus.Conditions, &conditions); errUnmarshal != nil {
-			return nil, false, errors.GeneralError("Failed to unmarshal adapter status conditions: %s", errUnmarshal)
-		}
-	}
-
-	if errorType, conditionName := ValidateMandatoryConditions(conditions); errorType != "" {
-		return nil, false, errors.Validation(
-			"missing mandatory condition '%s': all adapters must report Available, Applied, and Health",
-			conditionName,
-		)
-	}
-
-	triggerAggregation := false
-	for _, cond := range conditions {
-		if cond.Type != api.AdapterConditionTypeAvailable {
-			continue
-		}
-
-		isValidStatus := cond.Status == api.AdapterConditionTrue ||
-			cond.Status == api.AdapterConditionFalse ||
-			cond.Status == api.AdapterConditionUnknown
-		if !isValidStatus {
-			return nil, false, errors.Validation(
-				"condition '%s' has invalid status '%s': must be True, False, or Unknown",
-				cond.Type, cond.Status,
-			)
-		}
-
-		if cond.Status != api.AdapterConditionTrue && cond.Status != api.AdapterConditionFalse {
-			if existingStatus != nil {
-				log.Debug("Discarding adapter status update: subsequent Unknown Available")
-				return nil, false, nil
-			}
-			triggerAggregation = false
-			break
-		}
-
-		triggerAggregation = true
-		break
-	}
-
-	return conditions, triggerAggregation, nil
+	return validateAndClassifyAdapterStatus(cluster.Generation, adapterStatus, existingStatus, log)
 }
 
 // tryHardDeleteCluster checks whether all required adapters have reported Finalized=True for
