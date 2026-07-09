@@ -18,6 +18,12 @@ b64url() {
   base64 | tr '+/' '-_' | tr -d '=\n'
 }
 
+# Refuse symlinks at KEY_PATH to prevent symlink attacks
+if [[ -L "$KEY_PATH" ]]; then
+  echo "ERROR: $KEY_PATH is a symlink, refusing to use it" >&2
+  exit 1
+fi
+
 # Reuse existing key unless --new-key is passed or no key exists
 if [[ "${1:-}" == "--new-key" ]] || [[ ! -f "$KEY_PATH" ]] || [[ ! -f "$JWKS_PATH" ]]; then
   PRIV_KEY=$(openssl genrsa 2048 2>/dev/null)
