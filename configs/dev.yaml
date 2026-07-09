@@ -1,0 +1,8 @@
+server:
+  jwt:
+    enabled: true
+    configs:
+      - issuer_url: https://test-issuer.example.com
+        jwk_cert_file: configs/dev-jwks.json
+        header: Authorization
+        identity_claim: email

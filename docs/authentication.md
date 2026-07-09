@@ -136,11 +136,11 @@ Production deployments use JWT-based authentication with a configurable issuer.
 ### Usage
 
 ```bash
-# Start service with authentication
+# Terminal 1: start service with authentication (auto-generates dev JWT at /tmp/hf-dev-token.txt)
 make run
 
-# Access API with a valid JWT
-curl -H "Authorization: Bearer ${TOKEN}" \
+# Terminal 2: access API with the generated token
+curl -H "Authorization: Bearer $(cat /tmp/hf-dev-token.txt)" \
   http://localhost:8000/api/hyperfleet/v1/clusters
 ```
 

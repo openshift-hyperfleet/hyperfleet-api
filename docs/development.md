@@ -13,6 +13,7 @@ Before running hyperfleet-api, ensure these prerequisites are installed. See [PR
 - **pre-commit**
 
 Verify installations:
+
 ```bash
 go version          # Should show 1.26+
 podman version
@@ -61,6 +62,7 @@ cp configs/config.yaml.example configs/config.yaml
 ```
 
 The loader searches for a config file in this order:
+
 1. `--config` flag (explicit path)
 2. `HYPERFLEET_CONFIG` environment variable
 3. `/etc/hyperfleet/config.yaml` (production default)
@@ -136,15 +138,21 @@ curl -X POST http://localhost:8000/api/hyperfleet/v1/clusters \
 ### Production Mode (JWT Authentication)
 
 **Terminal 1** (start server):
+
 ```bash
 make run
 ```
 
+`make run` auto-generates a dev JWT (valid 8 hours) at `/tmp/hf-dev-token.txt`.
+
 **Terminal 2** (call API):
+
 ```bash
-curl -H "Authorization: Bearer ${TOKEN}" \
+curl -H "Authorization: Bearer $(cat /tmp/hf-dev-token.txt)" \
   http://localhost:8000/api/hyperfleet/v1/clusters
 ```
+
+To regenerate the token without restarting: `make dev-token`
 
 See [Deployment](deployment.md) for Kubernetes/Helm deployment and [Authentication](authentication.md) for JWT configuration.
 
@@ -238,6 +246,7 @@ make db/login      # Connect to database shell
 HyperFleet API generates Go models from OpenAPI specifications using `openapi-generator-cli`.
 
 **Workflow**:
+
 ```text
 openapi/openapi.yaml
     ↓
@@ -248,10 +257,12 @@ pkg/api/openapi/api/openapi.yaml (embedded spec)
 ```
 
 **Generated artifacts**:
+
 - Go model structs with JSON tags (`model_*.go`)
 - Fully resolved OpenAPI specification (embedded in binary)
 
 **Important**:
+
 - Generated files are NOT tracked in git
 - Must run `make generate` after cloning
 - Must run after OpenAPI spec updates
@@ -260,6 +271,7 @@ pkg/api/openapi/api/openapi.yaml (embedded spec)
 The `openapi/openapi.yaml` is maintained in the [hyperfleet-api-spec](https://github.com/openshift-hyperfleet/hyperfleet-api-spec) repository using TypeSpec. When the spec changes, the compiled YAML is copied here. Developers working on hyperfleet-api only need to run `make generate` - no TypeSpec knowledge required.
 
 **Commands**:
+
 ```bash
 # Generate Go models from OpenAPI spec
 make generate
@@ -269,6 +281,7 @@ make generate-all
 ```
 
 **Troubleshooting**:
+
 ```bash
 # If "pkg/api/openapi not found"
 make generate
@@ -284,17 +297,20 @@ make generate
 Mock implementations of service interfaces are used for unit testing. Mocks are generated using `mockgen`.
 
 **When to regenerate mocks**:
+
 - After modifying service interface definitions in `pkg/services/`
 - When adding or removing methods from service interfaces
 - After initial clone (mocks are not committed to git)
 
 **How it works**:
 Service files contain `//go:generate` directives that specify how to generate mocks:
+
 ```go
 //go:generate mockgen-v0.6.0 -source=cluster.go -package=services -destination=cluster_mock.go
 ```
 
 **Commands**:
+
 ```bash
 # Generate mocks only
 make generate-mocks
@@ -308,11 +324,13 @@ make generate-all
 HyperFleet API uses [bingo](https://github.com/bwplotka/bingo) to manage Go tool dependencies with pinned versions.
 
 **Managed tools**:
+
 - `mockgen` - Mock generation for testing
 - `golangci-lint` - Code linting
 - `gotestsum` - Enhanced test output
 
 **Common operations**:
+
 ```bash
 # Install all tools
 bingo get
@@ -328,7 +346,6 @@ bingo list
 ```
 
 Tool versions are tracked in `.bingo/*.mod` files and loaded automatically via `include .bingo/Variables.mk` in the Makefile.
-
 
 ### Pre-commit Hooks
 
@@ -361,6 +378,7 @@ pre-commit run --all-files
 ### Making Changes
 
 1. **Create a feature branch**:
+
    ```bash
    git checkout -b feature/my-feature
    ```
@@ -373,17 +391,20 @@ pre-commit run --all-files
    - Run `make generate` to regenerate Go models
 
 4. **Regenerate mocks if service interfaces changed**:
+
    ```bash
    make generate-mocks
    ```
 
 5. **Run tests**:
+
    ```bash
    make test
    make test-integration
    ```
 
 6. **Commit your changes**:
+
    ```bash
    git add .
    git commit -m "feat: add new feature"
@@ -391,6 +412,7 @@ pre-commit run --all-files
    ```
 
 7. **Push and create pull request**:
+
    ```bash
    git push origin feature/my-feature
    ```
@@ -402,6 +424,7 @@ pre-commit run --all-files
 **Problem**: Missing generated OpenAPI code
 
 **Solution**:
+
 ```bash
 make generate
 go mod download
@@ -412,6 +435,7 @@ go mod download
 **Problem**: Missing generated mock implementations
 
 **Solution**:
+
 ```bash
 make generate-mocks
 ```
@@ -421,6 +445,7 @@ make generate-mocks
 **Problem**: Cannot connect to PostgreSQL
 
 **Solution**:
+
 ```bash
 # Check if container is running
 podman ps | grep postgres
@@ -435,6 +460,7 @@ make db/setup
 **Problem**: Integration tests failing
 
 **Solution**:
+
 ```bash
 # Ensure database is running
 make db/setup
@@ -455,8 +481,8 @@ make test-integration
 **Analysis Question**: Is `e_development.go` still needed after this change?
 
 **Decision**: **KEEP `e_development.go`** with improved documentation.
-
 **Why keep it**:
+
 - ✅ **One variable controls multiple settings** — `HYPERFLEET_ENV=development` forces JWT=false, TLS=false, SSL=disable
 - ✅ **Convenient for scripts/CI** — One environment variable vs three separate flags
 - ✅ **Semantic clarity** — "development mode" is clearer than remembering individual flags
@@ -477,11 +503,13 @@ make run-no-auth
 ```
 
 **⚠️ IMPORTANT**: `HYPERFLEET_ENV=development` is for **local development ONLY**. Never use in production. The development environment forces insecure settings:
+
 - JWT authentication: **disabled**
 - TLS encryption: **disabled**
 - Database SSL: **disabled**
 
 **Production deployments**: Always use `EnvironmentDefault` (production) or explicitly enable security via Helm values:
+
 ```yaml
 config:
   server:

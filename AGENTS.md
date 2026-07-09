@@ -7,6 +7,7 @@ For Claude Code users: also see `CLAUDE.md` (auto-loaded) and `.claude/rules/` (
 ## Commands
 
 ### Setup (fresh clone)
+
 ```
 make generate-all     # REQUIRED FIRST — generated code not in git
 go mod download
@@ -18,14 +19,16 @@ make run-no-auth      # Start server without auth
 ```
 
 ### Build & Run
+
 ```
 make build            # Build hyperfleet-api binary to bin/
 make install          # Build and install to GOPATH/bin
-make run              # Build, migrate, and run with auth
+make run              # Build, migrate, and run with auth (auto-generates dev JWT at /tmp/hf-dev-token.txt)
 make run-no-auth      # Build, migrate, and run without auth
 ```
 
 ### Code Generation
+
 ```
 make generate         # Extract schema from hyperfleet-api-spec module, then run oapi-codegen
 make generate-mocks   # Regenerate mock implementations (go generate)
@@ -33,6 +36,7 @@ make generate-all     # Both of the above
 ```
 
 ### Verification
+
 ```
 make verify           # go vet + gofmt check
 make lint             # golangci-lint
@@ -44,6 +48,7 @@ make test-all         # lint + test + test-integration + test-helm — full suit
 ```
 
 ### Database
+
 ```
 make db/setup         # Start PostgreSQL container
 make db/login         # Connect to local PostgreSQL
@@ -67,6 +72,7 @@ Run `make help` for the complete target list.
 **Integration test setup**: `test.RegisterIntegration(t)` returns `(helper, client)`. Uses Gomega assertions and Resty HTTP client.
 
 **Environment variables for tests**:
+
 - `HYPERFLEET_ENV` — selects config: `unit_testing`, `integration_testing`, `development`
 - `TESTCONTAINERS_RYUK_DISABLED=true` — required in CI
 - `HYPERFLEET_CLUSTER_ADAPTERS` / `HYPERFLEET_NODEPOOL_ADAPTERS` — adapter lists (defaults set in TestMain)
@@ -101,52 +107,66 @@ charts/                       # Helm chart for Kubernetes deployment
 ```
 
 **Generated code** (not in git — run `make generate-all`):
+
 - `pkg/api/openapi/` — Go models + embedded spec
 - `*_mock.go` — Mock implementations
 
 ## Code Style
 
 ### Imports
+
 Order: stdlib → external → internal (`github.com/openshift-hyperfleet/hyperfleet-api/...`)
 
 ### Errors
+
 Use constructor functions from `pkg/errors/errors.go`: `NotFound()`, `Validation()`, `GeneralError()`, `Conflict()`, `ValidationWithDetails()`. Error codes: `HYPERFLEET-CAT-NUM` format. All service methods return `*errors.ServiceError`.
 
 ### Logging
+
 Use `pkg/logger/` — `logger.Info(ctx, "msg")`, `logger.With(ctx, "key", val).Error("msg")`. Never use `fmt.Println` or `log.Print`.
 
 ### Handlers
+
 Use `handlerConfig` pipeline from `pkg/handlers/framework.go`:
+
 - `handle(w, r, cfg, status)` — unmarshal → validate → action → respond
 - `handleGet/handleList/handleDelete` — no-body variants
 - Validation: `func() *errors.ServiceError`; Action: `func() (interface{}, *errors.ServiceError)`
 
 ### Services
+
 Interface + `sql*Service` struct. Constructor injection of DAOs. Return `*errors.ServiceError`. Add `//go:generate mockgen` directive for mocks.
 
 ### DAOs
+
 Interface + `sql*Dao` struct. Get session via `sessionFactory.New(ctx)`. Call `db.MarkForRollback(ctx, err)` on write errors. Return stdlib `error`.
 
 ### Plugins
+
 Register via `init()`: `registry.RegisterService()`, `server.RegisterRoutes()`, `presenters.RegisterPath()`, `presenters.RegisterKind()`. See `plugins/clusters/plugin.go`.
 
 ## Git Workflow
 
 ### Commit Format
+
 ```
 HYPERFLEET-### - type: description
 ```
+
 Types: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`
 
 Add co-author line for AI-assisted commits:
+
 ```
 Co-Authored-By: Claude <noreply@anthropic.com>
 ```
 
 ### Pre-commit Hooks
+
 Install: `make install-hooks`
 
 Hooks:
+
 - `leaktk.git.pre-commit` — secret scanning (open-source, no VPN required)
 - `hyperfleet-commitlint` — validates commit message format (commit-msg stage)
 - `hyperfleet-gofmt` — Go code formatting
@@ -157,6 +177,7 @@ Hooks:
 - `check-added-large-files` — prevents large files from being committed
 
 ### Branching
+
 Create feature branches from `main`. PRs target `main`.
 
 ## Boundaries

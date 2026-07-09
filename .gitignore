@@ -63,6 +63,9 @@ secrets
 # Ignore generated mock files
 *_mock.go
 
+# Generated dev JWKS (created by make run / gen-dev-token.sh)
+configs/dev-jwks.json
+
 # Ignore Claude Code local configuration (but track shared settings)
 .claude/*
 !.claude/settings.json
