@@ -139,7 +139,178 @@ func customCELFunctions() []cel.EnvOption {
 				}),
 			),
 		),
+		cel.Function("conditionStatus",
+			cel.Overload(
+				"conditionStatus_list_string",
+				[]*cel.Type{cel.ListType(cel.DynType), cel.StringType},
+				cel.StringType,
+				cel.BinaryBinding(func(listArg ref.Val, typeArg ref.Val) ref.Val {
+					condType, ok := typeArg.Value().(string)
+					if !ok {
+						return types.NewErr("conditionStatus() type must be a string")
+					}
+					conditions, ok := unwrapCELList(listArg)
+					if !ok {
+						return types.NewErr("conditionStatus() conditions must be a list")
+					}
+					status, _ := findCondition(conditions, condType)
+					return types.String(status)
+				}),
+			),
+		),
+		cel.Function("conditionAge",
+			cel.Overload(
+				"conditionAge_list_string",
+				[]*cel.Type{cel.ListType(cel.DynType), cel.StringType},
+				cel.IntType,
+				cel.BinaryBinding(func(listArg ref.Val, typeArg ref.Val) ref.Val {
+					condType, ok := typeArg.Value().(string)
+					if !ok {
+						return types.NewErr("conditionAge() type must be a string")
+					}
+					conditions, ok := unwrapCELList(listArg)
+					if !ok {
+						return types.NewErr("conditionAge() conditions must be a list")
+					}
+					_, cond := findCondition(conditions, condType)
+					if cond == nil {
+						return types.Int(-1)
+					}
+					transitionTime, ok := cond["last_transition_time"].(string)
+					if !ok {
+						return types.Int(-1)
+					}
+					t, err := time.Parse(time.RFC3339, transitionTime)
+					if err != nil {
+						return types.Int(-1)
+					}
+					return types.Int(int64(time.Since(t).Seconds()))
+				}),
+			),
+		),
+		cel.Function("stableFor",
+			cel.Overload(
+				"stableFor_list_string_int",
+				[]*cel.Type{cel.ListType(cel.DynType), cel.StringType, cel.IntType},
+				cel.BoolType,
+				cel.FunctionBinding(func(args ...ref.Val) ref.Val {
+					if len(args) != 3 {
+						return types.NewErr("stableFor() requires 3 arguments")
+					}
+					condType, ok := args[1].Value().(string)
+					if !ok {
+						return types.NewErr("stableFor() type must be a string")
+					}
+					threshold, ok := args[2].Value().(int64)
+					if !ok {
+						return types.NewErr("stableFor() seconds must be an int")
+					}
+					conditions, ok := unwrapCELList(args[0])
+					if !ok {
+						return types.NewErr("stableFor() conditions must be a list")
+					}
+					status, cond := findCondition(conditions, condType)
+					if status != "True" || cond == nil {
+						return types.Bool(false)
+					}
+					transitionTime, ok := cond["last_transition_time"].(string)
+					if !ok {
+						return types.Bool(false)
+					}
+					t, err := time.Parse(time.RFC3339, transitionTime)
+					if err != nil {
+						return types.Bool(false)
+					}
+					return types.Bool(int64(time.Since(t).Seconds()) >= threshold)
+				}),
+			),
+		),
+		cel.Function("statusFeedbackValue",
+			cel.Overload(
+				"statusFeedbackValue_dyn_string",
+				[]*cel.Type{cel.DynType, cel.StringType},
+				cel.StringType,
+				cel.BinaryBinding(func(feedbackArg ref.Val, nameArg ref.Val) ref.Val {
+					name, ok := nameArg.Value().(string)
+					if !ok {
+						return types.NewErr("statusFeedbackValue() name must be a string")
+					}
+					feedback, ok := unwrapCELValue(feedbackArg)
+					if !ok {
+						return types.String("")
+					}
+					feedbackMap, ok := feedback.(map[string]interface{})
+					if !ok {
+						return types.String("")
+					}
+					values, ok := feedbackMap["values"].([]interface{})
+					if !ok {
+						return types.String("")
+					}
+					for _, v := range values {
+						entry, ok := v.(map[string]interface{})
+						if !ok {
+							continue
+						}
+						if entry["name"] == name {
+							if fv, ok := entry["fieldValue"].(map[string]interface{}); ok {
+								if s, ok := fv["string"].(string); ok {
+									return types.String(s)
+								}
+							}
+						}
+					}
+					return types.String("")
+				}),
+			),
+		),
+		cel.Function("triState",
+			cel.Overload(
+				"triState_bool_bool",
+				[]*cel.Type{cel.BoolType, cel.BoolType},
+				cel.StringType,
+				cel.BinaryBinding(func(trueArg ref.Val, falseArg ref.Val) ref.Val {
+					if trueArg.Value() == true {
+						return types.String("True")
+					}
+					if falseArg.Value() == true {
+						return types.String("False")
+					}
+					return types.String("Unknown")
+				}),
+			),
+		),
 	}
+}
+
+// findCondition searches a conditions list for a matching type.
+// Returns the status string and the condition map if found, or ("Unknown", nil) if absent.
+func findCondition(conditions []interface{}, condType string) (string, map[string]interface{}) {
+	for _, c := range conditions {
+		cond, ok := c.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if cond["type"] == condType {
+			if status, ok := cond["status"].(string); ok {
+				return status, cond
+			}
+			return "Unknown", cond
+		}
+	}
+	return "Unknown", nil
+}
+
+// unwrapCELList converts a CEL ref.Val list to a Go []interface{}.
+func unwrapCELList(val ref.Val) ([]interface{}, bool) {
+	raw, ok := unwrapCELValue(val)
+	if !ok {
+		return nil, false
+	}
+	if list, ok := raw.([]interface{}); ok {
+		return list, true
+	}
+	return nil, false
 }
 
 func unwrapCELValue(value ref.Val) (interface{}, bool) {

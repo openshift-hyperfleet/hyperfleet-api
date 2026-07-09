@@ -180,6 +180,15 @@ params:
       expression: |
         fetchCluster.spec.node_pools.sortBy(p, p.replicas).map(p, p.name)
 
+  # ---------------------------------------------------------------
+  # Pattern 21: conditionStatus() — capture conditions list for
+  # use with domain-specific helpers in the payload phase.
+  # ---------------------------------------------------------------
+  - name: "conditions"
+    source:
+      expression: |
+        fetchCluster.status.conditions
+
 # ===========================================================================
 # Preconditions
 # ===========================================================================
@@ -430,6 +439,46 @@ post:
 
           # Pattern 15: Go template rendering for payload values
           cluster_url: "https://console.{{ .region }}.hyperfleet.io/clusters/{{ .clusterId }}"
+
+          # ---------------------------------------------------------
+          # Pattern 21: conditionStatus() — replaces double-filter
+          # Before: conditions.filter(c, c.type == "Reconciled").size() > 0
+          #           ? conditions.filter(c, c.type == "Reconciled")[0].status
+          #           : "Unknown"
+          # ---------------------------------------------------------
+          reconciled_status:
+            expression: |
+              conditionStatus(conditions, "Reconciled")
+
+          # ---------------------------------------------------------
+          # Pattern 22: conditionAge() — elapsed seconds since transition
+          # Before: (timestamp(now()) - timestamp(
+          #   conditions.filter(c, c.type == "Reconciled")[0].last_transition_time
+          # )).getSeconds()
+          # ---------------------------------------------------------
+          reconciled_age_seconds:
+            expression: |
+              conditionAge(conditions, "Reconciled")
+
+          # ---------------------------------------------------------
+          # Pattern 23: stableFor() — stability window check
+          # Before: conditionStatus == "True" && conditionAge > 300
+          # (as a single combined expression with all the filter chains)
+          # ---------------------------------------------------------
+          is_reconciled_stable:
+            expression: |
+              stableFor(conditions, "Reconciled", 60)
+
+          # ---------------------------------------------------------
+          # Pattern 24: triState() — replaces nested ternaries
+          # Before: isReady ? "True" : (isFailed ? "False" : "Unknown")
+          # ---------------------------------------------------------
+          health_status:
+            expression: |
+              triState(
+                conditionStatus(conditions, "Reconciled") == "True",
+                conditionStatus(conditions, "Reconciled") == "False"
+              )
 
   post_actions:
     - name: "updateStatus"

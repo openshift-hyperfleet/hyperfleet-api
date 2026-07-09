@@ -13,9 +13,19 @@ Extracted params are injected as **top-level** names — write `clusterID`, not 
 
 ## Custom Functions
 
+### Utility
+
 - `now()` — current time as RFC3339 string
 - `toJson(val)` — serialize any value to JSON string
 - `dig(map, "dot.path")` — safe nested map access, returns null if missing
+
+### Domain-Specific
+
+- `conditionStatus(conditions, type)` — returns the `status` field (`"True"`, `"False"`, etc.) of the first condition matching `type`, or `"Unknown"` if absent
+- `conditionAge(conditions, type)` — returns elapsed seconds since `last_transition_time` for the matching condition, or `-1` if absent
+- `stableFor(conditions, type, seconds)` — returns `true` only when `conditionStatus` is `"True"` AND `conditionAge` is at least the threshold
+- `statusFeedbackValue(statusFeedback, name)` — returns `fieldValue.string` of the named Maestro statusFeedback value, or `""` if absent
+- `triState(trueCond, falseCond)` — returns `"True"` when first arg is true, `"False"` when second is true, `"Unknown"` otherwise
 
 ## String Extensions
 
@@ -54,6 +64,48 @@ spec.node_pools.sortBy(p, p.replicas).map(p, p.name)
 
 // Flatten condition type+status pairs into one list
 status.conditions.map(c, [c.type, c.status]).flatten()
+```
+
+### Before/After: Domain-Specific Functions
+
+```cel
+// Before — double-filter pattern (12+ occurrences per adapter config):
+status.conditions.filter(c, c.type == "Reconciled").size() > 0
+  ? status.conditions.filter(c, c.type == "Reconciled")[0].status
+  : "Unknown"
+
+// After:
+conditionStatus(conditions, "Reconciled")
+```
+
+```cel
+// Before — stability window with timestamp arithmetic:
+status.conditions.filter(c, c.type == "Reconciled").size() > 0
+  && status.conditions.filter(c, c.type == "Reconciled")[0].status == "True"
+  && (timestamp(now()) - timestamp(
+       status.conditions.filter(c, c.type == "Reconciled")[0].last_transition_time
+     )).getSeconds() > 300
+
+// After:
+stableFor(conditions, "Reconciled", 300)
+```
+
+```cel
+// Before — statusFeedback value extraction (4-step filter chain):
+statusFeedback.values.filter(v, v.name == "phase").size() > 0
+  ? statusFeedback.values.filter(v, v.name == "phase")[0].fieldValue.string
+  : ""
+
+// After:
+statusFeedbackValue(statusFeedback, "phase")
+```
+
+```cel
+// Before — nested ternary for tri-state condition:
+isReady ? "True" : (isFailed ? "False" : "Unknown")
+
+// After:
+triState(isReady, isFailed)
 ```
 
 ## Reference

@@ -47,19 +47,22 @@
                   "type": "Reconciled",
                   "status": "False",
                   "reason": "ClusterProvisioning",
-                  "message": "Cluster is still provisioning"
+                  "message": "Cluster is still provisioning",
+                  "last_transition_time": "2025-01-01T00:00:00Z"
                 },
                 {
                   "type": "Provisioned",
                   "status": "True",
                   "reason": "InfrastructureReady",
-                  "message": "Infrastructure provisioned successfully"
+                  "message": "Infrastructure provisioned successfully",
+                  "last_transition_time": "2025-01-01T00:00:00Z"
                 },
                 {
                   "type": "Degraded",
                   "status": "False",
                   "reason": "NoDegradation",
-                  "message": "No degradation detected"
+                  "message": "No degradation detected",
+                  "last_transition_time": "2025-01-01T00:00:00Z"
                 }
               ]
             },

@@ -372,6 +372,267 @@ func TestCELEvaluatorCustomFunctions(t *testing.T) {
 	})
 }
 
+func TestCELEvaluatorDomainFunctions(t *testing.T) {
+	recentTime := time.Now().Add(-30 * time.Second).Format(time.RFC3339)
+	oldTime := time.Now().Add(-10 * time.Minute).Format(time.RFC3339)
+
+	ctx := NewEvaluationContext()
+	ctx.Set("conditions", []interface{}{
+		map[string]interface{}{
+			"type":                 "Reconciled",
+			"status":               "True",
+			"last_transition_time": recentTime,
+		},
+		map[string]interface{}{
+			"type":                 "Available",
+			"status":               "False",
+			"last_transition_time": oldTime,
+		},
+	})
+	ctx.Set("emptyConditions", []interface{}{})
+	ctx.Set("statusFeedback", map[string]interface{}{
+		"values": []interface{}{
+			map[string]interface{}{
+				"name":       "phase",
+				"fieldValue": map[string]interface{}{"string": "Active"},
+			},
+			map[string]interface{}{
+				"name":       "replicas",
+				"fieldValue": map[string]interface{}{"string": "3"},
+			},
+		},
+	})
+	ctx.Set("emptyFeedback", map[string]interface{}{})
+
+	evaluator, err := newCELEvaluator(ctx)
+	require.NoError(t, err)
+
+	t.Run("conditionStatus returns status for existing condition", func(t *testing.T) {
+		result, err := evaluator.EvaluateSafe(`conditionStatus(conditions, "Reconciled")`)
+		require.NoError(t, err)
+		require.False(t, result.HasError())
+		assert.Equal(t, "True", result.Value)
+	})
+
+	t.Run("conditionStatus returns Unknown for missing condition", func(t *testing.T) {
+		result, err := evaluator.EvaluateSafe(`conditionStatus(conditions, "MissingType")`)
+		require.NoError(t, err)
+		require.False(t, result.HasError())
+		assert.Equal(t, "Unknown", result.Value)
+	})
+
+	t.Run("conditionStatus returns Unknown for empty list", func(t *testing.T) {
+		result, err := evaluator.EvaluateSafe(`conditionStatus(emptyConditions, "Reconciled")`)
+		require.NoError(t, err)
+		require.False(t, result.HasError())
+		assert.Equal(t, "Unknown", result.Value)
+	})
+
+	t.Run("conditionStatus returns False for Available condition", func(t *testing.T) {
+		result, err := evaluator.EvaluateSafe(`conditionStatus(conditions, "Available")`)
+		require.NoError(t, err)
+		require.False(t, result.HasError())
+		assert.Equal(t, "False", result.Value)
+	})
+
+	t.Run("conditionAge returns positive seconds for existing condition", func(t *testing.T) {
+		result, err := evaluator.EvaluateSafe(`conditionAge(conditions, "Reconciled")`)
+		require.NoError(t, err)
+		require.False(t, result.HasError())
+		age, ok := result.Value.(int64)
+		require.True(t, ok)
+		assert.True(t, age >= 29 && age <= 60, "expected age ~30s, got %d", age)
+	})
+
+	t.Run("conditionAge returns -1 for missing condition", func(t *testing.T) {
+		result, err := evaluator.EvaluateSafe(`conditionAge(conditions, "MissingType")`)
+		require.NoError(t, err)
+		require.False(t, result.HasError())
+		assert.Equal(t, int64(-1), result.Value)
+	})
+
+	t.Run("conditionAge returns -1 for empty list", func(t *testing.T) {
+		result, err := evaluator.EvaluateSafe(`conditionAge(emptyConditions, "Reconciled")`)
+		require.NoError(t, err)
+		require.False(t, result.HasError())
+		assert.Equal(t, int64(-1), result.Value)
+	})
+
+	t.Run("stableFor returns true when condition is True and age exceeds threshold", func(t *testing.T) {
+		result, err := evaluator.EvaluateSafe(`stableFor(conditions, "Reconciled", 10)`)
+		require.NoError(t, err)
+		require.False(t, result.HasError())
+		assert.Equal(t, true, result.Value)
+	})
+
+	t.Run("stableFor returns false when age below threshold", func(t *testing.T) {
+		result, err := evaluator.EvaluateSafe(`stableFor(conditions, "Reconciled", 9999)`)
+		require.NoError(t, err)
+		require.False(t, result.HasError())
+		assert.Equal(t, false, result.Value)
+	})
+
+	t.Run("stableFor returns false when condition is False", func(t *testing.T) {
+		result, err := evaluator.EvaluateSafe(`stableFor(conditions, "Available", 1)`)
+		require.NoError(t, err)
+		require.False(t, result.HasError())
+		assert.Equal(t, false, result.Value)
+	})
+
+	t.Run("stableFor returns false for missing condition", func(t *testing.T) {
+		result, err := evaluator.EvaluateSafe(`stableFor(conditions, "MissingType", 1)`)
+		require.NoError(t, err)
+		require.False(t, result.HasError())
+		assert.Equal(t, false, result.Value)
+	})
+
+	t.Run("statusFeedbackValue returns value for existing name", func(t *testing.T) {
+		result, err := evaluator.EvaluateSafe(`statusFeedbackValue(statusFeedback, "phase")`)
+		require.NoError(t, err)
+		require.False(t, result.HasError())
+		assert.Equal(t, "Active", result.Value)
+	})
+
+	t.Run("statusFeedbackValue returns empty for missing name", func(t *testing.T) {
+		result, err := evaluator.EvaluateSafe(`statusFeedbackValue(statusFeedback, "missing")`)
+		require.NoError(t, err)
+		require.False(t, result.HasError())
+		assert.Equal(t, "", result.Value)
+	})
+
+	t.Run("statusFeedbackValue returns empty for empty feedback", func(t *testing.T) {
+		result, err := evaluator.EvaluateSafe(`statusFeedbackValue(emptyFeedback, "phase")`)
+		require.NoError(t, err)
+		require.False(t, result.HasError())
+		assert.Equal(t, "", result.Value)
+	})
+
+	t.Run("triState returns True when first arg true", func(t *testing.T) {
+		result, err := evaluator.EvaluateSafe(`triState(true, false)`)
+		require.NoError(t, err)
+		require.False(t, result.HasError())
+		assert.Equal(t, "True", result.Value)
+	})
+
+	t.Run("triState returns False when second arg true", func(t *testing.T) {
+		result, err := evaluator.EvaluateSafe(`triState(false, true)`)
+		require.NoError(t, err)
+		require.False(t, result.HasError())
+		assert.Equal(t, "False", result.Value)
+	})
+
+	t.Run("triState returns Unknown when both false", func(t *testing.T) {
+		result, err := evaluator.EvaluateSafe(`triState(false, false)`)
+		require.NoError(t, err)
+		require.False(t, result.HasError())
+		assert.Equal(t, "Unknown", result.Value)
+	})
+
+	t.Run("triState returns True when both true (trueCond takes priority)", func(t *testing.T) {
+		result, err := evaluator.EvaluateSafe(`triState(true, true)`)
+		require.NoError(t, err)
+		require.False(t, result.HasError())
+		assert.Equal(t, "True", result.Value)
+	})
+
+	t.Run("conditionStatus with CEL expressions as arguments", func(t *testing.T) {
+		result, err := evaluator.EvaluateSafe(
+			`conditionStatus(conditions, "Reconciled") == "True"`)
+		require.NoError(t, err)
+		require.False(t, result.HasError())
+		assert.Equal(t, true, result.Value)
+	})
+
+	t.Run("triState with CEL expressions replacing nested ternaries", func(t *testing.T) {
+		result, err := evaluator.EvaluateSafe(
+			`triState(conditionStatus(conditions, "Reconciled") == "True", ` +
+				`conditionStatus(conditions, "Reconciled") == "False")`)
+		require.NoError(t, err)
+		require.False(t, result.HasError())
+		assert.Equal(t, "True", result.Value)
+	})
+}
+
+func TestCELEvaluatorDomainFunctions_MalformedInputs(t *testing.T) {
+	ctx := NewEvaluationContext()
+	ctx.Set("badTimeConditions", []interface{}{
+		map[string]interface{}{
+			"type":                 "Ready",
+			"status":               "True",
+			"last_transition_time": "not-a-timestamp",
+		},
+	})
+	ctx.Set("noTimeConditions", []interface{}{
+		map[string]interface{}{
+			"type":   "Ready",
+			"status": "True",
+		},
+	})
+	ctx.Set("malformedFeedback", map[string]interface{}{
+		"values": "not-a-list",
+	})
+	ctx.Set("feedbackBadEntry", map[string]interface{}{
+		"values": []interface{}{"not-a-map"},
+	})
+	ctx.Set("feedbackNoFieldValue", map[string]interface{}{
+		"values": []interface{}{
+			map[string]interface{}{"name": "phase"},
+		},
+	})
+
+	evaluator, err := newCELEvaluator(ctx)
+	require.NoError(t, err)
+
+	t.Run("conditionAge returns -1 for invalid timestamp", func(t *testing.T) {
+		result, err := evaluator.EvaluateSafe(`conditionAge(badTimeConditions, "Ready")`)
+		require.NoError(t, err)
+		require.False(t, result.HasError())
+		assert.Equal(t, int64(-1), result.Value)
+	})
+
+	t.Run("conditionAge returns -1 when last_transition_time is missing", func(t *testing.T) {
+		result, err := evaluator.EvaluateSafe(`conditionAge(noTimeConditions, "Ready")`)
+		require.NoError(t, err)
+		require.False(t, result.HasError())
+		assert.Equal(t, int64(-1), result.Value)
+	})
+
+	t.Run("stableFor returns false for invalid timestamp", func(t *testing.T) {
+		result, err := evaluator.EvaluateSafe(`stableFor(badTimeConditions, "Ready", 1)`)
+		require.NoError(t, err)
+		require.False(t, result.HasError())
+		assert.Equal(t, false, result.Value)
+	})
+
+	t.Run("stableFor returns false when last_transition_time is missing", func(t *testing.T) {
+		result, err := evaluator.EvaluateSafe(`stableFor(noTimeConditions, "Ready", 1)`)
+		require.NoError(t, err)
+		require.False(t, result.HasError())
+		assert.Equal(t, false, result.Value)
+	})
+
+	t.Run("statusFeedbackValue returns empty for non-list values", func(t *testing.T) {
+		result, err := evaluator.EvaluateSafe(`statusFeedbackValue(malformedFeedback, "phase")`)
+		require.NoError(t, err)
+		require.False(t, result.HasError())
+		assert.Equal(t, "", result.Value)
+	})
+
+	t.Run("statusFeedbackValue returns empty for non-map entry", func(t *testing.T) {
+		result, err := evaluator.EvaluateSafe(`statusFeedbackValue(feedbackBadEntry, "phase")`)
+		require.NoError(t, err)
+		require.False(t, result.HasError())
+		assert.Equal(t, "", result.Value)
+	})
+
+	t.Run("statusFeedbackValue returns empty when fieldValue is missing", func(t *testing.T) {
+		result, err := evaluator.EvaluateSafe(`statusFeedbackValue(feedbackNoFieldValue, "phase")`)
+		require.NoError(t, err)
+		require.False(t, result.HasError())
+		assert.Equal(t, "", result.Value)
+	})
+}
+
 func TestCELEvaluatorExtStrings(t *testing.T) {
 	ctx := NewEvaluationContext()
 	ctx.Set("channelGroup", "candidate")
