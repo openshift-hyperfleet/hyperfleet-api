@@ -11,7 +11,7 @@ cd hyperfleet-api
 
 # 2. Install prerequisites
 # See PREREQUISITES.md for detailed installation instructions
-# Required: Go 1.24+, Podman, PostgreSQL 13+, Make
+# Required: Go 1.26+, Podman, PostgreSQL 13+, Make, pre-commit
 
 # 3. Generate OpenAPI code and mocks (REQUIRED FIRST STEP)
 # Generated code is not checked into git
@@ -23,14 +23,17 @@ go mod download
 # 5. Setup local PostgreSQL database
 make db/setup
 
-# 7. Build the project
+# 6. Build the project
 make build
 
-# 8. Run database migrations
+# 7. Run database migrations
 ./bin/hyperfleet-api migrate
 
-# 9. Verify setup works
+# 8. Verify setup works
 make test
+
+# 9. Install git hooks
+make install-hooks
 
 # 10. Start the server (without authentication for local development)
 make run-no-auth
@@ -41,6 +44,7 @@ make run-no-auth
 - Tool versions are pinned using [Bingo](https://github.com/bwplotka/bingo) in the `.bingo/` directory
 - The build uses FIPS-compliant crypto: `CGO_ENABLED=1 GOEXPERIMENT=boringcrypto`
 - Local development runs without authentication by default (`make run-no-auth`)
+- `make install-hooks` installs pre-commit hooks configured in `.pre-commit-config.yaml` for commit message and code quality validation on every commit
 - Integration tests automatically create isolated PostgreSQL containers via testcontainers
 
 ## Repository Structure
