@@ -6,7 +6,8 @@
 git clone https://github.com/openshift-hyperfleet/hyperfleet-adapter.git
 cd hyperfleet-adapter
 make mod-tidy
-make build        # → bin/hyperfleet-adapter
+make build          # → bin/hyperfleet-adapter
+make install-hooks  # Install pre-commit hooks (commit message + code quality)
 ```
 
 ## Verification
@@ -24,6 +25,7 @@ make test-all         # All of the above + make test-helm
 | Target | Description |
 |--------|-------------|
 | `make build` | Build binary |
+| `make install-hooks` | Install pre-commit hooks |
 | `make test` | Run unit tests |
 | `make test-integration` | Run integration tests with envtest (unprivileged) |
 | `make test-integration-k3s` | Run integration tests with K3s (faster, may need privileges) |

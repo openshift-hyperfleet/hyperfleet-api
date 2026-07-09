@@ -58,6 +58,8 @@ See [hyperfleet-infra](https://github.com/openshift-hyperfleet/hyperfleet-infra)
 
 ### For Developers
 
+**Prerequisites:** Go 1.26+, Docker/Podman, Make, [pre-commit](https://pre-commit.com/)
+
 - **[Development Guide](./docs/development.md)** - setup, build and test guidelines.
 - **[CONTRIBUTING.md](./CONTRIBUTING.md)** - code style, testing requirements, PR process, and commit guidelines
 
