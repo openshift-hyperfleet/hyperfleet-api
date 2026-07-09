@@ -194,7 +194,7 @@ spec:
             - serviceAccountToken:
                 audience: {{ .Values.adapterConfig.hyperfleetApi.auth.audience }}
                 expirationSeconds: {{ .Values.adapterConfig.hyperfleetApi.auth.expirationSeconds }}
-                path: token
+                path: {{ .Values.adapterConfig.hyperfleetApi.auth.tokenPath | base }}
         {{- end }}
         {{- with .Values.extraVolumes }}
         {{- toYaml . | nindent 8 }}

@@ -181,6 +181,9 @@ func LoadConfig(opts ...LoadOption) (*Config, error) {
 		if err := taskValidator.ValidateSemantic(); err != nil {
 			return nil, fmt.Errorf("task config semantic validation failed: %w", err)
 		}
+		for _, w := range taskValidator.Warnings() {
+			o.logger.Warn(o.ctx, w)
+		}
 	}
 
 	// 3. Merge into unified Config

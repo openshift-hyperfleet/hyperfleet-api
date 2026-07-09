@@ -1228,7 +1228,7 @@ func TestValidateParamsAPICallSource(t *testing.T) {
 }
 
 func TestValidatePreconditionAPICallForbidden(t *testing.T) {
-	t.Run("precondition with api_call produces migration error", func(t *testing.T) {
+	t.Run("precondition with api_call produces deprecation warning not error", func(t *testing.T) {
 		cfg := baseTaskConfig()
 		cfg.Preconditions = []Precondition{{
 			ActionBase: ActionBase{
@@ -1239,12 +1239,15 @@ func TestValidatePreconditionAPICallForbidden(t *testing.T) {
 		v := newTaskValidator(cfg)
 		_ = v.ValidateStructure()
 		err := v.ValidateSemantic()
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "api_call is no longer valid in the precondition phase")
-		assert.Contains(t, err.Error(), "fetchCluster")
+		require.NoError(t, err)
+		warnings := v.Warnings()
+		require.Len(t, warnings, 1)
+		assert.Contains(t, warnings[0], "DEPRECATED")
+		assert.Contains(t, warnings[0], "fetchCluster")
+		assert.Contains(t, warnings[0], "source.api_call")
 	})
 
-	t.Run("precondition without api_call passes", func(t *testing.T) {
+	t.Run("precondition without api_call passes with no warnings", func(t *testing.T) {
 		cfg := baseTaskConfig()
 		cfg.Preconditions = []Precondition{{
 			ActionBase: ActionBase{Name: "check"},
@@ -1253,6 +1256,7 @@ func TestValidatePreconditionAPICallForbidden(t *testing.T) {
 		v := newTaskValidator(cfg)
 		require.NoError(t, v.ValidateStructure())
 		require.NoError(t, v.ValidateSemantic())
+		assert.Empty(t, v.Warnings())
 	})
 }
 

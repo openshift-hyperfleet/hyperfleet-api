@@ -95,7 +95,7 @@ func TestFileTokenSource_RefreshesAfterTTL(t *testing.T) {
 	}
 
 	// Expire the cache manually.
-	ts.expiresAt = time.Now().Add(-time.Second).UnixNano()
+	ts.expiresAt = time.Now().Add(-time.Second)
 
 	if err := os.WriteFile(path, []byte("second"), 0600); err != nil {
 		t.Fatal(err)
