@@ -161,9 +161,17 @@ install: generate-all ## Build and install binary to GOPATH/bin
 DB_FLAGS = --db-host localhost --db-port $(db_port) --db-name $(db_name) \
            --db-username $(db_user) --db-password $(db_password)
 
+DEV_TOKEN_FILE := /tmp/hf-dev-token.txt
+
 .PHONY: run
-run: db/migrate ## Run the application
-	./bin/hyperfleet-api serve $(DB_FLAGS)
+run: db/migrate ## Run the application with JWT auth
+	@install -m 600 /dev/null $(DEV_TOKEN_FILE) && configs/gen-dev-token.sh --new-key > $(DEV_TOKEN_FILE)
+	./bin/hyperfleet-api serve $(DB_FLAGS) --config configs/dev.yaml
+
+.PHONY: dev-token
+dev-token: ## Generate a fresh JWT using the existing dev key (no server restart needed)
+	@install -m 600 /dev/null $(DEV_TOKEN_FILE) && configs/gen-dev-token.sh > $(DEV_TOKEN_FILE)
+	@echo 'Usage: curl -H "Authorization: Bearer $$(cat $(DEV_TOKEN_FILE))" http://localhost:8000/api/hyperfleet/v1/clusters'
 
 .PHONY: run-no-auth
 run-no-auth: db/migrate ## Run the application without auth

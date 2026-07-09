@@ -40,6 +40,7 @@ make run-no-auth
 ```
 
 **First-time setup notes:**
+
 - **Critical**: Run `make generate-all` before any other commands. Generated code is not in git.
 - Tool versions are pinned using [Bingo](https://github.com/bwplotka/bingo) in the `.bingo/` directory
 - The build uses FIPS-compliant crypto: `CGO_ENABLED=1 GOEXPERIMENT=boringcrypto`
@@ -86,6 +87,7 @@ hyperfleet-api/
 How to run unit tests, integration tests, linting, and validation. See the [test placement strategy](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/docs/e2e-testing/test-placement-strategy.md) for which layer a new test belongs in.
 
 ### Unit Tests
+
 ```bash
 # Run all unit tests
 make test
@@ -100,6 +102,7 @@ make ci-test-unit
 Unit tests run with `HYPERFLEET_ENV=unit_testing` and do not require a running database.
 
 ### Integration Tests
+
 ```bash
 # Run integration tests
 # These automatically create isolated PostgreSQL containers via testcontainers
@@ -112,6 +115,7 @@ make ci-test-integration
 Integration tests use testcontainers to create isolated PostgreSQL instances. No manual database setup required.
 
 ### Linting and Quality Checks
+
 ```bash
 # Run all quality checks (fast - no database required)
 make verify-all
@@ -155,6 +159,7 @@ image:
 The `verify-helm-docs` check runs as part of `make test-helm` and will fail the PR if the README is out of date.
 
 **Recommended workflow:**
+
 - Use `make verify-all` for fast feedback during development (no database)
 - Use `make test-all` for full validation before pushing
 
@@ -163,6 +168,7 @@ The `verify-helm-docs` check runs as part of `make test-helm` and will fail the 
 Build commands, running locally, generating code, and database operations.
 
 ### Building
+
 ```bash
 # Clean build (generates code, builds binary)
 make build
@@ -178,11 +184,12 @@ make install
 ```
 
 ### Running Locally
+
 ```bash
 # Run with authentication disabled (local development)
 make run-no-auth
 
-# Run with full authentication
+# Run with full authentication (auto-generates dev JWT at /tmp/hf-dev-token.txt)
 make run
 
 # Access the API
@@ -197,6 +204,7 @@ curl http://localhost:8000/api/hyperfleet/v1/clusters | jq
 ```
 
 ### Code Generation
+
 ```bash
 # Generate OpenAPI types from openapi/openapi.yaml
 make generate
@@ -214,6 +222,7 @@ make generate-vendor
 **Important:** Never edit files in `pkg/api/openapi/` or `*_mock.go` files. They are auto-generated.
 
 ### Database Operations
+
 ```bash
 # Setup local PostgreSQL container
 make db/setup
@@ -229,6 +238,7 @@ make db/teardown
 ```
 
 ### Container Images
+
 ```bash
 # Build container image
 make image
@@ -247,6 +257,7 @@ Follow the HyperFleet commit message format and refer to the [architecture repos
 **Format:** `HYPERFLEET-### - type: description`
 
 **Example:**
+
 ```
 HYPERFLEET-123 - fix: handle nil pointer in status aggregation
 
@@ -264,11 +275,13 @@ Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
 HyperFleet API uses semantic versioning and automated releases.
 
 ### Versioning
+
 - Version tags follow semver: `v0.1.0`, `v0.1.1`, `v0.2.0`
 - See [CHANGELOG.md](CHANGELOG.md) for release history
 - Helm chart version is independent from app version
 
 ### Release Workflow
+
 1. Version tags are created on `main` branch
 2. Release branches follow pattern: `release-X.Y` (e.g., `release-0.1`)
 3. Container images are built and pushed automatically by CI/CD
