@@ -593,44 +593,70 @@ func (v *TaskConfigValidator) validateLifecycleConfig() {
 		"Orphan":     true,
 	}
 	for i, resource := range v.config.Resources {
-		if resource.Lifecycle == nil || resource.Lifecycle.Delete == nil {
+		if resource.Lifecycle == nil {
 			continue
 		}
 
-		del := resource.Lifecycle.Delete
-		basePath := fmt.Sprintf("%s[%d].%s.%s", FieldResources, i, FieldLifecycle, FieldLifecycleDelete)
+		// NOTE: these are independent if/else-if chains (no continue) so that a validation
+		// failure in one lifecycle block (e.g. missing discovery for create) never skips
+		// validating the sibling block (e.g. delete) for the same resource.
+		if resource.Lifecycle.Create != nil {
+			create := resource.Lifecycle.Create
+			basePath := fmt.Sprintf("%s[%d].%s.%s", FieldResources, i, FieldLifecycle, FieldLifecycleCreate)
 
-		// discovery is required — without it executeResourceDelete cannot locate
-		// the resource and will silently declare it "already deleted" without calling DeleteResource.
-		if resource.Discovery == nil {
-			v.errors.Add(
-				basePath,
-				"lifecycle.delete requires a discovery config to locate the resource for deletion",
-			)
-			continue
+			// discovery is required — without it executeResource cannot determine whether
+			// the resource already exists, and will always evaluate the when condition.
+			switch {
+			case resource.Discovery == nil:
+				v.errors.Add(
+					basePath,
+					"lifecycle.create requires a discovery config to check if the resource already exists",
+				)
+			case create.When != nil && create.When.Expression == "":
+				v.errors.Add(
+					basePath+"."+FieldLifecycleWhen+"."+FieldExpression,
+					"lifecycle.create.when.expression is required when lifecycle.create.when is configured",
+				)
+			case create.When != nil:
+				path := basePath + "." + FieldLifecycleWhen + "." + FieldExpression
+				v.validateCELExpression(create.When.Expression, path)
+			}
 		}
 
-		// Validate propagationPolicy: must be a known K8s value if set
-		if del.PropagationPolicy != "" && !validPropagationPolicies[del.PropagationPolicy] {
-			v.errors.Add(
-				basePath+"."+FieldLifecyclePropagationPolicy,
-				fmt.Sprintf("invalid propagationPolicy %q: must be one of Background, Foreground, Orphan",
-					del.PropagationPolicy),
-			)
-		}
+		if resource.Lifecycle.Delete != nil {
+			del := resource.Lifecycle.Delete
+			basePath := fmt.Sprintf("%s[%d].%s.%s", FieldResources, i, FieldLifecycle, FieldLifecycleDelete)
 
-		// Validate when: required — without it the resource is never deleted
-		if del.When == nil || del.When.Expression == "" {
-			v.errors.Add(
-				basePath+"."+FieldLifecycleWhen+"."+FieldExpression,
-				"lifecycle.delete.when.expression is required: without it the resource will never be deleted",
-			)
-			continue
-		}
+			// discovery is required — without it executeResourceDelete cannot locate
+			// the resource and will silently declare it "already deleted" without calling DeleteResource.
+			if resource.Discovery == nil {
+				v.errors.Add(
+					basePath,
+					"lifecycle.delete requires a discovery config to locate the resource for deletion",
+				)
+			} else {
+				// Validate propagationPolicy: must be a known K8s value if set
+				if del.PropagationPolicy != "" && !validPropagationPolicies[del.PropagationPolicy] {
+					v.errors.Add(
+						basePath+"."+FieldLifecyclePropagationPolicy,
+						fmt.Sprintf("invalid propagationPolicy %q: must be one of Background, Foreground, Orphan",
+							del.PropagationPolicy),
+					)
+				}
 
-		// Validate when.expression: must be valid CEL
-		path := basePath + "." + FieldLifecycleWhen + "." + FieldExpression
-		v.validateCELExpression(del.When.Expression, path)
+				// Validate when: required — without it the resource is never deleted
+				if del.When == nil || del.When.Expression == "" {
+					v.errors.Add(
+						basePath+"."+FieldLifecycleWhen+"."+FieldExpression,
+						"lifecycle.delete.when.expression is required: without it the resource will never be deleted",
+					)
+				} else {
+					// Validate when.expression: must be valid CEL
+					path := basePath + "." + FieldLifecycleWhen + "." + FieldExpression
+					v.validateCELExpression(del.When.Expression, path)
+				}
+			}
+		}
 	}
 }
 

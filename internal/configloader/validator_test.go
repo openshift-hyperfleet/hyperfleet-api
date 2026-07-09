@@ -1166,4 +1166,128 @@ func TestValidateLifecycleConfig(t *testing.T) {
 		require.NoError(t, v.ValidateStructure())
 		require.NoError(t, v.ValidateSemantic())
 	})
+
+	t.Run("valid lifecycle create with when expression", func(t *testing.T) {
+		cfg := baseTaskConfig()
+		cfg.Resources = []Resource{{
+			Name:      "myResource",
+			Discovery: minDiscovery,
+			Manifest:  minManifest,
+			Lifecycle: &ResourceLifecycle{
+				Create: &LifecycleCreate{
+					When: &LifecycleWhen{Expression: "clusterPhase == 'Provisioning'"},
+				},
+			},
+		}}
+		v := newTaskValidator(cfg)
+		require.NoError(t, v.ValidateStructure())
+		require.NoError(t, v.ValidateSemantic())
+	})
+
+	t.Run("lifecycle create without when is valid", func(t *testing.T) {
+		cfg := baseTaskConfig()
+		cfg.Resources = []Resource{{
+			Name:      "myResource",
+			Discovery: minDiscovery,
+			Manifest:  minManifest,
+			Lifecycle: &ResourceLifecycle{
+				Create: &LifecycleCreate{},
+			},
+		}}
+		v := newTaskValidator(cfg)
+		require.NoError(t, v.ValidateStructure())
+		require.NoError(t, v.ValidateSemantic())
+	})
+
+	t.Run("lifecycle create with when but empty expression", func(t *testing.T) {
+		cfg := baseTaskConfig()
+		cfg.Resources = []Resource{{
+			Name:      "myResource",
+			Discovery: minDiscovery,
+			Manifest:  minManifest,
+			Lifecycle: &ResourceLifecycle{
+				Create: &LifecycleCreate{
+					When: &LifecycleWhen{Expression: ""},
+				},
+			},
+		}}
+		err := newTaskValidator(cfg).ValidateSemantic()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(),
+			"lifecycle.create.when.expression is required when lifecycle.create.when is configured")
+	})
+
+	t.Run("lifecycle create with invalid CEL expression", func(t *testing.T) {
+		cfg := baseTaskConfig()
+		cfg.Resources = []Resource{{
+			Name:      "myResource",
+			Discovery: minDiscovery,
+			Manifest:  minManifest,
+			Lifecycle: &ResourceLifecycle{
+				Create: &LifecycleCreate{
+					When: &LifecycleWhen{Expression: "invalid &&& syntax"},
+				},
+			},
+		}}
+		err := newTaskValidator(cfg).ValidateSemantic()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "CEL parse error")
+	})
+
+	t.Run("lifecycle with both create and delete", func(t *testing.T) {
+		cfg := baseTaskConfig()
+		cfg.Resources = []Resource{{
+			Name:      "myResource",
+			Discovery: minDiscovery,
+			Manifest:  minManifest,
+			Lifecycle: &ResourceLifecycle{
+				Create: &LifecycleCreate{
+					When: &LifecycleWhen{Expression: "clusterPhase == 'Provisioning'"},
+				},
+				Delete: &LifecycleDelete{
+					When: &LifecycleWhen{Expression: "deletedTime != null"},
+				},
+			},
+		}}
+		v := newTaskValidator(cfg)
+		require.NoError(t, v.ValidateStructure())
+		require.NoError(t, v.ValidateSemantic())
+	})
+
+	t.Run("lifecycle create missing discovery", func(t *testing.T) {
+		cfg := baseTaskConfig()
+		cfg.Resources = []Resource{{
+			Name:     "myResource",
+			Manifest: minManifest,
+			// Discovery intentionally absent
+			Lifecycle: &ResourceLifecycle{Create: &LifecycleCreate{
+				When: &LifecycleWhen{Expression: "shouldCreate"},
+			}},
+		}}
+		err := newTaskValidator(cfg).ValidateSemantic()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "lifecycle.create requires a discovery config")
+	})
+
+	t.Run("lifecycle create and delete both missing discovery report both errors", func(t *testing.T) {
+		cfg := baseTaskConfig()
+		cfg.Resources = []Resource{{
+			Name:     "myResource",
+			Manifest: minManifest,
+			// Discovery intentionally absent
+			Lifecycle: &ResourceLifecycle{
+				Create: &LifecycleCreate{
+					When: &LifecycleWhen{Expression: "shouldCreate"},
+				},
+				Delete: &LifecycleDelete{
+					PropagationPolicy: "NotAValidPolicy",
+					When:              &LifecycleWhen{Expression: "shouldDelete"},
+				},
+			},
+		}}
+		err := newTaskValidator(cfg).ValidateSemantic()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "lifecycle.create requires a discovery config")
+		assert.Contains(t, err.Error(), "lifecycle.delete requires a discovery config")
+	})
 }

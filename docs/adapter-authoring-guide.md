@@ -159,7 +159,7 @@ The `adapter.*` context is populated automatically and available in your post-ac
 | Variable | Type | Description |
 |----------|------|-------------|
 | `adapter.executionStatus` | string | `"success"` or `"failed"` |
-| `adapter.resourcesSkipped` | bool | `true` if preconditions were not met |
+| `adapter.resourcesSkipped` | bool | `true` if preconditions were not met, or if any resource's `lifecycle.create.when` evaluated to `false` |
 | `adapter.skipReason` | string | Why resources were skipped |
 | `adapter.executionError.phase` | string | Phase where the first error occurred |
 | `adapter.executionError.step` | string | Specific step that first failed |
@@ -507,7 +507,7 @@ The framework determines the operation automatically:
 |-----------|------|----------|
 | `create` | Resource doesn't exist | Apply the manifest |
 | `update` | Resource exists, generation changed | Patch the resource |
-| `skip` | Resource exists, generation unchanged | No-op (idempotent) |
+| `skip` | Resource exists and generation unchanged, **or** resource doesn't exist and `lifecycle.create.when` evaluates to `false` | No-op; the latter case also sets `adapter.resourcesSkipped` to `true` |
 | `recreate` | `recreate_on_change: true` is set | Delete then create |
 | `delete` | `lifecycle.delete.when` expression evaluates to `true` | Delete the resource; remaining resources still processed |
 
@@ -666,6 +666,70 @@ status:
     resources.?namespace0.?status.?conditions.orValue([])
       .exists(c, c.type == "Ready" && c.status == "True")
     ? "True" : "False"
+```
+
+### Conditional creation (lifecycle.create)
+
+Resources can gate their **initial creation** on a CEL expression using the `lifecycle.create` block. This lets you apply a resource only once some runtime condition holds (a feature flag param, a sibling resource's discovered state, an event payload field) without blocking the rest of the resources phase — unlike preconditions, which are all-or-nothing for the entire phase.
+
+#### Configuring lifecycle.create
+
+```yaml
+resources:
+  - name: "optionalFeatureConfig"
+    transport:
+      client: "kubernetes"
+    manifest:
+      # ...
+    discovery:                              # required: needed to check whether the resource already exists
+      by_name: "{{ .clusterId }}-feature"
+    lifecycle:
+      create: # optional: Choose if you want to control creation with CEL
+        when:
+          expression: "params.?enableOptionalFeature.orValue(false)"  
+```
+
+**Requirements:**
+
+- `discovery` must be configured on the same resource — without it the executor cannot tell whether the resource already exists, and validation rejects the config.
+- `when.expression` is required when `when` is configured, and must be a valid CEL expression — config validation rejects anything else.
+
+#### Behavior
+
+- **Resource doesn't exist yet**: the `when` expression is evaluated. `false` skips creation (operation `skip`, `adapter.resourcesSkipped` set to `true`); `true` or absent `lifecycle.create` proceeds with the normal create flow.
+- **Resource already exists**: the `when` expression is **ignored** — the resource is applied normally (update flow). This makes `lifecycle.create.when` a one-time gate on initial creation, not a recurring condition; once created, the resource is reconciled like any other on subsequent events.
+- **CEL evaluation error**: the resource execution fails with a descriptive error (referencing the failing expression) and the resource is neither applied nor silently skipped — the same fail-closed behavior as `lifecycle.delete.when`.
+
+#### Skipping without blocking siblings
+
+Because the skip is scoped to a single resource, other resources in the list still execute. This lets you write dependency conditions the same way as with deletion:
+
+```yaml
+resources:
+  - name: "resourceA"
+    # ... no lifecycle.create — always applied
+
+  - name: "resourceB"
+    # ...
+    discovery:
+      by_name: "{{ .clusterId }}-b"
+    lifecycle:
+      create:
+        when:
+          # Only create resourceB once resourceA has been discovered
+          expression: "resources.?resourceA.hasValue()"
+```
+
+Resources are pre-discovered before any `lifecycle.create.when` or `lifecycle.delete.when` expression is evaluated, so `resources.?resourceA.hasValue()` reflects state from prior reconciliations regardless of list order.
+
+#### Reporting skipped resources in post-actions
+
+Because `adapter.resourcesSkipped` is shared with the precondition-level skip flag, a post-action `when` gate can react the same way regardless of which phase produced the skip:
+
+```cel
+adapter.?resourcesSkipped.orValue(false)
+  ? "Resources skipped: " + adapter.?skipReason.orValue("unknown")
+  : "All resources processed successfully"
 ```
 
 ### Conditional deletion (lifecycle.delete)

@@ -92,6 +92,7 @@ const (
 
 // Lifecycle field names
 const (
+	FieldLifecycleCreate            = "create"
 	FieldLifecycleDelete            = "delete"
 	FieldLifecyclePropagationPolicy = "propagationPolicy"
 	FieldLifecycleWhen              = "when"
