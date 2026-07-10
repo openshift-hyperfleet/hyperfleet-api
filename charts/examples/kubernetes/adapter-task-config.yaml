@@ -65,6 +65,8 @@ resources:
 post:
   payloads:
     - name: "clusterStatusPayload"
+      when:
+        expression: "!adapter.resourcesSkipped"
       build:
         adapter: "{{ .adapter.name }}"
         conditions:
@@ -163,6 +165,38 @@ post:
           expression: "generation"
         observed_time: "{{ now | date \"2006-01-02T15:04:05Z07:00\" }}"
 
+    # Skipped path: preconditions not met — report simplified status without
+    # evaluating resources.* (which may not exist in this context)
+    - name: "skippedStatusPayload"
+      when:
+        expression: "adapter.resourcesSkipped"
+      build:
+        adapter: "{{ .adapter.name }}"
+        conditions:
+          - type: "Applied"
+            status: "False"
+            reason: "PreconditionsNotMet"
+            message:
+              expression: |
+                "Resources skipped: " + adapter.?skipReason.orValue("preconditions not met")
+          - type: "Available"
+            status: "False"
+            reason: "PreconditionsNotMet"
+            message:
+              expression: |
+                "Resources not available: " + adapter.?skipReason.orValue("preconditions not met")
+          - type: "Health"
+            status: "True"
+            reason: "NoErrors"
+            message: "Adapter is healthy, no work performed due to preconditions"
+          - type: "Finalized"
+            status: "False"
+            reason: ""
+            message: ""
+        observed_generation:
+          expression: "generation"
+        observed_time: "{{ now | date \"2006-01-02T15:04:05Z07:00\" }}"
+
   post_actions:
     - name: "reportClusterStatus"
       when:
@@ -174,3 +208,14 @@ post:
           - name: "Content-Type"
             value: "application/json"
         body: "{{ .clusterStatusPayload }}"
+
+    - name: "reportClusterStatusSkipped"
+      when:
+        expression: "adapter.resourcesSkipped"
+      api_call:
+        method: "PUT"
+        url: "/clusters/{{ .clusterId }}/statuses"
+        headers:
+          - name: "Content-Type"
+            value: "application/json"
+        body: "{{ .skippedStatusPayload }}"
