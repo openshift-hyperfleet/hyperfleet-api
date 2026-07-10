@@ -27,11 +27,17 @@ helm install hyperfleet-adapter oci://REGISTRY/hyperfleet-adapter \
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| adapterConfig | object | `{"create":true,"hyperfleetApi":{"baseUrl":"http://hyperfleet-api:8000","version":"v1"},"log":{"level":"info"}}` | Adapter deployment configuration. Controls how the adapter-config ConfigMap is created. Use `adapterConfig.yaml` for inline YAML, `adapterConfig.files` for chart-packaged files, or set `create: false` and provide `configMapName` to reference an existing ConfigMap. |
+| adapterConfig | object | `{"create":true,"hyperfleetApi":{"auth":{"audience":"hyperfleet-api","enabled":false,"expirationSeconds":3600,"tokenCacheTtl":"30s","tokenPath":"/var/run/secrets/hyperfleet/token"},"baseUrl":"http://hyperfleet-api:8000","version":"v1"},"log":{"level":"info"}}` | Adapter deployment configuration. Controls how the adapter-config ConfigMap is created. Use `adapterConfig.yaml` for inline YAML, `adapterConfig.files` for chart-packaged files, or set `create: false` and provide `configMapName` to reference an existing ConfigMap. |
 | adapterConfig.create | bool | `true` | Create the adapter-config ConfigMap |
-| adapterConfig.hyperfleetApi | object | `{"baseUrl":"http://hyperfleet-api:8000","version":"v1"}` | HyperFleet API connection settings injected as environment variables |
+| adapterConfig.hyperfleetApi | object | `{"auth":{"audience":"hyperfleet-api","enabled":false,"expirationSeconds":3600,"tokenCacheTtl":"30s","tokenPath":"/var/run/secrets/hyperfleet/token"},"baseUrl":"http://hyperfleet-api:8000","version":"v1"}` | HyperFleet API connection settings injected as environment variables |
 | adapterConfig.hyperfleetApi.baseUrl | string | `"http://hyperfleet-api:8000"` | API base URL (`HYPERFLEET_API_BASE_URL`) |
 | adapterConfig.hyperfleetApi.version | string | `"v1"` | API version (`HYPERFLEET_API_VERSION`) |
+| adapterConfig.hyperfleetApi.auth | object | `{"audience":"hyperfleet-api","enabled":false,"expirationSeconds":3600,"tokenCacheTtl":"30s","tokenPath":"/var/run/secrets/hyperfleet/token"}` | JWT bearer token authentication via Kubernetes projected ServiceAccount token |
+| adapterConfig.hyperfleetApi.auth.enabled | bool | `false` | Enable bearer token auth (`HYPERFLEET_API_AUTH_TOKEN_PATH`) |
+| adapterConfig.hyperfleetApi.auth.audience | string | `"hyperfleet-api"` | ServiceAccount token audience (used for the projected volume) |
+| adapterConfig.hyperfleetApi.auth.tokenPath | string | `"/var/run/secrets/hyperfleet/token"` | Absolute path where the token file is mounted |
+| adapterConfig.hyperfleetApi.auth.expirationSeconds | int | `3600` | Token lifetime in seconds for the projected ServiceAccount token |
+| adapterConfig.hyperfleetApi.auth.tokenCacheTtl | string | `"30s"` | How long the token is cached in memory (`HYPERFLEET_API_AUTH_TOKEN_CACHE_TTL`). Zero means re-read on every request. |
 | adapterConfig.log | object | `{"level":"info"}` | Log level for the adapter |
 | adapterConfig.log.level | string | `"info"` | Log level (`debug`, `info`, `warn`, `error`) |
 | adapterTaskConfig | object | `{"create":true}` | Adapter task configuration. Controls how the adapter-task-config ConfigMap is created. Supports inline YAML, chart-packaged files, or external content via `--set-file`. |

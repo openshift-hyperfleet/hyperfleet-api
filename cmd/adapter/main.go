@@ -296,6 +296,11 @@ func createAPIClient(apiConfig configloader.HyperfleetAPIConfig, log logger.Logg
 		opts = append(opts, hyperfleetapi.WithDefaultHeader(key, value))
 	}
 
+	// Configure bearer token auth if set
+	if apiConfig.Auth != nil {
+		opts = append(opts, hyperfleetapi.WithAuth(apiConfig.Auth))
+	}
+
 	return hyperfleetapi.NewClient(log, opts...)
 }
 

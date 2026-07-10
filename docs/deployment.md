@@ -84,6 +84,11 @@ These fields have first-class Helm values that the chart injects as environment 
 | `adapterConfig.log.level` | Log level (`debug`, `info`, `warn`, `error`) | `LOG_LEVEL` | `info` |
 | `adapterConfig.hyperfleetApi.baseUrl` | HyperFleet API base URL | `HYPERFLEET_API_BASE_URL` | `http://hyperfleet-api:8000` |
 | `adapterConfig.hyperfleetApi.version` | API version | `HYPERFLEET_API_VERSION` | `v1` |
+| `adapterConfig.hyperfleetApi.auth.enabled` | Enable JWT bearer token auth | — (controls volume + env vars) | `false` |
+| `adapterConfig.hyperfleetApi.auth.tokenPath` | Absolute path to the token file | `HYPERFLEET_API_AUTH_TOKEN_PATH` | `/var/run/secrets/hyperfleet/token` |
+| `adapterConfig.hyperfleetApi.auth.tokenCacheTtl` | In-memory token cache TTL | `HYPERFLEET_API_AUTH_TOKEN_CACHE_TTL` | `30s` |
+| `adapterConfig.hyperfleetApi.auth.audience` | ServiceAccount token audience | — (used in projected volume) | `hyperfleet-api` |
+| `adapterConfig.hyperfleetApi.auth.expirationSeconds` | ServiceAccount token lifetime (seconds) | — (used in projected volume) | `3600` |
 
 ### Fields settable via the `env` list
 
@@ -140,6 +145,32 @@ When using individual properties, `broker.type` must be set to `googlepubsub` or
 
 ---
 
+## HyperFleet API Authentication
+
+The adapter can authenticate to the HyperFleet API using a Kubernetes projected ServiceAccount token (JWT bearer token). Authentication is **disabled by default** — existing deployments are unaffected.
+
+When enabled, the Helm chart:
+1. Mounts a projected `serviceAccountToken` volume at the configured `tokenPath` directory.
+2. Sets `HYPERFLEET_API_AUTH_TOKEN_PATH` and `HYPERFLEET_API_AUTH_TOKEN_CACHE_TTL` env vars.
+3. The adapter reads the token file and attaches `Authorization: Bearer <token>` to every HyperFleet API request.
+
+```yaml
+adapterConfig:
+  hyperfleetApi:
+    auth:
+      enabled: true
+      audience: hyperfleet-api        # token audience claimed by the API server
+      tokenPath: /var/run/secrets/hyperfleet/token
+      expirationSeconds: 3600         # kubelet rotates the token before expiry
+      tokenCacheTtl: 30s              # re-read file every 30s; 0 = re-read per request
+```
+
+`tokenPath` must be an absolute path (validated at `helm install`/`upgrade` time).
+
+The token file is managed by the kubelet and rotated automatically before `expirationSeconds` elapses. Setting `tokenCacheTtl` shorter than the rotation interval ensures the adapter picks up a fresh token before the old one expires.
+
+---
+
 ## Tracing
 
 OpenTelemetry distributed tracing. The Helm chart defaults to tracing **disabled** (the binary defaults to enabled). When no endpoint is configured, traces are written to stdout.
@@ -159,6 +190,8 @@ The chart automatically sets these environment variables from Helm values:
 | `LOG_LEVEL` | `adapterConfig.log.level` | Always |
 | `HYPERFLEET_API_BASE_URL` | `adapterConfig.hyperfleetApi.baseUrl` | Always |
 | `HYPERFLEET_API_VERSION` | `adapterConfig.hyperfleetApi.version` | Always |
+| `HYPERFLEET_API_AUTH_TOKEN_PATH` | `adapterConfig.hyperfleetApi.auth.tokenPath` | When `auth.enabled` is `true` |
+| `HYPERFLEET_API_AUTH_TOKEN_CACHE_TTL` | `adapterConfig.hyperfleetApi.auth.tokenCacheTtl` | When `auth.enabled` is `true` |
 | `BROKER_CONFIG_FILE` | Hardcoded `/etc/broker/broker.yaml` | Always |
 | `HYPERFLEET_BROKER_SUBSCRIPTION_ID` | `broker.googlepubsub.subscriptionId` | When broker type is `googlepubsub` |
 | `HYPERFLEET_BROKER_TOPIC` | `broker.googlepubsub.topic` | When broker type is `googlepubsub` |

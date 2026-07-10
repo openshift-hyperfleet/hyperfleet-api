@@ -237,6 +237,14 @@ Validate required values that must not remain as placeholders.
 {{- if not (trim (toString .Values.image.tag)) -}}
 {{- fail "image.tag must be set (e.g. --set image.tag=abc1234)" -}}
 {{- end -}}
+{{- if .Values.adapterConfig.hyperfleetApi.auth.enabled -}}
+{{- if not (hasPrefix "/" .Values.adapterConfig.hyperfleetApi.auth.tokenPath) -}}
+{{- fail "adapterConfig.hyperfleetApi.auth.tokenPath must be an absolute path (start with /)" -}}
+{{- end -}}
+{{- if eq (.Values.adapterConfig.hyperfleetApi.auth.tokenPath | base) "" -}}
+{{- fail "adapterConfig.hyperfleetApi.auth.tokenPath must include a filename, not just a directory" -}}
+{{- end -}}
+{{- end -}}
 {{- end }}
 
 {{/*

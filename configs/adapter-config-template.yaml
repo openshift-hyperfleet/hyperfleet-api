@@ -114,6 +114,13 @@ clients:
     timeout: 2s
     retry_attempts: 3
     retry_backoff: exponential
+    # Optional JWT bearer token authentication via a file (e.g. Kubernetes projected ServiceAccount token).
+    # When configured, the token is read from token_path and attached as Authorization: Bearer <token>.
+    # token_path must be an absolute path.
+    # Environment variables: HYPERFLEET_API_AUTH_TOKEN_PATH, HYPERFLEET_API_AUTH_TOKEN_CACHE_TTL
+    # auth:
+    #   token_path: "/var/run/secrets/hyperfleet/token"
+    #   token_cache_ttl: "30s"  # 0 = re-read on every request
 
   # Broker consumer configuration (adapter-level)
   broker:

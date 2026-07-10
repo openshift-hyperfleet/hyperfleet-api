@@ -89,6 +89,12 @@ spec:
               value: {{ .Values.adapterConfig.hyperfleetApi.baseUrl | quote }}
             - name: HYPERFLEET_API_VERSION
               value: {{ .Values.adapterConfig.hyperfleetApi.version | quote }}
+            {{- if .Values.adapterConfig.hyperfleetApi.auth.enabled }}
+            - name: HYPERFLEET_API_AUTH_TOKEN_PATH
+              value: {{ .Values.adapterConfig.hyperfleetApi.auth.tokenPath | quote }}
+            - name: HYPERFLEET_API_AUTH_TOKEN_CACHE_TTL
+              value: {{ .Values.adapterConfig.hyperfleetApi.auth.tokenCacheTtl | quote }}
+            {{- end }}
             - name: BROKER_CONFIG_FILE
               value: /etc/broker/broker.yaml
             {{- $brokerType := include "hyperfleet-adapter.brokerType" . }}
@@ -154,6 +160,11 @@ spec:
               mountPath: /etc/broker/broker.yaml
               subPath: broker.yaml
               readOnly: true
+            {{- if .Values.adapterConfig.hyperfleetApi.auth.enabled }}
+            - name: hyperfleet-api-token
+              mountPath: {{ .Values.adapterConfig.hyperfleetApi.auth.tokenPath | dir }}
+              readOnly: true
+            {{- end }}
             {{- with .Values.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -176,6 +187,15 @@ spec:
             items:
               - key: broker.yaml
                 path: broker.yaml
+        {{- if .Values.adapterConfig.hyperfleetApi.auth.enabled }}
+        - name: hyperfleet-api-token
+          projected:
+            sources:
+            - serviceAccountToken:
+                audience: {{ .Values.adapterConfig.hyperfleetApi.auth.audience }}
+                expirationSeconds: {{ .Values.adapterConfig.hyperfleetApi.auth.expirationSeconds }}
+                path: {{ .Values.adapterConfig.hyperfleetApi.auth.tokenPath | base }}
+        {{- end }}
         {{- with .Values.extraVolumes }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
