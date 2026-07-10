@@ -120,7 +120,7 @@ func TestNewSchemaValidator_MalformedContent(t *testing.T) {
 	Expect(err.Error()).To(ContainSubstring("failed to load OpenAPI schema"))
 }
 
-func TestNewSchemaValidator_MissingSchemas(t *testing.T) {
+func TestNewSchemaValidator_MissingSchemas_SkipsGracefully(t *testing.T) {
 	RegisterTestingT(t)
 
 	registerRequiredSpecValidationEntities()
@@ -142,9 +142,11 @@ components:
 	err := os.WriteFile(schemaPath, []byte(invalidSchema), 0600)
 	Expect(err).To(BeNil())
 
-	_, err = NewSchemaValidator(schemaPath)
-	Expect(err).ToNot(BeNil())
-	Expect(err.Error()).To(ContainSubstring("not found in OpenAPI spec"))
+	// Non-required entities with missing schemas are skipped with a warning, not an error
+	validator, err := NewSchemaValidator(schemaPath)
+	Expect(err).To(BeNil())
+	Expect(validator.HasSchema("clusters")).To(BeFalse())
+	Expect(validator.HasSchema("nodepools")).To(BeFalse())
 }
 
 func TestNewSchemaValidator_RegisteredEntityMissingSchema_Panics(t *testing.T) {
@@ -258,7 +260,7 @@ func TestNewSchemaValidator_RealOpenAPISpec_BootsWithRegisteredEntities(t *testi
 	Expect(err).To(BeNil())
 }
 
-func TestNewSchemaValidator_RequiredEntityMissingOpenAPISchema_Fails(t *testing.T) {
+func TestNewSchemaValidator_NonRequiredEntityMissingSchema_SkipsGracefully(t *testing.T) {
 	RegisterTestingT(t)
 
 	registerRequiredSpecValidationEntities()
@@ -283,10 +285,11 @@ components:
 	err := os.WriteFile(schemaPath, []byte(schemaWithoutNodePool), 0600)
 	Expect(err).To(BeNil())
 
-	_, err = NewSchemaValidator(schemaPath)
-	Expect(err).ToNot(BeNil())
-	Expect(err.Error()).To(ContainSubstring("NodePoolSpec"))
-	Expect(err.Error()).To(ContainSubstring("not found"))
+	// Non-required entities with missing schemas are skipped with a warning
+	validator, err := NewSchemaValidator(schemaPath)
+	Expect(err).To(BeNil())
+	Expect(validator.HasSchema("clusters")).To(BeTrue())
+	Expect(validator.HasSchema("nodepools")).To(BeFalse())
 }
 
 func TestValidate_WifConfigSpec_Valid(t *testing.T) {
@@ -344,7 +347,7 @@ func TestValidateClusterSpec_Valid(t *testing.T) {
 	RegisterTestingT(t)
 	validator := setupTestValidator(t)
 
-	err := validator.ValidateClusterSpec(map[string]interface{}{
+	err := validator.Validate("clusters", map[string]interface{}{
 		"region":   "us-central1",
 		"provider": "gcp",
 	})
@@ -355,7 +358,7 @@ func TestValidateClusterSpec_ValidWithOptionalFields(t *testing.T) {
 	RegisterTestingT(t)
 	validator := setupTestValidator(t)
 
-	err := validator.ValidateClusterSpec(map[string]interface{}{
+	err := validator.Validate("clusters", map[string]interface{}{
 		"region":   "europe-west1",
 		"provider": "aws",
 		"network":  map[string]interface{}{"vpc_id": "vpc-12345"},
@@ -367,7 +370,7 @@ func TestValidateClusterSpec_MissingRequiredField(t *testing.T) {
 	RegisterTestingT(t)
 	validator := setupTestValidator(t)
 
-	err := validator.ValidateClusterSpec(map[string]interface{}{
+	err := validator.Validate("clusters", map[string]interface{}{
 		"region": "us-central1",
 	})
 	Expect(err).ToNot(BeNil())
@@ -381,7 +384,7 @@ func TestValidateClusterSpec_InvalidEnum(t *testing.T) {
 	RegisterTestingT(t)
 	validator := setupTestValidator(t)
 
-	err := validator.ValidateClusterSpec(map[string]interface{}{
+	err := validator.Validate("clusters", map[string]interface{}{
 		"region":   "asia-southeast1",
 		"provider": "gcp",
 	})
@@ -397,7 +400,7 @@ func TestValidateClusterSpec_InvalidNestedField(t *testing.T) {
 	RegisterTestingT(t)
 	validator := setupTestValidator(t)
 
-	err := validator.ValidateClusterSpec(map[string]interface{}{
+	err := validator.Validate("clusters", map[string]interface{}{
 		"region":   "us-central1",
 		"provider": "gcp",
 		"network":  map[string]interface{}{"vpc_id": ""},
@@ -412,7 +415,7 @@ func TestValidateNodePoolSpec_Valid(t *testing.T) {
 	RegisterTestingT(t)
 	validator := setupTestValidator(t)
 
-	err := validator.ValidateNodePoolSpec(map[string]interface{}{
+	err := validator.Validate("nodepools", map[string]interface{}{
 		"machine_type": "n1-standard-4",
 		"replicas":     3,
 	})
@@ -423,7 +426,7 @@ func TestValidateNodePoolSpec_ValidWithOptional(t *testing.T) {
 	RegisterTestingT(t)
 	validator := setupTestValidator(t)
 
-	err := validator.ValidateNodePoolSpec(map[string]interface{}{
+	err := validator.Validate("nodepools", map[string]interface{}{
 		"machine_type": "n1-standard-4",
 		"replicas":     5,
 		"autoscaling":  true,
@@ -435,7 +438,7 @@ func TestValidateNodePoolSpec_MissingRequiredField(t *testing.T) {
 	RegisterTestingT(t)
 	validator := setupTestValidator(t)
 
-	err := validator.ValidateNodePoolSpec(map[string]interface{}{
+	err := validator.Validate("nodepools", map[string]interface{}{
 		"machine_type": "n1-standard-4",
 	})
 	Expect(err).ToNot(BeNil())
@@ -449,7 +452,7 @@ func TestValidateNodePoolSpec_InvalidType(t *testing.T) {
 	RegisterTestingT(t)
 	validator := setupTestValidator(t)
 
-	err := validator.ValidateNodePoolSpec(map[string]interface{}{
+	err := validator.Validate("nodepools", map[string]interface{}{
 		"machine_type": "n1-standard-4",
 		"replicas":     "three",
 	})
@@ -461,7 +464,7 @@ func TestValidateNodePoolSpec_OutOfRange(t *testing.T) {
 	RegisterTestingT(t)
 	validator := setupTestValidator(t)
 
-	err := validator.ValidateNodePoolSpec(map[string]interface{}{
+	err := validator.Validate("nodepools", map[string]interface{}{
 		"machine_type": "n1-standard-4",
 		"replicas":     150,
 	})
@@ -473,7 +476,7 @@ func TestValidateNodePoolSpec_BelowMinimum(t *testing.T) {
 	RegisterTestingT(t)
 	validator := setupTestValidator(t)
 
-	err := validator.ValidateNodePoolSpec(map[string]interface{}{
+	err := validator.Validate("nodepools", map[string]interface{}{
 		"machine_type": "n1-standard-4",
 		"replicas":     0,
 	})
@@ -484,7 +487,7 @@ func TestValidateNodePoolSpec_EmptyMachineType(t *testing.T) {
 	RegisterTestingT(t)
 	validator := setupTestValidator(t)
 
-	err := validator.ValidateNodePoolSpec(map[string]interface{}{
+	err := validator.Validate("nodepools", map[string]interface{}{
 		"machine_type": "",
 		"replicas":     3,
 	})

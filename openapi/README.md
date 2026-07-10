@@ -12,7 +12,7 @@ OpenAPI schemas are **not authored here**. They are defined in the [`hyperfleet-
 
 #### Why this exists
 
-HyperFleet API is intentionally schema-agnostic at its core: it stores clusters and nodepools as long as the `spec` field is present and non-null, without caring what is inside it. This is by design — the API serves multiple deployments with different provider-specific payloads.
+HyperFleet API is intentionally schema-agnostic at its core: it stores resources as long as the `spec` field is present and non-null, without caring what is inside it. This is by design — the API serves multiple deployments with different provider-specific payloads.
 
 Deployers, however, **do** care. A GCP deployment might require a `region` field inside `spec`; an AWS deployment might require an `instanceType`. Without validation, invalid or incomplete specs silently end up in the database and only fail later when a downstream component tries to use them.
 
@@ -20,12 +20,12 @@ The `--server-openapi-schema-path` flag solves this: at deploy time, the operato
 
 #### What the schema file must contain
 
-The schema file must be a valid OpenAPI 3.0 document. The API looks up two specific component schemas by name:
+The schema file must be a valid OpenAPI 3.0 document. The API looks up component schemas by the `spec_schema_name` declared in each entity descriptor. For example, the default Cluster and NodePool descriptors use:
 
-| Resource | Required component |
-|----------|--------------------|
-| `cluster` | `components.schemas.ClusterSpec` |
-| `nodepool` | `components.schemas.NodePoolSpec` |
+| Entity Kind | `spec_schema_name` | Required component |
+|-------------|--------------------|--------------------|
+| `Cluster` | `ClusterSpec` | `components.schemas.ClusterSpec` |
+| `NodePool` | `NodePoolSpec` | `components.schemas.NodePoolSpec` |
 
 A minimal example for a GCP deployment:
 
@@ -61,7 +61,7 @@ components:
           maximum: 100
 ```
 
-If `ClusterSpec` or `NodePoolSpec` is absent from the file, the API **fails to start** with an error — this ensures invalid schemas are caught immediately rather than silently skipping validation.
+If an entity descriptor has `require_spec_schema: true` and its `spec_schema_name` is absent from the file, the API **fails to start** with an error — this ensures invalid schemas are caught immediately rather than silently skipping validation.
 
 #### How to configure it
 

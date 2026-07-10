@@ -39,10 +39,6 @@ func SetMinimalTestEnv(t *testing.T) {
 
 	// JWT disabled for non-JWT tests (JWT-specific tests configure their own issuers)
 	t.Setenv("HYPERFLEET_SERVER_JWT_ENABLED", "false")
-
-	// Adapters config - empty arrays are valid
-	t.Setenv("HYPERFLEET_ADAPTERS_REQUIRED_CLUSTER", `[]`)
-	t.Setenv("HYPERFLEET_ADAPTERS_REQUIRED_NODEPOOL", `[]`)
 }
 
 // LoadTestConfig loads a minimal valid configuration for testing

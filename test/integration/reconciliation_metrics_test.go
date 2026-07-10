@@ -143,7 +143,7 @@ func TestReconciliationCollector_Integration(t *testing.T) {
 		db := h.DBFactory.New(ctx)
 		deletedTime := time.Now().UTC().Add(-1 * time.Hour)
 		err = db.Exec(
-			"UPDATE clusters SET deleted_time = ? WHERE id = ?", deletedTime, cluster.ID,
+			"UPDATE resources SET deleted_time = ? WHERE id = ?", deletedTime, cluster.ID,
 		).Error
 		Expect(err).NotTo(HaveOccurred())
 

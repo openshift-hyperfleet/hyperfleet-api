@@ -195,35 +195,41 @@ config:
     shutdown_timeout: 20s
     # -- Timeout for the database liveness ping
     db_ping_timeout: 2s
-
-  # -- Adapters required for resources to reach "Ready" state.
-  # Production deployments should list all expected adapters.
-  adapters:
-    # -- Adapters required for cluster resources
-    required:
-      # -- Required cluster adapters (e.g. `["validation", "dns", "pullsecret", "hypershift"]`)
-      cluster: []
-      # -- Required nodepool adapters (e.g. `["validation", "hypershift"]`)
-      nodepool: []
-
   # -- Entity descriptors registered at startup. Each entry auto-generates
   # REST endpoints, spec validation, and delete policies.
-  # Cluster and NodePool use legacy typed handlers and are NOT listed here.
   entities:
+    - kind: Cluster
+      plural: clusters
+      spec_schema_name: ClusterSpec
+      required_adapters: [validation, dns, pullsecret, hypershift]
+
+      name_min_len: 3
+      name_max_len: 53
+      require_spec_schema: true
+    - kind: NodePool
+      plural: nodepools
+      parent_kind: Cluster
+      on_parent_delete: cascade
+      spec_schema_name: NodePoolSpec
+      required_adapters: [validation, hypershift]
+
+      name_min_len: 3
+      name_max_len: 15
+      require_spec_schema: true
     - kind: Channel
       plural: channels
       spec_schema_name: ChannelSpec
-      search_disallowed_fields: [spec]
+
     - kind: Version
       plural: versions
       parent_kind: Channel
       on_parent_delete: restrict
       spec_schema_name: VersionSpec
-      search_disallowed_fields: [spec]
+
     - kind: WifConfig
       plural: wifconfigs
       spec_schema_name: WifConfigSpec
-      search_disallowed_fields: [spec]
+
 
 # -- ServiceAccount configuration
 serviceAccount:
@@ -535,7 +541,7 @@ sidecars: []
 #         memory: 64Mi
 
 # -- Validation schema configuration. Supply a custom OpenAPI schema for
-# cluster/nodepool spec validation. When enabled, the schema is mounted into
+# resource spec validation. When enabled, the schema is mounted into
 # the container and every create/update request is validated against it. The
 # API will fail to start if the schema is invalid.
 validationSchema:
@@ -544,8 +550,8 @@ validationSchema:
   # -- Use an existing ConfigMap (must contain an `openapi.yaml` key).
   # When set, `validationSchema.content` is ignored.
   existingConfigMap: ""
-  # -- Inline OpenAPI 3.0 schema content. Must define `ClusterSpec` and
-  # `NodePoolSpec` under `components.schemas`.
+  # -- Inline OpenAPI 3.0 schema content. Must define spec schemas matching
+  # `spec_schema_name` for each entity (e.g. `ClusterSpec`, `NodePoolSpec`) under `components.schemas`.
   # @default -- `""`
   content: ""
 

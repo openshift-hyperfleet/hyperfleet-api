@@ -107,7 +107,7 @@ func TestQueryDurationMetricLabels(t *testing.T) {
 
 	QueryDurationMetric.With(prometheus.Labels{
 		labelOperation: "create",
-		labelTable:     "clusters",
+		labelTable:     "resources",
 		labelComponent: componentValue,
 		labelVersion:   api.Version,
 	}).Observe(0.01)
@@ -120,7 +120,7 @@ func TestQueryDurationMetricLabels(t *testing.T) {
 		if mf.GetName() == testQueryDurationMetric {
 			for _, metric := range mf.GetMetric() {
 				labels := labelsToMap(metric)
-				if labels["operation"] == "create" && labels["table"] == "clusters" {
+				if labels["operation"] == "create" && labels["table"] == "resources" {
 					found = true
 					Expect(labels["component"]).To(Equal(componentValue))
 					Expect(labels["version"]).To(Equal(api.Version))
@@ -197,7 +197,7 @@ func TestResetMetrics(t *testing.T) {
 	// Add some data
 	QueryDurationMetric.With(prometheus.Labels{
 		labelOperation: "query",
-		labelTable:     "clusters",
+		labelTable:     "resources",
 		labelComponent: componentValue,
 		labelVersion:   api.Version,
 	}).Observe(0.1)

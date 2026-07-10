@@ -11,10 +11,9 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/registry"
 )
 
-// Resource is the generic GORM model for entity types managed by the entity
-// registry (Channel, Version, WIF Config, etc.). Entity kinds are
-// differentiated by the Kind field. Existing Cluster and NodePool types
-// are NOT migrated to this model.
+// Resource is the generic GORM model backing all entity types managed by the
+// entity registry — including Cluster, NodePool, Channel, Version, and
+// WifConfig. Entity kinds are differentiated by the Kind field.
 type Resource struct {
 	OwnerID     *string    `json:"owner_id,omitempty" gorm:"size:255"`
 	OwnerHref   *string    `json:"owner_href,omitempty" gorm:"size:500"`

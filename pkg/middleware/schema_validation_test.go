@@ -542,6 +542,17 @@ func setupTestValidator(t *testing.T) *validators.SchemaValidator {
 	t.Helper()
 	registry.Reset()
 	registry.Register(registry.EntityDescriptor{
+		Kind:           "Cluster",
+		Plural:         "clusters",
+		SpecSchemaName: "ClusterSpec",
+	})
+	registry.Register(registry.EntityDescriptor{
+		Kind:           "NodePool",
+		Plural:         "nodepools",
+		ParentKind:     "Cluster",
+		SpecSchemaName: "NodePoolSpec",
+	})
+	registry.Register(registry.EntityDescriptor{
 		Kind:           "Foo",
 		Plural:         "foos",
 		SpecSchemaName: "FooSpec",

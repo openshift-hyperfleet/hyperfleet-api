@@ -302,3 +302,22 @@ func TestConvertResource_InvalidLabel(t *testing.T) {
 	Expect(err).To(HaveOccurred())
 	Expect(err.Error()).To(ContainSubstring("invalid labels"))
 }
+
+func TestPresentResource_MalformedSpec(t *testing.T) {
+	RegisterTestingT(t)
+
+	now := time.Now()
+	resource := &api.Resource{
+		Meta:      api.Meta{ID: "bad-spec", CreatedTime: now, UpdatedTime: now},
+		Kind:      "Channel",
+		Name:      "test",
+		Spec:      datatypes.JSON(`{not valid json`),
+		CreatedBy: "user@test.com",
+		UpdatedBy: "user@test.com",
+	}
+
+	resp := PresentResource(resource)
+	Expect(resp.Id).To(Equal("bad-spec"))
+	Expect(resp.Spec).To(BeNil(), "malformed spec should result in nil, not a crash")
+	Expect(resp.Name).To(Equal("test"))
+}

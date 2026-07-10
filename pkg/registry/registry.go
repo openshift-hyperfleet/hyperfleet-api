@@ -94,6 +94,7 @@ func ChildrenOf(parentKind string) []EntityDescriptor {
 //   - ReferenceDescriptor with TargetKind that doesn't resolve
 //   - duplicate RefType within a single entity's References
 //   - Max < Min (when Max > 0)
+//   - NameMaxLen > 0 && NameMinLen > NameMaxLen
 //   - circular required references (Min > 0 cycle between two or more kinds)
 func Validate() {
 	plurals := make(map[string]string, len(descriptors))
@@ -145,6 +146,13 @@ func Validate() {
 					d.Kind, ref.RefType, ref.Max, ref.Min,
 				))
 			}
+		}
+
+		if d.NameMaxLen > 0 && d.NameMinLen > d.NameMaxLen {
+			panic(fmt.Sprintf(
+				"entity %q: NameMaxLen (%d) must be >= NameMinLen (%d)",
+				d.Kind, d.NameMaxLen, d.NameMinLen,
+			))
 		}
 	}
 

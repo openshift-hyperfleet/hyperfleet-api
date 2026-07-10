@@ -197,10 +197,12 @@ func TestNodePoolPatch_SetReconciledFalse(t *testing.T) {
 	// Create a nodepool with Reconciled=True
 	nodePool, err := factories.NewNodePoolWithStatus(&h.Factories, h.DBFactory, h.NewID(), true, true)
 	Expect(err).NotTo(HaveOccurred())
+	Expect(nodePool.OwnerID).NotTo(BeNil(), "nodePool.OwnerID should not be nil")
+	clusterID := *nodePool.OwnerID
 
 	newLabels := map[string]string{"env": "staging"}
 	patchResp, err := client.PatchNodePoolByIdWithResponse(
-		ctx, nodePool.OwnerID, nodePool.ID,
+		ctx, clusterID, nodePool.ID,
 		openapi.PatchNodePoolByIdJSONRequestBody{Labels: &newLabels},
 		test.WithAuthToken(ctx),
 	)
@@ -767,7 +769,7 @@ func TestNodePoolHardDelete(t *testing.T) {
 			Expect(statusResp.StatusCode()).To(Equal(http.StatusCreated))
 		}
 
-		var nodePoolCheck api.NodePool
+		var nodePoolCheck api.Resource
 		dbErr := dbSession.First(&nodePoolCheck, "id = ?", nodePool.ID).Error
 		Expect(dbErr).To(HaveOccurred(), "Nodepool should be hard-deleted from DB")
 		Expect(dbErr.Error()).To(ContainSubstring("record not found"))
@@ -778,7 +780,7 @@ func TestNodePoolHardDelete(t *testing.T) {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(adapterStatuses).To(BeEmpty(), "Adapter statuses should be hard-deleted")
 
-		var clusterCheck api.Cluster
+		var clusterCheck api.Resource
 		err = dbSession.First(&clusterCheck, "id = ?", cluster.ID).Error
 		Expect(err).NotTo(HaveOccurred())
 	})
@@ -832,7 +834,7 @@ func TestNodePoolHardDelete(t *testing.T) {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(statusResp.StatusCode()).To(Equal(http.StatusCreated))
 
-		var nodePoolCheck api.NodePool
+		var nodePoolCheck api.Resource
 		err = dbSession.First(&nodePoolCheck, "id = ?", nodePool.ID).Error
 		Expect(err).NotTo(HaveOccurred())
 		Expect(nodePoolCheck.DeletedTime).NotTo(BeNil(), "Nodepool should still be soft-deleted")
@@ -891,7 +893,7 @@ func TestNodePoolHardDelete(t *testing.T) {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(statusResp.StatusCode()).To(Equal(http.StatusCreated))
 
-		var nodePoolCheck api.NodePool
+		var nodePoolCheck api.Resource
 		err = dbSession.First(&nodePoolCheck, "id = ?", nodePool.ID).Error
 		Expect(err).NotTo(HaveOccurred())
 
@@ -949,7 +951,7 @@ func TestNodePoolHardDelete(t *testing.T) {
 			Expect(statusResp.StatusCode()).To(Equal(http.StatusCreated))
 		}
 
-		var nodePoolCheck api.NodePool
+		var nodePoolCheck api.Resource
 		err = dbSession.First(&nodePoolCheck, "id = ?", nodePool.ID).Error
 		Expect(err).NotTo(HaveOccurred())
 		Expect(nodePoolCheck.DeletedTime).To(BeNil(), "Nodepool should not be soft-deleted")
@@ -1024,7 +1026,7 @@ func TestNodePoolForceDelete(t *testing.T) {
 		Expect(forceDeleteResp.StatusCode()).To(Equal(http.StatusNoContent))
 
 		// Verify nodepool is gone
-		var nodePoolCheck api.NodePool
+		var nodePoolCheck api.Resource
 		dbErr := dbSession.First(&nodePoolCheck, "id = ?", nodePool.ID).Error
 		Expect(dbErr).To(HaveOccurred(), "Nodepool should be hard-deleted from DB after force-delete")
 		Expect(dbErr.Error()).To(ContainSubstring("record not found"))
@@ -1037,7 +1039,7 @@ func TestNodePoolForceDelete(t *testing.T) {
 		Expect(adapterStatuses).To(BeEmpty())
 
 		// Verify parent cluster still exists
-		var clusterCheck api.Cluster
+		var clusterCheck api.Resource
 		err = dbSession.First(&clusterCheck, "id = ?", cluster.ID).Error
 		Expect(err).NotTo(HaveOccurred())
 	})

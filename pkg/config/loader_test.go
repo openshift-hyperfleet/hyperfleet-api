@@ -41,10 +41,6 @@ metrics:
 health:
   host: "localhost"
   port: 8080
-adapters:
-  required:
-    cluster: []
-    nodepool: []
 `
 	err := os.WriteFile(configPath, []byte(configContent), 0600)
 	Expect(err).NotTo(HaveOccurred())
@@ -181,10 +177,6 @@ metrics:
 health:
   host: "localhost"
   port: 8080
-adapters:
-  required:
-    cluster: []
-    nodepool: []
 `
 	err := os.WriteFile(configPath, []byte(configContent), 0600)
 	Expect(err).NotTo(HaveOccurred())
@@ -205,45 +197,6 @@ adapters:
 // ==============================================================
 // JSON Array Parsing Tests
 // ==============================================================
-
-// TestConfigLoader_JSONArrayParsing tests adapter array parsing
-func TestConfigLoader_JSONArrayParsing(t *testing.T) {
-	RegisterTestingT(t)
-
-	SetMinimalTestEnv(t)
-
-	t.Setenv("HYPERFLEET_ADAPTERS_REQUIRED_CLUSTER", `["validation","dns","networking"]`)
-	t.Setenv("HYPERFLEET_ADAPTERS_REQUIRED_NODEPOOL", `["validation"]`)
-
-	loader := NewConfigLoader()
-	cmd := &cobra.Command{}
-	ctx := context.Background()
-
-	cfg, err := loader.Load(ctx, cmd)
-
-	Expect(err).NotTo(HaveOccurred())
-	Expect(cfg.Adapters.RequiredClusterAdapters()).To(Equal([]string{"validation", "dns", "networking"}))
-	Expect(cfg.Adapters.RequiredNodePoolAdapters()).To(Equal([]string{"validation"}))
-}
-
-// TestConfigLoader_InvalidJSONArray tests error on malformed JSON
-func TestConfigLoader_InvalidJSONArray(t *testing.T) {
-	RegisterTestingT(t)
-
-	SetMinimalTestEnv(t)
-
-	t.Setenv("HYPERFLEET_ADAPTERS_REQUIRED_CLUSTER", `["unclosed`)
-
-	loader := NewConfigLoader()
-	cmd := &cobra.Command{}
-	ctx := context.Background()
-
-	_, err := loader.Load(ctx, cmd)
-
-	Expect(err).To(HaveOccurred())
-	Expect(err.Error()).To(ContainSubstring("failed to parse"))
-	Expect(err.Error()).To(ContainSubstring("JSON array"))
-}
 
 // ==============================================================
 // Configuration Priority Tests
@@ -284,10 +237,6 @@ metrics:
 health:
   host: "localhost"
   port: 8080
-adapters:
-  required:
-    cluster: []
-    nodepool: []
 `
 	err := os.WriteFile(configPath, []byte(configContent), 0600)
 	Expect(err).NotTo(HaveOccurred())

@@ -8,39 +8,24 @@ HyperFleet API uses PostgreSQL with GORM ORM. The schema follows a simple relati
 
 ## Core Tables
 
-### clusters
-Primary resources for cluster management. It contains:
-* cluster metadata,
-* a JSONB `spec` field for provider-specific configuration,
-* a JSONB `labels` field for key-value categorization,
-* a JSONB `status_conditions` field for synthesized status,
-* `deleted_time` for soft delete,
-* and `deleted_by` for audit.
-
-### node_pools
-Child resources owned by clusters, representing groups of compute nodes. References clusters via `owner_id` with a `RESTRICT` foreign key. Shares the same core columns as clusters (`labels`, `status_conditions`, `deleted_time`, `deleted_by`) plus `owner_id` for the parent relationship.
+### resources
+Unified resource table for all entity types (Cluster, NodePool, Channel, Version, WifConfig, etc.). Stores `kind`, `name`, `spec` (JSONB), and optional owner references (`owner_id`, `owner_kind`, `owner_href`) for parent-child relationships. Labels are stored in the separate `resource_labels` table; conditions in `resource_conditions`. Uses `deleted_time`/`deleted_by` for soft delete. Unique name constraints are scoped by `kind` and `owner_id`.
 
 ### adapter_statuses
-Polymorphic status records for both clusters and node pools. Stores adapter-reported conditions in JSONB format. No soft delete — rows are hard-deleted or replaced.
+Status records for resources. Stores adapter-reported conditions in JSONB format. No soft delete — rows are hard-deleted or replaced.
 
 **Polymorphic pattern:**
-- `resource_type` + `resource_id` allows one table to serve both clusters and node pools
+- `resource_type` + `resource_id` identifies the owning resource
 - Unique constraint on `(resource_type, resource_id, adapter)` — one record per adapter per resource
-
-### resources
-Generic resource table used by the plugin system for extensible resource types (WifConfigs, Channels, Versions, etc.). Stores `kind`, `name`, `spec` (JSONB), `labels` (JSONB), and optional owner references (`owner_id`, `owner_kind`, `owner_href`) for parent-child relationships. Uses `deleted_time`/`deleted_by` for soft delete. Unique name constraints are scoped by `kind` and `owner_id`.
 
 ## Schema Relationships
 
 ```text
-clusters (1) ──→ (N) node_pools
-    │                    │
-    │                    │
-    └────────┬───────────┘
-             │
-             └──→ adapter_statuses (polymorphic via resource_type + resource_id)
-
-resources (standalone, self-referencing parent-child via owner_id)
+resources (self-referencing parent-child via owner_id)
+    ├──→ resource_conditions (via resource_id, composite PK: resource_id + type)
+    ├──→ resource_labels (via resource_id, composite PK: resource_id + key)
+    ├──→ resource_references (via source_id/target_id)
+    └──→ adapter_statuses (via resource_type + resource_id)
 ```
 
 ## Key Design Patterns
@@ -48,7 +33,7 @@ resources (standalone, self-referencing parent-child via owner_id)
 ### JSONB Fields
 
 Flexible schema storage for:
-- **spec** - Provider-specific cluster/nodepool configurations
+- **spec** - Provider-specific resource configurations
 - **conditions** - Adapter status condition arrays
 - **data** - Adapter metadata
 
@@ -62,14 +47,14 @@ Adapter statuses do not use soft delete — they are hard-deleted when their par
 
 ### Delete Policies
 
-Generic resources (the `resources` table) use delete policies to control child behavior when a parent is deleted. Each resource type declares its policy:
+Resources use delete policies to control child behavior when a parent is deleted. Each resource type declares its policy in its entity descriptor:
 
 | Policy     | Behavior |
 |------------|----------|
 | `restrict` | Parent delete is rejected with `409 Conflict` if active children exist |
 | `cascade`  | All children are soft-deleted (marked Finalizing) along with the parent |
 
-Policies are enforced recursively — a cascade on a parent triggers policy checks on children. For clusters and nodepools, the cascade is built-in: deleting a cluster cascades to all its nodepools — those with required adapters are soft-deleted (entering Finalizing), while those without are hard-deleted immediately.
+Policies are enforced recursively — a cascade on a parent triggers policy checks on children. For example, deleting a Cluster cascades to all its NodePools — those with required adapters are soft-deleted (entering Finalizing), while those without are hard-deleted immediately.
 
 Resources without required adapters skip the Finalizing phase entirely — they are hard-deleted immediately on `DELETE`.
 

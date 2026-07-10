@@ -74,7 +74,7 @@ func AddMetricsFlags(cmd *cobra.Command) {
 	cmd.Flags().String("metrics-tls-cert-file", defaults.TLS.CertFile, "Path to TLS certificate file for metrics")
 	cmd.Flags().String("metrics-tls-key-file", defaults.TLS.KeyFile, "Path to TLS key file for metrics")
 	cmd.Flags().Duration("metrics-label-metrics-inclusion-duration", defaults.LabelMetricsInclusionDuration,
-		"Duration for cluster telemetry label inclusion")
+		"Duration for resource telemetry label inclusion")
 	cmd.Flags().Duration("metrics-reconciliation-stuck-threshold", defaults.ReconciliationStuckThreshold,
 		"Duration after which a pending reconciliation resource is considered stuck")
 }
@@ -95,12 +95,6 @@ func AddHealthFlags(cmd *cobra.Command) {
 
 // AddAllConfigFlags adds all configuration flags to the command
 // This is a convenience function that adds all flag groups
-//
-// Note: Adapter configuration is handled via environment variables (JSON arrays):
-//   - HYPERFLEET_ADAPTERS_REQUIRED_CLUSTER: Required cluster adapters
-//   - HYPERFLEET_ADAPTERS_REQUIRED_NODEPOOL: Required nodepool adapters
-//
-// No CLI flags are provided for adapters as they are complex types (arrays)
 func AddAllConfigFlags(cmd *cobra.Command) {
 	AddConfigFlag(cmd)
 	AddServerFlags(cmd)

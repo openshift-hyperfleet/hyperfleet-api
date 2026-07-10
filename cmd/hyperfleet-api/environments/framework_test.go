@@ -16,8 +16,6 @@ func TestLoadServices(t *testing.T) {
 
 	// Create minimal configuration for unit test
 	cfg := config.NewApplicationConfig()
-	cfg.Adapters.Required.Cluster = []string{"validation", "dns", "pullsecret", "hypershift"}
-	cfg.Adapters.Required.Nodepool = []string{"validation", "hypershift"}
 
 	env := Environment()
 	env.Config = cfg

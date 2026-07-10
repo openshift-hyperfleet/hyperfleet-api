@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -21,18 +22,16 @@ import (
 )
 
 var channelDescriptor = registry.EntityDescriptor{
-	Kind:                   "Channel",
-	Plural:                 "channels",
-	SpecSchemaName:         "ChannelSpec",
-	SearchDisallowedFields: []string{"spec"},
+	Kind:           "Channel",
+	Plural:         "channels",
+	SpecSchemaName: "ChannelSpec",
 }
 
 var versionDescriptor = registry.EntityDescriptor{
-	Kind:                   "Version",
-	Plural:                 "versions",
-	ParentKind:             "Channel",
-	SpecSchemaName:         "VersionSpec",
-	SearchDisallowedFields: []string{"spec"},
+	Kind:           "Version",
+	Plural:         "versions",
+	ParentKind:     "Channel",
+	SpecSchemaName: "VersionSpec",
 }
 
 func newTestResourceHandler(
@@ -287,6 +286,16 @@ func TestResourceHandler_Patch(t *testing.T) {
 			},
 			expectedStatusCode: http.StatusNotFound,
 		},
+		{
+			name: "Conflict 409 - soft-deleted resource",
+			id:   "ch-123",
+			body: `{"spec":{"is_default":false}}`,
+			setupMock: func(mock *services.MockResourceService) {
+				mock.EXPECT().Patch(gomock.Any(), "Channel", "ch-123", gomock.AssignableToTypeOf(&api.ResourcePatch{})).
+					Return(nil, errors.ConflictState("Channel 'ch-123' is marked for deletion"))
+			},
+			expectedStatusCode: http.StatusConflict,
+		},
 	}
 
 	for _, tt := range tests {
@@ -339,6 +348,15 @@ func TestResourceHandler_Delete(t *testing.T) {
 					Return(nil, errors.NotFound("Channel not found"))
 			},
 			expectedStatusCode: http.StatusNotFound,
+		},
+		{
+			name: "Conflict 409 - has active children",
+			id:   "ch-123",
+			setupMock: func(mock *services.MockResourceService) {
+				mock.EXPECT().Delete(gomock.Any(), "Channel", "ch-123").
+					Return(nil, errors.Conflict("cannot delete Channel 'ch-123': active Version children exist"))
+			},
+			expectedStatusCode: http.StatusConflict,
 		},
 	}
 
@@ -399,6 +417,20 @@ func TestResourceHandler_CreateWithOwner(t *testing.T) {
 			},
 			expectedStatusCode: http.StatusNotFound,
 		},
+		{
+			name: "Conflict 409 - parent soft-deleted",
+			body: `{"kind":"Version","name":"4-17-3","spec":{"raw_version":"4.17.3"}}`,
+			setupMock: func(mock *services.MockResourceService) {
+				mock.EXPECT().Get(gomock.Any(), "Channel", "ch-1").Return(&api.Resource{
+					Meta: api.Meta{ID: "ch-1"}, Kind: "Channel", Name: "stable",
+					Href: "/api/hyperfleet/v1/channels/ch-1",
+					Spec: datatypes.JSON(`{}`), CreatedBy: "u@t.com", UpdatedBy: "u@t.com",
+				}, nil)
+				mock.EXPECT().Create(gomock.Any(), "Version", gomock.AssignableToTypeOf(&api.Resource{}), gomock.Any()).
+					Return(nil, errors.ConflictState("Channel 'ch-1' is marked for deletion"))
+			},
+			expectedStatusCode: http.StatusConflict,
+		},
 	}
 
 	for _, tt := range tests {
@@ -434,7 +466,8 @@ func TestResourceHandler_GetByOwner(t *testing.T) {
 			name: "Success",
 			setupMock: func(mock *services.MockResourceService) {
 				mock.EXPECT().Get(gomock.Any(), "Channel", "ch-1").Return(&api.Resource{
-					Meta: api.Meta{ID: "ch-1"}, Kind: "Channel",
+					Meta: api.Meta{ID: "ch-1", CreatedTime: now, UpdatedTime: now},
+					Kind: "Channel", Name: "stable",
 					Spec: datatypes.JSON(`{}`), CreatedBy: "u@t.com", UpdatedBy: "u@t.com",
 				}, nil)
 				mock.EXPECT().GetByOwner(gomock.Any(), "Version", "v-1", "ch-1").Return(&api.Resource{
@@ -446,22 +479,23 @@ func TestResourceHandler_GetByOwner(t *testing.T) {
 			expectedStatusCode: http.StatusOK,
 		},
 		{
-			name: "Parent not found",
-			setupMock: func(mock *services.MockResourceService) {
-				mock.EXPECT().Get(gomock.Any(), "Channel", "ch-1").
-					Return(nil, errors.NotFound("Channel not found"))
-			},
-			expectedStatusCode: http.StatusNotFound,
-		},
-		{
 			name: "Child not found",
 			setupMock: func(mock *services.MockResourceService) {
 				mock.EXPECT().Get(gomock.Any(), "Channel", "ch-1").Return(&api.Resource{
-					Meta: api.Meta{ID: "ch-1"}, Kind: "Channel",
+					Meta: api.Meta{ID: "ch-1", CreatedTime: now, UpdatedTime: now},
+					Kind: "Channel", Name: "stable",
 					Spec: datatypes.JSON(`{}`), CreatedBy: "u@t.com", UpdatedBy: "u@t.com",
 				}, nil)
 				mock.EXPECT().GetByOwner(gomock.Any(), "Version", "v-1", "ch-1").
 					Return(nil, errors.NotFound("Version not found"))
+			},
+			expectedStatusCode: http.StatusNotFound,
+		},
+		{
+			name: "Parent not found",
+			setupMock: func(mock *services.MockResourceService) {
+				mock.EXPECT().Get(gomock.Any(), "Channel", "ch-1").
+					Return(nil, errors.NotFound("Channel not found"))
 			},
 			expectedStatusCode: http.StatusNotFound,
 		},
@@ -500,7 +534,8 @@ func TestResourceHandler_ListByOwner(t *testing.T) {
 			name: "Success",
 			setupMock: func(mock *services.MockResourceService) {
 				mock.EXPECT().Get(gomock.Any(), "Channel", "ch-1").Return(&api.Resource{
-					Meta: api.Meta{ID: "ch-1"}, Kind: "Channel",
+					Meta: api.Meta{ID: "ch-1", CreatedTime: now, UpdatedTime: now},
+					Kind: "Channel", Name: "stable",
 					Spec: datatypes.JSON(`{}`), CreatedBy: "u@t.com", UpdatedBy: "u@t.com",
 				}, nil)
 				mock.EXPECT().ListByOwner(gomock.Any(), "Version", "ch-1",
@@ -578,6 +613,18 @@ func TestResourceHandler_PatchByOwner(t *testing.T) {
 					Return(nil, errors.NotFound("Version not found for channel"))
 			},
 			expectedStatusCode: http.StatusNotFound,
+		},
+		{
+			name: "Conflict 409 - soft-deleted child",
+			setupMock: func(mock *services.MockResourceService) {
+				mock.EXPECT().GetByOwner(gomock.Any(), "Version", "v-1", "ch-1").
+					Return(&api.Resource{Meta: api.Meta{ID: "v-1"}, Kind: "Version",
+						Spec: datatypes.JSON(`{}`), CreatedBy: "u@t.com", UpdatedBy: "u@t.com"}, nil)
+				mock.EXPECT().Patch(gomock.Any(), "Version", "v-1",
+					gomock.AssignableToTypeOf(&api.ResourcePatch{})).
+					Return(nil, errors.ConflictState("Version 'v-1' is marked for deletion"))
+			},
+			expectedStatusCode: http.StatusConflict,
 		},
 	}
 
@@ -796,6 +843,32 @@ func TestResourceHandler_ForceDeleteByOwner(t *testing.T) {
 			},
 			expectedStatusCode: http.StatusBadRequest,
 		},
+		{
+			name: "Error 409 - not in Finalizing state",
+			body: `{"reason": "some reason"}`,
+			setupMock: func(mock *services.MockResourceService) {
+				mock.EXPECT().
+					GetByOwner(gomock.Any(), "Version", versionID, parentID).
+					Return(&api.Resource{Meta: api.Meta{ID: versionID}, Kind: "Version"}, nil)
+				mock.EXPECT().
+					ForceDelete(gomock.Any(), "Version", versionID, "some reason").
+					Return(errors.ConflictState("Version '%s' is not in Finalizing state", versionID))
+			},
+			expectedStatusCode: http.StatusConflict,
+		},
+		{
+			name: "Error 500 - service internal error",
+			body: `{"reason": "some reason"}`,
+			setupMock: func(mock *services.MockResourceService) {
+				mock.EXPECT().
+					GetByOwner(gomock.Any(), "Version", versionID, parentID).
+					Return(&api.Resource{Meta: api.Meta{ID: versionID}, Kind: "Version"}, nil)
+				mock.EXPECT().
+					ForceDelete(gomock.Any(), "Version", versionID, "some reason").
+					Return(errors.GeneralError("database connection lost"))
+			},
+			expectedStatusCode: http.StatusInternalServerError,
+		},
 	}
 
 	for _, tt := range tests {
@@ -821,6 +894,219 @@ func TestResourceHandler_ForceDeleteByOwner(t *testing.T) {
 			if tt.expectedStatusCode == http.StatusNoContent {
 				Expect(rr.Body.Len()).To(Equal(0))
 			}
+		})
+	}
+}
+
+func TestResourceHandler_Patch_RejectsUnknownFields(t *testing.T) {
+	RegisterTestingT(t)
+
+	tests := []struct {
+		name string
+		body string
+	}{
+		{"rejects name", `{"name":"new-name","spec":{"is_default":true}}`},
+		{"rejects id", `{"id":"some-id","spec":{"is_default":true}}`},
+		{"rejects generation", `{"generation":5,"spec":{"is_default":true}}`},
+		{"rejects kind", `{"kind":"Channel","spec":{"is_default":true}}`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			RegisterTestingT(t)
+
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			handler, _ := newTestResourceHandler(ctrl)
+
+			reqURL := "/api/hyperfleet/v1/channels/ch-123"
+			req := httptest.NewRequest(http.MethodPatch, reqURL, strings.NewReader(tt.body))
+			req.Header.Set("Content-Type", "application/json")
+			req = mux.SetURLVars(req, map[string]string{"id": "ch-123"})
+
+			rr := httptest.NewRecorder()
+			handler.Patch(rr, req)
+
+			Expect(rr.Code).To(Equal(http.StatusBadRequest))
+		})
+	}
+}
+
+func TestResourceHandler_PatchByOwner_RejectsUnknownFields(t *testing.T) {
+	RegisterTestingT(t)
+
+	tests := []struct {
+		name string
+		body string
+	}{
+		{"rejects name", `{"name":"new-name","spec":{"enabled":true}}`},
+		{"rejects id", `{"id":"some-id","spec":{"enabled":true}}`},
+		{"rejects generation", `{"generation":5,"spec":{"enabled":true}}`},
+		{"rejects kind", `{"kind":"Version","spec":{"enabled":true}}`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			RegisterTestingT(t)
+
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			handler, _ := newTestVersionHandler(ctrl)
+
+			reqURL := "/api/hyperfleet/v1/channels/ch-1/versions/v-1"
+			req := httptest.NewRequest(http.MethodPatch, reqURL, strings.NewReader(tt.body))
+			req.Header.Set("Content-Type", "application/json")
+			req = mux.SetURLVars(req, map[string]string{"parent_id": "ch-1", "id": "v-1"})
+
+			rr := httptest.NewRecorder()
+			handler.Patch(rr, req)
+
+			Expect(rr.Code).To(Equal(http.StatusBadRequest))
+		})
+	}
+}
+
+func TestResourceHandler_Get_WithFieldsFilter(t *testing.T) {
+	now := time.Now()
+
+	tests := []struct {
+		setupMock          func(mock *services.MockResourceService)
+		validateResponse   func(body []byte)
+		name               string
+		queryParams        string
+		expectedStatusCode int
+	}{
+		{
+			name:        "Success - Filter to id, name, kind",
+			queryParams: "?fields=id,name,kind",
+			setupMock: func(mock *services.MockResourceService) {
+				mock.EXPECT().Get(gomock.Any(), "Channel", "ch-123").Return(&api.Resource{
+					Meta:       api.Meta{ID: "ch-123", CreatedTime: now, UpdatedTime: now},
+					Kind:       "Channel",
+					Name:       "stable",
+					Spec:       datatypes.JSON(`{"region":"us-east-1"}`),
+					Generation: 3,
+					CreatedBy:  "user@test.com",
+					UpdatedBy:  "user@test.com",
+				}, nil)
+			},
+			expectedStatusCode: http.StatusOK,
+			validateResponse: func(body []byte) {
+				var response map[string]interface{}
+				err := json.Unmarshal(body, &response)
+				Expect(err).NotTo(HaveOccurred())
+
+				Expect(response).To(HaveKey("id"))
+				Expect(response).To(HaveKey("name"))
+				Expect(response).To(HaveKey("kind"))
+				Expect(response["name"]).To(Equal("stable"))
+				Expect(response["kind"]).To(Equal("Channel"))
+
+				Expect(response).ToNot(HaveKey("generation"))
+				Expect(response).ToNot(HaveKey("spec"))
+				Expect(response).ToNot(HaveKey("labels"))
+				Expect(response).ToNot(HaveKey("created_time"))
+			},
+		},
+		{
+			name:        "Error 400 - Invalid field name",
+			queryParams: "?fields=invalid_field",
+			setupMock: func(mock *services.MockResourceService) {
+				mock.EXPECT().Get(gomock.Any(), "Channel", "ch-123").Return(&api.Resource{
+					Meta:      api.Meta{ID: "ch-123", CreatedTime: now, UpdatedTime: now},
+					Kind:      "Channel",
+					Name:      "stable",
+					Spec:      datatypes.JSON(`{}`),
+					CreatedBy: "user@test.com",
+					UpdatedBy: "user@test.com",
+				}, nil)
+			},
+			expectedStatusCode: http.StatusBadRequest,
+			validateResponse: func(body []byte) {
+				var errResp openapi.ProblemDetails
+				err := json.Unmarshal(body, &errResp)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(errResp.Status).To(Equal(http.StatusBadRequest))
+				Expect(*errResp.Detail).To(ContainSubstring("doesn't exist"))
+				Expect(*errResp.Detail).To(ContainSubstring("invalid_field"))
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			RegisterTestingT(t)
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			handler, mockResourceSvc := newTestResourceHandler(ctrl)
+			tt.setupMock(mockResourceSvc)
+
+			reqURL := "/api/hyperfleet/v1/channels/ch-123" + tt.queryParams
+			req := httptest.NewRequest(http.MethodGet, reqURL, nil)
+			req = mux.SetURLVars(req, map[string]string{"id": "ch-123"})
+			rr := httptest.NewRecorder()
+
+			handler.Get(rr, req)
+			Expect(rr.Code).To(Equal(tt.expectedStatusCode))
+			tt.validateResponse(rr.Body.Bytes())
+		})
+	}
+}
+
+func TestRootResourceHandler_Create_RejectsInvalidName(t *testing.T) {
+	tests := []struct {
+		name       string
+		inputName  string
+		wantStatus int
+	}{
+		{"too short for Cluster", "ab", http.StatusBadRequest},
+		{"too long for Cluster", strings.Repeat("a", 54), http.StatusBadRequest},
+		{"uppercase rejected", "InvalidName", http.StatusBadRequest},
+		{"valid name accepted", "my-cluster", http.StatusCreated},
+	}
+	// Register Cluster with name constraints so the root handler can resolve it.
+	registry.Register(registry.EntityDescriptor{
+		Kind:       "Cluster",
+		Plural:     "clusters",
+		NameMinLen: 3,
+		NameMaxLen: 53,
+	})
+	t.Cleanup(func() { registry.Reset() })
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			RegisterTestingT(t)
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			handler, mockSvc, _ := newTestRootResourceHandler(ctrl)
+
+			if tt.wantStatus == http.StatusCreated {
+				now := time.Now()
+				mockSvc.EXPECT().Create(
+					gomock.Any(), "Cluster", gomock.AssignableToTypeOf(&api.Resource{}), gomock.Any(),
+				).Return(&api.Resource{
+					Meta:       api.Meta{ID: "c-1", CreatedTime: now, UpdatedTime: now},
+					Kind:       "Cluster",
+					Name:       tt.inputName,
+					Href:       "/api/hyperfleet/v1/clusters/c-1",
+					Spec:       []byte(`{"region":"us-east-1"}`),
+					Generation: 1,
+					CreatedBy:  "system@hyperfleet.local",
+					UpdatedBy:  "system@hyperfleet.local",
+				}, nil)
+			}
+
+			body := fmt.Sprintf(`{"kind":"Cluster","name":%q,"spec":{"region":"us-east-1"}}`, tt.inputName)
+			req := httptest.NewRequest(http.MethodPost, "/api/hyperfleet/v1/resources", strings.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+			rr := httptest.NewRecorder()
+
+			handler.Create(rr, req)
+			Expect(rr.Code).To(Equal(tt.wantStatus))
 		})
 	}
 }

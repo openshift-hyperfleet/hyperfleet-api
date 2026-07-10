@@ -51,7 +51,7 @@ const (
 )
 
 // ResourceCondition is the GORM model for the resource_conditions table and
-// the domain type for JSONB deserialization in clusters/node pools.
+// the domain type for JSONB deserialization in resources.
 // ResourceID is excluded from JSON to preserve JSONB backward compat.
 type ResourceCondition struct {
 	CreatedTime        time.Time               `json:"created_time" gorm:"not null"`

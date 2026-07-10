@@ -13,7 +13,7 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/registry"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/services"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/validators"
-	adapterStatus "github.com/openshift-hyperfleet/hyperfleet-api/plugins/adapterStatus"
+	"github.com/openshift-hyperfleet/hyperfleet-api/plugins/adapterStatus"
 	"github.com/openshift-hyperfleet/hyperfleet-api/plugins/resources"
 )
 

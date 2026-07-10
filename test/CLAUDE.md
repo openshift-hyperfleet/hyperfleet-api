@@ -19,23 +19,21 @@
 
 Reference: `factories/`
 
-- `factories.NewCluster(id)` — creates cluster via service layer
-- `factories.NewClusterList(name, count)` — creates multiple clusters
-- `NewClusterWithStatus(f, dbFactory, id, isAvailable, isReconciled)` — cluster with conditions
-- `NewClusterWithLabels(f, dbFactory, id, labels)` — cluster with labels
+- `factories.NewCluster(id)` — creates a Cluster resource via service layer
+- `factories.NewClusterList(name, count)` — creates multiple Cluster resources
+- `NewClusterWithStatus(f, dbFactory, id, isAvailable, isReconciled)` — Cluster resource with conditions
+- `NewClusterWithLabels(f, dbFactory, id, labels)` — Cluster resource with labels
 - ID generation: RFC4122 UUID v7 (36-char lowercase format with hyphens, time-ordered with millisecond precision)
 - Kubernetes usage: Lowercase UUIDs are DNS-1123 compliant and can be used directly as K8s resource names
 
 ## TestMain Setup
 
 `integration/integration_test.go` — `TestMain(m *testing.M)`:
-- Sets default adapter env vars (`HYPERFLEET_ADAPTERS_REQUIRED_CLUSTER`, `HYPERFLEET_ADAPTERS_REQUIRED_NODEPOOL`)
-- Schema validation: `TestMain` auto-sets `HYPERFLEET_SERVER_OPENAPI_SCHEMA_PATH` to `test/validation-schema.yaml` (permissive, all registered entities) if present, else `openapi/openapi.yaml`; override with a strict provider schema path to run `TestClusterSchemaValidationWithProviderSchema`
+- Schema validation: `TestMain` auto-sets `HYPERFLEET_SERVER_OPENAPI_SCHEMA_PATH` to `test/validation-schema.yaml` (permissive, all registered entities) if present, else `openapi/openapi.yaml`
 - 45-second timeout safeguard for CI (prevents hung Prow jobs)
 
 ## Key Environment Variables
 
 - `HYPERFLEET_ENV` — selects config environment: `unit_testing`, `integration_testing`, `development`
 - `TESTCONTAINERS_RYUK_DISABLED=true` — required for testcontainers in CI
-- `HYPERFLEET_ADAPTERS_REQUIRED_CLUSTER` / `HYPERFLEET_ADAPTERS_REQUIRED_NODEPOOL` — adapter lists for tests
-- `HYPERFLEET_SERVER_OPENAPI_SCHEMA_PATH` — path to OpenAPI schema for spec validation (auto-set by `TestMain` to `test/validation-schema.yaml`; override with a strict provider schema to run `TestClusterSchemaValidationWithProviderSchema`)
+- `HYPERFLEET_SERVER_OPENAPI_SCHEMA_PATH` — path to OpenAPI schema for spec validation (auto-set by `TestMain` to `test/validation-schema.yaml`)

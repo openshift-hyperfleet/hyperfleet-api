@@ -42,6 +42,7 @@ func (h *ResourceHandler) Create(w http.ResponseWriter, r *http.Request) {
 		MarshalInto: &req,
 		Validate: []validate{
 			validateKind(&req, "Kind", "kind", h.descriptor.Kind),
+			validateName(&req, "Name", "name", h.descriptor.NameMinLen, h.descriptor.NameMaxLen),
 			validateSpec(&req, "Spec", "spec"),
 			validateLabels(&req, "Labels"),
 		},

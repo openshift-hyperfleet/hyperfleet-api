@@ -38,22 +38,16 @@ type sqlGenericService struct {
 	genericDao dao.GenericDao
 }
 
-var (
-	SearchDisallowedFields = map[string]map[string]string{}
-	allFieldsAllowed       = map[string]string{}
-)
-
 // wrap all needed pieces for the LIST function
 type listContext struct {
-	ctx              context.Context
-	resourceList     interface{}
-	args             *ListArguments
-	pagingMeta       *api.PagingMeta
-	disallowedFields *map[string]string
-	joins            map[string]dao.TableRelation
-	set              map[string]bool
-	resourceType     string
-	groupBy          []string
+	ctx          context.Context
+	resourceList interface{}
+	args         *ListArguments
+	pagingMeta   *api.PagingMeta
+	joins        map[string]dao.TableRelation
+	set          map[string]bool
+	resourceType string
+	groupBy      []string
 }
 
 func (s *sqlGenericService) newListContext(
@@ -67,18 +61,13 @@ func (s *sqlGenericService) newListContext(
 	if resourceTypeStr == "" {
 		return nil, nil, errors.GeneralError("Could not determine resource type")
 	}
-	disallowedFields := SearchDisallowedFields[resourceTypeStr]
-	if disallowedFields == nil {
-		disallowedFields = allFieldsAllowed
-	}
 	args.Search = strings.Trim(args.Search, " ")
 	return &listContext{
-		ctx:              ctx,
-		args:             args,
-		pagingMeta:       &api.PagingMeta{Page: args.Page},
-		resourceList:     resourceList,
-		disallowedFields: &disallowedFields,
-		resourceType:     resourceTypeStr,
+		ctx:          ctx,
+		args:         args,
+		pagingMeta:   &api.PagingMeta{Page: args.Page},
+		resourceList: resourceList,
+		resourceType: resourceTypeStr,
 	}, reflect.New(resourceModel).Interface(), nil
 }
 
@@ -180,20 +169,17 @@ func (s *sqlGenericService) buildSearchValues(
 		return "", nil, serviceErr
 	}
 
-	// Extract label queries (labels.xxx) for Resource-kind entities before field name
-	// mapping — they're backed by a separate resource_labels table, not a JSONB column,
-	// so they need an EXISTS subquery rather than a simple field substitution.
+	// Extract label queries (labels.xxx) — backed by the resource_labels table,
+	// not a JSONB column, so they need an EXISTS subquery.
 	var labelExprs []squirrel.Sqlizer
-	if listCtx.resourceType == "Resource" {
-		tslTree, labelExprs, serviceErr = db.ExtractLabelQueries(tslTree, (*d).GetTableName())
-		if serviceErr != nil {
-			return "", nil, serviceErr
-		}
+	tslTree, labelExprs, serviceErr = db.ExtractLabelQueries(tslTree)
+	if serviceErr != nil {
+		return "", nil, serviceErr
 	}
 
-	// apply field name mapping (status.xxx -> status_xxx, labels.xxx -> labels->>'xxx', spec.xxx -> spec->>'xxx')
-	// also wraps spec JSONB fields in CAST(... AS numeric) when compared against a number
-	tslTree, serviceErr = db.FieldNameWalk(tslTree, *listCtx.disallowedFields)
+	// apply field name mapping (spec.xxx -> spec->>'xxx') and wrap spec JSONB fields
+	// in CAST(... AS numeric) when compared against a number
+	tslTree, serviceErr = db.FieldNameWalk(tslTree)
 	if serviceErr != nil {
 		return "", nil, serviceErr
 	}
@@ -341,8 +327,8 @@ func (s *sqlGenericService) treeWalkForRelatedTables(
 		listCtx.joins = map[string]dao.TableRelation{}
 	}
 	walkFn := func(field string) (string, error) {
-		// After FieldNameWalk, JSONB-mapped fields (e.g. labels->>'env',
-		// spec->'release'->>'channel') are no longer relation paths.
+		// After FieldNameWalk, JSONB-mapped fields (e.g. spec->'release'->>'channel')
+		// are no longer relation paths.
 		// Skip dot-splitting for any already-mapped JSONB expression.
 		if strings.Contains(field, "->") {
 			return field, nil

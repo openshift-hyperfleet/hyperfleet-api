@@ -90,15 +90,19 @@ func (h *RootResourceHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Validate: []validate{
 			validateSpec(&req, "Spec", "spec"),
 			validateLabels(&req, "Labels"),
+			func() *errors.ServiceError {
+				descriptor, ok := registry.Get(req.Kind)
+				if !ok {
+					return errors.Validation("Unknown entity kind: %s", req.Kind)
+				}
+				if descriptor.ParentKind != "" {
+					return childCreateRejection(descriptor)
+				}
+				return validateName(&req, "Name", "name", descriptor.NameMinLen, descriptor.NameMaxLen)()
+			},
 		},
 		Action: func() (interface{}, *errors.ServiceError) {
-			descriptor, ok := registry.Get(req.Kind)
-			if !ok {
-				return nil, errors.Validation("Unknown entity kind: %s", req.Kind)
-			}
-			if descriptor.ParentKind != "" {
-				return nil, childCreateRejection(descriptor)
-			}
+			descriptor, _ := registry.Get(req.Kind)
 
 			resource, convErr := presenters.ConvertResource(&req)
 			if convErr != nil {

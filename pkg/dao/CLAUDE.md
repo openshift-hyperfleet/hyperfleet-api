@@ -4,18 +4,18 @@
 
 Every DAO defines an interface + concrete `sql*Dao` implementation.
 
-Reference: `cluster.go` — `ClusterDao` interface, `sqlClusterDao` struct
+Reference: `resource.go` — `ResourceDao` interface, `sqlResourceDao` struct
 
-```
-type ClusterDao interface { ... }
-type sqlClusterDao struct { sessionFactory *db.SessionFactory }
-func NewClusterDao(sessionFactory *db.SessionFactory) ClusterDao
+```go
+type ResourceDao interface { ... }
+type sqlResourceDao struct { sessionFactory *db.SessionFactory }
+func NewResourceDao(sessionFactory *db.SessionFactory) ResourceDao
 ```
 
 ## Session Access
 
 Always get the GORM session from context — never create direct DB connections:
-```
+```go
 db := d.sessionFactory.New(ctx)
 ```
 This retrieves the transaction-aware session created by `TransactionMiddleware`.
@@ -23,7 +23,7 @@ This retrieves the transaction-aware session created by `TransactionMiddleware`.
 ## Error Handling
 
 On any write error, mark the transaction for rollback:
-```
+```go
 db.MarkForRollback(ctx, err)
 ```
 This is critical — without it, the middleware will commit a partially-failed transaction.

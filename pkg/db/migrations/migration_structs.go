@@ -26,20 +26,9 @@ import (
 //
 // 4. Create one function in a separate file that returns your Migration. Add that single function call to this list.
 var MigrationList = []*gormigrate.Migration{
-	// addEvents(), // REMOVED: Events table no longer used - no event-driven components
-	addClusters(),
-	addNodePools(),
 	addAdapterStatus(),
-	addConditionsGinIndex(),
-	addSoftDeleteSchema(),
-	addReconciledIndex(),
-	addNodePoolOwnerDeletedIndex(),
-	addDeletedTimeIndexes(),
 	addResources(),
-	removeReadyCondition(),
-	addResourceConditions(),
-	addResourceReferences(),
-	addResourceLabels(),
+	addConditionStatusIndex(),
 }
 
 // Model represents the base model struct. All entities will have this struct embedded.
