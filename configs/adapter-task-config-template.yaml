@@ -195,6 +195,16 @@ resources:
           hyperfleet.io/cluster-id: "{{ .clusterId }}"
           hyperfleet.io/managed-by: "{{ .adapter.name }}"
 
+    # OPTIONAL: Gate resource CREATION with a CEL expression
+    # If the expression evaluates to false, the resource is not created.
+    # Once created, this condition is ignored in subsequent reconciliations.
+    # While resource is not yet created, with each reconciliation, this expression is evaluated again.
+    #
+    # lifecycle:
+    #   create:
+    #     when:
+    #       expression: "params.?enableOptionalFeature.orValue(false)"
+
     # --------------------------------------------------------------------------
     # OPTIONAL: Deletion lifecycle
     # --------------------------------------------------------------------------

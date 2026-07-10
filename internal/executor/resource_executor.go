@@ -48,16 +48,15 @@ func (re *ResourceExecutor) ExecuteAll(
 		execCtx.Resources = make(map[string]interface{})
 	}
 
-	// Pre-discover all resources before evaluating any lifecycle.delete.when expression.
-	// This ensures that when conditions can reference sibling resources regardless of their
-	// position in the list. For example, a namespace's when can check
-	// !resources.?jobServiceAccount.hasValue() even if jobServiceAccount comes later.
+	// Pre-discover all resources before evaluating any lifecycle.create.when or lifecycle.delete.when expression.
+	// This ensures that:
+	// 1. lifecycle.create.when can check if the resource already exists (skip condition if it does)
+	// 2. lifecycle.delete.when conditions can reference sibling resources regardless of list position
 	// NotFound results are non-fatal and leave the resource absent from context.
 	// Any other error (RBAC, network, API server) is propagated to avoid incorrect
-	// "resource absent" conclusions that could trigger unwanted deletions.
-	// Skip the pass entirely when no resource has lifecycle.delete configured — avoids
-	// unnecessary discovery API calls for adapters that don't use this feature.
-	if hasLifecycleDelete(resources) {
+	// "resource absent" conclusions that could trigger unwanted deletions or skipped creations.
+	// Skip the pass entirely when no resource has lifecycle.create or lifecycle.delete configured.
+	if hasLifecycleConfig(resources) {
 		if err := re.preDiscoverAll(ctx, resources, execCtx); err != nil {
 			return nil, err
 		}
@@ -121,10 +120,59 @@ func (re *ResourceExecutor) executeResource(
 		}
 	}
 
+	// Step 1.5: Check lifecycle.create — if the resource doesn't exist yet AND the when-expression
+	// evaluates to false, skip creation. If the resource already exists (found in context from
+	// pre-discovery), ignore the when condition and apply normally (update flow).
+	if resource.Lifecycle != nil && resource.Lifecycle.Create != nil {
+		// Check if resource already exists in context (from pre-discovery)
+		resourceFound := execCtx.Resources[resource.Name] != nil
+
+		if !resourceFound {
+			// Resource doesn't exist yet — evaluate the when condition. Validator guarantees
+			// lifecycle.create.when and its expression are always set when lifecycle.create is present.
+			shouldCreate := true
+			var whenErr error
+			if resource.Lifecycle.Create.When != nil {
+				shouldCreate, whenErr = re.evaluateLifecycleWhen(
+					ctx, resource, execCtx, "lifecycle.create.when", resource.Lifecycle.Create.When.Expression)
+			}
+
+			if whenErr != nil {
+				result.Status = StatusFailed
+				result.Operation = manifest.OperationCreate
+				result.Error = whenErr
+				re.recordResourceError(execCtx, resource, whenErr)
+				return result, NewExecutorError(PhaseResources, resource.Name, "failed to evaluate lifecycle.create.when", whenErr)
+			}
+
+			if !shouldCreate {
+				result.Status = StatusSkipped
+				result.Operation = manifest.OperationSkip
+				result.OperationReason = "lifecycle.create.when condition evaluated to false"
+
+				// Surface the skip in adapter metadata so downstream post-action when-gates
+				// (e.g. "adapter.?resourcesSkipped.orValue(false)") can observe it. First
+				// reason wins, mirroring recordResourceError's ExecutionError convention.
+				execCtx.Adapter.ResourcesSkipped = true
+				if execCtx.Adapter.SkipReason == "" {
+					execCtx.Adapter.SkipReason = fmt.Sprintf("%s: %s", resource.Name, result.OperationReason)
+				}
+
+				re.log.Infof(ctx, "Resource[%s] skipped: create.when condition is false", resource.Name)
+				return result, nil
+			}
+			re.log.Debugf(ctx, "Resource[%s] lifecycle.create.when evaluated to true, creating resource", resource.Name)
+		} else {
+			re.log.Debugf(ctx, "Resource[%s] already exists: ignoring lifecycle.create.when, applying normally", resource.Name)
+		}
+	}
+
 	// Step 2: Check lifecycle.delete — if the when-expression evaluates to true, delete the resource
 	// instead of applying it. This enables dependency-ordered deletion driven by CEL expressions.
-	if resource.Lifecycle != nil && resource.Lifecycle.Delete != nil {
-		shouldDelete, delErr := re.evaluateLifecycleDeleteWhen(ctx, resource, execCtx)
+	if resource.Lifecycle != nil && resource.Lifecycle.Delete != nil && resource.Lifecycle.Delete.When != nil {
+		// Validator guarantees when.expression is non-empty when lifecycle.delete.when is configured.
+		shouldDelete, delErr := re.evaluateLifecycleWhen(
+			ctx, resource, execCtx, "lifecycle.delete.when", resource.Lifecycle.Delete.When.Expression)
 		if delErr != nil {
 			result.Status = StatusFailed
 			result.Operation = manifest.OperationDelete
@@ -466,10 +514,10 @@ func (re *ResourceExecutor) resolveGVK(resource configloader.Resource) schema.Gr
 	return gv.WithKind(kind)
 }
 
-// hasLifecycleDelete reports whether any resource in the list has lifecycle.delete configured.
-func hasLifecycleDelete(resources []configloader.Resource) bool {
+// hasLifecycleConfig reports whether any resource in the list has lifecycle.create or lifecycle.delete configured.
+func hasLifecycleConfig(resources []configloader.Resource) bool {
 	for _, r := range resources {
-		if r.Lifecycle != nil && r.Lifecycle.Delete != nil {
+		if r.Lifecycle != nil && (r.Lifecycle.Create != nil || r.Lifecycle.Delete != nil) {
 			return true
 		}
 	}
@@ -531,24 +579,19 @@ func (re *ResourceExecutor) preDiscoverAll(
 	return nil
 }
 
-// evaluateLifecycleDeleteWhen evaluates the lifecycle.delete.when CEL expression
-// and returns true if the resource should be deleted.
+// evaluateLifecycleWhen evaluates a lifecycle when-expression (create or delete) against the
+// current execution context and records the result for observability.
 //
 // The evaluation uses the same CEL context as post-actions: params + adapter metadata + resources.
-// If when.expression is not set, returns false (no deletion).
-func (re *ResourceExecutor) evaluateLifecycleDeleteWhen(
+// A CEL evaluation error is surfaced (not swallowed) so the executor marks executionStatus=failed
+// and the operator sees Health=False. A common cause is a variable used in the expression that was
+// never captured in the precondition phase (e.g. a typo in a capture name).
+func (re *ResourceExecutor) evaluateLifecycleWhen(
 	ctx context.Context,
 	resource configloader.Resource,
 	execCtx *ExecutionContext,
+	kind, expression string,
 ) (bool, error) {
-	if resource.Lifecycle.Delete.When == nil {
-		return false, nil
-	}
-	if resource.Lifecycle.Delete.When.Expression == "" {
-		return false, fmt.Errorf("resource %q has lifecycle.delete.when configured but expression is empty", resource.Name)
-	}
-	expression := resource.Lifecycle.Delete.When.Expression
-
 	evalCtx := criteria.NewEvaluationContext()
 	evalCtx.SetVariablesFromMap(execCtx.GetCELVariables())
 
@@ -559,17 +602,12 @@ func (re *ResourceExecutor) evaluateLifecycleDeleteWhen(
 
 	celResult, err := evaluator.EvaluateCEL(expression)
 	if err != nil {
-		// Surface the error so the executor marks executionStatus=failed and the operator
-		// sees Health=False. A common cause is a variable used in the expression that was
-		// never captured in the precondition phase (e.g. a typo in a capture name).
-		// Failing loudly is safer than silently skipping deletion: the cluster would stay
-		// stuck in Finalizing with no visible signal.
-		return false, fmt.Errorf("lifecycle.delete.when expression %q failed to evaluate "+
-			"(check that all variables are captured in preconditions): %w", expression, err)
+		return false, fmt.Errorf("%s expression %q failed to evaluate "+
+			"(check that all variables are captured in preconditions): %w", kind, expression, err)
 	}
 
-	execCtx.AddCELEvaluation(PhaseResources, resource.Name+"/lifecycle.delete.when", expression, celResult.Matched)
-	re.log.Debugf(ctx, "Resource[%s] lifecycle.delete.when=%q → matched=%v", resource.Name, expression, celResult.Matched)
+	execCtx.AddCELEvaluation(PhaseResources, resource.Name+"/"+kind, expression, celResult.Matched)
+	re.log.Debugf(ctx, "Resource[%s] %s=%q → matched=%v", resource.Name, kind, expression, celResult.Matched)
 
 	return celResult.Matched, nil
 }

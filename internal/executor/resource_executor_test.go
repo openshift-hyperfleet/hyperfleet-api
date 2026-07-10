@@ -647,6 +647,258 @@ func newResourceWithLifecycle(expression, propagationPolicy string) configloader
 	return r
 }
 
+// newResourceWithLifecycleCreate is a helper that builds a Resource with lifecycle.create config.
+func newResourceWithLifecycleCreate(expression string) configloader.Resource {
+	r := configloader.Resource{
+		Name:      "test-resource",
+		Transport: &configloader.TransportConfig{Client: "kubernetes"},
+		Manifest: map[string]interface{}{
+			"apiVersion": "v1",
+			"kind":       "ConfigMap",
+			"metadata": map[string]interface{}{
+				"name":      "test-cm",
+				"namespace": "default",
+			},
+		},
+		Discovery: &configloader.DiscoveryConfig{
+			Namespace: "default",
+			ByName:    "test-cm",
+		},
+		Lifecycle: &configloader.ResourceLifecycle{
+			Create: &configloader.LifecycleCreate{
+				When: &configloader.LifecycleWhen{Expression: expression},
+			},
+		},
+	}
+	return r
+}
+
+// sequencedGetResourceMock returns GetResource results/errors in order (one entry per call),
+// repeating the last entry once exhausted. Used when pre-discovery and post-apply discovery
+// need different GetResource outcomes (e.g. NotFound, then the newly-applied resource).
+type sequencedGetResourceMock struct {
+	*k8sclient.MockK8sClient
+	results     []*unstructured.Unstructured
+	errs        []error
+	callCount   int
+	ApplyCalled bool
+}
+
+func (m *sequencedGetResourceMock) GetResource(
+	ctx context.Context,
+	gvk schema.GroupVersionKind,
+	namespace, name string,
+	target transportclient.TransportContext,
+) (*unstructured.Unstructured, error) {
+	idx := m.callCount
+	if idx >= len(m.results) {
+		idx = len(m.results) - 1
+	}
+	m.callCount++
+	return m.results[idx], m.errs[idx]
+}
+
+func (m *sequencedGetResourceMock) ApplyResource(
+	ctx context.Context,
+	data []byte,
+	opts *transportclient.ApplyOptions,
+	target transportclient.TransportContext,
+) (*transportclient.ApplyResult, error) {
+	m.ApplyCalled = true
+	return m.MockK8sClient.ApplyResource(ctx, data, opts, target)
+}
+
+func TestResourceExecutor_LifecycleCreate_WhenTrue_ResourceNotFound_Applied(t *testing.T) {
+	// Resource doesn't exist yet, create.when evaluates true → applied normally.
+	notFoundErr := apierrors.NewNotFound(schema.GroupResource{Resource: "configmaps"}, "test-cm")
+	discovered := &unstructured.Unstructured{Object: map[string]interface{}{
+		"apiVersion": "v1",
+		"kind":       "ConfigMap",
+		"metadata":   map[string]interface{}{"name": "test-cm", "namespace": "default"},
+	}}
+	mock := &sequencedGetResourceMock{
+		MockK8sClient: k8sclient.NewMockK8sClient(),
+		results:       []*unstructured.Unstructured{nil, discovered}, // pre-discovery: absent; post-apply: found
+		errs:          []error{notFoundErr, nil},
+	}
+	mock.ApplyResourceResult = &transportclient.ApplyResult{
+		Operation: manifest.OperationCreate,
+		Reason:    "mock create",
+	}
+
+	re := newResourceExecutor(&ExecutorConfig{
+		TransportClient: mock,
+		Logger:          logger.NewTestLogger(),
+	})
+
+	resource := newResourceWithLifecycleCreate("shouldCreate")
+	execCtx := NewExecutionContext(context.Background(), nil, nil)
+	execCtx.Params["shouldCreate"] = true
+
+	results, err := re.ExecuteAll(context.Background(), []configloader.Resource{resource}, execCtx)
+
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	assert.Equal(t, StatusSuccess, results[0].Status)
+	assert.Equal(t, manifest.OperationCreate, results[0].Operation)
+	assert.False(t, execCtx.Adapter.ResourcesSkipped, "resource was applied, not skipped")
+}
+
+func TestResourceExecutor_LifecycleCreate_WhenFalse_ResourceNotFound_Skipped(t *testing.T) {
+	// Resource doesn't exist yet, create.when evaluates false → skipped, apply never called.
+	mock := &trackingApplyMockClient{MockK8sClient: k8sclient.NewMockK8sClient()}
+	mock.GetResourceError = apierrors.NewNotFound(schema.GroupResource{Resource: "configmaps"}, "test-cm")
+
+	re := newResourceExecutor(&ExecutorConfig{
+		TransportClient: mock,
+		Logger:          logger.NewTestLogger(),
+	})
+
+	resource := newResourceWithLifecycleCreate("shouldCreate")
+	execCtx := NewExecutionContext(context.Background(), nil, nil)
+	execCtx.Params["shouldCreate"] = false
+
+	results, err := re.ExecuteAll(context.Background(), []configloader.Resource{resource}, execCtx)
+
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	assert.Equal(t, StatusSkipped, results[0].Status)
+	assert.Equal(t, manifest.OperationSkip, results[0].Operation)
+	assert.False(t, mock.ApplyCalled, "ApplyResource should not be called when create.when is false")
+
+	// Verifies the fix: skipping a resource must be reflected in adapter metadata so
+	// post-action `when` gates can observe it.
+	assert.True(t, execCtx.Adapter.ResourcesSkipped, "adapter.resourcesSkipped must be set on skip")
+	assert.NotEmpty(t, execCtx.Adapter.SkipReason)
+}
+
+func TestResourceExecutor_LifecycleCreate_WhenCELError_ExecutionFails(t *testing.T) {
+	// Resource doesn't exist yet, create.when fails to evaluate → execution fails,
+	// resource is neither applied nor silently skipped.
+	mock := &trackingApplyMockClient{MockK8sClient: k8sclient.NewMockK8sClient()}
+	mock.GetResourceError = apierrors.NewNotFound(schema.GroupResource{Resource: "configmaps"}, "test-cm")
+
+	re := newResourceExecutor(&ExecutorConfig{
+		TransportClient: mock,
+		Logger:          logger.NewTestLogger(),
+	})
+
+	// Invalid CEL syntax — evaluateLifecycleWhen will error.
+	resource := newResourceWithLifecycleCreate("shouldCreate &&")
+	execCtx := NewExecutionContext(context.Background(), nil, nil)
+
+	results, err := re.ExecuteAll(context.Background(), []configloader.Resource{resource}, execCtx)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to evaluate")
+	require.Len(t, results, 1)
+	assert.Equal(t, StatusFailed, results[0].Status)
+	assert.False(t, mock.ApplyCalled, "ApplyResource should not be called when create.when errors")
+	assert.NotNil(t, execCtx.Adapter.ExecutionError)
+}
+
+func TestResourceExecutor_LifecycleCreate_ResourceAlreadyExists_IgnoresWhen(t *testing.T) {
+	// Resource already exists (pre-discovered) → create.when is ignored, normal apply (update flow).
+	discovered := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "v1",
+			"kind":       "ConfigMap",
+			"metadata": map[string]interface{}{
+				"name":      "test-cm",
+				"namespace": "default",
+			},
+		},
+	}
+	mock := k8sclient.NewMockK8sClient()
+	mock.GetResourceResult = discovered
+	mock.ApplyResourceResult = &transportclient.ApplyResult{
+		Operation: manifest.OperationUpdate,
+		Reason:    "mock update",
+	}
+
+	re := newResourceExecutor(&ExecutorConfig{
+		TransportClient: mock,
+		Logger:          logger.NewTestLogger(),
+	})
+
+	resource := newResourceWithLifecycleCreate("shouldCreate")
+	execCtx := NewExecutionContext(context.Background(), nil, nil)
+	execCtx.Params["shouldCreate"] = false
+
+	results, err := re.ExecuteAll(context.Background(), []configloader.Resource{resource}, execCtx)
+
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	assert.Equal(t, StatusSuccess, results[0].Status)
+	assert.Equal(t, manifest.OperationUpdate, results[0].Operation,
+		"existing resource must be applied, ignoring create.when=false")
+	assert.False(t, execCtx.Adapter.ResourcesSkipped)
+}
+
+func TestResourceExecutor_LifecycleCreate_Absent_NormalApply(t *testing.T) {
+	// No lifecycle.create configured at all → resource applied normally (regression guard).
+	// No lifecycle configured means preDiscoverAll is skipped, so the only GetResource call
+	// is post-apply discovery — it must succeed for the apply flow to complete.
+	mock := k8sclient.NewMockK8sClient()
+	mock.GetResourceResult = &unstructured.Unstructured{Object: map[string]interface{}{
+		"apiVersion": "v1",
+		"kind":       "ConfigMap",
+		"metadata":   map[string]interface{}{"name": "test-cm", "namespace": "default"},
+	}}
+	mock.ApplyResourceResult = &transportclient.ApplyResult{
+		Operation: manifest.OperationCreate,
+		Reason:    "mock create",
+	}
+
+	re := newResourceExecutor(&ExecutorConfig{
+		TransportClient: mock,
+		Logger:          logger.NewTestLogger(),
+	})
+
+	resource := configloader.Resource{
+		Name:      "test-resource",
+		Transport: &configloader.TransportConfig{Client: "kubernetes"},
+		Manifest: map[string]interface{}{
+			"apiVersion": "v1",
+			"kind":       "ConfigMap",
+			"metadata": map[string]interface{}{
+				"name":      "test-cm",
+				"namespace": "default",
+			},
+		},
+		Discovery: &configloader.DiscoveryConfig{
+			Namespace: "default",
+			ByName:    "test-cm",
+		},
+	}
+	execCtx := NewExecutionContext(context.Background(), nil, nil)
+
+	results, err := re.ExecuteAll(context.Background(), []configloader.Resource{resource}, execCtx)
+
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	assert.Equal(t, StatusSuccess, results[0].Status)
+	assert.Equal(t, manifest.OperationCreate, results[0].Operation)
+	assert.False(t, execCtx.Adapter.ResourcesSkipped)
+}
+
+// trackingApplyMockClient is a thin wrapper around MockK8sClient to capture whether
+// ApplyResource was called.
+type trackingApplyMockClient struct {
+	*k8sclient.MockK8sClient
+	ApplyCalled bool
+}
+
+func (m *trackingApplyMockClient) ApplyResource(
+	ctx context.Context,
+	data []byte,
+	opts *transportclient.ApplyOptions,
+	target transportclient.TransportContext,
+) (*transportclient.ApplyResult, error) {
+	m.ApplyCalled = true
+	return m.MockK8sClient.ApplyResource(ctx, data, opts, target)
+}
+
 // trackingMockClient is a thin wrapper around MockK8sClient to also capture DeleteResource calls.
 type trackingMockClient struct {
 	*k8sclient.MockK8sClient

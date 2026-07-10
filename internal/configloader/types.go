@@ -455,6 +455,7 @@ type Resource struct {
 // ResourceLifecycle defines the lifecycle behavior for a resource.
 type ResourceLifecycle struct {
 	Delete *LifecycleDelete `yaml:"delete,omitempty"`
+	Create *LifecycleCreate `yaml:"create,omitempty"`
 }
 
 // LifecycleDelete defines the deletion behavior for a resource.
@@ -464,6 +465,11 @@ type LifecycleDelete struct {
 	// PropagationPolicy is the Kubernetes deletion propagation policy: Background (default), Foreground, Orphan.
 	// For Maestro transport, this is ignored — ManifestWork handles its own cleanup semantics.
 	PropagationPolicy string `yaml:"propagationPolicy,omitempty"`
+}
+
+type LifecycleCreate struct {
+	// When defines the CEL expression that determines when to create the resource.
+	When *LifecycleWhen `yaml:"when,omitempty"`
 }
 
 // LifecycleWhen defines the condition for when deletion should occur.
