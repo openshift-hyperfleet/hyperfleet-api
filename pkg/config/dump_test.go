@@ -36,7 +36,28 @@ func TestDumpConfig_WithIssuers(t *testing.T) {
 
 	result := DumpConfig(cfg)
 	Expect(result).To(ContainSubstring("Issuers: 3 configured"))
-	Expect(result).To(ContainSubstring("[0] IssuerURL: https://accounts.google.com, Header: Authorization, JWK: url"))
-	Expect(result).To(ContainSubstring("[1] IssuerURL: https://login.example.com, Header: X-Token, JWK: file"))
-	Expect(result).To(ContainSubstring("[2] IssuerURL: https://misconfigured.com, Header: Authorization, JWK: none"))
+	Expect(result).To(ContainSubstring(
+		"[0] IssuerURL: https://accounts.google.com, Header: Authorization, JWK: url, CustomCA: no"))
+	Expect(result).To(ContainSubstring(
+		"[1] IssuerURL: https://login.example.com, Header: X-Token, JWK: file, CustomCA: no"))
+	Expect(result).To(ContainSubstring(
+		"[2] IssuerURL: https://misconfigured.com, Header: Authorization, JWK: none, CustomCA: no"))
+}
+
+func TestDumpConfig_WithCustomCA(t *testing.T) {
+	RegisterTestingT(t)
+
+	cfg := NewApplicationConfig()
+	cfg.Server.JWT.Enabled = true
+	cfg.Server.JWT.Configs = []JWTIssuerConfig{
+		{
+			IssuerURL:     "https://k8s.example.com",
+			Header:        "Authorization",
+			JWKCertURL:    "https://k8s.example.com/jwks",
+			JWKCertCAFile: "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt",
+		},
+	}
+
+	result := DumpConfig(cfg)
+	Expect(result).To(ContainSubstring("CustomCA: yes"))
 }

@@ -48,6 +48,43 @@ func TestJWTConfig_Validate(t *testing.T) {
 		Expect(cfg.Validate()).To(Succeed())
 	})
 
+	caFileTests := []struct {
+		name      string
+		config    JWTIssuerConfig
+		expectErr string
+	}{
+		{
+			name: "jwk_cert_ca_file without jwk_cert_url fails",
+			config: JWTIssuerConfig{
+				IssuerURL:     "https://issuer.example.com",
+				JWKCertFile:   "/etc/hyperfleet/jwks.json",
+				JWKCertCAFile: "/var/run/secrets/ca.crt",
+			},
+			expectErr: "jwk_cert_ca_file requires jwk_cert_url",
+		},
+		{
+			name: "jwk_cert_ca_file with jwk_cert_url passes",
+			config: JWTIssuerConfig{
+				IssuerURL:     "https://issuer.example.com",
+				JWKCertURL:    "https://keys.example.com",
+				JWKCertCAFile: "/var/run/secrets/ca.crt",
+			},
+		},
+	}
+	for _, tc := range caFileTests {
+		t.Run(tc.name, func(t *testing.T) {
+			RegisterTestingT(t)
+			cfg := JWTConfig{Enabled: true, Configs: []JWTIssuerConfig{tc.config}}
+			err := cfg.Validate()
+			if tc.expectErr != "" {
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring(tc.expectErr))
+			} else {
+				Expect(err).NotTo(HaveOccurred())
+			}
+		})
+	}
+
 	t.Run("valid single issuer config with cert file passes", func(t *testing.T) {
 		RegisterTestingT(t)
 		cfg := JWTConfig{Enabled: true, Configs: []JWTIssuerConfig{{

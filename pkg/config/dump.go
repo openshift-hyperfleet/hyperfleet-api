@@ -75,8 +75,12 @@ func formatIssuers(configs []JWTIssuerConfig) string {
 		} else if cfg.JWKCertFile != "" {
 			jwkSource = "file"
 		}
-		fmt.Fprintf(&b, "\n      [%d] IssuerURL: %s, Header: %s, JWK: %s",
-			i, cfg.IssuerURL, cfg.Header, jwkSource)
+		caFlag := "no"
+		if cfg.JWKCertCAFile != "" {
+			caFlag = "yes"
+		}
+		fmt.Fprintf(&b, "\n      [%d] IssuerURL: %s, Header: %s, JWK: %s, CustomCA: %s",
+			i, cfg.IssuerURL, cfg.Header, jwkSource, caFlag)
 	}
 	return b.String()
 }

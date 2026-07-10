@@ -178,6 +178,7 @@ Each entry in `server.jwt.configs` supports the following fields:
 | `issuer_url` | Yes | | Expected `iss` claim for this issuer |
 | `jwk_cert_url` | One of `jwk_cert_url` / `jwk_cert_file` | | JWKS endpoint URL for this issuer's public keys |
 | `jwk_cert_file` | One of `jwk_cert_url` / `jwk_cert_file` | | Path to a local JWKS file |
+| `jwk_cert_ca_file` | No | | PEM CA certificate for TLS when fetching `jwk_cert_url`. Requires `jwk_cert_url`; ignored with `jwk_cert_file` only. File must exist in the container. |
 | `header` | No | `Authorization` | HTTP header to read the JWT from |
 | `audience` | No | `""` (any) | Expected `aud` claim; skipped if empty |
 | `identity_claim` | No | `email` | JWT claim used as audit identity |
@@ -194,6 +195,7 @@ server:
       - issuer_url: https://idp.example.com/realms/hyperfleet
         jwk_cert_url: https://idp.example.com/realms/hyperfleet/protocol/openid-connect/certs
         jwk_cert_file: ""
+        jwk_cert_ca_file: ""
         header: Authorization
         audience: ""
         identity_claim: email

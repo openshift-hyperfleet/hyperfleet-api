@@ -23,6 +23,7 @@ server:
       - issuer_url: ""              # OIDC issuer URL for token validation (required)
         jwk_cert_url: ""            # URL to fetch JWK certificates from (required unless jwk_cert_file is set)
         jwk_cert_file: ""           # Path to a local JWK certificate file (alternative to jwk_cert_url)
+        jwk_cert_ca_file: ""        # CA certificate file for TLS when fetching jwk_cert_url (optional)
         header: Authorization       # HTTP header to read the JWT from (default: Authorization)
         audience: ""                # Expected JWT audience claim (optional)
         identity_claim: email       # JWT claim used as request identity for audit (default: email)

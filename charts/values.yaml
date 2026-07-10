@@ -75,6 +75,7 @@ config:
       # configs:
       #   - issuer_url: "https://idp.example.com/auth/realms/my-realm"
       #     jwk_cert_url: "https://idp.example.com/certs"
+      #     jwk_cert_ca_file: ""
       #     audience: "my-api"
       #     identity_claim: "email"
       #     identity_claim_pattern: "^[^@]+@example\\.com$"

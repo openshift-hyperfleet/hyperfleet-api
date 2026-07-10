@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -388,6 +389,147 @@ func TestJWTHandler_CombinedKeyfunc(t *testing.T) {
 	})
 }
 
+func TestJWTHandler_TLSWithCAFile(t *testing.T) {
+	RegisterTestingT(t)
+
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	Expect(err).NotTo(HaveOccurred())
+
+	tlsServer := newTLSJWKSServer(t, &privateKey.PublicKey)
+	defer tlsServer.Close()
+
+	caFile := writeTLSCAFile(t, tlsServer)
+
+	otherKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	Expect(err).NotTo(HaveOccurred())
+
+	handler, err := NewJWTHandler(t.Context(), JWTHandlerConfig{
+		Issuers: []config.JWTIssuerConfig{{
+			IssuerURL:     "https://test-issuer.example.com",
+			JWKCertURL:    tlsServer.URL,
+			JWKCertCAFile: caFile,
+		}},
+		Next: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		}),
+	})
+	Expect(err).NotTo(HaveOccurred())
+	defer handler.Close()
+
+	cases := []struct {
+		signingKey *rsa.PrivateKey
+		name       string
+		wantStatus int
+	}{
+		{privateKey, "valid token accepted", http.StatusOK},
+		{otherKey, "wrong key rejected", http.StatusUnauthorized},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			RegisterTestingT(t)
+			token := signToken(t, tc.signingKey, jwt.MapClaims{
+				"iss": "https://test-issuer.example.com",
+				"exp": time.Now().Add(time.Hour).Unix(),
+				"iat": time.Now().Unix(),
+			})
+			rr := serve(handler, "/protected", "Bearer "+token)
+			Expect(rr.Code).To(Equal(tc.wantStatus))
+		})
+	}
+}
+
+func TestJWTHandler_CombinedKeyfuncWithCA(t *testing.T) {
+	RegisterTestingT(t)
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	Expect(err).NotTo(HaveOccurred())
+	tlsServer := newTLSJWKSServer(t, &privateKey.PublicKey)
+	defer tlsServer.Close()
+	caFile := writeTLSCAFile(t, tlsServer)
+	jwksFile := writeJWKSFile(t, &privateKey.PublicKey)
+	handler, err := NewJWTHandler(t.Context(), JWTHandlerConfig{
+		Issuers: []config.JWTIssuerConfig{{
+			IssuerURL:     "https://test-issuer.example.com",
+			JWKCertURL:    tlsServer.URL,
+			JWKCertFile:   jwksFile,
+			JWKCertCAFile: caFile,
+		}},
+		Next: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		}),
+	})
+	Expect(err).NotTo(HaveOccurred())
+	defer handler.Close()
+	token := signToken(t, privateKey, jwt.MapClaims{
+		"iss": "https://test-issuer.example.com",
+		"exp": time.Now().Add(time.Hour).Unix(),
+		"iat": time.Now().Unix(),
+	})
+	rr := serve(handler, "/protected", "Bearer "+token)
+	Expect(rr.Code).To(Equal(http.StatusOK))
+}
+
+func TestJWTHandler_TLSWithoutCAFile_Fails(t *testing.T) {
+	RegisterTestingT(t)
+
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	Expect(err).NotTo(HaveOccurred())
+
+	tlsServer := newTLSJWKSServer(t, &privateKey.PublicKey)
+	defer tlsServer.Close()
+
+	handler, err := NewJWTHandler(t.Context(), JWTHandlerConfig{
+		Issuers: []config.JWTIssuerConfig{{
+			IssuerURL:  "https://test-issuer.example.com",
+			JWKCertURL: tlsServer.URL,
+		}},
+		Next: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		}),
+	})
+	Expect(err).NotTo(HaveOccurred())
+	defer handler.Close()
+
+	token := signToken(t, privateKey, jwt.MapClaims{
+		"iss": "https://test-issuer.example.com",
+		"exp": time.Now().Add(time.Hour).Unix(),
+	})
+	rr := serve(handler, "/protected", "Bearer "+token)
+	Expect(rr.Code).To(Equal(http.StatusUnauthorized))
+}
+
+func TestJWTHandler_MissingCAFile(t *testing.T) {
+	RegisterTestingT(t)
+
+	_, err := NewJWTHandler(t.Context(), JWTHandlerConfig{
+		Issuers: []config.JWTIssuerConfig{{
+			IssuerURL:     "https://test-issuer.example.com",
+			JWKCertURL:    "https://keys.example.com",
+			JWKCertCAFile: "/nonexistent/ca.crt",
+		}},
+		Next: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}),
+	})
+	Expect(err).To(HaveOccurred())
+	Expect(err.Error()).To(ContainSubstring("failed to read CA file"))
+}
+
+func TestJWTHandler_InvalidCAFile(t *testing.T) {
+	RegisterTestingT(t)
+
+	badCAFile := filepath.Join(t.TempDir(), "bad-ca.crt")
+	Expect(os.WriteFile(badCAFile, []byte("not a certificate"), 0600)).To(Succeed())
+
+	_, err := NewJWTHandler(t.Context(), JWTHandlerConfig{
+		Issuers: []config.JWTIssuerConfig{{
+			IssuerURL:     "https://test-issuer.example.com",
+			JWKCertURL:    "https://keys.example.com",
+			JWKCertCAFile: badCAFile,
+		}},
+		Next: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}),
+	})
+	Expect(err).To(HaveOccurred())
+	Expect(err.Error()).To(ContainSubstring("failed to parse CA certificate"))
+}
+
 func TestJWTHandler_Close(t *testing.T) {
 	RegisterTestingT(t)
 
@@ -656,7 +798,30 @@ func writeJWKSFile(t *testing.T, pubKey *rsa.PublicKey) string {
 
 func newJWKSServer(t *testing.T, pubKey *rsa.PublicKey) *httptest.Server {
 	t.Helper()
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return httptest.NewServer(jwksHandler(t, pubKey))
+}
+
+func newTLSJWKSServer(t *testing.T, pubKey *rsa.PublicKey) *httptest.Server {
+	t.Helper()
+	return httptest.NewTLSServer(jwksHandler(t, pubKey))
+}
+
+func writeTLSCAFile(t *testing.T, tlsServer *httptest.Server) string {
+	t.Helper()
+	certPEM := pem.EncodeToMemory(&pem.Block{
+		Type:  "CERTIFICATE",
+		Bytes: tlsServer.TLS.Certificates[0].Certificate[0],
+	})
+	caPath := filepath.Join(t.TempDir(), "ca.crt")
+	if err := os.WriteFile(caPath, certPEM, 0600); err != nil {
+		t.Fatalf("failed to write CA file: %v", err)
+	}
+	return caPath
+}
+
+func jwksHandler(t *testing.T, pubKey *rsa.PublicKey) http.Handler {
+	t.Helper()
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		jwk, err := gojwk.PublicKey(pubKey)
 		if err != nil {
 			t.Errorf("failed to create JWK: %v", err)
@@ -673,5 +838,5 @@ func newJWKSServer(t *testing.T, pubKey *rsa.PublicKey) *httptest.Server {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprintf(w, `{"keys":[%s]}`, string(jwkBytes))
-	}))
+	})
 }
