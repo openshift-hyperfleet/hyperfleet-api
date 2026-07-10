@@ -1,4 +1,8 @@
-include .bingo/Variables.mk
+# golangci-lint version — installed as a dedicated binary (not via go.mod)
+# to avoid its massive dependency tree contaminating project dependencies.
+# See: https://golangci-lint.run/docs/welcome/install/local/
+GOLANGCI_LINT_VERSION ?= v2.7.0
+GOLANGCI_LINT = ./bin/golangci-lint-$(GOLANGCI_LINT_VERSION)
 
 .DEFAULT_GOAL := help
 
@@ -90,12 +94,12 @@ test-all: lint test test-integration test-helm ## Run all checks (lint, unit, in
 ##@ Helm Charts
 
 .PHONY: helm-docs
-helm-docs: $(HELM_DOCS) ## Generate Helm chart README from values.yaml annotations
-	$(HELM_DOCS) --chart-search-root=charts --sort-values-order=file
+helm-docs: ## Generate Helm chart README from values.yaml annotations
+	$(GO) tool helm-docs --chart-search-root=charts --sort-values-order=file
 
 .PHONY: verify-helm-docs
-verify-helm-docs: $(HELM_DOCS) ## Verify chart README is up to date
-	$(HELM_DOCS) --chart-search-root=charts --sort-values-order=file
+verify-helm-docs: ## Verify chart README is up to date
+	$(GO) tool helm-docs --chart-search-root=charts --sort-values-order=file
 	@git diff --exit-code charts/README.md > /dev/null 2>&1 || \
 		(echo "ERROR: charts/README.md is out of date. Run 'make helm-docs' and commit the result." && exit 1)
 
@@ -108,7 +112,7 @@ KUBECONFORM_FLAGS := \
 	-schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
 
 .PHONY: test-helm
-test-helm: $(KUBECONFORM) verify-helm-docs ## Test Helm charts (lint, template, validate, kubeconform)
+test-helm: verify-helm-docs ## Test Helm charts (lint, template, validate, kubeconform)
 	@if ! command -v helm > /dev/null; then \
 		echo "ERROR: helm not found. Please install Helm:"; \
 		echo "  brew install helm  # macOS"; \
@@ -130,7 +134,7 @@ test-helm: $(KUBECONFORM) verify-helm-docs ## Test Helm charts (lint, template, 
 		--set adapterTaskConfig.yaml="apiVersion: hyperfleet.redhat.com/v1alpha1" \
 		--set broker.type=googlepubsub \
 		--set broker.googlepubsub.subscriptionId=test-sub \
-		--set broker.googlepubsub.topic=test-topic | $(KUBECONFORM) $(KUBECONFORM_FLAGS)
+		--set broker.googlepubsub.topic=test-topic | $(GO) tool kubeconform $(KUBECONFORM_FLAGS)
 	@echo "Minimal required values template OK"
 	@echo ""
 	@echo "Testing template with broker enabled..."
@@ -146,7 +150,7 @@ test-helm: $(KUBECONFORM) verify-helm-docs ## Test Helm charts (lint, template, 
 		--set broker.type=googlepubsub) \
 		&& echo "$$output" | grep -q 'type: googlepubsub' \
 		|| { echo "ERROR: expected googlepubsub broker type in rendered output"; exit 1; }; \
-		echo "$$output" | $(KUBECONFORM) $(KUBECONFORM_FLAGS)
+		echo "$$output" | $(GO) tool kubeconform $(KUBECONFORM_FLAGS)
 	@echo "Broker config template OK"
 	@echo ""
 	@echo "Testing template with HyperFleet API config..."
@@ -160,7 +164,7 @@ test-helm: $(KUBECONFORM) verify-helm-docs ## Test Helm charts (lint, template, 
 		--set broker.googlepubsub.subscriptionId=test-sub \
 		--set broker.googlepubsub.topic=test-topic \
 		--set adapterConfig.hyperfleetApi.baseUrl=http://localhost:8000 \
-		--set adapterConfig.hyperfleetApi.version=v1 | $(KUBECONFORM) $(KUBECONFORM_FLAGS)
+		--set adapterConfig.hyperfleetApi.version=v1 | $(GO) tool kubeconform $(KUBECONFORM_FLAGS)
 	@echo "HyperFleet API config template OK"
 	@echo ""
 	@echo "Testing template with PDB enabled..."
@@ -175,7 +179,7 @@ test-helm: $(KUBECONFORM) verify-helm-docs ## Test Helm charts (lint, template, 
 		--set broker.googlepubsub.topic=test-topic \
 		--set podDisruptionBudget.enabled=true \
 		--set podDisruptionBudget.minAvailable=1 \
-		--set podDisruptionBudget.maxUnavailable=null | $(KUBECONFORM) $(KUBECONFORM_FLAGS)
+		--set podDisruptionBudget.maxUnavailable=null | $(GO) tool kubeconform $(KUBECONFORM_FLAGS)
 	@echo "PDB config template OK"
 	@echo ""
 	@echo "Testing template with autoscaling..."
@@ -190,7 +194,7 @@ test-helm: $(KUBECONFORM) verify-helm-docs ## Test Helm charts (lint, template, 
 		--set broker.googlepubsub.topic=test-topic \
 		--set autoscaling.enabled=true \
 		--set autoscaling.minReplicas=2 \
-		--set autoscaling.maxReplicas=5 | $(KUBECONFORM) $(KUBECONFORM_FLAGS)
+		--set autoscaling.maxReplicas=5 | $(GO) tool kubeconform $(KUBECONFORM_FLAGS)
 	@echo "Autoscaling config template OK"
 	@echo ""
 	@echo "Testing template with probes enabled..."
@@ -205,7 +209,7 @@ test-helm: $(KUBECONFORM) verify-helm-docs ## Test Helm charts (lint, template, 
 		--set broker.googlepubsub.topic=test-topic \
 		--set livenessProbe.enabled=true \
 		--set readinessProbe.enabled=true \
-		--set startupProbe.enabled=true | $(KUBECONFORM) $(KUBECONFORM_FLAGS)
+		--set startupProbe.enabled=true | $(GO) tool kubeconform $(KUBECONFORM_FLAGS)
 	@echo "Probes config template OK"
 	@echo ""
 	@echo "Testing template with ServiceMonitor enabled..."
@@ -222,7 +226,7 @@ test-helm: $(KUBECONFORM) verify-helm-docs ## Test Helm charts (lint, template, 
 		--api-versions monitoring.coreos.com/v1/ServiceMonitor) \
 		&& echo "$$output" | grep -q 'kind: ServiceMonitor' \
 		|| { echo "ERROR: ServiceMonitor not rendered"; exit 1; }; \
-		echo "$$output" | $(KUBECONFORM) $(KUBECONFORM_FLAGS)
+		echo "$$output" | $(GO) tool kubeconform $(KUBECONFORM_FLAGS)
 	@echo "ServiceMonitor enabled template OK"
 	@echo ""
 	@echo "Testing template with ServiceMonitor enabled but CRD unavailable..."
@@ -238,7 +242,7 @@ test-helm: $(KUBECONFORM) verify-helm-docs ## Test Helm charts (lint, template, 
 		--set serviceMonitor.enabled=true) \
 		&& ! echo "$$output" | grep -q 'kind: ServiceMonitor' \
 		|| { echo "ERROR: ServiceMonitor rendered without CRD"; exit 1; }; \
-		echo "$$output" | $(KUBECONFORM) $(KUBECONFORM_FLAGS)
+		echo "$$output" | $(GO) tool kubeconform $(KUBECONFORM_FLAGS)
 	@echo "ServiceMonitor CRD-missing template OK"
 	@echo ""
 	@echo "Testing template with ServiceMonitor disabled..."
@@ -255,7 +259,7 @@ test-helm: $(KUBECONFORM) verify-helm-docs ## Test Helm charts (lint, template, 
 		--api-versions monitoring.coreos.com/v1/ServiceMonitor) \
 		&& ! echo "$$output" | grep -q 'kind: ServiceMonitor' \
 		|| { echo "ERROR: ServiceMonitor rendered while disabled"; exit 1; }; \
-		echo "$$output" | $(KUBECONFORM) $(KUBECONFORM_FLAGS)
+		echo "$$output" | $(GO) tool kubeconform $(KUBECONFORM_FLAGS)
 	@echo "ServiceMonitor disabled template OK"
 	@echo ""
 	@echo "Testing template with RabbitMQ broker..."
@@ -271,7 +275,7 @@ test-helm: $(KUBECONFORM) verify-helm-docs ## Test Helm charts (lint, template, 
 		--set broker.rabbitmq.exchange=test-exchange) \
 		&& echo "$$output" | grep -q 'type: rabbitmq' \
 		|| { echo "ERROR: expected rabbitmq broker type in rendered output"; exit 1; }; \
-		echo "$$output" | $(KUBECONFORM) $(KUBECONFORM_FLAGS)
+		echo "$$output" | $(GO) tool kubeconform $(KUBECONFORM_FLAGS)
 	@echo "RabbitMQ broker template OK"
 	@echo ""
 	@echo "Testing that rabbitmq broker.type with both sections set selects rabbitmq..."
@@ -290,7 +294,7 @@ test-helm: $(KUBECONFORM) verify-helm-docs ## Test Helm charts (lint, template, 
 		--set broker.googlepubsub.subscriptionId=my-sub) \
 		&& echo "$$output" | grep -q 'type: rabbitmq' \
 		|| { echo "ERROR: expected rabbitmq broker type in output"; exit 1; }; \
-		echo "$$output" | $(KUBECONFORM) $(KUBECONFORM_FLAGS)
+		echo "$$output" | $(GO) tool kubeconform $(KUBECONFORM_FLAGS)
 	@echo "RabbitMQ broker type selection OK"
 	@echo ""
 	@echo "Testing that rabbitmq renders OK without queue (queue is optional)..."
@@ -329,8 +333,8 @@ install-hooks: ## Install pre-commit hooks
 	pre-commit install
 
 .PHONY: fmt
-fmt: $(GOIMPORTS) ## Format code with goimports
-	$(GOIMPORTS) -w .
+fmt: ## Format code with goimports
+	$(GO) tool goimports -w .
 
 .PHONY: gofmt
 gofmt: fmt ## Alias for fmt
@@ -353,7 +357,11 @@ go-vet: vet ## Alias for vet
 
 .PHONY: lint
 lint: $(GOLANGCI_LINT) ## Run golangci-lint
-	$(GOLANGCI_LINT) run
+	$(GOLANGCI_LINT) run ./...
+
+$(GOLANGCI_LINT):
+	GOBIN=$(CURDIR)/bin go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
+	@mv ./bin/golangci-lint $@
 
 .PHONY: verify
 verify: fmt-check vet ## Run all verification checks
@@ -367,6 +375,10 @@ tidy: ## Tidy go.mod
 .PHONY: download
 download: ## Download dependencies
 	$(GO) mod download
+
+.PHONY: tools
+tools: ## Install pinned tool versions from go.mod tool directives
+	$(GO) install tool
 
 ##@ Container Images
 
