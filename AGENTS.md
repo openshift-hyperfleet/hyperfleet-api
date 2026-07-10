@@ -187,4 +187,4 @@ Create feature branches from `main`. PRs target `main`.
 - **Never create** direct DB connections — use `SessionFactory.New(ctx)` for transaction participation
 - **FIPS required**: build with `CGO_ENABLED=1 GOEXPERIMENT=boringcrypto`
 - **Spec source of truth**: `hyperfleet-api-spec` Go module; update `go.mod` to change spec versions — see [openapi/README.md](openapi/README.md) for full details on schema import, code generation, and validation
-- **Tool versions** managed by Bingo (`.bingo/`) — don't manually install oapi-codegen or golangci-lint
+- **Tool versions** pinned in `tools/go.mod` — don't manually install oapi-codegen or golangci-lint

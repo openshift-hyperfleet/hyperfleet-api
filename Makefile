@@ -1,13 +1,15 @@
 .DEFAULT_GOAL := help
 
-# Include bingo-managed tool variables
-include .bingo/Variables.mk
-
 # CGO_ENABLED=0 is not FIPS compliant. large commercial vendors and FedRAMP require FIPS compliant crypto
 # Use ?= to allow Dockerfile to override (CGO_ENABLED=0 for Alpine-based dev images)
 CGO_ENABLED ?= 1
 
 GO ?= go
+
+# Invoke a pinned tool: $(call gotool,name)
+# All tools share tools/go.mod with Go 1.24+ tool directives.
+TOOL_MOD := tools/go.mod
+gotool = $(GO) tool -modfile=$(TOOL_MOD) $(1)
 
 # Auto-detect container tool (podman preferred when available)
 CONTAINER_TOOL ?= $(shell command -v podman 2>/dev/null || command -v docker 2>/dev/null)
@@ -54,7 +56,7 @@ DEV_BASE_IMAGE ?= registry.access.redhat.com/ubi9/ubi-minimal:latest
 
 # Encourage consistent tool versions
 OPENAPI_GENERATOR_VERSION := 5.4.0
-GO_VERSION := go1.25.
+GO_VERSION := go1.26
 
 # Database connection details
 db_name := hyperfleet
@@ -116,27 +118,35 @@ go-vet: ## Run go vet
 	${GO} vet ./cmd/... ./pkg/...
 
 .PHONY: lint
-lint: generate-all $(GOLANGCI_LINT) ## Run golangci-lint
-	$(GOLANGCI_LINT) run ./cmd/... ./pkg/... ./test/...
+lint: generate-all ## Run golangci-lint
+	$(call gotool,golangci-lint) run ./cmd/... ./pkg/... ./test/...
 
 .PHONY: verify-migrations
 verify-migrations: ## Verify migration files follow project conventions
 	@hack/verify-migrations.sh
 
+.PHONY: tools
+tools: ## Ensure tool dependencies are up to date
+	cd tools && GOWORK=off $(GO) mod tidy
+
+.PHONY: verify-tools
+verify-tools: tools ## Fail in CI if tool module drifted
+	@git diff --exit-code tools/go.mod tools/go.sum || (echo "tool modules out of date; run 'make tools'" && exit 1)
+
 ##@ Code Generation
 
 .PHONY: generate
-generate: $(OAPI_CODEGEN) ## Generate OpenAPI types using oapi-codegen
+generate: ## Generate OpenAPI types using oapi-codegen
 	$(GO) mod download
 	rm -rf pkg/api/openapi
 	mkdir -p pkg/api/openapi openapi
 	@rm -f openapi/openapi.yaml
 	@cp "$$($(GO) list -m -f '{{.Dir}}' github.com/openshift-hyperfleet/hyperfleet-api-spec)/schemas/core/openapi.yaml" openapi/openapi.yaml
-	$(OAPI_CODEGEN) --config openapi/oapi-codegen.yaml openapi/openapi.yaml
+	$(call gotool,oapi-codegen) --config openapi/oapi-codegen.yaml openapi/openapi.yaml
 	@printf 'package openapi\n\nimport _ "github.com/oapi-codegen/runtime"\n' > pkg/api/openapi/stub.go
 
 .PHONY: generate-mocks
-generate-mocks: $(MOCKGEN) ## Generate mock implementations for services
+generate-mocks: ## Generate mock implementations for services
 	${GO} generate ./pkg/services/...
 
 .PHONY: generate-all
@@ -207,25 +217,25 @@ clean: ## Delete temporary generated files
 ##@ Testing
 
 .PHONY: test
-test: install $(GOTESTSUM) ## Run unit tests
-	HYPERFLEET_ENV=unit_testing $(GOTESTSUM) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -v $(TESTFLAGS) \
+test: install ## Run unit tests
+	HYPERFLEET_ENV=unit_testing $(call gotool,gotestsum) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -v $(TESTFLAGS) \
 		./pkg/... \
 		./cmd/...
 
 .PHONY: ci-test-unit
-ci-test-unit: install $(GOTESTSUM) ## Run unit tests with JSON output
-	HYPERFLEET_ENV=unit_testing $(GOTESTSUM) --jsonfile-timing-events=$(unit_test_json_output) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -v $(TESTFLAGS) \
+ci-test-unit: install ## Run unit tests with JSON output
+	HYPERFLEET_ENV=unit_testing $(call gotool,gotestsum) --jsonfile-timing-events=$(unit_test_json_output) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -v $(TESTFLAGS) \
 		./pkg/... \
 		./cmd/...
 
 .PHONY: test-integration
-test-integration: install $(GOTESTSUM) ## Run integration tests
-	TESTCONTAINERS_RYUK_DISABLED=true HYPERFLEET_ENV=integration_testing $(GOTESTSUM) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) \
+test-integration: install ## Run integration tests
+	TESTCONTAINERS_RYUK_DISABLED=true HYPERFLEET_ENV=integration_testing $(call gotool,gotestsum) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) \
 			./test/integration
 
 .PHONY: ci-test-integration
-ci-test-integration: install $(GOTESTSUM) ## Run integration tests with JSON output
-	TESTCONTAINERS_RYUK_DISABLED=true HYPERFLEET_ENV=integration_testing $(GOTESTSUM) --jsonfile-timing-events=$(integration_test_json_output) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) \
+ci-test-integration: install ## Run integration tests with JSON output
+	TESTCONTAINERS_RYUK_DISABLED=true HYPERFLEET_ENV=integration_testing $(call gotool,gotestsum) --jsonfile-timing-events=$(integration_test_json_output) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) \
 			./test/integration
 
 .PHONY: test-all
@@ -296,7 +306,7 @@ coverage-clean: ## Remove all coverage files
 ##@ Agent Verification
 
 .PHONY: verify-all
-verify-all: verify lint verify-migrations test ## Run all static checks + unit tests (no database required)
+verify-all: verify verify-tools lint verify-migrations test ## Run all static checks + unit tests (no database required)
 	@echo "All static checks and unit tests passed."
 	@echo "Run 'make test-integration' separately for integration tests (requires database)."
 
@@ -322,18 +332,18 @@ db/teardown: check-container-tool ## Stop and remove local PostgreSQL container
 ##@ Helm Charts
 
 .PHONY: helm-docs
-helm-docs: $(HELM_DOCS) ## Generate Helm chart README from values.yaml annotations
-	$(HELM_DOCS) --chart-search-root=charts --sort-values-order=file
+helm-docs: ## Generate Helm chart README from values.yaml annotations
+	$(call gotool,helm-docs) --chart-search-root=charts --sort-values-order=file
 
 .PHONY: verify-helm-docs
-verify-helm-docs: $(HELM_DOCS) ## Verify chart README is up to date
-	$(HELM_DOCS) --chart-search-root=charts --sort-values-order=file
+verify-helm-docs: ## Verify chart README is up to date
+	$(call gotool,helm-docs) --chart-search-root=charts --sort-values-order=file
 	@git diff --exit-code charts/README.md > /dev/null 2>&1 || \
 		(echo "ERROR: charts/README.md is out of date. Run 'make helm-docs' and commit the result." && exit 1)
 
 .PHONY: test-helm
-test-helm: $(KUBECONFORM) $(YQ) verify-helm-docs ## Test Helm charts (lint, template, validate, kubeconform)
-	@KUBECONFORM=$(KUBECONFORM) YQ=$(YQ) ./scripts/test-helm.sh
+test-helm: verify-helm-docs ## Test Helm charts (lint, template, validate, kubeconform)
+	@KUBECONFORM="$(call gotool,kubeconform)" YQ="$(call gotool,yq)" ./scripts/test-helm.sh
 
 ##@ Container Images
 

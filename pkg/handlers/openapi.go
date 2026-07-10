@@ -22,7 +22,7 @@ type OpenAPIHandler struct {
 func NewOpenAPIHandler() (*OpenAPIHandler, error) {
 	ctx := context.Background()
 	// Load the OpenAPI spec from the generated code's embedded swagger
-	swagger, err := openapi.GetSwagger()
+	swagger, err := openapi.GetSpec()
 	if err != nil {
 		return nil, errors.GeneralError(
 			"can't load OpenAPI specification from generated code: %v",

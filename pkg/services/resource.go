@@ -19,7 +19,7 @@ import (
 
 const defaultPageSize = 20
 
-//go:generate mockgen-v0.6.0 -source=resource.go -package=services -destination=resource_mock.go
+//go:generate go tool -modfile=../../tools/go.mod mockgen -source=resource.go -package=services -destination=resource_mock.go
 
 type ResourceService interface {
 	Get(ctx context.Context, kind, id string) (*api.Resource, *errors.ServiceError)
