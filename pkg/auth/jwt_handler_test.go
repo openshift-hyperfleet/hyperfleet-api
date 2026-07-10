@@ -497,37 +497,44 @@ func TestJWTHandler_TLSWithoutCAFile_Fails(t *testing.T) {
 	Expect(rr.Code).To(Equal(http.StatusUnauthorized))
 }
 
-func TestJWTHandler_MissingCAFile(t *testing.T) {
+func TestJWTHandler_CAFileErrors(t *testing.T) {
 	RegisterTestingT(t)
 
-	_, err := NewJWTHandler(t.Context(), JWTHandlerConfig{
-		Issuers: []config.JWTIssuerConfig{{
-			IssuerURL:     "https://test-issuer.example.com",
-			JWKCertURL:    "https://keys.example.com",
-			JWKCertCAFile: "/nonexistent/ca.crt",
-		}},
-		Next: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}),
-	})
-	Expect(err).To(HaveOccurred())
-	Expect(err.Error()).To(ContainSubstring("failed to read CA file"))
-}
-
-func TestJWTHandler_InvalidCAFile(t *testing.T) {
-	RegisterTestingT(t)
-
-	badCAFile := filepath.Join(t.TempDir(), "bad-ca.crt")
-	Expect(os.WriteFile(badCAFile, []byte("not a certificate"), 0600)).To(Succeed())
-
-	_, err := NewJWTHandler(t.Context(), JWTHandlerConfig{
-		Issuers: []config.JWTIssuerConfig{{
-			IssuerURL:     "https://test-issuer.example.com",
-			JWKCertURL:    "https://keys.example.com",
-			JWKCertCAFile: badCAFile,
-		}},
-		Next: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}),
-	})
-	Expect(err).To(HaveOccurred())
-	Expect(err.Error()).To(ContainSubstring("failed to parse CA certificate"))
+	cases := []struct {
+		name          string
+		caFile        func(t *testing.T) string
+		wantErrSubstr string
+	}{
+		{
+			"missing CA file",
+			func(t *testing.T) string { return "/nonexistent/ca.crt" },
+			"failed to read CA file",
+		},
+		{
+			"invalid CA file",
+			func(t *testing.T) string {
+				badCAFile := filepath.Join(t.TempDir(), "bad-ca.crt")
+				Expect(os.WriteFile(badCAFile, []byte("not a certificate"), 0600)).To(Succeed())
+				return badCAFile
+			},
+			"failed to parse CA certificate",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			RegisterTestingT(t)
+			_, err := NewJWTHandler(t.Context(), JWTHandlerConfig{
+				Issuers: []config.JWTIssuerConfig{{
+					IssuerURL:     "https://test-issuer.example.com",
+					JWKCertURL:    "https://keys.example.com",
+					JWKCertCAFile: tc.caFile(t),
+				}},
+				Next: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}),
+			})
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring(tc.wantErrSubstr))
+		})
+	}
 }
 
 func TestJWTHandler_Close(t *testing.T) {

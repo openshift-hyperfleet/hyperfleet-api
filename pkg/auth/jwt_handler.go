@@ -25,6 +25,7 @@ import (
 const (
 	defaultSigningAlgorithm    = "RS256"
 	defaultLeeway              = 30 * time.Second
+	defaultHTTPClientTimeout   = 30 * time.Second
 	defaultJWKSRefreshInterval = time.Hour
 )
 
@@ -176,53 +177,62 @@ func buildKeyfunc(ctx context.Context, issuer config.JWTIssuerConfig) (keyfunc.K
 	hasFile := issuer.JWKCertFile != ""
 	hasURL := issuer.JWKCertURL != ""
 
-	if !hasFile && !hasURL {
+	switch {
+	case !hasFile && !hasURL:
 		return nil, fmt.Errorf("at least one of jwk_cert_file or jwk_cert_url must be provided")
+	case hasFile && !hasURL:
+		return buildFileOnlyKeyfunc(issuer)
+	case !hasFile && hasURL:
+		return buildURLOnlyKeyfunc(ctx, issuer)
+	default:
+		return buildCombinedKeyfunc(ctx, issuer)
 	}
+}
 
-	if hasFile && !hasURL {
-		data, err := os.ReadFile(issuer.JWKCertFile)
+func buildFileOnlyKeyfunc(issuer config.JWTIssuerConfig) (keyfunc.Keyfunc, error) {
+	data, err := os.ReadFile(issuer.JWKCertFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read JWKS file %q: %w", issuer.JWKCertFile, err)
+	}
+	kf, err := keyfunc.NewJWKSetJSON(json.RawMessage(data))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse JWKS file %q: %w", issuer.JWKCertFile, err)
+	}
+	return kf, nil
+}
+
+func buildURLOnlyKeyfunc(ctx context.Context, issuer config.JWTIssuerConfig) (keyfunc.Keyfunc, error) {
+	if issuer.JWKCertCAFile == "" {
+		kf, err := keyfunc.NewDefaultCtx(ctx, []string{issuer.JWKCertURL})
 		if err != nil {
-			return nil, fmt.Errorf("failed to read JWKS file %q: %w", issuer.JWKCertFile, err)
-		}
-		kf, err := keyfunc.NewJWKSetJSON(json.RawMessage(data))
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse JWKS file %q: %w", issuer.JWKCertFile, err)
+			return nil, fmt.Errorf("failed to create JWKS client from URL %q: %w", issuer.JWKCertURL, err)
 		}
 		return kf, nil
 	}
 
-	if !hasFile && hasURL {
-		if issuer.JWKCertCAFile == "" {
-			kf, err := keyfunc.NewDefaultCtx(ctx, []string{issuer.JWKCertURL})
-			if err != nil {
-				return nil, fmt.Errorf("failed to create JWKS client from URL %q: %w", issuer.JWKCertURL, err)
-			}
-			return kf, nil
-		}
-
-		urlStorage, err := newStorageWithCA(ctx, issuer.JWKCertURL, issuer.JWKCertCAFile)
-		if err != nil {
-			return nil, err
-		}
-		httpStorage, err := jwkset.NewHTTPClient(jwkset.HTTPClientOptions{
-			HTTPURLs: map[string]jwkset.Storage{
-				issuer.JWKCertURL: urlStorage,
-			},
-		})
-		if err != nil {
-			return nil, fmt.Errorf("failed to create HTTP JWKS client: %w", err)
-		}
-		kf, err := keyfunc.New(keyfunc.Options{
-			Ctx:     ctx,
-			Storage: httpStorage,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("failed to create JWKS keyfunc from URL %q with CA: %w", issuer.JWKCertURL, err)
-		}
-		return kf, nil
+	urlStorage, err := newStorageWithCA(ctx, issuer.JWKCertURL, issuer.JWKCertCAFile)
+	if err != nil {
+		return nil, err
 	}
+	httpStorage, err := jwkset.NewHTTPClient(jwkset.HTTPClientOptions{
+		HTTPURLs: map[string]jwkset.Storage{
+			issuer.JWKCertURL: urlStorage,
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create HTTP JWKS client: %w", err)
+	}
+	kf, err := keyfunc.New(keyfunc.Options{
+		Ctx:     ctx,
+		Storage: httpStorage,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create JWKS keyfunc from URL %q with CA: %w", issuer.JWKCertURL, err)
+	}
+	return kf, nil
+}
 
+func buildCombinedKeyfunc(ctx context.Context, issuer config.JWTIssuerConfig) (keyfunc.Keyfunc, error) {
 	data, err := os.ReadFile(issuer.JWKCertFile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read JWKS file %q: %w", issuer.JWKCertFile, err)
@@ -295,7 +305,7 @@ func buildHTTPClientWithCA(caFile string) (*http.Client, error) {
 		return nil, fmt.Errorf("failed to parse CA certificate from %q", caFile)
 	}
 	return &http.Client{
-		Timeout: 30 * time.Second,
+		Timeout: defaultHTTPClientTimeout,
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{
 				RootCAs:    pool,
