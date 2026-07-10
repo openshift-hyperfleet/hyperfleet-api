@@ -1184,7 +1184,7 @@ func TestValidateLifecycleConfig(t *testing.T) {
 		require.NoError(t, v.ValidateSemantic())
 	})
 
-	t.Run("lifecycle create without when is valid", func(t *testing.T) {
+	t.Run("lifecycle create without when is rejected", func(t *testing.T) {
 		cfg := baseTaskConfig()
 		cfg.Resources = []Resource{{
 			Name:      "myResource",
@@ -1194,9 +1194,9 @@ func TestValidateLifecycleConfig(t *testing.T) {
 				Create: &LifecycleCreate{},
 			},
 		}}
-		v := newTaskValidator(cfg)
-		require.NoError(t, v.ValidateStructure())
-		require.NoError(t, v.ValidateSemantic())
+		err := newTaskValidator(cfg).ValidateSemantic()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "lifecycle.create.when.expression is required")
 	})
 
 	t.Run("lifecycle create with when but empty expression", func(t *testing.T) {
@@ -1213,8 +1213,7 @@ func TestValidateLifecycleConfig(t *testing.T) {
 		}}
 		err := newTaskValidator(cfg).ValidateSemantic()
 		require.Error(t, err)
-		assert.Contains(t, err.Error(),
-			"lifecycle.create.when.expression is required when lifecycle.create.when is configured")
+		assert.Contains(t, err.Error(), "lifecycle.create.when.expression is required")
 	})
 
 	t.Run("lifecycle create with invalid CEL expression", func(t *testing.T) {

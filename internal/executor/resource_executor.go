@@ -128,8 +128,8 @@ func (re *ResourceExecutor) executeResource(
 		resourceFound := execCtx.Resources[resource.Name] != nil
 
 		if !resourceFound {
-			// Resource doesn't exist yet — evaluate the when condition. Absent when means
-			// "always create". Validator guarantees when.expression is non-empty when set.
+			// Resource doesn't exist yet — evaluate the when condition. Validator guarantees
+			// lifecycle.create.when and its expression are always set when lifecycle.create is present.
 			shouldCreate := true
 			var whenErr error
 			if resource.Lifecycle.Create.When != nil {
@@ -139,6 +139,7 @@ func (re *ResourceExecutor) executeResource(
 
 			if whenErr != nil {
 				result.Status = StatusFailed
+				result.Operation = manifest.OperationCreate
 				result.Error = whenErr
 				re.recordResourceError(execCtx, resource, whenErr)
 				return result, NewExecutorError(PhaseResources, resource.Name, "failed to evaluate lifecycle.create.when", whenErr)

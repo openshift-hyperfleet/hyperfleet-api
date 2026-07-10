@@ -684,7 +684,7 @@ resources:
     discovery:                              # required: needed to check whether the resource already exists
       by_name: "{{ .clusterId }}-feature"
     lifecycle:
-      create: # optional: Choose if you want to control creation with CEL
+      create: # optional block; when present, `when` is required
         when:
           expression: "params.?enableOptionalFeature.orValue(false)"  
 ```
@@ -692,11 +692,11 @@ resources:
 **Requirements:**
 
 - `discovery` must be configured on the same resource — without it the executor cannot tell whether the resource already exists, and validation rejects the config.
-- `when.expression` is required when `when` is configured, and must be a valid CEL expression — config validation rejects anything else.
+- `lifecycle.create` itself is optional. But when present, `when.expression` is required and must be a valid CEL expression — config validation rejects a `lifecycle.create` block with a missing or empty `when.expression`.
 
 #### Behavior
 
-- **Resource doesn't exist yet**: the `when` expression is evaluated. `false` skips creation (operation `skip`, `adapter.resourcesSkipped` set to `true`); `true` or absent `lifecycle.create` proceeds with the normal create flow.
+- **Resource doesn't exist yet**: the `when` expression is evaluated. `false` skips creation (operation `skip`, `adapter.resourcesSkipped` set to `true`); `true` proceeds with the normal create flow. Resources with no `lifecycle.create` configured at all are always created normally.
 - **Resource already exists**: the `when` expression is **ignored** — the resource is applied normally (update flow). This makes `lifecycle.create.when` a one-time gate on initial creation, not a recurring condition; once created, the resource is reconciled like any other on subsequent events.
 - **CEL evaluation error**: the resource execution fails with a descriptive error (referencing the failing expression) and the resource is neither applied nor silently skipped — the same fail-closed behavior as `lifecycle.delete.when`.
 

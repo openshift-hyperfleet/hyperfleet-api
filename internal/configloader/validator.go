@@ -612,12 +612,12 @@ func (v *TaskConfigValidator) validateLifecycleConfig() {
 					basePath,
 					"lifecycle.create requires a discovery config to check if the resource already exists",
 				)
-			case create.When != nil && create.When.Expression == "":
+			case create.When == nil || create.When.Expression == "":
 				v.errors.Add(
 					basePath+"."+FieldLifecycleWhen+"."+FieldExpression,
-					"lifecycle.create.when.expression is required when lifecycle.create.when is configured",
+					"lifecycle.create.when.expression is required when lifecycle.create is configured",
 				)
-			case create.When != nil:
+			default:
 				path := basePath + "." + FieldLifecycleWhen + "." + FieldExpression
 				v.validateCELExpression(create.When.Expression, path)
 			}

@@ -783,7 +783,7 @@ func TestResourceExecutor_LifecycleCreate_WhenCELError_ExecutionFails(t *testing
 		Logger:          logger.NewTestLogger(),
 	})
 
-	// Invalid CEL syntax — evaluateLifecycleCreateWhen will error.
+	// Invalid CEL syntax — evaluateLifecycleWhen will error.
 	resource := newResourceWithLifecycleCreate("shouldCreate &&")
 	execCtx := NewExecutionContext(context.Background(), nil, nil)
 
