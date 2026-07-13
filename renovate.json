@@ -3,25 +3,23 @@
   "schedule": [
     "on monday"
   ],
+  "gomod": {
+    "packageRules": [
+      {
+        "matchUpdateTypes": [
+          "digest"
+        ],
+        "enabled": false
+      },
+      {
+        "matchDepTypes": [
+          "indirect"
+        ],
+        "enabled": false
+      }
+    ]
+  },
   "packageRules": [
-    {
-      "matchManagers": [
-        "gomod"
-      ],
-      "matchUpdateTypes": [
-        "digest"
-      ],
-      "enabled": false
-    },
-    {
-      "matchManagers": [
-        "gomod"
-      ],
-      "matchDepTypes": [
-        "indirect"
-      ],
-      "enabled": false
-    },
     {
       "matchManagers": [
         "gomod"
