@@ -38,6 +38,7 @@ var MigrationList = []*gormigrate.Migration{
 	addResources(),
 	removeReadyCondition(),
 	addResourceConditions(),
+	addResourceReferences(),
 }
 
 // Model represents the base model struct. All entities will have this struct embedded.

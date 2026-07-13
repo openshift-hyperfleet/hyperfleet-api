@@ -197,6 +197,41 @@ func TestNewListArguments_Fields(t *testing.T) {
 	}
 }
 
+func TestNewListArguments_RefTypeWithoutTargetID_Returns400(t *testing.T) {
+	RegisterTestingT(t)
+
+	params := url.Values{"ref_type": []string{"dep"}}
+	listArgs, err := NewListArguments(params)
+	Expect(listArgs).To(BeNil())
+	Expect(err).ToNot(BeNil())
+	Expect(err.HTTPCode).To(Equal(400))
+	Expect(err.Reason).To(ContainSubstring("ref_type and ref_target_id must be provided together"))
+}
+
+func TestNewListArguments_RefTargetIDWithoutRefType_Returns400(t *testing.T) {
+	RegisterTestingT(t)
+
+	params := url.Values{"ref_target_id": []string{"some-id"}}
+	listArgs, err := NewListArguments(params)
+	Expect(listArgs).To(BeNil())
+	Expect(err).ToNot(BeNil())
+	Expect(err.HTTPCode).To(Equal(400))
+	Expect(err.Reason).To(ContainSubstring("ref_type and ref_target_id must be provided together"))
+}
+
+func TestNewListArguments_RefTypePairValid(t *testing.T) {
+	RegisterTestingT(t)
+
+	params := url.Values{
+		"ref_type":      []string{"dep"},
+		"ref_target_id": []string{"target-1"},
+	}
+	listArgs, err := NewListArguments(params)
+	Expect(err).To(BeNil())
+	Expect(listArgs.RefType).To(Equal("dep"))
+	Expect(listArgs.RefTargetID).To(Equal("target-1"))
+}
+
 // TestNewListArguments_Validation tests pagination parameter validation (HYPERFLEET-1241)
 func TestNewListArguments_Validation(t *testing.T) {
 	RegisterTestingT(t)

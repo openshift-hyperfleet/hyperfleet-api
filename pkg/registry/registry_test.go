@@ -474,3 +474,99 @@ func TestValidate_ValidReferences_Success(t *testing.T) {
 		Validate()
 	}).ToNot(Panic())
 }
+
+func TestValidate_CircularRequiredRefs_DirectCycle_Panics(t *testing.T) {
+	RegisterTestingT(t)
+	Reset()
+
+	Register(EntityDescriptor{
+		Kind:   "Alpha",
+		Plural: "alphas",
+		References: []ReferenceDescriptor{
+			{RefType: "needs_beta", TargetKind: "Beta", Min: 1, Max: 1},
+		},
+	})
+	Register(EntityDescriptor{
+		Kind:   "Beta",
+		Plural: "betas",
+		References: []ReferenceDescriptor{
+			{RefType: "needs_alpha", TargetKind: "Alpha", Min: 1, Max: 1},
+		},
+	})
+
+	Expect(func() {
+		Validate()
+	}).To(PanicWith(ContainSubstring("circular required references")))
+}
+
+func TestValidate_CircularRequiredRefs_TransitiveCycle_Panics(t *testing.T) {
+	RegisterTestingT(t)
+	Reset()
+
+	Register(EntityDescriptor{
+		Kind:   "A",
+		Plural: "as",
+		References: []ReferenceDescriptor{
+			{RefType: "to_b", TargetKind: "B", Min: 1, Max: 1},
+		},
+	})
+	Register(EntityDescriptor{
+		Kind:   "B",
+		Plural: "bs",
+		References: []ReferenceDescriptor{
+			{RefType: "to_c", TargetKind: "C", Min: 1, Max: 1},
+		},
+	})
+	Register(EntityDescriptor{
+		Kind:   "C",
+		Plural: "cs",
+		References: []ReferenceDescriptor{
+			{RefType: "to_a", TargetKind: "A", Min: 1, Max: 1},
+		},
+	})
+
+	Expect(func() {
+		Validate()
+	}).To(PanicWith(ContainSubstring("circular required references")))
+}
+
+func TestValidate_OptionalRefCycle_NoPanic(t *testing.T) {
+	RegisterTestingT(t)
+	Reset()
+
+	Register(EntityDescriptor{
+		Kind:   "Foo",
+		Plural: "foos",
+		References: []ReferenceDescriptor{
+			{RefType: "to_bar", TargetKind: "Bar", Min: 0, Max: 1},
+		},
+	})
+	Register(EntityDescriptor{
+		Kind:   "Bar",
+		Plural: "bars",
+		References: []ReferenceDescriptor{
+			{RefType: "to_foo", TargetKind: "Foo", Min: 0, Max: 1},
+		},
+	})
+
+	Expect(func() {
+		Validate()
+	}).ToNot(Panic())
+}
+
+func TestValidate_CircularRequiredRefs_SelfCycle_Panics(t *testing.T) {
+	RegisterTestingT(t)
+	Reset()
+
+	Register(EntityDescriptor{
+		Kind:   "Self",
+		Plural: "selfs",
+		References: []ReferenceDescriptor{
+			{RefType: "self_ref", TargetKind: "Self", Min: 1, Max: 1},
+		},
+	})
+
+	Expect(func() {
+		Validate()
+	}).To(PanicWith(ContainSubstring("circular required references")))
+}

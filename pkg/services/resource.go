@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
@@ -20,7 +21,7 @@ import (
 
 type ResourceService interface {
 	Get(ctx context.Context, kind, id string) (*api.Resource, *errors.ServiceError)
-	Create(ctx context.Context, kind string, resource *api.Resource) (*api.Resource, *errors.ServiceError)
+	Create(ctx context.Context, kind string, resource *api.Resource, refs api.ReferenceMap) (*api.Resource, *errors.ServiceError) //nolint:lll
 	Patch(ctx context.Context, kind, id string, patch *api.ResourcePatch) (*api.Resource, *errors.ServiceError)
 	Delete(ctx context.Context, kind, id string) (*api.Resource, *errors.ServiceError)
 	List(ctx context.Context, kind string, args *ListArguments) (api.ResourceList, *api.PagingMeta, *errors.ServiceError)
@@ -70,8 +71,12 @@ func (s *sqlResourceService) Get(ctx context.Context, kind, id string) (*api.Res
 // Create validates name constraints from the EntityDescriptor, sets CreatedBy/UpdatedBy
 // from the auth context, and persists a new resource. ID generation, timestamps, href
 // computation, and generation initialisation are handled by the GORM BeforeCreate hook.
+// refs carries the non-ownership references from the API request. nil means "no references
+// supplied" — required ref types (Min > 0) will still be validated and rejected if missing.
+// An empty map {} means "clear all references" — Min>0 descriptors will reject this with 400.
 func (s *sqlResourceService) Create(
 	ctx context.Context, kind string, resource *api.Resource,
+	refs api.ReferenceMap,
 ) (*api.Resource, *errors.ServiceError) {
 	resource.Kind = kind
 
@@ -91,6 +96,10 @@ func (s *sqlResourceService) Create(
 		}
 	}
 
+	if svcErr := s.validateReferences(ctx, kind, refs); svcErr != nil {
+		return nil, svcErr
+	}
+
 	username := actorFromContext(ctx)
 	if resource.CreatedBy == "" {
 		resource.CreatedBy = username
@@ -103,6 +112,16 @@ func (s *sqlResourceService) Create(
 	if err != nil {
 		return nil, handleCreateError(kind, err)
 	}
+
+	// Persist references after the resource row exists (FK requires source_id).
+	if len(refs) > 0 {
+		refRows := convertRefs(kind, resource.ID, refs)
+		if refErr := s.resourceDao.ReplaceReferences(ctx, resource.ID, refRows); refErr != nil {
+			return nil, errors.GeneralError("failed to save references: %s", refErr)
+		}
+		resource.References = refRows
+	}
+
 	return resource, nil
 }
 
@@ -134,7 +153,25 @@ func (s *sqlResourceService) Patch(
 		return nil, errors.Validation("Invalid patch data: %v", applyErr)
 	}
 
-	if jsonBytesEqual(oldSpec, resource.Spec) && jsonBytesEqual(oldLabels, resource.Labels) {
+	specChanged := !jsonBytesEqual(oldSpec, resource.Spec)
+	labelsChanged := !jsonBytesEqual(oldLabels, resource.Labels)
+	refsChanged := patch.References != nil
+
+	// Validate and persist references when the patch includes them (nil = skip, {} = clear).
+	if refsChanged {
+		if svcErr := s.validateReferences(ctx, kind, patch.References); svcErr != nil {
+			return nil, svcErr
+		}
+		refRows := convertRefs(kind, resource.ID, patch.References)
+		if refErr := s.resourceDao.ReplaceReferences(
+			ctx, resource.ID, refRows,
+		); refErr != nil {
+			return nil, errors.GeneralError("failed to save references: %s", refErr)
+		}
+		resource.References = refRows
+	}
+
+	if !specChanged && !labelsChanged && !refsChanged {
 		return resource, nil
 	}
 
@@ -210,6 +247,18 @@ func (s *sqlResourceService) deleteResourceTree(
 				}
 			}
 		}
+	}
+
+	// Check if other resources reference this one before any deletion.
+	referencer, refErr := s.resourceDao.FindReferencer(ctx, resource.ID)
+	if refErr != nil {
+		return errors.GeneralError("failed to check references: %s", refErr)
+	}
+	if referencer != nil {
+		return errors.ConflictState(
+			"cannot delete %s %q: referenced by %s %q — remove the reference before deleting",
+			resource.Kind, resource.ID, referencer.Kind, referencer.Name,
+		)
 	}
 
 	shouldSoftDelete, svcErr := s.shouldSoftDelete(ctx, resource, children)
@@ -315,6 +364,12 @@ func (s *sqlResourceService) List(
 		scopedArgs.Search = "(" + scopedArgs.Search + ") AND " + kindFilter
 	}
 
+	if svcErr := s.applyRefFilter(ctx, kind, &scopedArgs); svcErr != nil {
+		return nil, nil, svcErr
+	}
+
+	scopedArgs.Preloads = append(scopedArgs.Preloads, "Conditions", "References")
+
 	var resources api.ResourceList
 	paging, svcErr := s.generic.List(ctx, &scopedArgs, &resources)
 	if svcErr != nil {
@@ -343,6 +398,12 @@ func (s *sqlResourceService) ListByOwner(
 		scopedArgs.Search = "(" + scopedArgs.Search + ") AND " + kindFilter
 	}
 
+	if svcErr := s.applyRefFilter(ctx, kind, &scopedArgs); svcErr != nil {
+		return nil, nil, svcErr
+	}
+
+	scopedArgs.Preloads = append(scopedArgs.Preloads, "Conditions", "References")
+
 	var resources []api.Resource
 	paging, svcErr := s.generic.List(ctx, &scopedArgs, &resources)
 	if svcErr != nil {
@@ -367,6 +428,8 @@ func (s *sqlResourceService) GetByID(ctx context.Context, id string) (*api.Resou
 func (s *sqlResourceService) ListAll(
 	ctx context.Context, args *ListArguments,
 ) (api.ResourceList, *api.PagingMeta, *errors.ServiceError) {
+	args.Preloads = append(args.Preloads, "Conditions", "References")
+
 	var resources []api.Resource
 	paging, svcErr := s.generic.List(ctx, args, &resources)
 	if svcErr != nil {
@@ -639,6 +702,40 @@ func (s *sqlResourceService) hasActiveChildren(
 	return false, nil
 }
 
+func (s *sqlResourceService) applyRefFilter(
+	ctx context.Context, kind string, args *ListArguments,
+) *errors.ServiceError {
+	if args.RefType == "" {
+		return nil
+	}
+	desc := registry.MustGet(kind)
+	found := false
+	for _, ref := range desc.References {
+		if ref.RefType == args.RefType {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return errors.Validation("Unknown ref_type %q for entity %s", args.RefType, kind)
+	}
+	sourceIDs, err := s.resourceDao.FindSourceIDsByRef(ctx, args.RefType, args.RefTargetID)
+	if err != nil {
+		return errors.GeneralError("failed to query references: %s", err)
+	}
+	if len(sourceIDs) == 0 {
+		args.Search += ` AND id = ""`
+		return nil
+	}
+	// sourceIDs are server-generated UUIDs from the database, so manual quoting is safe.
+	quoted := make([]string, len(sourceIDs))
+	for i, sid := range sourceIDs {
+		quoted[i] = `"` + sid + `"`
+	}
+	args.Search += " AND id in [" + strings.Join(quoted, ", ") + "]"
+	return nil
+}
+
 // validateKind checks that the kind is a registered entity type.
 // Returns 400 if the kind is unknown, preventing invalid kinds from reaching the DAO.
 func validateKind(kind string) *errors.ServiceError {
@@ -690,8 +787,6 @@ func applyResourcePatch(resource *api.Resource, patch *api.ResourcePatch) error 
 		}
 		resource.Labels = labelsJSON
 	}
-	// TODO: handle patch.References — three-way semantics (nil=skip, {}=clear, map=replace)
-	// via dao.ReplaceReferences per generic-resource-registry-design.md §9.2
 	return nil
 }
 
@@ -752,9 +847,107 @@ func (s *sqlResourceService) forceDeleteResourceTree(
 	if err := s.resourceConditionDao.DeleteByResource(ctx, resource.ID); err != nil {
 		return errors.GeneralError("Failed to delete resource conditions during force-delete: %s", err)
 	}
+	// Clear inbound references before hard-deleting (FK uses ON DELETE RESTRICT).
+	// Note: referencing resources with Min>0 on this ref type will silently
+	// violate their required-reference invariant after this operation.
+	if err := s.resourceDao.ClearTargetReferences(ctx, resource.ID); err != nil {
+		return errors.GeneralError("failed to clear references: %s", err)
+	}
+	logger.With(ctx,
+		"resource_kind", resource.Kind,
+		"resource_id", resource.ID,
+	).Info("Cleared inbound references for force-delete")
 	if err := s.resourceDao.Delete(ctx, resource.Kind, resource.ID); err != nil {
 		return handleDeleteError(resource.Kind, err)
 	}
 
 	return nil
+}
+
+// validateReferences checks that refs satisfies the ReferenceDescriptors on the entity:
+//   - required ref types (Min > 0) must be present
+//   - unknown ref types are rejected
+//   - per-type count must not exceed Max (when Max > 0)
+//   - every referenced target must exist in the database
+func (s *sqlResourceService) validateReferences(
+	ctx context.Context, kind string, refs api.ReferenceMap,
+) *errors.ServiceError {
+	desc := registry.MustGet(kind)
+
+	descByType := make(map[string]registry.ReferenceDescriptor, len(desc.References))
+	for _, rd := range desc.References {
+		descByType[rd.RefType] = rd
+		if rd.Min > 0 {
+			if len(refs[rd.RefType]) < rd.Min {
+				return errors.Validation(
+					"required reference type %q missing for %s (min %d)",
+					rd.RefType, kind, rd.Min,
+				)
+			}
+		}
+	}
+
+	// Validate each supplied ref type.
+	for refType, objRefs := range refs {
+		rd, ok := descByType[refType]
+		if !ok {
+			return errors.Validation("unknown reference type %q for %s", refType, kind)
+		}
+		if rd.Max > 0 && len(objRefs) > rd.Max {
+			return errors.Validation(
+				"reference type %q for %s exceeds max count %d (got %d)",
+				refType, kind, rd.Max, len(objRefs),
+			)
+		}
+		seen := make(map[string]bool, len(objRefs))
+		for _, ref := range objRefs {
+			if ref.Id == nil || *ref.Id == "" {
+				return errors.Validation("reference type %q: id is required", refType)
+			}
+			if seen[*ref.Id] {
+				return errors.Validation(
+					"reference type %q: duplicate target id %q",
+					refType, *ref.Id,
+				)
+			}
+			seen[*ref.Id] = true
+			target, err := s.resourceDao.Get(ctx, rd.TargetKind, *ref.Id)
+			if err != nil {
+				return errors.Validation(
+					"reference type %q: target %s %q not found",
+					refType, rd.TargetKind, *ref.Id,
+				)
+			}
+			if target.DeletedTime != nil {
+				return errors.Validation(
+					"reference type %q: target %s %q is marked for deletion",
+					refType, rd.TargetKind, *ref.Id,
+				)
+			}
+		}
+	}
+
+	return nil
+}
+
+// convertRefs flattens the API reference map into a slice of ResourceReference rows for the DAO.
+// Uses the registry's TargetKind (not the client-supplied Kind) so the stored value is always authoritative.
+func convertRefs(kind, sourceID string, refs api.ReferenceMap) []api.ResourceReference {
+	desc := registry.MustGet(kind)
+	targetKindByRef := make(map[string]string, len(desc.References))
+	for _, rd := range desc.References {
+		targetKindByRef[rd.RefType] = rd.TargetKind
+	}
+	var result []api.ResourceReference
+	for refType, objRefs := range refs {
+		for _, ref := range objRefs {
+			result = append(result, api.ResourceReference{
+				SourceID:   sourceID,
+				RefType:    refType,
+				TargetID:   *ref.Id,
+				TargetKind: targetKindByRef[refType],
+			})
+		}
+	}
+	return result
 }

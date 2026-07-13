@@ -268,7 +268,7 @@ func TestFlatChildRouteList(t *testing.T) {
 	ch := createChannel(t, svc, fmt.Sprintf("flat-parent-%s", uuid.NewString()[:8]))
 	v1Name := fmt.Sprintf("flat-v1-%s", uuid.NewString()[:8])
 	v1 := newVersionResource(v1Name, ch.ID)
-	created1, svcErr := svc.Create(t.Context(), "Version", v1)
+	created1, svcErr := svc.Create(t.Context(), "Version", v1, nil)
 	Expect(svcErr).To(BeNil())
 
 	resp, err := rootResourceRequest(ctx).
@@ -296,7 +296,7 @@ func TestFlatChildRouteGetByID(t *testing.T) {
 
 	ch := createChannel(t, svc, fmt.Sprintf("flat-get-parent-%s", uuid.NewString()[:8]))
 	v := newVersionResource(fmt.Sprintf("flat-get-v-%s", uuid.NewString()[:8]), ch.ID)
-	created, svcErr := svc.Create(t.Context(), "Version", v)
+	created, svcErr := svc.Create(t.Context(), "Version", v, nil)
 	Expect(svcErr).To(BeNil())
 
 	resp, err := rootResourceRequest(ctx).
@@ -319,7 +319,7 @@ func TestFlatChildRoutePatch(t *testing.T) {
 
 	ch := createChannel(t, svc, fmt.Sprintf("flat-patch-parent-%s", uuid.NewString()[:8]))
 	v := newVersionResource(fmt.Sprintf("flat-patch-v-%s", uuid.NewString()[:8]), ch.ID)
-	created, svcErr := svc.Create(t.Context(), "Version", v)
+	created, svcErr := svc.Create(t.Context(), "Version", v, nil)
 	Expect(svcErr).To(BeNil())
 
 	patchSpec := map[string]interface{}{
@@ -351,7 +351,7 @@ func TestFlatChildRouteDelete(t *testing.T) {
 
 	ch := createChannel(t, svc, fmt.Sprintf("flat-del-parent-%s", uuid.NewString()[:8]))
 	v := newVersionResource(fmt.Sprintf("flat-del-v-%s", uuid.NewString()[:8]), ch.ID)
-	_, svcErr := svc.Create(t.Context(), "Version", v)
+	_, svcErr := svc.Create(t.Context(), "Version", v, nil)
 	Expect(svcErr).To(BeNil())
 
 	retrieved, getErr := svc.Get(t.Context(), "Version", v.ID)

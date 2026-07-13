@@ -18,7 +18,7 @@ import (
 func createChannel(t *testing.T, svc services.ResourceService, name string) *api.Resource {
 	t.Helper()
 	channel := newChannelResource(name)
-	created, err := svc.Create(t.Context(), "Channel", channel)
+	created, err := svc.Create(t.Context(), "Channel", channel, nil)
 	if err != nil {
 		t.Fatalf("Failed to create channel: %v", err)
 	}
@@ -36,7 +36,7 @@ func TestChannelCreate(t *testing.T) {
 
 		// Attempt to create duplicate - should fail
 		duplicate := newChannelResource(channelName)
-		_, svcErr := svc.Create(t.Context(), "Channel", duplicate)
+		_, svcErr := svc.Create(t.Context(), "Channel", duplicate, nil)
 		Expect(svcErr).ToNot(BeNil(), "duplicate channel name should fail")
 		Expect(svcErr.HTTPCode).To(Equal(409))
 	})
@@ -45,7 +45,7 @@ func TestChannelCreate(t *testing.T) {
 		svc, _ := setupResourceTest(t)
 
 		channel := newChannelResource("")
-		_, svcErr := svc.Create(t.Context(), "Channel", channel)
+		_, svcErr := svc.Create(t.Context(), "Channel", channel, nil)
 		Expect(svcErr).ToNot(BeNil(), "empty channel name should fail")
 		Expect(svcErr.HTTPCode).To(Equal(400))
 	})
@@ -63,7 +63,7 @@ func TestChannelCreate(t *testing.T) {
 		var err error
 		channel.Labels, err = json.Marshal(labels)
 		Expect(err).To(BeNil(), "should marshal labels")
-		createdChannel, svcErr := svc.Create(t.Context(), "Channel", channel)
+		createdChannel, svcErr := svc.Create(t.Context(), "Channel", channel, nil)
 		Expect(svcErr).To(BeNil())
 		Expect(createdChannel.Labels).NotTo(BeNil())
 

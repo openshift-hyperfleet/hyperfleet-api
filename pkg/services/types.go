@@ -11,12 +11,14 @@ import (
 // ListArguments are arguments relevant for listing objects.
 // This struct is common to all service List funcs in this package
 type ListArguments struct {
-	Search   string
-	Preloads []string
-	Order    []string
-	Fields   []string
-	Page     int
-	Size     int64
+	Search      string
+	RefType     string
+	RefTargetID string
+	Preloads    []string
+	Order       []string
+	Fields      []string
+	Size        int64
+	Page        int
 }
 
 // MaxListSize defines the PostgreSQL WHERE IN clause parameter limit (~65500).
@@ -132,6 +134,15 @@ func NewListArguments(params url.Values) (*ListArguments, *errors.ServiceError) 
 
 	// Parse fields parameter using shared logic
 	listArgs.Fields = ParseFieldsParameter(params)
+
+	listArgs.RefType = strings.TrimSpace(params.Get("ref_type"))
+	listArgs.RefTargetID = strings.TrimSpace(params.Get("ref_target_id"))
+	if (listArgs.RefType == "") != (listArgs.RefTargetID == "") {
+		return nil, errors.New(
+			errors.CodeValidationFormat,
+			"ref_type and ref_target_id must be provided together",
+		)
+	}
 
 	return listArgs, nil
 }

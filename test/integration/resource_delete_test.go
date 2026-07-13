@@ -32,14 +32,14 @@ func TestResourceDelete_ParentChildWithRequiredAdapters(t *testing.T) {
 		// Create Channel (parent)
 		channelName := fmt.Sprintf("test-delete-channel-%s", uuid.NewString()[:8])
 		channel := newChannelResource(channelName)
-		createdChannel, svcErr := svc.Create(t.Context(), "Channel", channel)
+		createdChannel, svcErr := svc.Create(t.Context(), "Channel", channel, nil)
 		Expect(svcErr).To(BeNil(), "Channel creation should succeed")
 		Expect(createdChannel.ID).NotTo(BeEmpty())
 
 		// Create Version (child with RequiredAdapters)
 		versionName := fmt.Sprintf("v1.0.0-%s", uuid.NewString()[:8])
 		version := newVersionResource(versionName, createdChannel.ID)
-		createdVersion, svcErr := svc.Create(t.Context(), "Version", version)
+		createdVersion, svcErr := svc.Create(t.Context(), "Version", version, nil)
 		Expect(svcErr).To(BeNil(), "Version creation should succeed")
 		Expect(createdVersion.ID).NotTo(BeEmpty())
 
@@ -125,7 +125,7 @@ func TestResourceDelete_ParentChildWithRequiredAdapters(t *testing.T) {
 		// Create Channel without children
 		channelName := fmt.Sprintf("test-delete-orphan-%s", uuid.NewString()[:8])
 		channel := newChannelResource(channelName)
-		createdChannel, svcErr := svc.Create(t.Context(), "Channel", channel)
+		createdChannel, svcErr := svc.Create(t.Context(), "Channel", channel, nil)
 		Expect(svcErr).To(BeNil(), "Channel creation should succeed")
 
 		// Delete Channel (no children, no RequiredAdapters) - should be HARD-DELETED
@@ -151,13 +151,13 @@ func TestResourceDelete_ParentChildWithRequiredAdapters(t *testing.T) {
 		// Create Channel
 		channelName := fmt.Sprintf("test-restrict-%s", uuid.NewString()[:8])
 		channel := newChannelResource(channelName)
-		createdChannel, svcErr := svc.Create(t.Context(), "Channel", channel)
+		createdChannel, svcErr := svc.Create(t.Context(), "Channel", channel, nil)
 		Expect(svcErr).To(BeNil())
 
 		// Create active Version
 		versionName := fmt.Sprintf("v1.0.0-%s", uuid.NewString()[:8])
 		version := newVersionResource(versionName, createdChannel.ID)
-		_, svcErr = svc.Create(t.Context(), "Version", version)
+		_, svcErr = svc.Create(t.Context(), "Version", version, nil)
 		Expect(svcErr).To(BeNil())
 
 		// Try to delete Channel - should fail (OnParentDelete=Restrict)
@@ -191,13 +191,13 @@ func TestResourceDelete_WithoutRequiredAdapters(t *testing.T) {
 		// Create Channel
 		channelName := fmt.Sprintf("test-harddelete-%s", uuid.NewString()[:8])
 		channel := newChannelResource(channelName)
-		createdChannel, svcErr := svc.Create(t.Context(), "Channel", channel)
+		createdChannel, svcErr := svc.Create(t.Context(), "Channel", channel, nil)
 		Expect(svcErr).To(BeNil())
 
 		// Create Version (no RequiredAdapters)
 		versionName := fmt.Sprintf("v1.0.0-%s", uuid.NewString()[:8])
 		version := newVersionResource(versionName, createdChannel.ID)
-		createdVersion, svcErr := svc.Create(t.Context(), "Version", version)
+		createdVersion, svcErr := svc.Create(t.Context(), "Version", version, nil)
 		Expect(svcErr).To(BeNil())
 
 		// Delete Version - should be HARD-DELETED (no RequiredAdapters)

@@ -23,7 +23,7 @@ func createTestChannelForStatus(t *testing.T, svc services.ResourceService) *api
 	t.Helper()
 	name := fmt.Sprintf("status-ch-%s", uuid.NewString()[:8])
 	channel := newChannelResource(name)
-	created, svcErr := svc.Create(context.Background(), "Channel", channel)
+	created, svcErr := svc.Create(context.Background(), "Channel", channel, nil)
 	if svcErr != nil {
 		t.Fatalf("Failed to create channel for status test: %v", svcErr)
 	}
@@ -133,7 +133,7 @@ func TestResourceStatus_NestedEntityStatuses(t *testing.T) {
 
 	versionName := fmt.Sprintf("status-ver-%s", uuid.NewString()[:8])
 	version := newVersionResource(versionName, channel.ID)
-	createdVersion, svcErr := svc.Create(context.Background(), "Version", version)
+	createdVersion, svcErr := svc.Create(context.Background(), "Version", version, nil)
 	Expect(svcErr).To(BeNil())
 
 	account := h.NewRandAccount()

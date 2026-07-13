@@ -30,13 +30,18 @@ type Resource struct {
 	Labels     datatypes.JSON      `json:"labels,omitempty" gorm:"type:jsonb"`
 	Spec       datatypes.JSON      `json:"spec" gorm:"type:jsonb;not null"`
 	Conditions []ResourceCondition `json:"-" gorm:"foreignKey:ResourceID;references:ID"`
+	References []ResourceReference `json:"-" gorm:"foreignKey:SourceID;references:ID"`
 	Generation int32               `json:"generation" gorm:"default:1;not null"`
 }
+
+// ReferenceMap is the API-level representation of resource references,
+// keyed by ref type (e.g. "wif_config") with a list of object references per type.
+type ReferenceMap = map[string][]openapi.ObjectReference
 
 type ResourcePatch struct {
 	Spec       map[string]interface{}
 	Labels     map[string]string
-	References map[string][]openapi.ObjectReference
+	References ReferenceMap
 }
 
 type ResourceList []*Resource
