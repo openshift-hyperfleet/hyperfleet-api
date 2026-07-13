@@ -191,6 +191,7 @@ func (v *TaskConfigValidator) ValidateSemantic() error {
 	v.validatePreconditionAPICallForbidden()
 	v.validateParamSources()
 	v.validateParamAPICallTemplates()
+	v.validateParamFileSources()
 	v.validateTransportConfig()
 	v.validateConditionValues()
 	v.validateCaptureFieldExpressions()
@@ -227,6 +228,24 @@ func (v *TaskConfigValidator) validateParamSources() {
 	for i, param := range v.config.Params {
 		if param.Source.IsZero() || (param.Source.IsString() && strings.TrimSpace(param.Source.StringVal) == "") {
 			v.errors.Add(fmt.Sprintf("%s[%d].%s", FieldParams, i, FieldSource), "source is required")
+		}
+	}
+}
+
+func (v *TaskConfigValidator) validateParamFileSources() {
+	for i, param := range v.config.Params {
+		if !param.Source.IsFile() {
+			continue
+		}
+		base := fmt.Sprintf("%s[%d].%s.file", FieldParams, i, FieldSource)
+		if param.Source.File == nil || param.Source.File.Path == "" {
+			v.errors.Add(base+".path", "path is required for file source")
+			continue
+		}
+		if !strings.HasPrefix(param.Source.File.Path, "/") {
+			v.warnings = append(v.warnings, fmt.Sprintf(
+				"%s.path: file source path %q is not absolute; in container deployments, use absolute paths for mounted volumes",
+				base, param.Source.File.Path))
 		}
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -47,7 +48,7 @@ func extractConfigParams(
 			value = param.Default
 		}
 
-		if value != nil && param.Type != "" && param.Source.IsString() {
+		if value != nil && param.Type != "" && (param.Source.IsString() || param.Source.IsFile()) {
 			converted, convErr := convertParamType(value, param.Type)
 			if convErr != nil {
 				if param.Required {
@@ -84,6 +85,8 @@ func extractParam(
 		return extractFromAPICall(ctx, param, execCtx, apiClient, log)
 	case param.Source.IsExpression():
 		return extractFromCELExpression(ctx, param, execCtx, log)
+	case param.Source.IsFile():
+		return extractFromFile(param)
 	case param.Source.IsString():
 		return extractFromStringSource(param, execCtx.EventData, configMap, execCtx.Params)
 	default:
@@ -171,6 +174,44 @@ func extractFromCELExpression(
 		return nil, fmt.Errorf("param %q: CEL expression error: %w", param.Name, result.Error)
 	}
 	return result.Value, nil
+}
+
+// maxFileSourceSize is a defensive cap for file-based parameter sources (1 MB).
+const maxFileSourceSize = 1 << 20
+
+// extractFromFile reads a parameter value from a filesystem path.
+// The file is read fresh on every call (not cached between reconciliations).
+func extractFromFile(param configloader.Parameter) (interface{}, error) {
+	fs := param.Source.File
+	if fs == nil {
+		return nil, fmt.Errorf("param %q: file source has nil configuration", param.Name)
+	}
+
+	f, err := os.Open(fs.Path)
+	if err != nil {
+		return nil, fmt.Errorf("param %q: opening %q: %w", param.Name, fs.Path, err)
+	}
+	defer f.Close() //nolint:errcheck // best-effort close on read-only file
+
+	limited := io.LimitReader(f, maxFileSourceSize+1)
+	raw, err := io.ReadAll(limited)
+	if err != nil {
+		return nil, fmt.Errorf("param %q: reading %q: %w", param.Name, fs.Path, err)
+	}
+	if len(raw) > maxFileSourceSize {
+		return nil, fmt.Errorf("param %q: file %q exceeds maximum size of %d bytes", param.Name, fs.Path, maxFileSourceSize)
+	}
+
+	content := string(raw)
+	if fs.Trim == nil || *fs.Trim {
+		content = strings.TrimSpace(content)
+	}
+
+	if param.Required && strings.TrimSpace(content) == "" {
+		return nil, fmt.Errorf("param %q: file %q is empty", param.Name, fs.Path)
+	}
+
+	return content, nil
 }
 
 // configToMap converts a Config to map[string]interface{} using the yaml struct tags for key names.

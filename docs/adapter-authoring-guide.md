@@ -223,8 +223,7 @@ params:
 |--------|--------|---------|
 | `event.` | CloudEvent data fields | `event.id`, `event.generation`, `event.kind` |
 | `env.` | Environment variables | `env.REGION`, `env.NAMESPACE` |
-| `secret.` | Kubernetes Secret | `secret.my-ns.my-secret.api-key` |
-| `configmap.` | Kubernetes ConfigMap | `configmap.my-ns.my-config.setting` |
+| `config.` | Adapter deployment config fields | `config.adapter.name` |
 | `<param>.` | Dot-notation into an earlier api_call param | `clusterData.generation`, `clusterData.status.phase` |
 
 **Structured sources** - use a mapping value under `source:`:
@@ -253,6 +252,31 @@ params:
         : "False"
 ```
 
+`file` - reads the content of a file from the local filesystem at reconciliation time. The file is read fresh on every event (not cached). Leading and trailing whitespace is trimmed by default (`trim: true`). Useful for service account tokens and mounted secrets that rotate.
+
+```yaml
+- name: "k8sToken"
+  source:
+    file:
+      path: "/var/run/secrets/kubernetes.io/serviceaccount/token"
+      trim: true   # default; set to false if whitespace is significant
+```
+
+File-sourced params can be referenced in `api_call` headers via Go Templates:
+
+```yaml
+- name: "clusterData"
+  source:
+    api_call:
+      method: "GET"
+      url: "/clusters/{{ .clusterId }}"
+      headers:
+        - name: "Authorization"
+          value: "Bearer {{ .k8sToken }}"
+```
+
+> **Security:** File-sourced tokens rendered into headers carry credentials. Ensure request/response logging (including reverse proxies and service meshes) does not capture `Authorization` or other sensitive headers.
+
 ### Types and conversion
 
 | Type | Accepts |
@@ -262,7 +286,7 @@ params:
 | `float`, `float64` | Numeric values |
 | `bool` | `true/false`, `yes/no`, `on/off`, `1/0` |
 
-Type conversion applies to string sources only. `api_call` params hold a structured map and `expression` params hold whatever the CEL expression returns — no conversion is applied.
+Type conversion applies to string and file sources. `api_call` params hold a structured map and `expression` params hold whatever the CEL expression returns — no conversion is applied.
 
 If type conversion fails on a **required** param, execution stops. On an optional param, the `default` value is used.
 
@@ -730,7 +754,7 @@ resources:
     lifecycle:
       create: # optional block; when present, `when` is required
         when:
-          expression: "params.?enableOptionalFeature.orValue(false)"  
+          expression: "params.?enableOptionalFeature.orValue(false)"
 ```
 
 **Requirements:**

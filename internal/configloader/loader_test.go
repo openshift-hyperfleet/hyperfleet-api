@@ -1756,7 +1756,7 @@ params:
       expression: "true"
 `), &cfg)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "mutually exclusive")
+		assert.Contains(t, err.Error(), "only one of")
 	})
 
 	t.Run("mapping with neither api_call nor expression is an error", func(t *testing.T) {
@@ -1768,6 +1768,32 @@ params:
       unknown_key: value
 `), &cfg)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "mapping must contain either")
+		assert.Contains(t, err.Error(), "mapping must contain one of")
+	})
+
+	t.Run("empty expression is an error", func(t *testing.T) {
+		var cfg AdapterTaskConfig
+		err := yaml.Unmarshal([]byte(`
+params:
+  - name: bad
+    source:
+      expression: ""
+`), &cfg)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "expression must not be empty")
+	})
+
+	t.Run("empty expression with file triggers mutual exclusivity", func(t *testing.T) {
+		var cfg AdapterTaskConfig
+		err := yaml.Unmarshal([]byte(`
+params:
+  - name: bad
+    source:
+      expression: ""
+      file:
+        path: "/some/file"
+`), &cfg)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "only one of")
 	})
 }

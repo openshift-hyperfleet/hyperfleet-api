@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/cloudevents/sdk-go/v2/event"
@@ -757,6 +759,183 @@ func TestParamExtractor_APICallSource(t *testing.T) {
 		_, err := runParamExtraction(t, config, mockClient, eventData)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "is not a map")
+	})
+}
+
+// TestParamExtractor_FileSource tests params with source: file
+func TestParamExtractor_FileSource(t *testing.T) {
+	boolPtr := func(b bool) *bool { return &b }
+	eventData := map[string]interface{}{"id": "cluster-123"}
+	mockClient := newMockAPIClient()
+
+	t.Run("successful file read", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		tokenPath := filepath.Join(tmpDir, "token")
+		require.NoError(t, os.WriteFile(tokenPath, []byte("my-secret-token"), 0o600))
+
+		config := &configloader.Config{
+			Params: []configloader.Parameter{
+				{Name: "token", Source: configloader.FileSource(&configloader.FileSourceConfig{
+					Path: tokenPath,
+				}), Required: true},
+			},
+		}
+		execCtx, err := runParamExtraction(t, config, mockClient, eventData)
+		require.NoError(t, err)
+		assert.Equal(t, "my-secret-token", execCtx.Params["token"])
+	})
+
+	t.Run("file read with trim=true (default) strips whitespace", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		tokenPath := filepath.Join(tmpDir, "token")
+		require.NoError(t, os.WriteFile(tokenPath, []byte("  my-token\n"), 0o600))
+
+		config := &configloader.Config{
+			Params: []configloader.Parameter{
+				{Name: "token", Source: configloader.FileSource(&configloader.FileSourceConfig{
+					Path: tokenPath,
+				})},
+			},
+		}
+		execCtx, err := runParamExtraction(t, config, mockClient, eventData)
+		require.NoError(t, err)
+		assert.Equal(t, "my-token", execCtx.Params["token"])
+	})
+
+	t.Run("file read with trim=false preserves whitespace", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		tokenPath := filepath.Join(tmpDir, "token")
+		require.NoError(t, os.WriteFile(tokenPath, []byte("  my-token\n"), 0o600))
+
+		config := &configloader.Config{
+			Params: []configloader.Parameter{
+				{Name: "token", Source: configloader.FileSource(&configloader.FileSourceConfig{
+					Path: tokenPath,
+					Trim: boolPtr(false),
+				})},
+			},
+		}
+		execCtx, err := runParamExtraction(t, config, mockClient, eventData)
+		require.NoError(t, err)
+		assert.Equal(t, "  my-token\n", execCtx.Params["token"])
+	})
+
+	t.Run("file not found returns error", func(t *testing.T) {
+		config := &configloader.Config{
+			Params: []configloader.Parameter{
+				{Name: "token", Source: configloader.FileSource(&configloader.FileSourceConfig{
+					Path: "/nonexistent/path/token",
+				}), Required: true},
+			},
+		}
+		_, err := runParamExtraction(t, config, mockClient, eventData)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "/nonexistent/path/token")
+		assert.Contains(t, err.Error(), "token")
+	})
+
+	t.Run("required empty file returns error", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		tokenPath := filepath.Join(tmpDir, "empty")
+		require.NoError(t, os.WriteFile(tokenPath, []byte(""), 0o600))
+
+		config := &configloader.Config{
+			Params: []configloader.Parameter{
+				{Name: "token", Source: configloader.FileSource(&configloader.FileSourceConfig{
+					Path: tokenPath,
+				}), Required: true},
+			},
+		}
+		_, err := runParamExtraction(t, config, mockClient, eventData)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "empty")
+	})
+
+	t.Run("optional empty file returns empty string", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		tokenPath := filepath.Join(tmpDir, "empty")
+		require.NoError(t, os.WriteFile(tokenPath, []byte(""), 0o600))
+
+		config := &configloader.Config{
+			Params: []configloader.Parameter{
+				{Name: "token", Source: configloader.FileSource(&configloader.FileSourceConfig{
+					Path: tokenPath,
+				}), Required: false},
+			},
+		}
+		execCtx, err := runParamExtraction(t, config, mockClient, eventData)
+		require.NoError(t, err)
+		// Empty string is stored (value is not nil, no default to override)
+		val, ok := execCtx.Params["token"]
+		assert.True(t, ok, "empty optional file value should be stored")
+		assert.Equal(t, "", val)
+	})
+
+	t.Run("file exceeds max size returns error", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		bigPath := filepath.Join(tmpDir, "big")
+		// Write 1MB + 1 byte
+		data := make([]byte, 1<<20+1)
+		require.NoError(t, os.WriteFile(bigPath, data, 0o600))
+
+		config := &configloader.Config{
+			Params: []configloader.Parameter{
+				{Name: "bigFile", Source: configloader.FileSource(&configloader.FileSourceConfig{
+					Path: bigPath,
+				}), Required: true},
+			},
+		}
+		_, err := runParamExtraction(t, config, mockClient, eventData)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "exceeds maximum size")
+	})
+
+	t.Run("non-required file failure falls back to default", func(t *testing.T) {
+		config := &configloader.Config{
+			Params: []configloader.Parameter{
+				{Name: "token", Source: configloader.FileSource(&configloader.FileSourceConfig{
+					Path: "/nonexistent/path/token",
+				}), Required: false, Default: "fallback-token"},
+			},
+		}
+		execCtx, err := runParamExtraction(t, config, mockClient, eventData)
+		require.NoError(t, err)
+		assert.Equal(t, "fallback-token", execCtx.Params["token"])
+	})
+
+	t.Run("file source with type conversion", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		numPath := filepath.Join(tmpDir, "count")
+		require.NoError(t, os.WriteFile(numPath, []byte("42\n"), 0o600))
+
+		config := &configloader.Config{
+			Params: []configloader.Parameter{
+				{Name: "count", Source: configloader.FileSource(&configloader.FileSourceConfig{
+					Path: numPath,
+				}), Type: "int", Required: true},
+			},
+		}
+		execCtx, err := runParamExtraction(t, config, mockClient, eventData)
+		require.NoError(t, err)
+		assert.Equal(t, int64(42), execCtx.Params["count"])
+	})
+
+	t.Run("required whitespace-only file with trim=false returns error", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		wsPath := filepath.Join(tmpDir, "whitespace")
+		require.NoError(t, os.WriteFile(wsPath, []byte("  \n\t"), 0o600))
+
+		config := &configloader.Config{
+			Params: []configloader.Parameter{
+				{Name: "token", Source: configloader.FileSource(&configloader.FileSourceConfig{
+					Path: wsPath,
+					Trim: boolPtr(false),
+				}), Required: true},
+			},
+		}
+		_, err := runParamExtraction(t, config, mockClient, eventData)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "empty")
 	})
 }
 
