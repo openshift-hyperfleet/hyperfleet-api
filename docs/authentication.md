@@ -2,6 +2,19 @@
 
 This document describes authentication mechanisms for the HyperFleet API.
 
+## Table of Contents
+
+- [Overview](#overview)
+- [Development Mode (No Auth)](#development-mode-no-auth)
+- [Development with JWT (Google Cloud)](#development-with-jwt-google-cloud)
+- [Production Mode (JWT Auth)](#production-mode-jwt-auth)
+  - [Issuer configuration reference](#issuer-configuration-reference)
+  - [Creating a service account token](#creating-a-service-account-token)
+- [Caller identity for audit](#caller-identity-for-audit)
+- [Configuration](#configuration-1)
+- [Troubleshooting](#troubleshooting)
+- [Related Documentation](#related-documentation)
+
 ## Overview
 
 HyperFleet API supports the following authentication modes:
@@ -202,6 +215,20 @@ server:
         identity_claim_pattern: ""
         identity_header: ""
 ```
+
+### Creating a service account token
+
+When the API is deployed to a Kubernetes cluster (kind or GKE), create a service account token to authenticate:
+
+```bash
+# kind
+TOKEN=$(kubectl create token default -n hyperfleet-local --audience hyperfleet-api)
+
+# GKE
+TOKEN=$(kubectl create token default -n hyperfleet --audience hyperfleet-api)
+```
+
+Kubernetes service account tokens use `sub` (not `email`) as the identity claim. The Kubernetes issuer must be configured with `identity_claim: sub` for caller identity to resolve correctly on mutating requests. See [Issuer configuration reference](#issuer-configuration-reference) for all fields.
 
 ## Caller identity for audit
 
