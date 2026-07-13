@@ -1227,6 +1227,38 @@ post:
 
 The `when` expression has access to the full execution context: all `adapter.*` metadata, extracted params, and `resources.*`. If `when` is omitted, the payload is always built (existing behavior). If the expression fails to parse or evaluate, the payload build is marked as **failed**. Evaluation order: payload `when` → build → post-action `when` → execute. Both gates are independent.
 
+### Common `when` patterns
+
+| Pattern | Expression | Use case |
+|---------|-----------|----------|
+| Run when work was done | `!adapter.resourcesSkipped` | Most common — gate status reporting on whether resources were actually applied |
+| Success-only | `adapter.?executionStatus.orValue('') == 'success'` | Run only when all phases succeeded |
+| Failure-only | `adapter.?executionStatus.orValue('') != 'success'` | Send a different status report on failure |
+| Deletion path | `is_deleting` | Run only during cluster deletion (requires `is_deleting` param) |
+| Resource exists | `resources.?myResource.hasValue()` | Gate on whether a specific resource was discovered |
+
+#### Combining `when` on payloads and post-actions
+
+You can use `when` at both levels. A post-action that references a skipped payload is automatically skipped, so adding `when` to the post-action is redundant in that case. However, using both makes intent explicit in the config and avoids relying on the implicit auto-skip behavior:
+
+```yaml
+post:
+  payloads:
+    - name: "statusPayload"
+      when:
+        expression: "!adapter.resourcesSkipped"    # prevents CEL evaluation of missing resources.*
+      build: { ... }
+
+  post_actions:
+    - name: "reportClusterStatus"
+      when:
+        expression: "!adapter.resourcesSkipped"    # explicit gate — also auto-skipped via payload
+      api_call:
+        body: "{{ .statusPayload }}"
+```
+
+> For a complete working example of conditional payloads and post-actions, see the `adapter1` configuration in [hyperfleet-infra](https://github.com/openshift-hyperfleet/hyperfleet-infra/tree/main/helmfile/configs/base/adapters/adapter1/adapter-task-config.yaml).
+
 ### Building payloads
 
 A payload is a JSON structure built from CEL expressions and Go Templates. Each field can be specified in three ways:
