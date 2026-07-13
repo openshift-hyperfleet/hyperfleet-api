@@ -180,6 +180,17 @@ func (s *sqlGenericService) buildSearchValues(
 		return "", nil, serviceErr
 	}
 
+	// Extract label queries (labels.xxx) for Resource-kind entities before field name
+	// mapping — they're backed by a separate resource_labels table, not a JSONB column,
+	// so they need an EXISTS subquery rather than a simple field substitution.
+	var labelExprs []squirrel.Sqlizer
+	if listCtx.resourceType == "Resource" {
+		tslTree, labelExprs, serviceErr = db.ExtractLabelQueries(tslTree, (*d).GetTableName())
+		if serviceErr != nil {
+			return "", nil, serviceErr
+		}
+	}
+
 	// apply field name mapping (status.xxx -> status_xxx, labels.xxx -> labels->>'xxx', spec.xxx -> spec->>'xxx')
 	// also wraps spec JSONB fields in CAST(... AS numeric) when compared against a number
 	tslTree, serviceErr = db.FieldNameWalk(tslTree, *listCtx.disallowedFields)
@@ -210,20 +221,19 @@ func (s *sqlGenericService) buildSearchValues(
 		return "", nil, errors.GeneralError("%s", err.Error())
 	}
 
-	// Combine the base SQL with condition expressions
-	if len(conditionExprs) > 0 {
-		for _, condExpr := range conditionExprs {
-			condSQL, condValues, err := condExpr.ToSql()
-			if err != nil {
-				return "", nil, errors.GeneralError("%s", err.Error())
-			}
-			if sql == "" {
-				sql = condSQL
-			} else {
-				sql = fmt.Sprintf("(%s) AND (%s)", sql, condSQL)
-			}
-			values = append(values, condValues...)
+	// Combine the base SQL with extracted condition and label expressions
+	extractedExprs := append(append([]squirrel.Sqlizer{}, conditionExprs...), labelExprs...)
+	for _, expr := range extractedExprs {
+		exprSQL, exprValues, err := expr.ToSql()
+		if err != nil {
+			return "", nil, errors.GeneralError("%s", err.Error())
 		}
+		if sql == "" {
+			sql = exprSQL
+		} else {
+			sql = fmt.Sprintf("(%s) AND (%s)", sql, exprSQL)
+		}
+		values = append(values, exprValues...)
 	}
 
 	return sql, values, nil

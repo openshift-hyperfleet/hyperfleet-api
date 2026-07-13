@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -209,6 +210,25 @@ func (d *mockResourceDao) addResource(r *api.Resource) {
 
 var _ dao.ResourceDao = &mockResourceDao{}
 
+type mockResourceLabelDao struct {
+	labels     map[string][]api.ResourceLabel
+	replaceErr error
+}
+
+func newMockResourceLabelDao() *mockResourceLabelDao {
+	return &mockResourceLabelDao{labels: make(map[string][]api.ResourceLabel)}
+}
+
+func (d *mockResourceLabelDao) ReplaceLabels(_ context.Context, resourceID string, labels []api.ResourceLabel) error {
+	if d.replaceErr != nil {
+		return d.replaceErr
+	}
+	d.labels[resourceID] = labels
+	return nil
+}
+
+var _ dao.ResourceLabelDao = &mockResourceLabelDao{}
+
 type resourceGenericMock struct {
 	listErr    *errors.ServiceError
 	lastSearch string
@@ -253,8 +273,21 @@ var _ dao.ResourceConditionDao = &resourceConditionMock{}
 
 func newTestResourceService(mockDao *mockResourceDao) (ResourceService, *mockResourceDao, *resourceGenericMock) {
 	generic := &resourceGenericMock{}
-	svc := NewResourceService(mockDao, newMockAdapterStatusDao(), newResourceConditionMock(), generic)
+	svc := NewResourceService(
+		mockDao, newMockAdapterStatusDao(), newResourceConditionMock(), newMockResourceLabelDao(), generic,
+	)
 	return svc, mockDao, generic
+}
+
+func newTestResourceServiceWithLabelDao(
+	mockDao *mockResourceDao,
+) (ResourceService, *mockResourceDao, *resourceGenericMock, *mockResourceLabelDao) {
+	generic := &resourceGenericMock{}
+	labelDao := newMockResourceLabelDao()
+	svc := NewResourceService(
+		mockDao, newMockAdapterStatusDao(), newResourceConditionMock(), labelDao, generic,
+	)
+	return svc, mockDao, generic, labelDao
 }
 
 func newTestResourceServiceWithAdapterStatus(
@@ -263,7 +296,7 @@ func newTestResourceServiceWithAdapterStatus(
 	asDao := newMockAdapterStatusDao()
 	rcDao := newResourceConditionMock()
 	generic := &resourceGenericMock{}
-	svc := NewResourceService(mockDao, asDao, rcDao, generic)
+	svc := NewResourceService(mockDao, asDao, rcDao, newMockResourceLabelDao(), generic)
 	return svc, mockDao, asDao, rcDao
 }
 
@@ -520,6 +553,65 @@ func TestResourceService_Patch_LabelsChanged_IncrementsGeneration(t *testing.T) 
 	result, svcErr := svc.Patch(context.Background(), "Channel", "ch-1", patch)
 	Expect(svcErr).To(BeNil())
 	Expect(result.Generation).To(Equal(int32(2)))
+}
+
+func TestResourceService_Create_LabelDaoError(t *testing.T) {
+	RegisterTestingT(t)
+	setupTestDescriptors()
+
+	mockDao := newMockResourceDao()
+	svc, _, _, labelDao := newTestResourceServiceWithLabelDao(mockDao)
+
+	labelDao.replaceErr = fmt.Errorf("disk full")
+
+	resource := testResource("Channel", "", "label-err")
+	resource.Labels = []api.ResourceLabel{{Key: "env", Value: "prod"}}
+
+	_, svcErr := svc.Create(context.Background(), "Channel", resource, nil)
+	Expect(svcErr).ToNot(BeNil())
+	Expect(svcErr.HTTPCode).To(Equal(500))
+}
+
+func TestResourceService_Patch_SpecOnlyChange_SkipsReplaceLabels(t *testing.T) {
+	RegisterTestingT(t)
+	setupTestDescriptors()
+
+	mockDao := newMockResourceDao()
+	svc, _, _, labelDao := newTestResourceServiceWithLabelDao(mockDao)
+
+	existing := testResource("Channel", "ch-1", "stable")
+	existing.Labels = []api.ResourceLabel{{Key: "env", Value: "prod"}}
+	existing.Generation = 1
+	mockDao.addResource(existing)
+
+	newSpec := map[string]interface{}{"key": "new-value"}
+	patch := &api.ResourcePatch{Spec: newSpec}
+
+	result, svcErr := svc.Patch(context.Background(), "Channel", "ch-1", patch)
+	Expect(svcErr).To(BeNil())
+	Expect(result.Generation).To(Equal(int32(2)))
+	Expect(labelDao.labels).To(BeEmpty(),
+		"ReplaceLabels should not be called when only spec changed")
+}
+
+func TestResourceService_Patch_OverlongLabelKey_Returns400(t *testing.T) {
+	RegisterTestingT(t)
+	setupTestDescriptors()
+
+	mockDao := newMockResourceDao()
+	svc, _, _ := newTestResourceService(mockDao)
+
+	existing := testResource("Channel", "ch-1", "stable")
+	existing.Generation = 1
+	mockDao.addResource(existing)
+
+	overlongKey := strings.Repeat("k", api.MaxLabelKeyLen+1)
+	patch := &api.ResourcePatch{Labels: map[string]string{overlongKey: "v"}}
+
+	_, svcErr := svc.Patch(context.Background(), "Channel", "ch-1", patch)
+	Expect(svcErr).ToNot(BeNil())
+	Expect(svcErr.HTTPCode).To(Equal(400))
+	Expect(svcErr.Reason).To(ContainSubstring("exceeds maximum length"))
 }
 
 func TestResourceService_Patch_NoChange_KeepsGeneration(t *testing.T) {

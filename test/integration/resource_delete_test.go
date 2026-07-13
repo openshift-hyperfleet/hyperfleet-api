@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 	. "github.com/onsi/gomega"
 
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/dao"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/registry"
 )
 
@@ -167,6 +168,52 @@ func TestResourceDelete_ParentChildWithRequiredAdapters(t *testing.T) {
 		Expect(svcErr.Reason).To(ContainSubstring("active"), "Error should mention active children")
 
 		t.Logf("✓ Active child blocks parent delete (AC1 validated)")
+	})
+}
+
+func TestExistsSoftDeletedByOwner(t *testing.T) {
+	t.Run("DetectsSoftDeletedChild", func(t *testing.T) {
+		RegisterTestingT(t)
+		svc, h := setupResourceTest(t)
+
+		registry.UpdateDescriptor("Version", func(d *registry.EntityDescriptor) {
+			d.RequiredAdapters = []string{"test-adapter"}
+		})
+		t.Cleanup(func() {
+			registry.UpdateDescriptor("Version", func(d *registry.EntityDescriptor) {
+				d.RequiredAdapters = nil
+			})
+		})
+
+		channel := createTestChannel(t, svc)
+		version := createTestVersion(t, svc, fmt.Sprintf("v-%s", uuid.NewString()[:8]), channel.ID)
+
+		// Soft-delete the version (RequiredAdapters forces soft-delete)
+		_, svcErr := svc.Delete(t.Context(), "Version", version.ID)
+		Expect(svcErr).To(BeNil())
+
+		resourceDao := dao.NewResourceDao(h.DBFactory)
+
+		t.Run("SingleKind", func(t *testing.T) {
+			RegisterTestingT(t)
+			exists, err := resourceDao.ExistsSoftDeletedByOwner(t.Context(), []string{"Version"}, channel.ID)
+			Expect(err).To(BeNil())
+			Expect(exists).To(BeTrue(), "should detect soft-deleted child with single kind")
+		})
+
+		t.Run("MultiKindIN", func(t *testing.T) {
+			RegisterTestingT(t)
+			exists, err := resourceDao.ExistsSoftDeletedByOwner(t.Context(), []string{"Version", "NonexistentKind"}, channel.ID)
+			Expect(err).To(BeNil())
+			Expect(exists).To(BeTrue(), "should detect with multi-kind IN clause")
+		})
+
+		t.Run("NegativeCase", func(t *testing.T) {
+			RegisterTestingT(t)
+			exists, err := resourceDao.ExistsSoftDeletedByOwner(t.Context(), []string{"Version"}, "nonexistent-owner")
+			Expect(err).To(BeNil())
+			Expect(exists).To(BeFalse(), "should not detect for nonexistent owner")
+		})
 	})
 }
 

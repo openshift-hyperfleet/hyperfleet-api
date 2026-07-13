@@ -113,25 +113,19 @@ func TestVersionCreate(t *testing.T) {
 
 		channel := createTestChannel(t, svc)
 		version := newVersionResource("version-with-labels", channel.ID)
-		labels := map[string]string{
-			"environment": "test",
-			"team":        "platform",
+		version.Labels = []api.ResourceLabel{
+			{Key: "environment", Value: "test"},
+			{Key: "team", Value: "platform"},
 		}
 
-		var err error
-		version.Labels, err = json.Marshal(labels)
-		Expect(err).To(BeNil(), "should marshal labels")
 		createdVersion, svcErr := svc.Create(t.Context(), "Version", version, nil)
 		Expect(svcErr).To(BeNil())
-		Expect(createdVersion.Labels).NotTo(BeNil())
+		Expect(createdVersion.Labels).NotTo(BeEmpty())
 
-		// Get the resource and verify labels persisted
 		retrieved, getErr := svc.Get(t.Context(), "Version", createdVersion.ID)
 		Expect(getErr).To(BeNil(), "should retrieve version")
-		var retrievedLabels map[string]string
-		jsonErr := json.Unmarshal(retrieved.Labels, &retrievedLabels)
-		Expect(jsonErr).To(BeNil(), "should unmarshal retrieved labels")
-		Expect(retrievedLabels).To(Equal(labels), "retrieved labels should match")
+		retrievedLabels := labelsToMap(retrieved.Labels)
+		Expect(retrievedLabels).To(Equal(map[string]string{"environment": "test", "team": "platform"}))
 	})
 
 	t.Run("SetsTimestamps", func(t *testing.T) {
@@ -302,23 +296,17 @@ func TestVersionList(t *testing.T) {
 
 		// Create version with unique label
 		version1 := newVersionResource("version-with-label-1", channel.ID)
-		labels := map[string]string{
-			"environment": uniqueLabel,
-		}
-		var err error
-		version1.Labels, err = json.Marshal(labels)
-		Expect(err).To(BeNil(), "should marshal labels")
+		version1.Labels = []api.ResourceLabel{{Key: "environment", Value: uniqueLabel}}
 		created1, svcErr := svc.Create(t.Context(), "Version", version1, nil)
 		Expect(svcErr).To(BeNil())
-		Expect(created1.Labels).NotTo(BeNil())
+		Expect(created1.Labels).NotTo(BeEmpty())
 
 		// Create another version with the same label
 		version2 := newVersionResource("version-with-label-2", channel.ID)
-		version2.Labels, err = json.Marshal(labels)
-		Expect(err).To(BeNil(), "should marshal labels")
+		version2.Labels = []api.ResourceLabel{{Key: "environment", Value: uniqueLabel}}
 		created2, svcErr := svc.Create(t.Context(), "Version", version2, nil)
 		Expect(svcErr).To(BeNil())
-		Expect(created2.Labels).NotTo(BeNil())
+		Expect(created2.Labels).NotTo(BeEmpty())
 
 		// Create version without the label
 		version3 := createTestVersion(t, svc, "version-no-label", channel.ID)
@@ -333,11 +321,8 @@ func TestVersionList(t *testing.T) {
 		Expect(svcErr).To(BeNil(), "list by label should succeed")
 		Expect(len(list)).To(BeNumerically(">=", 2), "should find at least 2 versions with the label")
 
-		// Verify all returned versions have the label
 		for _, item := range list {
-			var itemLabels map[string]string
-			err := json.Unmarshal(item.Labels, &itemLabels)
-			Expect(err).To(BeNil())
+			itemLabels := labelsToMap(item.Labels)
 			Expect(itemLabels["environment"]).To(Equal(uniqueLabel))
 		}
 
@@ -521,11 +506,8 @@ func TestVersionPatch(t *testing.T) {
 
 		retrieved, getErr := svc.Get(t.Context(), "Version", version.ID)
 		Expect(getErr).To(BeNil())
-		// Verify updated version is incremented
 		Expect(retrieved.Generation).To(Equal(int32(2)))
-		var retrievedLabelValues map[string]string
-		jsonErr := json.Unmarshal(retrieved.Labels, &retrievedLabelValues)
-		Expect(jsonErr).To(BeNil())
+		retrievedLabelValues := labelsToMap(retrieved.Labels)
 		Expect(retrievedLabelValues).To(Equal(newLabels), "patched labels should match retrieved labels")
 	})
 

@@ -1008,3 +1008,123 @@ func TestArgsToOrder_SecurityValidation(t *testing.T) {
 		})
 	}
 }
+func TestExtractLabelQueries(t *testing.T) {
+	tests := []struct {
+		name             string
+		searchQuery      string
+		expectedLabelSQL string
+		expectedArgs     []interface{}
+		expectedLabels   int
+		expectRemaining  bool
+		expectError      bool
+	}{
+		{
+			name:           "Single label EQ query",
+			searchQuery:    "labels.env='prod'",
+			expectedLabels: 1,
+			expectedLabelSQL: "EXISTS (SELECT 1 FROM resource_labels " +
+				"WHERE resource_labels.resource_id = resources.id " +
+				"AND resource_labels.key = ? AND resource_labels.value = ?)",
+			expectedArgs:    []interface{}{"env", "prod"},
+			expectRemaining: false,
+		},
+		{
+			name:           "Single label NE query",
+			searchQuery:    "labels.env!='staging'",
+			expectedLabels: 1,
+			expectedLabelSQL: "EXISTS (SELECT 1 FROM resource_labels " +
+				"WHERE resource_labels.resource_id = resources.id " +
+				"AND resource_labels.key = ? AND resource_labels.value != ?)",
+			expectedArgs:    []interface{}{"env", "staging"},
+			expectRemaining: false,
+		},
+		{
+			name:            "Label query combined with non-label field",
+			searchQuery:     "labels.env='prod' AND name='foo'",
+			expectedLabels:  1,
+			expectRemaining: true,
+		},
+		{
+			name:           "Label IN query",
+			searchQuery:    "labels.env IN ['prod','staging']",
+			expectedLabels: 1,
+			expectedLabelSQL: "EXISTS (SELECT 1 FROM resource_labels " +
+				"WHERE resource_labels.resource_id = resources.id " +
+				"AND resource_labels.key = ? AND resource_labels.value IN (?,?))",
+			expectedArgs:    []interface{}{"env", "prod", "staging"},
+			expectRemaining: false,
+		},
+		{
+			name:            "Label IN combined with non-label field",
+			searchQuery:     "labels.env IN ['prod','staging'] AND name='foo'",
+			expectedLabels:  1,
+			expectRemaining: true,
+		},
+		{
+			name:        "Unsupported operator GT returns error",
+			searchQuery: "labels.env>'prod'",
+			expectError: true,
+		},
+		{
+			name:        "NOT wrapping label query returns error",
+			searchQuery: "NOT (labels.env='prod')",
+			expectError: true,
+		},
+		{
+			name:        "Unparenthesized NOT before label is rejected",
+			searchQuery: "not labels.env='prod'",
+			expectError: true,
+		},
+		{
+			name:        "OR with label query returns error",
+			searchQuery: "labels.env='prod' OR name='foo'",
+			expectError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			RegisterTestingT(t)
+
+			tslTreeWrapper, err := tsl.ParseTSL(tt.searchQuery)
+			Expect(err).ToNot(HaveOccurred())
+
+			remaining, labels, serviceErr := ExtractLabelQueries(tslTreeWrapper.Node, "resources")
+
+			if tt.expectError {
+				Expect(serviceErr).ToNot(BeNil())
+				return
+			}
+
+			Expect(serviceErr).To(BeNil())
+			Expect(labels).To(HaveLen(tt.expectedLabels))
+
+			if tt.expectedLabels > 0 && tt.expectedLabelSQL != "" {
+				sql, args, sqlErr := labels[0].ToSql()
+				Expect(sqlErr).ToNot(HaveOccurred())
+				Expect(sql).To(Equal(tt.expectedLabelSQL))
+				Expect(sql).To(ContainSubstring("EXISTS (SELECT 1 FROM resource_labels"))
+				if tt.expectedArgs != nil {
+					Expect(args).To(Equal(tt.expectedArgs),
+						"bound arguments should match expected key/value bindings")
+				}
+			}
+
+			if tt.expectRemaining {
+				Expect(remaining).ToNot(BeNil())
+				// The remaining tree must not contain any leaked label identifiers
+				Expect(subtreeHasMatch(remaining, isLabelIdentifier)).To(BeFalse(),
+					"remaining tree should not contain label identifiers")
+				// Verify the non-label predicate survived by checking for a "name" identifier
+				hasName := subtreeHasMatch(remaining, func(n *tsl.Node) bool {
+					s, ok := n.Value.(string)
+					return ok && s == "name"
+				})
+				Expect(hasName).To(BeTrue(), "remaining tree should contain the non-label 'name' predicate")
+			} else if tt.expectedLabels > 0 {
+				// When all nodes were label queries, remaining tree is a 1=1 placeholder
+				Expect(remaining).ToNot(BeNil())
+			}
+		})
+	}
+}

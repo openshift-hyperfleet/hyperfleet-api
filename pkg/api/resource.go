@@ -27,7 +27,7 @@ type Resource struct {
 	Href       string              `json:"href,omitempty" gorm:"size:500"`
 	CreatedBy  string              `json:"created_by" gorm:"size:255;not null"`
 	UpdatedBy  string              `json:"updated_by" gorm:"size:255;not null"`
-	Labels     datatypes.JSON      `json:"labels,omitempty" gorm:"type:jsonb"`
+	Labels     []ResourceLabel     `json:"-" gorm:"foreignKey:ResourceID;references:ID"`
 	Spec       datatypes.JSON      `json:"spec" gorm:"type:jsonb;not null"`
 	Conditions []ResourceCondition `json:"-" gorm:"foreignKey:ResourceID;references:ID"`
 	References []ResourceReference `json:"-" gorm:"foreignKey:SourceID;references:ID"`

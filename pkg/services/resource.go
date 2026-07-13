@@ -37,12 +37,14 @@ func NewResourceService(
 	resourceDao dao.ResourceDao,
 	adapterStatusDao dao.AdapterStatusDao,
 	resourceConditionDao dao.ResourceConditionDao,
+	resourceLabelDao dao.ResourceLabelDao,
 	generic GenericService,
 ) ResourceService {
 	return &sqlResourceService{
 		resourceDao:          resourceDao,
 		adapterStatusDao:     adapterStatusDao,
 		resourceConditionDao: resourceConditionDao,
+		resourceLabelDao:     resourceLabelDao,
 		generic:              generic,
 	}
 }
@@ -53,6 +55,7 @@ type sqlResourceService struct {
 	resourceDao          dao.ResourceDao
 	adapterStatusDao     dao.AdapterStatusDao
 	resourceConditionDao dao.ResourceConditionDao
+	resourceLabelDao     dao.ResourceLabelDao
 	generic              GenericService
 }
 
@@ -122,12 +125,15 @@ func (s *sqlResourceService) Create(
 		resource.References = refRows
 	}
 
+	if len(resource.Labels) > 0 {
+		if labelErr := s.resourceLabelDao.ReplaceLabels(ctx, resource.ID, resource.Labels); labelErr != nil {
+			return nil, handleCreateError(kind, labelErr)
+		}
+	}
+
 	return resource, nil
 }
 
-// Patch applies spec/label changes to a resource. Acquires a row-level lock via GetForUpdate
-// to prevent concurrent modifications. Increments generation only when spec or labels actually
-// change (compared via deep JSON equality). Rejects patches on soft-deleted resources with 409.
 func (s *sqlResourceService) Patch(
 	ctx context.Context, kind, id string, patch *api.ResourcePatch,
 ) (*api.Resource, *errors.ServiceError) {
@@ -139,22 +145,19 @@ func (s *sqlResourceService) Patch(
 		return nil, handleGetError(kind, "id", id, err)
 	}
 
-	// Check if resource is marked for deletion
 	if resource.DeletedTime != nil {
 		return nil, errors.ConflictState("%s '%s' is marked for deletion", kind, id)
 	}
 
-	// Snapshot current values before applying the patch. Defensive copy required because
-	// applyResourcePatch replaces the slice reference, and we need the originals for comparison.
 	oldSpec := append([]byte(nil), resource.Spec...)
-	oldLabels := append([]byte(nil), resource.Labels...)
+	oldLabels := resource.Labels
 
 	if applyErr := applyResourcePatch(resource, patch); applyErr != nil {
 		return nil, errors.Validation("Invalid patch data: %v", applyErr)
 	}
 
 	specChanged := !jsonBytesEqual(oldSpec, resource.Spec)
-	labelsChanged := !jsonBytesEqual(oldLabels, resource.Labels)
+	labelsChanged := !labelsEqual(oldLabels, resource.Labels)
 	refsChanged := patch.References != nil
 
 	// Validate and persist references when the patch includes them (nil = skip, {} = clear).
@@ -176,18 +179,22 @@ func (s *sqlResourceService) Patch(
 	}
 
 	resource.IncrementGeneration()
-
 	resource.UpdatedBy = actorFromContext(ctx)
 
 	if saveErr := s.resourceDao.Save(ctx, resource); saveErr != nil {
 		return nil, handleUpdateError(kind, saveErr)
 	}
 
+	if labelsChanged {
+		if labelErr := s.resourceLabelDao.ReplaceLabels(ctx, resource.ID, resource.Labels); labelErr != nil {
+			return nil, handleUpdateError(kind, labelErr)
+		}
+	}
+
 	return resource, nil
 }
 
-// Delete removes a resource and its cascade subtree. Resources with required
-// adapters are soft-deleted; all others are hard-deleted.
+// Resources with required adapters are soft-deleted; all others are hard-deleted.
 func (s *sqlResourceService) Delete(ctx context.Context, kind, id string) (*api.Resource, *errors.ServiceError) {
 	if svcErr := validateKind(kind); svcErr != nil {
 		return nil, svcErr
@@ -331,8 +338,7 @@ func (s *sqlResourceService) checkCanDelete(
 	return nil
 }
 
-// GetByOwner returns a single child resource, validated as belonging to the specified owner.
-// Returns 404 if the resource doesn't exist or belongs to a different owner.
+// GetByOwner returns a single child resource scoped to the specified owner. Returns 404 if not found.
 func (s *sqlResourceService) GetByOwner(
 	ctx context.Context, kind, id, ownerID string,
 ) (*api.Resource, *errors.ServiceError) {
@@ -357,6 +363,7 @@ func (s *sqlResourceService) List(
 		args = &ListArguments{Page: 1, Size: 20}
 	}
 	scopedArgs := *args
+	scopedArgs.Preloads = append(append([]string(nil), scopedArgs.Preloads...), "Labels", "Conditions", "References")
 	kindFilter := fmt.Sprintf("kind = '%s'", kind)
 	if scopedArgs.Search == "" {
 		scopedArgs.Search = kindFilter
@@ -368,8 +375,6 @@ func (s *sqlResourceService) List(
 		return nil, nil, svcErr
 	}
 
-	scopedArgs.Preloads = append(scopedArgs.Preloads, "Conditions", "References")
-
 	var resources api.ResourceList
 	paging, svcErr := s.generic.List(ctx, &scopedArgs, &resources)
 	if svcErr != nil {
@@ -379,8 +384,6 @@ func (s *sqlResourceService) List(
 }
 
 // ListByOwner returns child resources of the given owner with pagination, search, and ordering.
-// Injects kind and owner_id filters into the TSL search string before delegating to GenericService.List.
-// A shallow copy of args is made to avoid mutating the caller's ListArguments.
 func (s *sqlResourceService) ListByOwner(
 	ctx context.Context, kind, ownerID string, args *ListArguments,
 ) (api.ResourceList, *api.PagingMeta, *errors.ServiceError) {
@@ -391,6 +394,7 @@ func (s *sqlResourceService) ListByOwner(
 		args = &ListArguments{Page: 1, Size: 20}
 	}
 	scopedArgs := *args
+	scopedArgs.Preloads = append(append([]string(nil), scopedArgs.Preloads...), "Labels", "Conditions", "References")
 	kindFilter := fmt.Sprintf("kind = '%s' AND owner_id = '%s'", kind, ownerID)
 	if scopedArgs.Search == "" {
 		scopedArgs.Search = kindFilter
@@ -401,8 +405,6 @@ func (s *sqlResourceService) ListByOwner(
 	if svcErr := s.applyRefFilter(ctx, kind, &scopedArgs); svcErr != nil {
 		return nil, nil, svcErr
 	}
-
-	scopedArgs.Preloads = append(scopedArgs.Preloads, "Conditions", "References")
 
 	var resources []api.Resource
 	paging, svcErr := s.generic.List(ctx, &scopedArgs, &resources)
@@ -428,10 +430,13 @@ func (s *sqlResourceService) GetByID(ctx context.Context, id string) (*api.Resou
 func (s *sqlResourceService) ListAll(
 	ctx context.Context, args *ListArguments,
 ) (api.ResourceList, *api.PagingMeta, *errors.ServiceError) {
-	args.Preloads = append(args.Preloads, "Conditions", "References")
-
+	if args == nil {
+		args = &ListArguments{Page: 1, Size: 20}
+	}
+	scopedArgs := *args
+	scopedArgs.Preloads = append(append([]string(nil), scopedArgs.Preloads...), "Labels", "Conditions", "References")
 	var resources []api.Resource
-	paging, svcErr := s.generic.List(ctx, args, &resources)
+	paging, svcErr := s.generic.List(ctx, &scopedArgs, &resources)
 	if svcErr != nil {
 		return nil, nil, svcErr
 	}
@@ -745,8 +750,7 @@ func validateKind(kind string) *errors.ServiceError {
 	return nil
 }
 
-// validateResourceName checks that the kind is registered and the name is non-empty.
-// Name format and length validation is handled by OpenAPI spec validation middleware.
+// Name format/length validation is handled by OpenAPI spec validation middleware.
 func validateResourceName(kind, name string) *errors.ServiceError {
 	if svcErr := validateKind(kind); svcErr != nil {
 		return svcErr
@@ -757,10 +761,7 @@ func validateResourceName(kind, name string) *errors.ServiceError {
 	return nil
 }
 
-// jsonBytesEqual is a nil-safe wrapper around jsonEqual. Returns true if both slices are
-// nil/empty, false if only one is, and delegates to jsonEqual for semantic JSON comparison.
-// Needed because Resource.Labels is nullable (JSONB NULL), and jsonEqual(nil, nil) returns
-// false due to json.Unmarshal(nil) error.
+// jsonBytesEqual is a nil-safe wrapper around jsonEqual for comparing JSONB spec fields.
 func jsonBytesEqual(a, b []byte) bool {
 	if len(a) == 0 && len(b) == 0 {
 		return true
@@ -771,7 +772,26 @@ func jsonBytesEqual(a, b []byte) bool {
 	return jsonEqual(a, b)
 }
 
-// applyResourcePatch merges non-nil patch fields into the resource by marshaling them to JSON.
+// labelsEqual compares two label slices by key-value content (order-independent).
+func labelsEqual(a, b []api.ResourceLabel) bool {
+	if len(a) == 0 && len(b) == 0 {
+		return true
+	}
+	if len(a) != len(b) {
+		return false
+	}
+	m := make(map[string]string, len(a))
+	for _, l := range a {
+		m[l.Key] = l.Value
+	}
+	for _, l := range b {
+		if v, ok := m[l.Key]; !ok || v != l.Value {
+			return false
+		}
+	}
+	return true
+}
+
 func applyResourcePatch(resource *api.Resource, patch *api.ResourcePatch) error {
 	if patch.Spec != nil {
 		specJSON, err := json.Marshal(patch.Spec)
@@ -781,12 +801,16 @@ func applyResourcePatch(resource *api.Resource, patch *api.ResourcePatch) error 
 		resource.Spec = specJSON
 	}
 	if patch.Labels != nil {
-		labelsJSON, err := json.Marshal(patch.Labels)
-		if err != nil {
-			return fmt.Errorf("failed to marshal resource labels: %w", err)
+		labels := make([]api.ResourceLabel, 0, len(patch.Labels))
+		for k, v := range patch.Labels {
+			if err := api.ValidateLabel(k, v); err != nil {
+				return err
+			}
+			labels = append(labels, api.ResourceLabel{Key: k, Value: v})
 		}
-		resource.Labels = labelsJSON
+		resource.Labels = labels
 	}
+
 	return nil
 }
 

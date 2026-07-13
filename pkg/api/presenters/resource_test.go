@@ -29,7 +29,9 @@ func TestConvertResource(t *testing.T) {
 	Expect(resource.Kind).To(Equal("Channel"))
 	Expect(resource.Name).To(Equal("stable"))
 	Expect(resource.Spec).NotTo(BeEmpty())
-	Expect(string(resource.Labels)).To(ContainSubstring("env"))
+	Expect(resource.Labels).To(HaveLen(1))
+	Expect(resource.Labels[0].Key).To(Equal("env"))
+	Expect(resource.Labels[0].Value).To(Equal("prod"))
 }
 
 func TestConvertResource_NilLabels(t *testing.T) {
@@ -43,7 +45,7 @@ func TestConvertResource_NilLabels(t *testing.T) {
 
 	resource, err := ConvertResource(req)
 	Expect(err).NotTo(HaveOccurred())
-	Expect(string(resource.Labels)).To(Equal("{}"))
+	Expect(resource.Labels).To(BeEmpty())
 }
 
 func TestConvertResourceWithOwner(t *testing.T) {
@@ -75,7 +77,7 @@ func TestPresentResource(t *testing.T) {
 		Name:       "stable",
 		Href:       "/api/hyperfleet/v1/channels/test-id",
 		Spec:       datatypes.JSON(`{"is_default":true}`),
-		Labels:     datatypes.JSON(`{"env":"prod"}`),
+		Labels:     []api.ResourceLabel{{Key: "env", Value: "prod"}},
 		Generation: 1,
 		CreatedBy:  "user@test.com",
 		UpdatedBy:  "user@test.com",
@@ -285,4 +287,18 @@ func TestPresentResourceList(t *testing.T) {
 	Expect(result.Page).To(Equal(int32(1)))
 	Expect(result.Size).To(Equal(int32(2)))
 	Expect(result.Total).To(Equal(int64(2)))
+}
+func TestConvertResource_InvalidLabel(t *testing.T) {
+	RegisterTestingT(t)
+
+	labels := map[string]string{"": "value"}
+	req := &openapi.ResourceCreateRequest{
+		Kind:   "Channel",
+		Name:   "test",
+		Spec:   map[string]any{"enabled_regex": ".*"},
+		Labels: &labels,
+	}
+	_, err := ConvertResource(req)
+	Expect(err).To(HaveOccurred())
+	Expect(err.Error()).To(ContainSubstring("invalid labels"))
 }
