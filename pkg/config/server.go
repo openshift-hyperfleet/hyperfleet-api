@@ -69,6 +69,7 @@ type JWTIssuerConfig struct {
 	IssuerURL            string         `mapstructure:"issuer_url" json:"issuer_url" validate:"required,url"`
 	JWKCertURL           string         `mapstructure:"jwk_cert_url" json:"jwk_cert_url" validate:"omitempty,url"`
 	JWKCertFile          string         `mapstructure:"jwk_cert_file" json:"jwk_cert_file" validate:"omitempty,filepath"`
+	JWKCertCAFile        string         `mapstructure:"jwk_cert_ca_file" json:"jwk_cert_ca_file" validate:"omitempty,filepath"` //nolint:lll
 	Header               string         `mapstructure:"header" json:"header"`
 	IdentityHeader       string         `mapstructure:"identity_header" json:"identity_header"`
 	Audience             string         `mapstructure:"audience" json:"audience"`
@@ -115,6 +116,9 @@ func (c *JWTConfig) Validate() error {
 		}
 		if cfg.JWKCertURL == "" && cfg.JWKCertFile == "" {
 			return fmt.Errorf("server.jwt.configs[%d] requires jwk_cert_url or jwk_cert_file", i)
+		}
+		if cfg.JWKCertCAFile != "" && cfg.JWKCertURL == "" {
+			return fmt.Errorf("server.jwt.configs[%d].jwk_cert_ca_file requires jwk_cert_url to be set", i)
 		}
 		if cfg.Header != "" && validation.IsForbiddenJWTSourceHeaderName(cfg.Header) {
 			return fmt.Errorf("server.jwt.configs[%d].header %q is not allowed as a JWT source", i, cfg.Header)

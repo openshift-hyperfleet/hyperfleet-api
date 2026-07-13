@@ -62,7 +62,7 @@ run_test() {
 
 assert_contains() {
   local input="$1" pattern="$2" msg="$3"
-  if ! echo "$input" | grep -q "$pattern"; then
+  if ! echo "$input" | grep -Fq "$pattern"; then
     fail "$msg"
   fi
 }
@@ -141,6 +141,15 @@ pass "PodMonitoring with TLS config template"
 run_test "template with auth disabled"
 render --set config.server.jwt.enabled=false | kubeconform_validate
 pass "Auth disabled config template"
+
+run_test "template with JWT and jwk_cert_ca_file"
+OUTPUT=$(render \
+  --set config.server.jwt.enabled=true \
+  --set-json 'config.server.jwt.configs=[{"issuer_url":"https://k8s.example.com","jwk_cert_url":"https://k8s.example.com/jwks","jwk_cert_ca_file":"/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"}]')
+assert_contains "$OUTPUT" 'jwk_cert_ca_file' "jwk_cert_ca_file not found in rendered configmap"
+assert_contains "$OUTPUT" '/var/run/secrets/kubernetes.io/serviceaccount/ca.crt' \
+  "Configured jwk_cert_ca_file value not found in rendered configmap"
+pass "JWT with jwk_cert_ca_file config template"
 
 run_test "template with custom image"
 helm template "$RELEASE_NAME" "$CHART_DIR" \
@@ -251,7 +260,7 @@ run_test "template with empty entities list"
 OUTPUT=$(render --set-json 'config.entities=[]')
 CONFIG_YAML=$(echo "$OUTPUT" | extract_config_yaml)
 echo "$CONFIG_YAML" | validate_yaml || fail "rendered config.yaml is not valid YAML with empty entities"
-assert_contains "$CONFIG_YAML" 'entities: \[\]' "expected entities: [] in config.yaml"
+assert_contains "$CONFIG_YAML" 'entities: []' "expected entities: [] in config.yaml"
 echo "$OUTPUT" | kubeconform_validate
 pass "Empty entities list config template"
 

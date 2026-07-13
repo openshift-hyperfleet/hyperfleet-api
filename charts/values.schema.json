@@ -163,6 +163,10 @@
                         "type": "string",
                         "description": "Path to a local JWK certificate file"
                       },
+                      "jwk_cert_ca_file": {
+                        "type": "string",
+                        "description": "CA certificate file for TLS when fetching jwk_cert_url"
+                      },
                       "header": {
                         "type": "string",
                         "description": "HTTP header to read the JWT from (default: Authorization)"
@@ -184,7 +188,13 @@
                         "description": "HTTP header carrying a pre-authenticated identity (bypasses JWT claim when set)"
                       }
                     },
-                    "required": ["issuer_url"]
+                    "required": ["issuer_url"],
+                    "if": {
+                      "required": ["jwk_cert_ca_file"]
+                    },
+                    "then": {
+                      "required": ["jwk_cert_url"]
+                    }
                   }
                 }
               }

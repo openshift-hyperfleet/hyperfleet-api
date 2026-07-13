@@ -38,6 +38,9 @@ data:
             {{- if .jwk_cert_file }}
             jwk_cert_file: {{ .jwk_cert_file | quote }}
             {{- end }}
+            {{- if .jwk_cert_ca_file }}
+            jwk_cert_ca_file: {{ .jwk_cert_ca_file | quote }}
+            {{- end }}
             {{- if .header }}
             header: {{ .header | quote }}
             {{- end }}
