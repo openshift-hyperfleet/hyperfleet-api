@@ -126,6 +126,7 @@ Extracts parameters from various sources:
 
 - **Environment Variables**: `source: "env.VARIABLE_NAME"`
 - **Event Data**: `source: "event.field.path"`
+- **File**: `source: { file: { path: "/path/to/file" } }` (read at reconciliation time)
 - **Secrets**: `source: "secret.namespace.name.key"` (requires K8s client)
 - **ConfigMaps**: `source: "configmap.namespace.name.key"` (requires K8s client)
 
@@ -183,11 +184,11 @@ preconditions:
           status.conditions.filter(c, c.type == "Reconciled").size() > 0
             ? status.conditions.filter(c, c.type == "Reconciled")[0].status
             : "False"
-      
+
       # JSONPath for complex extraction
       - name: "lzStatus"
         field: "{.items[?(@.adapter=='landing-zone-adapter')].data.namespace.status}"
-      
+
       # CEL expression for computed values
       - name: "activeCount"
         expression: "items.filter(i, i.status == 'active').size()"
@@ -196,7 +197,7 @@ preconditions:
       - field: "reconciledConditionStatus"
         operator: "equals"
         value: "True"
-      
+
       # Or dig directly into API response using precondition name
       - field: "checkClusterStatus.status.nodeCount"
         operator: "greaterThan"
@@ -341,7 +342,7 @@ post:
         errorMessage:
           field: "adapter.errorMessage"   # JSONPath extraction
           default: ""                     # Fallback if field not found
-  
+
   post_actions:
     - name: "reportStatus"
       api_call:

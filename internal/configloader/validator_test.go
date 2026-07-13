@@ -8,6 +8,7 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/criteria"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 )
 
 // baseTaskConfig returns a minimal valid AdapterTaskConfig for testing.
@@ -1347,6 +1348,96 @@ func TestValidateParamsAPICallSource(t *testing.T) {
 		err := v.ValidateSemantic()
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "source is required")
+	})
+}
+
+func TestValidateParamsFileSource(t *testing.T) {
+	boolPtr := func(b bool) *bool { return &b }
+
+	t.Run("file source passes validation", func(t *testing.T) {
+		cfg := baseTaskConfig()
+		cfg.Params = []Parameter{
+			{Name: "token", Source: FileSource(&FileSourceConfig{
+				Path: "/var/run/secrets/kubernetes.io/serviceaccount/token",
+			})},
+		}
+		v := newTaskValidator(cfg)
+		require.NoError(t, v.ValidateStructure())
+		require.NoError(t, v.ValidateSemantic())
+	})
+
+	t.Run("file source with explicit trim passes validation", func(t *testing.T) {
+		cfg := baseTaskConfig()
+		cfg.Params = []Parameter{
+			{Name: "token", Source: FileSource(&FileSourceConfig{
+				Path: "/var/run/secrets/token",
+				Trim: boolPtr(false),
+			})},
+		}
+		v := newTaskValidator(cfg)
+		require.NoError(t, v.ValidateStructure())
+		require.NoError(t, v.ValidateSemantic())
+	})
+
+	t.Run("file source with empty path rejected", func(t *testing.T) {
+		cfg := baseTaskConfig()
+		cfg.Params = []Parameter{
+			{Name: "token", Source: FileSource(&FileSourceConfig{Path: ""})},
+		}
+		v := newTaskValidator(cfg)
+		_ = v.ValidateStructure()
+		err := v.ValidateSemantic()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "path is required for file source")
+	})
+
+	t.Run("file source mutual exclusivity with api_call", func(t *testing.T) {
+		cfg := baseTaskConfig()
+		// Construct via YAML to hit UnmarshalYAML mutual exclusivity
+		yamlStr := `
+params:
+  - name: "bad"
+    source:
+      api_call:
+        method: "GET"
+        url: "/clusters/x"
+      file:
+        path: "/some/file"
+`
+		var taskCfg AdapterTaskConfig
+		err := yaml.Unmarshal([]byte(yamlStr), &taskCfg)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "only one of")
+		_ = cfg // suppress unused
+	})
+
+	t.Run("file source mutual exclusivity with expression", func(t *testing.T) {
+		yamlStr := `
+params:
+  - name: "bad"
+    source:
+      expression: "1 + 1"
+      file:
+        path: "/some/file"
+`
+		var taskCfg AdapterTaskConfig
+		err := yaml.Unmarshal([]byte(yamlStr), &taskCfg)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "only one of")
+	})
+
+	t.Run("file source with relative path emits warning", func(t *testing.T) {
+		cfg := baseTaskConfig()
+		cfg.Params = []Parameter{
+			{Name: "token", Source: FileSource(&FileSourceConfig{
+				Path: "relative/path/token",
+			})},
+		}
+		v := newTaskValidator(cfg)
+		require.NoError(t, v.ValidateStructure())
+		require.NoError(t, v.ValidateSemantic())
+		require.Len(t, v.Warnings(), 1)
+		assert.Contains(t, v.Warnings()[0], "not absolute")
 	})
 }
 

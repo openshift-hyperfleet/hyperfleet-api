@@ -98,7 +98,7 @@ params:
 
   # API call source fetches data from the HyperFleet API as a named param.
   # The full JSON response is stored under the param name and can be referenced
-  # by later params using dot-notation (e.g. "clusterData.generation") 
+  # by later params using dot-notation (e.g. "clusterData.generation")
   - name: "clusterData"
     source:
       api_call:
@@ -125,6 +125,17 @@ params:
 
   - name: "generationId"
     source: "clusterData.generation"
+
+  # File source reads a value from a filesystem path at reconciliation time.
+  # The file is read fresh on every event (tokens rotate). Whitespace is
+  # trimmed by default (trim: true).
+  # - name: "k8sToken"
+  #   source:
+  #     file:
+  #       path: "/var/run/secrets/kubernetes.io/serviceaccount/token"
+  #       trim: true
+  #   required: true
+  #   description: "Kubernetes service account token"
 
   # DELETION SUPPORT — capture these two params when lifecycle.delete is used
   # deleted_time: raw timestamp from the API (null when resource is not pending deletion).

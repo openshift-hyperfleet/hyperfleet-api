@@ -179,17 +179,19 @@ type KubernetesConfig struct {
 // ParameterSource is the source field on Parameter
 // It unmarshals from either a YAML scalar (string) or a YAML mapping (api_call / expression)
 type ParameterSource struct {
-	// Kind is one of "string", "api_call", or "expression".
-	Kind       string   `yaml:"-"`
-	StringVal  string   `yaml:"-"`
-	APICall    *APICall `yaml:"api_call"`
-	Expression string   `yaml:"expression"`
+	// Kind is one of "string", "api_call", "expression", or "file".
+	Kind       string            `yaml:"-"`
+	StringVal  string            `yaml:"-"`
+	APICall    *APICall          `yaml:"api_call"`
+	File       *FileSourceConfig `yaml:"file"`
+	Expression string            `yaml:"expression"`
 }
 
 const (
 	paramSourceKindString     = "string"
 	paramSourceKindAPICall    = "api_call"
 	paramSourceKindExpression = "expression"
+	paramSourceKindFile       = "file"
 )
 
 // StringSource constructs a string-literal ParameterSource.
@@ -207,6 +209,11 @@ func ExpressionSource(expr string) ParameterSource {
 	return ParameterSource{Kind: paramSourceKindExpression, Expression: expr}
 }
 
+// FileSource constructs a file ParameterSource.
+func FileSource(fs *FileSourceConfig) ParameterSource {
+	return ParameterSource{Kind: paramSourceKindFile, File: fs}
+}
+
 func (ps ParameterSource) IsZero() bool { return ps.Kind == "" }
 
 func (ps ParameterSource) IsString() bool { return ps.Kind == paramSourceKindString }
@@ -214,6 +221,8 @@ func (ps ParameterSource) IsString() bool { return ps.Kind == paramSourceKindStr
 func (ps ParameterSource) IsAPICall() bool { return ps.Kind == paramSourceKindAPICall }
 
 func (ps ParameterSource) IsExpression() bool { return ps.Kind == paramSourceKindExpression }
+
+func (ps ParameterSource) IsFile() bool { return ps.Kind == paramSourceKindFile }
 
 // Describe returns a human-readable description for use in error messages
 func (ps ParameterSource) Describe() string {
@@ -225,6 +234,11 @@ func (ps ParameterSource) Describe() string {
 		return "api_call"
 	case paramSourceKindExpression:
 		return fmt.Sprintf("expression(%q)", strings.TrimSpace(ps.Expression))
+	case paramSourceKindFile:
+		if ps.File != nil {
+			return fmt.Sprintf("file(%s)", ps.File.Path)
+		}
+		return "file"
 	default:
 		return ps.StringVal
 	}
@@ -238,6 +252,8 @@ func (ps ParameterSource) MarshalYAML() (interface{}, error) {
 		return map[string]interface{}{"api_call": ps.APICall}, nil
 	case paramSourceKindExpression:
 		return map[string]interface{}{"expression": ps.Expression}, nil
+	case paramSourceKindFile:
+		return map[string]interface{}{"file": ps.File}, nil
 	default:
 		return nil, nil
 	}
@@ -251,26 +267,46 @@ func (ps *ParameterSource) UnmarshalYAML(node *yaml.Node) error {
 		return nil
 	case yaml.MappingNode:
 		var raw struct {
-			APICall    *APICall `yaml:"api_call"`
-			Expression string   `yaml:"expression"`
+			APICall    *APICall          `yaml:"api_call"`
+			File       *FileSourceConfig `yaml:"file"`
+			Expression *string           `yaml:"expression"`
 		}
 		if err := node.Decode(&raw); err != nil {
 			return fmt.Errorf("source: %w", err)
 		}
-		if raw.APICall != nil && raw.Expression != "" {
-			return fmt.Errorf("source: 'api_call' and 'expression' are mutually exclusive")
+		// Mutual exclusivity checks — count YAML keys present, not values
+		setCount := 0
+		if raw.APICall != nil {
+			setCount++
+		}
+		if raw.Expression != nil {
+			setCount++
+		}
+		if raw.File != nil {
+			setCount++
+		}
+		if setCount > 1 {
+			return fmt.Errorf("source: only one of 'api_call', 'expression', or 'file' may be set")
 		}
 		if raw.APICall != nil {
 			ps.Kind = paramSourceKindAPICall
 			ps.APICall = raw.APICall
 			return nil
 		}
-		if raw.Expression != "" {
+		if raw.Expression != nil {
+			if strings.TrimSpace(*raw.Expression) == "" {
+				return fmt.Errorf("source: expression must not be empty")
+			}
 			ps.Kind = paramSourceKindExpression
-			ps.Expression = raw.Expression
+			ps.Expression = *raw.Expression
 			return nil
 		}
-		return fmt.Errorf("source: mapping must contain either 'api_call' or 'expression'")
+		if raw.File != nil {
+			ps.Kind = paramSourceKindFile
+			ps.File = raw.File
+			return nil
+		}
+		return fmt.Errorf("source: mapping must contain one of 'api_call', 'expression', or 'file'")
 	default:
 		return fmt.Errorf("source: expected string or mapping, got %v", node.Tag)
 	}
@@ -351,6 +387,14 @@ type APICall struct {
 	Body          string   `yaml:"body,omitempty"`
 	Headers       []Header `yaml:"headers,omitempty"`
 	RetryAttempts int      `yaml:"retry_attempts,omitempty"`
+}
+
+// FileSourceConfig defines a file-based parameter source.
+// Path is the filesystem path to read. Trim controls whether leading/trailing
+// whitespace is stripped (defaults to true when nil).
+type FileSourceConfig struct {
+	Trim *bool  `yaml:"trim,omitempty"` // defaults to true when nil
+	Path string `yaml:"path" validate:"required"`
 }
 
 // Header represents an HTTP header
