@@ -411,32 +411,6 @@
             }
           }
         },
-        "adapters": {
-          "type": "object",
-          "description": "Adapter requirements for resource readiness",
-          "properties": {
-            "required": {
-              "type": "object",
-              "description": "Lists of adapters that must report ready before a resource is considered ready",
-              "properties": {
-                "cluster": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  },
-                  "description": "Adapters required for cluster resources (e.g. validation, dns, pullsecret, hypershift)"
-                },
-                "nodepool": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  },
-                  "description": "Adapters required for nodepool resources (e.g. validation, hypershift)"
-                }
-              }
-            }
-          }
-        },
         "entities": {
           "type": "array",
           "description": "Entity descriptors registered at startup. Each entry auto-generates REST endpoints, spec validation, and delete policies.",
@@ -465,15 +439,22 @@
                 "type": "string",
                 "description": "OpenAPI component name for spec field validation (e.g. ChannelSpec)"
               },
-              "search_disallowed_fields": {
-                "type": "array",
-                "items": { "type": "string" },
-                "description": "Fields blocked from TSL search queries"
-              },
               "required_adapters": {
                 "type": "array",
                 "items": { "type": "string" },
                 "description": "Adapters that must finalize before hard-delete"
+              },
+              "name_min_len": {
+                "type": "integer",
+                "description": "Minimum resource name length (0 = no constraint)"
+              },
+              "name_max_len": {
+                "type": "integer",
+                "description": "Maximum resource name length (0 = no constraint)"
+              },
+              "require_spec_schema": {
+                "type": "boolean",
+                "description": "Fail startup if spec_schema_name is not found in the validation schema"
               },
               "references": {
                 "type": "array",

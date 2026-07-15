@@ -33,25 +33,11 @@ func validateJSONBKey(key, fieldType string) *errors.ServiceError {
 	return nil
 }
 
-// TODO(HYPERFLEET-1159): remove once Cluster/NodePool are migrated to Resource-kind entities.
-func validateLegacyLabelKey(key string) *errors.ServiceError {
-	return validateJSONBKey(key, "label key")
-}
-
-// Field mapping rules for user-friendly syntax to database columns
-var statusFieldMappings = map[string]string{
-	"status.conditions": "status_conditions",
-}
-
 // getField gets the sql field associated with a name.
-func getField(name string, disallowedFields map[string]string) (field string, err *errors.ServiceError) {
+func getField(name string) (field string, err *errors.ServiceError) {
 	trimmedName := strings.Trim(name, " ")
 
 	if strings.HasPrefix(trimmedName, "properties.") {
-		if _, disallowed := disallowedFields["properties"]; disallowed {
-			err = errors.BadRequest("%s is not a valid field name", name)
-			return
-		}
 		key := strings.TrimPrefix(trimmedName, "properties.")
 		if validationErr := validateJSONBKey(key, "property key"); validationErr != nil {
 			err = validationErr
@@ -67,11 +53,6 @@ func getField(name string, disallowedFields map[string]string) (field string, er
 	//   spec.release.channel     → spec->'release'->>'channel'
 	//   spec.a.b.c              → spec->'a'->'b'->>'c'
 	if strings.HasPrefix(trimmedName, "spec.") {
-		if _, disallowed := disallowedFields["spec"]; disallowed {
-			err = errors.BadRequest("%s is not a valid field name", name)
-			return
-		}
-
 		parts := strings.Split(strings.TrimPrefix(trimmedName, "spec."), ".")
 		for _, part := range parts {
 			if validationErr := validateJSONBKey(part, "spec field segment"); validationErr != nil {
@@ -91,48 +72,39 @@ func getField(name string, disallowedFields map[string]string) (field string, er
 		return
 	}
 
-	// TODO(HYPERFLEET-1159): remove this legacy JSONB branch once Cluster/NodePool
-	// are migrated to Resource-kind entities with the resource_labels table.
-	if strings.HasPrefix(trimmedName, "labels.") {
-		if _, disallowed := disallowedFields["labels"]; disallowed {
-			err = errors.BadRequest("%s is not a valid field name", name)
-			return
-		}
-		key := strings.TrimPrefix(trimmedName, "labels.")
-
-		if validationErr := validateLegacyLabelKey(key); validationErr != nil {
-			err = validationErr
-			return
-		}
-
-		field = fmt.Sprintf("labels->>'%s'", key)
-		return
-	}
-
-	// Map user-friendly status.xxx syntax to database columns
-	if mapped, ok := statusFieldMappings[trimmedName]; ok {
-		trimmedName = mapped
-	}
-
-	// Check for nested field, e.g., subscription_labels.key
-	checkName := trimmedName
+	// Check for nested field, e.g., status.phase
 	fieldParts := strings.Split(trimmedName, ".")
 	if len(fieldParts) > 2 {
 		err = errors.BadRequest("%s is not a valid field name", name)
 		return
 	}
-	if len(fieldParts) > 1 {
-		checkName = fieldParts[1]
-	}
 
-	// Check for disallowed fields
-	_, ok := disallowedFields[checkName]
-	if ok {
+	baseName := fieldParts[0]
+	if !searchAllowedFields[baseName] {
 		err = errors.BadRequest("%s is not a valid field name", name)
 		return
 	}
+
 	field = trimmedName
 	return
+}
+
+var searchAllowedFields = map[string]bool{
+	"id":           true,
+	"name":         true,
+	"kind":         true,
+	"created_time": true,
+	"updated_time": true,
+	"deleted_time": true,
+	"created_by":   true,
+	"updated_by":   true,
+	"deleted_by":   true,
+	"generation":   true,
+	"href":         true,
+	"labels":       true,
+	"conditions":   true,
+	"owner_id":     true,
+	"owner_kind":   true,
 }
 
 // Condition type validation pattern: PascalCase condition types (e.g., Reconciled, Available, Progressing)
@@ -244,13 +216,19 @@ func conditionStatusConverter(n *tsl.Node, conditionType string) (interface{}, *
 		return nil, errors.BadRequest("only equality operator (=) is supported for condition status queries")
 	}
 
-	jsonPath := fmt.Sprintf(`$[*] ? (@.type == "%s")`, conditionType)
-	return sq.Expr("jsonb_path_query_first(status_conditions, ?::jsonpath) ->> 'status' = ?", jsonPath, rightStr), nil
+	return sq.Expr(
+		"EXISTS (SELECT 1 FROM resource_conditions "+
+			"WHERE resource_conditions.resource_id = resources.id "+
+			"AND resource_conditions.type = ? AND resource_conditions.status = ?)",
+		conditionType, rightStr,
+	), nil
 }
 
 // conditionSubfieldConverter handles 4-part condition subfield queries:
 // status.conditions.<ConditionType>.<Subfield> <op> '<Value>'
-func conditionSubfieldConverter(n *tsl.Node, conditionType, subfield string) (interface{}, *errors.ServiceError) {
+func conditionSubfieldConverter( //nolint:cyclop // linear branching on subfield type
+	n *tsl.Node, conditionType, subfield string,
+) (interface{}, *errors.ServiceError) {
 	sqlOp, ok := comparisonOperators[n.Operator]
 	if !ok {
 		return nil, errors.BadRequest(
@@ -261,8 +239,6 @@ func conditionSubfieldConverter(n *tsl.Node, conditionType, subfield string) (in
 	if n.Right == nil {
 		return nil, errors.BadRequest("invalid condition query structure: missing right side")
 	}
-
-	jsonPath := fmt.Sprintf(`$[*] ? (@.type == "%s")`, conditionType)
 
 	if conditionTimeSubfields[subfield] {
 		var rightStr string
@@ -296,10 +272,11 @@ func conditionSubfieldConverter(n *tsl.Node, conditionType, subfield string) (in
 			)
 		}
 		query := fmt.Sprintf(
-			"CAST(jsonb_path_query_first(status_conditions, ?::jsonpath) ->> ? AS TIMESTAMPTZ) %s ?::timestamptz",
-			sqlOp,
+			"(SELECT rc.%s FROM resource_conditions rc "+
+				"WHERE rc.resource_id = resources.id AND rc.type = ?) %s ?::timestamptz",
+			subfield, sqlOp,
 		)
-		return sq.Expr(query, jsonPath, subfield, rightStr), nil
+		return sq.Expr(query, conditionType, rightStr), nil
 	}
 
 	if conditionIntSubfields[subfield] {
@@ -326,10 +303,11 @@ func conditionSubfieldConverter(n *tsl.Node, conditionType, subfield string) (in
 			)
 		}
 		query := fmt.Sprintf(
-			"CAST(jsonb_path_query_first(status_conditions, ?::jsonpath) ->> ? AS INTEGER) %s ?",
-			sqlOp,
+			"(SELECT rc.%s FROM resource_conditions rc "+
+				"WHERE rc.resource_id = resources.id AND rc.type = ?) %s ?",
+			subfield, sqlOp,
 		)
-		return sq.Expr(query, jsonPath, subfield, int(rightVal)), nil
+		return sq.Expr(query, conditionType, int(rightVal)), nil
 	}
 
 	return nil, errors.BadRequest(
@@ -471,7 +449,7 @@ func hasLabel(n *tsl.Node) bool {
 	return strings.HasPrefix(leftStr, "labels.")
 }
 
-func labelsNodeConverter(n *tsl.Node, resourceTable string) (any, *errors.ServiceError) {
+func labelsNodeConverter(n *tsl.Node) (any, *errors.ServiceError) {
 	if n.Left == nil || n.Left.Kind != tsl.KindIdentifier {
 		return nil, errors.BadRequest("invalid label query structure")
 	}
@@ -505,9 +483,9 @@ func labelsNodeConverter(n *tsl.Node, resourceTable string) (any, *errors.Servic
 		}
 
 		query := fmt.Sprintf(
-			"EXISTS (SELECT 1 FROM resource_labels WHERE resource_labels.resource_id = %s.id "+
+			"EXISTS (SELECT 1 FROM resource_labels WHERE resource_labels.resource_id = resources.id "+
 				"AND resource_labels.key = ? AND resource_labels.value %s ?)",
-			resourceTable, sqlOp,
+			sqlOp,
 		)
 		return sq.Expr(query, key, rightStr), nil
 
@@ -528,9 +506,9 @@ func labelsNodeConverter(n *tsl.Node, resourceTable string) (any, *errors.Servic
 		}
 
 		query := fmt.Sprintf(
-			"EXISTS (SELECT 1 FROM resource_labels WHERE resource_labels.resource_id = %s.id "+
+			"EXISTS (SELECT 1 FROM resource_labels WHERE resource_labels.resource_id = resources.id "+
 				"AND resource_labels.key = ? AND resource_labels.value IN (%s))",
-			resourceTable, sq.Placeholders(len(values)),
+			sq.Placeholders(len(values)),
 		)
 		args := make([]interface{}, 0, 1+len(values))
 		args = append(args, key)
@@ -555,13 +533,10 @@ func isLabelIdentifier(n *tsl.Node) bool {
 	return ok && strings.HasPrefix(s, "labels.")
 }
 
-func ExtractLabelQueries(n *tsl.Node, resourceTable string) (*tsl.Node, []sq.Sqlizer, *errors.ServiceError) {
+func ExtractLabelQueries(n *tsl.Node) (*tsl.Node, []sq.Sqlizer, *errors.ServiceError) {
 	var labels []sq.Sqlizer
-	converter := func(n *tsl.Node) (any, *errors.ServiceError) {
-		return labelsNodeConverter(n, resourceTable)
-	}
 	modifiedTree, err := extractMatchingQueries(
-		n, hasLabel, converter,
+		n, hasLabel, labelsNodeConverter,
 		"NOT operator is not supported with label queries",
 		"OR operator is not supported with label queries (labels.*); "+
 			"use separate requests or combine label filters with AND",
@@ -573,7 +548,7 @@ func ExtractLabelQueries(n *tsl.Node, resourceTable string) (*tsl.Node, []sq.Sql
 
 	// "not labels.env='x'" parses as "(NOT labels.env) = 'x'" due to TSL precedence,
 	// so hasLabel never matches it and it survives into modifiedTree. Without this
-	// guard it falls through to getField's JSONB branch and hits a missing column.
+	// guard it falls through to getField and produces an invalid column reference.
 	if subtreeHasMatch(modifiedTree, isLabelIdentifier) {
 		return n, nil, errors.BadRequest(
 			"labels.<key> must be used in a direct comparison, e.g. labels.env=\"prod\"; " +
@@ -586,12 +561,9 @@ func ExtractLabelQueries(n *tsl.Node, resourceTable string) (*tsl.Node, []sq.Sql
 
 // FieldNameWalk walks the filter tree, maps user-facing field names to SQL columns
 // via getField, then wraps spec JSONB numeric comparisons in CAST.
-func FieldNameWalk(
-	n *tsl.Node,
-	disallowedFields map[string]string,
-) (*tsl.Node, *errors.ServiceError) {
+func FieldNameWalk(n *tsl.Node) (*tsl.Node, *errors.ServiceError) {
 	mapped, err := IdentWalk(n, func(name string) (string, error) {
-		field, svcErr := getField(name, disallowedFields)
+		field, svcErr := getField(name)
 		if svcErr != nil {
 			return "", svcErr
 		}

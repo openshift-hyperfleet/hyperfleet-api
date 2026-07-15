@@ -6,13 +6,11 @@ Always validate changes with: `make test-helm`
 
 This runs lint + template rendering across multiple value combinations (default, external DB, autoscaling, PDB, ServiceMonitor, auth disabled, custom image, full adapter config).
 
-## Required Values
+## Entity Configuration
 
-Adapter arrays are required — templates fail without them:
-```
---set 'adapters.cluster=["validation"]'
---set 'adapters.nodepool=["validation"]'
-```
+Cluster and NodePool (and all other entity types) are configured as entity descriptors in `config.entities`.
+Default values include Cluster, NodePool, Channel, Version, and WifConfig. Each entity's required adapters
+are declared inline via `required_adapters`.
 
 ## Entity Registration
 
@@ -36,5 +34,5 @@ Two database configurations supported:
 
 When modifying templates, test with multiple configurations:
 ```
-helm template test-release charts/ --set 'adapters.cluster=["validation"]' --set 'adapters.nodepool=["validation"]' [additional overrides]
+helm template test-release charts/ [additional overrides]
 ```

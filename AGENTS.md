@@ -75,7 +75,7 @@ Run `make help` for the complete target list.
 
 - `HYPERFLEET_ENV` — selects config: `unit_testing`, `integration_testing`, `development`
 - `TESTCONTAINERS_RYUK_DISABLED=true` — required in CI
-- `HYPERFLEET_CLUSTER_ADAPTERS` / `HYPERFLEET_NODEPOOL_ADAPTERS` — adapter lists (defaults set in TestMain)
+- Entity adapter requirements are configured per entity kind in `config.yaml` under `entities[].required_adapters`
 
 ## Project Structure
 
@@ -93,8 +93,8 @@ pkg/
   logger/                     # Structured logging (slog-based)
   config/                     # Configuration management
 plugins/                      # Plugin registration (init-based)
-  clusters/plugin.go          # RegisterService + RegisterRoutes + RegisterPath + RegisterKind
-  nodepools/plugin.go
+  entities/plugin.go          # Config-driven entity route registration
+  resources/plugin.go         # Resource routes
   generic/plugin.go
 openapi/
   README.md                   # Schema import, code generation, and validation details
@@ -143,7 +143,7 @@ Interface + `sql*Dao` struct. Get session via `sessionFactory.New(ctx)`. Call `d
 
 ### Plugins
 
-Register via `init()`: `registry.RegisterService()`, `server.RegisterRoutes()`, `presenters.RegisterPath()`, `presenters.RegisterKind()`. See `plugins/clusters/plugin.go`.
+Entity types are config-driven — declared in `config.yaml` under `entities:` and auto-registered at startup. See `plugins/entities/plugin.go`.
 
 ## Git Workflow
 

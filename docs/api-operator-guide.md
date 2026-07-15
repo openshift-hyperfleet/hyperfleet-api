@@ -100,7 +100,7 @@ Resource (e.g., Cluster)
 | **spec** | JSONB | Desired state - what you want the resource to look like | User (via API) |
 | **status** | JSONB | Observed state - what adapters report about the resource | API (aggregated from adapter reports) |
 | **generation** | int32 | Version counter that increments when spec changes | API (automatic) |
-| **labels** | JSONB | Key-value pairs for filtering and organization | User (via API) |
+| **labels** | key-value pairs | Key-value pairs for filtering and organization (stored in `resource_labels` table) | User (via API) |
 
 **How the Resource Model Works:**
 
@@ -288,7 +288,7 @@ The nodepool resource structure and status aggregation work identically to clust
 
 ### 2.2 Adapter Registration
 
-**How registration works:** You define which adapters are required for each resource type to be marked as `Ready`. Adapters are registered at API startup via environment variables or Helm configuration, and the API will not start if this configuration is missing.
+**How registration works:** You define which adapters are required for each resource type to be marked as `Ready`. Adapters are declared per entity type via the `required_adapters` field in `config.yaml` (or Helm `config.entities`), and the API will not start if this configuration is missing.
 
 Only **registered adapters** participate in status aggregation:
 
@@ -298,28 +298,23 @@ Only **registered adapters** participate in status aggregation:
 
 **Configuration:**
 
-Currently, the API supports cluster and nodepool resource types:
-
-```bash
-# Required cluster adapters (example - adjust to match your deployment)
-HYPERFLEET_CLUSTER_ADAPTERS='["cluster-validation","dns","pullsecret","hypershift"]'
-
-# Required nodepool adapters (example - adjust to match your deployment)
-HYPERFLEET_NODEPOOL_ADAPTERS='["nodepool-validation","hypershift"]'
-```
-
-When using Helm (recommended):
+Required adapters are declared per entity type in the `entities` configuration. Each entity descriptor has a `required_adapters` field:
 
 ```yaml
-adapters:
-  cluster:   # Example adapter names - adjust to match your deployment
-    - cluster-validation
-    - dns
-    - pullsecret
-    - hypershift
-  nodepool:  # Example adapter names - adjust to match your deployment
-    - nodepool-validation
-    - hypershift
+entities:
+  - kind: Cluster
+    plural: clusters
+    required_adapters:  # Example adapter names - adjust to match your deployment
+      - validation
+      - dns
+      - pullsecret
+      - hypershift
+  - kind: NodePool
+    plural: nodepools
+    parent_kind: Cluster
+    required_adapters:  # Example adapter names - adjust to match your deployment
+      - validation
+      - hypershift
 ```
 
 ### 2.3 Status Aggregation
@@ -563,26 +558,23 @@ For comprehensive guides on specific topics:
 
 ### 3.1 Adapter Requirements (REQUIRED)
 
-The API will not start without these variables. **Note:** The adapter names shown below are examples - you must configure them to match the adapters actually deployed in your environment.
-
-```bash
-# Example configuration - adjust adapter names to match your deployment
-HYPERFLEET_CLUSTER_ADAPTERS='["cluster-validation","dns","pullsecret","hypershift"]'
-HYPERFLEET_NODEPOOL_ADAPTERS='["nodepool-validation","hypershift"]'
-```
-
-**Helm equivalent**:
+Each entity type declares its required adapters in the `entities` configuration. **Note:** The adapter names shown below are examples — you must configure them to match the adapters actually deployed in your environment.
 
 ```yaml
-adapters:
-  cluster:   # Example adapter names - adjust to match your deployment
-    - cluster-validation
-    - dns
-    - pullsecret
-    - hypershift
-  nodepool:  # Example adapter names - adjust to match your deployment
-    - nodepool-validation
-    - hypershift
+entities:
+  - kind: Cluster
+    plural: clusters
+    required_adapters:  # Example adapter names - adjust to match your deployment
+      - validation
+      - dns
+      - pullsecret
+      - hypershift
+  - kind: NodePool
+    plural: nodepools
+    parent_kind: Cluster
+    required_adapters:  # Example adapter names - adjust to match your deployment
+      - validation
+      - hypershift
 ```
 
 ### 3.2 Database Configuration
@@ -860,7 +852,7 @@ Choose your database deployment strategy based on your environment:
     psql -h <db-host> -U hyperfleet -d hyperfleet -c "\dt"
   ```
 
-  Expected tables: `adapter_statuses`, `clusters`, `labels`, `node_pools`
+  Expected tables: `adapter_statuses`, `resources`, `resource_conditions`, `resource_labels`, `resource_references`
 
 ### Phase 4: Post-Deployment Validation
 
@@ -969,7 +961,7 @@ Adapters are worker components that perform specific tasks (e.g., validation, DN
 
 Every adapter status report must include:
 
-- **adapter** (string) — If this adapter is required for cluster resources, must match a value in `HYPERFLEET_CLUSTER_ADAPTERS`. If required for nodepool resources, must match a value in `HYPERFLEET_NODEPOOL_ADAPTERS`
+- **adapter** (string) — Must match a value in the entity's `required_adapters` list (configured in the `entities` section of `config.yaml`)
 - **observed_generation** (integer) — The generation the adapter processed
 - **observed_time** (RFC3339 timestamp) — When the adapter completed its work
 - **conditions** (array) — Exactly three condition types:
@@ -1048,8 +1040,8 @@ This section provides a **quick reference** for common API-specific issues and t
 
 | Symptom | Likely Cause | Solution                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 |---------|--------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **API won't start: `HYPERFLEET_CLUSTER_ADAPTERS environment variable is required`** | Required environment variables not set | Verify Helm values: `helm get values hyperfleet-api -n hyperfleet-system`. If missing, configure adapter requirements in your Helm values file (see [Adapter Requirements](#31-adapter-requirements-required)) and upgrade the release.                                                                                                                                                                                                                                                                                                                                                        |
-| **Adapters report status but resource remains `Ready=False`** | Adapter name mismatch, missing conditions, or generation mismatch | Check adapter names match registration: `kubectl exec -n hyperfleet-system deployment/hyperfleet-api -- env \| grep HYPERFLEET_CLUSTER_ADAPTERS` and compare with `curl http://<api-service>:8000/api/hyperfleet/v1/clusters/$CLUSTER_ID/statuses`. Verify all conditions present: `curl http://<api-service>:8000/api/hyperfleet/v1/clusters/$CLUSTER_ID/statuses \| jq '.items[] \| {adapter, conditions: [.conditions[].type]}'`. Check generation: `curl -s http://<api-service>:8000/api/hyperfleet/v1/clusters/$CLUSTER_ID/statuses \| jq ".items[] \| {adapter, observed_generation}"`. |
+| **API won't start: missing required adapter configuration** | Entity descriptors not configured | Verify Helm values: `helm get values hyperfleet-api -n hyperfleet-system`. If missing, configure entity descriptors with `required_adapters` in your Helm values file (see [Adapter Requirements](#31-adapter-requirements-required)) and upgrade the release. |
+| **Adapters report status but resource remains `Ready=False`** | Adapter name mismatch, missing conditions, or generation mismatch | Check adapter names match registration in entity descriptors (`config.entities[].required_adapters`). Compare with `curl http://<api-service>:8000/api/hyperfleet/v1/clusters/$CLUSTER_ID/statuses`. Verify all conditions present: `curl ... \| jq '.items[] \| {adapter, conditions: [.conditions[].type]}'`. Check generation: `curl -s ... \| jq ".items[] \| {adapter, observed_generation}"`. |
 | **Pods stuck in init phase, migration fails: `permission denied for schema public`** | Database user lacks schema permissions | Grant permissions: `GRANT ALL ON SCHEMA public TO hyperfleet; GRANT ALL ON ALL TABLES IN SCHEMA public TO hyperfleet;`                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | **Pods stuck in init phase: `database does not exist`** | Database not created | Create database: `CREATE DATABASE hyperfleet;`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | **Pods stuck in init phase: `connection timeout`** | Database connection retry settings too low | Increase database connection retry settings using `--db-conn-retry-attempts` and `--db-conn-retry-interval` flags in the init container command                                                                                                                                                                                                                                                                                                                                                                                                                                               |

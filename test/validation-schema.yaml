@@ -7,10 +7,10 @@ components:
   schemas:
     ClusterSpec:
       type: object
-      description: Permissive cluster spec schema for integration tests.
+      description: Permissive Cluster spec schema for integration tests.
     NodePoolSpec:
       type: object
-      description: Permissive nodepool spec schema for integration tests.
+      description: Permissive NodePool spec schema for integration tests.
     WifConfigSpec:
       type: object
       description: Permissive WifConfig spec schema for integration tests.

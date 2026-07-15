@@ -35,7 +35,7 @@ func TestSQLTranslation(t *testing.T) {
 		},
 	}
 	for _, test := range errorTests {
-		var list []api.Cluster
+		var list []api.Resource
 		search := test["search"].(string)
 		errorMsg := test["error"].(string)
 		listCtx, model, serviceErr := genericService.newListContext(
@@ -52,15 +52,9 @@ func TestSQLTranslation(t *testing.T) {
 	// tests for sql parsing
 	sqlTests := []map[string]interface{}{
 		{
-			"search": "username in ['ooo.openshift']",
-			"sql":    "username IN (?)",
+			"search": "created_by in ['ooo.openshift']",
+			"sql":    "created_by IN (?)",
 			"values": ConsistOf("ooo.openshift"),
-		},
-		// Test labels.xxx field mapping
-		{
-			"search": "labels.environment = 'production'",
-			"sql":    "labels->>'environment' = ?",
-			"values": ConsistOf("production"),
 		},
 		// Test spec.xxx field mapping (shallow, string value — no CAST)
 		{
@@ -106,7 +100,7 @@ func TestSQLTranslation(t *testing.T) {
 		},
 	}
 	for _, test := range sqlTests {
-		var list []api.Cluster
+		var list []api.Resource
 		search := test["search"].(string)
 		sqlReal := test["sql"].(string)
 		valuesReal := test["values"].(types.GomegaMatcher)
@@ -119,7 +113,7 @@ func TestSQLTranslation(t *testing.T) {
 		Expect(err).ToNot(HaveOccurred())
 		tslTree := tslTreeWrapper.Node
 		// Apply field name mapping (includes numeric CAST for spec fields)
-		tslTree, serviceErr = db.FieldNameWalk(tslTree, *listCtx.disallowedFields)
+		tslTree, serviceErr = db.FieldNameWalk(tslTree)
 		Expect(serviceErr).ToNot(HaveOccurred())
 		sqlizer, serviceErr := genericService.treeWalkForSqlizer(listCtx, &tsl.TSLNode{Node: tslTree})
 		Expect(serviceErr).ToNot(HaveOccurred())
@@ -134,11 +128,6 @@ func TestSQLTranslation(t *testing.T) {
 	// signals an already-mapped JSONB expression that should be skipped).
 	jsonbRelatedTableTests := []map[string]interface{}{
 		{
-			"search": "labels.environment = 'production'",
-			"sql":    "labels->>'environment' = ?",
-			"values": ConsistOf("production"),
-		},
-		{
 			"search": "spec.release.version = '2'",
 			"sql":    "spec->'release'->>'version' = ?",
 			"values": ConsistOf("2"),
@@ -150,7 +139,7 @@ func TestSQLTranslation(t *testing.T) {
 		},
 	}
 	for _, test := range jsonbRelatedTableTests {
-		var list []api.Cluster
+		var list []api.Resource
 		search := test["search"].(string)
 		sqlReal := test["sql"].(string)
 		valuesReal := test["values"].(types.GomegaMatcher)
@@ -161,9 +150,9 @@ func TestSQLTranslation(t *testing.T) {
 		tslTreeWrapper, err := tsl.ParseTSL(search)
 		Expect(err).ToNot(HaveOccurred())
 		tslTree := tslTreeWrapper.Node
-		tslTree, serviceErr = db.FieldNameWalk(tslTree, *listCtx.disallowedFields)
+		tslTree, serviceErr = db.FieldNameWalk(tslTree)
 		Expect(serviceErr).ToNot(HaveOccurred())
-		d := g.GetInstanceDao(context.Background(), &api.Cluster{})
+		d := g.GetInstanceDao(context.Background(), &api.Resource{})
 		tslTree, serviceErr = genericService.treeWalkForRelatedTables(listCtx, tslTree, &d)
 		Expect(serviceErr).ToNot(HaveOccurred(), "JSONB field should not be misclassified as related table: %s", search)
 		tslTree, serviceErr = genericService.treeWalkForAddingTableName(listCtx, tslTree, &d)

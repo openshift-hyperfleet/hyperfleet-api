@@ -2,87 +2,100 @@ package factories
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"time"
 
-	"gorm.io/gorm"
-
-	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/environments"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/dao"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
-	"github.com/openshift-hyperfleet/hyperfleet-api/plugins/nodePools"
 )
 
-func (f *Factories) NewNodePool(id string) (*api.NodePool, error) {
-	nodePoolService := nodePools.Service(&environments.Environment().Services)
+func (f *Factories) NewNodePool(id string) (*api.Resource, error) {
+	svc := resourceService()
+	ctx := context.Background()
 
-	if nodePoolService == nil {
-		return nil, fmt.Errorf("nodePoolService is nil - service not initialized")
-	}
-
-	// Create a parent cluster first to get a valid OwnerID
-	cluster, err := f.NewCluster(f.NewID())
-	if err != nil {
-		return nil, fmt.Errorf("failed to create parent cluster: %w", err)
-	}
-
-	if cluster == nil {
-		return nil, fmt.Errorf("cluster is nil after NewCluster call")
-	}
-
-	nodePool := &api.NodePool{
-		Meta:      api.Meta{ID: id},
-		Name:      "test-nodepool-" + id, // Use unique name based on ID
-		Spec:      []byte(`{"test": "spec"}`),
-		OwnerID:   cluster.ID, // Use real cluster ID
+	// Create parent cluster
+	cluster := &api.Resource{
+		Kind:      "Cluster",
+		Name:      fmt.Sprintf("parent-%s", id),
+		Spec:      []byte(`{"region": "us-central1", "provider": "gcp"}`),
 		CreatedBy: "test@example.com",
 		UpdatedBy: "test@example.com",
 	}
-
-	sub, serviceErr := nodePoolService.Create(context.Background(), nodePool)
-	// Check for real errors (not typed nil)
-	if serviceErr != nil && serviceErr.RFC9457Code != "" {
-		return nil, fmt.Errorf("failed to create nodepool: %s (code: %s)", serviceErr.Reason, serviceErr.RFC9457Code)
+	cluster, svcErr := svc.Create(ctx, "Cluster", cluster, nil)
+	if svcErr != nil {
+		return nil, fmt.Errorf("create parent cluster: %w", svcErr)
 	}
 
-	if sub == nil {
-		return nil, fmt.Errorf("nodePoolService.Create returned nil without error")
+	// Create nodepool
+	ownerKind := "Cluster"
+	np := &api.Resource{
+		Kind:      "NodePool",
+		Name:      id,
+		OwnerID:   &cluster.ID,
+		OwnerKind: &ownerKind,
+		Spec:      []byte(`{"machine_type": "n1-standard-4", "replicas": 3}`),
+		CreatedBy: "test@example.com",
+		UpdatedBy: "test@example.com",
 	}
-
-	return sub, nil
+	result, svcErr := svc.Create(ctx, "NodePool", np, nil)
+	if svcErr != nil {
+		return nil, fmt.Errorf("create nodepool: %w", svcErr)
+	}
+	return result, nil
 }
 
-func (f *Factories) NewNodePoolList(name string, count int) ([]*api.NodePool, error) {
-	var NodePools []*api.NodePool
-	for i := 1; i <= count; i++ {
-		c, err := f.NewNodePool(f.NewID())
-		if err != nil {
-			return nil, err
-		}
-		NodePools = append(NodePools, c)
+func (f *Factories) NewNodePoolList(name string, count int) ([]*api.Resource, error) {
+	svc := resourceService()
+	ctx := context.Background()
+
+	// Create shared parent cluster
+	cluster := &api.Resource{
+		Kind:      "Cluster",
+		Name:      fmt.Sprintf("parent-%s", name),
+		Spec:      []byte(`{"region": "us-central1", "provider": "gcp"}`),
+		CreatedBy: "test@example.com",
+		UpdatedBy: "test@example.com",
 	}
-	return NodePools, nil
+	cluster, svcErr := svc.Create(ctx, "Cluster", cluster, nil)
+	if svcErr != nil {
+		return nil, fmt.Errorf("create parent cluster: %w", svcErr)
+	}
+
+	ownerKind := "Cluster"
+	result := make([]*api.Resource, 0, count)
+	for i := range count {
+		np := &api.Resource{
+			Kind:      "NodePool",
+			Name:      fmt.Sprintf("%s-%d", name, i),
+			OwnerID:   &cluster.ID,
+			OwnerKind: &ownerKind,
+			Spec:      []byte(`{"machine_type": "n1-standard-4", "replicas": 3}`),
+			CreatedBy: "test@example.com",
+			UpdatedBy: "test@example.com",
+		}
+		np, svcErr = svc.Create(ctx, "NodePool", np, nil)
+		if svcErr != nil {
+			return nil, fmt.Errorf("create nodepool: %w", svcErr)
+		}
+		result = append(result, np)
+	}
+	return result, nil
 }
 
 // Aliases for test compatibility
-func (f *Factories) NewNodePools(id string) (*api.NodePool, error) {
+func (f *Factories) NewNodePools(id string) (*api.Resource, error) {
 	return f.NewNodePool(id)
 }
 
-func (f *Factories) NewNodePoolsList(name string, count int) ([]*api.NodePool, error) {
+func (f *Factories) NewNodePoolsList(name string, count int) ([]*api.Resource, error) {
 	return f.NewNodePoolList(name, count)
-}
-
-// reloadNodePool reloads a node pool from the database to ensure all fields are current
-func reloadNodePool(dbSession *gorm.DB, nodePool *api.NodePool) error {
-	return dbSession.First(nodePool, "id = ?", nodePool.ID).Error
 }
 
 // NewNodePoolWithStatus creates a node pool with specific status conditions using the current time.
 func NewNodePoolWithStatus(
 	f *Factories, dbFactory db.SessionFactory, id string, isAvailable, isReconciled bool,
-) (*api.NodePool, error) {
+) (*api.Resource, error) {
 	return NewNodePoolWithStatusAtTime(f, dbFactory, id, isAvailable, isReconciled, time.Now())
 }
 
@@ -90,107 +103,67 @@ func NewNodePoolWithStatus(
 func NewNodePoolWithStatusAtTime(
 	f *Factories, dbFactory db.SessionFactory, id string,
 	isAvailable, isReconciled bool, conditionTime time.Time,
-) (*api.NodePool, error) {
+) (*api.Resource, error) {
 	nodePool, err := f.NewNodePool(id)
 	if err != nil {
 		return nil, err
 	}
 
-	availableStatus := api.ConditionFalse
-	if isAvailable {
-		availableStatus = api.ConditionTrue
-	}
-	reconciledStatus := api.ConditionFalse
-	if isReconciled {
-		reconciledStatus = api.ConditionTrue
-	}
-
-	conditions := []api.ResourceCondition{
-		{
-			Type:               api.ResourceConditionTypeAvailable,
-			Status:             availableStatus,
-			ObservedGeneration: nodePool.Generation,
-			LastTransitionTime: conditionTime,
-			CreatedTime:        conditionTime,
-			LastUpdatedTime:    conditionTime,
-		},
-		{
-			Type:               api.ResourceConditionTypeReconciled,
-			Status:             reconciledStatus,
-			ObservedGeneration: nodePool.Generation,
-			LastTransitionTime: conditionTime,
-			CreatedTime:        conditionTime,
-			LastUpdatedTime:    conditionTime,
-		},
-	}
-
-	conditionsJSON, err := json.Marshal(conditions)
-	if err != nil {
-		return nil, err
-	}
+	conditions := buildConditionsWithGeneration(nodePool.ID, nodePool.Generation, isAvailable, isReconciled, conditionTime)
 
 	dbSession := dbFactory.New(context.Background())
-	err = dbSession.Model(nodePool).Update("status_conditions", conditionsJSON).Error
-	if err != nil {
+	// Delete conditions seeded by Create before inserting test-specific ones.
+	if err := dbSession.Where("resource_id = ?", nodePool.ID).Delete(&api.ResourceCondition{}).Error; err != nil {
+		return nil, err
+	}
+	if err := dbSession.Create(&conditions).Error; err != nil {
 		return nil, err
 	}
 
-	if err := reloadNodePool(dbSession, nodePool); err != nil {
+	if err := reloadResource(dbSession, nodePool); err != nil {
 		return nil, err
 	}
 	return nodePool, nil
 }
 
-// NewNodePoolWithLabels creates a node pool with specific labels
+// NewNodePoolWithLabels creates a node pool with specific labels.
 func NewNodePoolWithLabels(
 	f *Factories, dbFactory db.SessionFactory, id string, labels map[string]string,
-) (*api.NodePool, error) {
+) (*api.Resource, error) {
 	nodePool, err := f.NewNodePool(id)
 	if err != nil {
 		return nil, err
 	}
 
-	// Convert labels to JSON and update
-	labelsJSON, err := json.Marshal(labels)
-	if err != nil {
+	labelDao := dao.NewResourceLabelDao(dbFactory)
+	if err := labelDao.ReplaceLabels(context.Background(), nodePool.ID, mapToLabels(labels)); err != nil {
 		return nil, err
 	}
 
 	dbSession := dbFactory.New(context.Background())
-	err = dbSession.Model(nodePool).Update("labels", labelsJSON).Error
-	if err != nil {
-		return nil, err
-	}
-
-	// Reload to get updated values
-	if err := reloadNodePool(dbSession, nodePool); err != nil {
+	if err := reloadResource(dbSession, nodePool); err != nil {
 		return nil, err
 	}
 	return nodePool, nil
 }
 
-// NewNodePoolWithStatusAndLabels creates a node pool with both status conditions and labels
+// NewNodePoolWithStatusAndLabels creates a node pool with both status conditions and labels.
 func NewNodePoolWithStatusAndLabels(
 	f *Factories, dbFactory db.SessionFactory, id string, isAvailable, isReconciled bool, labels map[string]string,
-) (*api.NodePool, error) {
+) (*api.Resource, error) {
 	nodePool, err := NewNodePoolWithStatus(f, dbFactory, id, isAvailable, isReconciled)
 	if err != nil {
 		return nil, err
 	}
 
 	if labels != nil {
-		labelsJSON, err := json.Marshal(labels)
-		if err != nil {
+		labelDao := dao.NewResourceLabelDao(dbFactory)
+		if err := labelDao.ReplaceLabels(context.Background(), nodePool.ID, mapToLabels(labels)); err != nil {
 			return nil, err
 		}
 
 		dbSession := dbFactory.New(context.Background())
-		err = dbSession.Model(nodePool).Update("labels", labelsJSON).Error
-		if err != nil {
-			return nil, err
-		}
-
-		if err := reloadNodePool(dbSession, nodePool); err != nil {
+		if err := reloadResource(dbSession, nodePool); err != nil {
 			return nil, err
 		}
 	}

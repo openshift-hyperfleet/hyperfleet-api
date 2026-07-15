@@ -158,7 +158,7 @@ See [Deployment](deployment.md) for Kubernetes/Helm deployment and [Authenticati
 
 ### Schema Validation (Local)
 
-The API validates cluster and nodepool `spec` fields against an OpenAPI schema. Configure the schema path:
+The API validates resource `spec` fields against an OpenAPI schema. Configure the schema path:
 
 ```bash
 # Via flag
@@ -306,7 +306,7 @@ Mock implementations of service interfaces are used for unit testing. Mocks are 
 Service files contain `//go:generate` directives that specify how to generate mocks:
 
 ```go
-//go:generate mockgen-v0.6.0 -source=cluster.go -package=services -destination=cluster_mock.go
+//go:generate mockgen-v0.6.0 -source=resource.go -package=services -destination=resource_mock.go
 ```
 
 **Commands**:

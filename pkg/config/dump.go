@@ -35,9 +35,6 @@ func DumpConfig(config *ApplicationConfig) string {
     BindAddress: %s
   Health:
     BindAddress: %s
-  Adapters:
-    ClusterAdapters: %v
-    NodePoolAdapters: %v
   Entities: %d registered (kinds: %v)
 `,
 		config.Server.BindAddress(),
@@ -56,8 +53,6 @@ func DumpConfig(config *ApplicationConfig) string {
 		config.Logging.OTel.Enabled,
 		config.Metrics.BindAddress(),
 		config.Health.BindAddress(),
-		safeAdapterList(config.Adapters, true),
-		safeAdapterList(config.Adapters, false),
 		len(config.Entities),
 		entityKindNames(config.Entities),
 	)
@@ -92,15 +87,4 @@ func entityKindNames(entities []registry.EntityDescriptor) []string {
 		kinds[i] = e.Kind
 	}
 	return kinds
-}
-
-// safeAdapterList safely extracts adapter list, handling nil config
-func safeAdapterList(adapters *AdapterRequirementsConfig, cluster bool) []string {
-	if adapters == nil {
-		return []string{}
-	}
-	if cluster {
-		return adapters.RequiredClusterAdapters()
-	}
-	return adapters.RequiredNodePoolAdapters()
 }

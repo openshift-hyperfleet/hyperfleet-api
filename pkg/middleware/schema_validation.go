@@ -70,24 +70,7 @@ func buildMatchers(specEntities []registry.EntityDescriptor) []specEntityMatcher
 // SchemaValidationMiddleware validates resource spec fields against OpenAPI schemas for every
 // registered entity that declares SpecSchemaName.
 func SchemaValidationMiddleware(validator *validators.SchemaValidator) func(http.Handler) http.Handler {
-
-	// TODO : HYPERFLEET-1159 - Remove this once Cluster and NodePool are registered
-	specEntities := []registry.EntityDescriptor{
-		{
-			Kind:           "Cluster",
-			Plural:         "clusters",
-			SpecSchemaName: "ClusterSpec",
-		},
-		{
-			Kind:           "NodePool",
-			Plural:         "nodepools",
-			ParentKind:     "Cluster",
-			SpecSchemaName: "NodePoolSpec",
-		},
-	}
-
-	specEntities = append(specEntities, registry.WithSpecSchema()...)
-	matchers := buildMatchers(specEntities)
+	matchers := buildMatchers(registry.WithSpecSchema())
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

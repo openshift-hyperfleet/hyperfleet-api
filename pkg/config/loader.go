@@ -2,7 +2,6 @@ package config
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"reflect"
@@ -63,11 +62,6 @@ func (l *ConfigLoader) Load(ctx context.Context, cmd *cobra.Command) (*Applicati
 	// This catches typos in bindAllEnvVars() or bindFlags() early
 	if err := l.validateBoundKeys(); err != nil {
 		return nil, err
-	}
-
-	// Step 5.5: Handle JSON array environment variables (for adapters)
-	if err := l.handleJSONArrayEnvVars(ctx); err != nil {
-		return nil, fmt.Errorf("failed to handle JSON array env vars: %w", err)
 	}
 
 	// Step 6: Unmarshal into ApplicationConfig struct
@@ -233,45 +227,6 @@ func (l *ConfigLoader) validateConfig(config *ApplicationConfig) error {
 	return fmt.Errorf("%s", strings.Join(errMessages, "\n"))
 }
 
-// handleJSONArrayEnvVars processes environment variables containing JSON arrays
-// Viper doesn't automatically parse JSON from env vars, so we handle this explicitly
-// Used for: HYPERFLEET_ADAPTERS_CLUSTER_ADAPTERS and HYPERFLEET_ADAPTERS_NODEPOOL_ADAPTERS
-func (l *ConfigLoader) handleJSONArrayEnvVars(ctx context.Context) error {
-	// Map of env var name -> viper key
-	jsonArrayMappings := map[string]string{
-		EnvPrefix + "_ADAPTERS_REQUIRED_CLUSTER":  "adapters.required.cluster",
-		EnvPrefix + "_ADAPTERS_REQUIRED_NODEPOOL": "adapters.required.nodepool",
-	}
-
-	for envVar, viperKey := range jsonArrayMappings {
-		jsonValue := os.Getenv(envVar)
-		if jsonValue == "" {
-			continue
-		}
-
-		// Parse JSON array
-		var arrayValue []string
-		if err := json.Unmarshal([]byte(jsonValue), &arrayValue); err != nil {
-			return fmt.Errorf("failed to parse %s as JSON array: %w (value: %s)", envVar, err, jsonValue)
-		}
-
-		// Always set the parsed JSON array value to override Viper's auto-env CSV parsing.
-		// Viper's AutomaticEnv treats comma-separated strings as arrays, incorrectly parsing
-		// JSON arrays like '["a","b"]' as ["[\"a\"", "\"b\"]"] instead of ["a", "b"].
-		//
-		// We use Set() to ensure proper JSON parsing overrides Viper's CSV parsing.
-		// This maintains ENV > Config > Default precedence for adapters.
-		//
-		// NOTE: Adapters currently have no CLI flags (see bindFlags line 494).
-		// If CLI flags are added in the future, this code needs updating to check
-		// if the value came from a flag before calling Set().
-		l.viper.Set(viperKey, arrayValue)
-		logger.With(ctx, "env_var", envVar, "count", len(arrayValue)).Debug("Parsed JSON array from environment")
-	}
-
-	return nil
-}
-
 // bindEnv wraps viper.BindEnv and tracks the key for validation
 func (l *ConfigLoader) bindEnv(key string) {
 	l.viper.BindEnv(key) //nolint:errcheck,gosec // BindEnv errors are rare and indicate programming errors
@@ -345,10 +300,6 @@ func (l *ConfigLoader) bindAllEnvVars() {
 	l.bindEnv("health.shutdown_timeout")
 	l.bindEnv("health.db_ping_timeout")
 
-	// Adapters config
-	l.bindEnv("adapters.required.cluster")
-	l.bindEnv("adapters.required.nodepool")
-
 	// Entities: config-file-only (complex list-of-struct type).
 	// No env var or CLI flag bindings — loaded exclusively via YAML config.
 }
@@ -413,8 +364,6 @@ func (l *ConfigLoader) bindFlags(cmd *cobra.Command) {
 	l.bindPFlag("health.tls.key_file", cmd.Flags().Lookup("health-tls-key-file"))
 	l.bindPFlag("health.shutdown_timeout", cmd.Flags().Lookup("health-shutdown-timeout"))
 	l.bindPFlag("health.db_ping_timeout", cmd.Flags().Lookup("health-db-ping-timeout"))
-
-	// Adapters: No flags (configured via env vars only)
 }
 
 // validateBoundKeys validates that all keys bound in bindAllEnvVars() and bindFlags()

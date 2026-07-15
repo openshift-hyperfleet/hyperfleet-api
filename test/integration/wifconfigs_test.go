@@ -29,7 +29,7 @@ func TestWifConfigSchemaValidation(t *testing.T) {
 	// Test 1: Valid spec (permissive schema accepts any object)
 	validInput := openapi.ResourceCreateRequest{
 		Kind: "WifConfig",
-		Name: "schema-valid-WifConfig",
+		Name: "schema-valid-wifconfig",
 		Spec: map[string]interface{}{
 			"projectId": "my-project",
 			"version":   "4.17",
@@ -208,7 +208,7 @@ func TestWifConfigPost_EmptyKind(t *testing.T) {
 
 	invalidInput := `{
 		"kind": "",
-		"name": "test-WifConfig",
+		"name": "test-wifconfig",
 		"spec": {}
 	}`
 
@@ -241,7 +241,7 @@ func TestWifConfigPost_WrongKind(t *testing.T) {
 
 	invalidInput := `{
 		"kind": "Cluster",
-		"name": "test-WifConfig",
+		"name": "test-wifconfig",
 		"spec": {}
 	}`
 
@@ -274,7 +274,7 @@ func TestWifConfigPost_NullSpec(t *testing.T) {
 
 	invalidInput := `{
 		"kind": "WifConfig",
-		"name": "test-WifConfig",
+		"name": "test-wifconfig",
 		"spec": null
 	}`
 
@@ -311,7 +311,7 @@ func TestWifConfigPost_MissingSpec(t *testing.T) {
 
 	invalidInput := `{
 		"kind": "WifConfig",
-		"name": "test-WifConfig"
+		"name": "test-wifconfig"
 	}`
 
 	restyResp, err := resty.R().

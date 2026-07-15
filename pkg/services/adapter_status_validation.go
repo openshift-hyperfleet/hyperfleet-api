@@ -13,9 +13,8 @@ import (
 // aggregation should be triggered. Returns (nil, false, nil) when the update should
 // be silently discarded.
 //
-// This is the shared implementation used by ClusterService, NodePoolService, and
-// ResourceService. Callers provide the resource generation and a pre-built logger
-// with entity-specific context fields.
+// This is the shared implementation used by ResourceService. Callers provide
+// the resource generation and a pre-built logger with entity-specific context fields.
 func validateAndClassifyAdapterStatus(
 	resourceGeneration int32,
 	adapterStatus *api.AdapterStatus,

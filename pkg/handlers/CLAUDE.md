@@ -12,7 +12,7 @@ Handlers use the `handlerConfig` pipeline defined in `framework.go`.
 
 ## handlerConfig Fields
 
-- `MarshalInto`: pointer to struct for JSON unmarshalling (e.g., `&openapi.ClusterCreateRequest{}`)
+- `MarshalInto`: pointer to struct for JSON unmarshalling (e.g., `&openapi.ResourceCreateRequest{}`)
 - `Validate`: slice of `func() *errors.ServiceError` — each returns nil on success
 - `Action`: `func() (interface{}, *errors.ServiceError)` — core business logic
 - `ErrorHandler`: optional custom error handler (rarely used)

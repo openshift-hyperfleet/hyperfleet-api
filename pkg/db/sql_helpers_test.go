@@ -19,32 +19,40 @@ func TestConditionsNodeConverterStatus(t *testing.T) {
 		expectError   bool
 	}{
 		{
-			name:         "Reconciled condition True",
-			field:        "status.conditions.Reconciled",
-			value:        "True",
-			expectedSQL:  "jsonb_path_query_first(status_conditions, ?::jsonpath) ->> 'status' = ?",
-			expectedArgs: []interface{}{`$[*] ? (@.type == "Reconciled")`, "True"},
+			name:  "Reconciled condition True",
+			field: "status.conditions.Reconciled",
+			value: "True",
+			expectedSQL: "EXISTS (SELECT 1 FROM resource_conditions " +
+				"WHERE resource_conditions.resource_id = resources.id " +
+				"AND resource_conditions.type = ? AND resource_conditions.status = ?)",
+			expectedArgs: []interface{}{"Reconciled", "True"},
 		},
 		{
-			name:         "Reconciled condition False",
-			field:        "status.conditions.Reconciled",
-			value:        "False",
-			expectedSQL:  "jsonb_path_query_first(status_conditions, ?::jsonpath) ->> 'status' = ?",
-			expectedArgs: []interface{}{`$[*] ? (@.type == "Reconciled")`, "False"},
+			name:  "Reconciled condition False",
+			field: "status.conditions.Reconciled",
+			value: "False",
+			expectedSQL: "EXISTS (SELECT 1 FROM resource_conditions " +
+				"WHERE resource_conditions.resource_id = resources.id " +
+				"AND resource_conditions.type = ? AND resource_conditions.status = ?)",
+			expectedArgs: []interface{}{"Reconciled", "False"},
 		},
 		{
-			name:         "Available condition True",
-			field:        "status.conditions.Available",
-			value:        "True",
-			expectedSQL:  "jsonb_path_query_first(status_conditions, ?::jsonpath) ->> 'status' = ?",
-			expectedArgs: []interface{}{`$[*] ? (@.type == "Available")`, "True"},
+			name:  "Available condition True",
+			field: "status.conditions.Available",
+			value: "True",
+			expectedSQL: "EXISTS (SELECT 1 FROM resource_conditions " +
+				"WHERE resource_conditions.resource_id = resources.id " +
+				"AND resource_conditions.type = ? AND resource_conditions.status = ?)",
+			expectedArgs: []interface{}{"Available", "True"},
 		},
 		{
-			name:         "Available condition Unknown",
-			field:        "status.conditions.Available",
-			value:        "Unknown",
-			expectedSQL:  "jsonb_path_query_first(status_conditions, ?::jsonpath) ->> 'status' = ?",
-			expectedArgs: []interface{}{`$[*] ? (@.type == "Available")`, "Unknown"},
+			name:  "Available condition Unknown",
+			field: "status.conditions.Available",
+			value: "Unknown",
+			expectedSQL: "EXISTS (SELECT 1 FROM resource_conditions " +
+				"WHERE resource_conditions.resource_id = resources.id " +
+				"AND resource_conditions.type = ? AND resource_conditions.status = ?)",
+			expectedArgs: []interface{}{"Available", "Unknown"},
 		},
 		{
 			name:          "Invalid condition status",
@@ -118,134 +126,134 @@ func TestConditionsNodeConverterSubfields(t *testing.T) {
 		expectError   bool
 	}{
 		{
-			name:        "last_updated_time less than",
-			field:       "status.conditions.Reconciled.last_updated_time",
-			op:          tsl.OpLT,
-			value:       "2026-03-06T00:00:00Z",
-			expectedSQL: "CAST(jsonb_path_query_first(status_conditions, ?::jsonpath) ->> ? AS TIMESTAMPTZ) < ?::timestamptz",
+			name:  "last_updated_time less than",
+			field: "status.conditions.Reconciled.last_updated_time",
+			op:    tsl.OpLT,
+			value: "2026-03-06T00:00:00Z",
+			expectedSQL: "(SELECT rc.last_updated_time FROM resource_conditions rc " +
+				"WHERE rc.resource_id = resources.id AND rc.type = ?) < ?::timestamptz",
 			expectedArgs: []interface{}{
-				`$[*] ? (@.type == "Reconciled")`,
-				"last_updated_time",
+				"Reconciled",
 				"2026-03-06T00:00:00Z",
 			},
 		},
 		{
-			name:        "last_updated_time greater than",
-			field:       "status.conditions.Reconciled.last_updated_time",
-			op:          tsl.OpGT,
-			value:       "2026-03-06T00:00:00Z",
-			expectedSQL: "CAST(jsonb_path_query_first(status_conditions, ?::jsonpath) ->> ? AS TIMESTAMPTZ) > ?::timestamptz",
+			name:  "last_updated_time greater than",
+			field: "status.conditions.Reconciled.last_updated_time",
+			op:    tsl.OpGT,
+			value: "2026-03-06T00:00:00Z",
+			expectedSQL: "(SELECT rc.last_updated_time FROM resource_conditions rc " +
+				"WHERE rc.resource_id = resources.id AND rc.type = ?) > ?::timestamptz",
 			expectedArgs: []interface{}{
-				`$[*] ? (@.type == "Reconciled")`,
-				"last_updated_time",
+				"Reconciled",
 				"2026-03-06T00:00:00Z",
 			},
 		},
 		{
-			name:        "last_updated_time less than or equal",
-			field:       "status.conditions.Reconciled.last_updated_time",
-			op:          tsl.OpLE,
-			value:       "2026-03-06T00:00:00Z",
-			expectedSQL: "CAST(jsonb_path_query_first(status_conditions, ?::jsonpath) ->> ? AS TIMESTAMPTZ) <= ?::timestamptz",
+			name:  "last_updated_time less than or equal",
+			field: "status.conditions.Reconciled.last_updated_time",
+			op:    tsl.OpLE,
+			value: "2026-03-06T00:00:00Z",
+			expectedSQL: "(SELECT rc.last_updated_time FROM resource_conditions rc " +
+				"WHERE rc.resource_id = resources.id AND rc.type = ?) <= ?::timestamptz",
 			expectedArgs: []interface{}{
-				`$[*] ? (@.type == "Reconciled")`,
-				"last_updated_time",
+				"Reconciled",
 				"2026-03-06T00:00:00Z",
 			},
 		},
 		{
-			name:        "last_updated_time greater than or equal",
-			field:       "status.conditions.Reconciled.last_updated_time",
-			op:          tsl.OpGE,
-			value:       "2026-03-06T00:00:00Z",
-			expectedSQL: "CAST(jsonb_path_query_first(status_conditions, ?::jsonpath) ->> ? AS TIMESTAMPTZ) >= ?::timestamptz",
+			name:  "last_updated_time greater than or equal",
+			field: "status.conditions.Reconciled.last_updated_time",
+			op:    tsl.OpGE,
+			value: "2026-03-06T00:00:00Z",
+			expectedSQL: "(SELECT rc.last_updated_time FROM resource_conditions rc " +
+				"WHERE rc.resource_id = resources.id AND rc.type = ?) >= ?::timestamptz",
 			expectedArgs: []interface{}{
-				`$[*] ? (@.type == "Reconciled")`,
-				"last_updated_time",
+				"Reconciled",
 				"2026-03-06T00:00:00Z",
 			},
 		},
 		{
-			name:        "last_updated_time equal",
-			field:       "status.conditions.Reconciled.last_updated_time",
-			op:          tsl.OpEQ,
-			value:       "2026-03-06T00:00:00Z",
-			expectedSQL: "CAST(jsonb_path_query_first(status_conditions, ?::jsonpath) ->> ? AS TIMESTAMPTZ) = ?::timestamptz",
+			name:  "last_updated_time equal",
+			field: "status.conditions.Reconciled.last_updated_time",
+			op:    tsl.OpEQ,
+			value: "2026-03-06T00:00:00Z",
+			expectedSQL: "(SELECT rc.last_updated_time FROM resource_conditions rc " +
+				"WHERE rc.resource_id = resources.id AND rc.type = ?) = ?::timestamptz",
 			expectedArgs: []interface{}{
-				`$[*] ? (@.type == "Reconciled")`,
-				"last_updated_time",
+				"Reconciled",
 				"2026-03-06T00:00:00Z",
 			},
 		},
 		{
-			name:        "last_updated_time not equal",
-			field:       "status.conditions.Reconciled.last_updated_time",
-			op:          tsl.OpNE,
-			value:       "2026-03-06T00:00:00Z",
-			expectedSQL: "CAST(jsonb_path_query_first(status_conditions, ?::jsonpath) ->> ? AS TIMESTAMPTZ) != ?::timestamptz",
+			name:  "last_updated_time not equal",
+			field: "status.conditions.Reconciled.last_updated_time",
+			op:    tsl.OpNE,
+			value: "2026-03-06T00:00:00Z",
+			expectedSQL: "(SELECT rc.last_updated_time FROM resource_conditions rc " +
+				"WHERE rc.resource_id = resources.id AND rc.type = ?) != ?::timestamptz",
 			expectedArgs: []interface{}{
-				`$[*] ? (@.type == "Reconciled")`,
-				"last_updated_time",
+				"Reconciled",
 				"2026-03-06T00:00:00Z",
 			},
 		},
 		{
-			name:        "last_transition_time less than",
-			field:       "status.conditions.Available.last_transition_time",
-			op:          tsl.OpLT,
-			value:       "2026-03-06T00:00:00Z",
-			expectedSQL: "CAST(jsonb_path_query_first(status_conditions, ?::jsonpath) ->> ? AS TIMESTAMPTZ) < ?::timestamptz",
+			name:  "last_transition_time less than",
+			field: "status.conditions.Available.last_transition_time",
+			op:    tsl.OpLT,
+			value: "2026-03-06T00:00:00Z",
+			expectedSQL: "(SELECT rc.last_transition_time FROM resource_conditions rc " +
+				"WHERE rc.resource_id = resources.id AND rc.type = ?) < ?::timestamptz",
 			expectedArgs: []interface{}{
-				`$[*] ? (@.type == "Available")`,
-				"last_transition_time",
+				"Available",
 				"2026-03-06T00:00:00Z",
 			},
 		},
 		{
-			name:        "observed_generation less than",
-			field:       "status.conditions.Reconciled.observed_generation",
-			op:          tsl.OpLT,
-			value:       float64(5),
-			expectedSQL: "CAST(jsonb_path_query_first(status_conditions, ?::jsonpath) ->> ? AS INTEGER) < ?",
+			name:  "observed_generation less than",
+			field: "status.conditions.Reconciled.observed_generation",
+			op:    tsl.OpLT,
+			value: float64(5),
+			expectedSQL: "(SELECT rc.observed_generation FROM resource_conditions rc " +
+				"WHERE rc.resource_id = resources.id AND rc.type = ?) < ?",
 			expectedArgs: []interface{}{
-				`$[*] ? (@.type == "Reconciled")`,
-				"observed_generation",
+				"Reconciled",
 				5,
 			},
 		},
 		{
-			name:        "observed_generation equal",
-			field:       "status.conditions.Reconciled.observed_generation",
-			op:          tsl.OpEQ,
-			value:       float64(3),
-			expectedSQL: "CAST(jsonb_path_query_first(status_conditions, ?::jsonpath) ->> ? AS INTEGER) = ?",
+			name:  "observed_generation equal",
+			field: "status.conditions.Reconciled.observed_generation",
+			op:    tsl.OpEQ,
+			value: float64(3),
+			expectedSQL: "(SELECT rc.observed_generation FROM resource_conditions rc " +
+				"WHERE rc.resource_id = resources.id AND rc.type = ?) = ?",
 			expectedArgs: []interface{}{
-				`$[*] ? (@.type == "Reconciled")`,
-				"observed_generation",
+				"Reconciled",
 				3,
 			},
 		},
 		{
-			name:        "KindTimestampLiteral preserves fractional seconds",
-			field:       "status.conditions.Reconciled.last_updated_time",
-			op:          tsl.OpLT,
-			value:       time.Date(2026, 3, 6, 12, 30, 45, 123456789, time.UTC),
-			expectedSQL: "CAST(jsonb_path_query_first(status_conditions, ?::jsonpath) ->> ? AS TIMESTAMPTZ) < ?::timestamptz",
+			name:  "KindTimestampLiteral preserves fractional seconds",
+			field: "status.conditions.Reconciled.last_updated_time",
+			op:    tsl.OpLT,
+			value: time.Date(2026, 3, 6, 12, 30, 45, 123456789, time.UTC),
+			expectedSQL: "(SELECT rc.last_updated_time FROM resource_conditions rc " +
+				"WHERE rc.resource_id = resources.id AND rc.type = ?) < ?::timestamptz",
 			expectedArgs: []interface{}{
-				`$[*] ? (@.type == "Reconciled")`,
-				"last_updated_time",
+				"Reconciled",
 				"2026-03-06T12:30:45.123456789Z",
 			},
 		},
 		{
-			name:        "KindTimestampLiteral without fractional seconds",
-			field:       "status.conditions.Reconciled.last_updated_time",
-			op:          tsl.OpGE,
-			value:       time.Date(2026, 3, 6, 0, 0, 0, 0, time.UTC),
-			expectedSQL: "CAST(jsonb_path_query_first(status_conditions, ?::jsonpath) ->> ? AS TIMESTAMPTZ) >= ?::timestamptz",
+			name:  "KindTimestampLiteral without fractional seconds",
+			field: "status.conditions.Reconciled.last_updated_time",
+			op:    tsl.OpGE,
+			value: time.Date(2026, 3, 6, 0, 0, 0, 0, time.UTC),
+			expectedSQL: "(SELECT rc.last_updated_time FROM resource_conditions rc " +
+				"WHERE rc.resource_id = resources.id AND rc.type = ?) >= ?::timestamptz",
 			expectedArgs: []interface{}{
-				`$[*] ? (@.type == "Reconciled")`,
-				"last_updated_time",
+				"Reconciled",
 				"2026-03-06T00:00:00Z",
 			},
 		},
@@ -398,8 +406,8 @@ func TestExtractConditionQueriesWithSubfields(t *testing.T) {
 			name:               "Subfield query only",
 			searchQuery:        "status.conditions.Reconciled.last_updated_time < '2026-03-06T00:00:00Z'",
 			expectedConditions: 1,
-			expectedConditionSQL: "CAST(jsonb_path_query_first(status_conditions, " +
-				"?::jsonpath) ->> ? AS TIMESTAMPTZ) < ?::timestamptz",
+			expectedConditionSQL: "(SELECT rc.last_updated_time FROM resource_conditions rc " +
+				"WHERE rc.resource_id = resources.id AND rc.type = ?) < ?::timestamptz",
 		},
 		{
 			name: "Mixed status and subfield queries",
@@ -466,10 +474,12 @@ func TestExtractConditionQueries(t *testing.T) {
 		expectError          bool
 	}{
 		{
-			name:                 "Single condition query",
-			searchQuery:          "status.conditions.Reconciled='True'",
-			expectedConditions:   1,
-			expectedConditionSQL: "jsonb_path_query_first(status_conditions, ?::jsonpath) ->> 'status' = ?",
+			name:               "Single condition query",
+			searchQuery:        "status.conditions.Reconciled='True'",
+			expectedConditions: 1,
+			expectedConditionSQL: "EXISTS (SELECT 1 FROM resource_conditions " +
+				"WHERE resource_conditions.resource_id = resources.id " +
+				"AND resource_conditions.type = ? AND resource_conditions.status = ?)",
 		},
 		{
 			name:               "No condition queries",
@@ -661,7 +671,7 @@ func TestGetField_SpecMapping(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			RegisterTestingT(t)
 
-			field, err := getField(tt.input, map[string]string{})
+			field, err := getField(tt.input)
 			if tt.expectError {
 				Expect(err).ToNot(BeNil())
 			} else {
@@ -670,26 +680,6 @@ func TestGetField_SpecMapping(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestGetField_SpecDisallowed(t *testing.T) {
-	RegisterTestingT(t)
-
-	disallowed := map[string]string{"spec": "spec"}
-
-	_, err := getField("spec.is_default", disallowed)
-	Expect(err).ToNot(BeNil())
-	Expect(err.Reason).To(ContainSubstring("not a valid field name"))
-}
-
-func TestGetField_PropertiesDisallowed(t *testing.T) {
-	RegisterTestingT(t)
-
-	disallowed := map[string]string{"properties": "properties"}
-
-	_, err := getField("properties.foo", disallowed)
-	Expect(err).ToNot(BeNil())
-	Expect(err.Reason).To(ContainSubstring("not a valid field name"))
 }
 
 func TestGetField_SpecNested(t *testing.T) {
@@ -729,7 +719,7 @@ func TestGetField_SpecNested(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			RegisterTestingT(t)
 
-			field, err := getField(tt.input, map[string]string{})
+			field, err := getField(tt.input)
 			Expect(err).To(BeNil())
 			Expect(field).To(Equal(tt.expected))
 		})
@@ -740,13 +730,11 @@ func TestGetField_SpecNested(t *testing.T) {
 // to spec JSONB fields when compared against a number. This logic was previously in a
 // separate WrapSpecNumericCasts tree walk and is now integrated into FieldNameWalk.
 func TestFieldNameWalk_NumericCast(t *testing.T) {
-	noDisallowed := map[string]string{}
-
 	parseAndWalk := func(t *testing.T, search string) *tsl.Node {
 		t.Helper()
 		tree, err := tsl.ParseTSL(search)
 		Expect(err).ToNot(HaveOccurred())
-		result, serviceErr := FieldNameWalk(tree.Node, noDisallowed)
+		result, serviceErr := FieldNameWalk(tree.Node)
 		Expect(serviceErr).To(BeNil())
 		return result
 	}
@@ -1089,7 +1077,7 @@ func TestExtractLabelQueries(t *testing.T) {
 			tslTreeWrapper, err := tsl.ParseTSL(tt.searchQuery)
 			Expect(err).ToNot(HaveOccurred())
 
-			remaining, labels, serviceErr := ExtractLabelQueries(tslTreeWrapper.Node, "resources")
+			remaining, labels, serviceErr := ExtractLabelQueries(tslTreeWrapper.Node)
 
 			if tt.expectError {
 				Expect(serviceErr).ToNot(BeNil())

@@ -42,10 +42,11 @@ func TestTransactionRollbackWithDAO(t *testing.T) {
 
 	// Step 2: Create a cluster using DAO
 	// This simulates what happens in a real POST request handler
-	cluster := &api.Cluster{
+	cluster := &api.Resource{
 		Meta: api.Meta{
 			ID: h.NewID(),
 		},
+		Kind:      "Cluster",
 		Name:      "transaction-test-cluster",
 		CreatedBy: "test-user",
 		UpdatedBy: "test-user",
@@ -58,7 +59,7 @@ func TestTransactionRollbackWithDAO(t *testing.T) {
 	Expect(err).NotTo(HaveOccurred(), "Failed to create cluster via GORM")
 
 	// Step 3: Verify cluster was inserted (in-transaction visibility)
-	var inTransactionCluster api.Cluster
+	var inTransactionCluster api.Resource
 	err = g2.Where("id = ?", cluster.ID).First(&inTransactionCluster).Error
 	Expect(err).NotTo(HaveOccurred(), "Should see cluster within transaction")
 
@@ -74,7 +75,7 @@ func TestTransactionRollbackWithDAO(t *testing.T) {
 	freshCtx := context.Background()
 	freshSession := h.DBFactory.New(freshCtx)
 
-	var afterRollbackCluster api.Cluster
+	var afterRollbackCluster api.Resource
 	err = freshSession.Where("id = ?", cluster.ID).First(&afterRollbackCluster).Error
 
 	// THE MOMENT OF TRUTH
@@ -104,10 +105,11 @@ func TestTransactionCommitWithDAO(t *testing.T) {
 	Expect(err).NotTo(HaveOccurred(), "Failed to create transaction context")
 
 	// Step 2: Create a cluster using DAO
-	cluster := &api.Cluster{
+	cluster := &api.Resource{
 		Meta: api.Meta{
 			ID: h.NewID(),
 		},
+		Kind:      "Cluster",
 		Name:      "transaction-commit-test",
 		CreatedBy: "test-user",
 		UpdatedBy: "test-user",
@@ -126,7 +128,7 @@ func TestTransactionCommitWithDAO(t *testing.T) {
 	freshCtx := context.Background()
 	freshSession := h.DBFactory.New(freshCtx)
 
-	var committedCluster api.Cluster
+	var committedCluster api.Resource
 	err = freshSession.Where("id = ?", cluster.ID).First(&committedCluster).Error
 
 	// Should find the cluster
@@ -146,16 +148,18 @@ func TestMultipleDAOOperationsInTransaction(t *testing.T) {
 	Expect(err).NotTo(HaveOccurred(), "Failed to create transaction context")
 
 	// Create two clusters in the same transaction
-	cluster1 := &api.Cluster{
+	cluster1 := &api.Resource{
 		Meta:      api.Meta{ID: h.NewID()},
+		Kind:      "Cluster",
 		Name:      "multi-op-cluster-1",
 		CreatedBy: "test-user",
 		UpdatedBy: "test-user",
 		Spec:      []byte(`{"op": 1}`),
 	}
 
-	cluster2 := &api.Cluster{
+	cluster2 := &api.Resource{
 		Meta:      api.Meta{ID: h.NewID()},
+		Kind:      "Cluster",
 		Name:      "multi-op-cluster-2",
 		CreatedBy: "test-user",
 		UpdatedBy: "test-user",
@@ -182,10 +186,10 @@ func TestMultipleDAOOperationsInTransaction(t *testing.T) {
 	freshCtx := context.Background()
 	freshSession := h.DBFactory.New(freshCtx)
 
-	var check1 api.Cluster
+	var check1 api.Resource
 	err1 := freshSession.Where("id = ?", cluster1.ID).First(&check1).Error
 
-	var check2 api.Cluster
+	var check2 api.Resource
 	err2 := freshSession.Where("id = ?", cluster2.ID).First(&check2).Error
 
 	// Both should NOT exist if transactions work

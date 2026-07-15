@@ -196,10 +196,12 @@ func (f *Testcontainer) ResetDB() {
 	// Truncate all business tables in the correct order (respecting FK constraints)
 	// Using CASCADE to handle foreign key constraints automatically
 	tables := []string{
-		"adapter_statuses", // Polymorphic table, no FK constraints
-		"node_pools",       // Has FK to clusters
-		"clusters",         // Referenced by node_pools
-		"events",           // Independent table
+		"adapter_statuses",    // Polymorphic table, no FK constraints
+		"resource_conditions", // Has FK to resources
+		"resource_labels",     // Has FK to resources
+		"resource_references", // Has FK to resources
+		"resources",           // Main entity table
+		"events",              // Independent table
 	}
 	for _, table := range tables {
 		if g2.Migrator().HasTable(table) {

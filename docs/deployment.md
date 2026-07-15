@@ -187,36 +187,30 @@ See [Issuer configuration reference](authentication.md#issuer-configuration-refe
 
 ## Configuring Required Adapters
 
-Adapters are external components (validation, DNS, pull-secret, HyperShift) that report status back to HyperFleet API. The `required` adapter lists define which adapters must report "ready" before a resource is considered **Reconciled**.
+Adapters are external components (validation, DNS, pull-secret, HyperShift) that report status back to HyperFleet API. Each entity type declares its required adapters via the `required_adapters` field in the entity descriptor. These define which adapters must report "ready" before a resource is considered **Reconciled**.
 
-By default, no adapters are required (`[]`). For production, configure the adapters your deployment uses:
-
-```bash
---set 'config.adapters.required.cluster={validation,dns,pullsecret,hypershift}' \
---set 'config.adapters.required.nodepool={validation,hypershift}'
-```
-
-Or in a values file:
+By default, Cluster and NodePool entity descriptors include required adapters. Customize them in your values file:
 
 ```yaml
 config:
-  adapters:
-    required:
-      cluster:
-        - validation
-        - dns
-        - pullsecret
-        - hypershift
-      nodepool:
-        - validation
-        - hypershift
+  entities:
+    - kind: Cluster
+      plural: clusters
+      required_adapters: [validation, dns, pullsecret, hypershift]
+      # ... other fields
+    - kind: NodePool
+      plural: nodepools
+      parent_kind: Cluster
+      on_parent_delete: cascade
+      required_adapters: [validation, hypershift]
+      # ... other fields
 ```
 
 ---
 
 ## Configuring Schema Validation
 
-The API can validate cluster and nodepool `spec` fields against a custom OpenAPI schema on every create/update request. This is **disabled by default**.
+The API can validate resource `spec` fields against a custom OpenAPI schema on every create/update request. This is **disabled by default**.
 
 ### Inline schema
 
@@ -289,8 +283,7 @@ helm uninstall hyperfleet-api --namespace hyperfleet-system
 | `image.repository` | Image repository | `openshift-hyperfleet/hyperfleet-api` |
 | `image.tag` | Image tag | `latest` |
 | `image.pullPolicy` | Image pull policy | `Always` |
-| `config.adapters.required.cluster` | Cluster adapters required for Ready state | `[]` |
-| `config.adapters.required.nodepool` | Nodepool adapters required for Ready state | `[]` |
+| `config.entities` | Entity descriptors with required adapters, schemas, etc. | (see values.yaml) |
 | `config.server.jwt.enabled` | Enable JWT authentication | `false` (Helm default; app default is `true`) |
 | `config.server.tls.enabled` | Enable TLS on the API listener | `false` |
 | `config.database.ssl.mode` | SSL mode for database connection | `disable` |
@@ -328,16 +321,8 @@ config:
           jwk_cert_url: https://your-idp.example.com/auth/realms/your-realm/protocol/openid-connect/certs
           # See "Issuer configuration reference" in authentication.md
 
-  adapters:
-    required:
-      cluster:
-        - validation
-        - dns
-        - pullsecret
-        - hypershift
-      nodepool:
-        - validation
-        - hypershift
+  # Entity descriptors with required adapters are configured in config.entities
+  # (see charts/values.yaml for defaults including Cluster and NodePool)
 
 database:
   postgresql:
@@ -374,8 +359,7 @@ helm install hyperfleet-api oci://quay.io/redhat-services-prod/hyperfleet-tenant
 | `image.tag` | Image tag | `""` (must be set) |
 | `image.pullPolicy` | Image pull policy | `Always` |
 | `config.server.jwt.enabled` | Enable JWT authentication | `false` |
-| `config.adapters.required.cluster` | Cluster adapters required for Reconciled state | `[]` |
-| `config.adapters.required.nodepool` | Nodepool adapters required for Reconciled state | `[]` |
+| `config.entities` | Entity descriptors (kinds, required adapters, schemas) | (see values.yaml) |
 | `database.postgresql.enabled` | Enable built-in PostgreSQL | `true` |
 | `database.external.enabled` | Use external database | `false` |
 | `database.external.secretName` | Secret containing database credentials | `""` |
@@ -480,7 +464,7 @@ Before deploying to production, ensure:
 - [ ] **Database**: External managed database configured (Cloud SQL, RDS, Azure Database)
 - [ ] **Secrets**: Database credentials stored in a Secret (not ConfigMap)
 - [ ] **Authentication**: JWT enabled with issuer and JWK URL configured
-- [ ] **Adapters**: Required adapters specified for cluster and nodepool
+- [ ] **Adapters**: Required adapters specified for each entity type in `config.entities`
 - [ ] **Config file permissions**: Config files (`--config` / `HYPERFLEET_CONFIG`) must be operator-trusted — see [below](#configuration-file-security)
 - [ ] **Resources**: CPU/memory limits and requests set
 - [ ] **Replicas**: Multiple replicas configured (`replicaCount >= 2`)
@@ -498,7 +482,7 @@ Before deploying to production, ensure:
 - **Tracing**: Enable distributed tracing for observability in production environments
 - **Resources**: Set CPU/memory limits and use multiple replicas for high availability
 - **Images**: Use specific image tags (semantic versioning) instead of `latest`
-- **Disruption**: Enable PodDisruptionBudget for zero-downtime during cluster maintenance
+- **Disruption**: Enable PodDisruptionBudget to help maintain availability during voluntary disruptions
 - **Health**: Configure health probes with appropriate timeouts for your workload
 
 ### Configuration File Security
@@ -549,8 +533,7 @@ helm install hyperfleet-api ./charts/ \
   --set database.postgresql.enabled=false \
   --set database.external.enabled=true \
   --set database.external.secretName=hyperfleet-db-external \
-  --set 'config.adapters.required.cluster={validation,dns,pullsecret,hypershift}' \
-  --set 'config.adapters.required.nodepool={validation,hypershift}'
+  --set-json 'config.entities[0].required_adapters=["validation","dns","pullsecret","hypershift"]'
 
 # 6. Verify deployment
 kubectl get pods

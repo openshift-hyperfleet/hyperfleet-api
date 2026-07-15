@@ -41,10 +41,7 @@ func NewSchemaValidator(schemaPath string) (*SchemaValidator, error) {
 		return doc.Components.Schemas[name] != nil
 	})
 
-	schemas, err := buildSchemasMap(doc)
-	if err != nil {
-		return nil, err
-	}
+	schemas := buildSchemasMap(doc)
 
 	return &SchemaValidator{
 		doc:     doc,
@@ -52,7 +49,7 @@ func NewSchemaValidator(schemaPath string) (*SchemaValidator, error) {
 	}, nil
 }
 
-func buildSchemasMap(doc *openapi3.T) (map[string]*ResourceSchema, error) {
+func buildSchemasMap(doc *openapi3.T) map[string]*ResourceSchema {
 	ctx := context.Background()
 	schemas := make(map[string]*ResourceSchema)
 
@@ -72,22 +69,7 @@ func buildSchemasMap(doc *openapi3.T) (map[string]*ResourceSchema, error) {
 		}
 	}
 
-	// TODO : HYPERFLEET-1159 - Remove this once Cluster and NodePool are registered
-	for _, hc := range []struct{ plural, schema string }{
-		{"clusters", "ClusterSpec"},
-		{"nodepools", "NodePoolSpec"},
-	} {
-		schemaRef := doc.Components.Schemas[hc.schema]
-		if schemaRef == nil {
-			return nil, fmt.Errorf("%s schema not found in OpenAPI spec", hc.schema)
-		}
-		schemas[hc.plural] = &ResourceSchema{
-			TypeName: hc.schema,
-			Schema:   schemaRef,
-		}
-	}
-
-	return schemas, nil
+	return schemas
 }
 
 // HasSchema reports whether a validation schema was loaded for the given resource plural.
@@ -104,20 +86,6 @@ func (v *SchemaValidator) Validate(resourcePlural string, spec map[string]interf
 	}
 
 	return v.validateSpec(spec, resourceSchema.Schema, resourceSchema.TypeName)
-}
-
-// ValidateClusterSpec validates a cluster spec against the ClusterSpec schema
-//
-// Deprecated: Use Validate("clusters", spec) instead
-func (v *SchemaValidator) ValidateClusterSpec(spec map[string]interface{}) error {
-	return v.Validate("clusters", spec)
-}
-
-// ValidateNodePoolSpec validates a nodepool spec against the NodePoolSpec schema
-//
-// Deprecated: Use Validate("nodepools", spec) instead
-func (v *SchemaValidator) ValidateNodePoolSpec(spec map[string]interface{}) error {
-	return v.Validate("nodepools", spec)
 }
 
 // validateSpec performs the actual validation and converts errors to our error format

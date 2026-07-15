@@ -153,7 +153,7 @@ func TestTransactionMiddleware_DBUnavailable(t *testing.T) {
 		{
 			name: "internal DB error (permission denied) - returns 500",
 			setupMock: func(mock sqlmock.Sqlmock) {
-				mock.ExpectBegin().WillReturnError(errors.New("permission denied for table clusters"))
+				mock.ExpectBegin().WillReturnError(errors.New("permission denied for table resources"))
 			},
 			expectedStatus: http.StatusInternalServerError,
 			expectedType:   "https://api.hyperfleet.io/errors/internal-error",

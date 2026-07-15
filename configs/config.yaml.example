@@ -102,41 +102,46 @@ health:
 
   shutdown_timeout: 20s             # Graceful shutdown timeout
   db_ping_timeout: 2s               # Database ping timeout for readiness check
-
-# Adapter Requirements Configuration
-adapters:
-  required:
-    cluster:                        # Required adapters for cluster resources
-      - validation
-      - dns
-      - pullsecret
-      - hypershift
-
-    nodepool:                       # Required adapters for nodepool resources
-      - validation
-      - hypershift
-
 # Entity Registration
 # Generic resource types registered at startup. Each entry auto-generates
 # REST endpoints, spec validation, and delete policies.
-# Cluster and NodePool use legacy typed handlers and are NOT listed here.
 entities:
+  - kind: Cluster
+    plural: clusters
+    spec_schema_name: ClusterSpec
+    required_adapters: [validation, dns, pullsecret, hypershift]
+
+    name_min_len: 3
+    name_max_len: 53
+    require_spec_schema: true
+
+  - kind: NodePool
+    plural: nodepools
+    parent_kind: Cluster
+    on_parent_delete: cascade
+    spec_schema_name: NodePoolSpec
+    required_adapters: [validation, hypershift]
+
+    name_min_len: 3
+    name_max_len: 15
+    require_spec_schema: true
+
   - kind: Channel
     plural: channels
     spec_schema_name: ChannelSpec
-    search_disallowed_fields: [spec]
+
 
   - kind: Version
     plural: versions
     parent_kind: Channel
     on_parent_delete: restrict
     spec_schema_name: VersionSpec
-    search_disallowed_fields: [spec]
+
 
   - kind: WifConfig
     plural: wifconfigs
     spec_schema_name: WifConfigSpec
-    search_disallowed_fields: [spec]
+
 
 # ----------------------------------------------------------------------------
 # Configuration Priority (highest to lowest):

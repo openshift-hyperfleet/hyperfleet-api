@@ -14,7 +14,7 @@ import (
 )
 
 // TestSearchLabelsMapping verifies that labels.xxx user-friendly syntax
-// correctly maps to JSONB query labels->>'xxx'
+// correctly maps to an EXISTS subquery on the resource_labels table
 func TestSearchLabelsMapping(t *testing.T) {
 	RegisterTestingT(t)
 	h, client := test.RegisterIntegration(t)
@@ -200,6 +200,83 @@ func TestSearchSpecSubfieldCombined(t *testing.T) {
 		}
 	}
 	Expect(foundDevV10).To(BeTrue(), "Expected to find dev channel cluster with version > 9")
+}
+
+// TestSearchSpecAndLabelsCombined verifies that spec subfield conditions
+// can be combined with label conditions using AND, exercising both the
+// JSONB spec query path and the resource_labels EXISTS subquery path.
+func TestSearchSpecAndLabelsCombined(t *testing.T) {
+	RegisterTestingT(t)
+	h, client := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+
+	// Create cluster: region=us-east in spec, env=prod label — should match
+	matchInput := openapi.ClusterCreateRequest{
+		Kind:   "Cluster",
+		Name:   fmt.Sprintf("sl-match-%s", h.NewID()[:8]),
+		Spec:   map[string]interface{}{"region": "us-east", "provider": "gcp"},
+		Labels: &map[string]string{"env": "prod"},
+	}
+	matchResp, err := client.PostClusterWithResponse(
+		ctx, openapi.PostClusterJSONRequestBody(matchInput), test.WithAuthToken(ctx),
+	)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(matchResp.StatusCode()).To(Equal(http.StatusCreated))
+	matchID := *matchResp.JSON201.Id
+
+	// Create cluster: region=us-east in spec, env=staging label — should NOT match
+	wrongLabel := openapi.ClusterCreateRequest{
+		Kind:   "Cluster",
+		Name:   fmt.Sprintf("sl-wlbl-%s", h.NewID()[:8]),
+		Spec:   map[string]interface{}{"region": "us-east", "provider": "gcp"},
+		Labels: &map[string]string{"env": "staging"},
+	}
+	wrongLabelResp, err := client.PostClusterWithResponse(
+		ctx, openapi.PostClusterJSONRequestBody(wrongLabel), test.WithAuthToken(ctx),
+	)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(wrongLabelResp.StatusCode()).To(Equal(http.StatusCreated))
+	wrongLabelID := *wrongLabelResp.JSON201.Id
+
+	// Create cluster: region=eu-west in spec, env=prod label — should NOT match
+	wrongSpec := openapi.ClusterCreateRequest{
+		Kind:   "Cluster",
+		Name:   fmt.Sprintf("sl-wspc-%s", h.NewID()[:8]),
+		Spec:   map[string]interface{}{"region": "eu-west", "provider": "aws"},
+		Labels: &map[string]string{"env": "prod"},
+	}
+	wrongSpecResp, err := client.PostClusterWithResponse(
+		ctx, openapi.PostClusterJSONRequestBody(wrongSpec), test.WithAuthToken(ctx),
+	)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(wrongSpecResp.StatusCode()).To(Equal(http.StatusCreated))
+	wrongSpecID := *wrongSpecResp.JSON201.Id
+
+	// Search: spec.region='us-east' AND labels.env='prod'
+	searchStr := "spec.region='us-east' AND labels.env='prod'"
+	search := openapi.SearchParams(searchStr)
+	params := &openapi.GetClustersParams{
+		Search: &search,
+	}
+	resp, err := client.GetClustersWithResponse(ctx, params, test.WithAuthToken(ctx))
+
+	Expect(err).NotTo(HaveOccurred())
+	Expect(resp.StatusCode()).To(Equal(http.StatusOK))
+	list := resp.JSON200
+	Expect(list).NotTo(BeNil())
+	Expect(list.Total).To(BeNumerically(">=", 1))
+
+	foundMatch := false
+	for _, item := range list.Items {
+		if *item.Id == matchID {
+			foundMatch = true
+		}
+		Expect(*item.Id).NotTo(Equal(wrongLabelID), "Wrong label cluster should be excluded")
+		Expect(*item.Id).NotTo(Equal(wrongSpecID), "Wrong spec cluster should be excluded")
+	}
+	Expect(foundMatch).To(BeTrue(), "Expected to find cluster matching both spec and label")
 }
 
 // TestSearchDeepNestedSpecSubfield verifies that spec paths with 3+ levels
@@ -582,8 +659,8 @@ func TestSearchStatusConditionsNotOperator(t *testing.T) {
 	Expect(err).NotTo(HaveOccurred())
 	Expect(mixedResp.StatusCode()).To(Equal(http.StatusBadRequest))
 
-	// "not" wrapping a non-condition
-	searchAllowed := "status.conditions.Reconciled='True' AND not labels.region='us-west'"
+	// "not" wrapping a non-condition, non-label field is allowed
+	searchAllowed := "status.conditions.Reconciled='True' AND not (name='nonexistent')"
 	searchAllowedParam := openapi.SearchParams(searchAllowed)
 	allowedParams := &openapi.GetClustersParams{
 		Search: &searchAllowedParam,

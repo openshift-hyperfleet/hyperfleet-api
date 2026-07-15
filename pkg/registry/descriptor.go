@@ -23,7 +23,6 @@ type ReferenceDescriptor struct {
 
 // EntityDescriptor defines everything specific to a HyperFleet entity type.
 // Descriptors are loaded from the application config YAML at startup via LoadDescriptors.
-// Cluster and NodePool use legacy typed plugins and are not registered here.
 type EntityDescriptor struct {
 	// discriminator value stored in Resource.Kind
 	Kind string `mapstructure:"kind" json:"kind"`
@@ -37,10 +36,12 @@ type EntityDescriptor struct {
 	OnParentDelete OnParentDeletePolicy `mapstructure:"on_parent_delete" json:"on_parent_delete,omitempty"`
 	// adapters that must finalize before hard-delete
 	RequiredAdapters []string `mapstructure:"required_adapters" json:"required_adapters,omitempty"`
-	// fields blocked from TSL search
-	SearchDisallowedFields []string `mapstructure:"search_disallowed_fields" json:"search_disallowed_fields,omitempty"` //nolint:lll
 	// non-ownership associations to other entity types (HYPERFLEET-1156)
 	References []ReferenceDescriptor `mapstructure:"references" json:"references,omitempty"`
 	// panic at startup if SpecSchemaName missing from spec
 	RequireSpecSchema bool `mapstructure:"require_spec_schema" json:"require_spec_schema,omitempty"`
+	// minimum name length (0 = no constraint)
+	NameMinLen int `mapstructure:"name_min_len" json:"name_min_len,omitempty"`
+	// maximum name length (0 = no constraint)
+	NameMaxLen int `mapstructure:"name_max_len" json:"name_max_len,omitempty"`
 }

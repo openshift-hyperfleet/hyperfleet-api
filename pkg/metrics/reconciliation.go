@@ -123,24 +123,20 @@ func (c *ReconciliationCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.durationDesc
 }
 
-// reconciliationQuery uses a CTE to parse JSONB once per row, then computes
-// all three metrics (pending count, stuck count, max stuck duration) in a
-// single query — 1 round-trip instead of 3.
+// reconciliationQuery uses a CTE to find resources whose Reconciled condition
+// is False, then computes all three metrics (pending count, stuck count, max
+// stuck duration) in a single query — 1 round-trip instead of 3.
 //
 //nolint:lll // SQL readability — breaking these lines across Go string boundaries would harm clarity
 const reconciliationQuery = `
 WITH unreconciled AS (
-    SELECT 'cluster' AS resource_type,
-           CASE WHEN deleted_time IS NOT NULL THEN 'true' ELSE 'false' END AS is_delete,
-           (jsonb_path_query_first(status_conditions, '$[*] ? (@.type == "Reconciled")') ->> 'last_transition_time')::timestamptz AS transition_time
-    FROM clusters
-    WHERE (jsonb_path_query_first(status_conditions, '$[*] ? (@.type == "Reconciled")') ->> 'status') = 'False'
-    UNION ALL
-    SELECT 'nodepool' AS resource_type,
-           CASE WHEN deleted_time IS NOT NULL THEN 'true' ELSE 'false' END AS is_delete,
-           (jsonb_path_query_first(status_conditions, '$[*] ? (@.type == "Reconciled")') ->> 'last_transition_time')::timestamptz AS transition_time
-    FROM node_pools
-    WHERE (jsonb_path_query_first(status_conditions, '$[*] ? (@.type == "Reconciled")') ->> 'status') = 'False'
+    SELECT LOWER(r.kind) AS resource_type,
+           CASE WHEN r.deleted_time IS NOT NULL THEN 'true' ELSE 'false' END AS is_delete,
+           rc.last_transition_time AS transition_time
+    FROM resources r
+    JOIN resource_conditions rc ON rc.resource_id = r.id
+    WHERE rc.type = 'Reconciled'
+      AND rc.status = 'False'
 )
 SELECT resource_type,
        is_delete,

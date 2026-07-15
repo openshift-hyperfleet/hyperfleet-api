@@ -8,8 +8,6 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/google/uuid"
-
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 )
@@ -20,6 +18,9 @@ const (
 	maxLabelValueLen    = 63
 	maxObservedTimeSkew = 5 * time.Minute  // tolerance for clock skew between adapter pods and API server
 	maxObservedTimeAge  = 30 * time.Minute // matches Sentinel staleness health check window
+	// dbNameMaxLen is the hard ceiling from the resources.name column (gorm:"size:100").
+	// Applied when a descriptor sets NameMaxLen = 0 (no configured limit).
+	dbNameMaxLen = 100
 )
 
 // dnsLabelPattern matches a single DNS label segment in a Kubernetes label key prefix:
@@ -63,14 +64,7 @@ func isValidLabelKeyPrefix(s string) bool {
 	return true
 }
 
-func validatePathID(id, name string) *errors.ServiceError {
-	if _, err := uuid.Parse(id); err != nil {
-		return errors.Validation("invalid %s format", name)
-	}
-	return nil
-}
-
-// Cluster/NodePool name pattern: compliant with Kubernetes DNS Subdomain Names (RFC 1123)
+// namePattern validates entity name syntax: compliant with Kubernetes DNS Subdomain Names (RFC 1123).
 // Must start and end with alphanumeric, can contain hyphens in the middle
 var namePattern = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)
 
@@ -107,22 +101,6 @@ func validateMaxLength(i interface{}, fieldName string, field string, maxLen int
 	}
 }
 
-func validateEmpty(i interface{}, fieldName string, field string) validate {
-	return func() *errors.ServiceError {
-		value := reflect.ValueOf(i).Elem().FieldByName(fieldName)
-		if value.Kind() == reflect.Ptr {
-			if value.IsNil() {
-				return nil
-			}
-			value = value.Elem()
-		}
-		if len(value.String()) != 0 {
-			return errors.Validation("%s must be empty", field)
-		}
-		return nil
-	}
-}
-
 // validateName validates that a name field matches the pattern ^[a-z0-9-]+$ and length constraints
 //
 //nolint:unparam // fieldName is kept as parameter for flexibility even though currently only "Name" is used
@@ -143,14 +121,18 @@ func validateName(i interface{}, fieldName string, field string, minLen, maxLen 
 			return errors.Validation("%s is required", field)
 		}
 
-		// Check minimum length
-		if len(name) < minLen {
+		// Check minimum length (0 = no constraint)
+		if minLen > 0 && len(name) < minLen {
 			return errors.Validation("%s must be at least %d characters", field, minLen)
 		}
 
-		// Check maximum length
-		if len(name) > maxLen {
-			return errors.Validation("%s must be at most %d characters", field, maxLen)
+		// Check maximum length (0 = no constraint beyond DB limit)
+		effectiveMax := maxLen
+		if effectiveMax == 0 {
+			effectiveMax = dbNameMaxLen
+		}
+		if len(name) > effectiveMax {
+			return errors.Validation("%s must be at most %d characters", field, effectiveMax)
 		}
 
 		// Check pattern: lowercase alphanumeric and hyphens only

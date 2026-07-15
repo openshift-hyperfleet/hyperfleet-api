@@ -17,6 +17,8 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/util"
 )
 
+const defaultPageSize = 20
+
 //go:generate mockgen-v0.6.0 -source=resource.go -package=services -destination=resource_mock.go
 
 type ResourceService interface {
@@ -35,16 +37,16 @@ type ResourceService interface {
 
 func NewResourceService(
 	resourceDao dao.ResourceDao,
+	resourceLabelDao dao.ResourceLabelDao,
 	adapterStatusDao dao.AdapterStatusDao,
 	resourceConditionDao dao.ResourceConditionDao,
-	resourceLabelDao dao.ResourceLabelDao,
 	generic GenericService,
 ) ResourceService {
 	return &sqlResourceService{
 		resourceDao:          resourceDao,
+		resourceLabelDao:     resourceLabelDao,
 		adapterStatusDao:     adapterStatusDao,
 		resourceConditionDao: resourceConditionDao,
-		resourceLabelDao:     resourceLabelDao,
 		generic:              generic,
 	}
 }
@@ -53,9 +55,9 @@ var _ ResourceService = &sqlResourceService{}
 
 type sqlResourceService struct {
 	resourceDao          dao.ResourceDao
+	resourceLabelDao     dao.ResourceLabelDao
 	adapterStatusDao     dao.AdapterStatusDao
 	resourceConditionDao dao.ResourceConditionDao
-	resourceLabelDao     dao.ResourceLabelDao
 	generic              GenericService
 }
 
@@ -116,6 +118,12 @@ func (s *sqlResourceService) Create(
 		return nil, handleCreateError(kind, err)
 	}
 
+	if len(resource.Labels) > 0 {
+		if labelErr := s.resourceLabelDao.ReplaceLabels(ctx, resource.ID, resource.Labels); labelErr != nil {
+			return nil, handleCreateError(kind, labelErr)
+		}
+	}
+
 	// Persist references after the resource row exists (FK requires source_id).
 	if len(refs) > 0 {
 		refRows := convertRefs(kind, resource.ID, refs)
@@ -125,9 +133,14 @@ func (s *sqlResourceService) Create(
 		resource.References = refRows
 	}
 
-	if len(resource.Labels) > 0 {
-		if labelErr := s.resourceLabelDao.ReplaceLabels(ctx, resource.ID, resource.Labels); labelErr != nil {
-			return nil, handleCreateError(kind, labelErr)
+	// Initialize conditions for entities with required adapters, matching the
+	// old ClusterService/NodePoolService behavior. Without this, newly created
+	// resources have no conditions rows, making them invisible to reconciliation
+	// metrics (INNER JOIN resource_conditions) and status search queries.
+	desc := registry.MustGet(kind)
+	if len(desc.RequiredAdapters) > 0 {
+		if svcErr := s.recomputeAndSaveResourceConditions(ctx, resource, nil); svcErr != nil {
+			return nil, svcErr
 		}
 	}
 
@@ -188,6 +201,22 @@ func (s *sqlResourceService) Patch(
 	if labelsChanged {
 		if labelErr := s.resourceLabelDao.ReplaceLabels(ctx, resource.ID, resource.Labels); labelErr != nil {
 			return nil, handleUpdateError(kind, labelErr)
+		}
+	}
+
+	// Recompute conditions after generation change - the Reconciled condition
+	// must flip to False when the new generation hasn't been observed by adapters yet.
+	// Only applies to entities with required adapters; zero-adapter entities have no
+	// conditions to track.
+	desc := registry.MustGet(kind)
+	if len(desc.RequiredAdapters) > 0 {
+		adapterStatuses, statusErr := s.adapterStatusDao.FindByResource(ctx, kind, resource.ID)
+		if statusErr != nil {
+			db.MarkForRollback(ctx, statusErr)
+			return nil, errors.GeneralError("failed to get adapter statuses for condition recompute: %s", statusErr)
+		}
+		if svcErr := s.recomputeAndSaveResourceConditions(ctx, resource, adapterStatuses); svcErr != nil {
+			return nil, svcErr
 		}
 	}
 
@@ -277,6 +306,15 @@ func (s *sqlResourceService) deleteResourceTree(
 		if saveErr := s.resourceDao.Save(ctx, resource); saveErr != nil {
 			return handleSoftDeleteError(resource.Kind, saveErr)
 		}
+		// Recompute conditions — generation incremented, Reconciled must flip to False.
+		adapterStatuses, statusErr := s.adapterStatusDao.FindByResource(ctx, resource.Kind, resource.ID)
+		if statusErr != nil {
+			db.MarkForRollback(ctx, statusErr)
+			return errors.GeneralError("failed to get adapter statuses for condition recompute: %s", statusErr)
+		}
+		if svcErr := s.recomputeAndSaveResourceConditions(ctx, resource, adapterStatuses); svcErr != nil {
+			return svcErr
+		}
 		return nil
 	}
 
@@ -360,7 +398,7 @@ func (s *sqlResourceService) List(
 		return nil, nil, svcErr
 	}
 	if args == nil {
-		args = &ListArguments{Page: 1, Size: 20}
+		args = &ListArguments{Page: 1, Size: defaultPageSize}
 	}
 	scopedArgs := *args
 	scopedArgs.Preloads = append(append([]string(nil), scopedArgs.Preloads...), "Labels", "Conditions", "References")
@@ -391,7 +429,7 @@ func (s *sqlResourceService) ListByOwner(
 		return nil, nil, svcErr
 	}
 	if args == nil {
-		args = &ListArguments{Page: 1, Size: 20}
+		args = &ListArguments{Page: 1, Size: defaultPageSize}
 	}
 	scopedArgs := *args
 	scopedArgs.Preloads = append(append([]string(nil), scopedArgs.Preloads...), "Labels", "Conditions", "References")
@@ -431,7 +469,7 @@ func (s *sqlResourceService) ListAll(
 	ctx context.Context, args *ListArguments,
 ) (api.ResourceList, *api.PagingMeta, *errors.ServiceError) {
 	if args == nil {
-		args = &ListArguments{Page: 1, Size: 20}
+		args = &ListArguments{Page: 1, Size: defaultPageSize}
 	}
 	scopedArgs := *args
 	scopedArgs.Preloads = append(append([]string(nil), scopedArgs.Preloads...), "Labels", "Conditions", "References")
@@ -449,8 +487,7 @@ func (s *sqlResourceService) ListAll(
 }
 
 // ProcessAdapterStatus validates, upserts an adapter status report, and triggers
-// status aggregation for a generic resource. Follows the same 4-DB-call pattern
-// as ClusterService.ProcessAdapterStatus:
+// status aggregation for a generic resource. Follows a 4-DB-call pattern:
 //  1. GetForUpdate        — lock + fetch resource with conditions
 //  2. FindByResource      — all adapter statuses (existing found in-memory)
 //  3. Upsert              — write adapter status
@@ -600,7 +637,7 @@ func (s *sqlResourceService) recomputeAndSaveResourceConditions(
 	newConditions = append(newConditions, reconciled, lastKnownReconciled)
 	newConditions = append(newConditions, adapterConditions...)
 
-	// Compare via JSON to detect actual changes (same approach as cluster.go).
+	// Compare via JSON to detect actual changes.
 	newJSON, marshalErr := json.Marshal(newConditions)
 	if marshalErr != nil {
 		return errors.GeneralError("Failed to marshal conditions: %s", marshalErr)
@@ -614,6 +651,9 @@ func (s *sqlResourceService) recomputeAndSaveResourceConditions(
 	if err := s.resourceConditionDao.UpdateConditions(ctx, resource.ID, newConditions); err != nil {
 		return errors.GeneralError("Failed to update resource conditions: %s", err)
 	}
+
+	// Update the in-memory resource so callers see the new conditions.
+	resource.Conditions = newConditions
 
 	// Emit metric on Reconciled=False transition (reconciliation started).
 	if reconciled.Status == api.ConditionFalse &&

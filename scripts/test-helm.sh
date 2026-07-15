@@ -21,8 +21,6 @@ DEFAULT_SETS=(
   --set image.registry=quay.io
   --set image.repository=openshift-hyperfleet/hyperfleet-api
   --set image.tag=test
-  --set 'adapters.cluster=["validation"]'
-  --set 'adapters.nodepool=["validation"]'
 )
 
 render() {
@@ -153,8 +151,6 @@ pass "JWT with jwk_cert_ca_file config template"
 
 run_test "template with custom image"
 helm template "$RELEASE_NAME" "$CHART_DIR" \
-  --set 'adapters.cluster=["validation"]' \
-  --set 'adapters.nodepool=["validation"]' \
   --set image.registry=quay.io \
   --set image.repository=myorg/hyperfleet-api \
   --set image.tag=v1.0.0 | kubeconform_validate
@@ -188,14 +184,6 @@ assert_not_contains "$OUTPUT" 'name: db-migrate' "db-migrate should not appear w
 echo "$OUTPUT" | kubeconform_validate
 pass "Native sidecar without database config template"
 
-run_test "template with full adapter config"
-helm template "$RELEASE_NAME" "$CHART_DIR" \
-  --set image.registry=quay.io \
-  --set image.repository=openshift-hyperfleet/hyperfleet-api \
-  --set image.tag=test \
-  --set-json 'adapters.cluster=["validation","dns","pullsecret","hypershift"]' \
-  --set-json 'adapters.nodepool=["validation","hypershift"]' | kubeconform_validate
-pass "Full adapter config template"
 
 # ─── Validation schema tests ─────────────────────────────────────────
 

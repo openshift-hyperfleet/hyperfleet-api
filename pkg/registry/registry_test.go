@@ -304,19 +304,17 @@ func TestDescriptorFields(t *testing.T) {
 	Reset()
 
 	Register(EntityDescriptor{
-		Kind:                   "Version",
-		Plural:                 "versions",
-		ParentKind:             "Channel",
-		OnParentDelete:         OnParentDeleteRestrict,
-		SpecSchemaName:         "VersionSpec",
-		SearchDisallowedFields: []string{"spec"},
+		Kind:           "Version",
+		Plural:         "versions",
+		ParentKind:     "Channel",
+		OnParentDelete: OnParentDeleteRestrict,
+		SpecSchemaName: "VersionSpec",
 	})
 
 	d := MustGet("Version")
 	Expect(d.ParentKind).To(Equal("Channel"))
 	Expect(d.OnParentDelete).To(Equal(OnParentDeleteRestrict))
 	Expect(d.SpecSchemaName).To(Equal("VersionSpec"))
-	Expect(d.SearchDisallowedFields).To(ConsistOf("spec"))
 }
 
 func TestLoadDescriptors_RegistersAll(t *testing.T) {
@@ -371,26 +369,23 @@ func TestLoadDescriptors_AllFields(t *testing.T) {
 
 	LoadDescriptors([]EntityDescriptor{
 		{
-			Kind:                   "Cluster",
-			Plural:                 "clusters",
-			SpecSchemaName:         "ClusterSpec",
-			SearchDisallowedFields: []string{"spec"},
-			RequiredAdapters:       []string{"provisioner"},
+			Kind:             "Cluster",
+			Plural:           "clusters",
+			SpecSchemaName:   "ClusterSpec",
+			RequiredAdapters: []string{"provisioner"},
 		},
 		{
-			Kind:                   "NodePool",
-			Plural:                 "nodepools",
-			ParentKind:             "Cluster",
-			OnParentDelete:         OnParentDeleteCascade,
-			SpecSchemaName:         "NodePoolSpec",
-			SearchDisallowedFields: []string{"spec"},
-			RequiredAdapters:       []string{"provisioner", "lifecycle"},
+			Kind:             "NodePool",
+			Plural:           "nodepools",
+			ParentKind:       "Cluster",
+			OnParentDelete:   OnParentDeleteCascade,
+			SpecSchemaName:   "NodePoolSpec",
+			RequiredAdapters: []string{"provisioner", "lifecycle"},
 		},
 	})
 
 	cluster := MustGet("Cluster")
 	Expect(cluster.SpecSchemaName).To(Equal("ClusterSpec"))
-	Expect(cluster.SearchDisallowedFields).To(ConsistOf("spec"))
 	Expect(cluster.RequiredAdapters).To(ConsistOf("provisioner"))
 	Expect(cluster.ParentKind).To(BeEmpty())
 

@@ -138,26 +138,6 @@ data:
 
       shutdown_timeout: {{ .Values.config.health.shutdown_timeout }}
       db_ping_timeout: {{ .Values.config.health.db_ping_timeout }}
-
-    adapters:
-      required:
-        cluster:
-{{- if .Values.config.adapters.required.cluster }}
-{{- range .Values.config.adapters.required.cluster }}
-          - {{ . }}
-{{- end }}
-{{- else }}
-          []
-{{- end }}
-        nodepool:
-{{- if .Values.config.adapters.required.nodepool }}
-{{- range .Values.config.adapters.required.nodepool }}
-          - {{ . }}
-{{- end }}
-{{- else }}
-          []
-{{- end }}
-
     # NOTE: When EntityDescriptor gains many more fields, consider replacing
     # the explicit range below with: .Values.config.entities | toYaml | indent 6
 {{- if .Values.config.entities }}
@@ -172,17 +152,20 @@ data:
         on_parent_delete: {{ .on_parent_delete }}
 {{- end }}
         spec_schema_name: {{ .spec_schema_name }}
-{{- if .search_disallowed_fields }}
-        search_disallowed_fields:
-{{- range .search_disallowed_fields }}
-          - {{ . }}
-{{- end }}
-{{- end }}
 {{- if .required_adapters }}
         required_adapters:
 {{- range .required_adapters }}
           - {{ . }}
 {{- end }}
+{{- end }}
+{{- if .name_min_len }}
+        name_min_len: {{ .name_min_len }}
+{{- end }}
+{{- if .name_max_len }}
+        name_max_len: {{ .name_max_len }}
+{{- end }}
+{{- if .require_spec_schema }}
+        require_spec_schema: {{ .require_spec_schema }}
 {{- end }}
 {{- if .references }}
         references:

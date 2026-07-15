@@ -16,9 +16,7 @@ hyperfleet-api serve --config=config.yaml
 **Production (Kubernetes):**
 
 ```bash
-helm install hyperfleet-api oci://quay.io/redhat-services-prod/hyperfleet-tenant/hyperfleet/hyperfleet-api-chart:<tag> \
-  --set 'config.adapters.required.cluster={validation,dns}' \
-  --set 'config.adapters.required.nodepool={validation}'
+helm install hyperfleet-api oci://quay.io/redhat-services-prod/hyperfleet-tenant/hyperfleet/hyperfleet-api-chart:<tag>
 ```
 
 > **Note:** You may also choose to install from the ./charts folder, if you've cloned this repository locally.
@@ -162,36 +160,6 @@ database:
     conn_retry_interval: 5s
 ```
 
-### Adapters Configuration
-
-Specifies which adapters must be ready for resources to be marked as "Ready". Should be configured for production deployments.
-
-| Property | Type | Default | Description |
-|----------|------|---------|-------------|
-| `adapters.required.cluster` | []string | `[]` | Cluster adapters required for Ready state (e.g., `["validation","dns"]`) |
-| `adapters.required.nodepool` | []string | `[]` | Nodepool adapters required for Ready state (e.g., `["validation"]`) |
-
-**Example:**
-
-```yaml
-adapters:
-  required:
-    cluster:
-      - validation
-      - dns
-      - pullsecret
-      - hypershift
-    nodepool:
-      - validation
-      - hypershift
-```
-
-**Environment variable (JSON array format):**
-
-```bash
-export HYPERFLEET_ADAPTERS_REQUIRED_CLUSTER='["validation","dns","pullsecret","hypershift"]'
-export HYPERFLEET_ADAPTERS_REQUIRED_NODEPOOL='["validation","hypershift"]'
-```
 
 ### Logging Configuration
 
@@ -402,9 +370,6 @@ Complete table of all configuration properties, their environment variables, and
 | `health.tls.enabled` | `HYPERFLEET_HEALTH_TLS_ENABLED` | bool | `false` |
 | `health.shutdown_timeout` | `HYPERFLEET_HEALTH_SHUTDOWN_TIMEOUT` | duration | `20s` |
 | `health.db_ping_timeout` | `HYPERFLEET_HEALTH_DB_PING_TIMEOUT` | duration | `2s` |
-| **Adapters** | | | |
-| `adapters.required.cluster` | `HYPERFLEET_ADAPTERS_REQUIRED_CLUSTER` | json | `[]` |
-| `adapters.required.nodepool` | `HYPERFLEET_ADAPTERS_REQUIRED_NODEPOOL` | json | `[]` |
 
 ### CLI Flags Reference
 
@@ -466,11 +431,6 @@ server:
 
 database:
   password: devpassword
-
-adapters:
-  required:
-    cluster: []
-    nodepool: []
 ```
 
 ### Enable TLS
@@ -520,10 +480,12 @@ The application performs comprehensive validation at startup.
 - `logging.level`: must be `debug`, `info`, `warn`, or `error`
 - `logging.format`: must be `json` or `text`
 
-**Adapters**:
+**Entities**:
 
-- `adapters.required.cluster`: must be array of strings
-- `adapters.required.nodepool`: must be array of strings
+- `entities[].required_adapters`: must be array of strings
+- `entities[].name_min_len`: integer, minimum resource name length (0 = no constraint)
+- `entities[].name_max_len`: integer, maximum resource name length (0 = no constraint)
+- `entities[].require_spec_schema`: boolean, fail startup if spec schema is missing
 
 ### Validation Errors
 

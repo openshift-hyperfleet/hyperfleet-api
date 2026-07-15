@@ -160,8 +160,9 @@ func TestNodePoolStatusPut(t *testing.T) {
 	nodePool, err := h.Factories.NewNodePools(h.NewID())
 	Expect(err).NotTo(HaveOccurred())
 	Expect(nodePool).NotTo(BeNil(), "nodePool should not be nil")
-	Expect(nodePool.OwnerID).NotTo(BeEmpty(), "nodePool.OwnerID should not be empty")
+	Expect(nodePool.OwnerID).NotTo(BeNil(), "nodePool.OwnerID should not be nil")
 	Expect(nodePool.ID).NotTo(BeEmpty(), "nodePool.ID should not be empty")
+	clusterID := *nodePool.OwnerID
 
 	// Create an adapter status for the nodepool
 	data := map[string]interface{}{
@@ -197,7 +198,7 @@ func TestNodePoolStatusPut(t *testing.T) {
 
 	// Use nodePool.OwnerID as the cluster_id parameter
 	resp, err := client.PutNodePoolStatusesWithResponse(
-		ctx, nodePool.OwnerID, nodePool.ID,
+		ctx, clusterID, nodePool.ID,
 		openapi.PutNodePoolStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
 	)
 	Expect(err).NotTo(HaveOccurred(), "Error updating nodepool status: %v", err)
@@ -217,6 +218,8 @@ func TestNodePoolStatusGet(t *testing.T) {
 	// Create a nodepool (which also creates its parent cluster)
 	nodePool, err := h.Factories.NewNodePools(h.NewID())
 	Expect(err).NotTo(HaveOccurred())
+	Expect(nodePool.OwnerID).NotTo(BeNil(), "nodePool.OwnerID should not be nil")
+	clusterID := *nodePool.OwnerID
 
 	// Create a few adapter statuses
 	for i := 0; i < 2; i++ {
@@ -245,14 +248,14 @@ func TestNodePoolStatusGet(t *testing.T) {
 		)
 		// Use nodePool.OwnerID as the cluster_id parameter
 		_, err = client.PutNodePoolStatusesWithResponse(
-			ctx, nodePool.OwnerID, nodePool.ID,
+			ctx, clusterID, nodePool.ID,
 			openapi.PutNodePoolStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
 		)
 		Expect(err).NotTo(HaveOccurred())
 	}
 
 	// Get all statuses for the nodepool
-	resp, err := client.GetNodePoolsStatusesWithResponse(ctx, nodePool.OwnerID, nodePool.ID, nil, test.WithAuthToken(ctx))
+	resp, err := client.GetNodePoolsStatusesWithResponse(ctx, clusterID, nodePool.ID, nil, test.WithAuthToken(ctx))
 	Expect(err).NotTo(HaveOccurred(), "Error getting nodepool statuses: %v", err)
 	Expect(resp.StatusCode()).To(Equal(http.StatusOK))
 	Expect(resp.JSON200).NotTo(BeNil())
@@ -512,6 +515,8 @@ func TestNodePoolStatusPut_FirstUnknownAccepted(t *testing.T) {
 	// Create a nodepool (which also creates its parent cluster)
 	nodePool, err := h.Factories.NewNodePools(h.NewID())
 	Expect(err).NotTo(HaveOccurred())
+	Expect(nodePool.OwnerID).NotTo(BeNil(), "nodePool.OwnerID should not be nil")
+	clusterID := *nodePool.OwnerID
 
 	// Create an adapter status with all mandatory conditions but Available=Unknown
 	statusInput := newAdapterStatusRequest(
@@ -539,7 +544,7 @@ func TestNodePoolStatusPut_FirstUnknownAccepted(t *testing.T) {
 
 	// First report with Unknown Available condition: should be accepted
 	resp, err := client.PutNodePoolStatusesWithResponse(
-		ctx, nodePool.OwnerID, nodePool.ID,
+		ctx, clusterID, nodePool.ID,
 		openapi.PutNodePoolStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
 	)
 	Expect(err).NotTo(HaveOccurred(), "Error updating nodepool status: %v", err)
@@ -548,7 +553,7 @@ func TestNodePoolStatusPut_FirstUnknownAccepted(t *testing.T) {
 
 	// Verify status was stored
 	listResp, err := client.GetNodePoolsStatusesWithResponse(
-		ctx, nodePool.OwnerID, nodePool.ID, nil, test.WithAuthToken(ctx),
+		ctx, clusterID, nodePool.ID, nil, test.WithAuthToken(ctx),
 	)
 	Expect(err).NotTo(HaveOccurred())
 	Expect(listResp.JSON200).NotTo(BeNil())
@@ -564,7 +569,7 @@ func TestNodePoolStatusPut_FirstUnknownAccepted(t *testing.T) {
 
 	// Subsequent report with same adapter: should be rejected (204 No Content)
 	resp2, err := client.PutNodePoolStatusesWithResponse(
-		ctx, nodePool.OwnerID, nodePool.ID,
+		ctx, clusterID, nodePool.ID,
 		openapi.PutNodePoolStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
 	)
 	Expect(err).NotTo(HaveOccurred(), "Error updating nodepool status: %v", err)
@@ -1202,6 +1207,8 @@ func TestNodePoolStatusPut_FutureObservedTimeRejected(t *testing.T) {
 
 	nodePool, err := h.Factories.NewNodePools(h.NewID())
 	Expect(err).NotTo(HaveOccurred())
+	Expect(nodePool.OwnerID).NotTo(BeNil(), "nodePool.OwnerID should not be nil")
+	clusterID := *nodePool.OwnerID
 
 	statusInput := openapi.AdapterStatusCreateRequest{
 		Adapter:            "test-nodepool-adapter",
@@ -1215,7 +1222,7 @@ func TestNodePoolStatusPut_FutureObservedTimeRejected(t *testing.T) {
 	}
 
 	resp, err := client.PutNodePoolStatusesWithResponse(
-		ctx, nodePool.OwnerID, nodePool.ID,
+		ctx, clusterID, nodePool.ID,
 		openapi.PutNodePoolStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
 	)
 	Expect(err).NotTo(HaveOccurred())
@@ -1234,6 +1241,8 @@ func TestNodePoolStatusPut_InvalidStatusRejected(t *testing.T) {
 	// Create a nodepool (which also creates its parent cluster)
 	nodePool, err := h.Factories.NewNodePools(h.NewID())
 	Expect(err).NotTo(HaveOccurred())
+	Expect(nodePool.OwnerID).NotTo(BeNil(), "nodePool.OwnerID should not be nil")
+	clusterID := *nodePool.OwnerID
 
 	testCases := []struct {
 		name          string
@@ -1258,7 +1267,7 @@ func TestNodePoolStatusPut_InvalidStatusRejected(t *testing.T) {
 		)
 
 		resp, err := client.PutNodePoolStatusesWithResponse(
-			ctx, nodePool.OwnerID, nodePool.ID,
+			ctx, clusterID, nodePool.ID,
 			openapi.PutNodePoolStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
 		)
 		Expect(err).NotTo(HaveOccurred(), "Test case: "+tc.name)

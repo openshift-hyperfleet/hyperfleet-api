@@ -449,8 +449,11 @@ func TestSliceFilter(t *testing.T) {
 }
 
 const (
-	testClusterID1  = "cluster-id1"
-	testNodePoolID1 = "nodepool-id1"
+	testClusterID1                   = "cluster-id1"
+	testNodePoolID1                  = "nodepool-id1"
+	testMessageComponentsUnavailable = "Some components unavailable"
+	clusterKind                      = "Cluster"
+	nodePoolKind                     = "NodePool"
 )
 
 func createTestCluster() openapi.Cluster {

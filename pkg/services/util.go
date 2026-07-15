@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	e "errors"
 	"reflect"
+	"slices"
 	"strings"
 
 	"gorm.io/gorm"
@@ -15,6 +16,8 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
+
+const defaultSystemUser = "system@hyperfleet.local"
 
 func jsonEqual(a, b []byte) bool {
 	if len(a) == 0 && len(b) == 0 {
@@ -124,4 +127,40 @@ func actorFromContext(ctx context.Context) string {
 		return caller
 	}
 	return defaultSystemUser
+}
+
+func findAdapterStatusInList(statuses api.AdapterStatusList, adapter string) *api.AdapterStatus {
+	for _, s := range statuses {
+		if s.Adapter == adapter {
+			return s
+		}
+	}
+	return nil
+}
+
+// replaceAdapterStatusInList returns a copy of the list with the entry for the given adapter
+// replaced (or appended if not present). Used to build an up-to-date snapshot for aggregation
+// after an upsert without re-querying.
+func replaceAdapterStatusInList(statuses api.AdapterStatusList, updated *api.AdapterStatus) api.AdapterStatusList {
+	result := make(api.AdapterStatusList, 0, len(statuses)+1)
+	found := false
+	for _, s := range statuses {
+		if s.Adapter == updated.Adapter && s.ResourceType == updated.ResourceType && s.ResourceID == updated.ResourceID {
+			result = append(result, updated)
+			found = true
+		} else {
+			result = append(result, s)
+		}
+	}
+	if !found {
+		result = append(result, updated)
+	}
+	return result
+}
+
+// incomingReportedFinalized returns true when the adapter conditions contain Finalized=True.
+func incomingReportedFinalized(conditions []api.AdapterCondition) bool {
+	return slices.ContainsFunc(conditions, func(c api.AdapterCondition) bool {
+		return c.Type == api.AdapterConditionTypeFinalized && c.Status == api.AdapterConditionTrue
+	})
 }
