@@ -306,6 +306,10 @@ func (s *sqlResourceService) deleteResourceTree(
 		if saveErr := s.resourceDao.Save(ctx, resource); saveErr != nil {
 			return handleSoftDeleteError(resource.Kind, saveErr)
 		}
+		// Soft-delete should clear all resource references to satisfy the ON DELETE RESTRICT FK constraint.
+		if err := s.resourceDao.ReplaceReferences(ctx, resource.ID, nil); err != nil {
+			return errors.GeneralError("failed to clear outbound references on soft-delete: %s", err)
+		}
 		// Recompute conditions — generation incremented, Reconciled must flip to False.
 		adapterStatuses, statusErr := s.adapterStatusDao.FindByResource(ctx, resource.Kind, resource.ID)
 		if statusErr != nil {
