@@ -9,7 +9,7 @@ GO ?= go
 # Invoke a pinned tool: $(call gotool,name)
 # All tools share tools/go.mod with Go 1.24+ tool directives.
 TOOL_MOD := tools/go.mod
-gotool = $(GO) tool -modfile=$(TOOL_MOD) $(1)
+gotool = GOWORK=off "$(GO)" tool -modfile="$(TOOL_MOD)" $(1)
 
 # Auto-detect container tool (podman preferred when available)
 CONTAINER_TOOL ?= $(shell command -v podman 2>/dev/null || command -v docker 2>/dev/null)
@@ -127,11 +127,11 @@ verify-migrations: ## Verify migration files follow project conventions
 
 .PHONY: tools
 tools: ## Ensure tool dependencies are up to date
-	cd tools && GOWORK=off $(GO) mod tidy
+	cd tools && GOWORK=off "$(GO)" mod tidy
 
 .PHONY: verify-tools
 verify-tools: tools ## Fail in CI if tool module drifted
-	@git diff --exit-code tools/go.mod tools/go.sum || (echo "tool modules out of date; run 'make tools'" && exit 1)
+	@git diff --exit-code HEAD -- tools/go.mod tools/go.sum || (echo "tool modules out of date; run 'make tools'" && exit 1)
 
 ##@ Code Generation
 
