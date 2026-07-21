@@ -10,7 +10,6 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/response"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/services"
 )
 
 // handlerConfig defines the common things each REST controller must do.
@@ -59,7 +58,7 @@ func handleError(r *http.Request, w http.ResponseWriter, err *errors.ServiceErro
 // Note: This function only validates the fields parameter, not pagination parameters,
 // to avoid rejecting irrelevant query params on single-resource GET endpoints.
 func applyFieldFilter(r *http.Request, presented interface{}) (interface{}, *errors.ServiceError) {
-	fields := services.ParseFieldsParameter(r.URL.Query())
+	fields := ensureIDField(normalizeList(r.URL.Query()["fields"]))
 	if fields != nil {
 		filtered, filterErr := presenters.FilterSingle(fields, presented)
 		if filterErr != nil {

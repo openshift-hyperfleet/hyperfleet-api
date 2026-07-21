@@ -17,7 +17,6 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/dao"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
 //go:generate go tool -modfile=../../tools/go.mod mockgen -source=generic.go -package=services -destination=generic_mock.go
@@ -61,7 +60,6 @@ func (s *sqlGenericService) newListContext(
 	if resourceTypeStr == "" {
 		return nil, nil, errors.GeneralError("Could not determine resource type")
 	}
-	args.Search = strings.Trim(args.Search, " ")
 	return &listContext{
 		ctx:          ctx,
 		args:         args,
@@ -269,23 +267,11 @@ func (s *sqlGenericService) loadList(listCtx *listContext, d *dao.GenericDao) *e
 		return err
 	}
 
-	switch {
-	case args.Size > MaxListSize:
-		// Note: Currently unreachable via HTTP requests (capped at MaxPageSize=100),
-		// but kept as defensive check for direct service layer usage.
-		logger.Warn(listCtx.ctx, "A query with a size greater than the maximum was requested.")
-	case args.Size < 0:
-		logger.Warn(listCtx.ctx, "A query with an unbound size was requested.")
-	case args.Size == 0:
-		// This early return is not only performant, but also necessary.
-		// gorm does not support Limit(0) any longer.
-		logger.Info(listCtx.ctx,
-			"A query with 0 size requested, returning early without collecting any resources from database")
+	// gorm does not support Limit(0); also reject negative sizes defensively.
+	if args.Size <= 0 {
 		return nil
 	}
 
-	// NOTE: Limit no longer supports '0' size and will cause issues. There is an early return, do not remove it.
-	//       https://github.com/go-gorm/gorm/blob/master/clause/limit.go#L18-L21
 	if err := (*d).Fetch((args.Page-1)*int(args.Size), int(args.Size), listCtx.resourceList); err != nil {
 		switch {
 		case e.Is(err, gorm.ErrRecordNotFound):
