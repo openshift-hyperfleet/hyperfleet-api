@@ -42,7 +42,7 @@ make run-no-auth
 **First-time setup notes:**
 
 - **Critical**: Run `make generate-all` before any other commands. Generated code is not in git.
-- Tool versions are pinned using [Bingo](https://github.com/bwplotka/bingo) in the `.bingo/` directory
+- Tool versions are pinned in `tools/go.mod` using Go 1.24+ tool directives
 - The build uses FIPS-compliant crypto: `CGO_ENABLED=1 GOEXPERIMENT=boringcrypto`
 - Local development runs without authentication by default (`make run-no-auth`)
 - `make install-hooks` installs pre-commit hooks configured in `.pre-commit-config.yaml` for commit message and code quality validation on every commit
@@ -77,7 +77,7 @@ hyperfleet-api/
 │   └── integration/             # Integration tests (testcontainers)
 ├── charts/                      # Helm chart for Kubernetes deployment
 ├── docs/                        # Detailed documentation
-├── .bingo/                      # Pinned tool versions (managed by Bingo)
+├── tools/                       # Pinned tool versions (tools/go.mod)
 ├── Makefile                     # Build automation and common commands
 └── CLAUDE.md                    # AI agent context (see also subdirectory CLAUDE.md files)
 ```

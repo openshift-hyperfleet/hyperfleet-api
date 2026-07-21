@@ -4,7 +4,7 @@
 
 HyperFleet API is a **stateless REST API** serving as the pure CRUD data layer for HyperFleet cluster lifecycle management. It persists clusters, node pools, and adapter statuses to PostgreSQL — no business logic, no events. Sentinel handles orchestration; adapters execute and report back.
 
-- **Language**: Go 1.25+ with FIPS crypto (`CGO_ENABLED=1 GOEXPERIMENT=boringcrypto`)
+- **Language**: Go 1.26+ with FIPS crypto (`CGO_ENABLED=1 GOEXPERIMENT=boringcrypto`)
 - **Database**: PostgreSQL 14.2 with GORM ORM
 - **API Spec**: TypeSpec → `hyperfleet-api-spec` Go module → oapi-codegen → Go models
 - **Architecture**: Plugin-based route registration, transaction-per-request middleware
@@ -25,7 +25,7 @@ Setup sequence for a fresh clone:
 5. `./bin/hyperfleet-api migrate` — apply database migrations
 6. `make run-no-auth` — start server without authentication
 
-Tool management uses [Bingo](https://github.com/bwplotka/bingo) — tool versions are pinned in `.bingo/`.
+Tool versions are pinned in `tools/go.mod` and invoked via `go tool -modfile=tools/go.mod <name>`.
 
 ## Verification Commands
 

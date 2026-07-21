@@ -319,33 +319,23 @@ make generate-mocks
 make generate-all
 ```
 
-### Tool Dependency Management (Bingo)
+### Tool Dependency Management
 
-HyperFleet API uses [bingo](https://github.com/bwplotka/bingo) to manage Go tool dependencies with pinned versions.
+Development tools are pinned in `tools/go.mod` using Go 1.24+ [tool directives](https://go.dev/doc/modules/managing-dependencies#tools) and invoked via `$(call gotool,<name>)` in the Makefile.
 
-**Managed tools**:
-
-- `mockgen` - Mock generation for testing
-- `golangci-lint` - Code linting
-- `gotestsum` - Enhanced test output
+**Managed tools**: golangci-lint, gotestsum, mockgen, oapi-codegen, helm-docs, kubeconform, yq.
 
 **Common operations**:
 
 ```bash
-# Install all tools
-bingo get
+# Tidy the tools module
+make tools
 
-# Install a specific tool
-bingo get <tool>
-
-# Update a tool to latest version
-bingo get <tool>@latest
-
-# List all managed tools
-bingo list
+# Verify tool module is clean (used in CI)
+make verify-tools
 ```
 
-Tool versions are tracked in `.bingo/*.mod` files and loaded automatically via `include .bingo/Variables.mk` in the Makefile.
+Tool versions are tracked in `tools/go.mod` and `tools/go.sum`.
 
 ### Pre-commit Hooks
 

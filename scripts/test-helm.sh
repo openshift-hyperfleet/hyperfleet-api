@@ -28,7 +28,7 @@ render() {
 }
 
 kubeconform_validate() {
-  "$KUBECONFORM" "${KUBECONFORM_FLAGS[@]}" "$@"
+  $KUBECONFORM "${KUBECONFORM_FLAGS[@]}" "$@"
 }
 
 extract_config_yaml() {
@@ -36,7 +36,7 @@ extract_config_yaml() {
 }
 
 validate_yaml() {
-  "$YQ" eval '.' - > /dev/null
+  $YQ eval '.' - > /dev/null
 }
 
 pass() {

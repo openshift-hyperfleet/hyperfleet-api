@@ -20,7 +20,7 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
-//go:generate mockgen-v0.6.0 -source=generic.go -package=services -destination=generic_mock.go
+//go:generate go tool -modfile=../../tools/go.mod mockgen -source=generic.go -package=services -destination=generic_mock.go
 
 type GenericService interface {
 	List(

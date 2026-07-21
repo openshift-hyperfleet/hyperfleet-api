@@ -55,7 +55,6 @@ coverage/
 
 # Linter config (not needed for build)
 .golangci.yml
-.golangciversion
 
 # AI assistant config
 .claude/
