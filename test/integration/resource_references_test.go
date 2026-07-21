@@ -18,6 +18,8 @@ import (
 
 var registerRefsOnce sync.Once
 
+// --- Helper Functions ---
+
 // registerRefTestDescriptors registers entity descriptors needed for resource
 // reference integration tests.  Must be called before setupResourceTest so
 // that the registry knows about these kinds when services/DAO try to resolve them.
@@ -67,6 +69,22 @@ func makeRefs(refType string, targets ...struct{ id, kind string }) api.Referenc
 		refs[i] = openapi.ObjectReference{Id: util.ToPtr(t.id), Kind: t.kind}
 	}
 	return api.ReferenceMap{refType: refs}
+}
+
+// setupWifConfigRef temporarily adds a wif_config reference to the Cluster
+// descriptor so Cluster → WifConfig reference tests
+func setupWifConfigRef(t *testing.T) {
+	t.Helper()
+	registry.UpdateDescriptor("Cluster", func(d *registry.EntityDescriptor) {
+		d.References = []registry.ReferenceDescriptor{
+			{RefType: "wif_config", TargetKind: "WifConfig", Min: 1, Max: 1},
+		}
+	})
+	t.Cleanup(func() {
+		registry.UpdateDescriptor("Cluster", func(d *registry.EntityDescriptor) {
+			d.References = nil
+		})
+	})
 }
 
 // --- Create ---
@@ -229,50 +247,128 @@ func TestResourceReferences_PatchEmptyMapViolatesMin(t *testing.T) {
 
 // --- Delete ---
 
-func TestResourceReferences_DeleteTargetWhileReferenced(t *testing.T) {
-	RegisterTestingT(t)
-	svc, _ := setupRefTest(t)
+func TestResourceReferences_Delete(t *testing.T) {
+	suffix := func(label string) string {
+		return fmt.Sprintf("%s-%s", label, uuid.NewString()[:8])
+	}
 
-	target, svcErr := svc.Create(t.Context(), "RefTarget",
-		newRefTestResource("RefTarget", fmt.Sprintf("target-block-%s", uuid.NewString()[:8])), nil)
-	Expect(svcErr).To(BeNil())
+	type refPair struct {
+		setup   func(t *testing.T)
+		name    string
+		target  string
+		source  string
+		refType string
+	}
 
-	sourceName := fmt.Sprintf("source-block-%s", uuid.NewString()[:8])
-	refs := makeRefs("dep", struct{ id, kind string }{target.ID, "RefTarget"})
-	_, svcErr = svc.Create(t.Context(), "RefSource", newRefTestResource("RefSource", sourceName), refs)
-	Expect(svcErr).To(BeNil())
+	pairs := []refPair{
+		{
+			name:    "RefTarget_RefSource",
+			target:  "RefTarget",
+			source:  "RefSource",
+			refType: "dep",
+		},
+		{
+			name:    "WifConfig_Cluster",
+			target:  "WifConfig",
+			source:  "Cluster",
+			refType: "wif_config",
+			setup:   setupWifConfigRef,
+		},
+	}
 
-	// Attempt to delete target while referenced — expect 409.
-	_, svcErr = svc.Delete(t.Context(), "RefTarget", target.ID)
-	Expect(svcErr).NotTo(BeNil(), "delete of referenced target should fail")
-	Expect(svcErr.HTTPCode).To(Equal(409))
-}
+	for _, p := range pairs {
+		t.Run(p.name, func(t *testing.T) {
+			if p.setup != nil {
+				p.setup(t)
+			}
 
-func TestResourceReferences_DeleteSourceSucceeds(t *testing.T) {
-	RegisterTestingT(t)
-	svc, h := setupRefTest(t)
+			t.Run("UnreferencedTarget_Succeeds", func(t *testing.T) {
+				RegisterTestingT(t)
+				svc, h := setupRefTest(t)
 
-	target, svcErr := svc.Create(t.Context(), "RefTarget",
-		newRefTestResource("RefTarget", fmt.Sprintf("target-delsrc-%s", uuid.NewString()[:8])), nil)
-	Expect(svcErr).To(BeNil())
+				target, svcErr := svc.Create(t.Context(), p.target,
+					newRefTestResource(p.target, suffix("target-unref")), nil)
+				Expect(svcErr).To(BeNil())
 
-	sourceName := fmt.Sprintf("source-delsrc-%s", uuid.NewString()[:8])
-	refs := makeRefs("dep", struct{ id, kind string }{target.ID, "RefTarget"})
-	source, svcErr := svc.Create(t.Context(), "RefSource", newRefTestResource("RefSource", sourceName), refs)
-	Expect(svcErr).To(BeNil())
+				deleted, svcErr := svc.Delete(t.Context(), p.target, target.ID)
+				Expect(svcErr).To(BeNil(), "delete of unreferenced target should succeed")
+				Expect(deleted.DeletedTime).NotTo(BeNil())
 
-	// Deleting the source should succeed — ON DELETE CASCADE cleans ref rows.
-	deleted, svcErr := svc.Delete(t.Context(), "RefSource", source.ID)
-	Expect(svcErr).To(BeNil(), "delete source should succeed")
-	Expect(deleted.DeletedTime).NotTo(BeNil())
+				dbErr := checkResourceCount(t.Context(), h, []string{target.ID}, 0)
+				Expect(dbErr).To(BeNil(), "target should be hard-deleted from DB")
+			})
 
-	// Source row should be gone (hard delete, no required adapters).
-	dbErr := checkResourceCount(t.Context(), h, []string{source.ID}, 0)
-	Expect(dbErr).To(BeNil())
+			t.Run("ReferencedTarget_Returns409", func(t *testing.T) {
+				RegisterTestingT(t)
+				svc, _ := setupRefTest(t)
 
-	// Target should still exist.
-	_, svcErr = svc.Get(t.Context(), "RefTarget", target.ID)
-	Expect(svcErr).To(BeNil(), "target should still exist after source delete")
+				target, svcErr := svc.Create(t.Context(), p.target,
+					newRefTestResource(p.target, suffix("target-block")), nil)
+				Expect(svcErr).To(BeNil())
+
+				refs := makeRefs(p.refType, struct{ id, kind string }{target.ID, p.target})
+				_, svcErr = svc.Create(t.Context(), p.source,
+					newRefTestResource(p.source, suffix("source-block")), refs)
+				Expect(svcErr).To(BeNil())
+
+				_, svcErr = svc.Delete(t.Context(), p.target, target.ID)
+				Expect(svcErr).NotTo(BeNil(), "delete of referenced target should fail")
+				Expect(svcErr.HTTPCode).To(Equal(409))
+			})
+
+			t.Run("DeleteSourceThenTarget_Succeeds", func(t *testing.T) {
+				RegisterTestingT(t)
+				svc, h := setupRefTest(t)
+
+				target, svcErr := svc.Create(t.Context(), p.target,
+					newRefTestResource(p.target, suffix("target-delsrc")), nil)
+				Expect(svcErr).To(BeNil())
+
+				refs := makeRefs(p.refType, struct{ id, kind string }{target.ID, p.target})
+				source, svcErr := svc.Create(t.Context(), p.source,
+					newRefTestResource(p.source, suffix("source-delsrc")), refs)
+				Expect(svcErr).To(BeNil())
+
+				deleted, svcErr := svc.Delete(t.Context(), p.source, source.ID)
+				Expect(svcErr).To(BeNil(), "delete source should succeed")
+				Expect(deleted.DeletedTime).NotTo(BeNil())
+
+				deletedTarget, svcErr := svc.Delete(t.Context(), p.target, target.ID)
+				Expect(svcErr).To(BeNil(), "delete target after source removal should succeed")
+				Expect(deletedTarget.DeletedTime).NotTo(BeNil())
+
+				dbErr := checkResourceCount(t.Context(), h, []string{target.ID}, 0)
+				Expect(dbErr).To(BeNil(), "target should be hard-deleted from DB")
+			})
+
+			t.Run("ForceDeleteReferencedTarget_Succeeds", func(t *testing.T) {
+				RegisterTestingT(t)
+				svc, h := setupRefTest(t)
+
+				target, svcErr := svc.Create(t.Context(), p.target,
+					newRefTestResource(p.target, suffix("target-fd")), nil)
+				Expect(svcErr).To(BeNil())
+
+				refs := makeRefs(p.refType, struct{ id, kind string }{target.ID, p.target})
+				_, svcErr = svc.Create(t.Context(), p.source,
+					newRefTestResource(p.source, suffix("source-fd")), refs)
+				Expect(svcErr).To(BeNil())
+
+				_, svcErr = svc.Delete(t.Context(), p.target, target.ID)
+				Expect(svcErr).ToNot(BeNil(), "regular delete should fail — target is referenced")
+				Expect(svcErr.HTTPCode).To(Equal(409))
+
+				markFinalizing(t, h, target.ID)
+
+				svcErr = svc.ForceDelete(t.Context(), p.target, target.ID, "force delete target")
+				Expect(svcErr).To(BeNil(), "force-delete should bypass reference restriction")
+
+				_, getErr := svc.Get(t.Context(), p.target, target.ID)
+				Expect(getErr).ToNot(BeNil())
+				Expect(getErr.HTTPCode).To(Equal(404), "target should be gone after force-delete")
+			})
+		})
+	}
 }
 
 // --- List with ref_type filter ---
@@ -371,34 +467,6 @@ func TestResourceReferences_OptionalRefCreate(t *testing.T) {
 	Expect(retrieved.References).To(HaveLen(1))
 	Expect(retrieved.References[0].RefType).To(Equal("link"))
 	Expect(retrieved.References[0].TargetID).To(Equal(target.ID))
-}
-
-func TestResourceReferences_ForceDeleteReferencedTarget(t *testing.T) {
-	RegisterTestingT(t)
-	svc, h := setupRefTest(t)
-	prefix := uuid.NewString()[:8]
-
-	target, svcErr := svc.Create(t.Context(), "RefTarget",
-		newRefTestResource("RefTarget", fmt.Sprintf("target-fd-%s", prefix)), nil)
-	Expect(svcErr).To(BeNil())
-
-	refs := makeRefs("dep", struct{ id, kind string }{target.ID, "RefTarget"})
-	_, svcErr = svc.Create(t.Context(), "RefSource",
-		newRefTestResource("RefSource", fmt.Sprintf("source-fd-%s", prefix)), refs)
-	Expect(svcErr).To(BeNil())
-
-	_, svcErr = svc.Delete(t.Context(), "RefTarget", target.ID)
-	Expect(svcErr).ToNot(BeNil(), "regular delete should fail — target is referenced")
-	Expect(svcErr.HTTPCode).To(Equal(409))
-
-	markFinalizing(t, h, target.ID)
-
-	svcErr = svc.ForceDelete(t.Context(), "RefTarget", target.ID, "integration test cleanup")
-	Expect(svcErr).To(BeNil(), "force-delete should bypass reference restriction")
-
-	_, getErr := svc.Get(t.Context(), "RefTarget", target.ID)
-	Expect(getErr).ToNot(BeNil())
-	Expect(getErr.HTTPCode).To(Equal(404), "target should be gone after force-delete")
 }
 
 func TestResourceReferences_PatchClearOptionalRefs(t *testing.T) {
