@@ -401,6 +401,56 @@ func TestValidatePatchRequest(t *testing.T) {
 	}
 }
 
+// TestValidatePatchRequest_References uses openapi.ResourcePatchRequest (rather than
+// ClusterPatchRequest, which has no References field) to verify a references-only
+// patch is accepted — see HYPERFLEET-1376 finding 8.
+func TestValidatePatchRequest_References(t *testing.T) {
+	references := map[string][]openapi.ObjectReference{
+		"parents": {{Kind: "Cluster", Id: strPtr("cluster-1")}},
+	}
+	labels := map[string]string{"env": "prod"}
+
+	testCases := []struct {
+		req         openapi.ResourcePatchRequest
+		name        string
+		expectError bool
+	}{
+		{
+			name:        "references only is valid",
+			req:         openapi.ResourcePatchRequest{References: &references},
+			expectError: false,
+		},
+		{
+			name:        "all nil returns error",
+			req:         openapi.ResourcePatchRequest{},
+			expectError: true,
+		},
+		{
+			name:        "references and labels is valid",
+			req:         openapi.ResourcePatchRequest{References: &references, Labels: &labels},
+			expectError: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			RegisterTestingT(t)
+			validator := validatePatchRequest(&tc.req)
+			err := validator()
+			if tc.expectError {
+				Expect(err).ToNot(BeNil())
+				Expect(err.Reason).To(ContainSubstring("at least one field must be provided for update"))
+			} else {
+				Expect(err).To(BeNil())
+			}
+		})
+	}
+}
+
+func strPtr(s string) *string {
+	return &s
+}
+
 func TestValidateObservedGeneration(t *testing.T) {
 	testCases := []struct {
 		name        string

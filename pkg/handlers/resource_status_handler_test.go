@@ -194,6 +194,31 @@ func TestResourceStatusHandler_Create_MissingAdapter_Returns400(t *testing.T) {
 	Expect(w.Code).To(Equal(http.StatusBadRequest))
 }
 
+// TestResourceStatusHandler_Create_ConditionsTypeMismatch verifies that a wrong JSON
+// type for "conditions" returns a clean validation message without leaking the Go
+// struct/package name (e.g. "AdapterStatusCreateRequest", "openapi.ConditionRequest")
+// — HYPERFLEET-1376 finding 7.
+func TestResourceStatusHandler_Create_ConditionsTypeMismatch(t *testing.T) {
+	RegisterTestingT(t)
+	ctrl := gomock.NewController(t)
+
+	handler, _, _ := newTestResourceStatusHandler(ctrl)
+
+	body := `{"adapter":"x","conditions":"not-an-array"}`
+
+	r := httptest.NewRequest(http.MethodPut, "/channels/ch-1/statuses", strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/json")
+	r = mux.SetURLVars(r, map[string]string{"id": testChannelID})
+	w := httptest.NewRecorder()
+
+	handler.Create(w, r)
+
+	Expect(w.Code).To(Equal(http.StatusBadRequest))
+	Expect(w.Body.String()).To(ContainSubstring("field 'conditions' must be an array"))
+	Expect(w.Body.String()).ToNot(ContainSubstring("AdapterStatusCreateRequest"))
+	Expect(w.Body.String()).ToNot(ContainSubstring("openapi."))
+}
+
 func TestResourceStatusHandler_Create_ResourceNotFound(t *testing.T) {
 	RegisterTestingT(t)
 	ctrl := gomock.NewController(t)
