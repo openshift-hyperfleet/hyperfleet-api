@@ -277,6 +277,25 @@ func TestResourceHandler_Patch(t *testing.T) {
 			expectedStatusCode: http.StatusOK,
 		},
 		{
+			// References-only patch must be accepted, not rejected as "no field provided" — HYPERFLEET-1376 finding 8.
+			name: "Success - references only",
+			id:   "ch-123",
+			body: `{"references":{"parents":[{"kind":"Cluster","id":"cluster-1"}]}}`,
+			setupMock: func(mock *services.MockResourceService) {
+				mock.EXPECT().Patch(gomock.Any(), "Channel", "ch-123", gomock.AssignableToTypeOf(&api.ResourcePatch{})).
+					Return(&api.Resource{
+						Meta:       api.Meta{ID: "ch-123", CreatedTime: now, UpdatedTime: now},
+						Kind:       "Channel",
+						Name:       "stable",
+						Spec:       datatypes.JSON(`{"is_default":false}`),
+						Generation: 2,
+						CreatedBy:  "user@test.com",
+						UpdatedBy:  "user@test.com",
+					}, nil)
+			},
+			expectedStatusCode: http.StatusOK,
+		},
+		{
 			name: "Not found",
 			id:   "nonexistent",
 			body: `{"spec":{"is_default":false}}`,
@@ -729,6 +748,15 @@ func TestResourceHandler_ForceDelete(t *testing.T) {
 			expectedStatusCode: http.StatusBadRequest,
 		},
 		{
+			// Wrong JSON type for "reason" must return a clean message without leaking
+			// the Go struct name (ForceDeleteRequest) — HYPERFLEET-1376.
+			name: "Error 400 - reason wrong type",
+			body: `{"reason": 123}`,
+			setupMock: func(mock *services.MockResourceService) {
+			},
+			expectedStatusCode: http.StatusBadRequest,
+		},
+		{
 			name: "Error 400 - empty reason",
 			body: `{"reason": ""}`,
 			setupMock: func(mock *services.MockResourceService) {
@@ -796,6 +824,10 @@ func TestResourceHandler_ForceDelete(t *testing.T) {
 
 			if tt.expectedStatusCode == http.StatusNoContent {
 				Expect(rr.Body.Len()).To(Equal(0))
+			}
+			if tt.name == "Error 400 - reason wrong type" {
+				Expect(rr.Body.String()).To(ContainSubstring("field 'reason' must be a string"))
+				Expect(rr.Body.String()).ToNot(ContainSubstring("ForceDeleteRequest"))
 			}
 		})
 	}
@@ -929,6 +961,46 @@ func TestResourceHandler_Patch_RejectsUnknownFields(t *testing.T) {
 			handler.Patch(rr, req)
 
 			Expect(rr.Code).To(Equal(http.StatusBadRequest))
+		})
+	}
+}
+
+// TestResourceHandler_Patch_LabelsTypeMismatch verifies that a wrong JSON type for
+// "labels" returns a clean validation message without leaking the Go struct name
+// (e.g. "ResourcePatchRequest") or type (e.g. "map[string]string") — HYPERFLEET-1376
+// findings 5 & 6.
+func TestResourceHandler_Patch_LabelsTypeMismatch(t *testing.T) {
+	RegisterTestingT(t)
+
+	tests := []struct {
+		name string
+		body string
+	}{
+		{"labels as string", `{"labels":"not-an-object"}`},
+		{"labels as array", `{"labels":["a","b"]}`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			RegisterTestingT(t)
+
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			handler, _ := newTestResourceHandler(ctrl)
+
+			reqURL := "/api/hyperfleet/v1/channels/ch-123"
+			req := httptest.NewRequest(http.MethodPatch, reqURL, strings.NewReader(tt.body))
+			req.Header.Set("Content-Type", "application/json")
+			req = mux.SetURLVars(req, map[string]string{"id": "ch-123"})
+
+			rr := httptest.NewRecorder()
+			handler.Patch(rr, req)
+
+			Expect(rr.Code).To(Equal(http.StatusBadRequest))
+			Expect(rr.Body.String()).To(ContainSubstring("field 'labels' must be an object"))
+			Expect(rr.Body.String()).ToNot(ContainSubstring("ResourcePatchRequest"))
+			Expect(rr.Body.String()).ToNot(ContainSubstring("openapi."))
 		})
 	}
 }

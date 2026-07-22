@@ -3,8 +3,10 @@ package handlers
 import (
 	"bytes"
 	"encoding/json"
+	goerrors "errors"
 	"io"
 	"net/http"
+	"reflect"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/presenters"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/response"
@@ -85,11 +87,19 @@ func handle(w http.ResponseWriter, r *http.Request, cfg *handlerConfig, httpStat
 		dec := json.NewDecoder(bytes.NewReader(bodyBytes))
 		dec.DisallowUnknownFields()
 		if err := dec.Decode(cfg.MarshalInto); err != nil {
+			if typeErr := cleanTypeMismatchError(err); typeErr != nil {
+				handleError(r, w, typeErr)
+				return
+			}
 			handleError(r, w, errors.BadRequest("Unknown or immutable field in request body: %s", err))
 			return
 		}
 	} else {
 		if err := json.Unmarshal(bodyBytes, &cfg.MarshalInto); err != nil {
+			if typeErr := cleanTypeMismatchError(err); typeErr != nil {
+				handleError(r, w, typeErr)
+				return
+			}
 			handleError(r, w, errors.MalformedRequest("Invalid request format: %s", err))
 			return
 		}
@@ -138,6 +148,35 @@ func handleSoftDelete(w http.ResponseWriter, r *http.Request, cfg *handlerConfig
 
 }
 
+func cleanTypeMismatchError(err error) *errors.ServiceError {
+	var typeErr *json.UnmarshalTypeError
+	if !goerrors.As(err, &typeErr) {
+		return nil
+	}
+	return errors.Validation("field '%s' must be %s", typeErr.Field, describeJSONKind(typeErr.Type.Kind()))
+}
+
+func describeJSONKind(k reflect.Kind) string {
+	switch k {
+	case reflect.Map, reflect.Struct:
+		return "an object"
+	case reflect.Slice, reflect.Array:
+		return "an array"
+	case reflect.String:
+		return "a string"
+	case reflect.Bool:
+		return "a boolean"
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
+		reflect.Float32, reflect.Float64:
+		return "a number"
+	default:
+		// Fallback for kinds json.UnmarshalTypeError.Type should never report
+		// here (e.g. Ptr, Interface) — avoids mislabeling as a number.
+		return "the correct type"
+	}
+}
+
 func handleGet(w http.ResponseWriter, r *http.Request, cfg *handlerConfig) {
 	if cfg.ErrorHandler == nil {
 		cfg.ErrorHandler = handleError
@@ -180,6 +219,10 @@ func handleForceDelete(w http.ResponseWriter, r *http.Request, cfg *handlerConfi
 
 	err = json.Unmarshal(bytes, &cfg.MarshalInto)
 	if err != nil {
+		if typeErr := cleanTypeMismatchError(err); typeErr != nil {
+			handleError(r, w, typeErr)
+			return
+		}
 		handleError(r, w, errors.MalformedRequest("Invalid request format: %s", err))
 		return
 	}
@@ -217,6 +260,10 @@ func handleCreateWithNoContent(w http.ResponseWriter, r *http.Request, cfg *hand
 
 	err = json.Unmarshal(bytes, &cfg.MarshalInto)
 	if err != nil {
+		if typeErr := cleanTypeMismatchError(err); typeErr != nil {
+			handleError(r, w, typeErr)
+			return
+		}
 		handleError(r, w, errors.MalformedRequest("Invalid request format: %s", err))
 		return
 	}

@@ -247,18 +247,20 @@ func validateLabels(i interface{}, fieldName string) validate {
 	}
 }
 
-// validatePatchRequest validates that at least one patchable field (Spec or Labels) is provided
+// validatePatchRequest validates that at least one patchable field (Spec, Labels, or References) is provided
 func validatePatchRequest(i interface{}) validate {
 	return func() *errors.ServiceError {
 		v := reflect.ValueOf(i).Elem()
 
 		spec := v.FieldByName("Spec")
 		labels := v.FieldByName("Labels")
+		references := v.FieldByName("References")
 
 		specPresent := spec.IsValid() && !spec.IsNil()
 		labelsPresent := labels.IsValid() && !labels.IsNil()
+		referencesPresent := references.IsValid() && !references.IsNil()
 
-		if !specPresent && !labelsPresent {
+		if !specPresent && !labelsPresent && !referencesPresent {
 			return errors.BadRequest("at least one field must be provided for update")
 		}
 		return nil
