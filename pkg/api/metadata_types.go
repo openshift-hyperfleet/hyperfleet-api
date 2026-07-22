@@ -40,7 +40,7 @@ type Meta struct {
 
 // PagingMeta List Paging metadata
 type PagingMeta struct {
-	Page  int
+	Page  int64
 	Size  int64
 	Total int64
 }

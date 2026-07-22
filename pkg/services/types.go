@@ -10,7 +10,7 @@ type ListArguments struct {
 	Order       []string
 	Fields      []string
 	Size        int64
-	Page        int
+	Page        int64
 }
 
 func NewListArguments() *ListArguments {

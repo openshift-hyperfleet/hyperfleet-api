@@ -255,9 +255,9 @@ func Test_parseListParams(t *testing.T) {
 		},
 		{
 			name:  "page above maximum",
-			query: "?page=10000001",
+			query: "?page=100001",
 			errors: []expectedDetail{
-				{field: "page", message: "page must be at most 10000000"},
+				{field: "page", message: "page must be at most 100000"},
 			},
 		},
 	}
