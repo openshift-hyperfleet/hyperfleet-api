@@ -9,7 +9,7 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/services"
 )
 
-func Test_parseListParams(t *testing.T) {
+func TestParseListParams(t *testing.T) {
 	RegisterTestingT(t)
 
 	tests := []struct {
@@ -255,9 +255,67 @@ func Test_parseListParams(t *testing.T) {
 		},
 		{
 			name:  "page above maximum",
-			query: "?page=10000001",
+			query: "?page=100001",
 			errors: []expectedDetail{
-				{field: "page", message: "page must be at most 10000000"},
+				{field: "page", message: "page must be at most 100000"},
+			},
+		},
+		// Invalid query fields
+		{
+			name:  "unknown query parameters are ignored",
+			query: "?foo=bar&baz=123",
+			expected: &services.ListArguments{
+				Page:  1,
+				Size:  20,
+				Order: []string{"created_time desc"},
+			},
+		},
+		{
+			name:  "unknown parameters mixed with valid ones",
+			query: "?page=3&unknown=value&size=10",
+			expected: &services.ListArguments{
+				Page:  3,
+				Size:  10,
+				Order: []string{"created_time desc"},
+			},
+		},
+		{
+			name:  "float page",
+			query: "?page=1.5",
+			errors: []expectedDetail{
+				{field: "page", message: "must be a valid integer"},
+			},
+		},
+		{
+			name:  "float size",
+			query: "?size=10.5",
+			errors: []expectedDetail{
+				{field: "size", message: "must be a valid integer"},
+			},
+		},
+		{
+			name:  "special characters in size",
+			query: "?size=%21%40%23",
+			errors: []expectedDetail{
+				{field: "size", message: "must be a valid integer"},
+			},
+		},
+		{
+			name:  "empty fields value yields no field filtering",
+			query: "?fields=",
+			expected: &services.ListArguments{
+				Page:  1,
+				Size:  20,
+				Order: []string{"created_time desc"},
+			},
+		},
+		{
+			name:  "whitespace-only page falls back to default",
+			query: "?page=%20%20",
+			expected: &services.ListArguments{
+				Page:  1,
+				Size:  20,
+				Order: []string{"created_time desc"},
 			},
 		},
 	}

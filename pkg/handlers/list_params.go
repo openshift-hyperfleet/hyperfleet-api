@@ -18,7 +18,7 @@ type listParams struct {
 	RefType     string `validate:"required_with=RefTargetID"`
 	RefTargetID string `validate:"required_with=RefType"`
 	Size        int64  `validate:"min=1,max=100"`
-	Page        int    `validate:"min=1,max=10000000"`
+	Page        int64  `validate:"min=1,max=100000"`
 }
 
 var listParamsValidator = validator.New()
@@ -62,7 +62,7 @@ func bindListParams(query url.Values) (*listParams, *errors.ServiceError) {
 	var formatErrors []errors.ValidationDetail
 
 	if v := strings.TrimSpace(query.Get("page")); v != "" {
-		page, err := strconv.Atoi(v)
+		page, err := strconv.ParseInt(v, 10, 64)
 		if err != nil {
 			formatErrors = append(formatErrors, errors.ValidationDetail{
 				Field:      "page",

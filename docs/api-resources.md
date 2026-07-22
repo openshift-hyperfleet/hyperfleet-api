@@ -685,8 +685,8 @@ All list endpoints accept the following query parameters:
 | Parameter  | Type           | Required | Default             | Constraints          |
 |------------|----------------|----------|---------------------|----------------------|
 | `search`   | string         | No       | -                   | TSL query syntax     |
-| `page`     | integer (int32)| No       | `1`                 | Must be >= 1         |
-| `size`     | integer (int32)| No       | `20`                | Must be between 1 and 100 |
+| `page`     | integer (int64)| No       | `1`                 | Must be >= 1         |
+| `size`     | integer (int64)| No       | `20`                | Must be between 1 and 100 |
 | `order`    | string         | No       | `created_time desc` | Field name(s) with optional direction (asc/desc) |
 
 **Ordering behavior**:
