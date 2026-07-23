@@ -24,7 +24,7 @@ type ResourceDao interface {
 	FindByKindAndOwnerForUpdate(ctx context.Context, kind, ownerID string) (api.ResourceList, error)
 	GetByID(ctx context.Context, id string) (*api.Resource, error)
 	ReplaceReferences(ctx context.Context, sourceID string, refs []api.ResourceReference) error
-	FindReferencer(ctx context.Context, targetID string) (*api.ResourceSummary, error)
+	FindReferencers(ctx context.Context, targetID string) ([]api.ResourceSummary, error)
 	ClearTargetReferences(ctx context.Context, targetID string) error
 	FindSourceIDsByRef(ctx context.Context, refType, targetID string) ([]string, error)
 }
@@ -196,26 +196,22 @@ func (d *sqlResourceDao) ReplaceReferences(
 	return nil
 }
 
-// FindReferencer returns the first non-deleted resource that references targetID,
+// FindReferencers returns the list of resources that references targetID,
 // or nil if none exists. Used as an existence check for 409 conflict responses.
-func (d *sqlResourceDao) FindReferencer(
+func (d *sqlResourceDao) FindReferencers(
 	ctx context.Context, targetID string,
-) (*api.ResourceSummary, error) {
+) ([]api.ResourceSummary, error) {
 	g2 := d.sessionFactory.New(ctx)
-	var summary api.ResourceSummary
+	var summaries []api.ResourceSummary
 	err := g2.Model(&api.ResourceReference{}).
 		Select("resources.kind, resources.name").
 		Joins("JOIN resources ON resource_references.source_id = resources.id").
 		Where("resource_references.target_id = ? AND resources.deleted_time IS NULL", targetID).
-		Limit(1).
-		Scan(&summary).Error
+		Scan(&summaries).Error
 	if err != nil {
 		return nil, err
 	}
-	if summary.Kind == "" {
-		return nil, nil
-	}
-	return &summary, nil
+	return summaries, nil
 }
 
 // ClearTargetReferences removes all inbound references pointing at targetID.

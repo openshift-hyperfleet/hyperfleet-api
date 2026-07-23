@@ -51,7 +51,7 @@ type mockResourceDao struct {
 	deleteErr                   error
 	existsSoftDeletedByOwnerErr error
 	replaceRefsErr              error
-	findReferencerResult        *api.ResourceSummary
+	findReferencersResult       []api.ResourceSummary
 	lastReplacedRefs            []api.ResourceReference
 	replaceRefsCalled           bool
 }
@@ -194,8 +194,8 @@ func (d *mockResourceDao) ReplaceReferences(_ context.Context, _ string, refs []
 	return nil
 }
 
-func (d *mockResourceDao) FindReferencer(_ context.Context, _ string) (*api.ResourceSummary, error) {
-	return d.findReferencerResult, nil
+func (d *mockResourceDao) FindReferencers(_ context.Context, _ string) ([]api.ResourceSummary, error) {
+	return d.findReferencersResult, nil
 }
 
 func (d *mockResourceDao) ClearTargetReferences(_ context.Context, _ string) error {
@@ -2196,7 +2196,7 @@ func TestResourceService_Delete_ReferencedResource_Returns409(t *testing.T) {
 
 	target := testResource("Target", "t-1", "target-1")
 	mockDao.addResource(target)
-	mockDao.findReferencerResult = &api.ResourceSummary{Kind: "Parent", Name: "parent-1"}
+	mockDao.findReferencersResult = []api.ResourceSummary{{Kind: "Parent", Name: "parent-1"}}
 
 	result, svcErr := svc.Delete(context.Background(), "Target", "t-1")
 	Expect(result).To(BeNil())
@@ -2215,7 +2215,7 @@ func TestResourceService_Delete_UnreferencedResource_Succeeds(t *testing.T) {
 
 	target := testResource("Target", "t-1", "target-1")
 	mockDao.addResource(target)
-	mockDao.findReferencerResult = nil
+	mockDao.findReferencersResult = nil
 
 	result, svcErr := svc.Delete(context.Background(), "Target", "t-1")
 	Expect(svcErr).To(BeNil())

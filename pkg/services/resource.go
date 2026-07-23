@@ -286,15 +286,19 @@ func (s *sqlResourceService) deleteResourceTree(
 	}
 
 	// Check if other resources reference this one before any deletion.
-	referencer, refErr := s.resourceDao.FindReferencer(ctx, resource.ID)
+	referencers, refErr := s.resourceDao.FindReferencers(ctx, resource.ID)
 	if refErr != nil {
 		return errors.GeneralError("failed to check references: %s", refErr)
 	}
-	if referencer != nil {
+	// List out all the references for a specific resource
+	if len(referencers) > 0 {
+		names := make([]string, len(referencers))
+		for i, r := range referencers {
+			names[i] = fmt.Sprintf("%s %q", r.Kind, r.Name)
+		}
 		return errors.ConflictState(
-			"cannot delete %s %q: referenced by %s %q — remove the reference before deleting",
-			resource.Kind, resource.ID, referencer.Kind, referencer.Name,
-		)
+			"cannot delete %s %q: referenced by %s — remove the reference(s) before deleting",
+			resource.Kind, resource.Name, strings.Join(names, ", "))
 	}
 
 	shouldSoftDelete, svcErr := s.shouldSoftDelete(ctx, resource, children)
@@ -979,6 +983,12 @@ func (s *sqlResourceService) validateReferences(
 				)
 			}
 			seen[*ref.Id] = true
+			if ref.Kind != rd.TargetKind {
+				return errors.Validation(
+					"reference type %q: kind %q does not match expected target kind %q",
+					refType, ref.Kind, rd.TargetKind,
+				)
+			}
 			target, err := s.resourceDao.Get(ctx, rd.TargetKind, *ref.Id)
 			if err != nil {
 				return errors.Validation(
