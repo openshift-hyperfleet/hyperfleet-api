@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Grafana dashboard for API and database metrics (`charts/dashboards/hyperfleet-api.json`) — covers HTTP request rate/latency, reconciliation pending/stuck gauges, DB query duration/errors, connection pool, and build info ([#TBD](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/TBD))
 - JWT authentication handler using `golang-jwt/jwt/v5` and `MicahParks/keyfunc/v3` with RS256 validation, configurable issuer and audience, and JWKS key rotation support ([#120](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/120))
 - Hard deletion for Clusters and NodePools: resources and their adapter statuses are permanently removed from the database once all required adapters report `Finalized=True` and no child resources remain ([#119](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/119))
 - `Finalized` condition aggregation with `WaitingForChildResources` intermediate state when all adapters are finalized but child node pools still exist ([#119](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/119))

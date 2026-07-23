@@ -400,15 +400,18 @@ This creates a `monitoring.googleapis.com/v1/PodMonitoring` resource that config
 
 ## Grafana Dashboard
 
-Example dashboard JSON for HyperFleet API monitoring is available in the architecture repository. Key panels to include:
+A pre-built Grafana dashboard is shipped at `charts/dashboards/hyperfleet-api.json` (relative to the repository root). It covers all `hyperfleet_api_*` and `hyperfleet_db_*` metrics across 12 panels: HTTP request rate by status code, build info (API status), request duration percentiles, server error rate by path, reconciliation started rate, resources pending reconciliation, resources stuck, max stuck duration, DB query duration percentiles, DB error rate by type, DB connection pool, and top paths by request rate.
 
-1. **Request Rate** - Total requests per second over time
-2. **Error Rate** - Percentage of 5xx responses
-3. **Latency Distribution** - P50, P90, P99 latencies
-4. **Request Duration Heatmap** - Visual distribution of request times
-5. **Top Endpoints** - Most frequently accessed paths
-6. **Memory Usage** - Resident memory over time
-7. **Goroutines** - Goroutine count over time
+### Importing
+
+1. Navigate to **Grafana > Dashboards > Import**
+2. Upload `charts/dashboards/hyperfleet-api.json`
+3. Select your Prometheus datasource from the dropdown
+4. Click **Import**
+
+The dashboard uses a parameterized `datasource` variable (no hardcoded UIDs) so it works across environments. Reconciliation gauge panels (pending, stuck) show "No data" when no resources match — this is expected behavior, not a missing datasource.
+
+Automated provisioning via `hyperfleet-infra` is tracked in [HYPERFLEET-1363](https://issues.redhat.com/browse/HYPERFLEET-1363).
 
 ## Related Documentation
 
