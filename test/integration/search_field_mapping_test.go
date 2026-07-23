@@ -904,6 +904,148 @@ func TestSearchConditionSubfieldInvalidSubfield(t *testing.T) {
 	Expect(resp.StatusCode()).To(Equal(http.StatusBadRequest))
 }
 
+// TestSearchTypedFieldValidation verifies that malformed values for typed
+// top-level columns (generation: INTEGER; created_time/updated_time/deleted_time:
+// TIMESTAMPTZ) are rejected with a clean 400 HYPERFLEET-VAL-* error — never a
+// raw Postgres pq: driver error or SQLSTATE code — on both the kind-agnostic
+// /resources endpoint and typed entity endpoints like /clusters.
+func TestSearchTypedFieldValidation(t *testing.T) {
+	RegisterTestingT(t)
+	h, client := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+
+	assertCleanBadRequest := func(body []byte, statusCode int) {
+		Expect(statusCode).To(Equal(http.StatusBadRequest))
+		bodyStr := string(body)
+		Expect(bodyStr).ToNot(ContainSubstring("pq:"))
+		Expect(bodyStr).ToNot(ContainSubstring("SQLSTATE"))
+		Expect(bodyStr).To(ContainSubstring("HYPERFLEET-VAL-"))
+	}
+
+	t.Run("GET /resources?search=generation='abc' returns clean 400", func(t *testing.T) {
+		RegisterTestingT(t)
+		search := openapi.SearchParams("generation='abc'")
+		params := &openapi.GetResourcesParams{Search: &search}
+		resp, err := client.GetResourcesWithResponse(ctx, params, test.WithAuthToken(ctx))
+
+		Expect(err).NotTo(HaveOccurred())
+		assertCleanBadRequest(resp.Body, resp.StatusCode())
+	})
+
+	t.Run("GET /resources?search=created_time='not-a-date' returns clean 400", func(t *testing.T) {
+		RegisterTestingT(t)
+		search := openapi.SearchParams("created_time='not-a-date'")
+		params := &openapi.GetResourcesParams{Search: &search}
+		resp, err := client.GetResourcesWithResponse(ctx, params, test.WithAuthToken(ctx))
+
+		Expect(err).NotTo(HaveOccurred())
+		assertCleanBadRequest(resp.Body, resp.StatusCode())
+	})
+
+	t.Run("GET /clusters?search=created_time='not-a-date' returns clean 400", func(t *testing.T) {
+		RegisterTestingT(t)
+		search := openapi.SearchParams("created_time='not-a-date'")
+		params := &openapi.GetClustersParams{Search: &search}
+		resp, err := client.GetClustersWithResponse(ctx, params, test.WithAuthToken(ctx))
+
+		Expect(err).NotTo(HaveOccurred())
+		assertCleanBadRequest(resp.Body, resp.StatusCode())
+	})
+
+	t.Run("GET /clusters?search=generation='abc' returns clean 400", func(t *testing.T) {
+		RegisterTestingT(t)
+		search := openapi.SearchParams("generation='abc'")
+		params := &openapi.GetClustersParams{Search: &search}
+		resp, err := client.GetClustersWithResponse(ctx, params, test.WithAuthToken(ctx))
+
+		Expect(err).NotTo(HaveOccurred())
+		assertCleanBadRequest(resp.Body, resp.StatusCode())
+	})
+
+	t.Run("GET /clusters?search=updated_time='not-a-date' returns clean 400", func(t *testing.T) {
+		RegisterTestingT(t)
+		search := openapi.SearchParams("updated_time='not-a-date'")
+		params := &openapi.GetClustersParams{Search: &search}
+		resp, err := client.GetClustersWithResponse(ctx, params, test.WithAuthToken(ctx))
+
+		Expect(err).NotTo(HaveOccurred())
+		assertCleanBadRequest(resp.Body, resp.StatusCode())
+	})
+
+	t.Run("GET /clusters?search=deleted_time='not-a-date' returns clean 400", func(t *testing.T) {
+		RegisterTestingT(t)
+		search := openapi.SearchParams("deleted_time='not-a-date'")
+		params := &openapi.GetClustersParams{Search: &search}
+		resp, err := client.GetClustersWithResponse(ctx, params, test.WithAuthToken(ctx))
+
+		Expect(err).NotTo(HaveOccurred())
+		assertCleanBadRequest(resp.Body, resp.StatusCode())
+	})
+
+	// Regression guard: valid searches on the same typed fields must keep working.
+	t.Run("GET /clusters?search=generation=1 still returns 200", func(t *testing.T) {
+		RegisterTestingT(t)
+		search := openapi.SearchParams("generation=1")
+		params := &openapi.GetClustersParams{Search: &search}
+		resp, err := client.GetClustersWithResponse(ctx, params, test.WithAuthToken(ctx))
+
+		Expect(err).NotTo(HaveOccurred())
+		Expect(resp.StatusCode()).To(Equal(http.StatusOK))
+	})
+
+	t.Run("GET /clusters?search=created_time>'2020-01-01T00:00:00Z' still returns 200", func(t *testing.T) {
+		RegisterTestingT(t)
+		search := openapi.SearchParams("created_time>'2020-01-01T00:00:00Z'")
+		params := &openapi.GetClustersParams{Search: &search}
+		resp, err := client.GetClustersWithResponse(ctx, params, test.WithAuthToken(ctx))
+
+		Expect(err).NotTo(HaveOccurred())
+		Expect(resp.StatusCode()).To(Equal(http.StatusOK))
+	})
+}
+
+// TestSearchPropertiesFieldRejected verifies that "properties.xxx" — a leftover alias
+// from before the resources table's JSONB column was renamed to "spec" — is rejected
+// as an unknown field with a clean 400, instead of being translated into a query
+// against the nonexistent "properties" column and leaking a raw pq: 42703 error as a 500.
+func TestSearchPropertiesFieldRejected(t *testing.T) {
+	RegisterTestingT(t)
+	h, client := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+
+	assertCleanBadRequest := func(body []byte, statusCode int) {
+		Expect(statusCode).To(Equal(http.StatusBadRequest))
+		bodyStr := string(body)
+		Expect(bodyStr).ToNot(ContainSubstring("pq:"))
+		Expect(bodyStr).ToNot(ContainSubstring("SQLSTATE"))
+		Expect(bodyStr).To(ContainSubstring("HYPERFLEET-VAL-"))
+	}
+
+	t.Run("GET /resources?search=properties.foo='bar' returns clean 400", func(t *testing.T) {
+		RegisterTestingT(t)
+		search := openapi.SearchParams("properties.foo='bar'")
+		params := &openapi.GetResourcesParams{Search: &search}
+		resp, err := client.GetResourcesWithResponse(ctx, params, test.WithAuthToken(ctx))
+
+		Expect(err).NotTo(HaveOccurred())
+		assertCleanBadRequest(resp.Body, resp.StatusCode())
+	})
+
+	t.Run("GET /clusters?search=properties.foo='bar' returns clean 400", func(t *testing.T) {
+		RegisterTestingT(t)
+		search := openapi.SearchParams("properties.foo='bar'")
+		params := &openapi.GetClustersParams{Search: &search}
+		resp, err := client.GetClustersWithResponse(ctx, params, test.WithAuthToken(ctx))
+
+		Expect(err).NotTo(HaveOccurred())
+		assertCleanBadRequest(resp.Body, resp.StatusCode())
+	})
+}
+
 // TestSearchNodePoolConditionSubfieldLastUpdatedTime verifies that condition subfield queries
 // work for NodePools — same code path as Clusters but validates the full end-to-end for NodePools.
 func TestSearchNodePoolConditionSubfieldLastUpdatedTime(t *testing.T) {

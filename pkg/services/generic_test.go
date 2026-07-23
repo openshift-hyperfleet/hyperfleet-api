@@ -33,6 +33,14 @@ func TestSQLTranslation(t *testing.T) {
 			"search": "= = =",
 			"error":  errors.CodeBadRequest + ": Failed to parse search query: = = =",
 		},
+		// "properties." was a leftover alias from before the resources table's JSONB
+		// column was renamed to "spec" — there is no "properties" column, so this must
+		// be rejected as an unknown field rather than translated into a query against a
+		// nonexistent column (which would surface as a raw pq: error at execution time).
+		{
+			"search": "properties.owner = 'team_a'",
+			"error":  errors.CodeBadRequest + ": properties.owner is not a valid field name",
+		},
 	}
 	for _, test := range errorTests {
 		var list []api.Resource
@@ -131,11 +139,6 @@ func TestSQLTranslation(t *testing.T) {
 			"search": "spec.release.version = '2'",
 			"sql":    "spec->'release'->>'version' = ?",
 			"values": ConsistOf("2"),
-		},
-		{
-			"search": "properties.owner = 'team_a'",
-			"sql":    "properties ->> 'owner' = ?",
-			"values": ConsistOf("team_a"),
 		},
 	}
 	for _, test := range jsonbRelatedTableTests {

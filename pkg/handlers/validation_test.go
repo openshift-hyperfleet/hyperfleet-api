@@ -639,6 +639,30 @@ func TestValidateLabels_InvalidValues(t *testing.T) {
 	}
 }
 
+// TestValidateLabels_KeyExceedsDBColumnLimit verifies that a label key which is
+// valid per the Kubernetes label-key spec (max 317 chars: 253-char DNS prefix +
+// "/" + 63-char name) but exceeds the resource_labels.key VARCHAR(255) column
+// is rejected here with a clean 400, instead of passing this check and later
+// blowing up as a 500 during resource conversion (api.ValidateLabel).
+func TestValidateLabels_KeyExceedsDBColumnLimit(t *testing.T) {
+	RegisterTestingT(t)
+
+	seg := strings.Repeat("a", 62)
+	prefix := strings.Join([]string{seg, seg, seg, seg}, ".") // 4*62 + 3 = 251 chars, each segment valid DNS-1123
+	name := strings.Repeat("b", 63)
+	key := prefix + "/" + name // 251 + 1 + 63 = 315 chars: valid K8s key, exceeds VARCHAR(255)
+	Expect(len(key)).To(Equal(315))
+	Expect(isValidLabelKeyPrefix(prefix)).To(BeTrue(), "prefix must be spec-valid for this test to be meaningful")
+
+	labels := map[string]string{key: "valid-value"}
+	req := openapi.ClusterCreateRequest{Labels: &labels}
+	validator := validateLabels(&req, "Labels")
+	err := validator()
+
+	Expect(err).ToNot(BeNil(), "expected an oversized-but-K8s-valid key to fail validation")
+	Expect(err.Reason).To(ContainSubstring("label validation failed"))
+}
+
 func TestValidateLabels_NilLabels(t *testing.T) {
 	RegisterTestingT(t)
 

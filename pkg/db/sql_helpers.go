@@ -37,16 +37,6 @@ func validateJSONBKey(key, fieldType string) *errors.ServiceError {
 func getField(name string) (field string, err *errors.ServiceError) {
 	trimmedName := strings.Trim(name, " ")
 
-	if strings.HasPrefix(trimmedName, "properties.") {
-		key := strings.TrimPrefix(trimmedName, "properties.")
-		if validationErr := validateJSONBKey(key, "property key"); validationErr != nil {
-			err = validationErr
-			return
-		}
-		field = fmt.Sprintf("properties ->> '%s'", key)
-		return
-	}
-
 	// Map user-friendly spec.xxx (and nested spec.xxx.yyy...) syntax to JSONB query.
 	// v6 gives us the full dotted path directly:
 	//   spec.region              → spec->>'region'
@@ -575,7 +565,95 @@ func FieldNameWalk(n *tsl.Node) (*tsl.Node, *errors.ServiceError) {
 		}
 		return n, errors.BadRequest("%s", err.Error())
 	}
+	if svcErr := validateTypedFieldValues(mapped); svcErr != nil {
+		return n, svcErr
+	}
 	return wrapSpecNumericCasts(mapped), nil
+}
+
+// searchTypedFields declares the expected TSL literal kind for top-level search
+// columns whose underlying SQL type does not accept arbitrary text (INTEGER,
+// TIMESTAMPTZ). Fields not listed here are VARCHAR and accept any string
+// literal without a Postgres type-mismatch risk.
+var searchTypedFields = map[string]tsl.Kind{
+	"generation":   tsl.KindNumericLiteral,
+	"created_time": tsl.KindTimestampLiteral,
+	"updated_time": tsl.KindTimestampLiteral,
+	"deleted_time": tsl.KindTimestampLiteral,
+}
+
+// validateTypedFieldValues walks binary comparisons against a searchTypedFields
+// column and rejects values whose TSL literal kind doesn't match the column's
+// SQL type, before the query reaches Postgres as a raw pq: error.
+func validateTypedFieldValues(n *tsl.Node) *errors.ServiceError {
+	if n == nil {
+		return nil
+	}
+	if n.Kind == tsl.KindBinaryExpr && n.Left != nil && n.Left.Kind == tsl.KindIdentifier {
+		if field, ok := n.Left.Value.(string); ok {
+			if wantKind, tracked := searchTypedFields[field]; tracked {
+				if err := validateTypedValue(field, wantKind, n.Right); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	if err := validateTypedFieldValues(n.Left); err != nil {
+		return err
+	}
+	if err := validateTypedFieldValues(n.Right); err != nil {
+		return err
+	}
+	for _, child := range n.Children {
+		if err := validateTypedFieldValues(child); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// validateTypedValue checks a single value node (or, for IN queries, each
+// element of an array literal) against the expected TSL literal kind.
+func validateTypedValue(field string, wantKind tsl.Kind, right *tsl.Node) *errors.ServiceError {
+	if right == nil {
+		return errors.BadRequest("missing value for field '%s'", field)
+	}
+
+	if right.Kind == tsl.KindArrayLiteral {
+		for _, child := range right.Children {
+			if !matchesTypedKind(wantKind, child.Kind) {
+				return typedFieldError(field, wantKind, child.Value)
+			}
+		}
+		return nil
+	}
+
+	if !matchesTypedKind(wantKind, right.Kind) {
+		return typedFieldError(field, wantKind, right.Value)
+	}
+	return nil
+}
+
+// matchesTypedKind reports whether a literal kind is acceptable for wantKind.
+// A date literal (no time component) is accepted wherever a timestamp is expected.
+func matchesTypedKind(wantKind, gotKind tsl.Kind) bool {
+	if gotKind == wantKind {
+		return true
+	}
+	return wantKind == tsl.KindTimestampLiteral && gotKind == tsl.KindDateLiteral
+}
+
+func typedFieldError(field string, wantKind tsl.Kind, got any) *errors.ServiceError {
+	switch wantKind {
+	case tsl.KindNumericLiteral:
+		return errors.BadRequest("field '%s' expects an integer value, got %v", field, got)
+	case tsl.KindTimestampLiteral:
+		return errors.BadRequest(
+			"field '%s' expects an RFC3339 timestamp value (e.g. 2026-01-01T00:00:00Z), got %v", field, got,
+		)
+	default:
+		return errors.BadRequest("field '%s' has an unsupported value type", field)
+	}
 }
 
 // wrapSpecNumericCasts wraps spec JSONB fields in CAST(... AS numeric) when
