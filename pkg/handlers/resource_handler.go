@@ -16,7 +16,7 @@ import (
 // ResourceHandler serves both flat and owner-nested routes for a single entity
 // kind. Every method branches on whether "parent_id" is present in mux.Vars(r)
 // rather than dispatching statically per route. This is only correct because
-// plugins/entities/plugin.go guarantees the invariant: a nested (ParentKind != "")
+// cmd/hyperfleet-api/server/routes_entities.go guarantees the invariant: a nested (ParentKind != "")
 // descriptor is registered exclusively under a {parent_id} subrouter, and a flat
 // descriptor never is. If that registration is ever bypassed — e.g. a nested kind
 // wired to a flat route — these branches take the wrong path silently (Create

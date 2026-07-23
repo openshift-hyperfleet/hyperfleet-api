@@ -8,18 +8,10 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/environments"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/dao"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/services"
-	"github.com/openshift-hyperfleet/hyperfleet-api/plugins/resources"
 )
-
-// resourceService retrieves the ResourceService for creating resources.
-func resourceService() services.ResourceService {
-	return resources.Service(&environments.Environment().Services)
-}
 
 // reloadResource reloads a resource from the database to ensure all fields are current.
 func reloadResource(dbSession *gorm.DB, resource *api.Resource) error {
@@ -70,7 +62,6 @@ func buildConditionsWithGeneration(
 }
 
 func (f *Factories) NewCluster(id string) (*api.Resource, error) {
-	svc := resourceService()
 	ctx := context.Background()
 
 	cluster := &api.Resource{
@@ -81,7 +72,7 @@ func (f *Factories) NewCluster(id string) (*api.Resource, error) {
 		UpdatedBy: "test@example.com",
 	}
 
-	result, svcErr := svc.Create(ctx, "Cluster", cluster, nil)
+	result, svcErr := f.resourceService.Create(ctx, "Cluster", cluster, nil)
 	if svcErr != nil {
 		return nil, fmt.Errorf("create cluster: %w", svcErr)
 	}

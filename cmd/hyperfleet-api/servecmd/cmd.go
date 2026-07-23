@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 	"go.opentelemetry.io/otel/sdk/trace"
 
+	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/container"
 	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/environments"
 	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/server"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
@@ -146,7 +147,8 @@ func runServe(cmd *cobra.Command, args []string) {
 		}
 	}
 
-	apiServer := server.NewAPIServer(tracingEnabled)
+	ctr := container.NewContainer(environments.Environment().Database.SessionFactory)
+	apiServer := ctr.APIServer(tracingEnabled)
 	go apiServer.Start()
 
 	metricsServer := server.NewMetricsServer()
@@ -183,6 +185,7 @@ func runServe(cmd *cobra.Command, args []string) {
 	if err := metricsServer.Stop(); err != nil {
 		logger.WithError(ctx, err).Error("Failed to stop metrics server")
 	}
+	ctr.Close()
 
 	if tp != nil {
 		shutdownCtx, cancel := context.WithTimeout(

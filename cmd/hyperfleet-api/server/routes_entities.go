@@ -1,4 +1,4 @@
-package entities
+package server
 
 import (
 	"fmt"
@@ -7,34 +7,24 @@ import (
 
 	"github.com/gorilla/mux"
 
-	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/environments"
-	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/server"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/handlers"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/registry"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/services"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/validators"
-	"github.com/openshift-hyperfleet/hyperfleet-api/plugins/adapterStatus"
-	"github.com/openshift-hyperfleet/hyperfleet-api/plugins/resources"
 )
 
-func init() {
-	server.RegisterRoutes("entities", func(apiV1Router *mux.Router, svc server.ServicesInterface) {
-		envServices := svc.(*environments.Services)
-		resourceService := resources.Service(envServices)
-		adapterStatusService := adapterStatus.Service(envServices)
-
-		schemaPath := environments.Environment().Config.Server.OpenAPISchemaPath
-		var schemaValidator *validators.SchemaValidator
-		if schemaPath != "" {
-			var err error
-			schemaValidator, err = validators.NewSchemaValidator(schemaPath)
-			if err != nil {
-				panic(fmt.Sprintf("failed to load schema validator from %s: %v", schemaPath, err))
-			}
-		}
-
-		RegisterEntityRoutes(apiV1Router, resourceService, adapterStatusService, schemaValidator)
-	})
+func NewEntityRouteRegistrar(
+	resourceService services.ResourceService,
+	adapterStatusService services.AdapterStatusService,
+	schemaValidator *validators.SchemaValidator,
+) RouteRegistrar {
+	return RouteRegistrar{
+		Name: "entities",
+		Register: func(apiV1Router *mux.Router) error {
+			RegisterEntityRoutes(apiV1Router, resourceService, adapterStatusService, schemaValidator)
+			return nil
+		},
+	}
 }
 
 // RegisterEntityRoutes creates handlers and registers routes for every entity
@@ -43,7 +33,7 @@ func init() {
 //
 // Top-level entities get routes at /{plural}. Child entities (ParentKind != "")
 // get nested routes under /{parent_plural}/{parent_id}/{plural} plus flat
-// read/update/delete access at /{plural} (POST rejected — needs parent context).
+// read/update/delete access at /{plural} (POST rejected - needs parent context).
 // All entities get /{id}/statuses sub-routes for adapter status reporting.
 //
 // The kind-agnostic /resources root endpoint is registered separately.
@@ -79,9 +69,9 @@ func registerPerEntityRoutes(
 
 		if descriptor.ParentKind != "" {
 			parent := registry.MustGet(descriptor.ParentKind)
-			registerResourceRoutes(apiV1Router, "/"+parent.Plural+"/{parent_id}/"+descriptor.Plural, h, sh)
+			registerEntityResourceRoutes(apiV1Router, "/"+parent.Plural+"/{parent_id}/"+descriptor.Plural, h, sh)
 		}
-		registerResourceRoutes(apiV1Router, "/"+descriptor.Plural, h, sh)
+		registerEntityResourceRoutes(apiV1Router, "/"+descriptor.Plural, h, sh)
 	}
 }
 
@@ -103,7 +93,7 @@ func registerRootResourceRoutes(
 	r.HandleFunc("/{id}/statuses", rootHandler.CreateStatus).Methods(http.MethodPut)
 }
 
-func registerResourceRoutes(
+func registerEntityResourceRoutes(
 	apiV1Router *mux.Router, prefix string,
 	h *handlers.ResourceHandler, sh *handlers.ResourceStatusHandler,
 ) {
