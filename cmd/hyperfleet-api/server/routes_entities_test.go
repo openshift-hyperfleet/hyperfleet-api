@@ -1,4 +1,4 @@
-package entities
+package server
 
 import (
 	"net/http/httptest"

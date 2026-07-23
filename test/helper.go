@@ -21,6 +21,7 @@ import (
 	"github.com/spf13/pflag"
 	"gorm.io/gorm"
 
+	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/container"
 	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/environments"
 	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/server"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
@@ -30,8 +31,6 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/registry"
 	"github.com/openshift-hyperfleet/hyperfleet-api/test/factories"
 	"github.com/openshift-hyperfleet/hyperfleet-api/test/mocks"
-
-	_ "github.com/openshift-hyperfleet/hyperfleet-api/plugins/entities"
 )
 
 const (
@@ -61,7 +60,8 @@ type Helper struct {
 	Factories     factories.Factories
 	Ctx           context.Context
 	DBFactory     db.SessionFactory
-	APIServer     server.Server
+	Container     *container.Container
+	APIServer     *server.APIServer
 	MetricsServer server.Server
 	HealthServer  server.Server
 	AppConfig     *config.ApplicationConfig
@@ -118,9 +118,13 @@ func NewHelper(t *testing.T) *Helper {
 			os.Exit(1)
 		}
 
+		ctr := container.NewContainer(env.Database.SessionFactory)
+
 		helper = &Helper{
+			Factories:     factories.New(ctr.ResourceService()),
 			AppConfig:     environments.Environment().Config,
 			DBFactory:     environments.Environment().Database.SessionFactory,
+			Container:     ctr,
 			JWTPrivateKey: jwtKey,
 			JWTCA:         jwtCA,
 		}
@@ -135,6 +139,7 @@ func NewHelper(t *testing.T) *Helper {
 		helper.teardowns = []func() error{
 			helper.teardownEnv,
 			helper.stopAPIServer,
+			helper.closeContainer,
 			helper.stopMetricsServer,
 			helper.stopHealthServer,
 			jwkMockTeardown,
@@ -183,7 +188,7 @@ func (helper *Helper) startAPIServer() {
 		}
 	}
 	// Disable tracing for integration tests (no OTLP collector required)
-	helper.APIServer = server.NewAPIServer(false)
+	helper.APIServer = helper.Container.APIServer(false)
 	listener, err := helper.APIServer.Listen()
 	if err != nil {
 		logger.WithError(ctx, err).Error("Unable to start Test API server")
@@ -200,6 +205,10 @@ func (helper *Helper) stopAPIServer() error {
 	if err := helper.APIServer.Stop(); err != nil {
 		return fmt.Errorf("unable to stop api server: %s", err.Error())
 	}
+	return nil
+}
+func (helper *Helper) closeContainer() error {
+	helper.Container.Close()
 	return nil
 }
 
@@ -237,15 +246,6 @@ func (helper *Helper) startHealthServer() {
 	}()
 }
 
-func (helper *Helper) RestartServer() {
-	ctx := context.Background()
-	if err := helper.stopAPIServer(); err != nil {
-		logger.WithError(ctx, err).Warn("unable to stop api server on restart")
-	}
-	helper.startAPIServer()
-	logger.Debug(ctx, "Test API server restarted")
-}
-
 func (helper *Helper) RestartMetricsServer() {
 	ctx := context.Background()
 	if err := helper.stopMetricsServer(); err != nil {
@@ -253,32 +253,6 @@ func (helper *Helper) RestartMetricsServer() {
 	}
 	helper.startMetricsServer()
 	logger.Debug(ctx, "Test metrics server restarted")
-}
-
-func (helper *Helper) Reset() {
-	ctx := context.Background()
-	logger.Info(ctx, "Resetting testing environment")
-	env := environments.Environment()
-	// Reset the configuration
-	env.Config = config.NewApplicationConfig()
-
-	// Re-read command-line configuration into a NEW flagset
-	// This new flag set ensures we don't hit conflicts defining the same flag twice
-	// Also on reset, we don't care to be re-defining 'v' and other glog flags
-	flagset := pflag.NewFlagSet(helper.NewID(), pflag.ContinueOnError)
-	if err := env.SetEnvironmentDefaults(flagset); err != nil {
-		logger.WithError(ctx, err).Error("Unable to set environment defaults on Reset")
-		os.Exit(1)
-	}
-	pflag.Parse()
-
-	err := env.Initialize()
-	if err != nil {
-		logger.WithError(ctx, err).Error("Unable to reset testing environment")
-		os.Exit(1)
-	}
-	helper.AppConfig = env.Config
-	helper.RestartServer()
 }
 
 // NewID creates a new unique ID used internally

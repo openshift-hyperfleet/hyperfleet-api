@@ -174,3 +174,23 @@ func NewServerConfig() *ServerConfig {
 func (s *ServerConfig) BindAddress() string {
 	return net.JoinHostPort(s.Host, strconv.Itoa(s.Port))
 }
+
+func (s *ServerConfig) ReadTimeout() time.Duration {
+	return s.Timeouts.Read
+}
+
+func (s *ServerConfig) WriteTimeout() time.Duration {
+	return s.Timeouts.Write
+}
+
+func (s *ServerConfig) TLSEnabled() bool {
+	return s.TLS.Enabled
+}
+
+func (s *ServerConfig) TLSCertFile() string {
+	return s.TLS.CertFile
+}
+
+func (s *ServerConfig) TLSKeyFile() string {
+	return s.TLS.KeyFile
+}

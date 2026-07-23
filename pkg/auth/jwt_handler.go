@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"regexp"
 	"strings"
 	"time"
 
@@ -30,9 +29,7 @@ const (
 )
 
 type JWTHandlerConfig struct {
-	Next        http.Handler
-	Issuers     []config.JWTIssuerConfig
-	PublicPaths []string
+	Issuers []config.JWTIssuerConfig
 }
 
 // issuerValidator holds the pre-built keyfunc and parser for a single JWT issuer.
@@ -84,31 +81,17 @@ func NewJWTHandler(ctx context.Context, cfg JWTHandlerConfig) (*JWTHandler, erro
 		})
 	}
 
-	publicPatterns := make([]*regexp.Regexp, 0, len(cfg.PublicPaths))
-	for _, p := range cfg.PublicPaths {
-		re, err := regexp.Compile(p)
-		if err != nil {
-			cancel()
-			return nil, fmt.Errorf("invalid public path pattern %q: %w", p, err)
-		}
-		publicPatterns = append(publicPatterns, re)
-	}
-
 	return &JWTHandler{
-		validators:     validators,
-		publicPatterns: publicPatterns,
-		next:           cfg.Next,
-		cancel:         cancel,
+		validators: validators,
+		cancel:     cancel,
 	}, nil
 }
 
 // JWTHandler validates JWT tokens on incoming requests. Call Close() during
 // shutdown to stop the background JWKS refresh goroutine.
 type JWTHandler struct {
-	validators     []issuerValidator
-	next           http.Handler
-	cancel         context.CancelFunc
-	publicPatterns []*regexp.Regexp
+	cancel     context.CancelFunc
+	validators []issuerValidator
 }
 
 func (h *JWTHandler) Close() {
@@ -117,15 +100,11 @@ func (h *JWTHandler) Close() {
 	}
 }
 
-func (h *JWTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	for _, re := range h.publicPatterns {
-		if re.MatchString(r.URL.Path) {
-			h.next.ServeHTTP(w, r)
-			return
-		}
-	}
-
-	// Try each issuer's validator: check its header, extract Bearer token, validate
+// matchValidator tries each configured issuer validator against the request headers.
+// It returns the parsed token and matching issuer config on success. On failure it
+// returns a nil token along with the most relevant error (expired tokens take
+// precedence over other parse errors) and whether a non-Bearer scheme was seen.
+func (h *JWTHandler) matchValidator(r *http.Request) (*jwt.Token, config.JWTIssuerConfig, error, bool) {
 	var lastErr error
 	sawNonBearer := false
 	for _, v := range h.validators {
@@ -148,29 +127,43 @@ func (h *JWTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		ctx := SetJWTTokenContext(r.Context(), token)
-		ctx = SetJWTIssuerConfigContext(ctx, v.issuerCfg)
-		h.next.ServeHTTP(w, r.WithContext(ctx))
-		return
+		return token, v.issuerCfg, nil, false
 	}
+	return nil, config.JWTIssuerConfig{}, lastErr, sawNonBearer
+}
 
-	// No validator matched — return the most appropriate error
-	if lastErr != nil {
-		logger.WithError(r.Context(), lastErr).Warn("JWT validation failed")
-		if errors.Is(lastErr, jwt.ErrTokenExpired) {
-			handleError(r.Context(), w, r, hferrors.CodeAuthExpiredToken, "JWT token has expired")
-		} else {
-			handleError(r.Context(), w, r, hferrors.CodeAuthInvalidCredentials, "invalid JWT token")
+// Middleware returns a standard HTTP middleware that validates JWT tokens.
+// Requests with a valid token proceed to next with claims in context;
+// requests without valid credentials receive a 401 response.
+func (h *JWTHandler) Middleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		token, issuerCfg, lastErr, sawNonBearer := h.matchValidator(r)
+		if token != nil {
+			ctx := SetJWTTokenContext(r.Context(), token)
+			ctx = SetJWTIssuerConfigContext(ctx, issuerCfg)
+			next.ServeHTTP(w, r.WithContext(ctx))
+			return
 		}
-		return
-	}
 
-	if sawNonBearer {
-		handleError(r.Context(), w, r, hferrors.CodeAuthInvalidCredentials, "authorization header does not use Bearer scheme")
-		return
-	}
+		// No validator matched - return the most appropriate error
+		if lastErr != nil {
+			logger.WithError(r.Context(), lastErr).Warn("JWT validation failed")
+			if errors.Is(lastErr, jwt.ErrTokenExpired) {
+				handleError(r.Context(), w, r, hferrors.CodeAuthExpiredToken, "JWT token has expired")
+			} else {
+				handleError(r.Context(), w, r, hferrors.CodeAuthInvalidCredentials, "invalid JWT token")
+			}
+			return
+		}
 
-	handleError(r.Context(), w, r, hferrors.CodeAuthNoCredentials, "missing authorization header")
+		if sawNonBearer {
+			handleError(r.Context(), w, r,
+				hferrors.CodeAuthInvalidCredentials, "authorization header does not use Bearer scheme")
+			return
+		}
+
+		handleError(r.Context(), w, r, hferrors.CodeAuthNoCredentials, "missing authorization header")
+	})
 }
 
 func buildKeyfunc(ctx context.Context, issuer config.JWTIssuerConfig) (keyfunc.Keyfunc, error) {

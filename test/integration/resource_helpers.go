@@ -5,16 +5,14 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/environments"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/services"
-	"github.com/openshift-hyperfleet/hyperfleet-api/plugins/resources"
 	"github.com/openshift-hyperfleet/hyperfleet-api/test"
 )
 
 func setupResourceTest(t *testing.T) (services.ResourceService, *test.Helper) {
 	h, _ := test.RegisterIntegration(t)
-	svc := resources.Service(&environments.Environment().Services)
+	svc := h.Container.ResourceService()
 	return svc, h
 }
 

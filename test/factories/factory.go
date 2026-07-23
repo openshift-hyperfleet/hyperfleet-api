@@ -4,9 +4,15 @@ import (
 	"fmt"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/services"
 )
 
 type Factories struct {
+	resourceService services.ResourceService
+}
+
+func New(resourceService services.ResourceService) Factories {
+	return Factories{resourceService: resourceService}
 }
 
 // NewID generates a new unique identifier using RFC4122 UUID v7.

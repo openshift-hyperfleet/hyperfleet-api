@@ -11,7 +11,7 @@ import (
 )
 
 func (f *Factories) NewNodePool(id string) (*api.Resource, error) {
-	svc := resourceService()
+	svc := f.resourceService
 	ctx := context.Background()
 
 	// Create parent cluster
@@ -46,7 +46,7 @@ func (f *Factories) NewNodePool(id string) (*api.Resource, error) {
 }
 
 func (f *Factories) NewNodePoolList(name string, count int) ([]*api.Resource, error) {
-	svc := resourceService()
+	svc := f.resourceService
 	ctx := context.Background()
 
 	// Create shared parent cluster
