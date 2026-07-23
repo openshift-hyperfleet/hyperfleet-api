@@ -815,7 +815,7 @@ func TestFieldNameWalk_TypedFieldValidation(t *testing.T) {
 			name:          "generation with non-integer string value",
 			searchQuery:   "generation = 'abc'",
 			expectError:   true,
-			errorContains: "field 'generation' expects an integer value",
+			errorContains: "field 'generation' expects an integer",
 		},
 		{
 			name:        "created_time with valid RFC3339 timestamp",
@@ -825,25 +825,25 @@ func TestFieldNameWalk_TypedFieldValidation(t *testing.T) {
 			name:          "created_time with non-timestamp string value",
 			searchQuery:   "created_time = 'not-a-date'",
 			expectError:   true,
-			errorContains: "field 'created_time' expects an RFC3339 timestamp value",
+			errorContains: "field 'created_time' expects an RFC3339 timestamp",
 		},
 		{
 			name:          "updated_time with non-timestamp string value",
 			searchQuery:   "updated_time = 'not-a-date'",
 			expectError:   true,
-			errorContains: "field 'updated_time' expects an RFC3339 timestamp value",
+			errorContains: "field 'updated_time' expects an RFC3339 timestamp",
 		},
 		{
 			name:          "deleted_time with non-timestamp string value",
 			searchQuery:   "deleted_time = 'not-a-date'",
 			expectError:   true,
-			errorContains: "field 'deleted_time' expects an RFC3339 timestamp value",
+			errorContains: "field 'deleted_time' expects an RFC3339 timestamp",
 		},
 		{
 			name:          "generation IN list with a non-integer element",
 			searchQuery:   "generation IN [1, 'abc']",
 			expectError:   true,
-			errorContains: "field 'generation' expects an integer value",
+			errorContains: "field 'generation' expects an integer",
 		},
 		{
 			name:        "generation IN list with all integers",
@@ -857,7 +857,23 @@ func TestFieldNameWalk_TypedFieldValidation(t *testing.T) {
 			name:          "combined query: error surfaces even when other predicate is valid",
 			searchQuery:   "name = 'ok' AND generation = 'abc'",
 			expectError:   true,
-			errorContains: "field 'generation' expects an integer value",
+			errorContains: "field 'generation' expects an integer",
+		},
+		{
+			name:          "generation with literal-first comparison (field on right)",
+			searchQuery:   "'abc' = generation",
+			expectError:   true,
+			errorContains: "field 'generation' expects an integer",
+		},
+		{
+			name:          "created_time with literal-first comparison (field on right)",
+			searchQuery:   "'not-a-date' < created_time",
+			expectError:   true,
+			errorContains: "field 'created_time' expects an RFC3339 timestamp",
+		},
+		{
+			name:        "generation with literal-first comparison and valid value",
+			searchQuery: "1 < generation",
 		},
 	}
 
