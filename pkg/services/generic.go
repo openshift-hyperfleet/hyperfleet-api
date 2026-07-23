@@ -17,7 +17,6 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/dao"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
 //go:generate go tool -modfile=../../tools/go.mod mockgen -source=generic.go -package=services -destination=generic_mock.go
@@ -61,7 +60,6 @@ func (s *sqlGenericService) newListContext(
 	if resourceTypeStr == "" {
 		return nil, nil, errors.GeneralError("Could not determine resource type")
 	}
-	args.Search = strings.Trim(args.Search, " ")
 	return &listContext{
 		ctx:          ctx,
 		args:         args,
@@ -100,11 +98,11 @@ func (s *sqlGenericService) List(
 	// it stops when a builder function raises error or signals finished.
 	var finished bool
 	for _, builderFn := range builders {
-		if finished, err = builderFn(listCtx, &d); err != nil {
+		if finished, err = builderFn(listCtx, d); err != nil {
 			return nil, err
 		}
 		if finished {
-			if err = s.loadList(listCtx, &d); err != nil {
+			if err = s.loadList(listCtx, d); err != nil {
 				return nil, err
 			}
 			break
@@ -114,9 +112,9 @@ func (s *sqlGenericService) List(
 }
 
 /*** Define all sub functions in the type of listBuilder ***/
-type listBuilder func(*listContext, *dao.GenericDao) (finished bool, err *errors.ServiceError)
+type listBuilder func(*listContext, dao.GenericDao) (finished bool, err *errors.ServiceError)
 
-func (s *sqlGenericService) buildPreload(listCtx *listContext, d *dao.GenericDao) (bool, *errors.ServiceError) {
+func (s *sqlGenericService) buildPreload(listCtx *listContext, d dao.GenericDao) (bool, *errors.ServiceError) {
 	listCtx.set = make(map[string]bool)
 
 	for _, preload := range listCtx.args.Preloads {
@@ -124,26 +122,26 @@ func (s *sqlGenericService) buildPreload(listCtx *listContext, d *dao.GenericDao
 	}
 	// preload each table only once; struct{} doesn't occupy any additional space
 	for _, preload := range listCtx.args.Preloads {
-		(*d).Preload(preload)
+		d.Preload(preload)
 	}
 	return false, nil
 }
 
-func (s *sqlGenericService) buildOrderBy(listCtx *listContext, d *dao.GenericDao) (bool, *errors.ServiceError) {
+func (s *sqlGenericService) buildOrderBy(listCtx *listContext, d dao.GenericDao) (bool, *errors.ServiceError) {
 	if len(listCtx.args.Order) != 0 {
 		cleanedOrderList, serviceErr := db.ArgsToOrder(listCtx.args.Order)
 		if serviceErr != nil {
 			return false, serviceErr
 		}
 		for _, orderArg := range cleanedOrderList {
-			(*d).OrderBy(orderArg)
+			d.OrderBy(orderArg)
 		}
 	}
 	return false, nil
 }
 
 func (s *sqlGenericService) buildSearchValues(
-	listCtx *listContext, d *dao.GenericDao,
+	listCtx *listContext, d dao.GenericDao,
 ) (string, []any, *errors.ServiceError) {
 	if listCtx.args.Search == "" {
 		s.addJoins(listCtx, d)
@@ -225,17 +223,17 @@ func (s *sqlGenericService) buildSearchValues(
 	return sql, values, nil
 }
 
-func (s *sqlGenericService) buildSearch(listCtx *listContext, d *dao.GenericDao) (bool, *errors.ServiceError) {
+func (s *sqlGenericService) buildSearch(listCtx *listContext, d dao.GenericDao) (bool, *errors.ServiceError) {
 	sql, values, err := s.buildSearchValues(listCtx, d)
 	if err != nil {
 		return false, err
 	}
-	(*d).Where(dao.NewWhere(sql, values))
+	d.Where(dao.NewWhere(sql, values))
 	return true, nil
 }
 
 // JOIN the tables that appear in the search string
-func (s *sqlGenericService) addJoins(listCtx *listContext, d *dao.GenericDao) {
+func (s *sqlGenericService) addJoins(listCtx *listContext, d dao.GenericDao) {
 	for _, r := range listCtx.joins {
 		if _, ok := listCtx.set[r.ForeignTableName]; ok {
 			// skip already included preloads
@@ -244,49 +242,37 @@ func (s *sqlGenericService) addJoins(listCtx *listContext, d *dao.GenericDao) {
 		sql := fmt.Sprintf(
 			"LEFT JOIN %s ON %s.%s = %s.%s AND %s.deleted_time IS NULL",
 			r.ForeignTableName, r.ForeignTableName, r.ForeignColumnName, r.TableName, r.ColumnName, r.ForeignTableName)
-		(*d).Joins(sql)
+		d.Joins(sql)
 
 		listCtx.groupBy = append(listCtx.groupBy, r.ForeignTableName+".id")
 		listCtx.set[r.ForeignTableName] = true
 	}
 	if len(listCtx.joins) > 0 {
 		// Add base relation
-		listCtx.groupBy = append(listCtx.groupBy, (*d).GetTableName()+".id")
-		(*d).Group(strings.Join(listCtx.groupBy, ","))
+		listCtx.groupBy = append(listCtx.groupBy, d.GetTableName()+".id")
+		d.Group(strings.Join(listCtx.groupBy, ","))
 	}
 
 	// Reset list of joins and group by's
 	listCtx.joins = map[string]dao.TableRelation{}
 }
 
-func (s *sqlGenericService) loadList(listCtx *listContext, d *dao.GenericDao) *errors.ServiceError {
+func (s *sqlGenericService) loadList(listCtx *listContext, d dao.GenericDao) *errors.ServiceError {
 	args := listCtx.args
 
-	(*d).Count(listCtx.resourceList, &listCtx.pagingMeta.Total)
+	d.Count(listCtx.resourceList, &listCtx.pagingMeta.Total)
 
 	// Set resourceList to be an empty slice with zero capacity. Real space will be allocated by g2.Find()
 	if err := zeroSlice(listCtx.resourceList, 0); err != nil {
 		return err
 	}
 
-	switch {
-	case args.Size > MaxListSize:
-		// Note: Currently unreachable via HTTP requests (capped at MaxPageSize=100),
-		// but kept as defensive check for direct service layer usage.
-		logger.Warn(listCtx.ctx, "A query with a size greater than the maximum was requested.")
-	case args.Size < 0:
-		logger.Warn(listCtx.ctx, "A query with an unbound size was requested.")
-	case args.Size == 0:
-		// This early return is not only performant, but also necessary.
-		// gorm does not support Limit(0) any longer.
-		logger.Info(listCtx.ctx,
-			"A query with 0 size requested, returning early without collecting any resources from database")
+	// gorm does not support Limit(0); also reject negative sizes defensively.
+	if args.Size <= 0 {
 		return nil
 	}
 
-	// NOTE: Limit no longer supports '0' size and will cause issues. There is an early return, do not remove it.
-	//       https://github.com/go-gorm/gorm/blob/master/clause/limit.go#L18-L21
-	if err := (*d).Fetch((args.Page-1)*int(args.Size), int(args.Size), listCtx.resourceList); err != nil {
+	if err := d.Fetch(int((args.Page-1)*args.Size), int(args.Size), listCtx.resourceList); err != nil {
 		switch {
 		case e.Is(err, gorm.ErrRecordNotFound):
 			listCtx.pagingMeta.Size = 0
@@ -320,9 +306,9 @@ func zeroSlice(i interface{}, cap int64) *errors.ServiceError {
 // (1) look up the related table by its 1st part - creator
 // (2) replace it by table name - creator.username -> accounts.username
 func (s *sqlGenericService) treeWalkForRelatedTables(
-	listCtx *listContext, tslTree *tsl.Node, genericDao *dao.GenericDao,
+	listCtx *listContext, tslTree *tsl.Node, genericDao dao.GenericDao,
 ) (*tsl.Node, *errors.ServiceError) {
-	resourceTable := (*genericDao).GetTableName()
+	resourceTable := genericDao.GetTableName()
 	if listCtx.joins == nil {
 		listCtx.joins = map[string]dao.TableRelation{}
 	}
@@ -338,7 +324,7 @@ func (s *sqlGenericService) treeWalkForRelatedTables(
 			fieldName := fieldParts[0]
 			_, exists := listCtx.joins[fieldName]
 			if !exists {
-				if relation, ok := (*genericDao).GetTableRelation(fieldName); ok {
+				if relation, ok := genericDao.GetTableRelation(fieldName); ok {
 					listCtx.joins[fieldName] = relation
 				} else {
 					return field, fmt.Errorf(
@@ -366,9 +352,9 @@ func (s *sqlGenericService) treeWalkForRelatedTables(
 func (s *sqlGenericService) treeWalkForAddingTableName(
 	_ *listContext,
 	tslTree *tsl.Node,
-	dao *dao.GenericDao,
+	d dao.GenericDao,
 ) (*tsl.Node, *errors.ServiceError) {
-	resourceTable := (*dao).GetTableName()
+	resourceTable := d.GetTableName()
 
 	walkFn := func(field string) (string, error) {
 		fieldParts := strings.Split(field, ".")

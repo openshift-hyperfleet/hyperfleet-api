@@ -17,8 +17,6 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/util"
 )
 
-const defaultPageSize = 20
-
 //go:generate go tool -modfile=../../tools/go.mod mockgen -source=resource.go -package=services -destination=resource_mock.go
 
 type ResourceService interface {
@@ -406,7 +404,7 @@ func (s *sqlResourceService) List(
 		return nil, nil, svcErr
 	}
 	if args == nil {
-		args = &ListArguments{Page: 1, Size: defaultPageSize}
+		args = NewListArguments()
 	}
 	scopedArgs := *args
 	scopedArgs.Preloads = append(append([]string(nil), scopedArgs.Preloads...), "Labels", "Conditions", "References")
@@ -437,7 +435,7 @@ func (s *sqlResourceService) ListByOwner(
 		return nil, nil, svcErr
 	}
 	if args == nil {
-		args = &ListArguments{Page: 1, Size: defaultPageSize}
+		args = NewListArguments()
 	}
 	scopedArgs := *args
 	scopedArgs.Preloads = append(append([]string(nil), scopedArgs.Preloads...), "Labels", "Conditions", "References")
@@ -477,7 +475,7 @@ func (s *sqlResourceService) ListAll(
 	ctx context.Context, args *ListArguments,
 ) (api.ResourceList, *api.PagingMeta, *errors.ServiceError) {
 	if args == nil {
-		args = &ListArguments{Page: 1, Size: defaultPageSize}
+		args = NewListArguments()
 	}
 	scopedArgs := *args
 	scopedArgs.Preloads = append(append([]string(nil), scopedArgs.Preloads...), "Labels", "Conditions", "References")
