@@ -62,7 +62,7 @@ Groups of compute nodes within clusters.
 
 ### Generic Resources
 
-The API also supports generic resource types registered via the plugin system. Currently available:
+The API also supports generic resource types declared in `config.yaml` under `entities:`. Currently available:
 
 - **WifConfigs** — `GET/POST /api/hyperfleet/v1/wifconfigs`, `GET/PATCH/DELETE .../wifconfigs/{id}`
 - **Channels** — `GET/POST /api/hyperfleet/v1/channels`, `GET/PATCH/DELETE .../channels/{id}`

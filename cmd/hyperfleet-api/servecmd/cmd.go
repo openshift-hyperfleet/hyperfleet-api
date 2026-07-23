@@ -11,9 +11,11 @@ import (
 	"github.com/spf13/cobra"
 	"go.opentelemetry.io/otel/sdk/trace"
 
+	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/container"
 	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/environments"
 	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/server"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/auth"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db/db_session"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/health"
@@ -146,7 +148,38 @@ func runServe(cmd *cobra.Command, args []string) {
 		}
 	}
 
-	apiServer := server.NewAPIServer(tracingEnabled)
+	ctr := container.NewContainer(cfg, environments.Environment().Database.SessionFactory)
+
+	// Only build the JWT handler when auth is on; it starts a JWKS refresh goroutine.
+	var jwtHandler *auth.JWTHandler
+	if cfg.Server.JWT.Enabled {
+		var jwtErr error
+		jwtHandler, jwtErr = ctr.JWTHandler()
+		if jwtErr != nil {
+			logger.WithError(ctx, jwtErr).Error("Unable to create JWT handler")
+			os.Exit(1)
+		}
+	}
+
+	schemaValidator, schemaErr := ctr.SchemaValidator()
+	if schemaErr != nil {
+		logger.WithError(ctx, schemaErr).Error("Unable to create schema validator")
+		os.Exit(1)
+	}
+
+	apiServer, buildErr := BuildAPIServer(
+		cfg,
+		ctr.ResourceService(),
+		ctr.AdapterStatusService(),
+		schemaValidator,
+		jwtHandler,
+		ctr.SessionFactory(),
+		tracingEnabled,
+	)
+	if buildErr != nil {
+		logger.WithError(ctx, buildErr).Error("Unable to build API server")
+		os.Exit(1)
+	}
 	go apiServer.Start()
 
 	metricsServer := server.NewMetricsServer()
@@ -183,6 +216,7 @@ func runServe(cmd *cobra.Command, args []string) {
 	if err := metricsServer.Stop(); err != nil {
 		logger.WithError(ctx, err).Error("Failed to stop metrics server")
 	}
+	ctr.Close()
 
 	if tp != nil {
 		shutdownCtx, cancel := context.WithTimeout(
