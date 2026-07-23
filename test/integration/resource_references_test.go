@@ -2,6 +2,7 @@ package integration
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 
@@ -515,6 +516,37 @@ func TestResourceReferences_CreateDuplicateRefTarget(t *testing.T) {
 	Expect(svcErr).NotTo(BeNil(), "duplicate ref target should fail")
 	Expect(svcErr.HTTPCode).To(Equal(400))
 	Expect(svcErr.Reason).To(ContainSubstring("duplicate target id"))
+}
+func TestResourceReferences_CreateInvalidKind(t *testing.T) {
+	testCases := []struct {
+		name        string
+		kind        string
+		description string
+	}{
+		{"WrongKind", "WrongKind", "wrong kind should fail validation"},
+		{"EmptyKind", "", "empty kind should fail validation"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			RegisterTestingT(t)
+			svc, _ := setupRefTest(t)
+
+			target, svcErr := svc.Create(t.Context(), "RefTarget",
+				newRefTestResource("RefTarget",
+					fmt.Sprintf("target-%s-%s", strings.ToLower(tc.name[:2]), uuid.NewString()[:8])),
+				nil)
+			Expect(svcErr).To(BeNil())
+
+			sourceName := fmt.Sprintf("source-%s-%s", strings.ToLower(tc.name[:2]), uuid.NewString()[:8])
+			refs := makeRefs("dep", struct{ id, kind string }{target.ID, tc.kind})
+
+			_, svcErr = svc.Create(t.Context(), "RefSource", newRefTestResource("RefSource", sourceName), refs)
+			Expect(svcErr).NotTo(BeNil(), tc.description)
+			Expect(svcErr.HTTPCode).To(Equal(400))
+			Expect(svcErr.Reason).To(ContainSubstring("does not match expected target kind"))
+		})
+	}
 }
 
 func TestResourceReferences_CreateRefToSoftDeletedTarget(t *testing.T) {

@@ -13,7 +13,7 @@ func (ResourceReference) TableName() string {
 	return "resource_references"
 }
 
-// ResourceSummary carries kind + name for error messages (e.g. FindReferencer 409).
+// ResourceSummary carries kind + name for error messages (e.g. FindReferencers 409).
 type ResourceSummary struct {
 	Kind string
 	Name string
