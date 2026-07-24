@@ -797,6 +797,108 @@ func TestFieldNameWalk_NumericCast(t *testing.T) {
 	})
 }
 
+// TestFieldNameWalk_TypedFieldValidation verifies that typed top-level columns
+// (generation: INTEGER; created_time/updated_time/deleted_time: TIMESTAMPTZ)
+// reject mismatched values with a clean 400 before ever reaching Postgres.
+func TestFieldNameWalk_TypedFieldValidation(t *testing.T) {
+	tests := []struct {
+		name          string
+		searchQuery   string
+		errorContains string
+		expectError   bool
+	}{
+		{
+			name:        "generation with valid integer",
+			searchQuery: "generation = 5",
+		},
+		{
+			name:          "generation with non-integer string value",
+			searchQuery:   "generation = 'abc'",
+			expectError:   true,
+			errorContains: "field 'generation' expects an integer",
+		},
+		{
+			name:        "created_time with valid RFC3339 timestamp",
+			searchQuery: "created_time > '2026-01-01T00:00:00Z'",
+		},
+		{
+			name:          "created_time with non-timestamp string value",
+			searchQuery:   "created_time = 'not-a-date'",
+			expectError:   true,
+			errorContains: "field 'created_time' expects an RFC3339 timestamp",
+		},
+		{
+			name:          "updated_time with non-timestamp string value",
+			searchQuery:   "updated_time = 'not-a-date'",
+			expectError:   true,
+			errorContains: "field 'updated_time' expects an RFC3339 timestamp",
+		},
+		{
+			name:          "deleted_time with non-timestamp string value",
+			searchQuery:   "deleted_time = 'not-a-date'",
+			expectError:   true,
+			errorContains: "field 'deleted_time' expects an RFC3339 timestamp",
+		},
+		{
+			name:          "generation IN list with a non-integer element",
+			searchQuery:   "generation IN [1, 'abc']",
+			expectError:   true,
+			errorContains: "field 'generation' expects an integer",
+		},
+		{
+			name:        "generation IN list with all integers",
+			searchQuery: "generation IN [1, 2, 3]",
+		},
+		{
+			name:        "combined query: typed field valid, text field untouched",
+			searchQuery: "generation = 1 AND name = 'anything-goes'",
+		},
+		{
+			name:          "combined query: error surfaces even when other predicate is valid",
+			searchQuery:   "name = 'ok' AND generation = 'abc'",
+			expectError:   true,
+			errorContains: "field 'generation' expects an integer",
+		},
+		{
+			name:          "generation with literal-first comparison (field on right)",
+			searchQuery:   "'abc' = generation",
+			expectError:   true,
+			errorContains: "field 'generation' expects an integer",
+		},
+		{
+			name:          "created_time with literal-first comparison (field on right)",
+			searchQuery:   "'not-a-date' < created_time",
+			expectError:   true,
+			errorContains: "field 'created_time' expects an RFC3339 timestamp",
+		},
+		{
+			name:        "generation with literal-first comparison and valid value",
+			searchQuery: "1 < generation",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			RegisterTestingT(t)
+
+			tree, err := tsl.ParseTSL(tt.searchQuery)
+			Expect(err).ToNot(HaveOccurred())
+
+			_, serviceErr := FieldNameWalk(tree.Node)
+
+			if tt.expectError {
+				Expect(serviceErr).ToNot(BeNil())
+				Expect(serviceErr.Error()).To(ContainSubstring(tt.errorContains))
+				// No raw driver details should ever leak into the message.
+				Expect(serviceErr.Error()).ToNot(ContainSubstring("pq:"))
+				Expect(serviceErr.Error()).ToNot(ContainSubstring("SQLSTATE"))
+				return
+			}
+			Expect(serviceErr).To(BeNil())
+		})
+	}
+}
+
 func TestConditionStatusValidation(t *testing.T) {
 	tests := []struct {
 		status      string

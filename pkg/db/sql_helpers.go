@@ -37,16 +37,6 @@ func validateJSONBKey(key, fieldType string) *errors.ServiceError {
 func getField(name string) (field string, err *errors.ServiceError) {
 	trimmedName := strings.Trim(name, " ")
 
-	if strings.HasPrefix(trimmedName, "properties.") {
-		key := strings.TrimPrefix(trimmedName, "properties.")
-		if validationErr := validateJSONBKey(key, "property key"); validationErr != nil {
-			err = validationErr
-			return
-		}
-		field = fmt.Sprintf("properties ->> '%s'", key)
-		return
-	}
-
 	// Map user-friendly spec.xxx (and nested spec.xxx.yyy...) syntax to JSONB query.
 	// v6 gives us the full dotted path directly:
 	//   spec.region              → spec->>'region'
@@ -575,7 +565,98 @@ func FieldNameWalk(n *tsl.Node) (*tsl.Node, *errors.ServiceError) {
 		}
 		return n, errors.BadRequest("%s", err.Error())
 	}
+	if svcErr := validateTypedFieldValues(mapped); svcErr != nil {
+		return n, svcErr
+	}
 	return wrapSpecNumericCasts(mapped), nil
+}
+
+// searchTypedFields declares the expected TSL literal kind for top-level search
+// columns whose underlying SQL type does not accept arbitrary text (INTEGER,
+// TIMESTAMPTZ). Fields not listed here are VARCHAR and accept any string
+// literal without a Postgres type-mismatch risk.
+var searchTypedFields = map[string]tsl.Kind{
+	"generation":   tsl.KindNumericLiteral,
+	"created_time": tsl.KindTimestampLiteral,
+	"updated_time": tsl.KindTimestampLiteral,
+	"deleted_time": tsl.KindTimestampLiteral,
+}
+
+// typedKindHints gives a human-readable description of each tsl.Kind used in
+// searchTypedFields, for use in validation error messages.
+var typedKindHints = map[tsl.Kind]string{
+	tsl.KindNumericLiteral:   "an integer",
+	tsl.KindTimestampLiteral: "an RFC3339 timestamp (e.g. 2026-01-01T00:00:00Z)",
+}
+
+// validateTypedFieldValues walks binary comparisons against a searchTypedFields
+// column — on either side of the operator, since TSL allows both orders (see
+// wrapSpecNumericCasts below) — and rejects values whose TSL literal kind
+// doesn't match the column's SQL type, before the query reaches Postgres as a
+// raw pq: error.
+func validateTypedFieldValues(n *tsl.Node) *errors.ServiceError {
+	if n == nil {
+		return nil
+	}
+	if n.Kind == tsl.KindBinaryExpr {
+		if err := validateTypedOperand(n.Left, n.Right); err != nil {
+			return err
+		}
+		if err := validateTypedOperand(n.Right, n.Left); err != nil {
+			return err
+		}
+	}
+	if err := validateTypedFieldValues(n.Left); err != nil {
+		return err
+	}
+	if err := validateTypedFieldValues(n.Right); err != nil {
+		return err
+	}
+	for _, child := range n.Children {
+		if err := validateTypedFieldValues(child); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// validateTypedOperand checks whether ident is a tracked typed-field identifier
+// and, if so, validates value against that field's expected TSL literal kind.
+// It's a no-op when ident isn't a tracked identifier (e.g. it's the value side).
+func validateTypedOperand(ident, value *tsl.Node) *errors.ServiceError {
+	if ident == nil || ident.Kind != tsl.KindIdentifier {
+		return nil
+	}
+	field, ok := ident.Value.(string)
+	if !ok {
+		return nil
+	}
+	wantKind, tracked := searchTypedFields[field]
+	if !tracked {
+		return nil
+	}
+	return validateTypedValue(field, wantKind, value)
+}
+
+// validateTypedValue checks a single value node (or, for IN queries, each
+// element of an array literal) against the expected TSL literal kind. A date
+// literal (no time component) is accepted wherever a timestamp is expected.
+func validateTypedValue(field string, wantKind tsl.Kind, value *tsl.Node) *errors.ServiceError {
+	if value == nil {
+		return errors.BadRequest("missing value for field '%s'", field)
+	}
+	if value.Kind == tsl.KindArrayLiteral {
+		for _, child := range value.Children {
+			if err := validateTypedValue(field, wantKind, child); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	if value.Kind == wantKind || (wantKind == tsl.KindTimestampLiteral && value.Kind == tsl.KindDateLiteral) {
+		return nil
+	}
+	return errors.BadRequest("field '%s' expects %s", field, typedKindHints[wantKind])
 }
 
 // wrapSpecNumericCasts wraps spec JSONB fields in CAST(... AS numeric) when

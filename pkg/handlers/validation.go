@@ -8,13 +8,18 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 )
 
 const (
-	maxReasonLength     = 1024
-	maxLabelKeyLen      = 317 // 253-char prefix + "/" + 63-char name
+	maxReasonLength = 1024
+	// The Kubernetes label key spec allows up to 317 chars (253-char prefix + "/" + 63-char
+	// name), but resource_labels.key is VARCHAR(255) — cap at the DB limit so an
+	// oversized-but-K8s-valid key fails here with a clean 400 instead of during resource
+	// conversion with a 500 (api.ValidateLabel / api.MaxLabelKeyLen enforce the same bound).
+	maxLabelKeyLen      = api.MaxLabelKeyLen
 	maxLabelValueLen    = 63
 	maxObservedTimeSkew = 5 * time.Minute  // tolerance for clock skew between adapter pods and API server
 	maxObservedTimeAge  = 30 * time.Minute // matches Sentinel staleness health check window
