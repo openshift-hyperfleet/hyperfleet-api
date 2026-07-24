@@ -612,6 +612,10 @@ func TestResourceHandler_PatchByOwner(t *testing.T) {
 		{
 			name: "Success",
 			setupMock: func(mock *services.MockResourceService) {
+				mock.EXPECT().Get(gomock.Any(), "Channel", "ch-1").Return(&api.Resource{
+					Meta: api.Meta{ID: "ch-1"}, Kind: "Channel",
+					Spec: datatypes.JSON(`{}`), CreatedBy: "u@t.com", UpdatedBy: "u@t.com",
+				}, nil)
 				mock.EXPECT().GetByOwner(gomock.Any(), "Version", "v-1", "ch-1").
 					Return(&api.Resource{Meta: api.Meta{ID: "v-1"}, Kind: "Version",
 						Spec: datatypes.JSON(`{}`), CreatedBy: "u@t.com", UpdatedBy: "u@t.com"}, nil)
@@ -628,6 +632,10 @@ func TestResourceHandler_PatchByOwner(t *testing.T) {
 		{
 			name: "Child not owned by parent",
 			setupMock: func(mock *services.MockResourceService) {
+				mock.EXPECT().Get(gomock.Any(), "Channel", "ch-1").Return(&api.Resource{
+					Meta: api.Meta{ID: "ch-1"}, Kind: "Channel",
+					Spec: datatypes.JSON(`{}`), CreatedBy: "u@t.com", UpdatedBy: "u@t.com",
+				}, nil)
 				mock.EXPECT().GetByOwner(gomock.Any(), "Version", "v-1", "ch-1").
 					Return(nil, errors.NotFound("Version not found for channel"))
 			},
@@ -636,6 +644,10 @@ func TestResourceHandler_PatchByOwner(t *testing.T) {
 		{
 			name: "Conflict 409 - soft-deleted child",
 			setupMock: func(mock *services.MockResourceService) {
+				mock.EXPECT().Get(gomock.Any(), "Channel", "ch-1").Return(&api.Resource{
+					Meta: api.Meta{ID: "ch-1"}, Kind: "Channel",
+					Spec: datatypes.JSON(`{}`), CreatedBy: "u@t.com", UpdatedBy: "u@t.com",
+				}, nil)
 				mock.EXPECT().GetByOwner(gomock.Any(), "Version", "v-1", "ch-1").
 					Return(&api.Resource{Meta: api.Meta{ID: "v-1"}, Kind: "Version",
 						Spec: datatypes.JSON(`{}`), CreatedBy: "u@t.com", UpdatedBy: "u@t.com"}, nil)
@@ -644,6 +656,14 @@ func TestResourceHandler_PatchByOwner(t *testing.T) {
 					Return(nil, errors.ConflictState("Version 'v-1' is marked for deletion"))
 			},
 			expectedStatusCode: http.StatusConflict,
+		},
+		{
+			name: "Parent not found",
+			setupMock: func(mock *services.MockResourceService) {
+				mock.EXPECT().Get(gomock.Any(), "Channel", "ch-1").
+					Return(nil, errors.NotFound("Channel not found"))
+			},
+			expectedStatusCode: http.StatusNotFound,
 		},
 	}
 
@@ -678,6 +698,10 @@ func TestResourceHandler_DeleteByOwner(t *testing.T) {
 		{
 			name: "Success",
 			setupMock: func(mock *services.MockResourceService) {
+				mock.EXPECT().Get(gomock.Any(), "Channel", "ch-1").Return(&api.Resource{
+					Meta: api.Meta{ID: "ch-1"}, Kind: "Channel",
+					Spec: datatypes.JSON(`{}`), CreatedBy: "u@t.com", UpdatedBy: "u@t.com",
+				}, nil)
 				mock.EXPECT().GetByOwner(gomock.Any(), "Version", "v-1", "ch-1").
 					Return(&api.Resource{Meta: api.Meta{ID: "v-1"}, Kind: "Version",
 						Spec: datatypes.JSON(`{}`), CreatedBy: "u@t.com", UpdatedBy: "u@t.com"}, nil)
@@ -692,8 +716,20 @@ func TestResourceHandler_DeleteByOwner(t *testing.T) {
 		{
 			name: "Child not owned by parent",
 			setupMock: func(mock *services.MockResourceService) {
+				mock.EXPECT().Get(gomock.Any(), "Channel", "ch-1").Return(&api.Resource{
+					Meta: api.Meta{ID: "ch-1"}, Kind: "Channel",
+					Spec: datatypes.JSON(`{}`), CreatedBy: "u@t.com", UpdatedBy: "u@t.com",
+				}, nil)
 				mock.EXPECT().GetByOwner(gomock.Any(), "Version", "v-1", "ch-1").
 					Return(nil, errors.NotFound("Version not found for channel"))
+			},
+			expectedStatusCode: http.StatusNotFound,
+		},
+		{
+			name: "Parent not found",
+			setupMock: func(mock *services.MockResourceService) {
+				mock.EXPECT().Get(gomock.Any(), "Channel", "ch-1").
+					Return(nil, errors.NotFound("Channel not found"))
 			},
 			expectedStatusCode: http.StatusNotFound,
 		},
@@ -849,6 +885,10 @@ func TestResourceHandler_ForceDeleteByOwner(t *testing.T) {
 			name: "Success 204 - nested resource force-deleted",
 			body: `{"reason": "Stuck in finalizing"}`,
 			setupMock: func(mock *services.MockResourceService) {
+				mock.EXPECT().Get(gomock.Any(), "Channel", parentID).Return(&api.Resource{
+					Meta: api.Meta{ID: parentID}, Kind: "Channel",
+					Spec: datatypes.JSON(`{}`), CreatedBy: "u@t.com", UpdatedBy: "u@t.com",
+				}, nil)
 				mock.EXPECT().
 					GetByOwner(gomock.Any(), "Version", versionID, parentID).
 					Return(&api.Resource{Meta: api.Meta{ID: versionID}, Kind: "Version"}, nil)
@@ -862,9 +902,22 @@ func TestResourceHandler_ForceDeleteByOwner(t *testing.T) {
 			name: "Error 404 - ownership mismatch",
 			body: `{"reason": "some reason"}`,
 			setupMock: func(mock *services.MockResourceService) {
+				mock.EXPECT().Get(gomock.Any(), "Channel", parentID).Return(&api.Resource{
+					Meta: api.Meta{ID: parentID}, Kind: "Channel",
+					Spec: datatypes.JSON(`{}`), CreatedBy: "u@t.com", UpdatedBy: "u@t.com",
+				}, nil)
 				mock.EXPECT().
 					GetByOwner(gomock.Any(), "Version", versionID, parentID).
 					Return(nil, errors.NotFound("Version with id='%s' not found for owner '%s'", versionID, parentID))
+			},
+			expectedStatusCode: http.StatusNotFound,
+		},
+		{
+			name: "Error 404 - parent not found",
+			body: `{"reason": "some reason"}`,
+			setupMock: func(mock *services.MockResourceService) {
+				mock.EXPECT().Get(gomock.Any(), "Channel", parentID).
+					Return(nil, errors.NotFound("Channel not found"))
 			},
 			expectedStatusCode: http.StatusNotFound,
 		},
@@ -879,6 +932,10 @@ func TestResourceHandler_ForceDeleteByOwner(t *testing.T) {
 			name: "Error 409 - not in Finalizing state",
 			body: `{"reason": "some reason"}`,
 			setupMock: func(mock *services.MockResourceService) {
+				mock.EXPECT().Get(gomock.Any(), "Channel", parentID).Return(&api.Resource{
+					Meta: api.Meta{ID: parentID}, Kind: "Channel",
+					Spec: datatypes.JSON(`{}`), CreatedBy: "u@t.com", UpdatedBy: "u@t.com",
+				}, nil)
 				mock.EXPECT().
 					GetByOwner(gomock.Any(), "Version", versionID, parentID).
 					Return(&api.Resource{Meta: api.Meta{ID: versionID}, Kind: "Version"}, nil)
@@ -892,6 +949,10 @@ func TestResourceHandler_ForceDeleteByOwner(t *testing.T) {
 			name: "Error 500 - service internal error",
 			body: `{"reason": "some reason"}`,
 			setupMock: func(mock *services.MockResourceService) {
+				mock.EXPECT().Get(gomock.Any(), "Channel", parentID).Return(&api.Resource{
+					Meta: api.Meta{ID: parentID}, Kind: "Channel",
+					Spec: datatypes.JSON(`{}`), CreatedBy: "u@t.com", UpdatedBy: "u@t.com",
+				}, nil)
 				mock.EXPECT().
 					GetByOwner(gomock.Any(), "Version", versionID, parentID).
 					Return(&api.Resource{Meta: api.Meta{ID: versionID}, Kind: "Version"}, nil)
@@ -1181,4 +1242,30 @@ func TestRootResourceHandler_Create_RejectsInvalidName(t *testing.T) {
 			Expect(rr.Code).To(Equal(tt.wantStatus))
 		})
 	}
+}
+
+func TestResourceHandler_Create_ChildKindWithoutParent_Returns422(t *testing.T) {
+	RegisterTestingT(t)
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	t.Cleanup(registry.Reset)
+	registry.Reset()
+	registry.Register(channelDescriptor)
+	registry.Register(versionDescriptor)
+
+	mockSvc := services.NewMockResourceService(ctrl)
+	handler := NewResourceHandler(versionDescriptor, mockSvc)
+
+	req := httptest.NewRequest(http.MethodPost,
+		"/api/hyperfleet/v1/versions",
+		strings.NewReader(`{"kind":"Version","name":"4-17-3","spec":{"raw_version":"4.17.3"}}`))
+	req.Header.Set("Content-Type", "application/json")
+	req = mux.SetURLVars(req, map[string]string{})
+	rr := httptest.NewRecorder()
+
+	handler.Create(rr, req)
+
+	Expect(rr.Code).To(Equal(http.StatusUnprocessableEntity))
+	Expect(rr.Body.String()).To(ContainSubstring("/channels/{id}/versions"))
 }

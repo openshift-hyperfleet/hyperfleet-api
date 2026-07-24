@@ -174,7 +174,9 @@ func shouldValidateRequest(
 		}
 	}
 
-	if rootResourcePattern.MatchString(path) {
+	// Root /resources POST carries kind in body — resolve plural from body later.
+	// Root /resources PATCH has no kind; handler validates spec internally.
+	if method == http.MethodPost && rootResourcePattern.MatchString(path) {
 		return true, ""
 	}
 
