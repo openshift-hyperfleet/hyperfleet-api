@@ -58,9 +58,19 @@ const (
 
 // ConditionMapper evaluates CEL-based condition mapping rules
 type ConditionMapper struct {
-	rules        map[string]*compiledRule
-	sortedNames  []string // Pre-sorted rule names for deterministic ordering
-	resourceKind string
+	rules          map[string]*compiledRule
+	sortedNames    []string // Pre-sorted rule names for deterministic ordering
+	resourceKind   string
+	cachedResource *cachedResourceContext // Cache for masked resource map (PERF-03)
+}
+
+// cachedResourceContext caches the masked resource map to avoid redundant
+// marshal + MaskSensitiveFields operations across adapter status reports.
+// The resource (spec, metadata) only changes on PATCH operations, not status reports.
+type cachedResourceContext struct {
+	resourceID string
+	generation int32
+	maskedMap  map[string]interface{}
 }
 
 // compiledRule holds pre-compiled CEL programs for a mapping rule
@@ -122,7 +132,8 @@ func (m *ConditionMapper) Apply(ctx context.Context, input ApplyInput) []api.Res
 	}
 
 	// Build CEL activation context (filtering Unknown conditions happens inside buildActivation)
-	activation := buildActivation(ctx, input.AdapterStatuses, input.Resource, m.resourceKind)
+	// Use cached resource map when possible to avoid redundant marshal + mask operations (PERF-03)
+	activation := m.buildActivationWithCache(ctx, input.AdapterStatuses, input.Resource)
 
 	// Build lookup map for previous conditions to avoid O(N×M) linear scans
 	prevConditionsByType := make(map[string]*api.ResourceCondition, len(input.PrevConditions))
@@ -381,15 +392,59 @@ func compileExpression(env *cel.Env, expression string) (cel.Program, error) {
 	return prg, nil
 }
 
-// buildActivation builds the CEL activation context from input data
-// Combined filter + conversion in single pass to avoid double JSON unmarshal (PERF-03)
-func buildActivation(
+// buildActivationWithCache builds the CEL activation context using cached resource map when possible.
+// Caches the masked resource map to avoid redundant marshal + MaskSensitiveFields on every Apply().
+// The resource (spec, metadata) only changes on PATCH operations, not adapter status reports.
+func (m *ConditionMapper) buildActivationWithCache(
 	ctx context.Context,
 	statuses api.AdapterStatusList,
 	resource interface{},
-	resourceKind string,
 ) map[string]interface{} {
-	// Convert adapter statuses to CEL-compatible format, filtering Unknown conditions in same pass
+	// Build statuses list using shared logic (PERF-03: avoid duplication)
+	statusesList := buildStatusesList(ctx, statuses)
+
+	// Get cached or build resource map (cache invalidates on ID/generation change)
+	resourceMap := m.getCachedOrBuildResource(ctx, resource)
+
+	return map[string]interface{}{
+		util.CELVarStatuses: statusesList,
+		util.CELVarResource: resourceMap,
+		util.CELVarEnv:      emptyEnvMap,
+	}
+}
+
+// getCachedOrBuildResource returns the masked resource map, using cache when valid.
+// Cache key: resourceID + generation. Invalidates automatically on PATCH (generation bump).
+func (m *ConditionMapper) getCachedOrBuildResource(
+	ctx context.Context,
+	resource interface{},
+) map[string]interface{} {
+	r, ok := resource.(*api.Resource)
+	if !ok {
+		// Fallback for non-Resource types (shouldn't happen in production)
+		return util.MaskSensitiveFields(resourceToMap(ctx, resource, m.resourceKind))
+	}
+
+	// Cache hit: same resource ID and generation
+	if m.cachedResource != nil &&
+		m.cachedResource.resourceID == r.ID &&
+		m.cachedResource.generation == r.Generation {
+		return m.cachedResource.maskedMap
+	}
+
+	// Cache miss: rebuild and update cache
+	maskedMap := util.MaskSensitiveFields(resourceToMap(ctx, resource, m.resourceKind))
+	m.cachedResource = &cachedResourceContext{
+		resourceID: r.ID,
+		generation: r.Generation,
+		maskedMap:  maskedMap,
+	}
+	return maskedMap
+}
+
+// buildStatusesList converts adapter statuses to CEL-compatible format, filtering Unknown conditions.
+// Extracted to avoid duplication between buildActivation and buildActivationWithCache (PERF-03).
+func buildStatusesList(ctx context.Context, statuses api.AdapterStatusList) []interface{} {
 	statusesList := make([]interface{}, 0, len(statuses))
 	for _, status := range statuses {
 		// Skip nil entries (can occur in AdapterStatusList []*AdapterStatus)
@@ -402,6 +457,19 @@ func buildActivation(
 			statusesList = append(statusesList, statusMap)
 		}
 	}
+	return statusesList
+}
+
+// buildActivation builds the CEL activation context from input data
+// Combined filter + conversion in single pass to avoid double JSON unmarshal (PERF-03)
+func buildActivation(
+	ctx context.Context,
+	statuses api.AdapterStatusList,
+	resource interface{},
+	resourceKind string,
+) map[string]interface{} {
+	// Convert adapter statuses using shared logic (PERF-03: avoid duplication)
+	statusesList := buildStatusesList(ctx, statuses)
 
 	// Convert resource to map and mask sensitive fields (defense-in-depth)
 	// Matches the protection applied to adapter data to prevent credential leakage

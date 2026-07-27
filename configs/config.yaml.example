@@ -164,8 +164,7 @@ entities:
 #     conditions (array), data (map, sensitive fields masked)
 # - resource: full cluster/nodepool object as map (sensitive fields masked)
 # - env: environment variables as map (NOT YET IMPLEMENTED - currently always empty)
-#   TODO: Create HYPERFLEET ticket for env variable support in CEL context
-#   Feature: Allow CEL expressions to access runtime config (e.g., env.REGION, env.ENVIRONMENT)
+#   Future: Allow CEL expressions to access runtime config (e.g., env.REGION, env.ENVIRONMENT)
 #
 # Custom CEL Functions:
 # - toJson(value): marshal to JSON string
@@ -175,7 +174,7 @@ entities:
 # to ensure reproducible condition evaluation
 #
 # Field Length Constraints:
-# - type: 128 bytes (condition skipped if exceeded)
+# - type: 128 bytes (validation error if exceeded, prevents startup)
 # - reason: 256 bytes (truncated if exceeded, preserving UTF-8 boundaries)
 # - message: 2048 bytes (truncated if exceeded, preserving UTF-8 boundaries)
 conditions:
