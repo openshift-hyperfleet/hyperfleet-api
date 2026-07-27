@@ -10,8 +10,8 @@ type ApplicationConfig struct {
 	Health     *HealthConfig               `mapstructure:"health" json:"health" validate:"required"`
 	Database   *DatabaseConfig             `mapstructure:"database" json:"database" validate:"required"`
 	Logging    *LoggingConfig              `mapstructure:"logging" json:"logging" validate:"required"`
-	Entities   []registry.EntityDescriptor `mapstructure:"entities" json:"entities"`
 	Conditions *ConditionsConfig           `mapstructure:"conditions" json:"conditions"`
+	Entities   []registry.EntityDescriptor `mapstructure:"entities" json:"entities"`
 }
 
 // NewApplicationConfig returns default ApplicationConfig with all sub-configs initialized

@@ -28,11 +28,11 @@ func TestConditionsConfig_Validate(t *testing.T) {
 	}
 
 	tests := []struct {
-		name      string
 		config    *ConditionsConfig
+		name      string
+		errorMsg  string
 		entities  []registry.EntityDescriptor
 		wantError bool
-		errorMsg  string
 	}{
 		{
 			name:     "valid config with single cluster rule",
@@ -296,8 +296,8 @@ func TestConditionsConfig_Validate(t *testing.T) {
 }
 func TestConditionsConfig_IsEmpty(t *testing.T) {
 	tests := []struct {
-		name     string
 		config   *ConditionsConfig
+		name     string
 		expected bool
 	}{
 		{
@@ -388,8 +388,8 @@ conditions: null
 `
 		// Simulate viper unmarshaling
 		type testConfig struct {
-			Server     struct{ Port int }
 			Conditions *ConditionsConfig
+			Server     struct{ Port int }
 		}
 
 		var cfg testConfig
