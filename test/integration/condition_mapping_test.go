@@ -21,6 +21,11 @@ const (
 // Expected: adapter custom conditions do NOT appear in public status.conditions
 // NOTE: This test will PASS when the API is configured WITHOUT CEL mapping.
 func TestConditionMapping_BEFORE(t *testing.T) {
+	if os.Getenv("HYPERFLEET_TEST_CONDITION_MAPPING") != "" {
+		t.Skip("Skipped when CEL mapping is enabled - set HYPERFLEET_TEST_CONDITION_MAPPING='' (empty) to run. " +
+			"Requires API configured WITHOUT CEL mapping.")
+	}
+
 	h, client := test.RegisterIntegration(t)
 	account := h.NewRandAccount()
 	ctx := h.NewAuthenticatedContext(account)
@@ -121,17 +126,26 @@ func TestConditionMapping_BEFORE(t *testing.T) {
 //	  clusters:
 //	    QuotaValid:
 //	      when:
-//	        expression: 'statuses.exists(s, s.adapter == "validation" && s.conditions.exists(c, c.type == "QuotaSufficient"))'
+//	        expression: >
+//	          statuses.exists(s, s.adapter == "validation" &&
+//	            s.conditions.exists(c, c.type == "QuotaSufficient"))
 //	      output:
 //	        status:
-//	          expression: 'statuses.filter(s, s.adapter == "validation")[0].conditions.filter(c, c.type == "QuotaSufficient")[0].status'
+//	          expression: >
+//	            statuses.filter(s, s.adapter == "validation")[0]
+//	              .conditions.filter(c, c.type == "QuotaSufficient")[0].status
 //	        reason:
-//	          expression: 'statuses.filter(s, s.adapter == "validation")[0].conditions.filter(c, c.type == "QuotaSufficient")[0].reason'
+//	          expression: >
+//	            statuses.filter(s, s.adapter == "validation")[0]
+//	              .conditions.filter(c, c.type == "QuotaSufficient")[0].reason
 //	        message:
-//	          expression: '"Quota: " + statuses.filter(s, s.adapter == "validation")[0].conditions.filter(c, c.type == "QuotaSufficient")[0].message'
+//	          expression: >
+//	            "Quota: " + statuses.filter(s, s.adapter == "validation")[0]
+//	              .conditions.filter(c, c.type == "QuotaSufficient")[0].message
 func TestConditionMapping_AFTER(t *testing.T) {
 	if os.Getenv("HYPERFLEET_TEST_CONDITION_MAPPING") == "" {
-		t.Skip("Skipped by default - set HYPERFLEET_TEST_CONDITION_MAPPING=1 to enable. Requires API configured with CEL mapping.")
+		t.Skip("Skipped by default - set HYPERFLEET_TEST_CONDITION_MAPPING=1 to enable. " +
+			"Requires API configured with CEL mapping.")
 	}
 
 	h, client := test.RegisterIntegration(t)
@@ -237,7 +251,8 @@ func TestConditionMapping_AFTER(t *testing.T) {
 // And ensure your config.yaml has multiple mapping rules configured.
 func TestConditionMapping_MultipleRules(t *testing.T) {
 	if os.Getenv("HYPERFLEET_TEST_CONDITION_MAPPING") == "" {
-		t.Skip("Skipped by default - set HYPERFLEET_TEST_CONDITION_MAPPING=1 to enable. Requires API configured with multiple CEL mappings.")
+		t.Skip("Skipped by default - set HYPERFLEET_TEST_CONDITION_MAPPING=1 to enable. " +
+			"Requires API configured with multiple CEL mappings.")
 	}
 
 	h, client := test.RegisterIntegration(t)
@@ -249,15 +264,41 @@ func TestConditionMapping_MultipleRules(t *testing.T) {
 	Expect(err).NotTo(HaveOccurred())
 
 	// Report validation adapter with TWO custom conditions
+	// Use distinct adapter condition names to verify CEL mapping actually transforms them
 	statusInput := newAdapterStatusRequest(
 		"validation",
 		cluster.Generation,
 		[]openapi.ConditionRequest{
-			{Type: api.AdapterConditionTypeAvailable, Status: openapi.AdapterConditionStatusTrue, Reason: util.PtrString("OK"), Message: util.PtrString("OK")},
-			{Type: api.AdapterConditionTypeApplied, Status: openapi.AdapterConditionStatusTrue, Reason: util.PtrString("OK"), Message: util.PtrString("OK")},
-			{Type: api.AdapterConditionTypeHealth, Status: openapi.AdapterConditionStatusTrue, Reason: util.PtrString("OK"), Message: util.PtrString("OK")},
-			{Type: "QuotaSufficient", Status: openapi.AdapterConditionStatusTrue, Reason: util.PtrString("QuotaOK"), Message: util.PtrString("Quota OK")},
-			{Type: "PolicyValid", Status: openapi.AdapterConditionStatusTrue, Reason: util.PtrString("PolicyOK"), Message: util.PtrString("Policy OK")},
+			{
+				Type:    api.AdapterConditionTypeAvailable,
+				Status:  openapi.AdapterConditionStatusTrue,
+				Reason:  util.PtrString("OK"),
+				Message: util.PtrString("OK"),
+			},
+			{
+				Type:    api.AdapterConditionTypeApplied,
+				Status:  openapi.AdapterConditionStatusTrue,
+				Reason:  util.PtrString("OK"),
+				Message: util.PtrString("OK"),
+			},
+			{
+				Type:    api.AdapterConditionTypeHealth,
+				Status:  openapi.AdapterConditionStatusTrue,
+				Reason:  util.PtrString("OK"),
+				Message: util.PtrString("OK"),
+			},
+			{
+				Type:    "QuotaSufficient",
+				Status:  openapi.AdapterConditionStatusTrue,
+				Reason:  util.PtrString("QuotaOK"),
+				Message: util.PtrString("Quota OK"),
+			},
+			{
+				Type:    "PolicyCheckPassed",
+				Status:  openapi.AdapterConditionStatusTrue,
+				Reason:  util.PtrString("PolicyOK"),
+				Message: util.PtrString("Policy OK"),
+			},
 		},
 		nil,
 	)
@@ -277,7 +318,9 @@ func TestConditionMapping_MultipleRules(t *testing.T) {
 	resource := getResp.JSON200
 
 	// Verify both custom conditions were mapped
-	// The test assumes config has QuotaValid and PolicyValid mapping rules configured
+	// The test assumes config has two mapping rules:
+	// - QuotaValid maps from QuotaSufficient
+	// - PolicyValid maps from PolicyCheckPassed
 	var hasQuotaValid, hasPolicyValid bool
 	for _, cond := range resource.Status.Conditions {
 		if cond.Type == "QuotaValid" {
@@ -291,5 +334,5 @@ func TestConditionMapping_MultipleRules(t *testing.T) {
 	}
 
 	Expect(hasQuotaValid).To(BeTrue(), "QuotaValid condition should be mapped from QuotaSufficient adapter condition")
-	Expect(hasPolicyValid).To(BeTrue(), "PolicyValid condition should be mapped from PolicyValid adapter condition")
+	Expect(hasPolicyValid).To(BeTrue(), "PolicyValid condition should be mapped from PolicyCheckPassed adapter condition")
 }
