@@ -38,9 +38,9 @@ func TestDigFunc_MapNavigation(t *testing.T) {
 	}
 
 	tests := []struct {
+		want       interface{}
 		name       string
 		expression string
-		want       interface{}
 		wantErr    bool
 	}{
 		{
@@ -146,9 +146,9 @@ func TestDigFunc_ArrayNavigation(t *testing.T) {
 	}
 
 	tests := []struct {
+		want       interface{}
 		name       string
 		expression string
-		want       interface{}
 	}{
 		{
 			name:       "first adapter name",

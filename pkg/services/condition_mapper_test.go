@@ -1361,8 +1361,8 @@ func TestTruncateUTF8(t *testing.T) {
 		// Run under -race flag to detect data races
 		const numGoroutines = 10
 		type result struct {
-			conditions []api.ResourceCondition
 			err        error
+			conditions []api.ResourceCondition
 		}
 		results := make(chan result, numGoroutines)
 
