@@ -639,11 +639,8 @@ func TestValidateLabels_InvalidValues(t *testing.T) {
 	}
 }
 
-// TestValidateLabels_KeyExceedsDBColumnLimit verifies that a label key which is
-// valid per the Kubernetes label-key spec (max 317 chars: 253-char DNS prefix +
-// "/" + 63-char name) but exceeds the resource_labels.key VARCHAR(255) column
-// is rejected here with a clean 400, instead of passing this check and later
-// blowing up as a 500 during resource conversion (api.ValidateLabel).
+// TestValidateLabels_KeyExceedsDBColumnLimit exercises the maxLabelKeyLen bound
+// (see its doc comment) with a key that is K8s-spec-valid but DB-column-oversized.
 func TestValidateLabels_KeyExceedsDBColumnLimit(t *testing.T) {
 	RegisterTestingT(t)
 

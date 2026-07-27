@@ -875,6 +875,18 @@ func TestFieldNameWalk_TypedFieldValidation(t *testing.T) {
 			name:        "generation with literal-first comparison and valid value",
 			searchQuery: "1 < generation",
 		},
+		{
+			name:        "deleted_time IS NULL is accepted (soft-delete filter)",
+			searchQuery: "deleted_time IS NULL",
+		},
+		{
+			name:        "deleted_time IS NOT NULL is accepted (soft-delete filter)",
+			searchQuery: "deleted_time IS NOT NULL",
+		},
+		{
+			name:        "created_time with valid date literal (no time component)",
+			searchQuery: "created_time > '2026-01-01'",
+		},
 	}
 
 	for _, tt := range tests {

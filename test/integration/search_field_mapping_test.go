@@ -924,92 +924,63 @@ func TestSearchTypedFieldValidation(t *testing.T) {
 		Expect(bodyStr).To(ContainSubstring("HYPERFLEET-VAL-"))
 	}
 
-	t.Run("GET /resources?search=generation='abc' returns clean 400", func(t *testing.T) {
-		RegisterTestingT(t)
-		search := openapi.SearchParams("generation='abc'")
-		params := &openapi.GetResourcesParams{Search: &search}
-		resp, err := client.GetResourcesWithResponse(ctx, params, test.WithAuthToken(ctx))
+	// search performs the GET against the given kind-agnostic/typed entity endpoint
+	// and returns the raw response body and status code for the table below to assert on.
+	search := func(endpoint, query string) ([]byte, int) {
+		params := openapi.SearchParams(query)
+		authToken := test.WithAuthToken(ctx)
+		switch endpoint {
+		case "resources":
+			resp, err := client.GetResourcesWithResponse(ctx, &openapi.GetResourcesParams{Search: &params}, authToken)
+			Expect(err).NotTo(HaveOccurred())
+			return resp.Body, resp.StatusCode()
+		case "clusters":
+			resp, err := client.GetClustersWithResponse(ctx, &openapi.GetClustersParams{Search: &params}, authToken)
+			Expect(err).NotTo(HaveOccurred())
+			return resp.Body, resp.StatusCode()
+		case "nodepools":
+			resp, err := client.GetNodePoolsWithResponse(ctx, &openapi.GetNodePoolsParams{Search: &params}, authToken)
+			Expect(err).NotTo(HaveOccurred())
+			return resp.Body, resp.StatusCode()
+		default:
+			t.Fatalf("unknown endpoint %q", endpoint)
+			return nil, 0
+		}
+	}
 
-		Expect(err).NotTo(HaveOccurred())
-		assertCleanBadRequest(resp.Body, resp.StatusCode())
-	})
+	cases := []struct {
+		endpoint string
+		query    string
+		wantOK   bool
+	}{
+		{"resources", "generation='abc'", false},
+		{"resources", "created_time='not-a-date'", false},
+		{"clusters", "created_time='not-a-date'", false},
+		{"clusters", "generation='abc'", false},
+		{"clusters", "updated_time='not-a-date'", false},
+		{"clusters", "deleted_time='not-a-date'", false},
+		{"nodepools", "generation='abc'", false},
+		// Regression guard: valid searches on the same typed fields must keep working.
+		{"clusters", "generation=1", true},
+		{"clusters", "created_time>'2020-01-01T00:00:00Z'", true},
+	}
 
-	t.Run("GET /resources?search=created_time='not-a-date' returns clean 400", func(t *testing.T) {
-		RegisterTestingT(t)
-		search := openapi.SearchParams("created_time='not-a-date'")
-		params := &openapi.GetResourcesParams{Search: &search}
-		resp, err := client.GetResourcesWithResponse(ctx, params, test.WithAuthToken(ctx))
-
-		Expect(err).NotTo(HaveOccurred())
-		assertCleanBadRequest(resp.Body, resp.StatusCode())
-	})
-
-	t.Run("GET /clusters?search=created_time='not-a-date' returns clean 400", func(t *testing.T) {
-		RegisterTestingT(t)
-		search := openapi.SearchParams("created_time='not-a-date'")
-		params := &openapi.GetClustersParams{Search: &search}
-		resp, err := client.GetClustersWithResponse(ctx, params, test.WithAuthToken(ctx))
-
-		Expect(err).NotTo(HaveOccurred())
-		assertCleanBadRequest(resp.Body, resp.StatusCode())
-	})
-
-	t.Run("GET /clusters?search=generation='abc' returns clean 400", func(t *testing.T) {
-		RegisterTestingT(t)
-		search := openapi.SearchParams("generation='abc'")
-		params := &openapi.GetClustersParams{Search: &search}
-		resp, err := client.GetClustersWithResponse(ctx, params, test.WithAuthToken(ctx))
-
-		Expect(err).NotTo(HaveOccurred())
-		assertCleanBadRequest(resp.Body, resp.StatusCode())
-	})
-
-	t.Run("GET /clusters?search=updated_time='not-a-date' returns clean 400", func(t *testing.T) {
-		RegisterTestingT(t)
-		search := openapi.SearchParams("updated_time='not-a-date'")
-		params := &openapi.GetClustersParams{Search: &search}
-		resp, err := client.GetClustersWithResponse(ctx, params, test.WithAuthToken(ctx))
-
-		Expect(err).NotTo(HaveOccurred())
-		assertCleanBadRequest(resp.Body, resp.StatusCode())
-	})
-
-	t.Run("GET /clusters?search=deleted_time='not-a-date' returns clean 400", func(t *testing.T) {
-		RegisterTestingT(t)
-		search := openapi.SearchParams("deleted_time='not-a-date'")
-		params := &openapi.GetClustersParams{Search: &search}
-		resp, err := client.GetClustersWithResponse(ctx, params, test.WithAuthToken(ctx))
-
-		Expect(err).NotTo(HaveOccurred())
-		assertCleanBadRequest(resp.Body, resp.StatusCode())
-	})
-
-	// Regression guard: valid searches on the same typed fields must keep working.
-	t.Run("GET /clusters?search=generation=1 still returns 200", func(t *testing.T) {
-		RegisterTestingT(t)
-		search := openapi.SearchParams("generation=1")
-		params := &openapi.GetClustersParams{Search: &search}
-		resp, err := client.GetClustersWithResponse(ctx, params, test.WithAuthToken(ctx))
-
-		Expect(err).NotTo(HaveOccurred())
-		Expect(resp.StatusCode()).To(Equal(http.StatusOK))
-	})
-
-	t.Run("GET /clusters?search=created_time>'2020-01-01T00:00:00Z' still returns 200", func(t *testing.T) {
-		RegisterTestingT(t)
-		search := openapi.SearchParams("created_time>'2020-01-01T00:00:00Z'")
-		params := &openapi.GetClustersParams{Search: &search}
-		resp, err := client.GetClustersWithResponse(ctx, params, test.WithAuthToken(ctx))
-
-		Expect(err).NotTo(HaveOccurred())
-		Expect(resp.StatusCode()).To(Equal(http.StatusOK))
-	})
+	for _, tc := range cases {
+		t.Run(fmt.Sprintf("GET /%s?search=%s", tc.endpoint, tc.query), func(t *testing.T) {
+			RegisterTestingT(t)
+			body, statusCode := search(tc.endpoint, tc.query)
+			if !tc.wantOK {
+				assertCleanBadRequest(body, statusCode)
+				return
+			}
+			Expect(statusCode).To(Equal(http.StatusOK))
+		})
+	}
 }
 
-// TestSearchPropertiesFieldRejected verifies that "properties.xxx" — a leftover alias
-// from before the resources table's JSONB column was renamed to "spec" — is rejected
-// as an unknown field with a clean 400, instead of being translated into a query
-// against the nonexistent "properties" column and leaking a raw pq: 42703 error as a 500.
+// TestSearchPropertiesFieldRejected is the end-to-end counterpart of
+// TestSQLTranslation's "properties.owner" case (generic_test.go) — same alias,
+// asserting the clean-400 behavior over HTTP instead of at the SQL-translation layer.
 func TestSearchPropertiesFieldRejected(t *testing.T) {
 	RegisterTestingT(t)
 	h, client := test.RegisterIntegration(t)

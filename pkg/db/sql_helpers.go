@@ -641,6 +641,8 @@ func validateTypedOperand(ident, value *tsl.Node) *errors.ServiceError {
 // validateTypedValue checks a single value node (or, for IN queries, each
 // element of an array literal) against the expected TSL literal kind. A date
 // literal (no time component) is accepted wherever a timestamp is expected.
+// null is always accepted, since typed columns here are nullable (e.g.
+// deleted_time IS NULL / IS NOT NULL is a standard soft-delete filter).
 func validateTypedValue(field string, wantKind tsl.Kind, value *tsl.Node) *errors.ServiceError {
 	if value == nil {
 		return errors.BadRequest("missing value for field '%s'", field)
@@ -653,10 +655,17 @@ func validateTypedValue(field string, wantKind tsl.Kind, value *tsl.Node) *error
 		}
 		return nil
 	}
+	if value.Kind == tsl.KindNullLiteral {
+		return nil
+	}
 	if value.Kind == wantKind || (wantKind == tsl.KindTimestampLiteral && value.Kind == tsl.KindDateLiteral) {
 		return nil
 	}
-	return errors.BadRequest("field '%s' expects %s", field, typedKindHints[wantKind])
+	hint, ok := typedKindHints[wantKind]
+	if !ok {
+		hint = fmt.Sprintf("a value of kind %s", wantKind)
+	}
+	return errors.BadRequest("field '%s' expects %s", field, hint)
 }
 
 // wrapSpecNumericCasts wraps spec JSONB fields in CAST(... AS numeric) when
