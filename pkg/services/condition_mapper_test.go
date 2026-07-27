@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 	"unicode/utf8"
@@ -576,7 +577,7 @@ func TestAdapterStatusToMapWithUnknownCheck_NilGuard(t *testing.T) {
 		}
 
 		// Should not panic
-		activation := buildActivation(context.Background(), statuses, map[string]interface{}{}, "Cluster")
+		activation := testBuildActivation(context.Background(), statuses, map[string]interface{}{}, "Cluster")
 
 		statusesList := activation[util.CELVarStatuses].([]interface{})
 		// Nil element should be skipped, only valid adapter present
@@ -885,7 +886,7 @@ func TestBuildActivation_NumericTypesConsistency(t *testing.T) {
 			"generation": 5, // Will be float64 after JSON round-trip
 		}
 
-		activation := buildActivation(context.Background(), statuses, resource, "Cluster")
+		activation := testBuildActivation(context.Background(), statuses, resource, "Cluster")
 
 		// Verify statuses[0].observed_generation is float64
 		statusesList := activation[util.CELVarStatuses].([]interface{})
@@ -1366,20 +1367,27 @@ func TestTruncateUTF8(t *testing.T) {
 		}
 		results := make(chan result, numGoroutines)
 
+		// Create different *api.Resource instances to exercise cache path
+		// (using map[string]interface{} bypasses cache via type assertion fallback)
 		for i := 0; i < numGoroutines; i++ {
-			go func() {
+			go func(id int) {
+				// Different resources to trigger cache eviction/thrashing and race detection
+				resource := &api.Resource{
+					Kind:       "Cluster",
+					Name:       fmt.Sprintf("cluster-%d", id),
+					Generation: int32(id),
+				}
+
 				input := ApplyInput{
 					AdapterStatuses: api.AdapterStatusList{},
-					Resource: map[string]interface{}{
-						"generation": int64(1),
-					},
-					RefTime: time.Now(),
+					Resource:        resource,
+					RefTime:         time.Now(),
 				}
 
 				// Collect result, don't assert in goroutine
 				conditions := mapper.Apply(context.Background(), input)
 				results <- result{conditions: conditions}
-			}()
+			}(i)
 		}
 
 		// Wait for all goroutines and assert on main test goroutine
@@ -1390,4 +1398,27 @@ func TestTruncateUTF8(t *testing.T) {
 			Expect(res.conditions[0].Type).To(Equal("TestCondition"))
 		}
 	})
+}
+
+// testBuildActivation is the test-only variant of buildActivationWithCache that doesn't use caching.
+// Used by unit tests to validate CEL context construction without needing a full ConditionMapper instance.
+// Production code exclusively uses buildActivationWithCache through the mapper.
+func testBuildActivation(
+	ctx context.Context,
+	statuses api.AdapterStatusList,
+	resource interface{},
+	resourceKind string,
+) map[string]interface{} {
+	// Convert adapter statuses using shared logic (PERF-03: avoid duplication)
+	statusesList := buildStatusesList(ctx, statuses)
+
+	// Convert resource to map and mask sensitive fields (defense-in-depth)
+	// Matches the protection applied to adapter data to prevent credential leakage
+	resourceMap := util.MaskSensitiveFields(resourceToMap(ctx, resource, resourceKind))
+
+	return map[string]interface{}{
+		util.CELVarStatuses: statusesList,
+		util.CELVarResource: resourceMap,
+		util.CELVarEnv:      emptyEnvMap, // Shared package-level var (PERF-03)
+	}
 }

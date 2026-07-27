@@ -7,6 +7,7 @@ import (
 	"math"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -61,7 +62,8 @@ type ConditionMapper struct {
 	rules          map[string]*compiledRule
 	cachedResource *cachedResourceContext // Cache for masked resource map (PERF-03)
 	resourceKind   string
-	sortedNames    []string // Pre-sorted rule names for deterministic ordering
+	sortedNames    []string     // Pre-sorted rule names for deterministic ordering
+	mu             sync.RWMutex // Protects cachedResource from concurrent access
 }
 
 // cachedResourceContext caches the masked resource map to avoid redundant
@@ -415,6 +417,8 @@ func (m *ConditionMapper) buildActivationWithCache(
 
 // getCachedOrBuildResource returns the masked resource map, using cache when valid.
 // Cache key: resourceID + generation. Invalidates automatically on PATCH (generation bump).
+// Thread-safe: protected by RWMutex to prevent data races when different resources of the
+// same kind are processed concurrently (GetForUpdate only serializes same resourceID).
 func (m *ConditionMapper) getCachedOrBuildResource(
 	ctx context.Context,
 	resource interface{},
@@ -425,20 +429,29 @@ func (m *ConditionMapper) getCachedOrBuildResource(
 		return util.MaskSensitiveFields(resourceToMap(ctx, resource, m.resourceKind))
 	}
 
-	// Cache hit: same resource ID and generation
+	// Try cache read (RLock allows concurrent reads)
+	m.mu.RLock()
 	if m.cachedResource != nil &&
-		m.cachedResource.resourceID == r.ID &&
+		m.cachedResource.resourceID == r.Name &&
 		m.cachedResource.generation == r.Generation {
-		return m.cachedResource.maskedMap
+		cached := m.cachedResource.maskedMap
+		m.mu.RUnlock()
+		return cached
 	}
+	m.mu.RUnlock()
 
-	// Cache miss: rebuild and update cache
+	// Cache miss: rebuild (expensive operation outside of lock)
 	maskedMap := util.MaskSensitiveFields(resourceToMap(ctx, resource, m.resourceKind))
+
+	// Update cache (Lock for exclusive write access)
+	m.mu.Lock()
 	m.cachedResource = &cachedResourceContext{
-		resourceID: r.ID,
+		resourceID: r.Name,
 		generation: r.Generation,
 		maskedMap:  maskedMap,
 	}
+	m.mu.Unlock()
+
 	return maskedMap
 }
 
@@ -462,29 +475,6 @@ func buildStatusesList(ctx context.Context, statuses api.AdapterStatusList) []in
 
 // buildActivation builds the CEL activation context from input data
 // Combined filter + conversion in single pass to avoid double JSON unmarshal (PERF-03)
-func buildActivation(
-	ctx context.Context,
-	statuses api.AdapterStatusList,
-	resource interface{},
-	resourceKind string,
-) map[string]interface{} {
-	// Convert adapter statuses using shared logic (PERF-03: avoid duplication)
-	statusesList := buildStatusesList(ctx, statuses)
-
-	// Convert resource to map and mask sensitive fields (defense-in-depth)
-	// Matches the protection applied to adapter data to prevent credential leakage
-	resourceMap := util.MaskSensitiveFields(resourceToMap(ctx, resource, resourceKind))
-
-	return map[string]interface{}{
-		util.CELVarStatuses: statusesList,
-		util.CELVarResource: resourceMap,
-		// Environment variables not implemented yet
-		// TODO: Create HYPERFLEET ticket for env variable support in CEL context
-		// Feature: Allow CEL expressions to access runtime config (e.g., env.REGION, env.ENVIRONMENT)
-		// SEC-02: Must use an allowlist of safe variables - NEVER expose all process env (contains secrets)
-		util.CELVarEnv: emptyEnvMap, // Shared package-level var (PERF-03)
-	}
-}
 
 // parseConditionsWithUnknownCheck unmarshals adapter conditions from JSONB and converts to CEL maps.
 // Returns (conditions, hasUnknown) where hasUnknown indicates if any condition has Unknown status.
