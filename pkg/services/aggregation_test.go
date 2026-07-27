@@ -1454,54 +1454,6 @@ func TestComputeAdapterConditions(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// MapAdapterToConditionType
-// ---------------------------------------------------------------------------
-
-func TestMapAdapterToConditionType(t *testing.T) {
-	tests := []struct {
-		adapter  string
-		expected string
-	}{
-		{"validator", "ValidatorSuccessful"},
-		{"dns", "DnsSuccessful"},
-		{"gcp-provisioner", "GcpProvisionerSuccessful"},
-		{"unknown-adapter", "UnknownAdapterSuccessful"},
-		{"multi-word-adapter", "MultiWordAdapterSuccessful"},
-		{"single", "SingleSuccessful"},
-	}
-
-	for _, tt := range tests {
-		result := MapAdapterToConditionType(tt.adapter)
-		if result != tt.expected {
-			t.Errorf("MapAdapterToConditionType(%q) = %q, want %q",
-				tt.adapter, result, tt.expected)
-		}
-	}
-}
-
-// Test custom suffix mapping (for future use).
-func TestMapAdapterToConditionType_CustomSuffix(t *testing.T) {
-	t.Parallel()
-	// Use a local map so the package-level adapterConditionSuffixMap is never mutated.
-	localMap := map[string]string{"test-adapter": "Ready"}
-	result := mapAdapterToConditionType("test-adapter", localMap)
-	expected := "TestAdapterReady"
-	if result != expected {
-		t.Errorf("mapAdapterToConditionType(%q) = %q, want %q", "test-adapter", result, expected)
-	}
-}
-
-// Test that the default suffix applies when no override is present.
-func TestMapAdapterToConditionType_DefaultSuffix(t *testing.T) {
-	t.Parallel()
-	result := mapAdapterToConditionType("dns", map[string]string{})
-	expected := "DnsSuccessful"
-	if result != expected {
-		t.Errorf("mapAdapterToConditionType(%q) = %q, want %q", "dns", result, expected)
-	}
-}
-
-// ---------------------------------------------------------------------------
 // ValidateMandatoryConditions
 // ---------------------------------------------------------------------------
 

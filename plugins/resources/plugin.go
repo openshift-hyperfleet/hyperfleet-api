@@ -19,6 +19,7 @@ func NewServiceLocator(env *environments.Env) ServiceLocator {
 			dao.NewAdapterStatusDao(env.Database.SessionFactory),
 			dao.NewResourceConditionDao(env.Database.SessionFactory),
 			generic.Service(&env.Services),
+			env.Config.Conditions,
 		)
 	}
 }
