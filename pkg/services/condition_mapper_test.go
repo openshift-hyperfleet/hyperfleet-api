@@ -779,9 +779,10 @@ func TestConditionMapper_TimestampPreservation(t *testing.T) {
 		// Find ConditionA and ConditionB
 		var condA, condB *api.ResourceCondition
 		for i := range result {
-			if result[i].Type == "ConditionA" {
+			switch result[i].Type {
+			case "ConditionA":
 				condA = &result[i]
-			} else if result[i].Type == "ConditionB" {
+			case "ConditionB":
 				condB = &result[i]
 			}
 		}

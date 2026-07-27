@@ -13,6 +13,10 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/test"
 )
 
+const (
+	conditionTypeQuotaValid = "QuotaValid"
+)
+
 // TestConditionMapping_BEFORE tests behavior without CEL mapping configured
 // Expected: adapter custom conditions do NOT appear in public status.conditions
 // NOTE: This test will PASS when the API is configured WITHOUT CEL mapping.
@@ -91,7 +95,7 @@ func TestConditionMapping_BEFORE(t *testing.T) {
 			hasLastKnownReconciled = true
 		case "ValidationSuccessful":
 			hasValidationSuccessful = true
-		case "QuotaValid", "quotavalid":
+		case conditionTypeQuotaValid, "quotavalid":
 			hasQuotaValid = true
 		}
 	}
@@ -205,7 +209,7 @@ func TestConditionMapping_AFTER(t *testing.T) {
 			hasLastKnownReconciled = true
 		case "ValidationSuccessful":
 			hasValidationSuccessful = true
-		case "QuotaValid", "quotavalid":
+		case conditionTypeQuotaValid, "quotavalid":
 			hasQuotaValid = true
 			quotaValidCondition = &cond
 		}

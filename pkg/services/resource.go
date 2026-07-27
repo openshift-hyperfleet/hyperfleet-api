@@ -54,7 +54,9 @@ func NewResourceService(
 				// This should not happen since config was validated at startup - indicates a code bug
 				// (e.g., validation logic vs. mapper logic mismatch). Use Error level to alert ops team,
 				// but continue in degraded mode (no CEL mapping) to keep service available per HYG-02.
-				logger.With(context.Background(), "resource_kind", kindCluster).WithError(err).Error("Failed to create condition mapper, continuing without CEL mapping")
+				logger.With(context.Background(), "resource_kind", kindCluster).
+					WithError(err).
+					Error("Failed to create condition mapper, continuing without CEL mapping")
 			} else {
 				conditionMappers[kindCluster] = mapper
 			}
@@ -64,7 +66,9 @@ func NewResourceService(
 			if err != nil {
 				// This should not happen since config was validated at startup - indicates a code bug.
 				// Use Error level to alert ops team, but continue in degraded mode per HYG-02.
-				logger.With(context.Background(), "resource_kind", kindNodePool).WithError(err).Error("Failed to create condition mapper, continuing without CEL mapping")
+				logger.With(context.Background(), "resource_kind", kindNodePool).
+					WithError(err).
+					Error("Failed to create condition mapper, continuing without CEL mapping")
 			} else {
 				conditionMappers[kindNodePool] = mapper
 			}
