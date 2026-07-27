@@ -577,7 +577,7 @@ func TestAdapterStatusToMapWithUnknownCheck_NilGuard(t *testing.T) {
 		}
 
 		// Should not panic
-		activation := testBuildActivation(context.Background(), statuses, map[string]interface{}{}, "Cluster")
+		activation := testBuildActivation(t, context.Background(), statuses, map[string]interface{}{}, "Cluster")
 
 		statusesList := activation[util.CELVarStatuses].([]interface{})
 		// Nil element should be skipped, only valid adapter present
@@ -886,7 +886,7 @@ func TestBuildActivation_NumericTypesConsistency(t *testing.T) {
 			"generation": 5, // Will be float64 after JSON round-trip
 		}
 
-		activation := testBuildActivation(context.Background(), statuses, resource, "Cluster")
+		activation := testBuildActivation(t, context.Background(), statuses, resource, "Cluster")
 
 		// Verify statuses[0].observed_generation is float64
 		statusesList := activation[util.CELVarStatuses].([]interface{})
@@ -1362,7 +1362,6 @@ func TestTruncateUTF8(t *testing.T) {
 		// Run under -race flag to detect data races
 		const numGoroutines = 10
 		type result struct {
-			err        error
 			conditions []api.ResourceCondition
 		}
 		results := make(chan result, numGoroutines)
@@ -1373,6 +1372,9 @@ func TestTruncateUTF8(t *testing.T) {
 			go func(id int) {
 				// Different resources to trigger cache eviction/thrashing and race detection
 				resource := &api.Resource{
+					Meta: api.Meta{
+						ID: fmt.Sprintf("resource-%d", id),
+					},
 					Kind:       "Cluster",
 					Name:       fmt.Sprintf("cluster-%d", id),
 					Generation: int32(id),
@@ -1393,7 +1395,6 @@ func TestTruncateUTF8(t *testing.T) {
 		// Wait for all goroutines and assert on main test goroutine
 		for i := 0; i < numGoroutines; i++ {
 			res := <-results
-			Expect(res.err).NotTo(HaveOccurred())
 			Expect(res.conditions).To(HaveLen(1))
 			Expect(res.conditions[0].Type).To(Equal("TestCondition"))
 		}
@@ -1404,11 +1405,14 @@ func TestTruncateUTF8(t *testing.T) {
 // Used by unit tests to validate CEL context construction without needing a full ConditionMapper instance.
 // Production code exclusively uses buildActivationWithCache through the mapper.
 func testBuildActivation(
+	t *testing.T,
 	ctx context.Context,
 	statuses api.AdapterStatusList,
 	resource interface{},
 	resourceKind string,
 ) map[string]interface{} {
+	t.Helper()
+
 	// Convert adapter statuses using shared logic (PERF-03: avoid duplication)
 	statusesList := buildStatusesList(ctx, statuses)
 

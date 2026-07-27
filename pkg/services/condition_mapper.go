@@ -133,7 +133,7 @@ func (m *ConditionMapper) Apply(ctx context.Context, input ApplyInput) []api.Res
 		return nil
 	}
 
-	// Build CEL activation context (filtering Unknown conditions happens inside buildActivation)
+	// Build CEL activation context (filtering Unknown conditions happens inside buildActivationWithCache)
 	// Use cached resource map when possible to avoid redundant marshal + mask operations (PERF-03)
 	activation := m.buildActivationWithCache(ctx, input.AdapterStatuses, input.Resource)
 
@@ -432,7 +432,7 @@ func (m *ConditionMapper) getCachedOrBuildResource(
 	// Try cache read (RLock allows concurrent reads)
 	m.mu.RLock()
 	if m.cachedResource != nil &&
-		m.cachedResource.resourceID == r.Name &&
+		m.cachedResource.resourceID == r.ID &&
 		m.cachedResource.generation == r.Generation {
 		cached := m.cachedResource.maskedMap
 		m.mu.RUnlock()
@@ -446,7 +446,7 @@ func (m *ConditionMapper) getCachedOrBuildResource(
 	// Update cache (Lock for exclusive write access)
 	m.mu.Lock()
 	m.cachedResource = &cachedResourceContext{
-		resourceID: r.Name,
+		resourceID: r.ID,
 		generation: r.Generation,
 		maskedMap:  maskedMap,
 	}
@@ -456,7 +456,7 @@ func (m *ConditionMapper) getCachedOrBuildResource(
 }
 
 // buildStatusesList converts adapter statuses to CEL-compatible format, filtering Unknown conditions.
-// Extracted to avoid duplication between buildActivation and buildActivationWithCache (PERF-03).
+// Extracted to shared function to avoid duplication (PERF-03).
 func buildStatusesList(ctx context.Context, statuses api.AdapterStatusList) []interface{} {
 	statusesList := make([]interface{}, 0, len(statuses))
 	for _, status := range statuses {
@@ -472,9 +472,6 @@ func buildStatusesList(ctx context.Context, statuses api.AdapterStatusList) []in
 	}
 	return statusesList
 }
-
-// buildActivation builds the CEL activation context from input data
-// Combined filter + conversion in single pass to avoid double JSON unmarshal (PERF-03)
 
 // parseConditionsWithUnknownCheck unmarshals adapter conditions from JSONB and converts to CEL maps.
 // Returns (conditions, hasUnknown) where hasUnknown indicates if any condition has Unknown status.
