@@ -367,7 +367,7 @@ func TestConditionMapper_SensitiveDataMasking(t *testing.T) {
 
 		// Second adapter: sensitive
 		data2 := map[string]interface{}{
-			"pullSecret": "eyJhdXRocyI6eyJjbG91ZC5vcGVuc2hpZnQuY29tIjp7ImF1dGgi...",
+			"pullSecret": "test-secret-value-not-real-auth-json",
 		}
 		data2JSON, _ := json.Marshal(data2) // static test data, marshal cannot fail
 
@@ -395,7 +395,7 @@ func TestConditionMapper_SensitiveDataMasking(t *testing.T) {
 
 		// Message should have non-sensitive data but masked sensitive data
 		Expect(*cond.Message).To(Equal("Cluster: my-cluster, Secret: ***REDACTED***"))
-		Expect(*cond.Message).NotTo(ContainSubstring("eyJhdXRocyI6"))
+		Expect(*cond.Message).NotTo(ContainSubstring("test-secret"))
 	})
 
 	t.Run("arrays with sensitive fields are masked in CEL context", func(t *testing.T) {

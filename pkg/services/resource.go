@@ -607,9 +607,17 @@ func (s *sqlResourceService) ProcessAdapterStatus(
 	// Step 4: Re-aggregate conditions from all adapter statuses and persist
 	// to the resource_conditions table. Runs when:
 	// 1. Available condition changed to True or False (not on Unknown or discarded updates), OR
-	// 2. A CEL condition mapper is configured for this resource kind (to keep mapped conditions current)
+	// 2. A CEL condition mapper is configured AND (conditions or data changed from previous report)
+	//
+	// Rationale: mapper recompute is expensive (JSON marshal + MaskSensitiveFields + CEL eval),
+	// runs inside the GetForUpdate row-level lock, and most adapter reports are duplicates.
+	// Gating on actual changes reduces CPU waste and lock hold time (CWE-400 mitigation).
 	hasMapper := s.conditionMappers[resource.Kind] != nil
-	if triggerAggregation || hasMapper {
+	statusChanged := existingStatus == nil || // First report
+		!jsonEqual(existingStatus.Conditions, adapterStatus.Conditions) ||
+		!jsonEqual(existingStatus.Data, adapterStatus.Data)
+
+	if triggerAggregation || (hasMapper && statusChanged) {
 		if aggregateErr := s.recomputeAndSaveResourceConditions(
 			ctx, resource, updatedStatuses,
 		); aggregateErr != nil {
