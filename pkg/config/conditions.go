@@ -140,7 +140,12 @@ func buildReservedConditionTypes(entities []registry.EntityDescriptor) map[strin
 }
 
 // validateConditionMapping validates a single mapping rule
-func validateConditionMapping(resourceType, condType string, rule ConditionMappingRule, reserved map[string]bool, env *cel.Env) error {
+func validateConditionMapping(
+	resourceType, condType string,
+	rule ConditionMappingRule,
+	reserved map[string]bool,
+	env *cel.Env,
+) error {
 	// Check reserved types
 	if reserved[condType] {
 		return fmt.Errorf(
@@ -161,13 +166,19 @@ func validateConditionMapping(resourceType, condType string, rule ConditionMappi
 	if err := validateCELExpression(resourceType, condType, "when", rule.When.Expression, env); err != nil {
 		return err
 	}
-	if err := validateCELExpression(resourceType, condType, "output.status", rule.Output.Status.Expression, env); err != nil {
+	if err := validateCELExpression(
+		resourceType, condType, "output.status", rule.Output.Status.Expression, env,
+	); err != nil {
 		return err
 	}
-	if err := validateCELExpression(resourceType, condType, "output.reason", rule.Output.Reason.Expression, env); err != nil {
+	if err := validateCELExpression(
+		resourceType, condType, "output.reason", rule.Output.Reason.Expression, env,
+	); err != nil {
 		return err
 	}
-	if err := validateCELExpression(resourceType, condType, "output.message", rule.Output.Message.Expression, env); err != nil {
+	if err := validateCELExpression(
+		resourceType, condType, "output.message", rule.Output.Message.Expression, env,
+	); err != nil {
 		return err
 	}
 

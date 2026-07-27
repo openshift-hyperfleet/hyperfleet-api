@@ -3170,7 +3170,8 @@ func TestResourceService_ConditionMapper_IntegrationPath(t *testing.T) {
 		Clusters: map[string]config.ConditionMappingRule{
 			"CustomReady": {
 				When: config.MappingExpression{
-					Expression: `statuses.exists(s, s.adapter == "test-adapter" && s.conditions.exists(c, c.type == "CustomCondition" && c.status == "True"))`,
+					Expression: `statuses.exists(s, s.adapter == "test-adapter" && ` +
+						`s.conditions.exists(c, c.type == "CustomCondition" && c.status == "True"))`,
 				},
 				Output: config.MappingOutput{
 					Status: config.MappingExpression{
@@ -3228,5 +3229,8 @@ func TestResourceService_ConditionMapper_IntegrationPath(t *testing.T) {
 	Expect(customReady.Status).To(Equal(api.ConditionTrue))
 	Expect(*customReady.Reason).To(Equal("CustomOK"))
 	Expect(*customReady.Message).To(Equal("Custom condition is ready"))
-	Expect(customReady.ObservedGeneration).To(Equal(cluster.Generation), "ObservedGeneration should match resource generation")
+	Expect(customReady.ObservedGeneration).To(
+		Equal(cluster.Generation),
+		"ObservedGeneration should match resource generation",
+	)
 }
