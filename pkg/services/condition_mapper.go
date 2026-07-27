@@ -506,7 +506,7 @@ func parseConditionsWithUnknownCheck(
 		// Check for Unknown status while building the map (single pass)
 		if cond.Status == api.AdapterConditionUnknown {
 			hasUnknown = true
-			// Break early - buildActivation will discard this entire statusMap
+			// Break early - buildStatusesList will discard this entire statusMap
 			break
 		}
 
@@ -569,7 +569,7 @@ func adapterStatusToMapWithUnknownCheck(ctx context.Context, status *api.Adapter
 	// Parse conditions and check for Unknown status (QUAL-03)
 	conditions, hasUnknown := parseConditionsWithUnknownCheck(ctx, status.Conditions, status.Adapter)
 
-	// Early return if Unknown found - buildActivation will discard this statusMap anyway (PERF-03)
+	// Early return if Unknown found - buildStatusesList will discard this statusMap anyway (PERF-03)
 	// Skips data parsing and MaskSensitiveFields call to avoid wasted work
 	if hasUnknown {
 		return map[string]interface{}{
