@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"net"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -114,8 +115,16 @@ func (c *JWTConfig) Validate() error {
 		if cfg.IssuerURL == "" {
 			return fmt.Errorf("server.jwt.configs[%d].issuer_url is required", i)
 		}
+		if err := requireHTTPSURL(cfg.IssuerURL); err != nil {
+			return fmt.Errorf("server.jwt.configs[%d].issuer_url: %w", i, err)
+		}
 		if cfg.JWKCertURL == "" && cfg.JWKCertFile == "" {
 			return fmt.Errorf("server.jwt.configs[%d] requires jwk_cert_url or jwk_cert_file", i)
+		}
+		if cfg.JWKCertURL != "" {
+			if err := requireHTTPSURL(cfg.JWKCertURL); err != nil {
+				return fmt.Errorf("server.jwt.configs[%d].jwk_cert_url: %w", i, err)
+			}
 		}
 		if cfg.JWKCertCAFile != "" && cfg.JWKCertURL == "" {
 			return fmt.Errorf("server.jwt.configs[%d].jwk_cert_ca_file requires jwk_cert_url to be set", i)
@@ -140,6 +149,28 @@ func (c *JWTConfig) Validate() error {
 		}
 	}
 	return nil
+}
+
+// requireHTTPSURL validates that a URL uses the https scheme.
+// http is permitted only for loopback hosts (local development).
+func requireHTTPSURL(rawURL string) error {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("invalid URL %q: %w", rawURL, err)
+	}
+	if u.Scheme == "https" {
+		if u.Host == "" {
+			return fmt.Errorf("URL %q must include a host", rawURL)
+		}
+		return nil
+	}
+	if u.Scheme == "http" {
+		host := u.Hostname()
+		if host == "localhost" || host == "127.0.0.1" || host == "::1" {
+			return nil
+		}
+	}
+	return fmt.Errorf("URL %q must use https scheme (http is only allowed for localhost)", rawURL)
 }
 
 // NewServerConfig returns default ServerConfig values

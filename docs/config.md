@@ -465,6 +465,7 @@ The application performs comprehensive validation at startup.
 - `server.timeouts.read`: ≥ 1s
 - `server.timeouts.write`: ≥ 1s
 - `server.jwt.configs`: required non-empty when `server.jwt.enabled=true`; see [Issuer configuration reference](authentication.md#issuer-configuration-reference) for per-field validation rules
+- `server.jwt.configs[].issuer_url` / `jwk_cert_url`: must use `https` (`http` allowed only for loopback: `localhost`, `127.0.0.1`, `::1`)
 
 **Database**:
 
