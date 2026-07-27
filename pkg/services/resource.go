@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/dao"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
@@ -39,13 +40,44 @@ func NewResourceService(
 	adapterStatusDao dao.AdapterStatusDao,
 	resourceConditionDao dao.ResourceConditionDao,
 	generic GenericService,
+	conditionsConfig *config.ConditionsConfig,
 ) ResourceService {
+	// Create condition mappers from config (nil if config is empty or nil)
+	// Using a map indexed by Kind simplifies runtime lookup, but adding new entity kinds
+	// requires code changes: new field in ConditionsConfig (pkg/config/conditions.go)
+	// and new if-block here to instantiate the mapper for that kind.
+	conditionMappers := make(map[string]*ConditionMapper)
+	if conditionsConfig != nil && !conditionsConfig.IsEmpty() {
+		if len(conditionsConfig.Clusters) > 0 {
+			mapper, err := NewConditionMapper(kindCluster, conditionsConfig.Clusters)
+			if err != nil {
+				// This should not happen since config was validated at startup - indicates a code bug
+				// (e.g., validation logic vs. mapper logic mismatch). Use Error level to alert ops team,
+				// but continue in degraded mode (no CEL mapping) to keep service available per HYG-02.
+				logger.With(context.Background(), "resource_kind", kindCluster).WithError(err).Error("Failed to create condition mapper, continuing without CEL mapping")
+			} else {
+				conditionMappers[kindCluster] = mapper
+			}
+		}
+		if len(conditionsConfig.NodePools) > 0 {
+			mapper, err := NewConditionMapper(kindNodePool, conditionsConfig.NodePools)
+			if err != nil {
+				// This should not happen since config was validated at startup - indicates a code bug.
+				// Use Error level to alert ops team, but continue in degraded mode per HYG-02.
+				logger.With(context.Background(), "resource_kind", kindNodePool).WithError(err).Error("Failed to create condition mapper, continuing without CEL mapping")
+			} else {
+				conditionMappers[kindNodePool] = mapper
+			}
+		}
+	}
+
 	return &sqlResourceService{
 		resourceDao:          resourceDao,
 		resourceLabelDao:     resourceLabelDao,
 		adapterStatusDao:     adapterStatusDao,
 		resourceConditionDao: resourceConditionDao,
 		generic:              generic,
+		conditionMappers:     conditionMappers,
 	}
 }
 
@@ -57,6 +89,7 @@ type sqlResourceService struct {
 	adapterStatusDao     dao.AdapterStatusDao
 	resourceConditionDao dao.ResourceConditionDao
 	generic              GenericService
+	conditionMappers     map[string]*ConditionMapper // Indexed by Kind (e.g., kindCluster, kindNodePool)
 }
 
 // Get returns a single resource by kind and ID. Returns 404 if not found.
@@ -568,9 +601,11 @@ func (s *sqlResourceService) ProcessAdapterStatus(
 	}
 
 	// Step 4: Re-aggregate conditions from all adapter statuses and persist
-	// to the resource_conditions table. Only runs when the Available condition
-	// changed to True or False (not on Unknown or discarded updates).
-	if triggerAggregation {
+	// to the resource_conditions table. Runs when:
+	// 1. Available condition changed to True or False (not on Unknown or discarded updates), OR
+	// 2. A CEL condition mapper is configured for this resource kind (to keep mapped conditions current)
+	hasMapper := s.conditionMappers[resource.Kind] != nil
+	if triggerAggregation || hasMapper {
 		if aggregateErr := s.recomputeAndSaveResourceConditions(
 			ctx, resource, updatedStatuses,
 		); aggregateErr != nil {
@@ -642,6 +677,17 @@ func (s *sqlResourceService) recomputeAndSaveResourceConditions(
 	newConditions := make([]api.ResourceCondition, 0, fixedConditionCount+len(adapterConditions))
 	newConditions = append(newConditions, reconciled, lastKnownReconciled)
 	newConditions = append(newConditions, adapterConditions...)
+
+	// Apply CEL condition mapping if configured
+	if mapper := s.conditionMappers[resource.Kind]; mapper != nil {
+		mappedConditions := mapper.Apply(ctx, ApplyInput{
+			AdapterStatuses: adapterStatuses,
+			Resource:        resource,
+			RefTime:         refTime,
+			PrevConditions:  resource.Conditions, // Preserve timestamps from previous conditions
+		})
+		newConditions = append(newConditions, mappedConditions...)
+	}
 
 	// Compare via JSON to detect actual changes.
 	newJSON, marshalErr := json.Marshal(newConditions)

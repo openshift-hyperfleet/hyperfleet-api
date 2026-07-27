@@ -142,6 +142,80 @@ entities:
     plural: wifconfigs
     spec_schema_name: WifConfigSpec
 
+# Condition Mapping Configuration
+# CEL-based declarative mapping of adapter conditions to public API conditions.
+# Enables exposing provider-specific adapter conditions (e.g., Landing Zone readiness,
+# Validation quota status) in the public status.conditions array without code changes.
+#
+# Rules are compiled at startup (fail-fast). Invalid CEL expressions prevent API startup.
+# Evaluation happens during status aggregation. Unknown adapter conditions are filtered.
+#
+# Reserved condition types (cannot be overridden by mapping):
+# - Reconciled
+# - LastKnownReconciled
+# - Per-adapter synthesized types (auto-generated from required_adapters):
+#   - Cluster: ValidationSuccessful, DnsSuccessful, PullsecretSuccessful, HypershiftSuccessful
+#   - NodePool: ValidationSuccessful, HypershiftSuccessful
+#   (Pattern: PascalCase adapter name + "Successful", e.g., "validation" → "ValidationSuccessful")
+#
+# CEL Context Variables:
+# - statuses: array of adapter statuses (statuses with any Unknown condition excluded)
+#   - Each status has: adapter (string), observed_generation (number),
+#     conditions (array), data (map, sensitive fields masked)
+# - resource: full cluster/nodepool object as map (sensitive fields masked)
+# - env: environment variables as map (NOT YET IMPLEMENTED - currently always empty)
+#   TODO: Create HYPERFLEET ticket for env variable support in CEL context
+#   Feature: Allow CEL expressions to access runtime config (e.g., env.REGION, env.ENVIRONMENT)
+#
+# Custom CEL Functions:
+# - toJson(value): marshal to JSON string
+# - dig(target, "dot.path"): safe nested navigation (supports map keys and array indices, e.g., "statuses.0.conditions.1.type")
+#
+# Note: Timestamps are automatically set from resource.updated_time (not wall clock)
+# to ensure reproducible condition evaluation
+#
+# Field Length Constraints:
+# - type: 128 bytes (condition skipped if exceeded)
+# - reason: 256 bytes (truncated if exceeded, preserving UTF-8 boundaries)
+# - message: 2048 bytes (truncated if exceeded, preserving UTF-8 boundaries)
+conditions:
+  clusters:
+    # Example: Expose Landing Zone namespace readiness
+    # LandingZoneReady:
+    #   when:
+    #     expression: 'statuses.exists(s, s.adapter == "landing-zone-adapter" && s.conditions.exists(c, c.type == "NamespaceReady"))'
+    #   output:
+    #     status:
+    #       expression: |
+    #         statuses.filter(s, s.adapter == "landing-zone-adapter")[0]
+    #           .conditions.filter(c, c.type == "NamespaceReady")[0].status
+    #     reason:
+    #       expression: |
+    #         statuses.filter(s, s.adapter == "landing-zone-adapter")[0]
+    #           .conditions.filter(c, c.type == "NamespaceReady")[0].reason
+    #     message:
+    #       expression: |
+    #         "Landing zone: " + statuses.filter(s, s.adapter == "landing-zone-adapter")[0]
+    #           .conditions.filter(c, c.type == "NamespaceReady")[0].message
+
+  nodepools:
+    # Example: Expose Validation quota check status
+    # QuotaValid:
+    #   when:
+    #     expression: 'statuses.exists(s, s.adapter == "validation-adapter" && s.conditions.exists(c, c.type == "QuotaSufficient"))'
+    #   output:
+    #     status:
+    #       expression: |
+    #         statuses.filter(s, s.adapter == "validation-adapter")[0]
+    #           .conditions.filter(c, c.type == "QuotaSufficient")[0].status
+    #     reason:
+    #       expression: |
+    #         statuses.filter(s, s.adapter == "validation-adapter")[0]
+    #           .conditions.filter(c, c.type == "QuotaSufficient")[0].reason
+    #     message:
+    #       expression: |
+    #         statuses.filter(s, s.adapter == "validation-adapter")[0]
+    #           .conditions.filter(c, c.type == "QuotaSufficient")[0].message
 
 # ----------------------------------------------------------------------------
 # Configuration Priority (highest to lowest):
