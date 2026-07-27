@@ -209,7 +209,9 @@ func (m *ConditionMapper) evaluateRule(
 	}
 
 	// Build the mapped condition with all required fields (QUAL-03)
-	return m.buildMappedCondition(ctx, rule, statusStr, validatedReason, validatedMessage, activation, refTime, prevCondition)
+	return m.buildMappedCondition(
+		ctx, rule, statusStr, validatedReason, validatedMessage, activation, refTime, prevCondition,
+	)
 }
 
 // validateFieldLengths validates and enforces field length constraints (QUAL-03)
@@ -223,8 +225,12 @@ func (m *ConditionMapper) validateFieldLengths(
 ) (string, string, error) {
 	// Validate condition type length
 	if len(rule.conditionType) > config.MaxConditionTypeLength {
-		logger.With(ctx, "resource_kind", m.resourceKind, "condition_type", rule.conditionType, "length", len(rule.conditionType)).
-			Warn("Condition type exceeds max length, skipping")
+		logger.With(
+			ctx,
+			"resource_kind", m.resourceKind,
+			"condition_type", rule.conditionType,
+			"length", len(rule.conditionType),
+		).Warn("Condition type exceeds max length, skipping")
 		return "", "", fmt.Errorf("condition type exceeds max length")
 	}
 
@@ -260,12 +266,16 @@ func (m *ConditionMapper) buildMappedCondition(
 ) (*api.ResourceCondition, error) {
 	// Parse status string to ResourceConditionStatus (case-insensitive)
 	var status api.ResourceConditionStatus
-	if strings.EqualFold(statusStr, celBoolTrue) {
+	switch strings.ToLower(statusStr) {
+	case strings.ToLower(celBoolTrue):
 		status = api.ConditionTrue
-	} else if strings.EqualFold(statusStr, celBoolFalse) {
+	case strings.ToLower(celBoolFalse):
 		status = api.ConditionFalse
-	} else {
-		return nil, fmt.Errorf("invalid status value: %s (must be %s or %s)", statusStr, celBoolTrue, celBoolFalse)
+	default:
+		return nil, fmt.Errorf(
+			"invalid status value: %s (must be %s or %s)",
+			statusStr, celBoolTrue, celBoolFalse,
+		)
 	}
 
 	// Extract resource generation for ObservedGeneration field
@@ -373,7 +383,12 @@ func compileExpression(env *cel.Env, expression string) (cel.Program, error) {
 
 // buildActivation builds the CEL activation context from input data
 // Combined filter + conversion in single pass to avoid double JSON unmarshal (PERF-03)
-func buildActivation(ctx context.Context, statuses api.AdapterStatusList, resource interface{}, resourceKind string) map[string]interface{} {
+func buildActivation(
+	ctx context.Context,
+	statuses api.AdapterStatusList,
+	resource interface{},
+	resourceKind string,
+) map[string]interface{} {
 	// Convert adapter statuses to CEL-compatible format, filtering Unknown conditions in same pass
 	statusesList := make([]interface{}, 0, len(statuses))
 	for _, status := range statuses {
@@ -406,7 +421,11 @@ func buildActivation(ctx context.Context, statuses api.AdapterStatusList, resour
 // parseConditionsWithUnknownCheck unmarshals adapter conditions from JSONB and converts to CEL maps.
 // Returns (conditions, hasUnknown) where hasUnknown indicates if any condition has Unknown status.
 // Returns empty slice (not nil) on unmarshal failure so CEL receives [] instead of null.
-func parseConditionsWithUnknownCheck(ctx context.Context, conditionsJSON []byte, adapterName string) ([]map[string]interface{}, bool) {
+func parseConditionsWithUnknownCheck(
+	ctx context.Context,
+	conditionsJSON []byte,
+	adapterName string,
+) ([]map[string]interface{}, bool) {
 	// Initialize to empty slice (not nil) so CEL receives [] instead of null
 	conditions := make([]map[string]interface{}, 0)
 	hasUnknown := false

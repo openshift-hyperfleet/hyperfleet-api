@@ -213,17 +213,21 @@ func TestConditionsConfig_Validate(t *testing.T) {
 				Clusters: map[string]ConditionMappingRule{
 					"ComplexCondition": {
 						When: MappingExpression{
-							Expression: `statuses.exists(s, s.adapter == "validation" && s.conditions.exists(c, c.type == "QuotaSufficient" && c.status == "True"))`,
+							Expression: `statuses.exists(s, s.adapter == "validation" && ` +
+								`s.conditions.exists(c, c.type == "QuotaSufficient" && c.status == "True"))`,
 						},
 						Output: MappingOutput{
 							Status: MappingExpression{
-								Expression: `statuses.filter(s, s.adapter == "validation")[0].conditions.filter(c, c.type == "QuotaSufficient")[0].status`,
+								Expression: `statuses.filter(s, s.adapter == "validation")[0].` +
+									`conditions.filter(c, c.type == "QuotaSufficient")[0].status`,
 							},
 							Reason: MappingExpression{
-								Expression: `statuses.filter(s, s.adapter == "validation")[0].conditions.filter(c, c.type == "QuotaSufficient")[0].reason`,
+								Expression: `statuses.filter(s, s.adapter == "validation")[0].` +
+									`conditions.filter(c, c.type == "QuotaSufficient")[0].reason`,
 							},
 							Message: MappingExpression{
-								Expression: `"Quota: " + statuses.filter(s, s.adapter == "validation")[0].conditions.filter(c, c.type == "QuotaSufficient")[0].message`,
+								Expression: `"Quota: " + statuses.filter(s, s.adapter == "validation")[0].` +
+									`conditions.filter(c, c.type == "QuotaSufficient")[0].message`,
 							},
 						},
 					},
