@@ -59,27 +59,27 @@ const (
 // ConditionMapper evaluates CEL-based condition mapping rules
 type ConditionMapper struct {
 	rules          map[string]*compiledRule
-	sortedNames    []string // Pre-sorted rule names for deterministic ordering
-	resourceKind   string
 	cachedResource *cachedResourceContext // Cache for masked resource map (PERF-03)
+	resourceKind   string
+	sortedNames    []string // Pre-sorted rule names for deterministic ordering
 }
 
 // cachedResourceContext caches the masked resource map to avoid redundant
 // marshal + MaskSensitiveFields operations across adapter status reports.
 // The resource (spec, metadata) only changes on PATCH operations, not status reports.
 type cachedResourceContext struct {
+	maskedMap  map[string]interface{}
 	resourceID string
 	generation int32
-	maskedMap  map[string]interface{}
 }
 
 // compiledRule holds pre-compiled CEL programs for a mapping rule
 type compiledRule struct {
-	conditionType  string
 	whenProgram    cel.Program
 	statusProgram  cel.Program
 	reasonProgram  cel.Program
 	messageProgram cel.Program
+	conditionType  string
 }
 
 // ApplyInput holds the input data for condition mapping
