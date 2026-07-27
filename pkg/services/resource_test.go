@@ -13,6 +13,7 @@ import (
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/auth"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/dao"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/registry"
@@ -280,7 +281,7 @@ var _ dao.ResourceConditionDao = &resourceConditionMock{}
 func newTestResourceService(mockDao *mockResourceDao) (ResourceService, *mockResourceDao, *resourceGenericMock) {
 	generic := &resourceGenericMock{}
 	svc := NewResourceService(
-		mockDao, newMockResourceLabelDao(), newMockAdapterStatusDao(), newResourceConditionMock(), generic,
+		mockDao, newMockResourceLabelDao(), newMockAdapterStatusDao(), newResourceConditionMock(), generic, nil,
 	)
 	return svc, mockDao, generic
 }
@@ -291,7 +292,7 @@ func newTestResourceServiceWithLabelDao(
 	generic := &resourceGenericMock{}
 	labelDao := newMockResourceLabelDao()
 	svc := NewResourceService(
-		mockDao, labelDao, newMockAdapterStatusDao(), newResourceConditionMock(), generic,
+		mockDao, labelDao, newMockAdapterStatusDao(), newResourceConditionMock(), generic, nil,
 	)
 	return svc, mockDao, generic, labelDao
 }
@@ -302,7 +303,18 @@ func newTestResourceServiceWithAdapterStatus(
 	asDao := newMockAdapterStatusDao()
 	rcDao := newResourceConditionMock()
 	generic := &resourceGenericMock{}
-	svc := NewResourceService(mockDao, newMockResourceLabelDao(), asDao, rcDao, generic)
+	svc := NewResourceService(mockDao, newMockResourceLabelDao(), asDao, rcDao, generic, nil)
+	return svc, mockDao, asDao, rcDao
+}
+
+func newTestResourceServiceWithConditions(
+	mockDao *mockResourceDao,
+	conditionsConfig *config.ConditionsConfig,
+) (ResourceService, *mockResourceDao, *mockAdapterStatusDao, *resourceConditionMock) {
+	asDao := newMockAdapterStatusDao()
+	rcDao := newResourceConditionMock()
+	generic := &resourceGenericMock{}
+	svc := NewResourceService(mockDao, newMockResourceLabelDao(), asDao, rcDao, generic, conditionsConfig)
 	return svc, mockDao, asDao, rcDao
 }
 
@@ -3141,4 +3153,80 @@ func TestProcessAdapterStatus_FinalizedTrue_RecomputesConditions_WhenHardDeleteB
 		"Reconciled should be False (waiting for children), not absent")
 	Expect(*recon.Reason).To(ContainSubstring("Children"),
 		"Reason should indicate waiting for child resources")
+}
+
+// --- Condition Mapping ---
+
+func TestResourceService_ConditionMapper_IntegrationPath(t *testing.T) {
+	RegisterTestingT(t)
+	registry.Reset()
+	registry.Register(registry.EntityDescriptor{
+		Kind:   "Cluster",
+		Plural: "clusters",
+	})
+
+	// Create config with CEL condition mapping rule
+	conditionsConfig := &config.ConditionsConfig{
+		Clusters: map[string]config.ConditionMappingRule{
+			"CustomReady": {
+				When: config.MappingExpression{
+					Expression: `statuses.exists(s, s.adapter == "test-adapter" && s.conditions.exists(c, c.type == "CustomCondition" && c.status == "True"))`,
+				},
+				Output: config.MappingOutput{
+					Status: config.MappingExpression{
+						Expression: `"True"`,
+					},
+					Reason: config.MappingExpression{
+						Expression: `"CustomOK"`,
+					},
+					Message: config.MappingExpression{
+						Expression: `"Custom condition is ready"`,
+					},
+				},
+			},
+		},
+	}
+
+	mockDao := newMockResourceDao()
+	svc, _, _, rcDao := newTestResourceServiceWithConditions(mockDao, conditionsConfig)
+
+	cluster := testResource("Cluster", "cl-1", "test-cluster")
+	cluster.Generation = 1
+	mockDao.addResource(cluster)
+
+	// Report adapter status with custom condition
+	req := &api.AdapterStatus{
+		Adapter:            "test-adapter",
+		ObservedGeneration: 1,
+		LastReportTime:     time.Now().UTC(),
+		Conditions: testConditionsJSON(
+			api.AdapterCondition{Type: api.AdapterConditionTypeAvailable, Status: api.AdapterConditionTrue},
+			api.AdapterCondition{Type: api.AdapterConditionTypeApplied, Status: api.AdapterConditionTrue},
+			api.AdapterCondition{Type: api.AdapterConditionTypeHealth, Status: api.AdapterConditionTrue},
+			api.AdapterCondition{Type: "CustomCondition", Status: api.AdapterConditionTrue},
+		),
+	}
+
+	result, svcErr := svc.ProcessAdapterStatus(context.Background(), "Cluster", cluster.ID, req)
+	Expect(svcErr).To(BeNil())
+	Expect(result).ToNot(BeNil())
+
+	// Verify mapped condition was created
+	conditions := rcDao.conditions[cluster.ID]
+	Expect(conditions).ToNot(BeEmpty())
+
+	// Should have standard conditions + mapped condition
+	var customReady *api.ResourceCondition
+	for i := range conditions {
+		if conditions[i].Type == "CustomReady" {
+			customReady = &conditions[i]
+			break
+		}
+	}
+
+	Expect(customReady).ToNot(BeNil(), "CustomReady condition should be created by mapper")
+	Expect(customReady.Status).To(Equal(api.ConditionTrue))
+	Expect(*customReady.Reason).To(Equal("CustomOK"))
+	Expect(*customReady.Message).To(Equal("Custom condition is ready"))
+	Expect(customReady.ObservedGeneration).To(Equal(cluster.Generation), "ObservedGeneration should match resource generation")
 }
