@@ -7,6 +7,7 @@ import (
 )
 
 func TestMapAdapterToConditionType(t *testing.T) {
+	t.Parallel()
 	testCases := []struct {
 		adapter  string
 		expected string

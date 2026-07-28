@@ -15,6 +15,7 @@ import (
 // ============================================================================
 
 func TestConditionsConfig_Validate(t *testing.T) {
+	t.Parallel()
 	// Typical entity config with required adapters
 	entities := []registry.EntityDescriptor{
 		{
@@ -295,6 +296,7 @@ func TestConditionsConfig_Validate(t *testing.T) {
 	}
 }
 func TestConditionsConfig_IsEmpty(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		config   *ConditionsConfig
 		name     string
@@ -353,6 +355,7 @@ func TestConditionsConfig_IsEmpty(t *testing.T) {
 	}
 }
 func TestNewConditionsConfig(t *testing.T) {
+	t.Parallel()
 	RegisterTestingT(t)
 	config := NewConditionsConfig()
 
@@ -364,6 +367,7 @@ func TestNewConditionsConfig(t *testing.T) {
 	Expect(config.IsEmpty()).To(BeTrue())
 }
 func TestConditionsConfig_NilReceiverGuards(t *testing.T) {
+	t.Parallel()
 	t.Run("Validate on nil receiver returns nil", func(t *testing.T) {
 		RegisterTestingT(t)
 		var c *ConditionsConfig
@@ -379,6 +383,7 @@ func TestConditionsConfig_NilReceiverGuards(t *testing.T) {
 	})
 }
 func TestConditionsConfig_YAMLNullHandling(t *testing.T) {
+	t.Parallel()
 	t.Run("YAML with conditions: null is handled gracefully", func(t *testing.T) {
 		RegisterTestingT(t)
 		yamlContent := `
@@ -418,6 +423,7 @@ conditions: null
 // ============================================================================
 
 func TestConditionsConfig_Validate_DeterministicErrors(t *testing.T) {
+	t.Parallel()
 	t.Run("validation errors are deterministic with multiple invalid rules", func(t *testing.T) {
 		RegisterTestingT(t)
 
@@ -460,6 +466,7 @@ func TestConditionsConfig_Validate_DeterministicErrors(t *testing.T) {
 // ============================================================================
 
 func TestValidate_CELCheckCatchesErrors(t *testing.T) {
+	t.Parallel()
 	t.Run("undefined function caught by Check", func(t *testing.T) {
 		RegisterTestingT(t)
 
