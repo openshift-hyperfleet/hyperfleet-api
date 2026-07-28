@@ -83,7 +83,16 @@ func NewHelper(t *testing.T) *Helper {
 			fmt.Println("Unable to read JWT keys - this may affect tests that make authenticated server requests")
 		}
 
-		// Load configuration using ConfigLoader (same path as production)
+		// Load configuration using ConfigLoader (same path as production).
+		// Integration tests bootstrap JWT issuers in OverrideConfig after Load.
+		// Config validation now requires issuers when JWT is enabled, so disable
+		// JWT for the Load step; OverrideConfig re-enables and configures issuers.
+		if environments.GetEnvironmentStrFromEnv() == environments.IntegrationTestingEnv {
+			if setenvErr := os.Setenv("HYPERFLEET_SERVER_JWT_ENABLED", "false"); setenvErr != nil {
+				logger.WithError(ctx, setenvErr).Error("Failed to disable JWT for integration config load")
+				os.Exit(1)
+			}
+		}
 		emptyCmd := &cobra.Command{}
 		loader := config.NewConfigLoader()
 		cfg, err := loader.Load(ctx, emptyCmd)
@@ -115,6 +124,12 @@ func NewHelper(t *testing.T) *Helper {
 		err = env.Initialize()
 		if err != nil {
 			logger.WithError(ctx, err).Error("Unable to initialize testing environment")
+			os.Exit(1)
+		}
+
+		// Integration tests must run with JWT enabled; fail fast if that ever regresses.
+		if !cfg.Server.JWT.Enabled {
+			logger.Error(ctx, "Integration tests require JWT enabled, check OverrideConfig() in e_integration_testing.go")
 			os.Exit(1)
 		}
 

@@ -38,12 +38,16 @@ func (e *integrationTestingEnvImpl) OverrideConfig(c *config.ApplicationConfig) 
 		c.Database.SSL.Mode = SSLModeDisable
 	}
 
-	// Bootstrap a default JWT issuer for integration tests.
-	// JWKCertURL is overridden by the JWK mock server in test.Helper.startAPIServer().
-	if c.Server.JWT.Enabled && len(c.Server.JWT.Configs) == 0 {
+	// Integration tests always use JWT. Config load may disable JWT so validation
+	// can pass before issuers exist; re-enable and bootstrap a complete issuer here.
+	// JWKCertURL is a placeholder; the test harness overwrites it once the JWK
+	// mock server is running.
+	c.Server.JWT.Enabled = true
+	if len(c.Server.JWT.Configs) == 0 {
 		c.Server.JWT.Configs = []config.JWTIssuerConfig{
 			{
 				IssuerURL:     "https://test-issuer.example.com",
+				JWKCertURL:    "https://test-issuer.example.com/.well-known/jwks.json",
 				Header:        "Authorization",
 				IdentityClaim: "email",
 			},
