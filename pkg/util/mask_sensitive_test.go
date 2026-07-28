@@ -11,6 +11,7 @@ import (
 // ============================================================================
 
 func TestMaskSensitiveFields(t *testing.T) {
+	t.Parallel()
 	t.Run("nil map returns nil", func(t *testing.T) {
 		RegisterTestingT(t)
 		result := MaskSensitiveFields(nil)
@@ -282,6 +283,7 @@ func TestMaskSensitiveFields(t *testing.T) {
 	})
 }
 func TestIsSensitiveKey(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name      string
 		key       string
@@ -325,6 +327,7 @@ func TestIsSensitiveKey(t *testing.T) {
 // ============================================================================
 
 func TestMaskSensitiveFields_SEC02Patterns(t *testing.T) {
+	t.Parallel()
 	t.Run("TLS certificate fields are masked (SEC-02)", func(t *testing.T) {
 		RegisterTestingT(t)
 
@@ -510,6 +513,7 @@ func TestMaskSensitiveFields_SEC02Patterns(t *testing.T) {
 // ============================================================================
 
 func TestMaskSensitiveFields_DepthLimit(t *testing.T) {
+	t.Parallel()
 	t.Run("deeply nested structure stops at max depth (SEC-03)", func(t *testing.T) {
 		RegisterTestingT(t)
 
@@ -612,6 +616,7 @@ func TestMaskSensitiveFields_DepthLimit(t *testing.T) {
 // ============================================================================
 
 func TestMaskSensitiveFields_FalsePositivePrevention(t *testing.T) {
+	t.Parallel()
 	t.Run("database fields with 'key' are NOT redacted (SEC-02)", func(t *testing.T) {
 		RegisterTestingT(t)
 

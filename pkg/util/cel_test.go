@@ -1,6 +1,7 @@
 package util
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/google/cel-go/cel"
@@ -12,6 +13,7 @@ import (
 // ============================================================================
 
 func TestNewConditionMappingEnvironment(t *testing.T) {
+	t.Parallel()
 	RegisterTestingT(t)
 
 	env, err := NewConditionMappingEnvironment()
@@ -19,6 +21,7 @@ func TestNewConditionMappingEnvironment(t *testing.T) {
 	Expect(env).NotTo(BeNil())
 }
 func TestDigFunc_MapNavigation(t *testing.T) {
+	t.Parallel()
 	RegisterTestingT(t)
 
 	env, err := NewConditionMappingEnvironment()
@@ -114,6 +117,7 @@ func TestDigFunc_MapNavigation(t *testing.T) {
 	}
 }
 func TestDigFunc_ArrayNavigation(t *testing.T) {
+	t.Parallel()
 	RegisterTestingT(t)
 
 	env, err := NewConditionMappingEnvironment()
@@ -197,6 +201,7 @@ func TestDigFunc_ArrayNavigation(t *testing.T) {
 	}
 }
 func TestToJsonFunc(t *testing.T) {
+	t.Parallel()
 	RegisterTestingT(t)
 
 	env, err := NewConditionMappingEnvironment()
@@ -226,11 +231,39 @@ func TestToJsonFunc(t *testing.T) {
 	Expect(out.Value()).To(Equal(`{"count":42,"name":"test"}`))
 }
 
+func TestToJsonFunc_SizeLimit(t *testing.T) {
+	t.Parallel()
+	RegisterTestingT(t)
+
+	env, err := NewConditionMappingEnvironment()
+	Expect(err).NotTo(HaveOccurred())
+
+	largeData := map[string]interface{}{
+		"big": strings.Repeat("x", 1024*1024+1),
+	}
+
+	ast, issues := env.Parse(`toJson(resource)`)
+	Expect(issues).To(BeNil())
+
+	_, issues = env.Check(ast)
+	Expect(issues).To(BeNil())
+
+	prg, err := env.Program(ast, cel.CostLimit(CELCostLimit))
+	Expect(err).NotTo(HaveOccurred())
+
+	_, _, err = prg.Eval(map[string]interface{}{
+		CELVarResource: largeData,
+	})
+	Expect(err).To(HaveOccurred())
+	Expect(err.Error()).To(ContainSubstring("exceeds 1MB"))
+}
+
 // ============================================================================
 // Tests from cel_constants_test.go
 // ============================================================================
 
 func TestCELVariableConstants(t *testing.T) {
+	t.Parallel()
 	t.Run("CEL variable constants prevent name mismatches (QUAL-01)", func(t *testing.T) {
 		RegisterTestingT(t)
 

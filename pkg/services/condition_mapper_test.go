@@ -1259,146 +1259,146 @@ func TestTruncateUTF8(t *testing.T) {
 		Expect(result).To(Equal("test😀"))
 		Expect(utf8.RuneCountInString(result)).To(Equal(5))
 	})
+}
 
-	t.Run("invalid status string from CEL expression", func(t *testing.T) {
-		RegisterTestingT(t)
+func TestConditionMapper_InvalidStatus(t *testing.T) {
+	RegisterTestingT(t)
 
-		// CEL rule that outputs "Maybe" instead of "True"/"False"
-		rules := map[string]config.ConditionMappingRule{
-			"TestCondition": {
-				When: config.MappingExpression{
-					Expression: "true",
+	// CEL rule that outputs "Maybe" instead of "True"/"False"
+	rules := map[string]config.ConditionMappingRule{
+		"TestCondition": {
+			When: config.MappingExpression{
+				Expression: "true",
+			},
+			Output: config.MappingOutput{
+				Status: config.MappingExpression{
+					Expression: `"Maybe"`, // Invalid status
 				},
-				Output: config.MappingOutput{
-					Status: config.MappingExpression{
-						Expression: `"Maybe"`, // Invalid status
-					},
-					Reason: config.MappingExpression{
-						Expression: `"test"`,
-					},
-					Message: config.MappingExpression{
-						Expression: `"test message"`,
-					},
+				Reason: config.MappingExpression{
+					Expression: `"test"`,
+				},
+				Message: config.MappingExpression{
+					Expression: `"test message"`,
 				},
 			},
-		}
+		},
+	}
 
-		mapper, err := NewConditionMapper("Cluster", rules)
-		Expect(err).NotTo(HaveOccurred())
+	mapper, err := NewConditionMapper("Cluster", rules)
+	Expect(err).NotTo(HaveOccurred())
 
-		input := ApplyInput{
-			AdapterStatuses: api.AdapterStatusList{},
-			Resource:        map[string]interface{}{},
-			RefTime:         time.Now(),
-		}
+	input := ApplyInput{
+		AdapterStatuses: api.AdapterStatusList{},
+		Resource:        map[string]interface{}{},
+		RefTime:         time.Now(),
+	}
 
-		// Should not panic, should skip the condition and log error
-		result := mapper.Apply(context.Background(), input)
-		Expect(result).To(BeEmpty(), "invalid status should skip condition")
-	})
+	// Should not panic, should skip the condition and log error
+	result := mapper.Apply(context.Background(), input)
+	Expect(result).To(BeEmpty(), "invalid status should skip condition")
+}
 
-	t.Run("non-boolean when expression return type", func(t *testing.T) {
-		RegisterTestingT(t)
+func TestConditionMapper_NonBooleanWhen(t *testing.T) {
+	RegisterTestingT(t)
 
-		// CEL rule with when expression that returns string instead of boolean
-		rules := map[string]config.ConditionMappingRule{
-			"TestCondition": {
-				When: config.MappingExpression{
-					Expression: `"not a boolean"`, // Should return bool
+	// CEL rule with when expression that returns string instead of boolean
+	rules := map[string]config.ConditionMappingRule{
+		"TestCondition": {
+			When: config.MappingExpression{
+				Expression: `"not a boolean"`, // Should return bool
+			},
+			Output: config.MappingOutput{
+				Status: config.MappingExpression{
+					Expression: `"True"`,
 				},
-				Output: config.MappingOutput{
-					Status: config.MappingExpression{
-						Expression: `"True"`,
-					},
-					Reason: config.MappingExpression{
-						Expression: `"test"`,
-					},
-					Message: config.MappingExpression{
-						Expression: `"test message"`,
-					},
+				Reason: config.MappingExpression{
+					Expression: `"test"`,
+				},
+				Message: config.MappingExpression{
+					Expression: `"test message"`,
 				},
 			},
-		}
+		},
+	}
 
-		mapper, err := NewConditionMapper("Cluster", rules)
-		Expect(err).NotTo(HaveOccurred())
+	mapper, err := NewConditionMapper("Cluster", rules)
+	Expect(err).NotTo(HaveOccurred())
 
-		input := ApplyInput{
-			AdapterStatuses: api.AdapterStatusList{},
-			Resource:        map[string]interface{}{},
-			RefTime:         time.Now(),
-		}
+	input := ApplyInput{
+		AdapterStatuses: api.AdapterStatusList{},
+		Resource:        map[string]interface{}{},
+		RefTime:         time.Now(),
+	}
 
-		// Should not panic, should skip the condition
-		result := mapper.Apply(context.Background(), input)
-		Expect(result).To(BeEmpty(), "non-boolean when expression should skip condition")
-	})
+	// Should not panic, should skip the condition
+	result := mapper.Apply(context.Background(), input)
+	Expect(result).To(BeEmpty(), "non-boolean when expression should skip condition")
+}
 
-	t.Run("concurrent Apply() access from multiple goroutines", func(t *testing.T) {
-		RegisterTestingT(t)
+func TestConditionMapper_ConcurrentApply(t *testing.T) {
+	RegisterTestingT(t)
 
-		rules := map[string]config.ConditionMappingRule{
-			"TestCondition": {
-				When: config.MappingExpression{
-					Expression: "true",
+	rules := map[string]config.ConditionMappingRule{
+		"TestCondition": {
+			When: config.MappingExpression{
+				Expression: "true",
+			},
+			Output: config.MappingOutput{
+				Status: config.MappingExpression{
+					Expression: `"True"`,
 				},
-				Output: config.MappingOutput{
-					Status: config.MappingExpression{
-						Expression: `"True"`,
-					},
-					Reason: config.MappingExpression{
-						Expression: `"test"`,
-					},
-					Message: config.MappingExpression{
-						Expression: `"test message"`,
-					},
+				Reason: config.MappingExpression{
+					Expression: `"test"`,
+				},
+				Message: config.MappingExpression{
+					Expression: `"test message"`,
 				},
 			},
-		}
+		},
+	}
 
-		mapper, err := NewConditionMapper("Cluster", rules)
-		Expect(err).NotTo(HaveOccurred())
+	mapper, err := NewConditionMapper("Cluster", rules)
+	Expect(err).NotTo(HaveOccurred())
 
-		// Run under -race flag to detect data races
-		const numGoroutines = 10
-		type result struct {
-			conditions []api.ResourceCondition
-		}
-		results := make(chan result, numGoroutines)
+	// Run under -race flag to detect data races
+	const numGoroutines = 10
+	type result struct {
+		conditions []api.ResourceCondition
+	}
+	results := make(chan result, numGoroutines)
 
-		// Create different *api.Resource instances to exercise cache path
-		// (using map[string]interface{} bypasses cache via type assertion fallback)
-		for i := 0; i < numGoroutines; i++ {
-			go func(id int) {
-				// Different resources to trigger cache eviction/thrashing and race detection
-				resource := &api.Resource{
-					Meta: api.Meta{
-						ID: fmt.Sprintf("resource-%d", id),
-					},
-					Kind:       "Cluster",
-					Name:       fmt.Sprintf("cluster-%d", id),
-					Generation: int32(id),
-				}
+	// Create different *api.Resource instances to exercise cache path
+	// (using map[string]interface{} bypasses cache via type assertion fallback)
+	for i := 0; i < numGoroutines; i++ {
+		go func(id int) {
+			// Different resources to trigger cache eviction/thrashing and race detection
+			resource := &api.Resource{
+				Meta: api.Meta{
+					ID: fmt.Sprintf("resource-%d", id),
+				},
+				Kind:       "Cluster",
+				Name:       fmt.Sprintf("cluster-%d", id),
+				Generation: int32(id),
+			}
 
-				input := ApplyInput{
-					AdapterStatuses: api.AdapterStatusList{},
-					Resource:        resource,
-					RefTime:         time.Now(),
-				}
+			input := ApplyInput{
+				AdapterStatuses: api.AdapterStatusList{},
+				Resource:        resource,
+				RefTime:         time.Now(),
+			}
 
-				// Collect result, don't assert in goroutine
-				conditions := mapper.Apply(context.Background(), input)
-				results <- result{conditions: conditions}
-			}(i)
-		}
+			// Collect result, don't assert in goroutine
+			conditions := mapper.Apply(context.Background(), input)
+			results <- result{conditions: conditions}
+		}(i)
+	}
 
-		// Wait for all goroutines and assert on main test goroutine
-		for i := 0; i < numGoroutines; i++ {
-			res := <-results
-			Expect(res.conditions).To(HaveLen(1))
-			Expect(res.conditions[0].Type).To(Equal("TestCondition"))
-		}
-	})
+	// Wait for all goroutines and assert on main test goroutine
+	for i := 0; i < numGoroutines; i++ {
+		res := <-results
+		Expect(res.conditions).To(HaveLen(1))
+		Expect(res.conditions[0].Type).To(Equal("TestCondition"))
+	}
 }
 
 // testBuildActivation is the test-only variant of buildActivationWithCache that doesn't use caching.

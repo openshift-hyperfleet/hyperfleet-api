@@ -280,9 +280,9 @@ func (m *ConditionMapper) buildMappedCondition(
 	// Parse status string to ResourceConditionStatus (case-insensitive)
 	var status api.ResourceConditionStatus
 	switch strings.ToLower(statusStr) {
-	case strings.ToLower(celBoolTrue):
+	case "true":
 		status = api.ConditionTrue
-	case strings.ToLower(celBoolFalse):
+	case "false":
 		status = api.ConditionFalse
 	default:
 		return nil, fmt.Errorf(
@@ -291,21 +291,7 @@ func (m *ConditionMapper) buildMappedCondition(
 		)
 	}
 
-	// Extract resource generation for ObservedGeneration field
-	// Use type assertion via map to extract generation field
-	resourceGen := int32(0)
-	if resourceMap, ok := activation[util.CELVarResource].(map[string]interface{}); ok {
-		if gen, ok := resourceMap[resourceKeyGeneration].(float64); ok {
-			// Bounds check before narrowing conversion to prevent wrapping (critical)
-			if gen >= math.MinInt32 && gen <= math.MaxInt32 {
-				resourceGen = int32(gen)
-			} else {
-				// Out of bounds: log warning and use 0 (safe fallback)
-				logger.With(ctx, "resource_kind", m.resourceKind, "condition_type", rule.conditionType, "generation", gen).
-					Warn("Resource generation out of int32 range, using 0")
-			}
-		}
-	}
+	resourceGen := extractResourceGeneration(ctx, activation, m.resourceKind, rule.conditionType)
 
 	// Preserve CreatedTime from previous condition (matching aggregation.go:332-333)
 	createdTime := refTime.UTC().Truncate(time.Microsecond)
@@ -333,6 +319,23 @@ func (m *ConditionMapper) buildMappedCondition(
 	}
 
 	return &condition, nil
+}
+
+func extractResourceGeneration(ctx context.Context, activation map[string]interface{}, resourceKind, conditionType string) int32 {
+	resourceMap, ok := activation[util.CELVarResource].(map[string]interface{})
+	if !ok {
+		return 0
+	}
+	gen, ok := resourceMap[resourceKeyGeneration].(float64)
+	if !ok {
+		return 0
+	}
+	if gen < math.MinInt32 || gen > math.MaxInt32 {
+		logger.With(ctx, "resource_kind", resourceKind, "condition_type", conditionType, "generation", gen).
+			Warn("Resource generation out of int32 range, using 0")
+		return 0
+	}
+	return int32(gen)
 }
 
 // compileRule compiles all CEL expressions in a mapping rule
