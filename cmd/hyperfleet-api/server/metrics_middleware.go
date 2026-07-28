@@ -57,7 +57,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
@@ -83,12 +82,8 @@ func MetricsMiddleware(handler http.Handler) http.Handler {
 		// In order to reduce the cardinality of the metrics we need to remove from the
 		// request path all the object identifiers:
 		path := "/" + PathVarSub
-		route := mux.CurrentRoute(r)
-		if route != nil {
-			template, err := route.GetPathTemplate()
-			if err == nil {
-				path = metricsPathVarRE.ReplaceAllString(template, PathVarSub)
-			}
+		if r.Pattern != "" {
+			path = metricsPathVarRE.ReplaceAllString(stripMethodPrefix(r.Pattern), PathVarSub)
 		}
 
 		// Create the set of labels that we will add to all the requests:

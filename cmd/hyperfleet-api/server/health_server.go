@@ -7,23 +7,19 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/gorilla/mux"
-
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/health"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
 func NewHealthServer() Server {
-	mainRouter := mux.NewRouter()
-	mainRouter.NotFoundHandler = http.HandlerFunc(api.SendNotFound)
+	mainRouter := http.NewServeMux()
 
 	// health endpoints (HyperFleet standard)
 	healthHandler := health.NewHandler(env().Database.SessionFactory, env().Config.Health.DBPingTimeout)
-	mainRouter.HandleFunc("/healthz", healthHandler.LivenessHandler).Methods(http.MethodGet)
-	mainRouter.HandleFunc("/readyz", healthHandler.ReadinessHandler).Methods(http.MethodGet)
+	mainRouter.HandleFunc("GET /healthz", healthHandler.LivenessHandler)
+	mainRouter.HandleFunc("GET /readyz", healthHandler.ReadinessHandler)
 
-	var mainHandler http.Handler = mainRouter
+	mainHandler := WithNotFoundHandler(mainRouter)
 
 	s := &healthServer{
 		shutdownTimeout: env().Config.Health.ShutdownTimeout,

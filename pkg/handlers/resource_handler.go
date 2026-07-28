@@ -3,8 +3,6 @@ package handlers
 import (
 	"net/http"
 
-	"github.com/gorilla/mux"
-
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/presenters"
@@ -14,8 +12,8 @@ import (
 )
 
 // ResourceHandler serves both flat and owner-nested routes for a single entity
-// kind. Every method branches on whether "parent_id" is present in mux.Vars(r)
-// rather than dispatching statically per route. This is only correct because
+// kind. Every method branches on whether "parent_id" is present via
+// r.PathValue("parent_id") rather than dispatching statically per route. This is only correct because
 // plugins/entities/plugin.go guarantees the invariant: a nested (ParentKind != "")
 // descriptor is registered exclusively under a {parent_id} subrouter, and a flat
 // descriptor never is. If that registration is ever bypassed — e.g. a nested kind
@@ -51,7 +49,7 @@ func (h *ResourceHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 			var resource *api.Resource
 			var err error
-			if parentID, hasParent := mux.Vars(r)["parent_id"]; hasParent {
+			if parentID := r.PathValue("parent_id"); parentID != "" {
 				parent, svcErr := h.service.Get(ctx, h.descriptor.ParentKind, parentID)
 				if svcErr != nil {
 					return nil, svcErr
@@ -81,12 +79,11 @@ func (h *ResourceHandler) Get(w http.ResponseWriter, r *http.Request) {
 	cfg := &handlerConfig{
 		Action: func() (interface{}, *errors.ServiceError) {
 			ctx := r.Context()
-			vars := mux.Vars(r)
-			id := vars["id"]
+			id := r.PathValue("id")
 
 			var resource *api.Resource
 			var err *errors.ServiceError
-			if parentID, hasParent := vars["parent_id"]; hasParent {
+			if parentID := r.PathValue("parent_id"); parentID != "" {
 				if _, err = h.service.Get(ctx, h.descriptor.ParentKind, parentID); err != nil {
 					return nil, err
 				}
@@ -116,7 +113,7 @@ func (h *ResourceHandler) List(w http.ResponseWriter, r *http.Request) {
 
 			var resources api.ResourceList
 			var paging *api.PagingMeta
-			if parentID, hasParent := mux.Vars(r)["parent_id"]; hasParent {
+			if parentID := r.PathValue("parent_id"); parentID != "" {
 				if _, svcErr := h.service.Get(ctx, h.descriptor.ParentKind, parentID); svcErr != nil {
 					return nil, svcErr
 				}
@@ -148,7 +145,7 @@ func (h *ResourceHandler) Patch(w http.ResponseWriter, r *http.Request) {
 			validateLabels(&req, "Labels"),
 		},
 		Action: func() (interface{}, *errors.ServiceError) {
-			id := mux.Vars(r)["id"]
+			id := r.PathValue("id")
 
 			if err := h.verifyOwnership(r, id); err != nil {
 				return nil, err
@@ -168,7 +165,7 @@ func (h *ResourceHandler) Patch(w http.ResponseWriter, r *http.Request) {
 func (h *ResourceHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	cfg := &handlerConfig{
 		Action: func() (interface{}, *errors.ServiceError) {
-			id := mux.Vars(r)["id"]
+			id := r.PathValue("id")
 
 			if err := h.verifyOwnership(r, id); err != nil {
 				return nil, err
@@ -187,7 +184,7 @@ func (h *ResourceHandler) Delete(w http.ResponseWriter, r *http.Request) {
 // verifyOwnership confirms id belongs to the parent named by parent_id in the
 // request path. No-op for flat (non-nested) routes, where parent_id is absent.
 func (h *ResourceHandler) verifyOwnership(r *http.Request, id string) *errors.ServiceError {
-	if parentID, hasParent := mux.Vars(r)["parent_id"]; hasParent {
+	if parentID := r.PathValue("parent_id"); parentID != "" {
 		if _, err := h.service.GetByOwner(r.Context(), h.descriptor.Kind, id, parentID); err != nil {
 			return err
 		}
@@ -227,7 +224,7 @@ func (h *ResourceHandler) ForceDelete(w http.ResponseWriter, r *http.Request) {
 			validateMaxLength(&req, "Reason", "reason", maxReasonLength),
 		},
 		Action: func() (interface{}, *errors.ServiceError) {
-			id := mux.Vars(r)["id"]
+			id := r.PathValue("id")
 
 			if err := h.verifyOwnership(r, id); err != nil {
 				return nil, err

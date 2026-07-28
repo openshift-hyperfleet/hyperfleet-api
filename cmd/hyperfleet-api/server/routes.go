@@ -5,11 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
-	gorillahandlers "github.com/gorilla/handlers"
-	"github.com/gorilla/mux"
-
 	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/server/logging"
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/auth"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/handlers"
@@ -19,12 +15,18 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/validators"
 )
 
+// APIBasePath is the root path of the HyperFleet API, below the host.
+const APIBasePath = "/api/hyperfleet"
+
+// APIV1BasePath is the root path of the v1 HyperFleet API.
+const APIV1BasePath = APIBasePath + "/v1"
+
 type ServicesInterface interface {
-	GetService(name string) interface{}
+	GetService(name string) any
 }
 
 type RouteRegistrationFunc func(
-	apiV1Router *mux.Router,
+	apiV1Router *Router,
 	services ServicesInterface,
 )
 
@@ -36,9 +38,9 @@ func RegisterRoutes(name string, registrationFunc RouteRegistrationFunc) {
 
 // LoadDiscoveredRoutes invokes all registered route registration functions.
 //
-// Note: All routes must use .Methods() to restrict HTTP methods.
+// Note: All routes must use a method-prefixed pattern (e.g. "GET /path") to restrict HTTP methods.
 func LoadDiscoveredRoutes(
-	apiV1Router *mux.Router,
+	apiV1Router *Router,
 	services ServicesInterface,
 ) {
 	for name, registrationFunc := range routeRegistry {
@@ -47,14 +49,13 @@ func LoadDiscoveredRoutes(
 	}
 }
 
-func (s *apiServer) routes(tracingEnabled bool) *mux.Router {
+func (s *apiServer) routes(tracingEnabled bool) *Router {
 	services := &env().Services
 
 	metadataHandler := handlers.NewMetadataHandler()
 
 	// mainRouter is top level "/"
-	mainRouter := mux.NewRouter()
-	mainRouter.NotFoundHandler = http.HandlerFunc(api.SendNotFound)
+	mainRouter := NewRouter()
 
 	// Request ID middleware sets a unique request ID in the context of each request for tracing
 	mainRouter.Use(logger.RequestIDMiddleware)
@@ -72,19 +73,13 @@ func (s *apiServer) routes(tracingEnabled bool) *mux.Router {
 	mainRouter.Use(logging.RequestLoggingMiddleware(masker))
 
 	//  /api/hyperfleet
-	apiRouter := mainRouter.PathPrefix("/api/hyperfleet").Subrouter()
-	apiRouter.HandleFunc("", metadataHandler.Get).Methods(http.MethodGet)
+	apiRouter := mainRouter.Group()
+	apiRouter.HandleFunc("GET "+APIBasePath, metadataHandler.Get)
 
 	//  /api/hyperfleet/v1
-	apiV1Router := apiRouter.PathPrefix("/v1").Subrouter()
+	apiV1Router := apiRouter.Group()
 
-	//  /api/hyperfleet/v1/openapi
-	openapiHandler, err := handlers.NewOpenAPIHandler()
-	check(err, "Unable to create OpenAPI handler")
-	apiV1Router.HandleFunc("/openapi.html", openapiHandler.GetOpenAPIUI).Methods(http.MethodGet)
-	apiV1Router.HandleFunc("/openapi", openapiHandler.GetOpenAPI).Methods(http.MethodGet)
-
-	err = registerAPIMiddleware(apiV1Router)
+	err := registerAPIMiddleware(apiV1Router)
 	check(err, "Failed to initialize API middleware")
 
 	if env().Config.Server.JWT.Enabled {
@@ -92,13 +87,19 @@ func (s *apiServer) routes(tracingEnabled bool) *mux.Router {
 		apiV1Router.Use(callerIdentityMW.ResolveCallerIdentity)
 	}
 
+	//  /api/hyperfleet/v1/openapi
+	openapiHandler, err := handlers.NewOpenAPIHandler()
+	check(err, "Unable to create OpenAPI handler")
+	apiV1Router.HandleFunc("GET "+APIV1BasePath+"/openapi.html", openapiHandler.GetOpenAPIUI)
+	apiV1Router.HandleFunc("GET "+APIV1BasePath+"/openapi", openapiHandler.GetOpenAPI)
+
 	// Auto-discovered routes (no manual editing needed)
 	LoadDiscoveredRoutes(apiV1Router, services)
 
 	return mainRouter
 }
 
-func registerAPIMiddleware(router *mux.Router) error {
+func registerAPIMiddleware(router *Router) error {
 	router.Use(MetricsMiddleware)
 
 	registry.Validate()
@@ -120,7 +121,7 @@ func registerAPIMiddleware(router *mux.Router) error {
 		},
 	)
 
-	router.Use(gorillahandlers.CompressHandler)
+	router.Use(CompressMiddleware)
 
 	return nil
 }

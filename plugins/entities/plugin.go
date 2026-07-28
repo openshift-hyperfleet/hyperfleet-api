@@ -2,10 +2,7 @@ package entities
 
 import (
 	"fmt"
-	"net/http"
 	"sort"
-
-	"github.com/gorilla/mux"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/environments"
 	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/server"
@@ -18,7 +15,7 @@ import (
 )
 
 func init() {
-	server.RegisterRoutes("entities", func(apiV1Router *mux.Router, svc server.ServicesInterface) {
+	server.RegisterRoutes("entities", func(apiV1Router *server.Router, svc server.ServicesInterface) {
 		envServices := svc.(*environments.Services)
 		resourceService := resources.Service(envServices)
 		adapterStatusService := adapterStatus.Service(envServices)
@@ -48,7 +45,7 @@ func init() {
 //
 // The kind-agnostic /resources root endpoint is registered separately.
 func RegisterEntityRoutes(
-	apiV1Router *mux.Router,
+	apiV1Router *server.Router,
 	resourceService services.ResourceService,
 	adapterStatusService services.AdapterStatusService,
 	schemaValidator *validators.SchemaValidator,
@@ -58,7 +55,7 @@ func RegisterEntityRoutes(
 }
 
 func registerPerEntityRoutes(
-	apiV1Router *mux.Router,
+	apiV1Router *server.Router,
 	resourceService services.ResourceService,
 	adapterStatusService services.AdapterStatusService,
 ) {
@@ -86,34 +83,34 @@ func registerPerEntityRoutes(
 }
 
 func registerRootResourceRoutes(
-	apiV1Router *mux.Router,
+	apiV1Router *server.Router,
 	resourceService services.ResourceService,
 	adapterStatusService services.AdapterStatusService,
 	schemaValidator *validators.SchemaValidator,
 ) {
 	rootHandler := handlers.NewRootResourceHandler(resourceService, adapterStatusService, schemaValidator)
-	r := apiV1Router.PathPrefix("/resources").Subrouter()
-	r.HandleFunc("", rootHandler.List).Methods(http.MethodGet)
-	r.HandleFunc("", rootHandler.Create).Methods(http.MethodPost)
-	r.HandleFunc("/{id}", rootHandler.Get).Methods(http.MethodGet)
-	r.HandleFunc("/{id}", rootHandler.Patch).Methods(http.MethodPatch)
-	r.HandleFunc("/{id}", rootHandler.Delete).Methods(http.MethodDelete)
-	r.HandleFunc("/{id}/force-delete", rootHandler.ForceDelete).Methods(http.MethodPost)
-	r.HandleFunc("/{id}/statuses", rootHandler.ListStatuses).Methods(http.MethodGet)
-	r.HandleFunc("/{id}/statuses", rootHandler.CreateStatus).Methods(http.MethodPut)
+	prefix := server.APIV1BasePath + "/resources"
+	apiV1Router.HandleFunc("GET "+prefix, rootHandler.List)
+	apiV1Router.HandleFunc("POST "+prefix, rootHandler.Create)
+	apiV1Router.HandleFunc("GET "+prefix+"/{id}", rootHandler.Get)
+	apiV1Router.HandleFunc("PATCH "+prefix+"/{id}", rootHandler.Patch)
+	apiV1Router.HandleFunc("DELETE "+prefix+"/{id}", rootHandler.Delete)
+	apiV1Router.HandleFunc("POST "+prefix+"/{id}/force-delete", rootHandler.ForceDelete)
+	apiV1Router.HandleFunc("GET "+prefix+"/{id}/statuses", rootHandler.ListStatuses)
+	apiV1Router.HandleFunc("PUT "+prefix+"/{id}/statuses", rootHandler.CreateStatus)
 }
 
 func registerResourceRoutes(
-	apiV1Router *mux.Router, prefix string,
+	apiV1Router *server.Router, pathSuffix string,
 	h *handlers.ResourceHandler, sh *handlers.ResourceStatusHandler,
 ) {
-	r := apiV1Router.PathPrefix(prefix).Subrouter()
-	r.HandleFunc("", h.List).Methods(http.MethodGet)
-	r.HandleFunc("", h.Create).Methods(http.MethodPost)
-	r.HandleFunc("/{id}", h.Get).Methods(http.MethodGet)
-	r.HandleFunc("/{id}", h.Patch).Methods(http.MethodPatch)
-	r.HandleFunc("/{id}", h.Delete).Methods(http.MethodDelete)
-	r.HandleFunc("/{id}/force-delete", h.ForceDelete).Methods(http.MethodPost)
-	r.HandleFunc("/{id}/statuses", sh.List).Methods(http.MethodGet)
-	r.HandleFunc("/{id}/statuses", sh.Create).Methods(http.MethodPut)
+	prefix := server.APIV1BasePath + pathSuffix
+	apiV1Router.HandleFunc("GET "+prefix, h.List)
+	apiV1Router.HandleFunc("POST "+prefix, h.Create)
+	apiV1Router.HandleFunc("GET "+prefix+"/{id}", h.Get)
+	apiV1Router.HandleFunc("PATCH "+prefix+"/{id}", h.Patch)
+	apiV1Router.HandleFunc("DELETE "+prefix+"/{id}", h.Delete)
+	apiV1Router.HandleFunc("POST "+prefix+"/{id}/force-delete", h.ForceDelete)
+	apiV1Router.HandleFunc("GET "+prefix+"/{id}/statuses", sh.List)
+	apiV1Router.HandleFunc("PUT "+prefix+"/{id}/statuses", sh.Create)
 }
