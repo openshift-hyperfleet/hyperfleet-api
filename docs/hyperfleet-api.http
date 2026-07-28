@@ -1,6 +1,16 @@
 ### HyperFleet API Requests
 # This file contains example requests for all HyperFleet API endpoints.
 # You can use the REST Client extension in VS Code to run these requests.
+#
+# Entity types: Cluster, NodePool, Channel, Version, WifConfig
+# Child entities: NodePool (under Cluster), Version (under Channel)
+#
+# Pagination params (all list endpoints):
+#   page     - page number (default: 1)
+#   size     - page size, 1-100 (default: 20)
+#   search   - filter expression (e.g., search=name='foo')
+#   order    - ordering (e.g., order=name asc,created_time desc)
+#   fields   - sparse fieldset (e.g., fields=id,name,kind)
 
 @host = localhost
 @port = 8000
@@ -8,6 +18,10 @@
 @metrics_port = 9090
 @baseUrl = http://{{host}}:{{port}}
 @authToken = <your-jwt-token-here>
+
+########################################
+# Metadata & OpenAPI
+########################################
 
 ###
 # @name getMetadata
@@ -23,6 +37,131 @@ Accept: application/json
 # @name getOpenAPIUI
 GET {{baseUrl}}/api/hyperfleet/v1/openapi.html
 
+########################################
+# Health & Metrics
+########################################
+
+###
+# @name livenessProbe
+GET http://{{host}}:{{health_port}}/healthz
+
+###
+# @name readinessProbe
+GET http://{{host}}:{{health_port}}/readyz
+
+###
+# @name metrics
+GET http://{{host}}:{{metrics_port}}/metrics
+
+########################################
+# Generic Resources (kind-agnostic)
+########################################
+
+###
+# @name listResources
+GET {{baseUrl}}/api/hyperfleet/v1/resources
+Authorization: Bearer {{authToken}}
+Accept: application/json
+
+###
+# @name listResourcesByKind
+GET {{baseUrl}}/api/hyperfleet/v1/resources?kind=Cluster
+Authorization: Bearer {{authToken}}
+Accept: application/json
+
+###
+# @name createResource
+POST {{baseUrl}}/api/hyperfleet/v1/resources
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "kind": "Cluster",
+  "name": "resource-test",
+  "labels": {
+    "created-via": "resources-endpoint"
+  },
+  "spec": {
+    "region": "us-east-1",
+    "version": "4.15.0"
+  }
+}
+
+###
+@resourceId = <resource-id>
+
+###
+# @name getResource
+GET {{baseUrl}}/api/hyperfleet/v1/resources/{{resourceId}}
+Authorization: Bearer {{authToken}}
+Accept: application/json
+
+###
+# @name patchResource
+PATCH {{baseUrl}}/api/hyperfleet/v1/resources/{{resourceId}}
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "labels": {
+    "patched": "true"
+  }
+}
+
+###
+# @name deleteResource
+DELETE {{baseUrl}}/api/hyperfleet/v1/resources/{{resourceId}}
+Authorization: Bearer {{authToken}}
+
+###
+# @name forceDeleteResource
+POST {{baseUrl}}/api/hyperfleet/v1/resources/{{resourceId}}/force-delete
+Authorization: Bearer {{authToken}}
+
+###
+# @name listResourceStatuses
+GET {{baseUrl}}/api/hyperfleet/v1/resources/{{resourceId}}/statuses
+Authorization: Bearer {{authToken}}
+Accept: application/json
+
+###
+# @name reportResourceStatus
+PUT {{baseUrl}}/api/hyperfleet/v1/resources/{{resourceId}}/statuses
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "adapter": "provisioner",
+  "observed_generation": 1,
+  "observed_time": "{{$timestamp}}",
+  "conditions": [
+    {
+      "type": "Available",
+      "status": "True",
+      "reason": "ResourceReady",
+      "message": "Resource is ready"
+    },
+    {
+      "type": "Applied",
+      "status": "True",
+      "reason": "ResourceApplied",
+      "message": "Resource is applied"
+    },
+    {
+      "type": "Health",
+      "status": "True",
+      "reason": "HealthGood",
+      "message": "Resource is good"
+    }
+  ]
+}
+
+########################################
+# Clusters
+########################################
+
+@cluster_name = my-cluster
+
 ###
 # @name listClusters
 GET {{baseUrl}}/api/hyperfleet/v1/clusters
@@ -31,12 +170,10 @@ Accept: application/json
 
 ###
 # @name listClustersWithPagination
-GET {{baseUrl}}/api/hyperfleet/v1/clusters?page=1&pageSize=10&orderBy=created_time&order=desc
+GET {{baseUrl}}/api/hyperfleet/v1/clusters?page=1&size=10&order=created_time desc
 Authorization: Bearer {{authToken}}
 Accept: application/json
 
-###
-@cluster_name = my-cluster
 ###
 # @name listClustersWithSearch
 GET {{baseUrl}}/api/hyperfleet/v1/clusters?search=name='{{cluster_name}}'
@@ -44,7 +181,10 @@ Authorization: Bearer {{authToken}}
 Accept: application/json
 
 ###
-@clusterId = {{listClustersWithSearch.response.body.$.items[0].id}}
+# @name listClustersWithSparseFields
+GET {{baseUrl}}/api/hyperfleet/v1/clusters?fields=id,name,kind,created_time
+Authorization: Bearer {{authToken}}
+Accept: application/json
 
 ###
 # @name createCluster
@@ -64,6 +204,9 @@ Content-Type: application/json
     "version": "4.15.0"
   }
 }
+
+###
+@clusterId = {{listClustersWithSearch.response.body.$.items[0].id}}
 
 ###
 # @name getCluster
@@ -88,7 +231,13 @@ Content-Type: application/json
 
 ###
 # @name deleteCluster
+# Returns 202 Accepted (soft delete)
 DELETE {{baseUrl}}/api/hyperfleet/v1/clusters/{{clusterId}}
+Authorization: Bearer {{authToken}}
+
+###
+# @name forceDeleteCluster
+POST {{baseUrl}}/api/hyperfleet/v1/clusters/{{clusterId}}/force-delete
 Authorization: Bearer {{authToken}}
 
 ###
@@ -99,6 +248,7 @@ Accept: application/json
 
 ###
 # @name reportClusterStatus
+# Returns 201 Created or 204 No Content (if no-op)
 PUT {{baseUrl}}/api/hyperfleet/v1/clusters/{{clusterId}}/statuses
 Authorization: Bearer {{authToken}}
 Content-Type: application/json
@@ -106,13 +256,25 @@ Content-Type: application/json
 {
   "adapter": "provisioner",
   "observed_generation": 1,
-  "observed_time": "2023-12-18T10:00:00Z",
+  "observed_time": "{{$isoTimestamp}}",
   "conditions": [
     {
-      "type": "Ready",
+      "message": "Resource is ready",
+      "reason": "ResourceReady",
       "status": "True",
-      "reason": "ClusterProvisioned",
-      "message": "Cluster successfully provisioned"
+      "type": "Available"
+    },
+    {
+      "message": "Resource is applied",
+      "reason": "ResourceApplied",
+      "status": "True",
+      "type": "Applied"
+    },
+    {
+      "message": "Resource is good",
+      "reason": "HealthGood",
+      "status": "True",
+      "type": "Health"
     }
   ],
   "metadata": {
@@ -121,21 +283,35 @@ Content-Type: application/json
   }
 }
 
+########################################
+# Node Pools (child of Cluster)
+########################################
+
+@nodePoolName = worker-pool-1
+
 ###
 # @name listAllNodePools
+# Flat route — lists node pools across all clusters
 GET {{baseUrl}}/api/hyperfleet/v1/nodepools
 Authorization: Bearer {{authToken}}
 Accept: application/json
 
 ###
 # @name listClusterNodePools
+# Nested route — lists node pools for a specific cluster
 GET {{baseUrl}}/api/hyperfleet/v1/clusters/{{clusterId}}/nodepools
 Authorization: Bearer {{authToken}}
 Accept: application/json
+
 ###
-@nodePoolName = worker-pool-1
+# @name listNodePoolsWithPagination
+GET {{baseUrl}}/api/hyperfleet/v1/clusters/{{clusterId}}/nodepools?page=1&size=10&order=created_time desc
+Authorization: Bearer {{authToken}}
+Accept: application/json
+
 ###
 # @name createNodePool
+# Must use nested route — flat POST returns 422
 POST {{baseUrl}}/api/hyperfleet/v1/clusters/{{clusterId}}/nodepools
 Authorization: Bearer {{authToken}}
 Content-Type: application/json
@@ -153,18 +329,44 @@ Content-Type: application/json
 }
 
 ###
-# @name getNodePool
-@nodePoolId = <nodepool-id>
-GET {{baseUrl}}/api/hyperfleet/v1/clusters/{{clusterId}}/nodepools/{{nodePoolId}}
-Authorization: Bearer {{authToken}}
-Accept: application/json
-
-
-###
 # @name getNodePoolByName
 GET {{baseUrl}}/api/hyperfleet/v1/clusters/{{clusterId}}/nodepools?search=name='{{nodePoolName}}'
 Authorization: Bearer {{authToken}}
 Accept: application/json
+
+###
+@nodePoolId = {{getNodePoolByName.response.body.$.items[0].id}}
+
+###
+# @name getNodePool
+GET {{baseUrl}}/api/hyperfleet/v1/clusters/{{clusterId}}/nodepools/{{nodePoolId}}
+Authorization: Bearer {{authToken}}
+Accept: application/json
+
+###
+# @name updateNodePool
+PATCH {{baseUrl}}/api/hyperfleet/v1/clusters/{{clusterId}}/nodepools/{{nodePoolId}}
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "labels": {
+    "pool-type": "infra"
+  },
+  "spec": {
+    "replicas": 5
+  }
+}
+
+###
+# @name deleteNodePool
+DELETE {{baseUrl}}/api/hyperfleet/v1/clusters/{{clusterId}}/nodepools/{{nodePoolId}}
+Authorization: Bearer {{authToken}}
+
+###
+# @name forceDeleteNodePool
+POST {{baseUrl}}/api/hyperfleet/v1/clusters/{{clusterId}}/nodepools/{{nodePoolId}}/force-delete
+Authorization: Bearer {{authToken}}
 
 ###
 # @name listNodePoolStatuses
@@ -192,15 +394,282 @@ Content-Type: application/json
   ]
 }
 
-###
-# @name livenessProbe
-GET http://{{host}}:{{health_port}}/healthz
+########################################
+# Channels
+########################################
+
+@channel_name = stable
 
 ###
-# @name readinessProbe
-GET http://{{host}}:{{health_port}}/readyz
+# @name listChannels
+GET {{baseUrl}}/api/hyperfleet/v1/channels
+Authorization: Bearer {{authToken}}
+Accept: application/json
 
 ###
-# @name metrics
-GET http://{{host}}:{{metrics_port}}/metrics
+# @name createChannel
+POST {{baseUrl}}/api/hyperfleet/v1/channels
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
 
+{
+  "kind": "Channel",
+  "name": "{{channel_name}}",
+  "labels": {
+    "tier": "production"
+  },
+  "spec": {}
+}
+
+###
+# @name listChannelsWithSearch
+GET {{baseUrl}}/api/hyperfleet/v1/channels?search=name='{{channel_name}}'
+Authorization: Bearer {{authToken}}
+Accept: application/json
+
+###
+@channelId = {{listChannelsWithSearch.response.body.$.items[0].id}}
+
+###
+# @name getChannel
+GET {{baseUrl}}/api/hyperfleet/v1/channels/{{channelId}}
+Authorization: Bearer {{authToken}}
+Accept: application/json
+
+###
+# @name updateChannel
+PATCH {{baseUrl}}/api/hyperfleet/v1/channels/{{channelId}}
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "labels": {
+    "tier": "staging"
+  }
+}
+
+###
+# @name deleteChannel
+# Versions under this channel use "restrict" on-delete — delete fails if versions exist
+DELETE {{baseUrl}}/api/hyperfleet/v1/channels/{{channelId}}
+Authorization: Bearer {{authToken}}
+
+###
+# @name forceDeleteChannel
+POST {{baseUrl}}/api/hyperfleet/v1/channels/{{channelId}}/force-delete
+Authorization: Bearer {{authToken}}
+
+###
+# @name listChannelStatuses
+GET {{baseUrl}}/api/hyperfleet/v1/channels/{{channelId}}/statuses
+Authorization: Bearer {{authToken}}
+Accept: application/json
+
+###
+# @name reportChannelStatus
+PUT {{baseUrl}}/api/hyperfleet/v1/channels/{{channelId}}/statuses
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "adapter": "channel-sync",
+  "observed_generation": 1,
+  "observed_time": "2023-12-18T10:10:00Z",
+  "conditions": [
+    {
+      "type": "Ready",
+      "status": "True",
+      "reason": "ChannelSynced",
+      "message": "Channel configuration synced"
+    }
+  ]
+}
+
+########################################
+# Versions (child of Channel)
+########################################
+
+@version_name = 4.16.0
+
+###
+# @name listAllVersions
+# Flat route — lists versions across all channels
+GET {{baseUrl}}/api/hyperfleet/v1/versions
+Authorization: Bearer {{authToken}}
+Accept: application/json
+
+###
+# @name listChannelVersions
+# Nested route — lists versions for a specific channel
+GET {{baseUrl}}/api/hyperfleet/v1/channels/{{channelId}}/versions
+Authorization: Bearer {{authToken}}
+Accept: application/json
+
+###
+# @name createVersion
+# Must use nested route — flat POST returns 422
+POST {{baseUrl}}/api/hyperfleet/v1/channels/{{channelId}}/versions
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "kind": "Version",
+  "name": "{{version_name}}",
+  "labels": {
+    "release": "ga"
+  },
+  "spec": {}
+}
+
+###
+# @name listVersionsWithSearch
+GET {{baseUrl}}/api/hyperfleet/v1/channels/{{channelId}}/versions?search=name='{{version_name}}'
+Authorization: Bearer {{authToken}}
+Accept: application/json
+
+###
+@versionId = {{listVersionsWithSearch.response.body.$.items[0].id}}
+
+###
+# @name getVersion
+GET {{baseUrl}}/api/hyperfleet/v1/channels/{{channelId}}/versions/{{versionId}}
+Authorization: Bearer {{authToken}}
+Accept: application/json
+
+###
+# @name updateVersion
+PATCH {{baseUrl}}/api/hyperfleet/v1/channels/{{channelId}}/versions/{{versionId}}
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "labels": {
+    "release": "eol"
+  }
+}
+
+###
+# @name deleteVersion
+DELETE {{baseUrl}}/api/hyperfleet/v1/channels/{{channelId}}/versions/{{versionId}}
+Authorization: Bearer {{authToken}}
+
+###
+# @name forceDeleteVersion
+POST {{baseUrl}}/api/hyperfleet/v1/channels/{{channelId}}/versions/{{versionId}}/force-delete
+Authorization: Bearer {{authToken}}
+
+###
+# @name listVersionStatuses
+GET {{baseUrl}}/api/hyperfleet/v1/channels/{{channelId}}/versions/{{versionId}}/statuses
+Authorization: Bearer {{authToken}}
+Accept: application/json
+
+###
+# @name reportVersionStatus
+PUT {{baseUrl}}/api/hyperfleet/v1/channels/{{channelId}}/versions/{{versionId}}/statuses
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "adapter": "version-validator",
+  "observed_generation": 1,
+  "observed_time": "2023-12-18T10:15:00Z",
+  "conditions": [
+    {
+      "type": "Ready",
+      "status": "True",
+      "reason": "VersionValidated",
+      "message": "Version validated and available"
+    }
+  ]
+}
+
+########################################
+# WifConfigs
+########################################
+
+@wifconfig_name = my-wif-config
+
+###
+# @name listWifConfigs
+GET {{baseUrl}}/api/hyperfleet/v1/wifconfigs
+Authorization: Bearer {{authToken}}
+Accept: application/json
+
+###
+# @name createWifConfig
+POST {{baseUrl}}/api/hyperfleet/v1/wifconfigs
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "kind": "WifConfig",
+  "name": "{{wifconfig_name}}",
+  "labels": {
+    "provider": "aws"
+  },
+  "spec": {}
+}
+
+###
+# @name listWifConfigsWithSearch
+GET {{baseUrl}}/api/hyperfleet/v1/wifconfigs?search=name='{{wifconfig_name}}'
+Authorization: Bearer {{authToken}}
+Accept: application/json
+
+###
+@wifconfigId = {{listWifConfigsWithSearch.response.body.$.items[0].id}}
+
+###
+# @name getWifConfig
+GET {{baseUrl}}/api/hyperfleet/v1/wifconfigs/{{wifconfigId}}
+Authorization: Bearer {{authToken}}
+Accept: application/json
+
+###
+# @name updateWifConfig
+PATCH {{baseUrl}}/api/hyperfleet/v1/wifconfigs/{{wifconfigId}}
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "labels": {
+    "provider": "gcp"
+  }
+}
+
+###
+# @name deleteWifConfig
+DELETE {{baseUrl}}/api/hyperfleet/v1/wifconfigs/{{wifconfigId}}
+Authorization: Bearer {{authToken}}
+
+###
+# @name forceDeleteWifConfig
+POST {{baseUrl}}/api/hyperfleet/v1/wifconfigs/{{wifconfigId}}/force-delete
+Authorization: Bearer {{authToken}}
+
+###
+# @name listWifConfigStatuses
+GET {{baseUrl}}/api/hyperfleet/v1/wifconfigs/{{wifconfigId}}/statuses
+Authorization: Bearer {{authToken}}
+Accept: application/json
+
+###
+# @name reportWifConfigStatus
+PUT {{baseUrl}}/api/hyperfleet/v1/wifconfigs/{{wifconfigId}}/statuses
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "adapter": "wif-provisioner",
+  "observed_generation": 1,
+  "observed_time": "2023-12-18T10:20:00Z",
+  "conditions": [
+    {
+      "type": "Ready",
+      "status": "True",
+      "reason": "WifConfigured",
+      "message": "Workload identity federation configured"
+    }
+  ]
+}
