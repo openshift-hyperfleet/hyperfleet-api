@@ -85,6 +85,101 @@ func TestJWTConfig_Validate(t *testing.T) {
 		})
 	}
 
+	httpsSchemeTests := []struct {
+		name      string
+		config    JWTIssuerConfig
+		expectErr string
+	}{
+		{
+			name: "HTTPS issuer and JWK URLs pass",
+			config: JWTIssuerConfig{
+				IssuerURL:  "https://issuer.example.com",
+				JWKCertURL: "https://keys.example.com",
+			},
+		},
+		{
+			name: "HTTP issuer URL rejected",
+			config: JWTIssuerConfig{
+				IssuerURL:  "http://issuer.example.com",
+				JWKCertURL: "https://keys.example.com",
+			},
+			expectErr: "issuer_url",
+		},
+		{
+			name: "HTTP JWK cert URL rejected",
+			config: JWTIssuerConfig{
+				IssuerURL:  "https://issuer.example.com",
+				JWKCertURL: "http://keys.example.com",
+			},
+			expectErr: "jwk_cert_url",
+		},
+		{
+			name: "HTTP localhost issuer allowed",
+			config: JWTIssuerConfig{
+				IssuerURL:  "http://localhost:8080",
+				JWKCertURL: "https://keys.example.com",
+			},
+		},
+		{
+			name: "HTTP 127.0.0.1 issuer allowed",
+			config: JWTIssuerConfig{
+				IssuerURL:  "http://127.0.0.1:8080",
+				JWKCertURL: "https://keys.example.com",
+			},
+		},
+		{
+			name: "HTTP IPv6 loopback allowed",
+			config: JWTIssuerConfig{
+				IssuerURL:  "http://[::1]:8080",
+				JWKCertURL: "https://keys.example.com",
+			},
+		},
+		{
+			name: "HTTP localhost JWK cert URL allowed",
+			config: JWTIssuerConfig{
+				IssuerURL:  "https://issuer.example.com",
+				JWKCertURL: "http://localhost:8080/.well-known/jwks.json",
+			},
+		},
+		{
+			name: "JWK cert file only skips URL scheme check",
+			config: JWTIssuerConfig{
+				IssuerURL:   "https://issuer.example.com",
+				JWKCertFile: "/etc/hyperfleet/jwks.json",
+			},
+		},
+		{
+			name: "URL without scheme rejected",
+			config: JWTIssuerConfig{
+				IssuerURL:  "issuer.example.com",
+				JWKCertURL: "https://keys.example.com",
+			},
+			expectErr: "issuer_url",
+		},
+		{
+			name: "HTTPS opaque URI without host rejected",
+			config: JWTIssuerConfig{
+				IssuerURL:  "https:issuer",
+				JWKCertURL: "https://keys.example.com",
+			},
+			expectErr: "issuer_url",
+		},
+	}
+	for _, tc := range httpsSchemeTests {
+		t.Run(tc.name, func(t *testing.T) {
+			RegisterTestingT(t)
+			cfg := JWTConfig{Enabled: true, Configs: []JWTIssuerConfig{tc.config}}
+			err := cfg.Validate()
+			if tc.expectErr != "" {
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring(tc.expectErr))
+				Expect(err.Error()).To(ContainSubstring("https"))
+			} else {
+				Expect(err).NotTo(HaveOccurred())
+			}
+		})
+	}
+
 	t.Run("valid single issuer config with cert file passes", func(t *testing.T) {
 		RegisterTestingT(t)
 		cfg := JWTConfig{Enabled: true, Configs: []JWTIssuerConfig{{
@@ -137,6 +232,18 @@ func TestJWTConfig_Validate(t *testing.T) {
 		err := cfg.Validate()
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("configs[1]"))
+	})
+
+	t.Run("multiple issuers second has HTTP scheme rejected", func(t *testing.T) {
+		RegisterTestingT(t)
+		cfg := JWTConfig{Enabled: true, Configs: []JWTIssuerConfig{
+			{IssuerURL: "https://issuer1.example.com", JWKCertURL: "https://keys1.example.com"},
+			{IssuerURL: "http://issuer2.example.com", JWKCertURL: "https://keys2.example.com"},
+		}}
+		err := cfg.Validate()
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("configs[1]"))
+		Expect(err.Error()).To(ContainSubstring("https"))
 	})
 }
 
