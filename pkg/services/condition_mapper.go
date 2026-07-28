@@ -279,10 +279,10 @@ func (m *ConditionMapper) buildMappedCondition(
 ) (*api.ResourceCondition, error) {
 	// Parse status string to ResourceConditionStatus (case-insensitive)
 	var status api.ResourceConditionStatus
-	switch strings.ToLower(statusStr) {
-	case "true":
+	switch {
+	case strings.EqualFold(statusStr, celBoolTrue):
 		status = api.ConditionTrue
-	case "false":
+	case strings.EqualFold(statusStr, celBoolFalse):
 		status = api.ConditionFalse
 	default:
 		return nil, fmt.Errorf(
@@ -321,7 +321,11 @@ func (m *ConditionMapper) buildMappedCondition(
 	return &condition, nil
 }
 
-func extractResourceGeneration(ctx context.Context, activation map[string]interface{}, resourceKind, conditionType string) int32 {
+func extractResourceGeneration(
+	ctx context.Context,
+	activation map[string]interface{},
+	resourceKind, conditionType string,
+) int32 {
 	resourceMap, ok := activation[util.CELVarResource].(map[string]interface{})
 	if !ok {
 		return 0
@@ -432,7 +436,9 @@ func (m *ConditionMapper) getCachedOrBuildResource(
 		return util.MaskSensitiveFields(resourceToMap(ctx, resource, m.resourceKind))
 	}
 
-	// Try cache read (RLock allows concurrent reads)
+	// Try cache read (RLock allows concurrent reads).
+	// IMPORTANT: callers MUST NOT mutate the returned map — it may be a cached reference.
+	// CEL evaluation is read-only, so this is safe for current usage.
 	m.mu.RLock()
 	if m.cachedResource != nil &&
 		m.cachedResource.resourceID == r.ID &&
@@ -514,8 +520,10 @@ func parseConditionsWithUnknownCheck(
 		}
 
 		condMap := map[string]interface{}{
-			condKeyType:   cond.Type,
-			condKeyStatus: string(cond.Status),
+			condKeyType:    cond.Type,
+			condKeyStatus:  string(cond.Status),
+			condKeyReason:  "",
+			condKeyMessage: "",
 		}
 		// SEC-02: Adapter contract requires condition reason/message to be user-safe
 		// (no secrets, credentials, or sensitive data). Currently unmasked to preserve
