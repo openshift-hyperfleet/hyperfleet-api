@@ -685,13 +685,18 @@ func (s *sqlResourceService) recomputeAndSaveResourceConditions(
 		},
 	)
 
-	// Build the full conditions slice: Reconciled + LastKnownReconciled + per-adapter conditions.
-	newConditions := make([]api.ResourceCondition, 0, fixedConditionCount+len(adapterConditions))
+	// Build the full conditions slice: Reconciled + LastKnownReconciled + per-adapter + mapped conditions.
+	mapper := s.conditionMappers[resource.Kind]
+	var mappedCapacity int
+	if mapper != nil {
+		mappedCapacity = len(mapper.sortedNames)
+	}
+	newConditions := make([]api.ResourceCondition, 0, fixedConditionCount+len(adapterConditions)+mappedCapacity)
 	newConditions = append(newConditions, reconciled, lastKnownReconciled)
 	newConditions = append(newConditions, adapterConditions...)
 
 	// Apply CEL condition mapping if configured
-	if mapper := s.conditionMappers[resource.Kind]; mapper != nil {
+	if mapper != nil {
 		mappedConditions := mapper.Apply(ctx, ApplyInput{
 			AdapterStatuses: adapterStatuses,
 			Resource:        resource,
