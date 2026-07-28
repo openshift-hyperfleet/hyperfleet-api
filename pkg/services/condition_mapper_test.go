@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 	"unicode/utf8"
@@ -1333,6 +1334,85 @@ func TestConditionMapper_NonBooleanWhen(t *testing.T) {
 	// Should not panic, should skip the condition
 	result := mapper.Apply(context.Background(), input)
 	Expect(result).To(BeEmpty(), "non-boolean when expression should skip condition")
+}
+
+func TestConditionMapper_MessageTruncationThroughPipeline(t *testing.T) {
+	RegisterTestingT(t)
+
+	// Build a CEL expression that produces a message exceeding MaxConditionMessageLength (2048)
+	longMsg := strings.Repeat("x", config.MaxConditionMessageLength+100)
+	msgExpr := fmt.Sprintf(`"%s"`, longMsg)
+
+	rules := map[string]config.ConditionMappingRule{
+		"TestCondition": {
+			When: config.MappingExpression{
+				Expression: "true",
+			},
+			Output: config.MappingOutput{
+				Status: config.MappingExpression{
+					Expression: `"True"`,
+				},
+				Reason: config.MappingExpression{
+					Expression: `"TestReason"`,
+				},
+				Message: config.MappingExpression{
+					Expression: msgExpr,
+				},
+			},
+		},
+	}
+
+	mapper, err := NewConditionMapper("Cluster", rules)
+	Expect(err).NotTo(HaveOccurred())
+
+	input := ApplyInput{
+		AdapterStatuses: api.AdapterStatusList{},
+		Resource:        map[string]interface{}{},
+		RefTime:         time.Now(),
+	}
+
+	result := mapper.Apply(context.Background(), input)
+	Expect(result).To(HaveLen(1), "should produce a condition even with long message")
+	Expect(len(*result[0].Message)).To(BeNumerically("<=", config.MaxConditionMessageLength),
+		"message should be truncated to MaxConditionMessageLength")
+	Expect(*result[0].Reason).To(Equal("TestReason"), "reason should be unchanged")
+}
+
+func TestConditionMapper_OutputExpressionRuntimeError(t *testing.T) {
+	RegisterTestingT(t)
+
+	// CEL rule where the status expression causes a runtime error (out-of-bounds index)
+	rules := map[string]config.ConditionMappingRule{
+		"TestCondition": {
+			When: config.MappingExpression{
+				Expression: "true",
+			},
+			Output: config.MappingOutput{
+				Status: config.MappingExpression{
+					Expression: `statuses[99].adapter`, // out of bounds → runtime error
+				},
+				Reason: config.MappingExpression{
+					Expression: `"reason"`,
+				},
+				Message: config.MappingExpression{
+					Expression: `"message"`,
+				},
+			},
+		},
+	}
+
+	mapper, err := NewConditionMapper("Cluster", rules)
+	Expect(err).NotTo(HaveOccurred())
+
+	input := ApplyInput{
+		AdapterStatuses: api.AdapterStatusList{},
+		Resource:        map[string]interface{}{},
+		RefTime:         time.Now(),
+	}
+
+	// Should not panic, should skip the condition and log error
+	result := mapper.Apply(context.Background(), input)
+	Expect(result).To(BeEmpty(), "output expression runtime error should skip condition")
 }
 
 func TestConditionMapper_ConcurrentApply(t *testing.T) {
