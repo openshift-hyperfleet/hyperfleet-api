@@ -1,6 +1,7 @@
 package environments
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
@@ -52,6 +53,11 @@ func (e *integrationTestingEnvImpl) OverrideConfig(c *config.ApplicationConfig) 
 				IdentityClaim: "email",
 			},
 		}
+	}
+
+	c.Server.JWT.ApplyDefaults()
+	if err := c.Server.JWT.Validate(); err != nil {
+		return fmt.Errorf("integration test JWT config validation failed: %w", err)
 	}
 
 	return nil

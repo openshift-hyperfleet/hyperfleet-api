@@ -87,15 +87,29 @@ func NewHelper(t *testing.T) *Helper {
 		// Integration tests bootstrap JWT issuers in OverrideConfig after Load.
 		// Config validation now requires issuers when JWT is enabled, so disable
 		// JWT for the Load step; OverrideConfig re-enables and configures issuers.
+		var restoreJWTEnv func() error
 		if environments.GetEnvironmentStrFromEnv() == environments.IntegrationTestingEnv {
+			prevJWTEnabled, hadJWTEnabled := os.LookupEnv("HYPERFLEET_SERVER_JWT_ENABLED")
 			if setenvErr := os.Setenv("HYPERFLEET_SERVER_JWT_ENABLED", "false"); setenvErr != nil {
 				logger.WithError(ctx, setenvErr).Error("Failed to disable JWT for integration config load")
 				os.Exit(1)
+			}
+			restoreJWTEnv = func() error {
+				if hadJWTEnabled {
+					return os.Setenv("HYPERFLEET_SERVER_JWT_ENABLED", prevJWTEnabled)
+				}
+				return os.Unsetenv("HYPERFLEET_SERVER_JWT_ENABLED")
 			}
 		}
 		emptyCmd := &cobra.Command{}
 		loader := config.NewConfigLoader()
 		cfg, err := loader.Load(ctx, emptyCmd)
+		if restoreJWTEnv != nil {
+			if restoreErr := restoreJWTEnv(); restoreErr != nil {
+				logger.WithError(ctx, restoreErr).Error("Failed to restore JWT env override after config load")
+				os.Exit(1)
+			}
+		}
 		if err != nil {
 			logger.WithError(ctx, err).Error("Failed to load test configuration")
 			os.Exit(1)
