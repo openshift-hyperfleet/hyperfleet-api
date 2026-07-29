@@ -62,7 +62,7 @@ hyperfleet-api/
 │   ├── dao/                     # Data access layer (database interactions)
 │   ├── db/                      # Database session factory, migrations, transaction middleware
 │   ├── errors/                  # RFC 9457 Problem Details error model
-│   ├── handlers/                # HTTP request handlers using handlerConfig pipeline
+│   ├── handlers/                # HTTP handler pattern, validation and error handling
 │   ├── logger/                  # Structured logging (slog-based)
 │   ├── presenters/              # Response presenters (DAO models → API responses)
 │   └── services/                # Business logic layer (status aggregation, validation)

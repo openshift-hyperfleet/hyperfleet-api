@@ -28,6 +28,8 @@ const (
 	dbNameMaxLen = 100
 )
 
+type validate func() *errors.ServiceError
+
 // dnsLabelPattern matches a single DNS label segment in a Kubernetes label key prefix:
 // lowercase alphanumeric with hyphens, must start and end with alphanumeric.
 var dnsLabelPattern = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`)

@@ -65,10 +65,10 @@ Use the structured logging API — never `fmt.Println` or `log.Print`:
 - Chainable: `logger.With(ctx, "key", value).WithError(err).Error("failed")`
 
 ### Handler Pipeline
-Handlers use the `handlerConfig` pipeline — Reference: `pkg/handlers/framework.go`
-- `handle()` — full pipeline: unmarshal body → validate → action → respond
-- `handleGet()` / `handleList()` / `handleDelete()` — no body variants
-- Validation functions return `*errors.ServiceError`; action functions return `(interface{}, *errors.ServiceError)`
+HTTP handlers (ResourceHandler, RootResourceHandler) are thin orchestration layers:
+- Reference: `pkg/handlers/`
+- Decode and validate requests, call services, marshal responses, handle errors
+- No business logic — that lives in `pkg/services/`
 
 ### Service Pattern
 Interface + `sql*Service` implementation with constructor injection:
@@ -117,7 +117,7 @@ No per-entity Go code needed. See `plugins/CLAUDE.md` for details.
 
 Subdirectories contain context-specific guidance that loads when you work in those areas:
 
-- `pkg/handlers/CLAUDE.md` — Handler pipeline and handlerConfig patterns
+- `pkg/handlers/CLAUDE.md` — Handler patterns, validation, and error handling
 - `pkg/services/CLAUDE.md` — Service interface and status aggregation patterns
 - `pkg/dao/CLAUDE.md` — DAO interface, session access, and rollback patterns
 - `pkg/db/CLAUDE.md` — SessionFactory and transaction middleware

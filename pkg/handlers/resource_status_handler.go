@@ -37,54 +37,60 @@ func NewResourceStatusHandler(
 // List returns all adapter statuses for a resource with pagination.
 // Verifies ownership when parent_id is present in the route.
 func (h *ResourceStatusHandler) List(w http.ResponseWriter, r *http.Request) {
-	cfg := &handlerConfig{
-		Action: func() (interface{}, *errors.ServiceError) {
-			ctx := r.Context()
-			id := r.PathValue("id")
-			listArgs, err := parseListParams(r.URL.Query())
-			if err != nil {
-				return nil, err
-			}
-
-			if svcErr := h.verifyResource(r, id); svcErr != nil {
-				return nil, svcErr
-			}
-
-			return h.listStatuses(ctx, id, listArgs)
-		},
-		ErrorHandler: handleError,
+	id := r.PathValue("id")
+	listArgs, svcErr := parseListParams(r.URL.Query())
+	if svcErr != nil {
+		handleError(r, w, svcErr)
+		return
 	}
 
-	handleList(w, r, cfg)
+	if svcErr = h.verifyResource(r, id); svcErr != nil {
+		handleError(r, w, svcErr)
+		return
+	}
+
+	result, svcErr := h.listStatuses(r.Context(), id, listArgs)
+	if svcErr != nil {
+		handleError(r, w, svcErr)
+		return
+	}
+
+	writeJSONResponse(w, r, http.StatusOK, result)
 }
 
 // Create creates or updates an adapter status for a resource.
 // Verifies ownership when parent_id is present in the route.
 func (h *ResourceStatusHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var req openapi.AdapterStatusCreateRequest
-
-	cfg := &handlerConfig{
-		MarshalInto: &req,
-		Validate: []validate{
-			validateNotEmpty(&req, "Adapter", "adapter"),
-			validateObservedGeneration(&req),
-			validateConditions(&req, "Conditions"),
-			validateObservedTimeRange(&req.ObservedTime),
-		},
-		Action: func() (interface{}, *errors.ServiceError) {
-			ctx := r.Context()
-			id := r.PathValue("id")
-
-			if svcErr := h.verifyResource(r, id); svcErr != nil {
-				return nil, svcErr
-			}
-
-			return h.processStatus(ctx, id, &req)
-		},
-		ErrorHandler: handleError,
+	validateFuncs := []validate{
+		validateNotEmpty(&req, "Adapter", "adapter"),
+		validateObservedGeneration(&req),
+		validateConditions(&req, "Conditions"),
+		validateObservedTimeRange(&req.ObservedTime),
+	}
+	if svcErr := decodeAndValidate(r, &req, validateFuncs); svcErr != nil {
+		handleError(r, w, svcErr)
+		return
 	}
 
-	handleCreateWithNoContent(w, r, cfg)
+	id := r.PathValue("id")
+	if svcErr := h.verifyResource(r, id); svcErr != nil {
+		handleError(r, w, svcErr)
+		return
+	}
+
+	result, svcErr := h.processStatus(r.Context(), id, &req)
+	if svcErr != nil {
+		handleError(r, w, svcErr)
+		return
+	}
+
+	if result == nil {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	writeJSONResponse(w, r, http.StatusCreated, result)
 }
 
 // verifyResource confirms the resource exists. For nested routes (parent_id

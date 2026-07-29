@@ -84,8 +84,7 @@ cmd/hyperfleet-api/           # Entry point + subcommands (serve, migrate)
   environments/               # Environment configs (development, unit_testing, etc.)
 pkg/
   api/openapi/                # GENERATED — models + embedded spec (never edit)
-  handlers/                   # HTTP handlers using handlerConfig pipeline
-    framework.go              # handle/handleGet/handleList/handleDelete pipeline
+  handlers/                   # HTTP handler pattern, validation and error handling
   services/                   # Service interfaces + sqlXxxService implementations
   dao/                        # DAO interfaces + sqlXxxDao implementations
   db/                         # SessionFactory, transaction middleware, migrations
@@ -124,14 +123,6 @@ Use constructor functions from `pkg/errors/errors.go`: `NotFound()`, `Validation
 ### Logging
 
 Use `pkg/logger/` — `logger.Info(ctx, "msg")`, `logger.With(ctx, "key", val).Error("msg")`. Never use `fmt.Println` or `log.Print`.
-
-### Handlers
-
-Use `handlerConfig` pipeline from `pkg/handlers/framework.go`:
-
-- `handle(w, r, cfg, status)` — unmarshal → validate → action → respond
-- `handleGet/handleList/handleDelete` — no-body variants
-- Validation: `func() *errors.ServiceError`; Action: `func() (interface{}, *errors.ServiceError)`
 
 ### Services
 
