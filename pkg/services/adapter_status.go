@@ -81,7 +81,7 @@ func (s *sqlAdapterStatusService) FindByResource(
 func (s *sqlAdapterStatusService) FindByResourcePaginated(
 	ctx context.Context, resourceType, resourceID string, listArgs *ListArguments,
 ) (api.AdapterStatusList, int64, *errors.ServiceError) {
-	offset := (listArgs.Page - 1) * int(listArgs.Size)
+	offset := int((listArgs.Page - 1) * listArgs.Size)
 	limit := int(listArgs.Size)
 
 	statuses, total, err := s.adapterStatusDao.FindByResourcePaginated(ctx, resourceType, resourceID, offset, limit)

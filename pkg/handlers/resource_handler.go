@@ -109,7 +109,7 @@ func (h *ResourceHandler) List(w http.ResponseWriter, r *http.Request) {
 		Action: func() (interface{}, *errors.ServiceError) {
 			ctx := r.Context()
 
-			listArgs, err := services.NewListArguments(r.URL.Query())
+			listArgs, err := parseListParams(r.URL.Query())
 			if err != nil {
 				return nil, err
 			}

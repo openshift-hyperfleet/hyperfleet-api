@@ -306,7 +306,7 @@ Mock implementations of service interfaces are used for unit testing. Mocks are 
 Service files contain `//go:generate` directives that specify how to generate mocks:
 
 ```go
-//go:generate mockgen-v0.6.0 -source=resource.go -package=services -destination=resource_mock.go
+//go:generate go tool -modfile=../../tools/go.mod mockgen -source=resource.go -package=services -destination=resource_mock.go
 ```
 
 **Commands**:

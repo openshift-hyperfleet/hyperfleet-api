@@ -43,7 +43,7 @@ func (h *ResourceStatusHandler) List(w http.ResponseWriter, r *http.Request) {
 		Action: func() (interface{}, *errors.ServiceError) {
 			ctx := r.Context()
 			id := mux.Vars(r)["id"]
-			listArgs, err := services.NewListArguments(r.URL.Query())
+			listArgs, err := parseListParams(r.URL.Query())
 			if err != nil {
 				return nil, err
 			}
