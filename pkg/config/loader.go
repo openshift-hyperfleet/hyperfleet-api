@@ -170,6 +170,11 @@ func (l *ConfigLoader) validateConfig(config *ApplicationConfig) error {
 		if valErr := config.Server.TLS.Validate(); valErr != nil {
 			return fmt.Errorf("server TLS validation failed: %w", valErr)
 		}
+
+		config.Server.JWT.ApplyDefaults()
+		if valErr := config.Server.JWT.Validate(); valErr != nil {
+			return fmt.Errorf("server JWT validation failed: %w", valErr)
+		}
 		if valErr := config.Health.Validate(); valErr != nil {
 			return fmt.Errorf("health config validation failed: %w", valErr)
 		}

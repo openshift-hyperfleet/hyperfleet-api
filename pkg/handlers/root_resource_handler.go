@@ -34,7 +34,7 @@ func NewRootResourceHandler(
 func (h *RootResourceHandler) List(w http.ResponseWriter, r *http.Request) {
 	cfg := &handlerConfig{
 		Action: func() (interface{}, *errors.ServiceError) {
-			listArgs, err := services.NewListArguments(r.URL.Query())
+			listArgs, err := parseListParams(r.URL.Query())
 			if err != nil {
 				return nil, err
 			}
@@ -204,7 +204,7 @@ func (h *RootResourceHandler) ListStatuses(w http.ResponseWriter, r *http.Reques
 		Action: func() (interface{}, *errors.ServiceError) {
 			ctx := r.Context()
 			id := r.PathValue("id")
-			listArgs, err := services.NewListArguments(r.URL.Query())
+			listArgs, err := parseListParams(r.URL.Query())
 			if err != nil {
 				return nil, err
 			}

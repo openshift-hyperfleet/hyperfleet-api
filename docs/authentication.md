@@ -188,8 +188,8 @@ Each entry in `server.jwt.configs` supports the following fields:
 
 | Field | Required | Default | Description |
 |-------|----------|---------|-------------|
-| `issuer_url` | Yes | | Expected `iss` claim for this issuer |
-| `jwk_cert_url` | One of `jwk_cert_url` / `jwk_cert_file` | | JWKS endpoint URL for this issuer's public keys |
+| `issuer_url` | Yes | | Expected `iss` claim for this issuer. Must use `https` (`http` allowed only for loopback: `localhost`, `127.0.0.1`, `::1`). |
+| `jwk_cert_url` | One of `jwk_cert_url` / `jwk_cert_file` | | JWKS endpoint URL for this issuer's public keys. Must use `https` (`http` allowed only for loopback). |
 | `jwk_cert_file` | One of `jwk_cert_url` / `jwk_cert_file` | | Path to a local JWKS file |
 | `jwk_cert_ca_file` | No | | PEM CA certificate for TLS when fetching `jwk_cert_url`. Requires `jwk_cert_url`; ignored with `jwk_cert_file` only. File must exist in the container. |
 | `header` | No | `Authorization` | HTTP header to read the JWT from |
