@@ -7,22 +7,18 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/gorilla/mux"
-
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/handlers"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
 func NewMetricsServer() Server {
-	mainRouter := mux.NewRouter()
-	mainRouter.NotFoundHandler = http.HandlerFunc(api.SendNotFound)
+	mainRouter := http.NewServeMux()
 
 	// metrics endpoint only (health endpoints moved to health_server.go on port 8080)
 	prometheusMetricsHandler := handlers.NewPrometheusMetricsHandler()
 	mainRouter.Handle("/metrics", prometheusMetricsHandler.Handler())
 
-	var mainHandler http.Handler = mainRouter
+	mainHandler := WithNotFoundHandler(mainRouter)
 
 	s := &metricsServer{}
 	s.httpServer = &http.Server{

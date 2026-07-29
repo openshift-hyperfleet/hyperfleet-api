@@ -23,7 +23,7 @@ Handlers use the `handlerConfig` pipeline defined in `framework.go`.
 - Use `presenters.Convert*()` to convert request types to internal models before calling services
 - Use `presenters.Present*()` to convert internal models to response types
 - Handler structs hold service interfaces — never access DAOs directly from handlers
-- Extract path params via `mux.Vars(r)` (gorilla/mux)
+- Extract path params via `r.PathValue("id")` (stdlib `net/http.ServeMux`, Go 1.22+)
 
 ## Error Responses
 

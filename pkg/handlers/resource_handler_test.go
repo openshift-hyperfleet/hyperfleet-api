@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gorilla/mux"
 	. "github.com/onsi/gomega"
 	"go.uber.org/mock/gomock"
 	"gorm.io/datatypes"
@@ -179,7 +178,7 @@ func TestResourceHandler_Get(t *testing.T) {
 
 			req := httptest.NewRequest(http.MethodGet,
 				"/api/hyperfleet/v1/channels/"+tt.id, nil)
-			req = mux.SetURLVars(req, map[string]string{"id": tt.id})
+			req.SetPathValue("id", tt.id)
 			rr := httptest.NewRecorder()
 
 			handler.Get(rr, req)
@@ -329,7 +328,7 @@ func TestResourceHandler_Patch(t *testing.T) {
 			req := httptest.NewRequest(http.MethodPatch,
 				"/api/hyperfleet/v1/channels/"+tt.id, strings.NewReader(tt.body))
 			req.Header.Set("Content-Type", "application/json")
-			req = mux.SetURLVars(req, map[string]string{"id": tt.id})
+			req.SetPathValue("id", tt.id)
 			rr := httptest.NewRecorder()
 
 			handler.Patch(rr, req)
@@ -390,7 +389,7 @@ func TestResourceHandler_Delete(t *testing.T) {
 
 			req := httptest.NewRequest(http.MethodDelete,
 				"/api/hyperfleet/v1/channels/"+tt.id, nil)
-			req = mux.SetURLVars(req, map[string]string{"id": tt.id})
+			req.SetPathValue("id", tt.id)
 			rr := httptest.NewRecorder()
 
 			handler.Delete(rr, req)
@@ -464,7 +463,7 @@ func TestResourceHandler_CreateWithOwner(t *testing.T) {
 			req := httptest.NewRequest(http.MethodPost,
 				"/api/hyperfleet/v1/channels/ch-1/versions", strings.NewReader(tt.body))
 			req.Header.Set("Content-Type", "application/json")
-			req = mux.SetURLVars(req, map[string]string{"parent_id": "ch-1"})
+			req.SetPathValue("parent_id", "ch-1")
 			rr := httptest.NewRecorder()
 
 			handler.Create(rr, req)
@@ -531,7 +530,8 @@ func TestResourceHandler_GetByOwner(t *testing.T) {
 
 			req := httptest.NewRequest(http.MethodGet,
 				"/api/hyperfleet/v1/channels/ch-1/versions/v-1", nil)
-			req = mux.SetURLVars(req, map[string]string{"parent_id": "ch-1", "id": "v-1"})
+			req.SetPathValue("parent_id", "ch-1")
+			req.SetPathValue("id", "v-1")
 			rr := httptest.NewRecorder()
 
 			handler.Get(rr, req)
@@ -592,7 +592,7 @@ func TestResourceHandler_ListByOwner(t *testing.T) {
 
 			req := httptest.NewRequest(http.MethodGet,
 				"/api/hyperfleet/v1/channels/ch-1/versions", nil)
-			req = mux.SetURLVars(req, map[string]string{"parent_id": "ch-1"})
+			req.SetPathValue("parent_id", "ch-1")
 			rr := httptest.NewRecorder()
 
 			handler.List(rr, req)
@@ -660,7 +660,8 @@ func TestResourceHandler_PatchByOwner(t *testing.T) {
 				"/api/hyperfleet/v1/channels/ch-1/versions/v-1",
 				strings.NewReader(`{"spec":{"enabled":false}}`))
 			req.Header.Set("Content-Type", "application/json")
-			req = mux.SetURLVars(req, map[string]string{"parent_id": "ch-1", "id": "v-1"})
+			req.SetPathValue("parent_id", "ch-1")
+			req.SetPathValue("id", "v-1")
 			rr := httptest.NewRecorder()
 
 			handler.Patch(rr, req)
@@ -710,7 +711,8 @@ func TestResourceHandler_DeleteByOwner(t *testing.T) {
 
 			req := httptest.NewRequest(http.MethodDelete,
 				"/api/hyperfleet/v1/channels/ch-1/versions/v-1", nil)
-			req = mux.SetURLVars(req, map[string]string{"parent_id": "ch-1", "id": "v-1"})
+			req.SetPathValue("parent_id", "ch-1")
+			req.SetPathValue("id", "v-1")
 			rr := httptest.NewRecorder()
 
 			handler.Delete(rr, req)
@@ -815,7 +817,7 @@ func TestResourceHandler_ForceDelete(t *testing.T) {
 			reqURL := "/api/hyperfleet/v1/channels/" + resourceID + "/force-delete"
 			req := httptest.NewRequest(http.MethodPost, reqURL, strings.NewReader(tt.body))
 			req.Header.Set("Content-Type", "application/json")
-			req = mux.SetURLVars(req, map[string]string{"id": resourceID})
+			req.SetPathValue("id", resourceID)
 
 			rr := httptest.NewRecorder()
 			handler.ForceDelete(rr, req)
@@ -916,7 +918,8 @@ func TestResourceHandler_ForceDeleteByOwner(t *testing.T) {
 			reqURL := "/api/hyperfleet/v1/channels/" + parentID + "/versions/" + versionID + "/force-delete"
 			req := httptest.NewRequest(http.MethodPost, reqURL, strings.NewReader(tt.body))
 			req.Header.Set("Content-Type", "application/json")
-			req = mux.SetURLVars(req, map[string]string{"parent_id": parentID, "id": versionID})
+			req.SetPathValue("parent_id", parentID)
+			req.SetPathValue("id", versionID)
 
 			rr := httptest.NewRecorder()
 			handler.ForceDelete(rr, req)
@@ -955,7 +958,7 @@ func TestResourceHandler_Patch_RejectsUnknownFields(t *testing.T) {
 			reqURL := "/api/hyperfleet/v1/channels/ch-123"
 			req := httptest.NewRequest(http.MethodPatch, reqURL, strings.NewReader(tt.body))
 			req.Header.Set("Content-Type", "application/json")
-			req = mux.SetURLVars(req, map[string]string{"id": "ch-123"})
+			req.SetPathValue("id", "ch-123")
 
 			rr := httptest.NewRecorder()
 			handler.Patch(rr, req)
@@ -992,7 +995,7 @@ func TestResourceHandler_Patch_LabelsTypeMismatch(t *testing.T) {
 			reqURL := "/api/hyperfleet/v1/channels/ch-123"
 			req := httptest.NewRequest(http.MethodPatch, reqURL, strings.NewReader(tt.body))
 			req.Header.Set("Content-Type", "application/json")
-			req = mux.SetURLVars(req, map[string]string{"id": "ch-123"})
+			req.SetPathValue("id", "ch-123")
 
 			rr := httptest.NewRecorder()
 			handler.Patch(rr, req)
@@ -1030,7 +1033,8 @@ func TestResourceHandler_PatchByOwner_RejectsUnknownFields(t *testing.T) {
 			reqURL := "/api/hyperfleet/v1/channels/ch-1/versions/v-1"
 			req := httptest.NewRequest(http.MethodPatch, reqURL, strings.NewReader(tt.body))
 			req.Header.Set("Content-Type", "application/json")
-			req = mux.SetURLVars(req, map[string]string{"parent_id": "ch-1", "id": "v-1"})
+			req.SetPathValue("parent_id", "ch-1")
+			req.SetPathValue("id", "v-1")
 
 			rr := httptest.NewRecorder()
 			handler.Patch(rr, req)
@@ -1118,7 +1122,7 @@ func TestResourceHandler_Get_WithFieldsFilter(t *testing.T) {
 
 			reqURL := "/api/hyperfleet/v1/channels/ch-123" + tt.queryParams
 			req := httptest.NewRequest(http.MethodGet, reqURL, nil)
-			req = mux.SetURLVars(req, map[string]string{"id": "ch-123"})
+			req.SetPathValue("id", "ch-123")
 			rr := httptest.NewRecorder()
 
 			handler.Get(rr, req)

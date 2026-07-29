@@ -2,8 +2,8 @@ package middleware
 
 import (
 	"net/http"
+	"strings"
 
-	"github.com/gorilla/mux"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel/trace"
 
@@ -39,10 +39,8 @@ func OTelMiddleware(handler http.Handler) http.Handler {
 		otelhttp.WithSpanNameFormatter(func(operation string, r *http.Request) string {
 			// Use route template to prevent cardinality explosion
 			// Example: "GET /api/clusters/{id}" instead of "GET /api/clusters/uuid-123"
-			if route := mux.CurrentRoute(r); route != nil {
-				if pathTemplate, err := route.GetPathTemplate(); err == nil {
-					return r.Method + " " + pathTemplate
-				}
+			if r.Pattern != "" {
+				return r.Method + " " + stripMethodPrefix(r.Pattern)
 			}
 			// Fallback to full path if route template unavailable
 			return r.Method + " " + r.URL.Path
@@ -50,4 +48,14 @@ func OTelMiddleware(handler http.Handler) http.Handler {
 	)
 
 	return otelHandler
+}
+
+// stripMethodPrefix removes the leading "METHOD " prefix from a Go 1.22+
+// http.Request.Pattern (e.g. "GET /clusters/{id}" -> "/clusters/{id}"),
+// leaving method-less patterns (e.g. "/") unchanged.
+func stripMethodPrefix(pattern string) string {
+	if _, path, ok := strings.Cut(pattern, " "); ok {
+		return path
+	}
+	return pattern
 }

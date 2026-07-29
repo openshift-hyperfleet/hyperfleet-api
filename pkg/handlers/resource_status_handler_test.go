@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gorilla/mux"
 	. "github.com/onsi/gomega"
 	"go.uber.org/mock/gomock"
 	"gorm.io/datatypes"
@@ -56,7 +55,7 @@ func TestResourceStatusHandler_List(t *testing.T) {
 	).Return(statuses, int64(1), nil)
 
 	r := httptest.NewRequest(http.MethodGet, "/channels/ch-1/statuses", nil)
-	r = mux.SetURLVars(r, map[string]string{"id": testChannelID})
+	r.SetPathValue("id", testChannelID)
 	w := httptest.NewRecorder()
 
 	handler.List(w, r)
@@ -79,7 +78,7 @@ func TestResourceStatusHandler_List_ResourceNotFound(t *testing.T) {
 		Return(nil, errors.NotFound("Channel 'ch-1' not found"))
 
 	r := httptest.NewRequest(http.MethodGet, "/channels/ch-1/statuses", nil)
-	r = mux.SetURLVars(r, map[string]string{"id": testChannelID})
+	r.SetPathValue("id", testChannelID)
 	w := httptest.NewRecorder()
 
 	handler.List(w, r)
@@ -126,7 +125,7 @@ func TestResourceStatusHandler_Create_HappyPath(t *testing.T) {
 
 	r := httptest.NewRequest(http.MethodPut, "/channels/ch-1/statuses", strings.NewReader(string(bodyJSON)))
 	r.Header.Set("Content-Type", "application/json")
-	r = mux.SetURLVars(r, map[string]string{"id": testChannelID})
+	r.SetPathValue("id", testChannelID)
 	w := httptest.NewRecorder()
 
 	handler.Create(w, r)
@@ -162,7 +161,7 @@ func TestResourceStatusHandler_Create_Discarded_Returns204(t *testing.T) {
 
 	r := httptest.NewRequest(http.MethodPut, "/channels/ch-1/statuses", strings.NewReader(string(bodyJSON)))
 	r.Header.Set("Content-Type", "application/json")
-	r = mux.SetURLVars(r, map[string]string{"id": testChannelID})
+	r.SetPathValue("id", testChannelID)
 	w := httptest.NewRecorder()
 
 	handler.Create(w, r)
@@ -186,7 +185,7 @@ func TestResourceStatusHandler_Create_MissingAdapter_Returns400(t *testing.T) {
 
 	r := httptest.NewRequest(http.MethodPut, "/channels/ch-1/statuses", strings.NewReader(string(bodyJSON)))
 	r.Header.Set("Content-Type", "application/json")
-	r = mux.SetURLVars(r, map[string]string{"id": testChannelID})
+	r.SetPathValue("id", testChannelID)
 	w := httptest.NewRecorder()
 
 	handler.Create(w, r)
@@ -208,7 +207,7 @@ func TestResourceStatusHandler_Create_ConditionsTypeMismatch(t *testing.T) {
 
 	r := httptest.NewRequest(http.MethodPut, "/channels/ch-1/statuses", strings.NewReader(body))
 	r.Header.Set("Content-Type", "application/json")
-	r = mux.SetURLVars(r, map[string]string{"id": testChannelID})
+	r.SetPathValue("id", testChannelID)
 	w := httptest.NewRecorder()
 
 	handler.Create(w, r)
@@ -243,7 +242,7 @@ func TestResourceStatusHandler_Create_ResourceNotFound(t *testing.T) {
 
 	r := httptest.NewRequest(http.MethodPut, "/channels/ch-1/statuses", strings.NewReader(string(bodyJSON)))
 	r.Header.Set("Content-Type", "application/json")
-	r = mux.SetURLVars(r, map[string]string{"id": testChannelID})
+	r.SetPathValue("id", testChannelID)
 	w := httptest.NewRecorder()
 
 	handler.Create(w, r)
@@ -280,7 +279,8 @@ func TestResourceStatusHandler_List_NestedWithParentID(t *testing.T) {
 	).Return(api.AdapterStatusList{}, int64(0), nil)
 
 	r := httptest.NewRequest(http.MethodGet, "/channels/"+parentID+"/versions/"+versionID+"/statuses", nil)
-	r = mux.SetURLVars(r, map[string]string{"parent_id": parentID, "id": versionID})
+	r.SetPathValue("parent_id", parentID)
+	r.SetPathValue("id", versionID)
 	w := httptest.NewRecorder()
 
 	handler.List(w, r)
@@ -330,7 +330,8 @@ func TestResourceStatusHandler_Create_NestedWithParentID(t *testing.T) {
 	r := httptest.NewRequest(http.MethodPut, "/channels/"+parentID+"/versions/"+versionID+"/statuses",
 		strings.NewReader(string(bodyJSON)))
 	r.Header.Set("Content-Type", "application/json")
-	r = mux.SetURLVars(r, map[string]string{"parent_id": parentID, "id": versionID})
+	r.SetPathValue("parent_id", parentID)
+	r.SetPathValue("id", versionID)
 	w := httptest.NewRecorder()
 
 	handler.Create(w, r)
@@ -348,7 +349,8 @@ func TestResourceStatusHandler_List_NestedWrongParent_Returns404(t *testing.T) {
 		Return(nil, errors.NotFound("Version 'ver-1' not found under parent 'wrong-parent'"))
 
 	r := httptest.NewRequest(http.MethodGet, "/channels/wrong-parent/versions/ver-1/statuses", nil)
-	r = mux.SetURLVars(r, map[string]string{"parent_id": "wrong-parent", "id": "ver-1"})
+	r.SetPathValue("parent_id", "wrong-parent")
+	r.SetPathValue("id", "ver-1")
 	w := httptest.NewRecorder()
 
 	handler.List(w, r)
@@ -393,7 +395,7 @@ func TestRootResourceHandler_ListStatuses(t *testing.T) {
 	).Return(statuses, int64(1), nil)
 
 	r := httptest.NewRequest(http.MethodGet, "/resources/"+testChannelID+"/statuses", nil)
-	r = mux.SetURLVars(r, map[string]string{"id": testChannelID})
+	r.SetPathValue("id", testChannelID)
 	w := httptest.NewRecorder()
 
 	handler.ListStatuses(w, r)
@@ -416,7 +418,7 @@ func TestRootResourceHandler_ListStatuses_ResourceNotFound(t *testing.T) {
 		Return(nil, errors.NotFound("Resource '%s' not found", testChannelID))
 
 	r := httptest.NewRequest(http.MethodGet, "/resources/"+testChannelID+"/statuses", nil)
-	r = mux.SetURLVars(r, map[string]string{"id": testChannelID})
+	r.SetPathValue("id", testChannelID)
 	w := httptest.NewRecorder()
 
 	handler.ListStatuses(w, r)
@@ -463,7 +465,7 @@ func TestRootResourceHandler_CreateStatus_HappyPath(t *testing.T) {
 	r := httptest.NewRequest(http.MethodPut, "/resources/"+testChannelID+"/statuses",
 		strings.NewReader(string(bodyJSON)))
 	r.Header.Set("Content-Type", "application/json")
-	r = mux.SetURLVars(r, map[string]string{"id": testChannelID})
+	r.SetPathValue("id", testChannelID)
 	w := httptest.NewRecorder()
 
 	handler.CreateStatus(w, r)
@@ -500,7 +502,7 @@ func TestRootResourceHandler_CreateStatus_Discarded_Returns204(t *testing.T) {
 	r := httptest.NewRequest(http.MethodPut, "/resources/"+testChannelID+"/statuses",
 		strings.NewReader(string(bodyJSON)))
 	r.Header.Set("Content-Type", "application/json")
-	r = mux.SetURLVars(r, map[string]string{"id": testChannelID})
+	r.SetPathValue("id", testChannelID)
 	w := httptest.NewRecorder()
 
 	handler.CreateStatus(w, r)

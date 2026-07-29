@@ -22,7 +22,6 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/gorilla/mux"
 	. "github.com/onsi/gomega"
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
@@ -96,11 +95,11 @@ func TestMetricsMiddleware_IncrementsRequestCount(t *testing.T) {
 	RegisterTestingT(t)
 	ResetMetricCollectors()
 
-	router := mux.NewRouter()
-	router.Use(MetricsMiddleware)
-	router.HandleFunc(testClustersPath, func(w http.ResponseWriter, r *http.Request) {
+	okHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-	}).Methods(http.MethodGet)
+	})
+	router := http.NewServeMux()
+	router.Handle("GET "+testClustersPath, MetricsMiddleware(okHandler))
 
 	req := httptest.NewRequest(http.MethodGet, testClustersPath, nil)
 	rec := httptest.NewRecorder()
@@ -137,11 +136,11 @@ func TestMetricsMiddleware_RecordsDuration(t *testing.T) {
 	RegisterTestingT(t)
 	ResetMetricCollectors()
 
-	router := mux.NewRouter()
-	router.Use(MetricsMiddleware)
-	router.HandleFunc(testClustersPath, func(w http.ResponseWriter, r *http.Request) {
+	okHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-	}).Methods(http.MethodGet)
+	})
+	router := http.NewServeMux()
+	router.Handle("GET "+testClustersPath, MetricsMiddleware(okHandler))
 
 	req := httptest.NewRequest(http.MethodGet, testClustersPath, nil)
 	rec := httptest.NewRecorder()
@@ -176,11 +175,11 @@ func TestMetricsMiddleware_PathVariableSubstitution(t *testing.T) {
 	RegisterTestingT(t)
 	ResetMetricCollectors()
 
-	router := mux.NewRouter()
-	router.Use(MetricsMiddleware)
-	router.HandleFunc(testClustersPathWithID, func(w http.ResponseWriter, r *http.Request) {
+	okHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-	}).Methods(http.MethodGet)
+	})
+	router := http.NewServeMux()
+	router.Handle("GET "+testClustersPathWithID, MetricsMiddleware(okHandler))
 
 	req := httptest.NewRequest(http.MethodGet, testClustersURLWithID, nil)
 	rec := httptest.NewRecorder()
@@ -212,11 +211,11 @@ func TestMetricsMiddleware_CapturesStatusCode(t *testing.T) {
 	RegisterTestingT(t)
 	ResetMetricCollectors()
 
-	router := mux.NewRouter()
-	router.Use(MetricsMiddleware)
-	router.HandleFunc(testClustersPath, func(w http.ResponseWriter, r *http.Request) {
+	notFoundHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
-	}).Methods(http.MethodGet)
+	})
+	router := http.NewServeMux()
+	router.Handle("GET "+testClustersPath, MetricsMiddleware(notFoundHandler))
 
 	req := httptest.NewRequest(http.MethodGet, testClustersPath, nil)
 	rec := httptest.NewRecorder()
@@ -248,12 +247,12 @@ func TestMetricsMiddleware_DefaultStatusCodeOnWrite(t *testing.T) {
 	RegisterTestingT(t)
 	ResetMetricCollectors()
 
-	router := mux.NewRouter()
-	router.Use(MetricsMiddleware)
-	router.HandleFunc(testClustersPath, func(w http.ResponseWriter, r *http.Request) {
+	writeOnlyHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Write without calling WriteHeader - should default to 200
 		_, _ = w.Write([]byte("ok"))
-	}).Methods(http.MethodGet)
+	})
+	router := http.NewServeMux()
+	router.Handle("GET "+testClustersPath, MetricsMiddleware(writeOnlyHandler))
 
 	req := httptest.NewRequest(http.MethodGet, testClustersPath, nil)
 	rec := httptest.NewRecorder()

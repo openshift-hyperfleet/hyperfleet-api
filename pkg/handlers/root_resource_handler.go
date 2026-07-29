@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/gorilla/mux"
-
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/presenters"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
@@ -71,7 +69,7 @@ func (h *RootResourceHandler) List(w http.ResponseWriter, r *http.Request) {
 func (h *RootResourceHandler) Get(w http.ResponseWriter, r *http.Request) {
 	cfg := &handlerConfig{
 		Action: func() (interface{}, *errors.ServiceError) {
-			id := mux.Vars(r)["id"]
+			id := r.PathValue("id")
 			resource, err := h.service.GetByID(r.Context(), id)
 			if err != nil {
 				return nil, err
@@ -129,7 +127,7 @@ func (h *RootResourceHandler) Patch(w http.ResponseWriter, r *http.Request) {
 			validateLabels(&req, "Labels"),
 		},
 		Action: func() (interface{}, *errors.ServiceError) {
-			id := mux.Vars(r)["id"]
+			id := r.PathValue("id")
 			resource, err := h.service.GetByID(r.Context(), id)
 			if err != nil {
 				return nil, err
@@ -168,7 +166,7 @@ func (h *RootResourceHandler) ForceDelete(w http.ResponseWriter, r *http.Request
 			validateMaxLength(&req, "Reason", "reason", maxReasonLength),
 		},
 		Action: func() (interface{}, *errors.ServiceError) {
-			id := mux.Vars(r)["id"]
+			id := r.PathValue("id")
 			resource, err := h.service.GetByID(r.Context(), id)
 			if err != nil {
 				return nil, err
@@ -185,7 +183,7 @@ func (h *RootResourceHandler) ForceDelete(w http.ResponseWriter, r *http.Request
 func (h *RootResourceHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	cfg := &handlerConfig{
 		Action: func() (interface{}, *errors.ServiceError) {
-			id := mux.Vars(r)["id"]
+			id := r.PathValue("id")
 			resource, err := h.service.GetByID(r.Context(), id)
 			if err != nil {
 				return nil, err
@@ -205,7 +203,7 @@ func (h *RootResourceHandler) ListStatuses(w http.ResponseWriter, r *http.Reques
 	cfg := &handlerConfig{
 		Action: func() (interface{}, *errors.ServiceError) {
 			ctx := r.Context()
-			id := mux.Vars(r)["id"]
+			id := r.PathValue("id")
 			listArgs, err := parseListParams(r.URL.Query())
 			if err != nil {
 				return nil, err
@@ -258,7 +256,7 @@ func (h *RootResourceHandler) CreateStatus(w http.ResponseWriter, r *http.Reques
 		},
 		Action: func() (interface{}, *errors.ServiceError) {
 			ctx := r.Context()
-			id := mux.Vars(r)["id"]
+			id := r.PathValue("id")
 
 			resource, err := h.service.GetByID(ctx, id)
 			if err != nil {

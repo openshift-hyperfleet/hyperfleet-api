@@ -7,7 +7,6 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/gorilla/mux"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
@@ -86,8 +85,8 @@ func TestOTelMiddleware_SpanNameUsesRouteTemplate(t *testing.T) {
 			})
 
 			// Create mux router with route
-			router := mux.NewRouter()
-			router.Handle(tt.routePattern, OTelMiddleware(testHandler)).Methods("GET")
+			router := http.NewServeMux()
+			router.Handle("GET "+tt.routePattern, OTelMiddleware(testHandler))
 
 			// Create request
 			req := httptest.NewRequest("GET", tt.requestPath, nil)
@@ -187,8 +186,8 @@ func TestOTelMiddleware_TraceContextExtraction(t *testing.T) {
 				w.WriteHeader(http.StatusOK)
 			})
 
-			router := mux.NewRouter()
-			router.Handle("/test", OTelMiddleware(testHandler)).Methods("GET")
+			router := http.NewServeMux()
+			router.Handle("GET /test", OTelMiddleware(testHandler))
 
 			req := httptest.NewRequest("GET", "/test", nil)
 			if tt.traceparent != "" {
@@ -240,8 +239,8 @@ func TestOTelMiddleware_NoTraceContext(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	router := mux.NewRouter()
-	router.Handle("/test", OTelMiddleware(testHandler)).Methods("GET")
+	router := http.NewServeMux()
+	router.Handle("GET /test", OTelMiddleware(testHandler))
 
 	req := httptest.NewRequest("GET", "/test", nil)
 	w := httptest.NewRecorder()
@@ -284,8 +283,8 @@ func TestOTelMiddleware_CardinalityPrevention(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	router := mux.NewRouter()
-	router.Handle("/api/clusters/{id}", OTelMiddleware(testHandler)).Methods("GET")
+	router := http.NewServeMux()
+	router.Handle("GET /api/clusters/{id}", OTelMiddleware(testHandler))
 
 	// Simulate 100 requests with different UUIDs
 	uniqueSpanNames := make(map[string]bool)

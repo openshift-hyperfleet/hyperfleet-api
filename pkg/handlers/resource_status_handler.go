@@ -4,8 +4,6 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/gorilla/mux"
-
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/presenters"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
@@ -16,8 +14,8 @@ import (
 
 // ResourceStatusHandler handles GET/PUT on /{plural}/{id}/statuses for
 // config-driven generic resources. Each method branches on whether "parent_id"
-// is present in mux.Vars(r) to handle both flat and nested routes — matching
-// the pattern established by ResourceHandler in HYPERFLEET-1157.
+// is present via r.PathValue("parent_id") to handle both flat and nested
+// routes — matching the pattern established by ResourceHandler in HYPERFLEET-1157.
 type ResourceStatusHandler struct {
 	resourceService      services.ResourceService
 	adapterStatusService services.AdapterStatusService
@@ -42,7 +40,7 @@ func (h *ResourceStatusHandler) List(w http.ResponseWriter, r *http.Request) {
 	cfg := &handlerConfig{
 		Action: func() (interface{}, *errors.ServiceError) {
 			ctx := r.Context()
-			id := mux.Vars(r)["id"]
+			id := r.PathValue("id")
 			listArgs, err := parseListParams(r.URL.Query())
 			if err != nil {
 				return nil, err
@@ -75,7 +73,7 @@ func (h *ResourceStatusHandler) Create(w http.ResponseWriter, r *http.Request) {
 		},
 		Action: func() (interface{}, *errors.ServiceError) {
 			ctx := r.Context()
-			id := mux.Vars(r)["id"]
+			id := r.PathValue("id")
 
 			if svcErr := h.verifyResource(r, id); svcErr != nil {
 				return nil, svcErr
@@ -94,7 +92,7 @@ func (h *ResourceStatusHandler) Create(w http.ResponseWriter, r *http.Request) {
 // check for flat routes.
 func (h *ResourceStatusHandler) verifyResource(r *http.Request, id string) *errors.ServiceError {
 	ctx := r.Context()
-	if parentID, hasParent := mux.Vars(r)["parent_id"]; hasParent {
+	if parentID := r.PathValue("parent_id"); parentID != "" {
 		if _, err := h.resourceService.GetByOwner(ctx, h.descriptor.Kind, id, parentID); err != nil {
 			return err
 		}
