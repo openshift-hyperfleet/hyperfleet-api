@@ -231,8 +231,8 @@ func (m *ConditionMapper) evaluateRule(
 	// Validate field lengths and truncate message if needed (QUAL-03)
 	validatedReason, validatedMessage, err := m.validateFieldLengths(ctx, rule, reasonStr, messageStr)
 	if err != nil {
-		// Field length validation failed, skip this condition
-		return nil, nil
+		// Propagate error to trigger rollback (consistent with CEL evaluation error handling)
+		return nil, fmt.Errorf("field validation failed for %s: %w", rule.conditionType, err)
 	}
 
 	// Build the mapped condition with all required fields (QUAL-03)
