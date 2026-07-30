@@ -561,13 +561,13 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "max by (resource_type, is_delete) (hyperfleet_api_resource_pending_reconciliation)",
+          "expr": "max by (resource_type, is_delete) (hyperfleet_api_resource_pending_reconciliation) or vector(0)",
           "legendFormat": "{{resource_type}} (delete={{is_delete}})",
           "refId": "A"
         }
       ],
       "title": "Resources Pending Reconciliation",
-      "description": "Live-query gauge — absent series means zero resources pending for that combination.",
+      "description": "Live-query gauge — falls back to 0 when no resources are pending for that combination.",
       "type": "timeseries"
     },
     {
@@ -653,13 +653,13 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "max by (resource_type, is_delete) (hyperfleet_api_resource_pending_reconciliation_stuck)",
+          "expr": "max by (resource_type, is_delete) (hyperfleet_api_resource_pending_reconciliation_stuck) or vector(0)",
           "legendFormat": "{{resource_type}} (delete={{is_delete}})",
           "refId": "A"
         }
       ],
       "title": "Resources Stuck",
-      "description": "Resources pending reconciliation beyond the stuck threshold (default 10m). Absent series means no stuck resources.",
+      "description": "Resources pending reconciliation beyond the stuck threshold (default 10m). Falls back to 0 when no resources are stuck.",
       "type": "timeseries"
     },
     {
@@ -745,13 +745,13 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "max by (resource_type, is_delete) (hyperfleet_api_resource_pending_reconciliation_stuck_duration_seconds)",
+          "expr": "max by (resource_type, is_delete) (hyperfleet_api_resource_pending_reconciliation_stuck_duration_seconds) or vector(0)",
           "legendFormat": "{{resource_type}} (delete={{is_delete}})",
           "refId": "A"
         }
       ],
       "title": "Max Stuck Duration",
-      "description": "Maximum time any resource has been stuck pending reconciliation, by resource type.",
+      "description": "Maximum time any resource has been stuck pending reconciliation, by resource type. Falls back to 0 when no resources are stuck.",
       "type": "timeseries"
     },
     {

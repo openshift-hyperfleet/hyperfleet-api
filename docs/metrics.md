@@ -409,7 +409,7 @@ A pre-built Grafana dashboard is shipped at `charts/dashboards/hyperfleet-api.js
 3. Select your Prometheus datasource from the dropdown
 4. Click **Import**
 
-The dashboard uses a parameterized `datasource` variable (no hardcoded UIDs) so it works across environments. Reconciliation gauge panels (pending, stuck) show "No data" when no resources match — this is expected behavior, not a missing datasource.
+The dashboard uses a parameterized `datasource` variable (no hardcoded UIDs) so it works across environments. Reconciliation gauge panels (pending, stuck, max stuck duration) fall back to 0 when no resources match the query.
 
 Automated provisioning via `hyperfleet-infra` is tracked in [HYPERFLEET-1363](https://issues.redhat.com/browse/HYPERFLEET-1363).
 
