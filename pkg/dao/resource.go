@@ -42,7 +42,7 @@ func NewResourceDao(sessionFactory db.SessionFactory) ResourceDao {
 func (d *sqlResourceDao) Get(ctx context.Context, kind, id string) (*api.Resource, error) {
 	g2 := d.sessionFactory.New(ctx)
 	var resource api.Resource
-	if err := g2.Preload("Conditions").Preload("Labels").Preload("References").
+	if err := g2.Preload("Labels").Preload("References").
 		Take(&resource, "kind = ? AND id = ?", kind, id).Error; err != nil {
 		return nil, err
 	}
@@ -53,7 +53,7 @@ func (d *sqlResourceDao) GetForUpdate(ctx context.Context, kind, id string) (*ap
 	g2 := d.sessionFactory.New(ctx)
 	var resource api.Resource
 	if err := g2.Clauses(clause.Locking{Strength: "UPDATE"}).
-		Preload("Conditions").Preload("Labels").Preload("References").
+		Preload("Labels").Preload("References").
 		Take(&resource, "kind = ? AND id = ?", kind, id).Error; err != nil {
 		return nil, err
 	}
@@ -63,7 +63,7 @@ func (d *sqlResourceDao) GetForUpdate(ctx context.Context, kind, id string) (*ap
 func (d *sqlResourceDao) GetByOwner(ctx context.Context, kind, id, ownerID string) (*api.Resource, error) {
 	g2 := d.sessionFactory.New(ctx)
 	var resource api.Resource
-	if err := g2.Preload("Conditions").Preload("Labels").Preload("References").
+	if err := g2.Preload("Labels").Preload("References").
 		Take(&resource, "kind = ? AND id = ? AND owner_id = ?", kind, id, ownerID).Error; err != nil {
 		return nil, err
 	}
@@ -136,7 +136,7 @@ func (d *sqlResourceDao) ExistsSoftDeletedByOwner(ctx context.Context, kinds []s
 func (d *sqlResourceDao) FindByKind(ctx context.Context, kind string) (api.ResourceList, error) {
 	g2 := d.sessionFactory.New(ctx)
 	var resources api.ResourceList
-	if err := g2.Preload("Labels").Preload("Conditions").Preload("References").
+	if err := g2.Preload("Labels").Preload("References").
 		Where("kind = ?", kind).Find(&resources).Error; err != nil {
 		return nil, err
 	}
@@ -146,7 +146,7 @@ func (d *sqlResourceDao) FindByKind(ctx context.Context, kind string) (api.Resou
 func (d *sqlResourceDao) FindByKindAndOwner(ctx context.Context, kind, ownerID string) (api.ResourceList, error) {
 	g2 := d.sessionFactory.New(ctx)
 	var resources api.ResourceList
-	if err := g2.Preload("Labels").Preload("Conditions").Preload("References").
+	if err := g2.Preload("Labels").Preload("References").
 		Where("kind = ? AND owner_id = ?", kind, ownerID).Find(&resources).Error; err != nil {
 		return nil, err
 	}
@@ -156,7 +156,7 @@ func (d *sqlResourceDao) FindByKindAndOwner(ctx context.Context, kind, ownerID s
 func (d *sqlResourceDao) GetByID(ctx context.Context, id string) (*api.Resource, error) {
 	g2 := d.sessionFactory.New(ctx)
 	var resource api.Resource
-	if err := g2.Preload("Conditions").Preload("Labels").Preload("References").
+	if err := g2.Preload("Labels").Preload("References").
 		Take(&resource, "id = ?", id).Error; err != nil {
 		return nil, err
 	}
@@ -168,7 +168,7 @@ func (d *sqlResourceDao) FindByKindAndOwnerForUpdate(
 ) (api.ResourceList, error) {
 	g2 := d.sessionFactory.New(ctx)
 	var resources api.ResourceList
-	if err := g2.Preload("Labels").Preload("Conditions").Preload("References").
+	if err := g2.Preload("Labels").Preload("References").
 		Clauses(clause.Locking{Strength: "UPDATE"}).
 		Where("kind = ? AND owner_id = ?", kind, ownerID).Find(&resources).Error; err != nil {
 		return nil, err

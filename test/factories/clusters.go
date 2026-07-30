@@ -23,7 +23,7 @@ func resourceService() services.ResourceService {
 
 // reloadResource reloads a resource from the database to ensure all fields are current.
 func reloadResource(dbSession *gorm.DB, resource *api.Resource) error {
-	return dbSession.Preload("Conditions").Preload("Labels").First(resource, "id = ?", resource.ID).Error
+	return dbSession.Preload("Labels").First(resource, "id = ?", resource.ID).Error
 }
 
 // mapToLabels converts a string map to ResourceLabel slice for test factories.
