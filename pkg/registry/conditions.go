@@ -1,20 +1,18 @@
-package config
+package registry
 
 import (
 	"fmt"
-	"sort"
 
 	"github.com/google/cel-go/cel"
 
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/registry"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/util"
 )
 
 // Reserved condition types that cannot be overridden by mapping rules
+// Using string literals to avoid import cycle with pkg/api
 var reservedConditionTypes = map[string]bool{
-	api.ResourceConditionTypeReconciled:          true,
-	api.ResourceConditionTypeLastKnownReconciled: true,
+	"Reconciled":          true, // api.ResourceConditionTypeReconciled
+	"LastKnownReconciled": true, // api.ResourceConditionTypeLastKnownReconciled
 }
 
 // Field length constraints
@@ -38,69 +36,43 @@ type MappingOutput struct {
 
 // ConditionMappingRule defines a single condition mapping rule
 type ConditionMappingRule struct {
+	Type   string            `mapstructure:"type" json:"type" validate:"required"`
 	When   MappingExpression `mapstructure:"when" json:"when" validate:"required"`
 	Output MappingOutput     `mapstructure:"output" json:"output" validate:"required"`
 }
 
-// ConditionsConfig holds condition mapping configuration per resource type
-// Map key is the output condition type (e.g., "LandingZoneReady")
-type ConditionsConfig struct {
-	Clusters  map[string]ConditionMappingRule `mapstructure:"clusters" json:"clusters"`
-	NodePools map[string]ConditionMappingRule `mapstructure:"nodepools" json:"nodepools"`
-}
-
-// NewConditionsConfig returns a default ConditionsConfig with empty maps
-func NewConditionsConfig() *ConditionsConfig {
-	return &ConditionsConfig{
-		Clusters:  make(map[string]ConditionMappingRule),
-		NodePools: make(map[string]ConditionMappingRule),
-	}
-}
-
-// Validate validates the conditions configuration
-// Returns error on:
-// - Reserved condition types (Reconciled, LastKnownReconciled, per-adapter synthesized types)
-// - Invalid CEL expressions (fail-fast at startup)
-// - Field length constraint violations
+// ValidateEntityConditions validates condition mappings for a single entity descriptor
+// Used by registry.Validate() to check conditions inline in entity descriptors
 //
-// entities: entity descriptors from ApplicationConfig.Entities - used to compute
-// per-adapter synthesized condition types (e.g., ValidationSuccessful from "validation" adapter)
-func (c *ConditionsConfig) Validate(entities []registry.EntityDescriptor) error {
-	// Nil receiver guard - YAML can set `conditions: null`
-	if c == nil {
+// entities: all registered entity descriptors (needed to compute per-adapter synthesized types)
+// descriptor: the specific entity descriptor being validated
+func ValidateEntityConditions(entities []EntityDescriptor, descriptor EntityDescriptor) error {
+	if len(descriptor.Conditions) == 0 {
 		return nil
 	}
 
-	// Build the complete set of reserved types: static + per-adapter synthesized
+	// Build reserved types for this specific entity
 	reserved := buildReservedConditionTypes(entities)
 
-	// Create CEL environment once and reuse for all validations
-	// This matches the pattern in NewConditionMapper and avoids recreating the environment per-expression
+	// Create CEL environment once
 	env, err := util.NewConditionMappingEnvironment()
 	if err != nil {
 		return fmt.Errorf("failed to create CEL environment for validation: %w", err)
 	}
 
-	// Validate cluster mappings (sort keys for deterministic error messages)
-	clusterKeys := make([]string, 0, len(c.Clusters))
-	for condType := range c.Clusters {
-		clusterKeys = append(clusterKeys, condType)
-	}
-	sort.Strings(clusterKeys)
-	for _, condType := range clusterKeys {
-		if err := validateConditionMapping("clusters", condType, c.Clusters[condType], reserved, env); err != nil {
-			return err
+	// Validate each condition mapping rule and detect duplicates
+	seen := make(map[string]bool, len(descriptor.Conditions))
+	for _, rule := range descriptor.Conditions {
+		// Check for duplicate types (fail-fast, consistent with CEL validation)
+		if seen[rule.Type] {
+			return fmt.Errorf(
+				"%s condition type '%s' is defined multiple times (each type must be unique)",
+				descriptor.Kind, rule.Type,
+			)
 		}
-	}
+		seen[rule.Type] = true
 
-	// Validate nodepool mappings (sort keys for deterministic error messages)
-	nodepoolKeys := make([]string, 0, len(c.NodePools))
-	for condType := range c.NodePools {
-		nodepoolKeys = append(nodepoolKeys, condType)
-	}
-	sort.Strings(nodepoolKeys)
-	for _, condType := range nodepoolKeys {
-		if err := validateConditionMapping("nodepools", condType, c.NodePools[condType], reserved, env); err != nil {
+		if err := validateConditionMapping(descriptor.Kind, rule.Type, rule, reserved, env); err != nil {
 			return err
 		}
 	}
@@ -112,7 +84,7 @@ func (c *ConditionsConfig) Validate(entities []registry.EntityDescriptor) error 
 //   - Static types: Reconciled, LastKnownReconciled
 //   - Per-adapter synthesized types: computed from required_adapters in all entity descriptors
 //     (e.g., "validation" → "ValidationSuccessful")
-func buildReservedConditionTypes(entities []registry.EntityDescriptor) map[string]bool {
+func buildReservedConditionTypes(entities []EntityDescriptor) map[string]bool {
 	reserved := make(map[string]bool)
 
 	// Add static reserved types
@@ -146,6 +118,14 @@ func validateConditionMapping(
 	reserved map[string]bool,
 	env *cel.Env,
 ) error {
+	// Check empty type - YAML can have empty string keys
+	if condType == "" {
+		return fmt.Errorf(
+			"%s condition type cannot be empty",
+			resourceType,
+		)
+	}
+
 	// Check reserved types
 	if reserved[condType] {
 		return fmt.Errorf(
@@ -219,13 +199,4 @@ func validateCELExpression(resourceType, condType, field, expression string, env
 	}
 
 	return nil
-}
-
-// IsEmpty returns true if no condition mappings are configured
-func (c *ConditionsConfig) IsEmpty() bool {
-	// Nil receiver guard - treat nil config as empty
-	if c == nil {
-		return true
-	}
-	return len(c.Clusters) == 0 && len(c.NodePools) == 0
 }

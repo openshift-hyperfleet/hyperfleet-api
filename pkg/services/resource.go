@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/dao"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
@@ -40,37 +39,22 @@ func NewResourceService(
 	adapterStatusDao dao.AdapterStatusDao,
 	resourceConditionDao dao.ResourceConditionDao,
 	generic GenericService,
-	conditionsConfig *config.ConditionsConfig,
 ) ResourceService {
-	// Create condition mappers from config (nil if config is empty or nil)
-	// Using a map indexed by Kind simplifies runtime lookup, but adding new entity kinds
-	// requires code changes: new field in ConditionsConfig (pkg/config/conditions.go)
-	// and new if-block here to instantiate the mapper for that kind.
+	// Create condition mappers from entity descriptors
+	// Iterate all registered entities and build mappers from inline conditions
 	conditionMappers := make(map[string]*ConditionMapper)
-	if conditionsConfig != nil && !conditionsConfig.IsEmpty() {
-		if len(conditionsConfig.Clusters) > 0 {
-			mapper, err := NewConditionMapper(kindCluster, conditionsConfig.Clusters)
+	for _, descriptor := range registry.All() {
+		if len(descriptor.Conditions) > 0 {
+			mapper, err := NewConditionMapper(descriptor.Kind, descriptor.Conditions)
 			if err != nil {
 				// This should not happen since config was validated at startup - indicates a code bug
 				// (e.g., validation logic vs. mapper logic mismatch). Use Error level to alert ops team,
 				// but continue in degraded mode (no CEL mapping) to keep service available per HYG-02.
-				logger.With(context.Background(), "resource_kind", kindCluster).
+				logger.With(context.Background(), "resource_kind", descriptor.Kind).
 					WithError(err).
 					Error("Failed to create condition mapper, continuing without CEL mapping")
 			} else {
-				conditionMappers[kindCluster] = mapper
-			}
-		}
-		if len(conditionsConfig.NodePools) > 0 {
-			mapper, err := NewConditionMapper(kindNodePool, conditionsConfig.NodePools)
-			if err != nil {
-				// This should not happen since config was validated at startup - indicates a code bug.
-				// Use Error level to alert ops team, but continue in degraded mode per HYG-02.
-				logger.With(context.Background(), "resource_kind", kindNodePool).
-					WithError(err).
-					Error("Failed to create condition mapper, continuing without CEL mapping")
-			} else {
-				conditionMappers[kindNodePool] = mapper
+				conditionMappers[descriptor.Kind] = mapper
 			}
 		}
 	}
@@ -93,7 +77,7 @@ type sqlResourceService struct {
 	adapterStatusDao     dao.AdapterStatusDao
 	resourceConditionDao dao.ResourceConditionDao
 	generic              GenericService
-	conditionMappers     map[string]*ConditionMapper // Indexed by Kind (e.g., kindCluster, kindNodePool)
+	conditionMappers     map[string]*ConditionMapper // Indexed by Kind (e.g., "Cluster", "NodePool")
 }
 
 // Get returns a single resource by kind and ID. Returns 404 if not found.
@@ -613,11 +597,12 @@ func (s *sqlResourceService) ProcessAdapterStatus(
 	// runs inside the GetForUpdate row-level lock, and most adapter reports are duplicates.
 	// Gating on actual changes reduces CPU waste and lock hold time (CWE-400 mitigation).
 	hasMapper := s.conditionMappers[resource.Kind] != nil
-	statusChanged := existingStatus == nil || // First report
-		!jsonEqual(existingStatus.Conditions, adapterStatus.Conditions) ||
-		!jsonEqual(existingStatus.Data, adapterStatus.Data)
 
-	if triggerAggregation || (hasMapper && statusChanged) {
+	// Inline statusChanged computation so jsonEqual is skipped when hasMapper=false,
+	// avoiding unnecessary JSON marshaling for entities without condition mappings.
+	if triggerAggregation || (hasMapper && (existingStatus == nil ||
+		!jsonEqual(existingStatus.Conditions, adapterStatus.Conditions) ||
+		!jsonEqual(existingStatus.Data, adapterStatus.Data))) {
 		if aggregateErr := s.recomputeAndSaveResourceConditions(
 			ctx, resource, updatedStatuses,
 		); aggregateErr != nil {

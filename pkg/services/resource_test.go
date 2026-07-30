@@ -13,7 +13,6 @@ import (
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/auth"
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/dao"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/registry"
@@ -281,7 +280,7 @@ var _ dao.ResourceConditionDao = &resourceConditionMock{}
 func newTestResourceService(mockDao *mockResourceDao) (ResourceService, *mockResourceDao, *resourceGenericMock) {
 	generic := &resourceGenericMock{}
 	svc := NewResourceService(
-		mockDao, newMockResourceLabelDao(), newMockAdapterStatusDao(), newResourceConditionMock(), generic, nil,
+		mockDao, newMockResourceLabelDao(), newMockAdapterStatusDao(), newResourceConditionMock(), generic,
 	)
 	return svc, mockDao, generic
 }
@@ -292,7 +291,7 @@ func newTestResourceServiceWithLabelDao(
 	generic := &resourceGenericMock{}
 	labelDao := newMockResourceLabelDao()
 	svc := NewResourceService(
-		mockDao, labelDao, newMockAdapterStatusDao(), newResourceConditionMock(), generic, nil,
+		mockDao, labelDao, newMockAdapterStatusDao(), newResourceConditionMock(), generic,
 	)
 	return svc, mockDao, generic, labelDao
 }
@@ -303,18 +302,17 @@ func newTestResourceServiceWithAdapterStatus(
 	asDao := newMockAdapterStatusDao()
 	rcDao := newResourceConditionMock()
 	generic := &resourceGenericMock{}
-	svc := NewResourceService(mockDao, newMockResourceLabelDao(), asDao, rcDao, generic, nil)
+	svc := NewResourceService(mockDao, newMockResourceLabelDao(), asDao, rcDao, generic)
 	return svc, mockDao, asDao, rcDao
 }
 
 func newTestResourceServiceWithConditions(
 	mockDao *mockResourceDao,
-	conditionsConfig *config.ConditionsConfig,
 ) (ResourceService, *mockResourceDao, *mockAdapterStatusDao, *resourceConditionMock) {
 	asDao := newMockAdapterStatusDao()
 	rcDao := newResourceConditionMock()
 	generic := &resourceGenericMock{}
-	svc := NewResourceService(mockDao, newMockResourceLabelDao(), asDao, rcDao, generic, conditionsConfig)
+	svc := NewResourceService(mockDao, newMockResourceLabelDao(), asDao, rcDao, generic)
 	return svc, mockDao, asDao, rcDao
 }
 
@@ -3160,36 +3158,36 @@ func TestProcessAdapterStatus_FinalizedTrue_RecomputesConditions_WhenHardDeleteB
 func TestResourceService_ConditionMapper_IntegrationPath(t *testing.T) {
 	RegisterTestingT(t)
 	registry.Reset()
+	t.Cleanup(registry.Reset)
+	// Register entity descriptor with inline conditions
 	registry.Register(registry.EntityDescriptor{
 		Kind:   "Cluster",
 		Plural: "clusters",
-	})
-
-	// Create config with CEL condition mapping rule
-	conditionsConfig := &config.ConditionsConfig{
-		Clusters: map[string]config.ConditionMappingRule{
-			"CustomReady": {
-				When: config.MappingExpression{
+		Conditions: []registry.ConditionMappingRule{
+			{
+				Type: "CustomReady",
+				When: registry.MappingExpression{
 					Expression: `statuses.exists(s, s.adapter == "test-adapter" && ` +
 						`s.conditions.exists(c, c.type == "CustomCondition" && c.status == "True"))`,
 				},
-				Output: config.MappingOutput{
-					Status: config.MappingExpression{
+				Output: registry.MappingOutput{
+					Status: registry.MappingExpression{
 						Expression: `"True"`,
 					},
-					Reason: config.MappingExpression{
+					Reason: registry.MappingExpression{
 						Expression: `"CustomOK"`,
 					},
-					Message: config.MappingExpression{
+					Message: registry.MappingExpression{
 						Expression: `"Custom condition is ready"`,
 					},
 				},
 			},
 		},
-	}
+	})
 
 	mockDao := newMockResourceDao()
-	svc, _, _, rcDao := newTestResourceServiceWithConditions(mockDao, conditionsConfig)
+	// Conditions now come from entity descriptor registered above
+	svc, _, _, rcDao := newTestResourceServiceWithConditions(mockDao)
 
 	cluster := testResource("Cluster", "cl-1", "test-cluster")
 	cluster.Generation = 1

@@ -2,6 +2,7 @@ package util
 
 import (
 	"encoding/json"
+	"errors"
 	"strconv"
 	"strings"
 
@@ -9,6 +10,30 @@ import (
 	"github.com/google/cel-go/common/types"
 	"github.com/google/cel-go/common/types/ref"
 )
+
+// limitedWriter is an io.Writer that stops writing after a size limit is exceeded.
+// Used by toJSONFunc to bound allocation during JSON encoding.
+type limitedWriter struct {
+	data     []byte
+	limit    int
+	exceeded bool
+}
+
+// Write implements io.Writer. Returns an error when the limit is exceeded.
+func (w *limitedWriter) Write(p []byte) (n int, err error) {
+	if w.exceeded {
+		return 0, errors.New("size limit exceeded")
+	}
+
+	// Check if adding this chunk would exceed the limit
+	if len(w.data)+len(p) > w.limit {
+		w.exceeded = true
+		return 0, errors.New("size limit exceeded")
+	}
+
+	w.data = append(w.data, p...)
+	return len(p), nil
+}
 
 // CELCostLimit is the maximum cost allowed for CEL expression evaluation.
 // Prevents CPU spikes from misconfigured or pathological expressions.
@@ -54,19 +79,33 @@ func NewConditionMappingEnvironment() (*cel.Env, error) {
 // toJSONFunc implements the toJson() CEL function
 func toJSONFunc(val ref.Val) ref.Val {
 	v := val.Value()
-	data, err := json.Marshal(v)
-	if err != nil {
-		return types.NewErr("toJson: %v", err)
-	}
 
 	// Size guard: prevent unbounded intermediate allocations from large payloads
 	// Limit matches Kubernetes ConfigMap max size (1MB) as a reasonable upper bound
 	const maxJSONSize = 1 * 1024 * 1024 // 1MB
-	if len(data) > maxJSONSize {
-		return types.NewErr("toJson: output exceeds 1MB limit (%d bytes)", len(data))
+
+	// Use json.Encoder with a size-limited writer to bound allocation during encoding
+	// (not after). This prevents OOM when encoding very large structures.
+	var buf limitedWriter
+	buf.limit = maxJSONSize
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false) // Match json.Marshal behavior
+
+	if err := enc.Encode(v); err != nil {
+		if buf.exceeded {
+			return types.NewErr("toJson: output exceeds 1MB limit")
+		}
+		return types.NewErr("toJson: %v", err)
 	}
 
-	return types.String(string(data))
+	// json.Encoder.Encode appends a trailing newline — trim it to preserve
+	// current behavior and match json.Marshal output
+	result := buf.data
+	if len(result) > 0 && result[len(result)-1] == '\n' {
+		result = result[:len(result)-1]
+	}
+
+	return types.String(string(result))
 }
 
 // digFunc implements the dig() CEL function for safe nested navigation

@@ -16,8 +16,8 @@ import (
 	"github.com/google/cel-go/common/types/ref"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/registry"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/util"
 )
 
@@ -68,7 +68,17 @@ type ConditionMapper struct {
 
 // cachedResourceContext caches the masked resource map to avoid redundant
 // marshal + MaskSensitiveFields operations across adapter status reports.
-// The resource (spec, metadata) only changes on PATCH operations, not status reports.
+//
+// Cache Correctness Rationale:
+//   - Resource.spec/metadata only change on PATCH operations, which bump generation
+//   - Resource.Conditions has json:"-" tag, so it's excluded from json.Marshal()
+//   - ProcessAdapterStatus() never modifies the Resource object itself
+//   - UpdatedTime is included in the map BUT doesn't change during status updates
+//     (only resource_conditions table is modified, not the resource row)
+//   - Therefore, cache key (resourceID + generation) is sufficient for correctness
+//
+// Performance Note: Single-entry cache may thrash under high concurrent load
+// processing different resources. Consider LRU if profiling shows contention.
 type cachedResourceContext struct {
 	maskedMap  map[string]interface{}
 	resourceID string
@@ -95,7 +105,7 @@ type ApplyInput struct {
 }
 
 // NewConditionMapper creates a new condition mapper with pre-compiled rules
-func NewConditionMapper(resourceKind string, rules map[string]config.ConditionMappingRule) (*ConditionMapper, error) {
+func NewConditionMapper(resourceKind string, rules []registry.ConditionMappingRule) (*ConditionMapper, error) {
 	// Create CEL environment with context variables and custom functions
 	// Uses the same environment as validation to ensure consistency
 	env, err := util.NewConditionMappingEnvironment()
@@ -105,12 +115,12 @@ func NewConditionMapper(resourceKind string, rules map[string]config.ConditionMa
 
 	// Compile all rules at initialization (fail-fast)
 	compiled := make(map[string]*compiledRule, len(rules))
-	for condType, rule := range rules {
-		compiledRule, err := compileRule(env, condType, rule)
+	for _, rule := range rules {
+		compiledRule, err := compileRule(env, rule.Type, rule)
 		if err != nil {
-			return nil, fmt.Errorf("failed to compile rule for condition %s: %w", condType, err)
+			return nil, fmt.Errorf("failed to compile rule for condition %s: %w", rule.Type, err)
 		}
-		compiled[condType] = compiledRule
+		compiled[rule.Type] = compiledRule
 	}
 
 	// Pre-sort rule names for deterministic ordering (avoids repeated sort in Apply)
@@ -237,7 +247,7 @@ func (m *ConditionMapper) validateFieldLengths(
 	messageStr string,
 ) (string, string, error) {
 	// Validate condition type length
-	if len(rule.conditionType) > config.MaxConditionTypeLength {
+	if len(rule.conditionType) > registry.MaxConditionTypeLength {
 		logger.With(
 			ctx,
 			"resource_kind", m.resourceKind,
@@ -249,16 +259,16 @@ func (m *ConditionMapper) validateFieldLengths(
 
 	// Truncate reason if too long (rune-aware to preserve valid UTF-8)
 	validatedReason := reasonStr
-	if len(reasonStr) > config.MaxConditionReasonLength {
-		validatedReason = truncateUTF8(reasonStr, config.MaxConditionReasonLength)
+	if len(reasonStr) > registry.MaxConditionReasonLength {
+		validatedReason = truncateUTF8(reasonStr, registry.MaxConditionReasonLength)
 		logger.With(ctx, "resource_kind", m.resourceKind, "condition_type", rule.conditionType).
 			Info("Condition reason truncated to max length")
 	}
 
 	// Truncate message if too long (rune-aware to preserve valid UTF-8)
 	validatedMessage := messageStr
-	if len(messageStr) > config.MaxConditionMessageLength {
-		validatedMessage = truncateUTF8(messageStr, config.MaxConditionMessageLength)
+	if len(messageStr) > registry.MaxConditionMessageLength {
+		validatedMessage = truncateUTF8(messageStr, registry.MaxConditionMessageLength)
 		logger.With(ctx, "resource_kind", m.resourceKind, "condition_type", rule.conditionType).
 			Info("Condition message truncated to max length")
 	}
@@ -343,7 +353,7 @@ func extractResourceGeneration(
 }
 
 // compileRule compiles all CEL expressions in a mapping rule
-func compileRule(env *cel.Env, condType string, rule config.ConditionMappingRule) (*compiledRule, error) {
+func compileRule(env *cel.Env, condType string, rule registry.ConditionMappingRule) (*compiledRule, error) {
 	// Compile when expression
 	whenPrg, err := compileExpression(env, rule.When.Expression)
 	if err != nil {
