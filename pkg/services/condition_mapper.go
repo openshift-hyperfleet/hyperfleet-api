@@ -137,10 +137,13 @@ func NewConditionMapper(resourceKind string, rules []registry.ConditionMappingRu
 	}, nil
 }
 
-// Apply evaluates mapping rules and returns mapped conditions
-func (m *ConditionMapper) Apply(ctx context.Context, input ApplyInput) []api.ResourceCondition {
+// Apply evaluates mapping rules and returns mapped conditions.
+// Returns error on CEL evaluation failure to trigger transaction rollback per design doc.
+// This ensures timely retry (10s) instead of delayed retry (30min) that would occur
+// if partial results were committed without mapped conditions.
+func (m *ConditionMapper) Apply(ctx context.Context, input ApplyInput) ([]api.ResourceCondition, error) {
 	if len(m.rules) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	// Build CEL activation context (filtering Unknown conditions happens inside buildActivationWithCache)
@@ -165,18 +168,19 @@ func (m *ConditionMapper) Apply(ctx context.Context, input ApplyInput) []api.Res
 
 		condition, err := m.evaluateRule(ctx, rule, activation, input.RefTime, prevCondition)
 		if err != nil {
-			// Log error but don't fail the entire aggregation
-			logger.With(ctx, "resource_kind", m.resourceKind, "condition_type", rule.conditionType).
-				WithError(err).
-				Warn("Failed to evaluate condition mapping rule, skipping")
-			continue
+			// Return error to trigger transaction rollback (per design doc)
+			// This ensures adapter status update is retried in 10s instead of 30min
+			return nil, fmt.Errorf(
+				"condition mapping failed for %s.%s: %w",
+				m.resourceKind, rule.conditionType, err,
+			)
 		}
 		if condition != nil {
 			mappedConditions = append(mappedConditions, *condition)
 		}
 	}
 
-	return mappedConditions
+	return mappedConditions, nil
 }
 
 // evaluateRule evaluates a single mapping rule

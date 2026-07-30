@@ -682,12 +682,17 @@ func (s *sqlResourceService) recomputeAndSaveResourceConditions(
 
 	// Apply CEL condition mapping if configured
 	if mapper != nil {
-		mappedConditions := mapper.Apply(ctx, ApplyInput{
+		mappedConditions, err := mapper.Apply(ctx, ApplyInput{
 			AdapterStatuses: adapterStatuses,
 			Resource:        resource,
 			RefTime:         refTime,
 			PrevConditions:  resource.Conditions, // Preserve timestamps from previous conditions
 		})
+		if err != nil {
+			// Mark transaction for rollback - ensures adapter status update is retried
+			// in 10s instead of 30min delay that would occur with partial commit
+			return errors.GeneralError("Condition mapping failed: %s", err)
+		}
 		newConditions = append(newConditions, mappedConditions...)
 	}
 

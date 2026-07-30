@@ -227,11 +227,12 @@ func TestConditionMapper_SensitiveDataMasking(t *testing.T) {
 			},
 		}
 
-		result := mapper.Apply(context.Background(), ApplyInput{
+		result, err := mapper.Apply(context.Background(), ApplyInput{
 			AdapterStatuses: statuses,
 			Resource:        map[string]interface{}{},
 			RefTime:         time.Now(),
 		})
+		Expect(err).ToNot(HaveOccurred())
 
 		Expect(result).To(HaveLen(1))
 		cond := result[0]
@@ -276,11 +277,12 @@ func TestConditionMapper_SensitiveDataMasking(t *testing.T) {
 			},
 		}
 
-		result := mapper.Apply(context.Background(), ApplyInput{
+		result, err := mapper.Apply(context.Background(), ApplyInput{
 			AdapterStatuses: statuses,
 			Resource:        map[string]interface{}{},
 			RefTime:         time.Now(),
 		})
+		Expect(err).ToNot(HaveOccurred())
 
 		Expect(result).To(HaveLen(1))
 		cond := result[0]
@@ -327,11 +329,12 @@ func TestConditionMapper_SensitiveDataMasking(t *testing.T) {
 			},
 		}
 
-		result := mapper.Apply(context.Background(), ApplyInput{
+		result, err := mapper.Apply(context.Background(), ApplyInput{
 			AdapterStatuses: statuses,
 			Resource:        map[string]interface{}{},
 			RefTime:         time.Now(),
 		})
+		Expect(err).ToNot(HaveOccurred())
 
 		Expect(result).To(HaveLen(1))
 		cond := result[0]
@@ -386,11 +389,12 @@ func TestConditionMapper_SensitiveDataMasking(t *testing.T) {
 			},
 		}
 
-		result := mapper.Apply(context.Background(), ApplyInput{
+		result, err := mapper.Apply(context.Background(), ApplyInput{
 			AdapterStatuses: statuses,
 			Resource:        map[string]interface{}{},
 			RefTime:         time.Now(),
 		})
+		Expect(err).ToNot(HaveOccurred())
 
 		Expect(result).To(HaveLen(1))
 		cond := result[0]
@@ -440,11 +444,12 @@ func TestConditionMapper_SensitiveDataMasking(t *testing.T) {
 			},
 		}
 
-		result := mapper.Apply(context.Background(), ApplyInput{
+		result, err := mapper.Apply(context.Background(), ApplyInput{
 			AdapterStatuses: statuses,
 			Resource:        map[string]interface{}{},
 			RefTime:         time.Now(),
 		})
+		Expect(err).ToNot(HaveOccurred())
 
 		Expect(result).To(HaveLen(1))
 		cond := result[0]
@@ -485,11 +490,12 @@ func TestConditionMapper_SensitiveDataMasking(t *testing.T) {
 			},
 		}
 
-		result := mapper.Apply(context.Background(), ApplyInput{
+		result, err := mapper.Apply(context.Background(), ApplyInput{
 			AdapterStatuses: api.AdapterStatusList{},
 			Resource:        resource,
 			RefTime:         time.Now(),
 		})
+		Expect(err).ToNot(HaveOccurred())
 
 		Expect(result).To(HaveLen(1))
 		cond := result[0]
@@ -531,11 +537,12 @@ func TestConditionMapper_SensitiveDataMasking(t *testing.T) {
 			},
 		}
 
-		result := mapper.Apply(context.Background(), ApplyInput{
+		result, err := mapper.Apply(context.Background(), ApplyInput{
 			AdapterStatuses: api.AdapterStatusList{},
 			Resource:        resource,
 			RefTime:         time.Now(),
 		})
+		Expect(err).ToNot(HaveOccurred())
 
 		Expect(result).To(HaveLen(1))
 		cond := result[0]
@@ -613,12 +620,13 @@ func TestConditionMapper_TimestampPreservation(t *testing.T) {
 		Expect(err).NotTo(HaveOccurred())
 
 		refTime := time.Date(2026, 7, 25, 10, 0, 0, 0, time.UTC)
-		result := mapper.Apply(context.Background(), ApplyInput{
+		result, err := mapper.Apply(context.Background(), ApplyInput{
 			AdapterStatuses: api.AdapterStatusList{},
 			Resource:        map[string]interface{}{},
 			RefTime:         refTime,
 			PrevConditions:  nil, // No previous conditions
 		})
+		Expect(err).ToNot(HaveOccurred())
 
 		Expect(result).To(HaveLen(1))
 		cond := result[0]
@@ -661,12 +669,13 @@ func TestConditionMapper_TimestampPreservation(t *testing.T) {
 
 		// New evaluation at a later time
 		newRefTime := time.Date(2026, 7, 25, 10, 0, 0, 0, time.UTC)
-		result := mapper.Apply(context.Background(), ApplyInput{
+		result, err := mapper.Apply(context.Background(), ApplyInput{
 			AdapterStatuses: api.AdapterStatusList{},
 			Resource:        map[string]interface{}{},
 			RefTime:         newRefTime,
 			PrevConditions:  prevConditions,
 		})
+		Expect(err).ToNot(HaveOccurred())
 
 		Expect(result).To(HaveLen(1))
 		cond := result[0]
@@ -709,12 +718,13 @@ func TestConditionMapper_TimestampPreservation(t *testing.T) {
 
 		// New evaluation at a later time
 		newRefTime := time.Date(2026, 7, 25, 10, 0, 0, 0, time.UTC)
-		result := mapper.Apply(context.Background(), ApplyInput{
+		result, err := mapper.Apply(context.Background(), ApplyInput{
 			AdapterStatuses: api.AdapterStatusList{},
 			Resource:        map[string]interface{}{},
 			RefTime:         newRefTime,
 			PrevConditions:  prevConditions,
 		})
+		Expect(err).ToNot(HaveOccurred())
 
 		Expect(result).To(HaveLen(1))
 		cond := result[0]
@@ -769,12 +779,13 @@ func TestConditionMapper_TimestampPreservation(t *testing.T) {
 		}
 
 		newRefTime := time.Date(2026, 7, 25, 10, 0, 0, 0, time.UTC)
-		result := mapper.Apply(context.Background(), ApplyInput{
+		result, err := mapper.Apply(context.Background(), ApplyInput{
 			AdapterStatuses: api.AdapterStatusList{},
 			Resource:        map[string]interface{}{},
 			RefTime:         newRefTime,
 			PrevConditions:  prevConditions,
 		})
+		Expect(err).ToNot(HaveOccurred())
 
 		Expect(result).To(HaveLen(2))
 
@@ -1008,7 +1019,7 @@ func BenchmarkConditionMapper_Apply(b *testing.B) {
 
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				_ = mapper.Apply(context.Background(), input)
+				_, _ = mapper.Apply(context.Background(), input)
 			}
 		})
 	}
@@ -1044,7 +1055,7 @@ func BenchmarkConditionMapper_PreAllocation(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = mapper.Apply(context.Background(), input)
+		_, _ = mapper.Apply(context.Background(), input)
 	}
 }
 
@@ -1297,9 +1308,11 @@ func TestConditionMapper_InvalidStatus(t *testing.T) {
 		RefTime:         time.Now(),
 	}
 
-	// Should not panic, should skip the condition and log error
-	result := mapper.Apply(context.Background(), input)
-	Expect(result).To(BeEmpty(), "invalid status should skip condition")
+	// Should return error (not panic, not skip) to trigger transaction rollback
+	result, err := mapper.Apply(context.Background(), input)
+	Expect(err).To(HaveOccurred(), "invalid status should return error")
+	Expect(err.Error()).To(ContainSubstring("invalid status value"))
+	Expect(result).To(BeNil(), "result should be nil when error occurs")
 }
 
 func TestConditionMapper_NonBooleanWhen(t *testing.T) {
@@ -1334,9 +1347,11 @@ func TestConditionMapper_NonBooleanWhen(t *testing.T) {
 		RefTime:         time.Now(),
 	}
 
-	// Should not panic, should skip the condition
-	result := mapper.Apply(context.Background(), input)
-	Expect(result).To(BeEmpty(), "non-boolean when expression should skip condition")
+	// Should return error (not panic, not skip) to trigger transaction rollback
+	result, err := mapper.Apply(context.Background(), input)
+	Expect(err).To(HaveOccurred(), "non-boolean when expression should return error")
+	Expect(err.Error()).To(ContainSubstring("did not return boolean"))
+	Expect(result).To(BeNil(), "result should be nil when error occurs")
 }
 
 func TestConditionMapper_MessageTruncationThroughPipeline(t *testing.T) {
@@ -1374,7 +1389,8 @@ func TestConditionMapper_MessageTruncationThroughPipeline(t *testing.T) {
 		RefTime:         time.Now(),
 	}
 
-	result := mapper.Apply(context.Background(), input)
+	result, err := mapper.Apply(context.Background(), input)
+	Expect(err).ToNot(HaveOccurred())
 	Expect(result).To(HaveLen(1), "should produce a condition even with long message")
 	Expect(len(*result[0].Message)).To(BeNumerically("<=", registry.MaxConditionMessageLength),
 		"message should be truncated to MaxConditionMessageLength")
@@ -1413,9 +1429,11 @@ func TestConditionMapper_OutputExpressionRuntimeError(t *testing.T) {
 		RefTime:         time.Now(),
 	}
 
-	// Should not panic, should skip the condition and log error
-	result := mapper.Apply(context.Background(), input)
-	Expect(result).To(BeEmpty(), "output expression runtime error should skip condition")
+	// Should return error (not panic, not skip) to trigger transaction rollback
+	result, err := mapper.Apply(context.Background(), input)
+	Expect(err).To(HaveOccurred(), "output expression runtime error should return error")
+	Expect(err.Error()).To(ContainSubstring("status expression evaluation failed"))
+	Expect(result).To(BeNil(), "result should be nil when error occurs")
 }
 
 func TestConditionMapper_ConcurrentApply(t *testing.T) {
@@ -1471,7 +1489,8 @@ func TestConditionMapper_ConcurrentApply(t *testing.T) {
 			}
 
 			// Collect result, don't assert in goroutine
-			conditions := mapper.Apply(context.Background(), input)
+			conditions, err := mapper.Apply(context.Background(), input)
+			Expect(err).ToNot(HaveOccurred())
 			results <- result{conditions: conditions}
 		}(i)
 	}
