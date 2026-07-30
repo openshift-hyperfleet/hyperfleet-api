@@ -1780,6 +1780,73 @@ func TestProcessAdapterStatus_HappyPath(t *testing.T) {
 	Expect(rcDao.conditions["r-1"]).ToNot(BeEmpty())
 }
 
+func TestProcessAdapterStatus_ConditionMapperError_TriggersRollback(t *testing.T) {
+	RegisterTestingT(t)
+	registry.Reset()
+	t.Cleanup(registry.Reset)
+
+	// Register entity with condition mapping rule that will fail at runtime
+	// The expression divides by zero, which compiles successfully but fails during evaluation
+	registry.Register(registry.EntityDescriptor{
+		Kind:   "Cluster",
+		Plural: "clusters",
+		Conditions: []registry.ConditionMappingRule{
+			{
+				Type: "TestCondition",
+				When: registry.MappingExpression{
+					Expression: `true`, // Always evaluates
+				},
+				Output: registry.MappingOutput{
+					Status: registry.MappingExpression{
+						// Division by zero: compiles but fails at runtime
+						Expression: `1 / 0 == 0 ? "True" : "False"`,
+					},
+					Reason: registry.MappingExpression{
+						Expression: `"TestReason"`,
+					},
+					Message: registry.MappingExpression{
+						Expression: `"Test message"`,
+					},
+				},
+			},
+		},
+	})
+
+	mockDao := newMockResourceDao()
+	svc, _, _, _ := newTestResourceServiceWithConditions(mockDao)
+
+	cluster := testResource("Cluster", "cl-1", "test-cluster")
+	cluster.Generation = 1
+	mockDao.addResource(cluster)
+
+	req := &api.AdapterStatus{
+		Adapter:            "test-adapter",
+		ObservedGeneration: 1,
+		LastReportTime:     time.Now().UTC(),
+		Conditions: testConditionsJSON(
+			api.AdapterCondition{Type: api.AdapterConditionTypeAvailable, Status: api.AdapterConditionTrue},
+			api.AdapterCondition{Type: api.AdapterConditionTypeApplied, Status: api.AdapterConditionTrue},
+			api.AdapterCondition{Type: api.AdapterConditionTypeHealth, Status: api.AdapterConditionTrue},
+		),
+	}
+
+	// ProcessAdapterStatus should return error when condition mapper fails
+	result, svcErr := svc.ProcessAdapterStatus(context.Background(), "Cluster", cluster.ID, req)
+
+	// Verify error is returned (triggers rollback)
+	Expect(svcErr).ToNot(BeNil(), "should return error when condition mapping fails")
+	Expect(svcErr.RFC9457Code).To(Equal("HYPERFLEET-INT-001"), "should be GeneralError (internal error)")
+	Expect(svcErr.Reason).To(ContainSubstring("Condition mapping failed"), "error reason should mention condition mapping")
+
+	Expect(result).To(BeNil(), "result should be nil when error occurs")
+
+	// Note: In a real database transaction, returning an error from the service
+	// would trigger MarkForRollback() in the DAO layer, causing the transaction to rollback.
+	// This unit test uses mocks (no real transaction), so the mock DAO still has the data.
+	// The critical validation is: service returns error → handler marks transaction for rollback.
+	// For full rollback validation, see integration tests with testcontainers.
+}
+
 func TestProcessAdapterStatus_UnknownKind_Returns400(t *testing.T) {
 	RegisterTestingT(t)
 	setupAdapterStatusDescriptors()
