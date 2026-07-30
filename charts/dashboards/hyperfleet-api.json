@@ -561,7 +561,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "max by (resource_type, is_delete) (hyperfleet_api_resource_pending_reconciliation) or vector(0)",
+          "expr": "max by (resource_type, is_delete) (hyperfleet_api_resource_pending_reconciliation) or on() vector(0)",
           "legendFormat": "{{resource_type}} (delete={{is_delete}})",
           "refId": "A"
         }
@@ -653,7 +653,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "max by (resource_type, is_delete) (hyperfleet_api_resource_pending_reconciliation_stuck) or vector(0)",
+          "expr": "max by (resource_type, is_delete) (hyperfleet_api_resource_pending_reconciliation_stuck) or on() vector(0)",
           "legendFormat": "{{resource_type}} (delete={{is_delete}})",
           "refId": "A"
         }
@@ -745,7 +745,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "max by (resource_type, is_delete) (hyperfleet_api_resource_pending_reconciliation_stuck_duration_seconds) or vector(0)",
+          "expr": "max by (resource_type, is_delete) (hyperfleet_api_resource_pending_reconciliation_stuck_duration_seconds) or on() vector(0)",
           "legendFormat": "{{resource_type}} (delete={{is_delete}})",
           "refId": "A"
         }
