@@ -927,6 +927,76 @@ func TestBuildActivation_NumericTypesConsistency(t *testing.T) {
 }
 
 // ============================================================================
+// Tests for Apply() when-expression control flow
+// ============================================================================
+
+func TestConditionMapper_WhenExpressionSkipsRule(t *testing.T) {
+	t.Run("when expression returns false skips rule", func(t *testing.T) {
+		RegisterTestingT(t)
+
+		rules := []registry.ConditionMappingRule{{
+			Type: "SkippedCondition",
+			When: registry.MappingExpression{Expression: `false`},
+			Output: registry.MappingOutput{
+				Status:  registry.MappingExpression{Expression: `"True"`},
+				Reason:  registry.MappingExpression{Expression: `"OK"`},
+				Message: registry.MappingExpression{Expression: `"Should not appear"`},
+			},
+		}}
+
+		mapper, err := NewConditionMapper("Cluster", rules)
+		Expect(err).NotTo(HaveOccurred())
+
+		conditions, err := mapper.Apply(context.Background(), ApplyInput{
+			AdapterStatuses: api.AdapterStatusList{},
+			Resource:        map[string]interface{}{},
+			RefTime:         time.Now(),
+		})
+
+		Expect(err).NotTo(HaveOccurred())
+		Expect(conditions).To(BeEmpty(), "when=false should produce no conditions")
+	})
+
+	t.Run("mixed when results produce only matching conditions", func(t *testing.T) {
+		RegisterTestingT(t)
+
+		rules := []registry.ConditionMappingRule{
+			{
+				Type: "AlwaysTrue",
+				When: registry.MappingExpression{Expression: `true`},
+				Output: registry.MappingOutput{
+					Status:  registry.MappingExpression{Expression: `"True"`},
+					Reason:  registry.MappingExpression{Expression: `"matched"`},
+					Message: registry.MappingExpression{Expression: `"should appear"`},
+				},
+			},
+			{
+				Type: "AlwaysFalse",
+				When: registry.MappingExpression{Expression: `false`},
+				Output: registry.MappingOutput{
+					Status:  registry.MappingExpression{Expression: `"True"`},
+					Reason:  registry.MappingExpression{Expression: `"skipped"`},
+					Message: registry.MappingExpression{Expression: `"should not appear"`},
+				},
+			},
+		}
+
+		mapper, err := NewConditionMapper("Cluster", rules)
+		Expect(err).NotTo(HaveOccurred())
+
+		conditions, err := mapper.Apply(context.Background(), ApplyInput{
+			AdapterStatuses: api.AdapterStatusList{},
+			Resource:        map[string]interface{}{},
+			RefTime:         time.Now(),
+		})
+
+		Expect(err).NotTo(HaveOccurred())
+		Expect(conditions).To(HaveLen(1))
+		Expect(conditions[0].Type).To(Equal("AlwaysTrue"))
+	})
+}
+
+// ============================================================================
 // Benchmarks
 // ============================================================================
 
