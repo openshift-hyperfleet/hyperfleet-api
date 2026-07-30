@@ -13,7 +13,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/registry"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/util"
 )
 
@@ -25,15 +25,15 @@ func TestConditionMapper_CELCheckValidation(t *testing.T) {
 	t.Run("undefined function caught at compile time", func(t *testing.T) {
 		RegisterTestingT(t)
 
-		rules := map[string]config.ConditionMappingRule{
-			"Test": {
-				When: config.MappingExpression{
+		rules := []registry.ConditionMappingRule{
+			{Type: "Test",
+				When: registry.MappingExpression{
 					Expression: `undefinedFunction(statuses)`, // No such function
 				},
-				Output: config.MappingOutput{
-					Status:  config.MappingExpression{Expression: `"True"`},
-					Reason:  config.MappingExpression{Expression: `"OK"`},
-					Message: config.MappingExpression{Expression: `"OK"`},
+				Output: registry.MappingOutput{
+					Status:  registry.MappingExpression{Expression: `"True"`},
+					Reason:  registry.MappingExpression{Expression: `"OK"`},
+					Message: registry.MappingExpression{Expression: `"OK"`},
 				},
 			},
 		}
@@ -49,16 +49,16 @@ func TestConditionMapper_CELCheckValidation(t *testing.T) {
 	t.Run("wrong function arity caught at compile time", func(t *testing.T) {
 		RegisterTestingT(t)
 
-		rules := map[string]config.ConditionMappingRule{
-			"Test": {
-				When: config.MappingExpression{
+		rules := []registry.ConditionMappingRule{
+			{Type: "Test",
+				When: registry.MappingExpression{
 					// size() expects 1 argument, not 2
 					Expression: `size(statuses, 'extra arg')`,
 				},
-				Output: config.MappingOutput{
-					Status:  config.MappingExpression{Expression: `"True"`},
-					Reason:  config.MappingExpression{Expression: `"OK"`},
-					Message: config.MappingExpression{Expression: `"OK"`},
+				Output: registry.MappingOutput{
+					Status:  registry.MappingExpression{Expression: `"True"`},
+					Reason:  registry.MappingExpression{Expression: `"OK"`},
+					Message: registry.MappingExpression{Expression: `"OK"`},
 				},
 			},
 		}
@@ -73,15 +73,15 @@ func TestConditionMapper_CELCheckValidation(t *testing.T) {
 	t.Run("valid CEL expression compiles successfully", func(t *testing.T) {
 		RegisterTestingT(t)
 
-		rules := map[string]config.ConditionMappingRule{
-			"Test": {
-				When: config.MappingExpression{
+		rules := []registry.ConditionMappingRule{
+			{Type: "Test",
+				When: registry.MappingExpression{
 					Expression: `size(statuses) > 0`, // Valid
 				},
-				Output: config.MappingOutput{
-					Status:  config.MappingExpression{Expression: `"True"`},
-					Reason:  config.MappingExpression{Expression: `"OK"`},
-					Message: config.MappingExpression{Expression: `"OK"`},
+				Output: registry.MappingOutput{
+					Status:  registry.MappingExpression{Expression: `"True"`},
+					Reason:  registry.MappingExpression{Expression: `"OK"`},
+					Message: registry.MappingExpression{Expression: `"OK"`},
 				},
 			},
 		}
@@ -164,13 +164,13 @@ func TestConditionMapper_CELCheckValidation(t *testing.T) {
 					messageExpr = tc.badExpr
 				}
 
-				rules := map[string]config.ConditionMappingRule{
-					"Test": {
-						When: config.MappingExpression{Expression: whenExpr},
-						Output: config.MappingOutput{
-							Status:  config.MappingExpression{Expression: statusExpr},
-							Reason:  config.MappingExpression{Expression: reasonExpr},
-							Message: config.MappingExpression{Expression: messageExpr},
+				rules := []registry.ConditionMappingRule{
+					{Type: "Test",
+						When: registry.MappingExpression{Expression: whenExpr},
+						Output: registry.MappingOutput{
+							Status:  registry.MappingExpression{Expression: statusExpr},
+							Reason:  registry.MappingExpression{Expression: reasonExpr},
+							Message: registry.MappingExpression{Expression: messageExpr},
 						},
 					},
 				}
@@ -195,14 +195,14 @@ func TestConditionMapper_SensitiveDataMasking(t *testing.T) {
 		RegisterTestingT(t)
 
 		// Rule that tries to extract adapter data fields
-		rules := map[string]config.ConditionMappingRule{
-			"DataExtract": {
-				When: config.MappingExpression{Expression: `statuses.exists(s, s.adapter == "test")`},
-				Output: config.MappingOutput{
-					Status: config.MappingExpression{Expression: `"True"`},
-					Reason: config.MappingExpression{Expression: `"OK"`},
+		rules := []registry.ConditionMappingRule{
+			{Type: "DataExtract",
+				When: registry.MappingExpression{Expression: `statuses.exists(s, s.adapter == "test")`},
+				Output: registry.MappingOutput{
+					Status: registry.MappingExpression{Expression: `"True"`},
+					Reason: registry.MappingExpression{Expression: `"OK"`},
 					// Try to extract sensitive field from data
-					Message: config.MappingExpression{
+					Message: registry.MappingExpression{
 						Expression: `statuses.filter(s, s.adapter == "test")[0].data.adminPassword`,
 					},
 				},
@@ -244,14 +244,14 @@ func TestConditionMapper_SensitiveDataMasking(t *testing.T) {
 	t.Run("non-sensitive adapter data passes through", func(t *testing.T) {
 		RegisterTestingT(t)
 
-		rules := map[string]config.ConditionMappingRule{
-			"DataExtract": {
-				When: config.MappingExpression{Expression: `statuses.exists(s, s.adapter == "test")`},
-				Output: config.MappingOutput{
-					Status: config.MappingExpression{Expression: `"True"`},
-					Reason: config.MappingExpression{Expression: `"OK"`},
+		rules := []registry.ConditionMappingRule{
+			{Type: "DataExtract",
+				When: registry.MappingExpression{Expression: `statuses.exists(s, s.adapter == "test")`},
+				Output: registry.MappingOutput{
+					Status: registry.MappingExpression{Expression: `"True"`},
+					Reason: registry.MappingExpression{Expression: `"OK"`},
 					// Extract non-sensitive field
-					Message: config.MappingExpression{
+					Message: registry.MappingExpression{
 						Expression: `statuses.filter(s, s.adapter == "test")[0].data.clusterName`,
 					},
 				},
@@ -292,14 +292,14 @@ func TestConditionMapper_SensitiveDataMasking(t *testing.T) {
 	t.Run("nested sensitive data is masked", func(t *testing.T) {
 		RegisterTestingT(t)
 
-		rules := map[string]config.ConditionMappingRule{
-			"DataExtract": {
-				When: config.MappingExpression{Expression: `statuses.exists(s, s.adapter == "test")`},
-				Output: config.MappingOutput{
-					Status: config.MappingExpression{Expression: `"True"`},
-					Reason: config.MappingExpression{Expression: `"OK"`},
+		rules := []registry.ConditionMappingRule{
+			{Type: "DataExtract",
+				When: registry.MappingExpression{Expression: `statuses.exists(s, s.adapter == "test")`},
+				Output: registry.MappingOutput{
+					Status: registry.MappingExpression{Expression: `"True"`},
+					Reason: registry.MappingExpression{Expression: `"OK"`},
 					// Try to extract nested sensitive field
-					Message: config.MappingExpression{
+					Message: registry.MappingExpression{
 						Expression: `statuses.filter(s, s.adapter == "test")[0].data.serviceAccount.privateKey`,
 					},
 				},
@@ -344,14 +344,14 @@ func TestConditionMapper_SensitiveDataMasking(t *testing.T) {
 	t.Run("multiple adapters with mixed sensitive and non-sensitive data", func(t *testing.T) {
 		RegisterTestingT(t)
 
-		rules := map[string]config.ConditionMappingRule{
-			"Summary": {
-				When: config.MappingExpression{Expression: `size(statuses) > 0`},
-				Output: config.MappingOutput{
-					Status: config.MappingExpression{Expression: `"True"`},
-					Reason: config.MappingExpression{Expression: `"OK"`},
+		rules := []registry.ConditionMappingRule{
+			{Type: "Summary",
+				When: registry.MappingExpression{Expression: `size(statuses) > 0`},
+				Output: registry.MappingOutput{
+					Status: registry.MappingExpression{Expression: `"True"`},
+					Reason: registry.MappingExpression{Expression: `"OK"`},
 					// Build message from multiple adapters
-					Message: config.MappingExpression{
+					Message: registry.MappingExpression{
 						Expression: `"Cluster: " + statuses[0].data.name + ", Secret: " + statuses[1].data.pullSecret`,
 					},
 				},
@@ -403,14 +403,14 @@ func TestConditionMapper_SensitiveDataMasking(t *testing.T) {
 	t.Run("arrays with sensitive fields are masked in CEL context", func(t *testing.T) {
 		RegisterTestingT(t)
 
-		rules := map[string]config.ConditionMappingRule{
-			"UserPassword": {
-				When: config.MappingExpression{Expression: `statuses.exists(s, s.adapter == "test")`},
-				Output: config.MappingOutput{
-					Status: config.MappingExpression{Expression: `"True"`},
-					Reason: config.MappingExpression{Expression: `"OK"`},
+		rules := []registry.ConditionMappingRule{
+			{Type: "UserPassword",
+				When: registry.MappingExpression{Expression: `statuses.exists(s, s.adapter == "test")`},
+				Output: registry.MappingOutput{
+					Status: registry.MappingExpression{Expression: `"True"`},
+					Reason: registry.MappingExpression{Expression: `"OK"`},
 					// Try to extract password from users array
-					Message: config.MappingExpression{
+					Message: registry.MappingExpression{
 						Expression: `statuses.filter(s, s.adapter == "test")[0].data.users[0].password`,
 					},
 				},
@@ -457,14 +457,14 @@ func TestConditionMapper_SensitiveDataMasking(t *testing.T) {
 	t.Run("sensitive resource fields are masked in CEL context (defense-in-depth)", func(t *testing.T) {
 		RegisterTestingT(t)
 
-		rules := map[string]config.ConditionMappingRule{
-			"ResourceSecret": {
-				When: config.MappingExpression{Expression: `true`},
-				Output: config.MappingOutput{
-					Status: config.MappingExpression{Expression: `"True"`},
-					Reason: config.MappingExpression{Expression: `"OK"`},
+		rules := []registry.ConditionMappingRule{
+			{Type: "ResourceSecret",
+				When: registry.MappingExpression{Expression: `true`},
+				Output: registry.MappingOutput{
+					Status: registry.MappingExpression{Expression: `"True"`},
+					Reason: registry.MappingExpression{Expression: `"OK"`},
 					// Try to extract sensitive field from resource
-					Message: config.MappingExpression{
+					Message: registry.MappingExpression{
 						Expression: `"Admin password: " + resource.spec.adminPassword`,
 					},
 				},
@@ -502,14 +502,14 @@ func TestConditionMapper_SensitiveDataMasking(t *testing.T) {
 	t.Run("nested sensitive fields in resource arrays are masked", func(t *testing.T) {
 		RegisterTestingT(t)
 
-		rules := map[string]config.ConditionMappingRule{
-			"NodeToken": {
-				When: config.MappingExpression{Expression: `size(resource.spec.nodes) > 0`},
-				Output: config.MappingOutput{
-					Status: config.MappingExpression{Expression: `"True"`},
-					Reason: config.MappingExpression{Expression: `"OK"`},
+		rules := []registry.ConditionMappingRule{
+			{Type: "NodeToken",
+				When: registry.MappingExpression{Expression: `size(resource.spec.nodes) > 0`},
+				Output: registry.MappingOutput{
+					Status: registry.MappingExpression{Expression: `"True"`},
+					Reason: registry.MappingExpression{Expression: `"OK"`},
 					// Try to extract token from nodes array
-					Message: config.MappingExpression{
+					Message: registry.MappingExpression{
 						Expression: `"Node token: " + resource.spec.nodes[0].authToken`,
 					},
 				},
@@ -598,13 +598,13 @@ func TestConditionMapper_TimestampPreservation(t *testing.T) {
 	t.Run("new condition gets refTime for all timestamps", func(t *testing.T) {
 		RegisterTestingT(t)
 
-		rules := map[string]config.ConditionMappingRule{
-			"TestReady": {
-				When: config.MappingExpression{Expression: `true`},
-				Output: config.MappingOutput{
-					Status:  config.MappingExpression{Expression: `"True"`},
-					Reason:  config.MappingExpression{Expression: `"OK"`},
-					Message: config.MappingExpression{Expression: `"All good"`},
+		rules := []registry.ConditionMappingRule{
+			{Type: "TestReady",
+				When: registry.MappingExpression{Expression: `true`},
+				Output: registry.MappingOutput{
+					Status:  registry.MappingExpression{Expression: `"True"`},
+					Reason:  registry.MappingExpression{Expression: `"OK"`},
+					Message: registry.MappingExpression{Expression: `"All good"`},
 				},
 			},
 		}
@@ -633,13 +633,13 @@ func TestConditionMapper_TimestampPreservation(t *testing.T) {
 	t.Run("status unchanged preserves CreatedTime and LastTransitionTime", func(t *testing.T) {
 		RegisterTestingT(t)
 
-		rules := map[string]config.ConditionMappingRule{
-			"TestReady": {
-				When: config.MappingExpression{Expression: `true`},
-				Output: config.MappingOutput{
-					Status:  config.MappingExpression{Expression: `"True"`},
-					Reason:  config.MappingExpression{Expression: `"OK"`},
-					Message: config.MappingExpression{Expression: `"All good"`},
+		rules := []registry.ConditionMappingRule{
+			{Type: "TestReady",
+				When: registry.MappingExpression{Expression: `true`},
+				Output: registry.MappingOutput{
+					Status:  registry.MappingExpression{Expression: `"True"`},
+					Reason:  registry.MappingExpression{Expression: `"OK"`},
+					Message: registry.MappingExpression{Expression: `"All good"`},
 				},
 			},
 		}
@@ -681,13 +681,13 @@ func TestConditionMapper_TimestampPreservation(t *testing.T) {
 	t.Run("status changed updates LastTransitionTime but preserves CreatedTime", func(t *testing.T) {
 		RegisterTestingT(t)
 
-		rules := map[string]config.ConditionMappingRule{
-			"TestReady": {
-				When: config.MappingExpression{Expression: `true`},
-				Output: config.MappingOutput{
-					Status:  config.MappingExpression{Expression: `"False"`}, // Changed from True
-					Reason:  config.MappingExpression{Expression: `"NotReady"`},
-					Message: config.MappingExpression{Expression: `"Something broke"`},
+		rules := []registry.ConditionMappingRule{
+			{Type: "TestReady",
+				When: registry.MappingExpression{Expression: `true`},
+				Output: registry.MappingOutput{
+					Status:  registry.MappingExpression{Expression: `"False"`}, // Changed from True
+					Reason:  registry.MappingExpression{Expression: `"NotReady"`},
+					Message: registry.MappingExpression{Expression: `"Something broke"`},
 				},
 			},
 		}
@@ -728,21 +728,21 @@ func TestConditionMapper_TimestampPreservation(t *testing.T) {
 	t.Run("multiple conditions preserve timestamps independently", func(t *testing.T) {
 		RegisterTestingT(t)
 
-		rules := map[string]config.ConditionMappingRule{
-			"ConditionA": {
-				When: config.MappingExpression{Expression: `true`},
-				Output: config.MappingOutput{
-					Status:  config.MappingExpression{Expression: `"True"`},
-					Reason:  config.MappingExpression{Expression: `"OK"`},
-					Message: config.MappingExpression{Expression: `"A is ready"`},
+		rules := []registry.ConditionMappingRule{
+			{Type: "ConditionA",
+				When: registry.MappingExpression{Expression: `true`},
+				Output: registry.MappingOutput{
+					Status:  registry.MappingExpression{Expression: `"True"`},
+					Reason:  registry.MappingExpression{Expression: `"OK"`},
+					Message: registry.MappingExpression{Expression: `"A is ready"`},
 				},
 			},
-			"ConditionB": {
-				When: config.MappingExpression{Expression: `true`},
-				Output: config.MappingOutput{
-					Status:  config.MappingExpression{Expression: `"False"`}, // Changed
-					Reason:  config.MappingExpression{Expression: `"NotReady"`},
-					Message: config.MappingExpression{Expression: `"B is not ready"`},
+			{Type: "ConditionB",
+				When: registry.MappingExpression{Expression: `true`},
+				Output: registry.MappingOutput{
+					Status:  registry.MappingExpression{Expression: `"False"`}, // Changed
+					Reason:  registry.MappingExpression{Expression: `"NotReady"`},
+					Message: registry.MappingExpression{Expression: `"B is not ready"`},
 				},
 			},
 		}
@@ -843,6 +843,7 @@ func TestAdapterStatusToMapWithUnknownCheck_LogsJSONErrors(t *testing.T) {
 		Expect(statusMap[celKeyAdapter]).To(Equal("test-adapter"))
 	})
 }
+
 func TestResourceToMap_LogsJSONErrors(t *testing.T) {
 	t.Run("unmarshalable resource logs warning", func(t *testing.T) {
 		RegisterTestingT(t)
@@ -870,6 +871,7 @@ func TestResourceToMap_LogsJSONErrors(t *testing.T) {
 		Expect(result["name"]).To(Equal("test"))
 	})
 }
+
 func TestBuildActivation_NumericTypesConsistency(t *testing.T) {
 	t.Run("observed_generation is float64 for CEL type consistency", func(t *testing.T) {
 		RegisterTestingT(t)
@@ -921,45 +923,45 @@ func TestBuildActivation_NumericTypesConsistency(t *testing.T) {
 // to demonstrate the O(1) map lookup optimization vs O(N) linear scan
 func BenchmarkConditionMapper_Apply(b *testing.B) {
 	// Create mapper with multiple rules
-	rules := map[string]config.ConditionMappingRule{
-		"Condition1": {
-			When: config.MappingExpression{Expression: `true`},
-			Output: config.MappingOutput{
-				Status:  config.MappingExpression{Expression: `"True"`},
-				Reason:  config.MappingExpression{Expression: `"OK"`},
-				Message: config.MappingExpression{Expression: `"All good"`},
+	rules := []registry.ConditionMappingRule{
+		{Type: "Condition1",
+			When: registry.MappingExpression{Expression: `true`},
+			Output: registry.MappingOutput{
+				Status:  registry.MappingExpression{Expression: `"True"`},
+				Reason:  registry.MappingExpression{Expression: `"OK"`},
+				Message: registry.MappingExpression{Expression: `"All good"`},
 			},
 		},
-		"Condition2": {
-			When: config.MappingExpression{Expression: `true`},
-			Output: config.MappingOutput{
-				Status:  config.MappingExpression{Expression: `"True"`},
-				Reason:  config.MappingExpression{Expression: `"OK"`},
-				Message: config.MappingExpression{Expression: `"All good"`},
+		{Type: "Condition2",
+			When: registry.MappingExpression{Expression: `true`},
+			Output: registry.MappingOutput{
+				Status:  registry.MappingExpression{Expression: `"True"`},
+				Reason:  registry.MappingExpression{Expression: `"OK"`},
+				Message: registry.MappingExpression{Expression: `"All good"`},
 			},
 		},
-		"Condition3": {
-			When: config.MappingExpression{Expression: `true`},
-			Output: config.MappingOutput{
-				Status:  config.MappingExpression{Expression: `"True"`},
-				Reason:  config.MappingExpression{Expression: `"OK"`},
-				Message: config.MappingExpression{Expression: `"All good"`},
+		{Type: "Condition3",
+			When: registry.MappingExpression{Expression: `true`},
+			Output: registry.MappingOutput{
+				Status:  registry.MappingExpression{Expression: `"True"`},
+				Reason:  registry.MappingExpression{Expression: `"OK"`},
+				Message: registry.MappingExpression{Expression: `"All good"`},
 			},
 		},
-		"Condition4": {
-			When: config.MappingExpression{Expression: `true`},
-			Output: config.MappingOutput{
-				Status:  config.MappingExpression{Expression: `"True"`},
-				Reason:  config.MappingExpression{Expression: `"OK"`},
-				Message: config.MappingExpression{Expression: `"All good"`},
+		{Type: "Condition4",
+			When: registry.MappingExpression{Expression: `true`},
+			Output: registry.MappingOutput{
+				Status:  registry.MappingExpression{Expression: `"True"`},
+				Reason:  registry.MappingExpression{Expression: `"OK"`},
+				Message: registry.MappingExpression{Expression: `"All good"`},
 			},
 		},
-		"Condition5": {
-			When: config.MappingExpression{Expression: `true`},
-			Output: config.MappingOutput{
-				Status:  config.MappingExpression{Expression: `"True"`},
-				Reason:  config.MappingExpression{Expression: `"OK"`},
-				Message: config.MappingExpression{Expression: `"All good"`},
+		{Type: "Condition5",
+			When: registry.MappingExpression{Expression: `true`},
+			Output: registry.MappingOutput{
+				Status:  registry.MappingExpression{Expression: `"True"`},
+				Reason:  registry.MappingExpression{Expression: `"OK"`},
+				Message: registry.MappingExpression{Expression: `"All good"`},
 			},
 		},
 	}
@@ -1014,17 +1016,18 @@ func BenchmarkConditionMapper_Apply(b *testing.B) {
 
 // BenchmarkConditionMapper_PreAllocation benchmarks the effect of pre-allocating the result slice
 func BenchmarkConditionMapper_PreAllocation(b *testing.B) {
-	rules := make(map[string]config.ConditionMappingRule)
+	rules := make([]registry.ConditionMappingRule, 0, 10)
 	for i := 0; i < 10; i++ {
 		name := "Condition" + string(rune('A'+i))
-		rules[name] = config.ConditionMappingRule{
-			When: config.MappingExpression{Expression: `true`},
-			Output: config.MappingOutput{
-				Status:  config.MappingExpression{Expression: `"True"`},
-				Reason:  config.MappingExpression{Expression: `"OK"`},
-				Message: config.MappingExpression{Expression: `"All good"`},
+		rules = append(rules, registry.ConditionMappingRule{
+			Type: name,
+			When: registry.MappingExpression{Expression: `true`},
+			Output: registry.MappingOutput{
+				Status:  registry.MappingExpression{Expression: `"True"`},
+				Reason:  registry.MappingExpression{Expression: `"OK"`},
+				Message: registry.MappingExpression{Expression: `"All good"`},
 			},
-		}
+		})
 	}
 
 	mapper, err := NewConditionMapper("Cluster", rules)
@@ -1266,19 +1269,19 @@ func TestConditionMapper_InvalidStatus(t *testing.T) {
 	RegisterTestingT(t)
 
 	// CEL rule that outputs "Maybe" instead of "True"/"False"
-	rules := map[string]config.ConditionMappingRule{
-		"TestCondition": {
-			When: config.MappingExpression{
+	rules := []registry.ConditionMappingRule{
+		{Type: "TestCondition",
+			When: registry.MappingExpression{
 				Expression: "true",
 			},
-			Output: config.MappingOutput{
-				Status: config.MappingExpression{
+			Output: registry.MappingOutput{
+				Status: registry.MappingExpression{
 					Expression: `"Maybe"`, // Invalid status
 				},
-				Reason: config.MappingExpression{
+				Reason: registry.MappingExpression{
 					Expression: `"test"`,
 				},
-				Message: config.MappingExpression{
+				Message: registry.MappingExpression{
 					Expression: `"test message"`,
 				},
 			},
@@ -1303,19 +1306,19 @@ func TestConditionMapper_NonBooleanWhen(t *testing.T) {
 	RegisterTestingT(t)
 
 	// CEL rule with when expression that returns string instead of boolean
-	rules := map[string]config.ConditionMappingRule{
-		"TestCondition": {
-			When: config.MappingExpression{
+	rules := []registry.ConditionMappingRule{
+		{Type: "TestCondition",
+			When: registry.MappingExpression{
 				Expression: `"not a boolean"`, // Should return bool
 			},
-			Output: config.MappingOutput{
-				Status: config.MappingExpression{
+			Output: registry.MappingOutput{
+				Status: registry.MappingExpression{
 					Expression: `"True"`,
 				},
-				Reason: config.MappingExpression{
+				Reason: registry.MappingExpression{
 					Expression: `"test"`,
 				},
-				Message: config.MappingExpression{
+				Message: registry.MappingExpression{
 					Expression: `"test message"`,
 				},
 			},
@@ -1340,22 +1343,22 @@ func TestConditionMapper_MessageTruncationThroughPipeline(t *testing.T) {
 	RegisterTestingT(t)
 
 	// Build a CEL expression that produces a message exceeding MaxConditionMessageLength (2048)
-	longMsg := strings.Repeat("x", config.MaxConditionMessageLength+100)
+	longMsg := strings.Repeat("x", registry.MaxConditionMessageLength+100)
 	msgExpr := fmt.Sprintf(`"%s"`, longMsg)
 
-	rules := map[string]config.ConditionMappingRule{
-		"TestCondition": {
-			When: config.MappingExpression{
+	rules := []registry.ConditionMappingRule{
+		{Type: "TestCondition",
+			When: registry.MappingExpression{
 				Expression: "true",
 			},
-			Output: config.MappingOutput{
-				Status: config.MappingExpression{
+			Output: registry.MappingOutput{
+				Status: registry.MappingExpression{
 					Expression: `"True"`,
 				},
-				Reason: config.MappingExpression{
+				Reason: registry.MappingExpression{
 					Expression: `"TestReason"`,
 				},
-				Message: config.MappingExpression{
+				Message: registry.MappingExpression{
 					Expression: msgExpr,
 				},
 			},
@@ -1373,7 +1376,7 @@ func TestConditionMapper_MessageTruncationThroughPipeline(t *testing.T) {
 
 	result := mapper.Apply(context.Background(), input)
 	Expect(result).To(HaveLen(1), "should produce a condition even with long message")
-	Expect(len(*result[0].Message)).To(BeNumerically("<=", config.MaxConditionMessageLength),
+	Expect(len(*result[0].Message)).To(BeNumerically("<=", registry.MaxConditionMessageLength),
 		"message should be truncated to MaxConditionMessageLength")
 	Expect(*result[0].Reason).To(Equal("TestReason"), "reason should be unchanged")
 }
@@ -1382,19 +1385,19 @@ func TestConditionMapper_OutputExpressionRuntimeError(t *testing.T) {
 	RegisterTestingT(t)
 
 	// CEL rule where the status expression causes a runtime error (out-of-bounds index)
-	rules := map[string]config.ConditionMappingRule{
-		"TestCondition": {
-			When: config.MappingExpression{
+	rules := []registry.ConditionMappingRule{
+		{Type: "TestCondition",
+			When: registry.MappingExpression{
 				Expression: "true",
 			},
-			Output: config.MappingOutput{
-				Status: config.MappingExpression{
+			Output: registry.MappingOutput{
+				Status: registry.MappingExpression{
 					Expression: `statuses[99].adapter`, // out of bounds → runtime error
 				},
-				Reason: config.MappingExpression{
+				Reason: registry.MappingExpression{
 					Expression: `"reason"`,
 				},
-				Message: config.MappingExpression{
+				Message: registry.MappingExpression{
 					Expression: `"message"`,
 				},
 			},
@@ -1418,19 +1421,19 @@ func TestConditionMapper_OutputExpressionRuntimeError(t *testing.T) {
 func TestConditionMapper_ConcurrentApply(t *testing.T) {
 	RegisterTestingT(t)
 
-	rules := map[string]config.ConditionMappingRule{
-		"TestCondition": {
-			When: config.MappingExpression{
+	rules := []registry.ConditionMappingRule{
+		{Type: "TestCondition",
+			When: registry.MappingExpression{
 				Expression: "true",
 			},
-			Output: config.MappingOutput{
-				Status: config.MappingExpression{
+			Output: registry.MappingOutput{
+				Status: registry.MappingExpression{
 					Expression: `"True"`,
 				},
-				Reason: config.MappingExpression{
+				Reason: registry.MappingExpression{
 					Expression: `"test"`,
 				},
-				Message: config.MappingExpression{
+				Message: registry.MappingExpression{
 					Expression: `"test message"`,
 				},
 			},

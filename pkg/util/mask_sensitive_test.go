@@ -282,6 +282,7 @@ func TestMaskSensitiveFields(t *testing.T) {
 		Expect(cell["password"]).To(Equal(RedactedPlaceholder))
 	})
 }
+
 func TestIsSensitiveKey(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
