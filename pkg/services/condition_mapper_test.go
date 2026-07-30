@@ -1465,6 +1465,7 @@ func TestConditionMapper_ConcurrentApply(t *testing.T) {
 	const numGoroutines = 10
 	type result struct {
 		conditions []api.ResourceCondition
+		err        error
 	}
 	results := make(chan result, numGoroutines)
 
@@ -1490,14 +1491,14 @@ func TestConditionMapper_ConcurrentApply(t *testing.T) {
 
 			// Collect result, don't assert in goroutine
 			conditions, err := mapper.Apply(context.Background(), input)
-			Expect(err).ToNot(HaveOccurred())
-			results <- result{conditions: conditions}
+			results <- result{conditions: conditions, err: err}
 		}(i)
 	}
 
 	// Wait for all goroutines and assert on main test goroutine
 	for i := 0; i < numGoroutines; i++ {
 		res := <-results
+		Expect(res.err).ToNot(HaveOccurred())
 		Expect(res.conditions).To(HaveLen(1))
 		Expect(res.conditions[0].Type).To(Equal("TestCondition"))
 	}
