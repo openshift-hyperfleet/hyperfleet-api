@@ -129,6 +129,11 @@ health:
 # - toJson(value): marshal to JSON string
 # - dig(target, "dot.path"): safe nested navigation
 #
+# Security: Adapter data fields matching sensitive patterns (password, secret, token,
+# auth, private, connection, cert, credential, etc.) are automatically masked with
+# "***REDACTED***" before CEL evaluation. This prevents credential leakage in public
+# condition messages/reasons. See pkg/util/mask_sensitive.go for the full pattern list.
+#
 # Field Length Constraints:
 # - type: 128 bytes (validation error if exceeded, prevents startup)
 # - reason: 256 bytes (truncated if exceeded)
