@@ -123,28 +123,10 @@ func (c *ReconciliationCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.durationDesc
 }
 
-// reconciliationQuery uses a CTE to find resources whose Reconciled condition
-// is False, then computes all three metrics (pending count, stuck count, max
-// stuck duration) in a single query — 1 round-trip instead of 3.
-//
-//nolint:lll // SQL readability — breaking these lines across Go string boundaries would harm clarity
-const reconciliationQuery = `
-WITH unreconciled AS (
-    SELECT LOWER(r.kind) AS resource_type,
-           CASE WHEN r.deleted_time IS NOT NULL THEN 'true' ELSE 'false' END AS is_delete,
-           rc.last_transition_time AS transition_time
-    FROM resources r
-    JOIN resource_conditions rc ON rc.resource_id = r.id
-    WHERE rc.type = 'Reconciled'
-      AND rc.status = 'False'
-)
-SELECT resource_type,
-       is_delete,
-       COUNT(*) AS pending,
-       COUNT(*) FILTER (WHERE transition_time < $1) AS stuck,
-       COALESCE(MAX(EXTRACT(EPOCH FROM (NOW() - transition_time))) FILTER (WHERE transition_time < $1), 0) AS max_duration
-FROM unreconciled
-GROUP BY resource_type, is_delete`
+// reconciliationQuery: with the resource_conditions table removed (POC sentinel-db),
+// reconciliation tracking has moved to the sentinel. This query returns no rows,
+// keeping the collector functional but emitting no metrics.
+const reconciliationQuery = `SELECT '' AS resource_type, '' AS is_delete, 0 AS pending, 0 AS stuck, 0.0 AS max_duration WHERE false`
 
 func (c *ReconciliationCollector) Collect(ch chan<- prometheus.Metric) {
 	if c == nil || c.db == nil {

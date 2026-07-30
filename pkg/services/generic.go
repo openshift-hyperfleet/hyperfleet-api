@@ -161,16 +161,9 @@ func (s *sqlGenericService) buildSearchValues(
 	}
 	tslTree := tslTreeWrapper.Node
 
-	// Extract condition queries (status.conditions.xxx) before field name mapping
-	tslTree, conditionExprs, serviceErr := db.ExtractConditionQueries(tslTree)
-	if serviceErr != nil {
-		return "", nil, serviceErr
-	}
-
 	// Extract label queries (labels.xxx) — backed by the resource_labels table,
 	// not a JSONB column, so they need an EXISTS subquery.
-	var labelExprs []squirrel.Sqlizer
-	tslTree, labelExprs, serviceErr = db.ExtractLabelQueries(tslTree)
+	tslTree, labelExprs, serviceErr := db.ExtractLabelQueries(tslTree)
 	if serviceErr != nil {
 		return "", nil, serviceErr
 	}
@@ -205,8 +198,8 @@ func (s *sqlGenericService) buildSearchValues(
 		return "", nil, errors.GeneralError("%s", err.Error())
 	}
 
-	// Combine the base SQL with extracted condition and label expressions
-	extractedExprs := append(append([]squirrel.Sqlizer{}, conditionExprs...), labelExprs...)
+	// Combine the base SQL with extracted label expressions
+	extractedExprs := append([]squirrel.Sqlizer{}, labelExprs...)
 	for _, expr := range extractedExprs {
 		exprSQL, exprValues, err := expr.ToSql()
 		if err != nil {

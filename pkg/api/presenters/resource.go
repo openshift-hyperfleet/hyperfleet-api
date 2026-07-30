@@ -69,7 +69,7 @@ func PresentResource(r *api.Resource) openapi.Resource {
 		UpdatedBy:   r.UpdatedBy,
 		DeletedTime: r.DeletedTime,
 		Status: openapi.ResourceStatus{
-			Conditions: presentResourceConditions(r.Conditions),
+			Conditions: []openapi.ResourceCondition{},
 		},
 	}
 
@@ -124,26 +124,6 @@ func presentResourceReferences(refs []api.ResourceReference) api.ReferenceMap {
 			objRef.Href = &href
 		}
 		result[ref.RefType] = append(result[ref.RefType], objRef)
-	}
-	return result
-}
-
-func presentResourceConditions(conditions []api.ResourceCondition) []openapi.ResourceCondition {
-	if len(conditions) == 0 {
-		return []openapi.ResourceCondition{}
-	}
-	result := make([]openapi.ResourceCondition, len(conditions))
-	for i, c := range conditions {
-		result[i] = openapi.ResourceCondition{
-			Type:               c.Type,
-			Status:             openapi.ResourceConditionStatus(c.Status),
-			Reason:             c.Reason,
-			Message:            c.Message,
-			ObservedGeneration: c.ObservedGeneration,
-			CreatedTime:        c.CreatedTime,
-			LastUpdatedTime:    c.LastUpdatedTime,
-			LastTransitionTime: c.LastTransitionTime,
-		}
 	}
 	return result
 }

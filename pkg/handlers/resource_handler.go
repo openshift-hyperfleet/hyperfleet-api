@@ -239,6 +239,27 @@ func (h *ResourceHandler) ForceDelete(w http.ResponseWriter, r *http.Request) {
 	handleForceDelete(w, r, cfg)
 }
 
+func (h *ResourceHandler) ListStatuses(w http.ResponseWriter, r *http.Request) {
+	cfg := &handlerConfig{
+		Action: func() (interface{}, *errors.ServiceError) {
+			ctx := r.Context()
+
+			listArgs, err := parseListParams(r.URL.Query())
+			if err != nil {
+				return nil, err
+			}
+
+			items, paging, err := h.service.ListWithStatuses(ctx, h.descriptor.Kind, listArgs)
+			if err != nil {
+				return nil, err
+			}
+
+			return presenters.PresentResourceWithStatusesList(items, paging)
+		},
+	}
+	handleList(w, r, cfg)
+}
+
 func childCreateRejection(descriptor registry.EntityDescriptor) *errors.ServiceError {
 	parent := registry.MustGet(descriptor.ParentKind)
 	svcErr := errors.Validation(

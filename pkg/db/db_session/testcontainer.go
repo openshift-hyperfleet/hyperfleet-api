@@ -196,9 +196,8 @@ func (f *Testcontainer) ResetDB() {
 	// Truncate all business tables in the correct order (respecting FK constraints)
 	// Using CASCADE to handle foreign key constraints automatically
 	tables := []string{
-		"adapter_statuses",    // Polymorphic table, no FK constraints
-		"resource_conditions", // Has FK to resources
-		"resource_labels",     // Has FK to resources
+		"adapter_statuses", // Polymorphic table, no FK constraints
+		"resource_labels",  // Has FK to resources
 		"resource_references", // Has FK to resources
 		"resources",           // Main entity table
 		"events",              // Independent table

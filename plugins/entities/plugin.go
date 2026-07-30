@@ -106,6 +106,7 @@ func registerResourceRoutes(
 ) {
 	prefix := server.APIV1BasePath + pathSuffix
 	apiV1Router.HandleFunc("GET "+prefix, h.List)
+	apiV1Router.HandleFunc("GET "+prefix+"/statuses", h.ListStatuses)
 	apiV1Router.HandleFunc("POST "+prefix, h.Create)
 	apiV1Router.HandleFunc("GET "+prefix+"/{id}", h.Get)
 	apiV1Router.HandleFunc("PATCH "+prefix+"/{id}", h.Patch)

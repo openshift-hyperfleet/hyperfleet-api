@@ -28,7 +28,6 @@ type Resource struct {
 	UpdatedBy  string              `json:"updated_by" gorm:"size:255;not null"`
 	Labels     []ResourceLabel     `json:"-" gorm:"foreignKey:ResourceID;references:ID"`
 	Spec       datatypes.JSON      `json:"spec" gorm:"type:jsonb;not null"`
-	Conditions []ResourceCondition `json:"-" gorm:"foreignKey:ResourceID;references:ID"`
 	References []ResourceReference `json:"-" gorm:"foreignKey:SourceID;references:ID"`
 	Generation int32               `json:"generation" gorm:"default:1;not null"`
 }

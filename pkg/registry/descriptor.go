@@ -34,8 +34,6 @@ type EntityDescriptor struct {
 	SpecSchemaName string `mapstructure:"spec_schema_name" json:"spec_schema_name,omitempty"`
 	// only meaningful when ParentKind != ""
 	OnParentDelete OnParentDeletePolicy `mapstructure:"on_parent_delete" json:"on_parent_delete,omitempty"`
-	// adapters that must finalize before hard-delete
-	RequiredAdapters []string `mapstructure:"required_adapters" json:"required_adapters,omitempty"`
 	// non-ownership associations to other entity types (HYPERFLEET-1156)
 	References []ReferenceDescriptor `mapstructure:"references" json:"references,omitempty"`
 	// panic at startup if SpecSchemaName missing from spec

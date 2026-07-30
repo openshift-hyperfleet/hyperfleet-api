@@ -2,12 +2,10 @@ package db
 
 import (
 	"fmt"
-	"math"
 	"reflect"
 	"regexp"
 	"slices"
 	"strings"
-	"time"
 
 	sq "github.com/Masterminds/squirrel"
 	"github.com/jinzhu/inflection"
@@ -91,33 +89,9 @@ var searchAllowedFields = map[string]bool{
 	"deleted_by":   true,
 	"generation":   true,
 	"href":         true,
-	"labels":       true,
-	"conditions":   true,
-	"owner_id":     true,
+	"labels":    true,
+	"owner_id":  true,
 	"owner_kind":   true,
-}
-
-// Condition type validation pattern: PascalCase condition types (e.g., Reconciled, Available, Progressing)
-var conditionTypePattern = regexp.MustCompile(`^[A-Z][a-zA-Z0-9]*$`)
-
-// Condition status validation: must be True, False, or Unknown
-var validConditionStatuses = map[string]bool{
-	"True":    true,
-	"False":   true,
-	"Unknown": true,
-}
-
-// conditionTimeSubfields are condition subfields that store timestamps and require TIMESTAMPTZ casting.
-// Note: created_time is intentionally excluded — it reflects when the condition was first created
-// and is not useful for Sentinel polling or staleness queries.
-var conditionTimeSubfields = map[string]bool{
-	"last_updated_time":    true,
-	"last_transition_time": true,
-}
-
-// conditionIntSubfields are condition subfields that store integers and require INTEGER casting
-var conditionIntSubfields = map[string]bool{
-	"observed_generation": true,
 }
 
 // comparisonOperators maps TSL operator constants to SQL operator strings
@@ -128,197 +102,6 @@ var comparisonOperators = map[tsl.Operator]string{
 	tsl.OpLE: "<=",
 	tsl.OpGT: ">",
 	tsl.OpGE: ">=",
-}
-
-// startsWithConditions checks if a field starts with status.conditions.
-func startsWithConditions(s string) bool {
-	return strings.HasPrefix(s, "status.conditions.")
-}
-
-// hasCondition returns true if node has a status.conditions.<Type> identifier on left hand side.
-func hasCondition(n *tsl.Node) bool {
-	if n.Left == nil || n.Left.Kind != tsl.KindIdentifier {
-		return false
-	}
-	leftStr, ok := n.Left.Value.(string)
-	if !ok || !startsWithConditions(leftStr) {
-		return false
-	}
-	return true
-}
-
-// conditionsNodeConverter handles condition queries in two forms:
-//
-// 3-part path (status query): status.conditions.<ConditionType>='<Status>'
-// 4-part path (subfield query): status.conditions.<ConditionType>.<Subfield> <op> '<Value>'
-func conditionsNodeConverter(n *tsl.Node) (interface{}, *errors.ServiceError) {
-	if n.Left == nil || n.Left.Kind != tsl.KindIdentifier {
-		return nil, errors.BadRequest("invalid condition query structure")
-	}
-
-	leftStr, ok := n.Left.Value.(string)
-	if !ok {
-		return nil, errors.BadRequest("expected string for left side of condition")
-	}
-
-	// v6 gives us the full dotted path: 3 or 4 parts
-	parts := strings.Split(leftStr, ".")
-	if len(parts) < 3 || len(parts) > 4 || parts[0] != "status" || parts[1] != "conditions" {
-		return nil, errors.BadRequest("invalid condition field path: %s", leftStr)
-	}
-
-	conditionType := parts[2]
-
-	if !conditionTypePattern.MatchString(conditionType) {
-		return nil, errors.BadRequest(
-			"condition type '%s' is invalid: must be PascalCase (e.g., Reconciled, Available)", conditionType,
-		)
-	}
-
-	// 4-part path: subfield query (e.g., status.conditions.Reconciled.last_updated_time)
-	if len(parts) == 4 {
-		return conditionSubfieldConverter(n, conditionType, parts[3])
-	}
-
-	// 3-part path: status query (e.g., status.conditions.Reconciled='True')
-	return conditionStatusConverter(n, conditionType)
-}
-
-// conditionStatusConverter handles 3-part condition status queries:
-// status.conditions.<ConditionType>='<Status>'
-func conditionStatusConverter(n *tsl.Node, conditionType string) (interface{}, *errors.ServiceError) {
-	if n.Right == nil || n.Right.Kind != tsl.KindStringLiteral {
-		return nil, errors.BadRequest("invalid condition query structure: missing right side")
-	}
-
-	rightStr, ok := n.Right.Value.(string)
-	if !ok {
-		return nil, errors.BadRequest("expected string for right side of condition")
-	}
-
-	if !validConditionStatuses[rightStr] {
-		return nil, errors.BadRequest(
-			"condition status '%s' is invalid: must be True, False, or Unknown", rightStr,
-		)
-	}
-
-	if n.Operator != tsl.OpEQ {
-		return nil, errors.BadRequest("only equality operator (=) is supported for condition status queries")
-	}
-
-	return sq.Expr(
-		"EXISTS (SELECT 1 FROM resource_conditions "+
-			"WHERE resource_conditions.resource_id = resources.id "+
-			"AND resource_conditions.type = ? AND resource_conditions.status = ?)",
-		conditionType, rightStr,
-	), nil
-}
-
-// conditionSubfieldConverter handles 4-part condition subfield queries:
-// status.conditions.<ConditionType>.<Subfield> <op> '<Value>'
-func conditionSubfieldConverter( //nolint:cyclop // linear branching on subfield type
-	n *tsl.Node, conditionType, subfield string,
-) (interface{}, *errors.ServiceError) {
-	sqlOp, ok := comparisonOperators[n.Operator]
-	if !ok {
-		return nil, errors.BadRequest(
-			"operator '%s' is not supported for condition subfield queries; use =, !=, <, <=, >, or >=", n.Operator,
-		)
-	}
-
-	if n.Right == nil {
-		return nil, errors.BadRequest("invalid condition query structure: missing right side")
-	}
-
-	if conditionTimeSubfields[subfield] {
-		var rightStr string
-		switch n.Right.Kind {
-		case tsl.KindStringLiteral:
-			s, ok := n.Right.Value.(string)
-			if !ok {
-				return nil, errors.BadRequest(
-					"expected string timestamp value for condition subfield '%s'", subfield,
-				)
-			}
-			rightStr = s
-		case tsl.KindTimestampLiteral:
-			// v6 parses RFC3339 strings as time.Time — convert back for our SQL binding
-			t, ok := n.Right.Value.(time.Time)
-			if !ok {
-				return nil, errors.BadRequest(
-					"expected timestamp value for condition subfield '%s'", subfield,
-				)
-			}
-			rightStr = t.Format(time.RFC3339Nano)
-		default:
-			return nil, errors.BadRequest(
-				"expected string timestamp value for condition subfield '%s'", subfield,
-			)
-		}
-		if _, parseErr := time.Parse(time.RFC3339, rightStr); parseErr != nil {
-			return nil, errors.BadRequest(
-				"invalid timestamp for condition subfield '%s': expected RFC3339 format (e.g., 2026-01-01T00:00:00Z)",
-				subfield,
-			)
-		}
-		query := fmt.Sprintf(
-			"(SELECT rc.%s FROM resource_conditions rc "+
-				"WHERE rc.resource_id = resources.id AND rc.type = ?) %s ?::timestamptz",
-			subfield, sqlOp,
-		)
-		return sq.Expr(query, conditionType, rightStr), nil
-	}
-
-	if conditionIntSubfields[subfield] {
-		if n.Right.Kind != tsl.KindNumericLiteral {
-			return nil, errors.BadRequest(
-				"expected numeric value for condition subfield '%s'", subfield,
-			)
-		}
-		rightVal, numOk := n.Right.Value.(float64)
-		if !numOk {
-			return nil, errors.BadRequest(
-				"expected numeric value for condition subfield '%s'", subfield,
-			)
-		}
-		if rightVal != math.Trunc(rightVal) {
-			return nil, errors.BadRequest(
-				"expected integer value for condition subfield '%s', got %v", subfield, rightVal,
-			)
-		}
-		if rightVal < math.MinInt32 || rightVal > math.MaxInt32 {
-			return nil, errors.BadRequest(
-				"value %v is out of 32-bit integer range for condition subfield '%s'",
-				rightVal, subfield,
-			)
-		}
-		query := fmt.Sprintf(
-			"(SELECT rc.%s FROM resource_conditions rc "+
-				"WHERE rc.resource_id = resources.id AND rc.type = ?) %s ?",
-			subfield, sqlOp,
-		)
-		return sq.Expr(query, conditionType, int(rightVal)), nil
-	}
-
-	return nil, errors.BadRequest(
-		"condition subfield '%s' is not supported; use last_updated_time, last_transition_time, or observed_generation",
-		subfield,
-	)
-}
-
-// ExtractConditionQueries walks the TSL tree and extracts condition queries,
-// returning the modified tree (with condition nodes replaced) and the extracted conditions.
-func ExtractConditionQueries(n *tsl.Node) (*tsl.Node, []sq.Sqlizer, *errors.ServiceError) {
-	var conditions []sq.Sqlizer
-	modifiedTree, err := extractMatchingQueries(
-		n, hasCondition, conditionsNodeConverter,
-		"NOT operator is not supported with condition queries; "+
-			"use the inverse condition instead (e.g., Reconciled='False')",
-		"OR operator is not supported with condition queries (status.conditions.*); "+
-			"use separate requests or combine conditions with AND",
-		&conditions,
-	)
-	return modifiedTree, conditions, err
 }
 
 // subtreeHasMatch returns true if any node in the subtree satisfies predicate.

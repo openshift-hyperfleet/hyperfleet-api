@@ -820,7 +820,6 @@ func loadDefaultTestEntities() {
 			NameMinLen:        3,
 			NameMaxLen:        53,
 			RequireSpecSchema: true,
-			RequiredAdapters:  []string{"validation", "dns", "pullsecret", "hypershift"},
 		},
 		{
 			Kind:              "NodePool",
@@ -831,7 +830,6 @@ func loadDefaultTestEntities() {
 			NameMinLen:        3,
 			NameMaxLen:        15,
 			RequireSpecSchema: true,
-			RequiredAdapters:  []string{"validation", "hypershift"},
 		},
 		{
 			Kind:           "Channel",

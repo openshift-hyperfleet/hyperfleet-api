@@ -109,7 +109,6 @@ entities:
   - kind: Cluster
     plural: clusters
     spec_schema_name: ClusterSpec
-    required_adapters: [validation, dns, pullsecret, hypershift]
 
     name_min_len: 3
     name_max_len: 53
@@ -120,7 +119,6 @@ entities:
     parent_kind: Cluster
     on_parent_delete: cascade
     spec_schema_name: NodePoolSpec
-    required_adapters: [validation, hypershift]
 
     name_min_len: 3
     name_max_len: 15
