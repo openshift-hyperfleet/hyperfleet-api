@@ -25,24 +25,6 @@ const (
 	conditionStatusField    = "status"
 )
 
-var searchAllowedFields = map[string]bool{
-	"id":           true,
-	"name":         true,
-	"kind":         true,
-	"created_time": true,
-	"updated_time": true,
-	"deleted_time": true,
-	"created_by":   true,
-	"updated_by":   true,
-	"deleted_by":   true,
-	"generation":   true,
-	"href":         true,
-	"labels":       true,
-	"conditions":   true,
-	"owner_id":     true,
-	"owner_kind":   true,
-}
-
 // jsonbKeyPattern guards keys interpolated into JSONB paths (spec->>'%s', properties->>'%s').
 // Must be numbers, lowercase letters, or underscores
 var jsonbKeyPattern = regexp.MustCompile(`^[a-z0-9_]+$`)
@@ -275,8 +257,18 @@ func resolveSpecColumn(name string, _ *walkContext) (string, []any, *errors.Serv
 func resolveField(name string, ctx *walkContext) (string, []any, *errors.ServiceError) {
 	trimmedName := strings.TrimSpace(name)
 	fieldParts := strings.Split(trimmedName, ".")
-	if len(fieldParts) <= 2 && searchAllowedFields[fieldParts[0]] {
+
+	if len(fieldParts) == 1 {
+		if validationErr := validateJSONBKey(fieldParts[0], "field"); validationErr != nil {
+			return "", nil, errors.BadRequest("%s is not a valid field name", name)
+		}
 		return fmt.Sprintf("%s.%s", ctx.cfg.TableName, trimmedName), nil, nil
+	}
+
+	for _, part := range fieldParts {
+		if validationErr := validateJSONBKey(part, "field"); validationErr != nil {
+			return "", nil, errors.BadRequest("%s is not a valid field name", name)
+		}
 	}
 
 	if ctx.cfg.ResolveRelated != nil {

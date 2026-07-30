@@ -593,6 +593,30 @@ func TestTSLToSQL_FieldValidation(t *testing.T) {
 	})
 }
 
+func TestResolveField_PlainField(t *testing.T) {
+	tests := []struct {
+		name      string
+		query     string
+		expectSQL string
+	}{
+		{name: "id", query: "id = 'abc'", expectSQL: "resources.id = ?"},
+		{name: "created_time", query: "created_time > '2020-01-01T00:00:00Z'", expectSQL: "resources.created_time > ?"},
+		{name: "generation", query: "generation = 1", expectSQL: "resources.generation = ?"},
+		{name: "underscore field", query: "owner_id = 'x'", expectSQL: "resources.owner_id = ?"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			RegisterTestingT(t)
+			tree, err := tsl.ParseTSL(tt.query)
+			Expect(err).ToNot(HaveOccurred())
+			sql, _, svcErr := TSLToSQL(tree, WalkConfig{TableName: "resources"})
+			Expect(svcErr).To(BeNil())
+			Expect(sql).To(Equal(tt.expectSQL))
+		})
+	}
+}
+
 func TestTSLToSQL_ResolveRelated(t *testing.T) {
 	t.Run("related field resolved via callback", func(t *testing.T) {
 		RegisterTestingT(t)
@@ -617,6 +641,26 @@ func TestTSLToSQL_ResolveRelated(t *testing.T) {
 
 		_, _, svcErr := TSLToSQL(tree, WalkConfig{TableName: "resources"})
 		Expect(svcErr).ToNot(BeNil())
+	})
+
+	t.Run("uppercase segment in related path rejected before ResolveRelated", func(t *testing.T) {
+		RegisterTestingT(t)
+		tree, err := tsl.ParseTSL("creator.UserName = 'alice'")
+		Expect(err).ToNot(HaveOccurred())
+
+		called := false
+		_, _, svcErr := TSLToSQL(tree, WalkConfig{
+			TableName: "resources",
+			ResolveRelated: func(name string) (string, error) {
+				called = true
+				return "users.username", nil
+			},
+		})
+		if svcErr == nil {
+			t.Fatal("expected a service error but got nil")
+		}
+		Expect(called).To(BeFalse())
+		Expect(svcErr.Error()).To(ContainSubstring("is not a valid field name"))
 	})
 }
 

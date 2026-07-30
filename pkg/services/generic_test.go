@@ -21,10 +21,6 @@ func TestSQLTranslation(t *testing.T) {
 			"search": "= = =",
 			"error":  errors.CodeBadRequest + ": Failed to parse search query: = = =",
 		},
-		{
-			"search": "properties.owner = 'team_a'",
-			"error":  errors.CodeBadRequest + ": properties.owner is not a valid field name",
-		},
 	}
 	for _, test := range errorTests {
 		search := test["search"].(string)

@@ -1070,3 +1070,25 @@ func TestSearchNodePoolConditionSubfieldLastUpdatedTime(t *testing.T) {
 	}
 	Expect(foundStale).To(BeTrue(), "Expected to find the stale node pool")
 }
+
+// TestSearchNonexistentField verifies that searching on a nonexistent column returns a 400
+func TestSearchNonexistentField(t *testing.T) {
+	RegisterTestingT(t)
+	h, client := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+
+	search := openapi.SearchParams("nonexistent_column = 'foo'")
+	params := &openapi.GetClustersParams{
+		Search: &search,
+	}
+	resp, err := client.GetClustersWithResponse(ctx, params, test.WithAuthToken(ctx))
+
+	Expect(err).NotTo(HaveOccurred())
+	Expect(resp.StatusCode()).To(Equal(http.StatusBadRequest))
+	body := string(resp.Body)
+	Expect(body).NotTo(ContainSubstring("pq:"))
+	Expect(body).NotTo(ContainSubstring("SQLSTATE"))
+	Expect(body).To(ContainSubstring("HYPERFLEET-VAL-005"))
+}
