@@ -69,32 +69,8 @@ func getField(name string) (field string, err *errors.ServiceError) {
 		return
 	}
 
-	baseName := fieldParts[0]
-	if !searchAllowedFields[baseName] {
-		err = errors.BadRequest("%s is not a valid field name", name)
-		return
-	}
-
 	field = trimmedName
 	return
-}
-
-var searchAllowedFields = map[string]bool{
-	"id":           true,
-	"name":         true,
-	"kind":         true,
-	"created_time": true,
-	"updated_time": true,
-	"deleted_time": true,
-	"created_by":   true,
-	"updated_by":   true,
-	"deleted_by":   true,
-	"generation":   true,
-	"href":         true,
-	"labels":       true,
-	"conditions":   true,
-	"owner_id":     true,
-	"owner_kind":   true,
 }
 
 // Condition type validation pattern: PascalCase condition types (e.g., Reconciled, Available, Progressing)
@@ -751,27 +727,11 @@ func IdentWalk(n *tsl.Node, check func(string) (string, error)) (*tsl.Node, erro
 	}
 }
 
-// orderAllowedFields defines the whitelist of fields that are allowed to be ordered.
-// This prevents SQL injection and restricts invalid order queries.
-var orderAllowedFields = map[string]bool{
-	"id":           true,
-	"name":         true,
-	"created_time": true,
-	"updated_time": true,
-	"deleted_time": true,
-	"kind":         true,
-	"created_by":   true,
-	"updated_by":   true,
-	"deleted_by":   true,
-	"generation":   true,
-	"href":         true,
-}
-
 // orderPattern matches valid order syntax: field name (letters, digits, underscore) followed by optional asc/desc.
 // This regex rejects SQL injection attempts (semicolons, parentheses, dashes, comments, etc).
 var orderPattern = regexp.MustCompile(`^[a-z_][a-z_]*(\s+(asc|desc))?$`)
 
-// ArgsToOrder validates and cleans order arguments against the allowed fields whitelist.
+// ArgsToOrder validates and cleans order arguments.
 // Returns a cleaned list of order clauses in the format ["field direction", ...]
 // Empty or whitespace-only strings are silently skipped.
 func ArgsToOrder(args []string) (cleanedOrderList []string, err *errors.ServiceError) {
@@ -807,11 +767,6 @@ func ArgsToOrder(args []string) (cleanedOrderList []string, err *errors.ServiceE
 			direction = "asc"
 		default:
 			return nil, errors.BadRequest("invalid order format '%s': expected 'field' or 'field asc|desc'", val)
-		}
-
-		// Validate field against orderAllowedFields
-		if !orderAllowedFields[field] {
-			return nil, errors.BadRequest("field '%s' is not allowed for ordering", field)
 		}
 
 		cleanedValue := fmt.Sprintf("%s %s", field, direction)

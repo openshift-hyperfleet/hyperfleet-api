@@ -1031,18 +1031,6 @@ func TestArgsToOrder(t *testing.T) {
 			expected: []string{"name asc", "created_time desc"},
 		},
 		{
-			name:          "mixed valid and invalid field",
-			input:         []string{"created_time desc", "name", "wrong_field"},
-			expectError:   true,
-			errorContains: "not allowed for ordering",
-		},
-		{
-			name:          "field not in whitelist",
-			input:         []string{"custom_field asc"},
-			expectError:   true,
-			errorContains: "not allowed for ordering",
-		},
-		{
 			name:     "deleted_time field",
 			input:    []string{"deleted_time desc"},
 			expected: []string{"deleted_time desc"},

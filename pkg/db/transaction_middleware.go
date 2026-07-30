@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/lib/pq"
+
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/response"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
@@ -72,6 +74,13 @@ func TransactionMiddleware(next http.Handler, connection SessionFactory, request
 			next.ServeHTTP(w, r)
 		}
 	})
+}
+
+// IsUndefinedColumnError reports whether err is "undefined_column" error,
+// this occurs when a query references a column that does not exist in the schema
+func IsUndefinedColumnError(err error) bool {
+	var pqErr *pq.Error
+	return stderrors.As(err, &pqErr) && pqErr.Code == "42703"
 }
 
 // IsDBConnectionError indicates whether err is an infrastructure failure

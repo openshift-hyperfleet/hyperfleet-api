@@ -150,9 +150,9 @@ func TestOrderFieldValidation(t *testing.T) {
 		expectedError string
 	}{
 		{
-			name:          "InvalidFieldName",
+			name:          "NonexistentField",
 			order:         "nonexistent_field asc",
-			expectedError: "not allowed for ordering",
+			expectedError: "invalid field in search or order query",
 		},
 		{
 			name:          "InvalidDirection",
@@ -203,7 +203,7 @@ func TestOrderFieldValidation(t *testing.T) {
 	}
 }
 
-// TestOrderAllowedFields verifies that all whitelisted fields work correctly
+// TestOrderAllowedFields verifies that standard fields work correctly for ordering
 func TestOrderAllowedFields(t *testing.T) {
 	RegisterTestingT(t)
 	h, client := test.RegisterIntegration(t)

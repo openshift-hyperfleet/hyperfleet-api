@@ -278,6 +278,11 @@ func (s *sqlGenericService) loadList(listCtx *listContext, d dao.GenericDao) *er
 			listCtx.pagingMeta.Size = 0
 		case db.IsDBConnectionError(err):
 			return errors.ServiceUnavailable("Database connection unavailable")
+		case db.IsUndefinedColumnError(err):
+			if listCtx.args.Search != "" || len(listCtx.args.Order) > 0 {
+				return errors.BadRequest("invalid field in search or order query")
+			}
+			return errors.GeneralError("Unable to list resources: %s", err)
 		default:
 			return errors.GeneralError("Unable to list resources: %s", err)
 		}
