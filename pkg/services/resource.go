@@ -691,6 +691,7 @@ func (s *sqlResourceService) recomputeAndSaveResourceConditions(
 		if err != nil {
 			// Mark transaction for rollback - ensures adapter status update is retried
 			// in 10s instead of 30min delay that would occur with partial commit
+			db.MarkForRollback(ctx, fmt.Errorf("condition mapping failed for %s: %w", resource.Kind, err))
 			return errors.GeneralError("Condition mapping failed: %s", err)
 		}
 		newConditions = append(newConditions, mappedConditions...)
