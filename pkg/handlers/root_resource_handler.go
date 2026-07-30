@@ -32,259 +32,283 @@ func NewRootResourceHandler(
 }
 
 func (h *RootResourceHandler) List(w http.ResponseWriter, r *http.Request) {
-	cfg := &handlerConfig{
-		Action: func() (interface{}, *errors.ServiceError) {
-			listArgs, err := parseListParams(r.URL.Query())
-			if err != nil {
-				return nil, err
-			}
-
-			if kind := r.URL.Query().Get("kind"); kind != "" {
-				descriptor, ok := registry.Get(kind)
-				if !ok {
-					return nil, errors.Validation("Unknown entity kind: %s", kind)
-				}
-				kindFilter := fmt.Sprintf("kind = '%s'", descriptor.Kind)
-				if listArgs.Search == "" {
-					listArgs.Search = kindFilter
-				} else {
-					listArgs.Search = "(" + listArgs.Search + ") AND " + kindFilter
-				}
-			}
-
-			resources, paging, err := h.service.ListAll(r.Context(), listArgs)
-			if err != nil {
-				return nil, err
-			}
-			result := presenters.PresentResourceList(resources, paging)
-			if listArgs.Fields != nil {
-				return presenters.SliceFilter(listArgs.Fields, result)
-			}
-			return result, nil
-		},
+	listArgs, svcErr := parseListParams(r.URL.Query())
+	if svcErr != nil {
+		handleError(r, w, svcErr)
+		return
 	}
-	handleList(w, r, cfg)
+
+	if kind := r.URL.Query().Get("kind"); kind != "" {
+		descriptor, ok := registry.Get(kind)
+		if !ok {
+			handleError(r, w, errors.Validation("Unknown entity kind: %s", kind))
+			return
+		}
+		kindFilter := fmt.Sprintf("kind = '%s'", descriptor.Kind)
+		if listArgs.Search == "" {
+			listArgs.Search = kindFilter
+		} else {
+			listArgs.Search = "(" + listArgs.Search + ") AND " + kindFilter
+		}
+	}
+
+	resources, paging, svcErr := h.service.ListAll(r.Context(), listArgs)
+	if svcErr != nil {
+		handleError(r, w, svcErr)
+		return
+	}
+
+	presented := presenters.PresentResourceList(resources, paging)
+	if listArgs.Fields != nil {
+		filtered, svcErr := presenters.SliceFilter(listArgs.Fields, presented)
+		if svcErr != nil {
+			handleError(r, w, svcErr)
+			return
+		}
+		writeJSONResponse(w, r, http.StatusOK, filtered)
+		return
+	}
+	writeJSONResponse(w, r, http.StatusOK, presented)
 }
 
 func (h *RootResourceHandler) Get(w http.ResponseWriter, r *http.Request) {
-	cfg := &handlerConfig{
-		Action: func() (interface{}, *errors.ServiceError) {
-			id := r.PathValue("id")
-			resource, err := h.service.GetByID(r.Context(), id)
-			if err != nil {
-				return nil, err
-			}
-			presented := presenters.PresentResource(resource)
-			return applyFieldFilter(r, presented)
-		},
+	id := r.PathValue("id")
+	resource, svcErr := h.service.GetByID(r.Context(), id)
+	if svcErr != nil {
+		handleError(r, w, svcErr)
+		return
 	}
-	handleGet(w, r, cfg)
+
+	result, svcErr := applyFieldFilter(r, presenters.PresentResource(resource))
+	if svcErr != nil {
+		handleError(r, w, svcErr)
+		return
+	}
+	writeJSONResponse(w, r, http.StatusOK, result)
 }
 
 func (h *RootResourceHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var req openapi.ResourceCreateRequest
-	cfg := &handlerConfig{
-		MarshalInto: &req,
-		Validate: []validate{
-			validateSpec(&req, "Spec", "spec"),
-			validateLabels(&req, "Labels"),
-			func() *errors.ServiceError {
-				descriptor, ok := registry.Get(req.Kind)
-				if !ok {
-					return errors.Validation("Unknown entity kind: %s", req.Kind)
-				}
-				if descriptor.ParentKind != "" {
-					return childCreateRejection(descriptor)
-				}
-				return validateName(&req, "Name", "name", descriptor.NameMinLen, descriptor.NameMaxLen)()
-			},
-		},
-		Action: func() (interface{}, *errors.ServiceError) {
-			descriptor, _ := registry.Get(req.Kind)
-
-			resource, convErr := presenters.ConvertResource(&req)
-			if convErr != nil {
-				return nil, errors.GeneralError("failed to convert resource: %v", convErr)
-			}
-			refs := extractReferences(req.References)
-			resource, svcErr := h.service.Create(r.Context(), descriptor.Kind, resource, refs)
-			if svcErr != nil {
-				return nil, svcErr
-			}
-			return presenters.PresentResource(resource), nil
-		},
+	validateFuncs := []validate{
+		validateSpec(&req, "Spec", "spec"),
+		validateLabels(&req, "Labels"),
 	}
-	handle(w, r, cfg, http.StatusCreated)
+	if svcErr := decodeAndValidate(r, &req, validateFuncs); svcErr != nil {
+		handleError(r, w, svcErr)
+		return
+	}
+
+	descriptor, ok := registry.Get(req.Kind)
+	if !ok {
+		handleError(r, w, errors.Validation("Unknown entity kind: %s", req.Kind))
+		return
+	}
+
+	if descriptor.ParentKind != "" {
+		handleError(r, w, childCreateRejection(descriptor))
+		return
+	}
+	if svcErr := validateName(&req, "Name", "name", descriptor.NameMinLen, descriptor.NameMaxLen)(); svcErr != nil {
+		handleError(r, w, svcErr)
+		return
+	}
+
+	resource, convErr := presenters.ConvertResource(&req)
+	if convErr != nil {
+		handleError(r, w, errors.GeneralError("failed to convert resource: %v", convErr))
+		return
+	}
+
+	refs := extractReferences(req.References)
+	resource, svcErr := h.service.Create(r.Context(), descriptor.Kind, resource, refs)
+	if svcErr != nil {
+		handleError(r, w, svcErr)
+		return
+	}
+
+	writeJSONResponse(w, r, http.StatusCreated, presenters.PresentResource(resource))
 }
 
 func (h *RootResourceHandler) Patch(w http.ResponseWriter, r *http.Request) {
 	var req openapi.ResourcePatchRequest
-	cfg := &handlerConfig{
-		MarshalInto:     &req,
-		StrictUnmarshal: true,
-		Validate: []validate{
-			validatePatchRequest(&req),
-			validateLabels(&req, "Labels"),
-		},
-		Action: func() (interface{}, *errors.ServiceError) {
-			id := r.PathValue("id")
-			resource, err := h.service.GetByID(r.Context(), id)
-			if err != nil {
-				return nil, err
-			}
-
-			if req.Spec != nil && h.validator != nil {
-				descriptor, ok := registry.Get(resource.Kind)
-				if !ok {
-					return nil, errors.GeneralError("Resource kind %q is no longer registered", resource.Kind)
-				}
-				if validationErr := h.validator.Validate(descriptor.Plural, *req.Spec); validationErr != nil {
-					if svcErr, ok := validationErr.(*errors.ServiceError); ok {
-						return nil, svcErr
-					}
-					return nil, errors.Validation("Spec validation failed: %v", validationErr)
-				}
-			}
-
-			patch := convertResourcePatch(&req)
-			resource, err = h.service.Patch(r.Context(), resource.Kind, id, patch)
-			if err != nil {
-				return nil, err
-			}
-			return presenters.PresentResource(resource), nil
-		},
+	validateFuncs := []validate{
+		validatePatchRequest(&req),
+		validateLabels(&req, "Labels"),
 	}
-	handle(w, r, cfg, http.StatusOK)
+	if svcErr := decodeAndValidate(r, &req, validateFuncs, "strict"); svcErr != nil {
+		handleError(r, w, svcErr)
+		return
+	}
+
+	id := r.PathValue("id")
+	ctx := r.Context()
+	resource, svcErr := h.service.GetByID(ctx, id)
+	if svcErr != nil {
+		handleError(r, w, svcErr)
+		return
+	}
+
+	if req.Spec != nil && h.validator != nil {
+		descriptor, ok := registry.Get(resource.Kind)
+		if !ok {
+			handleError(r, w, errors.GeneralError("Resource kind %q is no longer registered", resource.Kind))
+			return
+		}
+		if validationErr := h.validator.Validate(descriptor.Plural, *req.Spec); validationErr != nil {
+			specErr, ok := validationErr.(*errors.ServiceError)
+			if !ok {
+				specErr = errors.Validation("Spec validation failed: %v", validationErr)
+			}
+			handleError(r, w, specErr)
+			return
+		}
+	}
+
+	patch := convertResourcePatch(&req)
+	resource, svcErr = h.service.Patch(ctx, resource.Kind, id, patch)
+	if svcErr != nil {
+		handleError(r, w, svcErr)
+		return
+	}
+
+	writeJSONResponse(w, r, http.StatusOK, presenters.PresentResource(resource))
 }
 
 func (h *RootResourceHandler) ForceDelete(w http.ResponseWriter, r *http.Request) {
 	var req openapi.ForceDeleteRequest
-	cfg := &handlerConfig{
-		MarshalInto: &req,
-		Validate: []validate{
-			validateNotEmpty(&req, "Reason", "reason"),
-			validateMaxLength(&req, "Reason", "reason", maxReasonLength),
-		},
-		Action: func() (interface{}, *errors.ServiceError) {
-			id := r.PathValue("id")
-			resource, err := h.service.GetByID(r.Context(), id)
-			if err != nil {
-				return nil, err
-			}
-			if err := h.service.ForceDelete(r.Context(), resource.Kind, id, req.Reason); err != nil {
-				return nil, err
-			}
-			return nil, nil
-		},
+	validateFuncs := []validate{
+		validateNotEmpty(&req, "Reason", "reason"),
+		validateMaxLength(&req, "Reason", "reason", maxReasonLength),
 	}
-	handleForceDelete(w, r, cfg)
+	if svcErr := decodeAndValidate(r, &req, validateFuncs); svcErr != nil {
+		handleError(r, w, svcErr)
+		return
+	}
+
+	id := r.PathValue("id")
+	ctx := r.Context()
+	resource, svcErr := h.service.GetByID(ctx, id)
+	if svcErr != nil {
+		handleError(r, w, svcErr)
+		return
+	}
+
+	if svcErr := h.service.ForceDelete(ctx, resource.Kind, id, req.Reason); svcErr != nil {
+		handleError(r, w, svcErr)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *RootResourceHandler) Delete(w http.ResponseWriter, r *http.Request) {
-	cfg := &handlerConfig{
-		Action: func() (interface{}, *errors.ServiceError) {
-			id := r.PathValue("id")
-			resource, err := h.service.GetByID(r.Context(), id)
-			if err != nil {
-				return nil, err
-			}
-			resource, svcErr := h.service.Delete(r.Context(), resource.Kind, id)
-			if svcErr != nil {
-				return nil, svcErr
-			}
-			return presenters.PresentResource(resource), nil
-		},
+	id := r.PathValue("id")
+	ctx := r.Context()
+	resource, svcErr := h.service.GetByID(ctx, id)
+	if svcErr != nil {
+		handleError(r, w, svcErr)
+		return
 	}
-	handleSoftDelete(w, r, cfg)
+
+	resource, svcErr = h.service.Delete(ctx, resource.Kind, id)
+	if svcErr != nil {
+		handleError(r, w, svcErr)
+		return
+	}
+
+	writeJSONResponse(w, r, http.StatusAccepted, presenters.PresentResource(resource))
 }
 
 // ListStatuses returns adapter statuses for a resource resolved by ID.
 func (h *RootResourceHandler) ListStatuses(w http.ResponseWriter, r *http.Request) {
-	cfg := &handlerConfig{
-		Action: func() (interface{}, *errors.ServiceError) {
-			ctx := r.Context()
-			id := r.PathValue("id")
-			listArgs, err := parseListParams(r.URL.Query())
-			if err != nil {
-				return nil, err
-			}
-
-			resource, err := h.service.GetByID(ctx, id)
-			if err != nil {
-				return nil, err
-			}
-
-			statuses, total, svcErr := h.adapterStatusService.FindByResourcePaginated(
-				ctx, resource.Kind, id, listArgs,
-			)
-			if svcErr != nil {
-				return nil, svcErr
-			}
-
-			items := make([]openapi.AdapterStatus, 0, len(statuses))
-			for _, as := range statuses {
-				presented, presErr := presenters.PresentAdapterStatus(as)
-				if presErr != nil {
-					logger.WithError(ctx, presErr).Error("Failed to present adapter status")
-					return nil, errors.GeneralError("Failed to present adapter status")
-				}
-				items = append(items, presented)
-			}
-
-			return openapi.AdapterStatusList{
-				Items: items,
-				Page:  int32(listArgs.Page),
-				Size:  int32(len(items)),
-				Total: int32(total),
-			}, nil
-		},
+	ctx := r.Context()
+	id := r.PathValue("id")
+	listArgs, svcErr := parseListParams(r.URL.Query())
+	if svcErr != nil {
+		handleError(r, w, svcErr)
+		return
 	}
-	handleList(w, r, cfg)
+
+	resource, svcErr := h.service.GetByID(ctx, id)
+	if svcErr != nil {
+		handleError(r, w, svcErr)
+		return
+	}
+
+	statuses, total, svcErr := h.adapterStatusService.FindByResourcePaginated(
+		ctx, resource.Kind, id, listArgs,
+	)
+	if svcErr != nil {
+		handleError(r, w, svcErr)
+		return
+	}
+
+	items := make([]openapi.AdapterStatus, 0, len(statuses))
+	for _, as := range statuses {
+		presented, presErr := presenters.PresentAdapterStatus(as)
+		if presErr != nil {
+			logger.WithError(ctx, presErr).Error("Failed to present adapter status")
+			handleError(r, w, errors.GeneralError("Failed to present adapter status"))
+			return
+		}
+		items = append(items, presented)
+	}
+
+	result := openapi.AdapterStatusList{
+		Items: items,
+		Page:  int32(listArgs.Page),
+		Size:  int32(len(items)),
+		Total: int32(total),
+	}
+
+	writeJSONResponse(w, r, http.StatusOK, result)
 }
 
 // CreateStatus creates or updates an adapter status for a resource resolved by ID.
 func (h *RootResourceHandler) CreateStatus(w http.ResponseWriter, r *http.Request) {
 	var req openapi.AdapterStatusCreateRequest
-
-	cfg := &handlerConfig{
-		MarshalInto: &req,
-		Validate: []validate{
-			validateNotEmpty(&req, "Adapter", "adapter"),
-			validateObservedGeneration(&req),
-			validateConditions(&req, "Conditions"),
-			validateObservedTimeRange(&req.ObservedTime),
-		},
-		Action: func() (interface{}, *errors.ServiceError) {
-			ctx := r.Context()
-			id := r.PathValue("id")
-
-			resource, err := h.service.GetByID(ctx, id)
-			if err != nil {
-				return nil, err
-			}
-
-			newStatus, convErr := presenters.ConvertAdapterStatus(resource.Kind, id, &req)
-			if convErr != nil {
-				logger.WithError(ctx, convErr).Error("Failed to convert adapter status")
-				return nil, errors.GeneralError("Failed to convert adapter status")
-			}
-
-			adapterStatus, svcErr := h.service.ProcessAdapterStatus(ctx, resource.Kind, id, newStatus)
-			if svcErr != nil {
-				return nil, svcErr
-			}
-
-			if adapterStatus == nil {
-				return nil, nil
-			}
-
-			status, presErr := presenters.PresentAdapterStatus(adapterStatus)
-			if presErr != nil {
-				logger.WithError(ctx, presErr).Error("Failed to present adapter status")
-				return nil, errors.GeneralError("Failed to present adapter status")
-			}
-			return &status, nil
-		},
+	validateFuncs := []validate{
+		validateNotEmpty(&req, "Adapter", "adapter"),
+		validateObservedGeneration(&req),
+		validateConditions(&req, "Conditions"),
+		validateObservedTimeRange(&req.ObservedTime),
 	}
-	handleCreateWithNoContent(w, r, cfg)
+	if svcErr := decodeAndValidate(r, &req, validateFuncs); svcErr != nil {
+		handleError(r, w, svcErr)
+		return
+	}
+
+	ctx := r.Context()
+	id := r.PathValue("id")
+	resource, svcErr := h.service.GetByID(ctx, id)
+	if svcErr != nil {
+		handleError(r, w, svcErr)
+		return
+	}
+
+	newStatus, convErr := presenters.ConvertAdapterStatus(resource.Kind, id, &req)
+	if convErr != nil {
+		logger.WithError(ctx, convErr).Error("Failed to convert adapter status")
+		handleError(r, w, errors.GeneralError("Failed to convert adapter status"))
+		return
+	}
+
+	adapterStatus, svcErr := h.service.ProcessAdapterStatus(ctx, resource.Kind, id, newStatus)
+	if svcErr != nil {
+		handleError(r, w, svcErr)
+		return
+	}
+
+	if adapterStatus == nil {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	status, presErr := presenters.PresentAdapterStatus(adapterStatus)
+	if presErr != nil {
+		logger.WithError(ctx, presErr).Error("Failed to present adapter status")
+		handleError(r, w, errors.GeneralError("Failed to present adapter status"))
+		return
+	}
+	writeJSONResponse(w, r, http.StatusCreated, status)
 }
