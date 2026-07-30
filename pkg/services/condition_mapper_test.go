@@ -1573,42 +1573,116 @@ func TestConditionMapper_MessageTruncationThroughPipeline(t *testing.T) {
 }
 
 func TestConditionMapper_OutputExpressionRuntimeError(t *testing.T) {
-	RegisterTestingT(t)
+	t.Run("status expression runtime error returns error", func(t *testing.T) {
+		RegisterTestingT(t)
 
-	// CEL rule where the status expression causes a runtime error (out-of-bounds index)
-	rules := []registry.ConditionMappingRule{
-		{Type: "TestCondition",
-			When: registry.MappingExpression{
-				Expression: "true",
+		rules := []registry.ConditionMappingRule{
+			{Type: "TestCondition",
+				When: registry.MappingExpression{
+					Expression: "true",
+				},
+				Output: registry.MappingOutput{
+					Status: registry.MappingExpression{
+						Expression: `statuses[99].adapter`, // out of bounds → runtime error
+					},
+					Reason: registry.MappingExpression{
+						Expression: `"reason"`,
+					},
+					Message: registry.MappingExpression{
+						Expression: `"message"`,
+					},
+				},
 			},
-			Output: registry.MappingOutput{
-				Status: registry.MappingExpression{
-					Expression: `statuses[99].adapter`, // out of bounds → runtime error
+		}
+
+		mapper, err := NewConditionMapper("Cluster", rules)
+		Expect(err).NotTo(HaveOccurred())
+
+		input := ApplyInput{
+			AdapterStatuses: api.AdapterStatusList{},
+			Resource:        map[string]interface{}{},
+			RefTime:         time.Now(),
+		}
+
+		result, err := mapper.Apply(context.Background(), input)
+		Expect(err).To(HaveOccurred(), "status runtime error should return error")
+		Expect(err.Error()).To(ContainSubstring("status expression evaluation failed"))
+		Expect(result).To(BeNil())
+	})
+
+	t.Run("reason expression runtime error returns error", func(t *testing.T) {
+		RegisterTestingT(t)
+
+		rules := []registry.ConditionMappingRule{
+			{Type: "TestCondition",
+				When: registry.MappingExpression{
+					Expression: "true",
 				},
-				Reason: registry.MappingExpression{
-					Expression: `"reason"`,
-				},
-				Message: registry.MappingExpression{
-					Expression: `"message"`,
+				Output: registry.MappingOutput{
+					Status: registry.MappingExpression{
+						Expression: `"True"`,
+					},
+					Reason: registry.MappingExpression{
+						Expression: `statuses[99].adapter`, // out of bounds → runtime error
+					},
+					Message: registry.MappingExpression{
+						Expression: `"message"`,
+					},
 				},
 			},
-		},
-	}
+		}
 
-	mapper, err := NewConditionMapper("Cluster", rules)
-	Expect(err).NotTo(HaveOccurred())
+		mapper, err := NewConditionMapper("Cluster", rules)
+		Expect(err).NotTo(HaveOccurred())
 
-	input := ApplyInput{
-		AdapterStatuses: api.AdapterStatusList{},
-		Resource:        map[string]interface{}{},
-		RefTime:         time.Now(),
-	}
+		input := ApplyInput{
+			AdapterStatuses: api.AdapterStatusList{},
+			Resource:        map[string]interface{}{},
+			RefTime:         time.Now(),
+		}
 
-	// Should return error (not panic, not skip) to trigger transaction rollback
-	result, err := mapper.Apply(context.Background(), input)
-	Expect(err).To(HaveOccurred(), "output expression runtime error should return error")
-	Expect(err.Error()).To(ContainSubstring("status expression evaluation failed"))
-	Expect(result).To(BeNil(), "result should be nil when error occurs")
+		result, err := mapper.Apply(context.Background(), input)
+		Expect(err).To(HaveOccurred(), "reason runtime error should return error")
+		Expect(err.Error()).To(ContainSubstring("reason expression evaluation failed"))
+		Expect(result).To(BeNil())
+	})
+
+	t.Run("message expression runtime error returns error", func(t *testing.T) {
+		RegisterTestingT(t)
+
+		rules := []registry.ConditionMappingRule{
+			{Type: "TestCondition",
+				When: registry.MappingExpression{
+					Expression: "true",
+				},
+				Output: registry.MappingOutput{
+					Status: registry.MappingExpression{
+						Expression: `"True"`,
+					},
+					Reason: registry.MappingExpression{
+						Expression: `"reason"`,
+					},
+					Message: registry.MappingExpression{
+						Expression: `statuses[99].adapter`, // out of bounds → runtime error
+					},
+				},
+			},
+		}
+
+		mapper, err := NewConditionMapper("Cluster", rules)
+		Expect(err).NotTo(HaveOccurred())
+
+		input := ApplyInput{
+			AdapterStatuses: api.AdapterStatusList{},
+			Resource:        map[string]interface{}{},
+			RefTime:         time.Now(),
+		}
+
+		result, err := mapper.Apply(context.Background(), input)
+		Expect(err).To(HaveOccurred(), "message runtime error should return error")
+		Expect(err.Error()).To(ContainSubstring("message expression evaluation failed"))
+		Expect(result).To(BeNil())
+	})
 }
 
 func TestConditionMapper_ConcurrentApply(t *testing.T) {
