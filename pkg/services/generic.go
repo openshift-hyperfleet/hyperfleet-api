@@ -7,11 +7,8 @@ import (
 	"reflect"
 	"strings"
 
-	"gorm.io/gorm"
-
-	"github.com/Masterminds/squirrel"
 	"github.com/yaacov/tree-search-language/v6/pkg/tsl"
-	sqlFilter "github.com/yaacov/tree-search-language/v6/pkg/walkers/sql"
+	"gorm.io/gorm"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/dao"
@@ -140,94 +137,50 @@ func (s *sqlGenericService) buildOrderBy(listCtx *listContext, d dao.GenericDao)
 	return false, nil
 }
 
-func (s *sqlGenericService) buildSearchValues(
-	listCtx *listContext, d dao.GenericDao,
-) (string, []any, *errors.ServiceError) {
+func (s *sqlGenericService) buildSearch(listCtx *listContext, d dao.GenericDao) (bool, *errors.ServiceError) {
 	if listCtx.args.Search == "" {
 		s.addJoins(listCtx, d)
-		return "", nil, nil
+		return true, nil
 	}
 
 	const maxSearchLength = 4096
 	if len(listCtx.args.Search) > maxSearchLength {
-		return "", nil, errors.BadRequest(
+		return false, errors.BadRequest(
 			"search query exceeds maximum length of %d characters", maxSearchLength,
 		)
 	}
 
-	tslTreeWrapper, err := tsl.ParseTSL(listCtx.args.Search)
+	tslTree, err := tsl.ParseTSL(listCtx.args.Search)
 	if err != nil {
-		return "", nil, errors.BadRequest("Failed to parse search query: %s", listCtx.args.Search)
-	}
-	tslTree := tslTreeWrapper.Node
-
-	// Extract condition queries (status.conditions.xxx) before field name mapping
-	tslTree, conditionExprs, serviceErr := db.ExtractConditionQueries(tslTree)
-	if serviceErr != nil {
-		return "", nil, serviceErr
+		return false, errors.BadRequest("failed to parse search query: %s", err.Error())
 	}
 
-	// Extract label queries (labels.xxx) — backed by the resource_labels table,
-	// not a JSONB column, so they need an EXISTS subquery.
-	var labelExprs []squirrel.Sqlizer
-	tslTree, labelExprs, serviceErr = db.ExtractLabelQueries(tslTree)
-	if serviceErr != nil {
-		return "", nil, serviceErr
+	if listCtx.joins == nil {
+		listCtx.joins = map[string]dao.TableRelation{}
 	}
 
-	// apply field name mapping (spec.xxx -> spec->>'xxx') and wrap spec JSONB fields
-	// in CAST(... AS numeric) when compared against a number
-	tslTree, serviceErr = db.FieldNameWalk(tslTree)
+	sql, values, serviceErr := db.TSLToSQL(tslTree, db.WalkConfig{
+		TableName: d.GetTableName(),
+		ResolveRelated: func(name string) (string, error) {
+			parts := strings.Split(name, ".")
+			fieldName := parts[0]
+			if _, exists := listCtx.joins[fieldName]; !exists {
+				if relation, ok := d.GetTableRelation(fieldName); ok {
+					listCtx.joins[fieldName] = relation
+				} else {
+					return "", fmt.Errorf("%s is not a related resource of %s",
+						fieldName, listCtx.resourceType)
+				}
+			}
+			parts[0] = listCtx.joins[fieldName].ForeignTableName
+			return strings.Join(parts, "."), nil
+		},
+	})
 	if serviceErr != nil {
-		return "", nil, serviceErr
-	}
-	// find all related tables
-	tslTree, serviceErr = s.treeWalkForRelatedTables(listCtx, tslTree, d)
-	if serviceErr != nil {
-		return "", nil, serviceErr
-	}
-	// prepend table names to prevent "ambiguous" errors
-	tslTree, serviceErr = s.treeWalkForAddingTableName(listCtx, tslTree, d)
-	if serviceErr != nil {
-		return "", nil, serviceErr
-	}
-	// convert to sqlizer — wrap back to TSLNode for v6's sql.Walk
-	sqlizer, serviceErr := s.treeWalkForSqlizer(listCtx, &tsl.TSLNode{Node: tslTree})
-	if serviceErr != nil {
-		return "", nil, serviceErr
+		return false, serviceErr
 	}
 
 	s.addJoins(listCtx, d)
-
-	// parse the search string to SQL WHERE
-	sql, values, err := sqlizer.ToSql()
-	if err != nil {
-		return "", nil, errors.GeneralError("%s", err.Error())
-	}
-
-	// Combine the base SQL with extracted condition and label expressions
-	extractedExprs := append(append([]squirrel.Sqlizer{}, conditionExprs...), labelExprs...)
-	for _, expr := range extractedExprs {
-		exprSQL, exprValues, err := expr.ToSql()
-		if err != nil {
-			return "", nil, errors.GeneralError("%s", err.Error())
-		}
-		if sql == "" {
-			sql = exprSQL
-		} else {
-			sql = fmt.Sprintf("(%s) AND (%s)", sql, exprSQL)
-		}
-		values = append(values, exprValues...)
-	}
-
-	return sql, values, nil
-}
-
-func (s *sqlGenericService) buildSearch(listCtx *listContext, d dao.GenericDao) (bool, *errors.ServiceError) {
-	sql, values, err := s.buildSearchValues(listCtx, d)
-	if err != nil {
-		return false, err
-	}
 	d.Where(dao.NewWhere(sql, values))
 	return true, nil
 }
@@ -300,89 +253,4 @@ func zeroSlice(i interface{}, cap int64) *errors.ServiceError {
 	}
 	v.Set(reflect.MakeSlice(v.Type(), 0, int(cap)))
 	return nil
-}
-
-// walk the TSL tree looking for fields like, e.g., creator.username, and then:
-// (1) look up the related table by its 1st part - creator
-// (2) replace it by table name - creator.username -> accounts.username
-func (s *sqlGenericService) treeWalkForRelatedTables(
-	listCtx *listContext, tslTree *tsl.Node, genericDao dao.GenericDao,
-) (*tsl.Node, *errors.ServiceError) {
-	resourceTable := genericDao.GetTableName()
-	if listCtx.joins == nil {
-		listCtx.joins = map[string]dao.TableRelation{}
-	}
-	walkFn := func(field string) (string, error) {
-		// After FieldNameWalk, JSONB-mapped fields (e.g. spec->'release'->>'channel')
-		// are no longer relation paths.
-		// Skip dot-splitting for any already-mapped JSONB expression.
-		if strings.Contains(field, "->") {
-			return field, nil
-		}
-		fieldParts := strings.Split(field, ".")
-		if len(fieldParts) > 1 && fieldParts[0] != resourceTable {
-			fieldName := fieldParts[0]
-			_, exists := listCtx.joins[fieldName]
-			if !exists {
-				if relation, ok := genericDao.GetTableRelation(fieldName); ok {
-					listCtx.joins[fieldName] = relation
-				} else {
-					return field, fmt.Errorf(
-						"%s is not a related resource of %s",
-						fieldName, listCtx.resourceType,
-					)
-				}
-			}
-			// replace by table name
-			fieldParts[0] = listCtx.joins[fieldName].ForeignTableName
-			return strings.Join(fieldParts, "."), nil
-		}
-		return field, nil
-	}
-
-	tslTree, err := db.IdentWalk(tslTree, walkFn)
-	if err != nil {
-		return tslTree, errors.BadRequest("%s", err.Error())
-	}
-
-	return tslTree, nil
-}
-
-// prepend table name to these "free" identifiers since they could cause "ambiguous" errors
-func (s *sqlGenericService) treeWalkForAddingTableName(
-	_ *listContext,
-	tslTree *tsl.Node,
-	d dao.GenericDao,
-) (*tsl.Node, *errors.ServiceError) {
-	resourceTable := d.GetTableName()
-
-	walkFn := func(field string) (string, error) {
-		fieldParts := strings.Split(field, ".")
-		if len(fieldParts) == 1 {
-			if strings.Contains(field, "->") {
-				return field, nil
-			}
-			return fmt.Sprintf("%s.%s", resourceTable, field), nil
-		}
-		return field, nil
-	}
-
-	tslTree, err := db.IdentWalk(tslTree, walkFn)
-	if err != nil {
-		return tslTree, errors.BadRequest("%s", err.Error())
-	}
-
-	return tslTree, nil
-}
-
-func (s *sqlGenericService) treeWalkForSqlizer(
-	_ *listContext,
-	tslTree *tsl.TSLNode,
-) (squirrel.Sqlizer, *errors.ServiceError) {
-	sqlizer, err := sqlFilter.Walk(tslTree)
-	if err != nil {
-		return nil, errors.BadRequest("%s", err.Error())
-	}
-
-	return sqlizer, nil
 }
