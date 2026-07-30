@@ -598,6 +598,111 @@ func TestAdapterStatusToMapWithUnknownCheck_NilGuard(t *testing.T) {
 }
 
 // ============================================================================
+// Tests for Unknown condition filtering
+// ============================================================================
+
+func TestConditionMapper_UnknownConditionFiltering(t *testing.T) {
+	t.Run("adapter with Unknown condition excluded from statuses", func(t *testing.T) {
+		RegisterTestingT(t)
+
+		rules := []registry.ConditionMappingRule{
+			{
+				Type: "TestCondition",
+				When: registry.MappingExpression{
+					// Expression that checks adapter count - should only see healthy-adapter
+					Expression: `size(statuses) == 1 && statuses[0].adapter == "healthy-adapter"`,
+				},
+				Output: registry.MappingOutput{
+					Status:  registry.MappingExpression{Expression: `"True"`},
+					Reason:  registry.MappingExpression{Expression: `"OK"`},
+					Message: registry.MappingExpression{Expression: `"Only healthy adapter visible"`},
+				},
+			},
+		}
+
+		mapper, err := NewConditionMapper("Cluster", rules)
+		Expect(err).NotTo(HaveOccurred())
+
+		statuses := api.AdapterStatusList{
+			{
+				Adapter:            "healthy-adapter",
+				ObservedGeneration: 1,
+				Conditions: testConditionsJSON(
+					api.AdapterCondition{Type: api.AdapterConditionTypeAvailable, Status: api.AdapterConditionTrue},
+				),
+				Data: []byte(`{}`),
+			},
+			{
+				Adapter:            "unknown-adapter",
+				ObservedGeneration: 1,
+				// Adapter with Unknown condition should be filtered out
+				Conditions: testConditionsJSON(
+					api.AdapterCondition{Type: api.AdapterConditionTypeAvailable, Status: api.AdapterConditionUnknown},
+				),
+				Data: []byte(`{}`),
+			},
+		}
+
+		result, err := mapper.Apply(context.Background(), ApplyInput{
+			AdapterStatuses: statuses,
+			Resource:        map[string]interface{}{},
+			RefTime:         time.Now(),
+		})
+
+		Expect(err).ToNot(HaveOccurred())
+		Expect(result).To(HaveLen(1), "when expression should match (unknown-adapter excluded)")
+		Expect(result[0].Type).To(Equal("TestCondition"))
+		Expect(result[0].Status).To(Equal(api.ConditionTrue))
+	})
+
+	t.Run("all adapters with Unknown excluded results in empty statuses array", func(t *testing.T) {
+		RegisterTestingT(t)
+
+		rules := []registry.ConditionMappingRule{
+			{
+				Type: "TestCondition",
+				When: registry.MappingExpression{
+					Expression: `size(statuses) == 0`, // No adapters should be visible
+				},
+				Output: registry.MappingOutput{
+					Status:  registry.MappingExpression{Expression: `"True"`},
+					Reason:  registry.MappingExpression{Expression: `"NoAdapters"`},
+					Message: registry.MappingExpression{Expression: `"All adapters filtered"`},
+				},
+			},
+		}
+
+		mapper, err := NewConditionMapper("Cluster", rules)
+		Expect(err).NotTo(HaveOccurred())
+
+		statuses := api.AdapterStatusList{
+			{
+				Adapter: "adapter-1",
+				Conditions: testConditionsJSON(
+					api.AdapterCondition{Type: api.AdapterConditionTypeAvailable, Status: api.AdapterConditionUnknown},
+				),
+			},
+			{
+				Adapter: "adapter-2",
+				Conditions: testConditionsJSON(
+					api.AdapterCondition{Type: api.AdapterConditionTypeHealth, Status: api.AdapterConditionUnknown},
+				),
+			},
+		}
+
+		result, err := mapper.Apply(context.Background(), ApplyInput{
+			AdapterStatuses: statuses,
+			Resource:        map[string]interface{}{},
+			RefTime:         time.Now(),
+		})
+
+		Expect(err).ToNot(HaveOccurred())
+		Expect(result).To(HaveLen(1), "when expression should match (all adapters excluded)")
+		Expect(*result[0].Reason).To(Equal("NoAdapters"))
+	})
+}
+
+// ============================================================================
 // Tests from condition_mapper_timestamps_test.go
 // ============================================================================
 

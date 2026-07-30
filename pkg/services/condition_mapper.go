@@ -594,15 +594,10 @@ func adapterStatusToMapWithUnknownCheck(ctx context.Context, status *api.Adapter
 	// Parse conditions and check for Unknown status (QUAL-03)
 	conditions, hasUnknown := parseConditionsWithUnknownCheck(ctx, status.Conditions, status.Adapter)
 
-	// Early return if Unknown found - buildStatusesList will discard this statusMap anyway (PERF-03)
-	// Skips data parsing and MaskSensitiveFields call to avoid wasted work
+	// Early return if Unknown found - buildStatusesList discards the map anyway (PERF-03)
+	// Return nil instead of allocating a throwaway map (saves allocation on hot path)
 	if hasUnknown {
-		return map[string]interface{}{
-			celKeyAdapter:            status.Adapter,
-			celKeyObservedGeneration: float64(status.ObservedGeneration),
-			celKeyConditions:         conditions,
-			celKeyData:               map[string]interface{}{},
-		}, true
+		return nil, true
 	}
 
 	// Parse data field from JSONB (QUAL-03)
