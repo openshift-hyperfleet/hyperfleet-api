@@ -14,18 +14,19 @@ import (
 
 func TestNewConditionMappingEnvironment(t *testing.T) {
 	t.Parallel()
-	RegisterTestingT(t)
+	g := NewWithT(t)
 
 	env, err := NewConditionMappingEnvironment()
-	Expect(err).NotTo(HaveOccurred())
-	Expect(env).NotTo(BeNil())
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(env).NotTo(BeNil())
 }
+
 func TestDigFunc_MapNavigation(t *testing.T) {
 	t.Parallel()
-	RegisterTestingT(t)
+	g := NewWithT(t)
 
 	env, err := NewConditionMappingEnvironment()
-	Expect(err).NotTo(HaveOccurred())
+	g.Expect(err).NotTo(HaveOccurred())
 
 	// Test data: nested map
 	resourceData := map[string]interface{}{
@@ -90,38 +91,39 @@ func TestDigFunc_MapNavigation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			RegisterTestingT(t)
+			g := NewWithT(t)
 
 			ast, issues := env.Parse(tt.expression)
-			Expect(issues).To(BeNil())
+			g.Expect(issues).To(BeNil())
 
 			// Check step: validates variable names and function signatures match environment declaration
-			// Matches the 3-step compilation pipeline in compileExpression (condition_mapper.go:348-371)
+			// Matches the 3-step compilation pipeline in compileExpression (condition_mapper.go:389-412)
 			_, issues = env.Check(ast)
-			Expect(issues).To(BeNil())
+			g.Expect(issues).To(BeNil())
 
 			prg, err := env.Program(ast, cel.CostLimit(CELCostLimit))
-			Expect(err).NotTo(HaveOccurred())
+			g.Expect(err).NotTo(HaveOccurred())
 
 			out, _, err := prg.Eval(map[string]interface{}{
 				CELVarResource: resourceData,
 			})
 
 			if tt.wantErr {
-				Expect(err).To(HaveOccurred())
+				g.Expect(err).To(HaveOccurred())
 			} else {
-				Expect(err).NotTo(HaveOccurred())
-				Expect(out.Value()).To(Equal(tt.want))
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(out.Value()).To(Equal(tt.want))
 			}
 		})
 	}
 }
+
 func TestDigFunc_ArrayNavigation(t *testing.T) {
 	t.Parallel()
-	RegisterTestingT(t)
+	g := NewWithT(t)
 
 	env, err := NewConditionMappingEnvironment()
-	Expect(err).NotTo(HaveOccurred())
+	g.Expect(err).NotTo(HaveOccurred())
 
 	// Test data: array at root
 	statusesData := []interface{}{
@@ -178,34 +180,35 @@ func TestDigFunc_ArrayNavigation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			RegisterTestingT(t)
+			g := NewWithT(t)
 
 			ast, issues := env.Parse(tt.expression)
-			Expect(issues).To(BeNil())
+			g.Expect(issues).To(BeNil())
 
 			// Check step: validates variable names and function signatures match environment declaration
-			// Matches the 3-step compilation pipeline in compileExpression (condition_mapper.go:348-371)
+			// Matches the 3-step compilation pipeline in compileExpression (condition_mapper.go:389-412)
 			_, issues = env.Check(ast)
-			Expect(issues).To(BeNil())
+			g.Expect(issues).To(BeNil())
 
 			prg, err := env.Program(ast, cel.CostLimit(CELCostLimit))
-			Expect(err).NotTo(HaveOccurred())
+			g.Expect(err).NotTo(HaveOccurred())
 
 			out, _, err := prg.Eval(map[string]interface{}{
 				CELVarStatuses: statusesData,
 			})
 
-			Expect(err).NotTo(HaveOccurred())
-			Expect(out.Value()).To(Equal(tt.want))
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(out.Value()).To(Equal(tt.want))
 		})
 	}
 }
+
 func TestToJsonFunc(t *testing.T) {
 	t.Parallel()
-	RegisterTestingT(t)
+	g := NewWithT(t)
 
 	env, err := NewConditionMappingEnvironment()
-	Expect(err).NotTo(HaveOccurred())
+	g.Expect(err).NotTo(HaveOccurred())
 
 	resourceData := map[string]interface{}{
 		"name":  "test",
@@ -213,49 +216,52 @@ func TestToJsonFunc(t *testing.T) {
 	}
 
 	ast, issues := env.Parse(`toJson(resource)`)
-	Expect(issues).To(BeNil())
+	g.Expect(issues).To(BeNil())
 
 	// Check step: validates variable names and function signatures match environment declaration
-	// Matches the 3-step compilation pipeline in compileExpression (condition_mapper.go:348-371)
+	// Matches the 3-step compilation pipeline in compileExpression (condition_mapper.go:389-412)
 	_, issues = env.Check(ast)
-	Expect(issues).To(BeNil())
+	g.Expect(issues).To(BeNil())
 
 	prg, err := env.Program(ast, cel.CostLimit(CELCostLimit))
-	Expect(err).NotTo(HaveOccurred())
+	g.Expect(err).NotTo(HaveOccurred())
 
 	out, _, err := prg.Eval(map[string]interface{}{
 		CELVarResource: resourceData,
 	})
 
-	Expect(err).NotTo(HaveOccurred())
-	Expect(out.Value()).To(Equal(`{"count":42,"name":"test"}`))
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(out.Value()).To(Equal(`{"count":42,"name":"test"}`))
 }
 
 func TestToJsonFunc_SizeLimit(t *testing.T) {
 	t.Parallel()
-	RegisterTestingT(t)
+	g := NewWithT(t)
 
 	env, err := NewConditionMappingEnvironment()
-	Expect(err).NotTo(HaveOccurred())
+	g.Expect(err).NotTo(HaveOccurred())
 
+	// Create data that would exceed the 1MB limit when JSON-encoded.
+	// Implementation uses json.Encoder with limitedWriter to stop encoding
+	// DURING the operation (not after), preventing unbounded allocation.
 	largeData := map[string]interface{}{
 		"big": strings.Repeat("x", 1024*1024+1),
 	}
 
 	ast, issues := env.Parse(`toJson(resource)`)
-	Expect(issues).To(BeNil())
+	g.Expect(issues).To(BeNil())
 
 	_, issues = env.Check(ast)
-	Expect(issues).To(BeNil())
+	g.Expect(issues).To(BeNil())
 
 	prg, err := env.Program(ast, cel.CostLimit(CELCostLimit))
-	Expect(err).NotTo(HaveOccurred())
+	g.Expect(err).NotTo(HaveOccurred())
 
 	_, _, err = prg.Eval(map[string]interface{}{
 		CELVarResource: largeData,
 	})
-	Expect(err).To(HaveOccurred())
-	Expect(err.Error()).To(ContainSubstring("exceeds 1MB"))
+	g.Expect(err).To(HaveOccurred())
+	g.Expect(err.Error()).To(ContainSubstring("exceeds 1MB"))
 }
 
 // ============================================================================
@@ -265,11 +271,11 @@ func TestToJsonFunc_SizeLimit(t *testing.T) {
 func TestCELVariableConstants(t *testing.T) {
 	t.Parallel()
 	t.Run("CEL variable constants prevent name mismatches (QUAL-01)", func(t *testing.T) {
-		RegisterTestingT(t)
+		g := NewWithT(t)
 
 		// Create environment using constants
 		env, err := NewConditionMappingEnvironment()
-		Expect(err).NotTo(HaveOccurred())
+		g.Expect(err).NotTo(HaveOccurred())
 
 		// Verify that expressions using the documented variable names compile successfully
 		// This test ensures that if we change a constant, the environment declaration changes too
@@ -283,37 +289,37 @@ func TestCELVariableConstants(t *testing.T) {
 
 		for _, expr := range validExpressions {
 			ast, issues := env.Parse(expr)
-			Expect(issues).To(BeNil(), "Expression should parse: %s", expr)
+			g.Expect(issues).To(BeNil(), "Expression should parse: %s", expr)
 
 			_, issues = env.Check(ast)
-			Expect(issues).To(BeNil(), "Expression should check: %s", expr)
+			g.Expect(issues).To(BeNil(), "Expression should check: %s", expr)
 		}
 	})
 
 	t.Run("typo in variable name causes compile error", func(t *testing.T) {
-		RegisterTestingT(t)
+		g := NewWithT(t)
 
 		env, err := NewConditionMappingEnvironment()
-		Expect(err).NotTo(HaveOccurred())
+		g.Expect(err).NotTo(HaveOccurred())
 
 		// If someone hardcodes "status" instead of "statuses", Check catches it
 		invalidExpr := "size(status) > 0" // Typo: "status" instead of "statuses"
 
 		ast, issues := env.Parse(invalidExpr)
-		Expect(issues).To(BeNil(), "Parse should succeed even with undefined variable")
+		g.Expect(issues).To(BeNil(), "Parse should succeed even with undefined variable")
 
 		// Check should fail because "status" is not declared
 		_, issues = env.Check(ast)
-		Expect(issues).NotTo(BeNil(), "Check should fail for undefined variable 'status'")
-		Expect(issues.Err().Error()).To(ContainSubstring("status"), "Error should mention the undefined variable")
+		g.Expect(issues).NotTo(BeNil(), "Check should fail for undefined variable 'status'")
+		g.Expect(issues.Err().Error()).To(ContainSubstring("status"), "Error should mention the undefined variable")
 	})
 
 	t.Run("constant values match expected strings", func(t *testing.T) {
-		RegisterTestingT(t)
+		g := NewWithT(t)
 
 		// Verify constant values are what we expect (prevents accidental changes)
-		Expect(CELVarStatuses).To(Equal("statuses"))
-		Expect(CELVarResource).To(Equal("resource"))
-		Expect(CELVarEnv).To(Equal("env"))
+		g.Expect(CELVarStatuses).To(Equal("statuses"))
+		g.Expect(CELVarResource).To(Equal("resource"))
+		g.Expect(CELVarEnv).To(Equal("env"))
 	})
 }

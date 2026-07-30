@@ -187,9 +187,7 @@ func (l *ConfigLoader) validateConfig(config *ApplicationConfig) error {
 		if valErr := config.Metrics.Validate(); valErr != nil {
 			return fmt.Errorf("metrics config validation failed: %w", valErr)
 		}
-		if valErr := config.Conditions.Validate(config.Entities); valErr != nil {
-			return fmt.Errorf("conditions config validation failed: %w", valErr)
-		}
+		// Conditions validation now happens in registry.Validate() after entity descriptors are loaded
 		return nil
 	}
 
