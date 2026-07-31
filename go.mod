@@ -143,3 +143,5 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	gorm.io/driver/mysql v1.6.0 // indirect
 )
+
+replace github.com/openshift-hyperfleet/hyperfleet-api-spec => github.com/ciaranRoche/hyperfleet-api-spec v0.0.0-20260731110857-5d9e45635eeb

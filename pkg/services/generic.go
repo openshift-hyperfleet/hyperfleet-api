@@ -17,6 +17,7 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/dao"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/tenant"
 )
 
 //go:generate go tool -modfile=../../tools/go.mod mockgen -source=generic.go -package=services -destination=generic_mock.go
@@ -86,6 +87,10 @@ func (s *sqlGenericService) List(
 		// add "ORDER BY"
 		s.buildOrderBy,
 
+		// scope resource queries to the caller's tenant. must run before
+		// buildSearch, which signals finished and ends the chain.
+		s.buildTenantScope,
+
 		// translate "search" into "WHERE"(s), and "JOIN"(s) if related resource is searched.
 		s.buildSearch,
 
@@ -137,6 +142,22 @@ func (s *sqlGenericService) buildOrderBy(listCtx *listContext, d dao.GenericDao)
 			d.OrderBy(orderArg)
 		}
 	}
+	return false, nil
+}
+
+// buildTenantScope constrains resource list queries to the caller's tenant
+// via parameterized JSONB containment. System identities and requests without
+// tenant enforcement pass through unscoped. Only the resources table carries
+// a tenancy column, so other models are left untouched.
+func (s *sqlGenericService) buildTenantScope(listCtx *listContext, d dao.GenericDao) (bool, *errors.ServiceError) {
+	if listCtx.resourceType != "Resource" {
+		return false, nil
+	}
+	containment, scoped := tenant.ContainmentJSON(listCtx.ctx)
+	if !scoped {
+		return false, nil
+	}
+	d.Where(dao.NewWhere("resources.tenancy @> ?::jsonb", []any{containment}))
 	return false, nil
 }
 

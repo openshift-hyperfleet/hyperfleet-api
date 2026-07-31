@@ -138,6 +138,22 @@ data:
 
       shutdown_timeout: {{ .Values.config.health.shutdown_timeout }}
       db_ping_timeout: {{ .Values.config.health.db_ping_timeout }}
+{{- if .Values.config.tenant }}
+
+    tenant:
+      enabled: {{ .Values.config.tenant.enabled | default false }}
+{{- if .Values.config.tenant.system_header }}
+      system_header: {{ .Values.config.tenant.system_header | quote }}
+{{- end }}
+{{- if .Values.config.tenant.dimensions }}
+      dimensions:
+{{- range .Values.config.tenant.dimensions }}
+        - header: {{ .header | quote }}
+          key: {{ .key | quote }}
+          required: {{ .required | default false }}
+{{- end }}
+{{- end }}
+{{- end }}
     # NOTE: When EntityDescriptor gains many more fields, consider replacing
     # the explicit range below with: .Values.config.entities | toYaml | indent 6
 {{- if .Values.config.entities }}

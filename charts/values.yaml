@@ -195,6 +195,25 @@ config:
     shutdown_timeout: 20s
     # -- Timeout for the database liveness ping
     db_ping_timeout: 2s
+  # -- Tenant enforcement. When enabled, a middleware resolves gateway-injected
+  # headers into a tenancy map and all resource queries are scoped to it.
+  # Dimensions map HTTP headers to tenancy keys and are deployment-specific.
+  tenant:
+    # -- Enable tenant enforcement
+    enabled: false
+    # -- Header the gateway sets to "true" for trusted system identities
+    system_header: "X-HyperFleet-System"
+    # -- Tenant dimensions mapping gateway headers to tenancy keys.
+    # At least one dimension must be required: true when enabled.
+    dimensions: []
+    # Example (org + project model):
+    # dimensions:
+    #   - header: "X-Tenant-Org"
+    #     key: "org"
+    #     required: true
+    #   - header: "X-Tenant-Project"
+    #     key: "project"
+    #     required: false
   # -- Entity descriptors registered at startup. Each entry auto-generates
   # REST endpoints, spec validation, and delete policies.
   entities:

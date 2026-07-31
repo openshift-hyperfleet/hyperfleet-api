@@ -97,6 +97,43 @@ func TestPresentResource(t *testing.T) {
 	Expect(resp.Status.Conditions).To(BeEmpty())
 }
 
+func TestPresentResource_Tenancy(t *testing.T) {
+	RegisterTestingT(t)
+
+	resource := &api.Resource{
+		Meta:      api.Meta{ID: "test-id"},
+		Kind:      "Cluster",
+		Name:      "acme-cluster",
+		Spec:      datatypes.JSON(`{}`),
+		Tenancy:   datatypes.JSON(`{"org":"acme","project":"proj-1"}`),
+		CreatedBy: "user@test.com",
+		UpdatedBy: "user@test.com",
+	}
+
+	resp := PresentResource(resource)
+	Expect(resp.Tenancy).ToNot(BeNil())
+	Expect(*resp.Tenancy).To(Equal(map[string]string{"org": "acme", "project": "proj-1"}))
+}
+
+func TestPresentResource_TenancyEmptyOmitted(t *testing.T) {
+	RegisterTestingT(t)
+
+	for _, tenancy := range []datatypes.JSON{nil, datatypes.JSON(`{}`)} {
+		resource := &api.Resource{
+			Meta:      api.Meta{ID: "test-id"},
+			Kind:      "Cluster",
+			Name:      "system-cluster",
+			Spec:      datatypes.JSON(`{}`),
+			Tenancy:   tenancy,
+			CreatedBy: "user@test.com",
+			UpdatedBy: "user@test.com",
+		}
+
+		resp := PresentResource(resource)
+		Expect(resp.Tenancy).To(BeNil())
+	}
+}
+
 func TestPresentResource_StatusConditionsJSONEmptyArray(t *testing.T) {
 	RegisterTestingT(t)
 

@@ -14,6 +14,7 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/metrics"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/registry"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/tenant"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/util"
 )
 
@@ -110,6 +111,10 @@ func (s *sqlResourceService) Create(
 	if resource.UpdatedBy == "" {
 		resource.UpdatedBy = username
 	}
+
+	// Tenancy is derived from the caller's gateway-resolved identity, never
+	// from the request body. System and unscoped callers store an empty map.
+	resource.Tenancy = tenant.TenancyJSON(ctx)
 
 	resource, err := s.resourceDao.Create(ctx, resource)
 	if err != nil {

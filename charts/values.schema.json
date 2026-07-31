@@ -188,12 +188,18 @@
                         "description": "HTTP header carrying a pre-authenticated identity (bypasses JWT claim when set)"
                       }
                     },
-                    "required": ["issuer_url"],
+                    "required": [
+                      "issuer_url"
+                    ],
                     "if": {
-                      "required": ["jwk_cert_ca_file"]
+                      "required": [
+                        "jwk_cert_ca_file"
+                      ]
                     },
                     "then": {
-                      "required": ["jwk_cert_url"]
+                      "required": [
+                        "jwk_cert_url"
+                      ]
                     }
                   }
                 }
@@ -411,12 +417,56 @@
             }
           }
         },
+        "tenant": {
+          "type": "object",
+          "description": "Tenant enforcement configuration",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Enable tenant enforcement"
+            },
+            "system_header": {
+              "type": "string",
+              "description": "Header the gateway sets to \"true\" for trusted system identities"
+            },
+            "dimensions": {
+              "type": "array",
+              "description": "Tenant dimensions mapping gateway headers to tenancy keys",
+              "items": {
+                "type": "object",
+                "required": [
+                  "header",
+                  "key"
+                ],
+                "properties": {
+                  "header": {
+                    "type": "string",
+                    "description": "Gateway-injected HTTP header name"
+                  },
+                  "key": {
+                    "type": "string",
+                    "description": "Tenancy map key"
+                  },
+                  "required": {
+                    "type": "boolean",
+                    "description": "Reject requests missing this header"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          },
+          "additionalProperties": false
+        },
         "entities": {
           "type": "array",
           "description": "Entity descriptors registered at startup. Each entry auto-generates REST endpoints, spec validation, and delete policies.",
           "items": {
             "type": "object",
-            "required": ["kind", "plural"],
+            "required": [
+              "kind",
+              "plural"
+            ],
             "properties": {
               "kind": {
                 "type": "string",
@@ -432,7 +482,10 @@
               },
               "on_parent_delete": {
                 "type": "string",
-                "enum": ["restrict", "cascade"],
+                "enum": [
+                  "restrict",
+                  "cascade"
+                ],
                 "description": "Child behavior when parent is deleted (restrict or cascade)"
               },
               "spec_schema_name": {
@@ -441,7 +494,9 @@
               },
               "required_adapters": {
                 "type": "array",
-                "items": { "type": "string" },
+                "items": {
+                  "type": "string"
+                },
                 "description": "Adapters that must finalize before hard-delete"
               },
               "name_min_len": {
@@ -461,7 +516,10 @@
                 "description": "Non-ownership associations to other entity types (HYPERFLEET-1156)",
                 "items": {
                   "type": "object",
-                  "required": ["ref_type", "target_kind"],
+                  "required": [
+                    "ref_type",
+                    "target_kind"
+                  ],
                   "properties": {
                     "ref_type": {
                       "type": "string",

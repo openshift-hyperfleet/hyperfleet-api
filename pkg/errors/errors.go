@@ -23,6 +23,7 @@ const (
 	ErrorTypeBadRequest = ErrorTypeBase + "bad-request"
 	ErrorTypeMalformed  = ErrorTypeBase + "malformed-request"
 	ErrorTypeNotImpl    = ErrorTypeBase + "not-implemented"
+	ErrorTypeForbidden  = ErrorTypeBase + "forbidden"
 )
 
 // Error codes in HYPERFLEET-CAT-NUM format
@@ -38,6 +39,7 @@ const (
 	CodeAuthNoCredentials      = "HYPERFLEET-AUT-001" //nolint:gosec // Not actual credentials, just error code names
 	CodeAuthInvalidCredentials = "HYPERFLEET-AUT-002" //nolint:gosec // Not actual credentials, just error code names
 	CodeAuthExpiredToken       = "HYPERFLEET-AUT-003" //nolint:gosec // Not actual credentials, just error code names
+	CodeAuthTenantRequired     = "HYPERFLEET-AUT-004" //nolint:gosec // Not actual credentials, just error code names
 
 	// Not Found errors (NTF) - 404
 	CodeNotFoundEndpoint = "HYPERFLEET-NTF-000"
@@ -107,6 +109,10 @@ var errorDefinitions = map[string]errorDefinition{
 	},
 	CodeAuthExpiredToken: {
 		ErrorTypeAuth, "Invalid Token", "Invalid token provided", http.StatusUnauthorized,
+	},
+	CodeAuthTenantRequired: {
+		ErrorTypeForbidden, "Forbidden",
+		"Tenant identity is required for this request", http.StatusForbidden,
 	},
 
 	// Validation errors (VAL) - 400

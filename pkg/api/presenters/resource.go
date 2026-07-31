@@ -77,6 +77,14 @@ func PresentResource(r *api.Resource) openapi.Resource {
 		resp.DeletedBy = r.DeletedBy
 	}
 
+	// Tenancy is read-only: presented when set, never accepted from requests.
+	if len(r.Tenancy) > 0 {
+		var tenancy map[string]string
+		if err := json.Unmarshal(r.Tenancy, &tenancy); err == nil && len(tenancy) > 0 {
+			resp.Tenancy = &tenancy
+		}
+	}
+
 	if r.OwnerID != nil && *r.OwnerID != "" {
 		resp.OwnerReferences = &struct {
 			openapi.ObjectReference `yaml:",inline"`

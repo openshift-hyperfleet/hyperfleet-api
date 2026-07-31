@@ -12,6 +12,7 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/middleware"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/registry"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/tenant"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/validators"
 )
 
@@ -85,6 +86,13 @@ func (s *apiServer) routes(tracingEnabled bool) *Router {
 	if env().Config.Server.JWT.Enabled {
 		callerIdentityMW := auth.NewCallerIdentityMiddleware()
 		apiV1Router.Use(callerIdentityMW.ResolveCallerIdentity)
+	}
+
+	// Tenant enforcement: resolves gateway-injected tenant identity into the
+	// request context; the DAO layer scopes all queries to it.
+	if env().Config.Tenant != nil && env().Config.Tenant.Enabled {
+		tenantMW := tenant.NewMiddleware(*env().Config.Tenant)
+		apiV1Router.Use(tenantMW.EnforceTenant)
 	}
 
 	//  /api/hyperfleet/v1/openapi
