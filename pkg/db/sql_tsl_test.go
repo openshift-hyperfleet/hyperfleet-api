@@ -244,6 +244,27 @@ func TestTSLToSQL_NumericCast(t *testing.T) {
 		Expect(sql).To(Equal("? < CAST(spec->>'replicas' AS numeric)"))
 	})
 
+	t.Run("spec field IN numeric list - CAST applied", func(t *testing.T) {
+		RegisterTestingT(t)
+		sql, values := walkHelper(t, "spec.replicas IN [1, 2, 3]")
+		Expect(sql).To(Equal("CAST(spec->>'replicas' AS numeric) IN (?, ?, ?)"))
+		Expect(values).To(Equal([]any{float64(1), float64(2), float64(3)}))
+	})
+
+	t.Run("spec field IN string list - no CAST", func(t *testing.T) {
+		RegisterTestingT(t)
+		sql, values := walkHelper(t, "spec.channel IN ['dev', 'staging']")
+		Expect(sql).To(Equal("spec->>'channel' IN (?, ?)"))
+		Expect(values).To(Equal([]any{"dev", "staging"}))
+	})
+
+	t.Run("spec field IN mixed list - no CAST", func(t *testing.T) {
+		RegisterTestingT(t)
+		sql, values := walkHelper(t, "spec.foo IN [1, 'two']")
+		Expect(sql).To(Equal("spec->>'foo' IN (?, ?)"))
+		Expect(values).To(Equal([]any{float64(1), "two"}))
+	})
+
 	t.Run("AND tree: only spec+numeric nodes get CAST", func(t *testing.T) {
 		RegisterTestingT(t)
 		sql, _ := walkHelper(t, "spec.replicas > 9 AND generation > 1 AND spec.channel = 'dev'")
@@ -713,7 +734,28 @@ func TestTSLToSQL_Between(t *testing.T) {
 		RegisterTestingT(t)
 		sql, values := walkHelper(t, "generation BETWEEN 1 AND 10")
 		Expect(sql).To(Equal("resources.generation BETWEEN ? AND ?"))
-		Expect(values).To(ConsistOf(float64(1), float64(10)))
+		Expect(values).To(Equal([]any{float64(1), float64(10)}))
+	})
+
+	t.Run("spec field BETWEEN numeric bounds - CAST applied", func(t *testing.T) {
+		RegisterTestingT(t)
+		sql, values := walkHelper(t, "spec.replicas BETWEEN 1 AND 10")
+		Expect(sql).To(Equal("CAST(spec->>'replicas' AS numeric) BETWEEN ? AND ?"))
+		Expect(values).To(Equal([]any{float64(1), float64(10)}))
+	})
+
+	t.Run("spec field BETWEEN string bounds - no CAST", func(t *testing.T) {
+		RegisterTestingT(t)
+		sql, values := walkHelper(t, "spec.channel BETWEEN 'a' AND 'z'")
+		Expect(sql).To(Equal("spec->>'channel' BETWEEN ? AND ?"))
+		Expect(values).To(Equal([]any{"a", "z"}))
+	})
+
+	t.Run("spec field BETWEEN mixed bounds - no CAST", func(t *testing.T) {
+		RegisterTestingT(t)
+		sql, values := walkHelper(t, "spec.foo BETWEEN 1 AND 'ten'")
+		Expect(sql).To(Equal("spec->>'foo' BETWEEN ? AND ?"))
+		Expect(values).To(Equal([]any{float64(1), "ten"}))
 	})
 }
 

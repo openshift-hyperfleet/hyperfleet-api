@@ -417,6 +417,19 @@ func walkIn(op tsl.TSLExpressionOp, ctx *walkContext) (string, []any, *errors.Se
 		rightArgs = append(rightArgs, a...)
 	}
 
+	if strings.HasPrefix(leftSQL, "spec->") && len(rightArgs) > 0 {
+		allNumeric := true
+		for _, arg := range rightArgs {
+			if _, isNum := arg.(float64); !isNum {
+				allNumeric = false
+				break
+			}
+		}
+		if allNumeric {
+			leftSQL = fmt.Sprintf("CAST(%s AS numeric)", leftSQL)
+		}
+	}
+
 	return fmt.Sprintf("%s IN (%s)", leftSQL, strings.Join(placeholders, ", ")),
 		append(leftArgs, rightArgs...), nil
 }
@@ -443,6 +456,14 @@ func walkBetween(op tsl.TSLExpressionOp, ctx *walkContext) (string, []any, *erro
 	highSQL, highArgs, err := walkNode(arr.Values[1], ctx)
 	if err != nil {
 		return "", nil, err
+	}
+
+	if strings.HasPrefix(leftSQL, "spec->") && len(lowArgs) > 0 && len(highArgs) > 0 {
+		_, lowIsNum := lowArgs[0].(float64)
+		_, highIsNum := highArgs[0].(float64)
+		if lowIsNum && highIsNum {
+			leftSQL = fmt.Sprintf("CAST(%s AS numeric)", leftSQL)
+		}
 	}
 
 	var args []any
