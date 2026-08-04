@@ -528,8 +528,7 @@
               }
             ]
           },
-          "unit": "short",
-          "noValue": "0"
+          "unit": "short"
         },
         "overrides": []
       },
@@ -562,13 +561,13 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "max by (resource_type, is_delete) (hyperfleet_api_resource_pending_reconciliation)",
+          "expr": "max by (resource_type, is_delete) (hyperfleet_api_resource_pending_reconciliation) or on() vector(0)",
           "legendFormat": "{{resource_type}} (delete={{is_delete}})",
           "refId": "A"
         }
       ],
       "title": "Resources Pending Reconciliation",
-      "description": "Live-query gauge — displays 0 when no resources are pending.",
+      "description": "Live-query gauge — falls back to 0 via PromQL when no resources are pending.",
       "type": "timeseries"
     },
     {
@@ -621,8 +620,7 @@
               }
             ]
           },
-          "unit": "short",
-          "noValue": "0"
+          "unit": "short"
         },
         "overrides": []
       },
@@ -655,13 +653,13 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "max by (resource_type, is_delete) (hyperfleet_api_resource_pending_reconciliation_stuck)",
+          "expr": "max by (resource_type, is_delete) (hyperfleet_api_resource_pending_reconciliation_stuck) or on() vector(0)",
           "legendFormat": "{{resource_type}} (delete={{is_delete}})",
           "refId": "A"
         }
       ],
       "title": "Resources Stuck",
-      "description": "Resources pending reconciliation beyond the stuck threshold (default 10m). Displays 0 when no resources are stuck.",
+      "description": "Resources pending reconciliation beyond the stuck threshold (default 10m). Falls back to 0 via PromQL when no resources are stuck.",
       "type": "timeseries"
     },
     {
@@ -714,8 +712,7 @@
               }
             ]
           },
-          "unit": "s",
-          "noValue": "0"
+          "unit": "s"
         },
         "overrides": []
       },
@@ -748,13 +745,13 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "max by (resource_type, is_delete) (hyperfleet_api_resource_pending_reconciliation_stuck_duration_seconds)",
+          "expr": "max by (resource_type, is_delete) (hyperfleet_api_resource_pending_reconciliation_stuck_duration_seconds) or on() vector(0)",
           "legendFormat": "{{resource_type}} (delete={{is_delete}})",
           "refId": "A"
         }
       ],
       "title": "Max Stuck Duration",
-      "description": "Maximum time any resource has been stuck pending reconciliation, by resource type. Displays 0 when no resources are stuck.",
+      "description": "Maximum time any resource has been stuck pending reconciliation, by resource type. Falls back to 0 via PromQL when no resources are stuck.",
       "type": "timeseries"
     },
     {
