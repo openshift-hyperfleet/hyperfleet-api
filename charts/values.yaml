@@ -432,35 +432,46 @@ monitoring:
         # -- Runbook URL included in the alert
         runbookUrl: ""
 
-# -- ServiceMonitor for Prometheus Operator scrape configuration
-serviceMonitor:
-  # -- Create a ServiceMonitor resource
-  enabled: false
-  # -- Scrape interval
-  interval: 30s
-  # -- Scrape timeout
-  scrapeTimeout: 10s
-  # -- Additional labels for ServiceMonitor discovery
-  labels: {}
-  # -- Namespace to create the ServiceMonitor in (defaults to release namespace)
-  namespace: ""
+  # -- ServiceMonitor for Prometheus Operator scrape configuration
+  serviceMonitor:
+    # -- Create a ServiceMonitor resource
+    enabled: false
+    # -- Scrape interval
+    interval: 30s
+    # -- Scrape timeout (must be less than interval)
+    scrapeTimeout: 10s
+    # -- Additional labels for ServiceMonitor discovery
+    labels: {}
+    # -- Honor labels from the target to avoid overwriting
+    honorLabels: true
+    # -- Metric relabel configs applied before ingestion
+    metricRelabeling: []
+    # -- Namespace selector for cross-namespace monitoring
+    namespaceSelector: {}
+    # -- Namespace to create the ServiceMonitor in (defaults to release namespace)
+    namespace: ""
 
-# -- Distributed tracing configuration (OpenTelemetry)
-tracing:
-  # -- Enable trace export
-  enabled: false
-  # -- Service name reported in traces
-  serviceName: "hyperfleet-api"
-  # -- OTLP exporter endpoint (traces go to stdout when empty)
-  otlpEndpoint: ""
-  # -- OTLP protocol (`grpc` or `http/protobuf`)
-  otlpProtocol: "grpc"
-  # -- Sampler type
-  sampler: "parentbased_traceidratio"
-  # -- Sampling rate (`1.0` for dev, `0.01` for production)
-  samplerArg: "1.0"
-  # -- Context propagation formats
-  propagators: "tracecontext,baggage"
+  # -- Grafana dashboard provisioning via sidecar ConfigMap
+  dashboard:
+    # -- Create a ConfigMap with the Grafana dashboard JSON
+    enabled: false
+
+  # -- Distributed tracing configuration (OpenTelemetry)
+  tracing:
+    # -- Enable trace export
+    enabled: false
+    # -- Service name reported in traces
+    serviceName: "hyperfleet-api"
+    # -- OTLP exporter endpoint (traces go to stdout when empty)
+    otlpEndpoint: ""
+    # -- OTLP protocol (`grpc` or `http/protobuf`)
+    otlpProtocol: "grpc"
+    # -- Sampler type
+    sampler: "parentbased_always_on"
+    # -- Sampling rate (only used with ratio-based samplers)
+    samplerArg: ""
+    # -- Context propagation formats
+    propagators: "tracecontext,baggage"
 
 # -- Native sidecar containers (Kubernetes 1.28+). Native sidecars are init
 # containers with `restartPolicy: Always` — they start before other init

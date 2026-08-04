@@ -209,8 +209,8 @@ Once enabled, tracing is configured using standard OpenTelemetry variables:
 | `OTEL_SERVICE_NAME` | Service name in traces | `hyperfleet-api` |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP collector endpoint | stdout exporter |
 | `OTEL_EXPORTER_OTLP_PROTOCOL` | Export protocol (`grpc` or `http/protobuf`) | `grpc` |
-| `OTEL_TRACES_SAMPLER` | Sampler type | `parentbased_traceidratio` |
-| `OTEL_TRACES_SAMPLER_ARG` | Sampling rate (0.0-1.0) | `1.0` |
+| `OTEL_TRACES_SAMPLER` | Sampler type | `parentbased_always_on` |
+| `OTEL_TRACES_SAMPLER_ARG` | Sampling rate (only used with ratio-based samplers) | `""` |
 | `OTEL_RESOURCE_ATTRIBUTES` | Additional resource attributes (k=v,k2=v2) | - |
 
 **See:** [Logging Documentation](logging.md#opentelemetry-integration) for tracing configuration details and [Tracing Standard](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/standards/tracing.md#configuration) for complete reference.

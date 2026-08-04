@@ -188,12 +188,18 @@
                         "description": "HTTP header carrying a pre-authenticated identity (bypasses JWT claim when set)"
                       }
                     },
-                    "required": ["issuer_url"],
+                    "required": [
+                      "issuer_url"
+                    ],
                     "if": {
-                      "required": ["jwk_cert_ca_file"]
+                      "required": [
+                        "jwk_cert_ca_file"
+                      ]
                     },
                     "then": {
-                      "required": ["jwk_cert_url"]
+                      "required": [
+                        "jwk_cert_url"
+                      ]
                     }
                   }
                 }
@@ -416,7 +422,10 @@
           "description": "Entity descriptors registered at startup. Each entry auto-generates REST endpoints, spec validation, and delete policies.",
           "items": {
             "type": "object",
-            "required": ["kind", "plural"],
+            "required": [
+              "kind",
+              "plural"
+            ],
             "properties": {
               "kind": {
                 "type": "string",
@@ -432,7 +441,10 @@
               },
               "on_parent_delete": {
                 "type": "string",
-                "enum": ["restrict", "cascade"],
+                "enum": [
+                  "restrict",
+                  "cascade"
+                ],
                 "description": "Child behavior when parent is deleted (restrict or cascade)"
               },
               "spec_schema_name": {
@@ -441,7 +453,9 @@
               },
               "required_adapters": {
                 "type": "array",
-                "items": { "type": "string" },
+                "items": {
+                  "type": "string"
+                },
                 "description": "Adapters that must finalize before hard-delete"
               },
               "name_min_len": {
@@ -461,7 +475,10 @@
                 "description": "Non-ownership associations to other entity types (HYPERFLEET-1156)",
                 "items": {
                   "type": "object",
-                  "required": ["ref_type", "target_kind"],
+                  "required": [
+                    "ref_type",
+                    "target_kind"
+                  ],
                   "properties": {
                     "ref_type": {
                       "type": "string",
@@ -870,70 +887,130 @@
               }
             }
           }
-        }
-      }
-    },
-    "serviceMonitor": {
-      "type": "object",
-      "description": "ServiceMonitor resource for Prometheus Operator scrape configuration",
-      "properties": {
-        "enabled": {
-          "type": "boolean",
-          "description": "Create a ServiceMonitor resource"
         },
-        "interval": {
-          "type": "string",
-          "description": "Prometheus scrape interval (e.g. 30s)"
-        },
-        "scrapeTimeout": {
-          "type": "string",
-          "description": "Prometheus scrape timeout (e.g. 10s)"
-        },
-        "labels": {
+        "serviceMonitor": {
           "type": "object",
-          "description": "Extra labels applied to the ServiceMonitor for Prometheus selector matching"
+          "description": "ServiceMonitor resource for Prometheus Operator scrape configuration",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Create a ServiceMonitor resource"
+            },
+            "interval": {
+              "type": "string",
+              "description": "Prometheus scrape interval (e.g. 30s)"
+            },
+            "scrapeTimeout": {
+              "type": "string",
+              "description": "Prometheus scrape timeout (e.g. 10s)"
+            },
+            "labels": {
+              "type": "object",
+              "description": "Extra labels applied to the ServiceMonitor for Prometheus selector matching"
+            },
+            "namespace": {
+              "type": "string",
+              "description": "Namespace for the ServiceMonitor; defaults to the release namespace"
+            },
+            "honorLabels": {
+              "type": "boolean",
+              "description": "Honor labels from the target to avoid overwriting"
+            },
+            "metricRelabeling": {
+              "type": "array",
+              "description": "Metric relabel configs applied before ingestion",
+              "items": {
+                "type": "object"
+              }
+            },
+            "namespaceSelector": {
+              "type": "object",
+              "description": "Namespace selector for cross-namespace monitoring"
+            }
+          }
         },
-        "namespace": {
-          "type": "string",
-          "description": "Namespace for the ServiceMonitor; defaults to the release namespace"
-        }
-      }
-    },
-    "tracing": {
-      "type": "object",
-      "description": "Distributed tracing via OpenTelemetry",
-      "properties": {
-        "enabled": {
-          "type": "boolean",
-          "description": "Enable OpenTelemetry tracing"
+        "tracing": {
+          "type": "object",
+          "description": "Distributed tracing via OpenTelemetry",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Enable OpenTelemetry tracing"
+            },
+            "serviceName": {
+              "type": "string",
+              "description": "Service name reported in traces"
+            },
+            "otlpEndpoint": {
+              "type": "string",
+              "description": "OTLP exporter endpoint; traces go to stdout if empty"
+            },
+            "otlpProtocol": {
+              "type": "string",
+              "enum": [
+                "grpc",
+                "http/protobuf"
+              ],
+              "description": "OTLP exporter transport protocol"
+            },
+            "sampler": {
+              "type": "string",
+              "description": "Sampler type"
+            },
+            "samplerArg": {
+              "type": "string",
+              "description": "Sampling rate (only used with ratio-based samplers)"
+            },
+            "propagators": {
+              "type": "string",
+              "description": "Comma-separated list of context propagators (e.g. tracecontext,baggage)"
+            }
+          }
         },
-        "serviceName": {
-          "type": "string",
-          "description": "Service name reported in traces"
+        "dashboard": {
+          "type": "object",
+          "description": "Grafana dashboard provisioning via sidecar ConfigMap",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Create a ConfigMap with the Grafana dashboard JSON"
+            }
+          }
         },
-        "otlpEndpoint": {
-          "type": "string",
-          "description": "OTLP exporter endpoint; traces go to stdout if empty"
-        },
-        "otlpProtocol": {
-          "type": "string",
-          "enum": [
-            "grpc",
-            "http/protobuf"
-          ],
-          "description": "OTLP exporter transport protocol"
-        },
-        "sampler": {
-          "type": "string",
-          "description": "Trace sampler type (e.g. parentbased_traceidratio)"
-        },
-        "samplerArg": {
-          "type": "string",
-          "description": "Sampler argument; for traceidratio this is the sampling rate (0.0-1.0)"
-        },
-        "propagators": {
-          "type": "string",
-          "description": "Comma-separated list of context propagators (e.g. tracecontext,baggage)"
+        "podMonitoring": {
+          "type": "object",
+          "description": "PodMonitoring for Google Managed Prometheus (GMP) scraping",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Create a PodMonitoring resource"
+            },
+            "interval": {
+              "type": "string",
+              "description": "Scrape interval (e.g. 30s)"
+            },
+            "additionalLabels": {
+              "type": "object",
+              "description": "Additional labels for the PodMonitoring resource"
+            },
+            "metricRelabeling": {
+              "type": "array",
+              "description": "Metric relabel configs applied before ingestion",
+              "items": {
+                "type": "object"
+              }
+            },
+            "tlsConfig": {
+              "type": "object",
+              "description": "TLS configuration for metrics endpoint",
+              "properties": {
+                "insecureSkipVerify": {
+                  "type": "boolean",
+                  "description": "Disable target certificate validation"
+                }
+              }
+            }
+          }
         }
       }
     },

@@ -107,7 +107,7 @@ spec:
         # Config file from ConfigMap (generated from values)
         - name: HYPERFLEET_CONFIG
           value: /etc/hyperfleet/config.yaml
-        {{- with .Values.tracing }}
+        {{- with .Values.monitoring.tracing }}
         - name: HYPERFLEET_TRACING_ENABLED
           value: {{ .enabled | quote }}
         {{- if .enabled }}

@@ -119,8 +119,8 @@ pass "PDB config template"
 
 run_test "template with ServiceMonitor enabled"
 render \
-  --set serviceMonitor.enabled=true \
-  --set serviceMonitor.interval=15s | kubeconform_validate
+  --set monitoring.serviceMonitor.enabled=true \
+  --set monitoring.serviceMonitor.interval=15s | kubeconform_validate
 pass "ServiceMonitor config template"
 
 run_test "template with PodMonitoring enabled"
