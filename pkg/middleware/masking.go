@@ -73,6 +73,10 @@ func (m *MaskingMiddleware) maskTextFallback(body []byte) []byte {
 	return []byte(text)
 }
 
+func (m *MaskingMiddleware) Enabled() bool {
+	return m.enabled
+}
+
 func (m *MaskingMiddleware) MaskHeaders(headers http.Header) http.Header {
 	if !m.enabled {
 		return headers

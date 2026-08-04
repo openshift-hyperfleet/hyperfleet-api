@@ -30,7 +30,7 @@ func RequestLoggingMiddleware(masker *middleware.MaskingMiddleware) func(http.Ha
 				slog.String("remote_addr", r.RemoteAddr),
 				logger.HTTPUserAgent(r.UserAgent()),
 			}
-			if masker != nil {
+			if masker != nil && masker.Enabled() {
 				attrs = append(attrs, slog.Any("headers", masker.MaskHeaders(r.Header)))
 			}
 
