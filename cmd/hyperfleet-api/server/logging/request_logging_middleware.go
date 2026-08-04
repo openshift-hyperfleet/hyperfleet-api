@@ -24,20 +24,17 @@ func RequestLoggingMiddleware(masker *middleware.MaskingMiddleware) func(http.Ha
 				return
 			}
 
-			var maskedHeaders http.Header
-			if masker != nil {
-				maskedHeaders = masker.MaskHeaders(r.Header)
-			} else {
-				maskedHeaders = r.Header
-			}
-
-			logger.With(ctx,
+			attrs := []any{
 				logger.HTTPMethod(r.Method),
 				logger.HTTPPath(r.URL.Path),
 				slog.String("remote_addr", r.RemoteAddr),
 				logger.HTTPUserAgent(r.UserAgent()),
-				slog.Any("headers", maskedHeaders),
-			).Info("HTTP request received")
+			}
+			if masker != nil {
+				attrs = append(attrs, slog.Any("headers", masker.MaskHeaders(r.Header)))
+			}
+
+			logger.With(ctx, attrs...).Info("HTTP request received")
 
 			rw := &responseWriter{ResponseWriter: w}
 
