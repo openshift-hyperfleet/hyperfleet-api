@@ -1071,6 +1071,41 @@ func TestSearchNodePoolConditionSubfieldLastUpdatedTime(t *testing.T) {
 	Expect(foundStale).To(BeTrue(), "Expected to find the stale node pool")
 }
 
+// TestSearchInvalidFieldReturnsError verifies that an invalid search field returns a 400
+func TestSearchInvalidFieldReturnsError(t *testing.T) {
+	h, client := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+
+	assertCleanBadRequest := func(t *testing.T, body []byte, statusCode int) {
+		t.Helper()
+		Expect(statusCode).To(Equal(http.StatusBadRequest))
+		bodyStr := string(body)
+		Expect(bodyStr).NotTo(ContainSubstring("pq:"))
+		Expect(bodyStr).NotTo(ContainSubstring("SQLSTATE"))
+		Expect(bodyStr).To(ContainSubstring("HYPERFLEET-VAL-005"))
+	}
+
+	// label.environment: no such column after Labels JOIN - undefined column (42703)
+	t.Run("label.environment undefined column", func(t *testing.T) {
+		RegisterTestingT(t)
+		search := openapi.SearchParams("label.environment = 'production'")
+		resp, err := client.GetClustersWithResponse(ctx, &openapi.GetClustersParams{Search: &search}, test.WithAuthToken(ctx))
+		Expect(err).NotTo(HaveOccurred())
+		assertCleanBadRequest(t, resp.Body, resp.StatusCode())
+	})
+
+	// label.id: id exists in both joined tables - ambiguous column (42702
+	t.Run("label.id ambiguous column", func(t *testing.T) {
+		RegisterTestingT(t)
+		search := openapi.SearchParams("label.id = 'foo'")
+		resp, err := client.GetClustersWithResponse(ctx, &openapi.GetClustersParams{Search: &search}, test.WithAuthToken(ctx))
+		Expect(err).NotTo(HaveOccurred())
+		assertCleanBadRequest(t, resp.Body, resp.StatusCode())
+	})
+}
+
 // TestSearchNonexistentField verifies that searching on a nonexistent column returns a 400
 func TestSearchNonexistentField(t *testing.T) {
 	RegisterTestingT(t)

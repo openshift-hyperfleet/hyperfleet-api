@@ -217,7 +217,7 @@ func (s *sqlGenericService) loadList(listCtx *listContext, d dao.GenericDao) *er
 		switch {
 		case db.IsDBConnectionError(countErr):
 			return errors.ServiceUnavailable("Database connection unavailable")
-		case db.IsUndefinedColumnError(countErr):
+		case db.IsInvalidColumnError(countErr):
 			return errors.BadRequest("invalid field in search or order query")
 		default:
 			return errors.GeneralError("Unable to list resources: %s", countErr)
@@ -240,7 +240,7 @@ func (s *sqlGenericService) loadList(listCtx *listContext, d dao.GenericDao) *er
 			listCtx.pagingMeta.Size = 0
 		case db.IsDBConnectionError(err):
 			return errors.ServiceUnavailable("Database connection unavailable")
-		case db.IsUndefinedColumnError(err):
+		case db.IsInvalidColumnError(err):
 			return errors.BadRequest("invalid field in search or order query")
 		default:
 			return errors.GeneralError("Unable to list resources: %s", err)

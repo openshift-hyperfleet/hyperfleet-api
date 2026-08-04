@@ -258,17 +258,14 @@ func resolveField(name string, ctx *walkContext) (string, []any, *errors.Service
 	trimmedName := strings.TrimSpace(name)
 	fieldParts := strings.Split(trimmedName, ".")
 
-	if len(fieldParts) == 1 {
-		if validationErr := validateJSONBKey(fieldParts[0], "field"); validationErr != nil {
-			return "", nil, errors.BadRequest("%s is not a valid field name", name)
-		}
-		return fmt.Sprintf("%s.%s", ctx.cfg.TableName, trimmedName), nil, nil
-	}
-
 	for _, part := range fieldParts {
 		if validationErr := validateJSONBKey(part, "field"); validationErr != nil {
 			return "", nil, errors.BadRequest("%s is not a valid field name", name)
 		}
+	}
+
+	if len(fieldParts) == 1 {
+		return fmt.Sprintf("%s.%s", ctx.cfg.TableName, trimmedName), nil, nil
 	}
 
 	if ctx.cfg.ResolveRelated != nil {
