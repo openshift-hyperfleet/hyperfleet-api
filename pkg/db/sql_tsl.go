@@ -25,24 +25,6 @@ const (
 	conditionStatusField    = "status"
 )
 
-var searchAllowedFields = map[string]bool{
-	"id":           true,
-	"name":         true,
-	"kind":         true,
-	"created_time": true,
-	"updated_time": true,
-	"deleted_time": true,
-	"created_by":   true,
-	"updated_by":   true,
-	"deleted_by":   true,
-	"generation":   true,
-	"href":         true,
-	"labels":       true,
-	"conditions":   true,
-	"owner_id":     true,
-	"owner_kind":   true,
-}
-
 // jsonbKeyPattern guards keys interpolated into JSONB paths (spec->>'%s', properties->>'%s').
 // Must be numbers, lowercase letters, or underscores
 var jsonbKeyPattern = regexp.MustCompile(`^[a-z0-9_]+$`)
@@ -275,7 +257,14 @@ func resolveSpecColumn(name string, _ *walkContext) (string, []any, *errors.Serv
 func resolveField(name string, ctx *walkContext) (string, []any, *errors.ServiceError) {
 	trimmedName := strings.TrimSpace(name)
 	fieldParts := strings.Split(trimmedName, ".")
-	if len(fieldParts) <= 2 && searchAllowedFields[fieldParts[0]] {
+
+	for _, part := range fieldParts {
+		if validationErr := validateJSONBKey(part, "field"); validationErr != nil {
+			return "", nil, errors.BadRequest("%s is not a valid field name", name)
+		}
+	}
+
+	if len(fieldParts) == 1 {
 		return fmt.Sprintf("%s.%s", ctx.cfg.TableName, trimmedName), nil, nil
 	}
 
@@ -425,6 +414,19 @@ func walkIn(op tsl.TSLExpressionOp, ctx *walkContext) (string, []any, *errors.Se
 		rightArgs = append(rightArgs, a...)
 	}
 
+	if strings.HasPrefix(leftSQL, "spec->") && len(rightArgs) > 0 {
+		allNumeric := true
+		for _, arg := range rightArgs {
+			if _, isNum := arg.(float64); !isNum {
+				allNumeric = false
+				break
+			}
+		}
+		if allNumeric {
+			leftSQL = fmt.Sprintf("CAST(%s AS numeric)", leftSQL)
+		}
+	}
+
 	return fmt.Sprintf("%s IN (%s)", leftSQL, strings.Join(placeholders, ", ")),
 		append(leftArgs, rightArgs...), nil
 }
@@ -451,6 +453,14 @@ func walkBetween(op tsl.TSLExpressionOp, ctx *walkContext) (string, []any, *erro
 	highSQL, highArgs, err := walkNode(arr.Values[1], ctx)
 	if err != nil {
 		return "", nil, err
+	}
+
+	if strings.HasPrefix(leftSQL, "spec->") && len(lowArgs) > 0 && len(highArgs) > 0 {
+		_, lowIsNum := lowArgs[0].(float64)
+		_, highIsNum := highArgs[0].(float64)
+		if lowIsNum && highIsNum {
+			leftSQL = fmt.Sprintf("CAST(%s AS numeric)", leftSQL)
+		}
 	}
 
 	var args []any

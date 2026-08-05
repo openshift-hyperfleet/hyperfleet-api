@@ -49,9 +49,10 @@ func (g *genericDaoMock) Where(where dao.Where) {
 	g.wheres = append(g.wheres, where)
 }
 
-func (g *genericDaoMock) Count(model interface{}, total *int64) {
+func (g *genericDaoMock) Count(model interface{}, total *int64) error {
 	// Mock implementation - sets count to 0
 	*total = 0
+	return nil
 }
 
 func (g *genericDaoMock) Validate(resourceList interface{}) error {

@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/lib/pq"
+
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/response"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
@@ -72,6 +74,14 @@ func TransactionMiddleware(next http.Handler, connection SessionFactory, request
 			next.ServeHTTP(w, r)
 		}
 	})
+}
+
+// IsInvalidColumnError reports whether err is an "undefined_column" (42703)
+// or "ambiguous_column" (42702) error, both indicate an invalid field in a
+// search or order query
+func IsInvalidColumnError(err error) bool {
+	var pqErr *pq.Error
+	return stderrors.As(err, &pqErr) && (pqErr.Code == "42703" || pqErr.Code == "42702")
 }
 
 // IsDBConnectionError indicates whether err is an infrastructure failure

@@ -31,7 +31,7 @@ type GenericDao interface {
 	Joins(sql string)
 	Group(sql string)
 	Where(where Where)
-	Count(model interface{}, total *int64)
+	Count(model interface{}, total *int64) error
 	Validate(resourceList interface{}) error
 
 	GetTableName() string
@@ -89,7 +89,7 @@ func (d *sqlGenericDao) Where(where Where) {
 	d.g2 = d.g2.Where(where.sql, where.values...)
 }
 
-func (d *sqlGenericDao) Count(model interface{}, total *int64) {
+func (d *sqlGenericDao) Count(model interface{}, total *int64) error {
 	// Creates new session which already clears all statement clauses
 	g2 := d.g2.Session(&gorm.Session{DryRun: false}).Model(model)
 	// Considers existing joins and search params from previous session
@@ -99,7 +99,7 @@ func (d *sqlGenericDao) Count(model interface{}, total *int64) {
 	if where, ok := d.g2.Statement.Clauses["WHERE"]; ok {
 		g2.Statement.Clauses["WHERE"] = where
 	}
-	g2.Count(total)
+	return g2.Count(total).Error
 }
 
 // Gorm finishers (Take, First, Last, etc.) are not idempotent

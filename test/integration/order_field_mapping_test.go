@@ -150,11 +150,6 @@ func TestOrderFieldValidation(t *testing.T) {
 		expectedError string
 	}{
 		{
-			name:          "InvalidFieldName",
-			order:         "nonexistent_field asc",
-			expectedError: "not allowed for ordering",
-		},
-		{
 			name:          "InvalidDirection",
 			order:         "name ascending",
 			expectedError: "invalid order format",

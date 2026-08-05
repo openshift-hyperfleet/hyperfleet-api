@@ -45,7 +45,7 @@ func TestArgsToOrder(t *testing.T) {
 			expected: []string{"name desc"},
 		},
 		{
-			name:     "all allowed fields",
+			name:     "standard fields",
 			input:    []string{"id", "name", "created_time", "updated_time", "kind"},
 			expected: []string{"id asc", "name asc", "created_time asc", "updated_time asc", "kind asc"},
 		},
@@ -100,18 +100,6 @@ func TestArgsToOrder(t *testing.T) {
 			expected: []string{"name asc", "created_time desc"},
 		},
 		{
-			name:          "mixed valid and invalid field",
-			input:         []string{"created_time desc", "name", "wrong_field"},
-			expectError:   true,
-			errorContains: "not allowed for ordering",
-		},
-		{
-			name:          "field not in whitelist",
-			input:         []string{"custom_field asc"},
-			expectError:   true,
-			errorContains: "not allowed for ordering",
-		},
-		{
 			name:     "deleted_time field",
 			input:    []string{"deleted_time desc"},
 			expected: []string{"deleted_time desc"},
@@ -120,6 +108,11 @@ func TestArgsToOrder(t *testing.T) {
 			name:     "generation field",
 			input:    []string{"generation asc"},
 			expected: []string{"generation asc"},
+		},
+		{
+			name:     "field with digit",
+			input:    []string{"release_v2 asc"},
+			expected: []string{"release_v2 asc"},
 		},
 		{
 			name:          "too many parts",

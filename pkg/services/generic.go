@@ -213,7 +213,16 @@ func (s *sqlGenericService) addJoins(listCtx *listContext, d dao.GenericDao) {
 func (s *sqlGenericService) loadList(listCtx *listContext, d dao.GenericDao) *errors.ServiceError {
 	args := listCtx.args
 
-	d.Count(listCtx.resourceList, &listCtx.pagingMeta.Total)
+	if countErr := d.Count(listCtx.resourceList, &listCtx.pagingMeta.Total); countErr != nil {
+		switch {
+		case db.IsDBConnectionError(countErr):
+			return errors.ServiceUnavailable("Database connection unavailable")
+		case db.IsInvalidColumnError(countErr):
+			return errors.BadRequest("invalid field in search or order query")
+		default:
+			return errors.GeneralError("Unable to list resources: %s", countErr)
+		}
+	}
 
 	// Set resourceList to be an empty slice with zero capacity. Real space will be allocated by g2.Find()
 	if err := zeroSlice(listCtx.resourceList, 0); err != nil {
@@ -231,6 +240,8 @@ func (s *sqlGenericService) loadList(listCtx *listContext, d dao.GenericDao) *er
 			listCtx.pagingMeta.Size = 0
 		case db.IsDBConnectionError(err):
 			return errors.ServiceUnavailable("Database connection unavailable")
+		case db.IsInvalidColumnError(err):
+			return errors.BadRequest("invalid field in search or order query")
 		default:
 			return errors.GeneralError("Unable to list resources: %s", err)
 		}
