@@ -7,6 +7,7 @@ import (
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
 	dbmocks "github.com/openshift-hyperfleet/hyperfleet-api/pkg/db/mocks"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/registry"
 )
 
 func newTestContainer(t *testing.T) *Container {
@@ -15,15 +16,15 @@ func newTestContainer(t *testing.T) *Container {
 	sessionFactory := dbmocks.NewMockSessionFactory()
 	t.Cleanup(func() { _ = sessionFactory.Close() })
 
-	return NewContainer(config.NewApplicationConfig(), sessionFactory)
+	c := NewContainer(config.NewApplicationConfig())
+	c.sessionFactory = sessionFactory
+	return c
 }
 
 func TestContainerCachesDAOsAndServices(t *testing.T) {
 	RegisterTestingT(t)
 
 	c := newTestContainer(t)
-
-	Expect(c.SessionFactory()).NotTo(BeNil())
 
 	Expect(c.ResourceDao()).NotTo(BeNil())
 	Expect(c.ResourceDao()).To(BeIdenticalTo(c.ResourceDao()))
@@ -59,4 +60,17 @@ func TestContainerConstructionIsLazy(t *testing.T) {
 	Expect(c.genericService).To(BeNil())
 	Expect(c.schemaValidator).To(BeNil())
 	Expect(c.jwtHandler).To(BeNil())
+}
+
+func TestContainerDoesNotInitializeGlobalRegistry(t *testing.T) {
+	RegisterTestingT(t)
+
+	cfg := config.NewApplicationConfig()
+	cfg.Entities = []registry.EntityDescriptor{{Kind: "invalid-without-plural"}}
+	sessionFactory := dbmocks.NewMockSessionFactory()
+	t.Cleanup(func() { _ = sessionFactory.Close() })
+
+	Expect(func() {
+		NewContainer(cfg)
+	}).NotTo(Panic())
 }

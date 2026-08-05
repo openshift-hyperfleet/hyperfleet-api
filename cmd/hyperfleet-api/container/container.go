@@ -11,14 +11,6 @@ import (
 
 // Container lazily constructs and caches application dependencies during
 // sequential startup. It is not safe for concurrent initialization.
-//
-// Container owns dependencies only. Assembling them into a running API server
-// is the composition root's job - see BuildAPIServer in the servecmd package.
-//
-// TODO(HYPERFLEET-1371): Once the environments/ package is removed,
-// Container should source SessionFactory directly (e.g. from config/Viper)
-// rather than accepting it as a constructor parameter. Close() should also
-// close the SessionFactory at that point.
 type Container struct {
 	cfg            *config.ApplicationConfig
 	sessionFactory db.SessionFactory
@@ -37,16 +29,6 @@ type Container struct {
 	jwtHandler      *auth.JWTHandler
 }
 
-func NewContainer(cfg *config.ApplicationConfig, sessionFactory db.SessionFactory) *Container {
-	return &Container{cfg: cfg, sessionFactory: sessionFactory}
-}
-
-func (c *Container) SessionFactory() db.SessionFactory {
-	return c.sessionFactory
-}
-
-func (c *Container) Close() {
-	if c.jwtHandler != nil {
-		c.jwtHandler.Close()
-	}
+func NewContainer(cfg *config.ApplicationConfig) *Container {
+	return &Container{cfg: cfg}
 }

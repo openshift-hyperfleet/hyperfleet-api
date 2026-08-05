@@ -11,14 +11,6 @@ type LoggingConfig struct {
 	Format  string        `mapstructure:"format" json:"format" validate:"required,oneof=json text"`
 	Output  string        `mapstructure:"output" json:"output" validate:"required,oneof=stdout stderr"`
 	Masking MaskingConfig `mapstructure:"masking" json:"masking" validate:"required"`
-	OTel    OTelConfig    `mapstructure:"otel" json:"otel" validate:"required"`
-}
-
-// OTelConfig holds OpenTelemetry configuration
-// Configuration is driven entirely by standard environment variables.
-// See: https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/standards/tracing.md#configuration
-type OTelConfig struct {
-	Enabled bool `mapstructure:"enabled" json:"enabled"`
 }
 
 // MaskingConfig holds log masking configuration
@@ -35,9 +27,6 @@ func NewLoggingConfig() *LoggingConfig {
 		Level:  "info",
 		Format: "json",
 		Output: "stdout",
-		OTel: OTelConfig{
-			Enabled: true,
-		},
 		Masking: MaskingConfig{
 			Enabled: true,
 			Headers: []string{

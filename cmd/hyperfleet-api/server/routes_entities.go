@@ -1,8 +1,9 @@
 package server
 
 import (
+	"cmp"
 	"fmt"
-	"sort"
+	"slices"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/handlers"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/registry"
@@ -50,8 +51,8 @@ func registerPerEntityRoutes(
 	adapterStatusService services.AdapterStatusService,
 ) {
 	descriptors := registry.All()
-	sort.Slice(descriptors, func(i, j int) bool {
-		return descriptors[i].Kind < descriptors[j].Kind
+	slices.SortFunc(descriptors, func(a, b registry.EntityDescriptor) int {
+		return cmp.Compare(a.Kind, b.Kind)
 	})
 
 	for _, descriptor := range descriptors {

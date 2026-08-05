@@ -30,7 +30,7 @@ For local development and testing, authentication can be disabled.
 ### Usage
 
 ```bash
-# Start service without authentication
+# Start service without authentication or TLS
 make run-no-auth
 
 # Access API without tokens

@@ -4,11 +4,13 @@ import (
 	"context"
 	"crypto/rsa"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
+	"path/filepath"
+	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -18,17 +20,17 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 	"gorm.io/gorm"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/container"
-	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/environments"
 	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/servecmd"
 	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/server"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/auth"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/closer"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db/db_session"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/registry"
 	"github.com/openshift-hyperfleet/hyperfleet-api/test/factories"
@@ -36,11 +38,9 @@ import (
 )
 
 const (
-	apiPort    = ":8777"
-	jwtKeyFile = "test/support/jwt_private_key.pem"
-	jwtCAFile  = "test/support/jwt_ca.pem"
-	jwkKID     = "uhctestkey"
-	jwkAlg     = "RS256"
+	jwkKID                 = "uhctestkey"
+	jwkAlg                 = "RS256"
+	databaseSSLModeDisable = "disable"
 )
 
 var (
@@ -50,314 +50,255 @@ var (
 
 const defaultTestIdentityHeader = "X-HyperFleet-Identity"
 
-// jwkURL stores the JWK mock server URL for testing
-var jwkURL string
+func applyIntegrationTestConfigOverrides(cfg *config.ApplicationConfig) {
+	cfg.Database.Name = "hyperfleet_test"
+	cfg.Database.Username = "test"
+	cfg.Database.Password = "test"
+	cfg.Database.Host = "localhost"
+	cfg.Database.Port = 5432
+	if cfg.Database.SSL.Mode == "" {
+		cfg.Database.SSL.Mode = databaseSSLModeDisable
+	}
+}
 
-// TimeFunc defines a way to get a new Time instance common to the entire test suite.
-// Aria's environment has Virtual Time that may not be actual time. We compensate
-// by synchronizing on a common time func attached to the test harness.
-type TimeFunc func() time.Time
+func integrationTestConfigPath() string {
+	_, thisFile, _, ok := runtime.Caller(0)
+	if !ok {
+		panic("test setup: runtime.Caller failed")
+	}
+	return filepath.Join(filepath.Dir(thisFile), "testdata", "integration-config.yaml")
+}
+
+func defaultTestEntities() []registry.EntityDescriptor {
+	return []registry.EntityDescriptor{
+		{
+			Kind:              "Cluster",
+			Plural:            "clusters",
+			SpecSchemaName:    "ClusterSpec",
+			NameMinLen:        3,
+			NameMaxLen:        53,
+			RequireSpecSchema: true,
+			RequiredAdapters:  []string{"validation", "dns", "pullsecret", "hypershift"},
+			Conditions:        testConditionMappingRules(),
+		},
+		{
+			Kind:              "NodePool",
+			Plural:            "nodepools",
+			ParentKind:        "Cluster",
+			OnParentDelete:    registry.OnParentDeleteCascade,
+			SpecSchemaName:    "NodePoolSpec",
+			NameMinLen:        3,
+			NameMaxLen:        15,
+			RequireSpecSchema: true,
+			RequiredAdapters:  []string{"validation", "hypershift"},
+		},
+		{
+			Kind:           "Channel",
+			Plural:         "channels",
+			SpecSchemaName: "ChannelSpec",
+		},
+		{
+			Kind:           "Version",
+			Plural:         "versions",
+			ParentKind:     "Channel",
+			OnParentDelete: registry.OnParentDeleteRestrict,
+			SpecSchemaName: "VersionSpec",
+		},
+		{
+			Kind:           "WifConfig",
+			Plural:         "wifconfigs",
+			SpecSchemaName: "WifConfigSpec",
+		},
+	}
+}
+
+func testConditionMappingRules() []registry.ConditionMappingRule {
+	const (
+		quotaWhen = `statuses.exists(s, s.adapter == "validation"` +
+			` && s.conditions.exists(c, c.type == "QuotaSufficient"))`
+		quotaPrefix = `statuses.filter(s, s.adapter == "validation")[0]` +
+			`.conditions.filter(c, c.type == "QuotaSufficient")[0]`
+		policyWhen = `statuses.exists(s, s.adapter == "validation"` +
+			` && s.conditions.exists(c, c.type == "PolicyCheckPassed"))`
+		policyPrefix = `statuses.filter(s, s.adapter == "validation")[0]` +
+			`.conditions.filter(c, c.type == "PolicyCheckPassed")[0]`
+	)
+	return []registry.ConditionMappingRule{
+		{
+			Type: "QuotaValid",
+			When: registry.MappingExpression{Expression: quotaWhen},
+			Output: registry.MappingOutput{
+				Status:  registry.MappingExpression{Expression: quotaPrefix + `.status`},
+				Reason:  registry.MappingExpression{Expression: quotaPrefix + `.reason`},
+				Message: registry.MappingExpression{Expression: `"Quota: " + ` + quotaPrefix + `.message`},
+			},
+		},
+		{
+			Type: "PolicyValid",
+			When: registry.MappingExpression{Expression: policyWhen},
+			Output: registry.MappingOutput{
+				Status:  registry.MappingExpression{Expression: policyPrefix + `.status`},
+				Reason:  registry.MappingExpression{Expression: policyPrefix + `.reason`},
+				Message: registry.MappingExpression{Expression: policyPrefix + `.message`},
+			},
+		},
+	}
+}
 
 type Helper struct {
-	MetricsServer server.Server
-	Ctx           context.Context
-	DBFactory     db.SessionFactory
 	Factories     factories.Factories
-	HealthServer  server.Server
+	DBFactory     db.SessionFactory
 	Container     *container.Container
 	APIServer     *server.APIServer
 	AppConfig     *config.ApplicationConfig
-	TimeFunc      TimeFunc
 	JWTPrivateKey *rsa.PrivateKey
 	JWTCA         *rsa.PublicKey
 	T             *testing.T
-	jwkTeardown   func() error
-	teardowns     []func() error
+	jwtHandler    *auth.JWTHandler
+	closer        *closer.Closer
 }
 
 func NewHelper(t *testing.T) *Helper {
 	once.Do(func() {
-		// Initialize logger first
 		initTestLogger()
 		ctx := context.Background()
 
 		jwtKey, jwtCA, err := parseJWTKeys()
 		if err != nil {
-			fmt.Println("Unable to read JWT keys - this may affect tests that make authenticated server requests")
+			panic(fmt.Sprintf("test setup: unable to load JWT keys: %v", err))
 		}
 
-		// Load configuration using ConfigLoader (same path as production).
-		// Integration tests bootstrap JWT issuers in OverrideConfig after Load.
-		// Config validation now requires issuers when JWT is enabled, so disable
-		// JWT for the Load step; OverrideConfig re-enables and configures issuers.
-		var restoreJWTEnv func() error
-		if environments.GetEnvironmentStrFromEnv() == environments.IntegrationTestingEnv {
-			prevJWTEnabled, hadJWTEnabled := os.LookupEnv("HYPERFLEET_SERVER_JWT_ENABLED")
-			if setenvErr := os.Setenv("HYPERFLEET_SERVER_JWT_ENABLED", "false"); setenvErr != nil {
-				logger.WithError(ctx, setenvErr).Error("Failed to disable JWT for integration config load")
-				os.Exit(1)
-			}
-			restoreJWTEnv = func() error {
-				if hadJWTEnabled {
-					return os.Setenv("HYPERFLEET_SERVER_JWT_ENABLED", prevJWTEnabled)
-				}
-				return os.Unsetenv("HYPERFLEET_SERVER_JWT_ENABLED")
-			}
+		if os.Getenv("HYPERFLEET_CONFIG") == "" {
+			os.Setenv("HYPERFLEET_CONFIG", integrationTestConfigPath()) //nolint:errcheck
 		}
-		emptyCmd := &cobra.Command{}
+
 		loader := config.NewConfigLoader()
-		cfg, err := loader.Load(ctx, emptyCmd)
-		if restoreJWTEnv != nil {
-			if restoreErr := restoreJWTEnv(); restoreErr != nil {
-				logger.WithError(ctx, restoreErr).Error("Failed to restore JWT env override after config load")
-				os.Exit(1)
-			}
-		}
+		cfg, err := loader.Load(ctx, &cobra.Command{})
 		if err != nil {
-			logger.WithError(ctx, err).Error("Failed to load test configuration")
-			os.Exit(1)
+			panic(fmt.Sprintf("test setup: load config: %v", err))
 		}
 
-		env := environments.Environment()
-		env.Config = cfg
-
-		registry.LoadDescriptors(cfg.Entities)
-		if len(cfg.Entities) == 0 {
-			loadDefaultTestEntities()
-		}
-		registry.Validate()
-
-		err = env.SetEnvironmentDefaults(pflag.CommandLine)
-		if err != nil {
-			logger.WithError(ctx, err).Error("Unable to set environment defaults")
-			os.Exit(1)
-		}
 		if logLevel := os.Getenv("LOGLEVEL"); logLevel != "" {
 			logger.With(ctx, logger.FieldLogLevel, logLevel).Info("Using custom loglevel")
-			pflag.CommandLine.Set("-v", logLevel) //nolint:errcheck // best-effort log level override for tests
+			cfg.Logging.Level = logLevel
 		}
-		pflag.Parse()
 
-		err = env.Initialize()
-		if err != nil {
-			logger.WithError(ctx, err).Error("Unable to initialize testing environment")
-			// env.Initialize() starts the PostgreSQL testcontainer before it can
-			// fail later in the sequence (e.g. Seed()); tear it down here too.
-			env.Teardown()
-			os.Exit(1)
+		applyIntegrationTestConfigOverrides(cfg)
+
+		if len(cfg.Entities) == 0 {
+			cfg.Entities = defaultTestEntities()
 		}
+		registry.LoadDescriptors(cfg.Entities)
+		registry.Validate()
+
+		ctr := container.NewContainer(cfg)
+		ctr.SetSessionFactory(db_session.NewTestcontainerFactory(cfg.Database))
+
+		c := closer.New()
+
+		// LIFO teardown order (last registered runs first):
+		// 1. API server shutdown + JWT handler close (registered by startAPIServer)
+		// 2. JWK mock teardown (safe after refresh goroutine stopped)
+		// 3. Session factory close (database connections + testcontainer)
+		c.Add(ctr.SessionFactory().Close)
+
+		jwkURL, jwkTeardown := mocks.NewJWKCertServerMock(t, jwtCA, jwkKID, jwkAlg)
+		if len(cfg.Server.JWT.Configs) == 0 {
+			panic("test setup: integration-config.yaml must define at least one JWT issuer")
+		}
+		cfg.Server.JWT.Configs[0].JWKCertURL = jwkURL
+		c.Add(jwkTeardown)
 
 		helper = &Helper{
-			AppConfig:     environments.Environment().Config,
-			DBFactory:     environments.Environment().Database.SessionFactory,
+			Factories:     factories.New(ctr.ResourceService()),
+			AppConfig:     cfg,
+			DBFactory:     ctr.SessionFactory(),
+			Container:     ctr,
 			JWTPrivateKey: jwtKey,
 			JWTCA:         jwtCA,
 			T:             t,
-		}
-		// Teardown order: terminate the testcontainer FIRST so the
-		// container is removed before anything else. If server shutdown hangs
-		// and the force-exit goroutine kills the process, the container
-		// would remain alive and keep the Prow pod stuck (HYPERFLEET-625).
-		// CleanDB is omitted because the container is destroyed anyway.
-		// Every step is nil-safe so this same list can also run from
-		// failStartup before every resource in it has been created.
-		helper.teardowns = []func() error{
-			helper.teardownEnv,
-			helper.stopAPIServer,
-			helper.closeContainer,
-			helper.stopMetricsServer,
-			helper.stopHealthServer,
-			helper.stopJWKMock,
+			closer:        c,
 		}
 
-		// Integration tests must run with JWT enabled; fail fast if that ever regresses.
-		if !cfg.Server.JWT.Enabled {
-			helper.failStartup(ctx, nil,
-				"Integration tests require JWT enabled, check OverrideConfig() in e_integration_testing.go")
-		}
-
-		ctr := container.NewContainer(env.Config, env.Database.SessionFactory)
-		helper.Container = ctr
-		helper.Factories = factories.New(ctr.ResourceService())
-
-		// Start JWK certificate mock server for testing
-		helper.jwkTeardown = helper.StartJWKCertServerMock()
 		helper.startAPIServer()
-		helper.startMetricsServer()
-		helper.startHealthServer()
 	})
 	helper.T = t
 	return helper
 }
 
-func (helper *Helper) Env() *environments.Env {
-	return environments.Environment()
-}
-
-func (helper *Helper) teardownEnv() error {
-	helper.Env().Teardown()
-	return nil
-}
-
 func (helper *Helper) Teardown() {
-	for _, f := range helper.teardowns {
-		err := f()
-		if err != nil {
-			helper.T.Errorf("error running teardown func: %s", err)
-		}
+	if err := helper.closer.Close(); err != nil {
+		logger.WithError(context.Background(), err).Error("teardown errors")
 	}
 }
 
 func (helper *Helper) requireJWTIssuers() {
-	if helper.Env().Config.Server.JWT.Enabled && len(helper.Env().Config.Server.JWT.Configs) == 0 {
+	if helper.AppConfig.Server.JWT.Enabled && len(helper.AppConfig.Server.JWT.Configs) == 0 {
 		helper.failStartup(context.Background(), nil, "JWT enabled but no issuer configs defined")
 	}
 }
 
-// failStartup logs a fatal startup error, runs whatever teardowns have been
-// registered so far (each is nil-safe for resources not yet created), and
-// exits. Startup failures must go through this instead of a bare os.Exit so
-// resources created earlier in NewHelper (e.g. the PostgreSQL testcontainer)
-// don't leak and block the Prow pod (HYPERFLEET-625).
+// failStartup runs the closer to clean up resources already created (e.g. the
+// PostgreSQL testcontainer) and exits. Without this, a bare os.Exit would
+// leak the container and block the Prow pod (HYPERFLEET-625).
 func (helper *Helper) failStartup(ctx context.Context, err error, msg string) {
 	if err != nil {
 		logger.WithError(ctx, err).Error(msg)
 	} else {
 		logger.Error(ctx, msg)
 	}
-	for _, teardown := range helper.teardowns {
-		if tdErr := teardown(); tdErr != nil {
-			logger.WithError(ctx, tdErr).Error("error running teardown during startup failure")
-		}
-	}
+	_ = helper.closer.Close()
 	os.Exit(1)
 }
 
 func (helper *Helper) startAPIServer() {
 	ctx := context.Background()
-	// Configure JWK certificate URL for API server
 	helper.requireJWTIssuers()
-	if len(helper.Env().Config.Server.JWT.Configs) > 0 {
-		cfg := &helper.Env().Config.Server.JWT.Configs[0]
-		cfg.JWKCertURL = jwkURL
-		if cfg.IdentityHeader == "" {
-			cfg.IdentityHeader = defaultTestIdentityHeader
+	if len(helper.AppConfig.Server.JWT.Configs) > 0 {
+		if helper.AppConfig.Server.JWT.Configs[0].IdentityHeader == "" {
+			helper.AppConfig.Server.JWT.Configs[0].IdentityHeader = defaultTestIdentityHeader
 		}
 	}
-	cfg := helper.Env().Config
+	cfg := helper.AppConfig
 
-	// Only build the JWT handler when auth is on; it starts a JWKS refresh goroutine.
-	var jwtHandler *auth.JWTHandler
-	if cfg.Server.JWT.Enabled {
-		var jwtErr error
-		jwtHandler, jwtErr = helper.Container.JWTHandler()
-		if jwtErr != nil {
-			helper.failStartup(ctx, jwtErr, "Unable to create JWT handler")
-		}
+	jwtHandler := helper.Container.JWTHandler()
+	helper.jwtHandler = jwtHandler
+	if jwtHandler != nil {
+		helper.closer.Add(func() error { jwtHandler.Close(); return nil })
 	}
 
-	schemaValidator, schemaErr := helper.Container.SchemaValidator()
-	if schemaErr != nil {
-		helper.failStartup(ctx, schemaErr, "Unable to create schema validator")
-	}
-
-	// Disable tracing for integration tests (no OTLP collector required)
 	apiServer, err := servecmd.BuildAPIServer(
 		cfg,
 		helper.Container.ResourceService(),
 		helper.Container.AdapterStatusService(),
-		schemaValidator,
+		helper.Container.SchemaValidator(),
 		jwtHandler,
-		helper.Container.SessionFactory(),
-		false,
+		helper.DBFactory,
 	)
 	if err != nil {
 		helper.failStartup(ctx, err, "Unable to build Test API server")
 	}
 	helper.APIServer = apiServer
+	helper.closer.Add(func() error {
+		drainCtx, cancel := context.WithTimeout(context.Background(), cfg.Health.ShutdownTimeout)
+		defer cancel()
+		if shutdownErr := helper.APIServer.Shutdown(drainCtx); shutdownErr != nil {
+			return fmt.Errorf("unable to stop api server: %w", shutdownErr)
+		}
+		return nil
+	})
+
 	listener, err := helper.APIServer.Listen()
 	if err != nil {
 		helper.failStartup(ctx, err, "Unable to start Test API server")
 	}
 	go func() {
 		logger.Debug(ctx, "Test API server started")
-		helper.APIServer.Serve(listener)
+		if err := helper.APIServer.Serve(listener); err != nil {
+			logger.WithError(ctx, err).Error("Test API server terminated with errors")
+		}
 		logger.Debug(ctx, "Test API server stopped")
 	}()
-}
-
-func (helper *Helper) stopAPIServer() error {
-	if helper.APIServer == nil {
-		return nil
-	}
-	if err := helper.APIServer.Stop(); err != nil {
-		return fmt.Errorf("unable to stop api server: %w", err)
-	}
-	return nil
-}
-
-func (helper *Helper) closeContainer() error {
-	if helper.Container == nil {
-		return nil
-	}
-	helper.Container.Close()
-	return nil
-}
-
-func (helper *Helper) stopJWKMock() error {
-	if helper.jwkTeardown == nil {
-		return nil
-	}
-	return helper.jwkTeardown()
-}
-
-func (helper *Helper) startMetricsServer() {
-	ctx := context.Background()
-	helper.MetricsServer = server.NewMetricsServer()
-	go func() {
-		logger.Debug(ctx, "Test Metrics server started")
-		helper.MetricsServer.Start()
-		logger.Debug(ctx, "Test Metrics server stopped")
-	}()
-}
-
-func (helper *Helper) stopMetricsServer() error {
-	if helper.MetricsServer == nil {
-		return nil
-	}
-	if err := helper.MetricsServer.Stop(); err != nil {
-		return fmt.Errorf("unable to stop metrics server: %w", err)
-	}
-	return nil
-}
-
-func (helper *Helper) stopHealthServer() error {
-	if helper.HealthServer == nil {
-		return nil
-	}
-	if err := helper.HealthServer.Stop(); err != nil {
-		return fmt.Errorf("unable to stop health server: %w", err)
-	}
-	return nil
-}
-
-func (helper *Helper) startHealthServer() {
-	ctx := context.Background()
-	helper.HealthServer = server.NewHealthServer()
-	go func() {
-		logger.Debug(ctx, "Test health check server started")
-		helper.HealthServer.Start()
-		logger.Debug(ctx, "Test health check server stopped")
-	}()
-}
-
-func (helper *Helper) RestartMetricsServer() {
-	ctx := context.Background()
-	if err := helper.stopMetricsServer(); err != nil {
-		logger.WithError(ctx, err).Warn("unable to stop metrics server on restart")
-	}
-	helper.startMetricsServer()
-	logger.Debug(ctx, "Test metrics server restarted")
 }
 
 // NewID creates a new unique ID used internally
@@ -369,12 +310,6 @@ func (helper *Helper) NewID() string {
 	return id.String()
 }
 
-// NewUUID creates a new unique UUID, which has different formatting than ksuid
-// UUID is used by telemeter and we validate the format.
-func (helper *Helper) NewUUID() string {
-	return uuid.New().String()
-}
-
 func (helper *Helper) RestURL(path string) string {
 	protocol := "http" //nolint:goconst // Protocol strings used across URL builders
 	if helper.AppConfig.Server.TLS.Enabled {
@@ -383,24 +318,7 @@ func (helper *Helper) RestURL(path string) string {
 	return fmt.Sprintf("%s://%s/api/hyperfleet/v1%s", protocol, helper.AppConfig.Server.BindAddress(), path)
 }
 
-func (helper *Helper) MetricsURL(path string) string {
-	protocol := "http" //nolint:goconst // Protocol strings used across URL builders
-	if helper.AppConfig.Metrics.TLS.Enabled {
-		protocol = "https" //nolint:goconst // Protocol strings used across URL builders
-	}
-	return fmt.Sprintf("%s://%s%s", protocol, helper.AppConfig.Metrics.BindAddress(), path)
-}
-
-func (helper *Helper) HealthURL(path string) string {
-	protocol := "http" //nolint:goconst // Protocol strings used across URL builders
-	if helper.AppConfig.Health.TLS.Enabled {
-		protocol = "https" //nolint:goconst // Protocol strings used across URL builders
-	}
-	return fmt.Sprintf("%s://%s%s", protocol, helper.AppConfig.Health.BindAddress(), path)
-}
-
 func (helper *Helper) NewAPIClient() *openapi.ClientWithResponses {
-	// Build the server URL
 	protocol := "http" //nolint:goconst // Protocol strings used across URL builders
 	if helper.AppConfig.Server.TLS.Enabled {
 		protocol = "https" //nolint:goconst // Protocol strings used across URL builders
@@ -408,7 +326,7 @@ func (helper *Helper) NewAPIClient() *openapi.ClientWithResponses {
 	serverURL := fmt.Sprintf("%s://%s", protocol, helper.AppConfig.Server.BindAddress())
 	client, err := openapi.NewClientWithResponses(serverURL)
 	if err != nil {
-		helper.T.Fatalf("Failed to create API client: %v", err)
+		panic(fmt.Sprintf("test setup: failed to create API client: %v", err))
 	}
 	return client
 }
@@ -442,7 +360,6 @@ func (helper *Helper) NewAccount(username, name, email string) *TestAccount {
 	}
 }
 
-// contextKeyAccessToken is a context key for storing the access token
 type contextKeyAccessToken struct{}
 
 // ContextAccessToken is the context key for access tokens (used by tests)
@@ -483,61 +400,19 @@ func WithIdentityHeader(headerName, headerValue string) openapi.RequestEditorFn 
 }
 
 // IdentityHeaderName returns the configured identity header name from the first JWT issuer config.
-func IdentityHeaderName() string {
-	configs := environments.Environment().Config.Server.JWT.Configs
+func (h *Helper) IdentityHeaderName() string {
+	if h == nil || h.AppConfig == nil {
+		return ""
+	}
+	configs := h.AppConfig.Server.JWT.Configs
 	if len(configs) > 0 {
 		return configs[0].IdentityHeader
 	}
 	return ""
 }
 
-func (helper *Helper) StartJWKCertServerMock() (teardown func() error) {
-	helper.requireJWTIssuers()
-	jwkURL, teardown = mocks.NewJWKCertServerMock(helper.T, helper.JWTCA, jwkKID, jwkAlg)
-	if len(helper.Env().Config.Server.JWT.Configs) > 0 {
-		helper.Env().Config.Server.JWT.Configs[0].JWKCertURL = jwkURL
-	}
-	return teardown
-}
-
-func (helper *Helper) DeleteAll(table interface{}) {
-	g2 := helper.DBFactory.New(context.Background())
-	err := g2.Model(table).Delete(table).Error
-	if err != nil {
-		helper.T.Errorf("error deleting from table %v: %v", table, err)
-	}
-}
-
-func (helper *Helper) Delete(obj interface{}) {
-	g2 := helper.DBFactory.New(context.Background())
-	err := g2.Delete(obj).Error
-	if err != nil {
-		helper.T.Errorf("error deleting object %v: %v", obj, err)
-	}
-}
-
-func (helper *Helper) SkipIfShort() {
-	if testing.Short() {
-		helper.T.Skip("Skipping execution of test in short mode")
-	}
-}
-
-func (helper *Helper) Count(table string) int64 {
-	g2 := helper.DBFactory.New(context.Background())
-	var count int64
-	err := g2.Table(table).Count(&count).Error
-	if err != nil {
-		helper.T.Errorf("error getting count for table %s: %v", table, err)
-	}
-	return count
-}
-
 func (helper *Helper) MigrateDB() error {
 	return db.Migrate(helper.DBFactory.New(context.Background()))
-}
-
-func (helper *Helper) ClearAllTables() {
-	// Reserved for future use
 }
 
 func (helper *Helper) CleanDB() error {
@@ -545,36 +420,29 @@ func (helper *Helper) CleanDB() error {
 
 	tables, err := helper.getAllTables(g2)
 	if err != nil {
-		helper.T.Errorf("error discovering tables: %v", err)
-		return err
+		return fmt.Errorf("error discovering tables: %w", err)
 	}
 
 	orderedTables, err := helper.orderTablesByDependencies(g2, tables)
 	if err != nil {
-		helper.T.Errorf("error ordering tables by dependencies: %v", err)
-		return err
+		return fmt.Errorf("error ordering tables by dependencies: %w", err)
 	}
 
 	for _, table := range orderedTables {
 		if g2.Migrator().HasTable(table) {
 			if err := g2.Migrator().DropTable(table); err != nil {
-				helper.T.Errorf("error dropping table %s: %v", table, err)
-				return err
+				return fmt.Errorf("error dropping table %s: %w", table, err)
 			}
 		}
 	}
 
-	// Truncate migrations table so MigrateDB() will re-run all migrations
-	// This ensures tables are recreated after CleanDB() drops them
 	if err := g2.Exec("TRUNCATE TABLE migrations").Error; err != nil {
-		helper.T.Errorf("error truncating migrations table: %v", err)
-		return err
+		return fmt.Errorf("error truncating migrations table: %w", err)
 	}
 
 	return nil
 }
 
-// System tables should not be dropped
 var systemTables = []string{"migrations"}
 
 func isSystemTable(tableName string) bool {
@@ -602,7 +470,6 @@ func (helper *Helper) getAllTables(g2 *gorm.DB) ([]string, error) {
 	return tables, nil
 }
 
-// Child tables (with foreign keys) come before parent tables to ensure safe deletion
 func (helper *Helper) orderTablesByDependencies(g2 *gorm.DB, tables []string) ([]string, error) {
 	dependencies := make(map[string][]string)
 
@@ -631,9 +498,7 @@ func (helper *Helper) orderTablesByDependencies(g2 *gorm.DB, tables []string) ([
 			return nil
 		}
 		if visiting[table] {
-			err := fmt.Errorf("circular foreign key dependency detected involving table '%s'", table)
-			helper.T.Errorf("%v", err)
-			return err
+			return fmt.Errorf("circular foreign key dependency detected involving table '%s'", table)
 		}
 
 		visiting[table] = true
@@ -654,9 +519,7 @@ func (helper *Helper) orderTablesByDependencies(g2 *gorm.DB, tables []string) ([
 		}
 	}
 
-	for i, j := 0, len(ordered)-1; i < j; i, j = i+1, j-1 {
-		ordered[i], ordered[j] = ordered[j], ordered[i]
-	}
+	slices.Reverse(ordered)
 
 	return ordered, nil
 }
@@ -687,20 +550,15 @@ func (helper *Helper) ResetDB() error {
 	if err := helper.CleanDB(); err != nil {
 		return err
 	}
-
-	if err := helper.MigrateDB(); err != nil {
-		return err
-	}
-
-	return nil
+	return helper.MigrateDB()
 }
 
 func (helper *Helper) CreateJWTString(account *TestAccount) string {
 	helper.requireJWTIssuers()
 	var issuerURL, audience string
-	if len(helper.Env().Config.Server.JWT.Configs) > 0 {
-		issuerURL = helper.Env().Config.Server.JWT.Configs[0].IssuerURL
-		audience = helper.Env().Config.Server.JWT.Configs[0].Audience
+	if len(helper.AppConfig.Server.JWT.Configs) > 0 {
+		issuerURL = helper.AppConfig.Server.JWT.Configs[0].IssuerURL
+		audience = helper.AppConfig.Server.JWT.Configs[0].Audience
 	}
 	claims := jwt.MapClaims{
 		"iss":        issuerURL,
@@ -723,59 +581,29 @@ func (helper *Helper) CreateJWTString(account *TestAccount) string {
 
 	signedToken, err := token.SignedString(helper.JWTPrivateKey)
 	if err != nil {
-		helper.T.Errorf("Unable to sign test jwt: %s", err)
-		return ""
+		panic(fmt.Sprintf("test setup: unable to sign test JWT: %s", err))
 	}
 	return signedToken
-}
-
-func (helper *Helper) CreateJWTToken(account *TestAccount) *jwt.Token {
-	tokenString := helper.CreateJWTString(account)
-
-	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-		return helper.JWTCA, nil
-	})
-	if err != nil {
-		helper.T.Errorf("Unable to parse signed jwt: %s", err)
-		return nil
-	}
-	return token
-}
-
-// OpenapiError Convert an error response body to an openapi error struct
-func (helper *Helper) OpenapiError(body []byte) openapi.ProblemDetails {
-	var exErr openapi.ProblemDetails
-	jsonErr := json.Unmarshal(body, &exErr)
-	if jsonErr != nil {
-		helper.T.Errorf("Unable to convert error response to openapi error: %s", jsonErr)
-	}
-	return exErr
 }
 
 func parseJWTKeys() (*rsa.PrivateKey, *rsa.PublicKey, error) {
 	privateBytes, err := privatebytes()
 	if err != nil {
-		return nil, nil, fmt.Errorf("unable to read JWT key file %s: %w", jwtKeyFile, err)
+		return nil, nil, fmt.Errorf("unable to decode JWT private key: %w", err)
 	}
 	pubBytes, err := publicbytes()
 	if err != nil {
-		return nil, nil, fmt.Errorf("unable to read JWT ca file %s: %w", jwtCAFile, err)
+		return nil, nil, fmt.Errorf("unable to decode JWT CA: %w", err)
 	}
 
-	// Parse keys
-	// ParseRSAPrivateKeyFromPEMWithPassword is deprecated in the stdlib but there's
-	// no suitable alternative for our test fixture keys; explicitly silence the
-	// staticcheck warning here.
 	//nolint:staticcheck
 	privateKey, err := jwt.ParseRSAPrivateKeyFromPEMWithPassword(privateBytes, "passwd")
 	if err != nil {
-		err = fmt.Errorf("unable to parse JWT private key: %s", err)
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("unable to parse JWT private key: %w", err)
 	}
 	pubKey, err := jwt.ParseRSAPublicKeyFromPEM(pubBytes)
 	if err != nil {
-		err = fmt.Errorf("unable to parse JWT ca: %s", err)
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("unable to parse JWT ca: %w", err)
 	}
 
 	return privateKey, pubKey, nil
@@ -841,93 +669,14 @@ RVJUSUZJQ0FURS0tLS0tCg==`
 	return base64.StdEncoding.DecodeString(s)
 }
 
-// initTestLogger initializes a default logger for tests
 func initTestLogger() {
 	cfg := &logger.LogConfig{
 		Level:     slog.LevelInfo,
-		Format:    logger.FormatText, // Use text format for test readability
+		Format:    logger.FormatText,
 		Output:    os.Stdout,
 		Component: "hyperfleet-api-test",
 		Version:   "test",
 		Hostname:  "test-host",
 	}
 	logger.InitGlobalLogger(cfg)
-}
-
-// loadDefaultTestEntities registers the standard entity descriptors that
-// integration tests need when no config file provides them.
-func loadDefaultTestEntities() {
-	registry.LoadDescriptors([]registry.EntityDescriptor{
-		{
-			Kind:              "Cluster",
-			Plural:            "clusters",
-			SpecSchemaName:    "ClusterSpec",
-			NameMinLen:        3,
-			NameMaxLen:        53,
-			RequireSpecSchema: true,
-			RequiredAdapters:  []string{"validation", "dns", "pullsecret", "hypershift"},
-			Conditions:        testConditionMappingRules(),
-		},
-		{
-			Kind:              "NodePool",
-			Plural:            "nodepools",
-			ParentKind:        "Cluster",
-			OnParentDelete:    registry.OnParentDeleteCascade,
-			SpecSchemaName:    "NodePoolSpec",
-			NameMinLen:        3,
-			NameMaxLen:        15,
-			RequireSpecSchema: true,
-			RequiredAdapters:  []string{"validation", "hypershift"},
-		},
-		{
-			Kind:           "Channel",
-			Plural:         "channels",
-			SpecSchemaName: "ChannelSpec",
-		},
-		{
-			Kind:           "Version",
-			Plural:         "versions",
-			ParentKind:     "Channel",
-			OnParentDelete: registry.OnParentDeleteRestrict,
-			SpecSchemaName: "VersionSpec",
-		},
-		{
-			Kind:           "WifConfig",
-			Plural:         "wifconfigs",
-			SpecSchemaName: "WifConfigSpec",
-		},
-	})
-}
-
-func testConditionMappingRules() []registry.ConditionMappingRule {
-	const (
-		quotaWhen = `statuses.exists(s, s.adapter == "validation"` +
-			` && s.conditions.exists(c, c.type == "QuotaSufficient"))`
-		quotaPrefix = `statuses.filter(s, s.adapter == "validation")[0]` +
-			`.conditions.filter(c, c.type == "QuotaSufficient")[0]`
-		policyWhen = `statuses.exists(s, s.adapter == "validation"` +
-			` && s.conditions.exists(c, c.type == "PolicyCheckPassed"))`
-		policyPrefix = `statuses.filter(s, s.adapter == "validation")[0]` +
-			`.conditions.filter(c, c.type == "PolicyCheckPassed")[0]`
-	)
-	return []registry.ConditionMappingRule{
-		{
-			Type: "QuotaValid",
-			When: registry.MappingExpression{Expression: quotaWhen},
-			Output: registry.MappingOutput{
-				Status:  registry.MappingExpression{Expression: quotaPrefix + `.status`},
-				Reason:  registry.MappingExpression{Expression: quotaPrefix + `.reason`},
-				Message: registry.MappingExpression{Expression: `"Quota: " + ` + quotaPrefix + `.message`},
-			},
-		},
-		{
-			Type: "PolicyValid",
-			When: registry.MappingExpression{Expression: policyWhen},
-			Output: registry.MappingOutput{
-				Status:  registry.MappingExpression{Expression: policyPrefix + `.status`},
-				Reason:  registry.MappingExpression{Expression: policyPrefix + `.reason`},
-				Message: registry.MappingExpression{Expression: policyPrefix + `.message`},
-			},
-		},
-	}
 }

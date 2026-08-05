@@ -11,18 +11,24 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
-func NewMetricsServer() Server {
+type metricsCfg interface {
+	BindAddress() string
+	TLSEnabled() bool
+	TLSCertFile() string
+	TLSKeyFile() string
+}
+
+func NewMetricsServer(cfg metricsCfg) Server {
 	mainRouter := http.NewServeMux()
 
-	// metrics endpoint only (health endpoints moved to health_server.go on port 8080)
 	prometheusMetricsHandler := handlers.NewPrometheusMetricsHandler()
-	mainRouter.Handle("/metrics", prometheusMetricsHandler.Handler())
+	mainRouter.Handle("GET /metrics", prometheusMetricsHandler.Handler())
 
 	mainHandler := WithNotFoundHandler(mainRouter)
 
-	s := &metricsServer{}
+	s := &metricsServer{cfg: cfg}
 	s.httpServer = &http.Server{
-		Addr:              env().Config.Metrics.BindAddress(),
+		Addr:              cfg.BindAddress(),
 		Handler:           mainHandler,
 		ReadHeaderTimeout: 10 * time.Second,
 	}
@@ -30,44 +36,50 @@ func NewMetricsServer() Server {
 }
 
 type metricsServer struct {
+	cfg        metricsCfg
 	httpServer *http.Server
 }
 
 var _ Server = &metricsServer{}
 
-func (s metricsServer) Listen() (listener net.Listener, err error) {
-	return nil, nil
+func (s *metricsServer) Listen() (net.Listener, error) {
+	return net.Listen("tcp", s.httpServer.Addr)
 }
 
-func (s metricsServer) Serve(listener net.Listener) {
-}
-
-func (s metricsServer) Start() {
+func (s *metricsServer) Serve(listener net.Listener) error {
 	ctx := context.Background()
 	var err error
-	if env().Config.Metrics.TLS.Enabled {
-		if env().Config.Server.TLS.CertFile == "" || env().Config.Server.TLS.KeyFile == "" {
-			check(
-				fmt.Errorf("unspecified required --https-cert-file, --https-key-file"),
-				"Can't start https server",
-			)
+	if s.cfg.TLSEnabled() {
+		if s.cfg.TLSCertFile() == "" || s.cfg.TLSKeyFile() == "" {
+			_ = listener.Close()
+			return fmt.Errorf("unspecified required --https-cert-file, --https-key-file")
 		}
 
-		logger.With(ctx, logger.FieldBindAddress, env().Config.Metrics.BindAddress()).Info("Serving Metrics with TLS")
-		err = s.httpServer.ListenAndServeTLS(env().Config.Server.TLS.CertFile, env().Config.Server.TLS.KeyFile)
+		logger.With(ctx, logger.FieldBindAddress, s.httpServer.Addr).Info("Serving Metrics with TLS")
+		err = s.httpServer.ServeTLS(listener, s.cfg.TLSCertFile(), s.cfg.TLSKeyFile())
 	} else {
-		logger.With(ctx, logger.FieldBindAddress, env().Config.Metrics.BindAddress()).Info("Serving Metrics without TLS")
-		err = s.httpServer.ListenAndServe()
+		logger.With(ctx, logger.FieldBindAddress, s.httpServer.Addr).Info("Serving Metrics without TLS")
+		err = s.httpServer.Serve(listener)
 	}
 	if err != nil && err != http.ErrServerClosed {
-		check(err, "Metrics server terminated with errors")
-	} else {
-		logger.Info(ctx, "Metrics server terminated")
+		return fmt.Errorf("metrics server terminated with errors: %w", err)
 	}
+	logger.Info(ctx, "Metrics server terminated")
+	return nil
 }
 
-func (s metricsServer) Stop() error {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+func (s *metricsServer) Start() error {
+	listener, err := s.Listen()
+	if err != nil {
+		return fmt.Errorf("failed to create metrics server listener: %w", err)
+	}
+	return s.Serve(listener)
+}
+
+func (s *metricsServer) Shutdown(ctx context.Context) error {
 	return s.httpServer.Shutdown(ctx)
+}
+
+func (s *metricsServer) Close() error {
+	return s.httpServer.Close()
 }

@@ -18,7 +18,6 @@ func TestNewLoggingConfig_Defaults(t *testing.T) {
 	Expect(cfg.Level).To(Equal("info"))
 	Expect(cfg.Format).To(Equal("json"))
 	Expect(cfg.Output).To(Equal("stdout"))
-	Expect(cfg.OTel.Enabled).To(BeTrue())
 	Expect(cfg.Masking.Enabled).To(BeTrue())
 	Expect(cfg.Masking.Headers).NotTo(BeEmpty())
 	Expect(cfg.Masking.Fields).NotTo(BeEmpty())
@@ -42,8 +41,7 @@ func TestConfigLoader_LoggingFromEnv(t *testing.T) {
 	Expect(err).NotTo(HaveOccurred())
 	Expect(appConfig.Logging.Level).To(Equal("debug"))
 	Expect(appConfig.Logging.Format).To(Equal("text"))
-	// OTel.Enabled defaults to true
-	Expect(appConfig.Logging.OTel.Enabled).To(BeTrue())
+	Expect(appConfig.Tracing.Enabled).To(BeTrue())
 }
 
 // TestLoggingConfig_GetSensitiveHeadersList tests the headers array accessor

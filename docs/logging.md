@@ -408,16 +408,16 @@ Sensitive data is automatically masked when `MASKING_ENABLED=true`:
 **Default masked headers**: `Authorization`, `Cookie`, `X-API-Key`, `X-Auth-Token`
 **Default masked fields**: `password`, `token`, `secret`, `api_key`, `client_secret`
 
-To add custom masking rules:
+To add custom masking rules to a loaded `*config.ApplicationConfig` named `cfg`:
 
 ```go
-env().Config.Logging.Masking.Headers = append(
-    env().Config.Logging.Masking.Headers,
+cfg.Logging.Masking.Headers = append(
+    cfg.Logging.Masking.Headers,
     "X-Custom-Auth-Header",
 )
 
-env().Config.Logging.Masking.Fields = append(
-    env().Config.Logging.Masking.Fields,
+cfg.Logging.Masking.Fields = append(
+    cfg.Logging.Masking.Fields,
     "credit_card",
     "ssn",
 )
