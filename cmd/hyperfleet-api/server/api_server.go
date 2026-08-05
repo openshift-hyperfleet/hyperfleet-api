@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -58,7 +59,7 @@ func (s *APIServer) Serve(listener net.Listener) error {
 		err = s.httpServer.Serve(listener)
 	}
 
-	if err != nil && err != http.ErrServerClosed {
+	if err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return fmt.Errorf("web server terminated with errors: %w", err)
 	}
 	logger.Info(ctx, "Web server terminated")

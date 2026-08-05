@@ -128,37 +128,15 @@ func runServe(cmd *cobra.Command, args []string) (runErr error) {
 	if err != nil {
 		return fmt.Errorf("build API server: %w", err)
 	}
-	// Do NOT register apiServer.Close bare - it compiles as func() error but
-	// severs in-flight requests without draining. Use Shutdown with a budget,
-	// falling back to Close only if the drain fails.
-	c.Add(func() error {
-		drainCtx, cancel := context.WithTimeout(context.Background(), cfg.Health.ShutdownTimeout)
-		defer cancel()
-		if err := apiServer.Shutdown(drainCtx); err != nil {
-			return errors.Join(err, apiServer.Close())
-		}
-		return nil
-	})
+	// Do NOT register srv.Close bare - it severs in-flight requests without
+	// draining. addDrain uses Shutdown with a budget, falling back to Close.
+	addDrain(c, apiServer, cfg.Health.ShutdownTimeout)
 
 	metricsServer := server.NewMetricsServer(cfg.Metrics)
-	c.Add(func() error {
-		drainCtx, cancel := context.WithTimeout(context.Background(), metricsDrainTimeout)
-		defer cancel()
-		if err := metricsServer.Shutdown(drainCtx); err != nil {
-			return errors.Join(err, metricsServer.Close())
-		}
-		return nil
-	})
+	addDrain(c, metricsServer, metricsDrainTimeout)
 
 	healthServer := server.NewHealthServer(cfg.Health, ctr.SessionFactory())
-	c.Add(func() error {
-		drainCtx, cancel := context.WithTimeout(context.Background(), healthDrainTimeout)
-		defer cancel()
-		if err := healthServer.Shutdown(drainCtx); err != nil {
-			return errors.Join(err, healthServer.Close())
-		}
-		return nil
-	})
+	addDrain(c, healthServer, healthDrainTimeout)
 
 	// Readyz registered last so it runs first - immediately fails the probe.
 	c.Add(func() error {
@@ -206,6 +184,17 @@ func runServe(cmd *cobra.Command, args []string) (runErr error) {
 }
 
 // initLogger initializes the global slog logger from configuration
+func addDrain(c *closer.Closer, srv server.Server, budget time.Duration) {
+	c.Add(func() error {
+		drainCtx, cancel := context.WithTimeout(context.Background(), budget)
+		defer cancel()
+		if err := srv.Shutdown(drainCtx); err != nil {
+			return errors.Join(err, srv.Close())
+		}
+		return nil
+	})
+}
+
 func initLogger(cfg *config.ApplicationConfig, dbSessionFactory db.SessionFactory) {
 	ctx := context.Background()
 	loggingCfg := cfg.Logging

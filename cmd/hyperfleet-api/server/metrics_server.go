@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -61,7 +62,7 @@ func (s *metricsServer) Serve(listener net.Listener) error {
 		logger.With(ctx, logger.FieldBindAddress, s.httpServer.Addr).Info("Serving Metrics without TLS")
 		err = s.httpServer.Serve(listener)
 	}
-	if err != nil && err != http.ErrServerClosed {
+	if err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return fmt.Errorf("metrics server terminated with errors: %w", err)
 	}
 	logger.Info(ctx, "Metrics server terminated")
