@@ -70,11 +70,6 @@ db_image ?= docker.io/library/postgres:14.23
 unit_test_json_output ?= ${PWD}/unit-test-results.json
 integration_test_json_output ?= ${PWD}/integration-test-results.json
 
-### Environment-sourced variables with defaults
-ifndef HYPERFLEET_ENV
-	HYPERFLEET_ENV := development
-endif
-
 ifndef TEST_SUMMARY_FORMAT
 	TEST_SUMMARY_FORMAT = short-verbose
 endif
@@ -184,8 +179,8 @@ dev-token: ## Generate a fresh JWT using the existing dev key (no server restart
 	@echo 'Usage: curl -H "Authorization: Bearer $$(cat $(DEV_TOKEN_FILE))" http://localhost:8000/api/hyperfleet/v1/clusters'
 
 .PHONY: run-no-auth
-run-no-auth: db/migrate ## Run the application without auth
-	./bin/hyperfleet-api serve $(DB_FLAGS) --server-jwt-enabled=false
+run-no-auth: db/migrate ## Run the application without auth or TLS (local dev)
+	HYPERFLEET_SERVER_JWT_ENABLED=false HYPERFLEET_SERVER_TLS_ENABLED=false ./bin/hyperfleet-api serve $(DB_FLAGS)
 
 .PHONY: run/docs
 run/docs: check-container-tool ## Run swagger and host the api spec
@@ -218,24 +213,24 @@ clean: ## Delete temporary generated files
 
 .PHONY: test
 test: install ## Run unit tests
-	HYPERFLEET_ENV=unit_testing $(call gotool,gotestsum) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -v $(TESTFLAGS) \
+	$(call gotool,gotestsum) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -v $(TESTFLAGS) \
 		./pkg/... \
 		./cmd/...
 
 .PHONY: ci-test-unit
 ci-test-unit: install ## Run unit tests with JSON output
-	HYPERFLEET_ENV=unit_testing $(call gotool,gotestsum) --jsonfile-timing-events=$(unit_test_json_output) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -v $(TESTFLAGS) \
+	$(call gotool,gotestsum) --jsonfile-timing-events=$(unit_test_json_output) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -v $(TESTFLAGS) \
 		./pkg/... \
 		./cmd/...
 
 .PHONY: test-integration
 test-integration: install ## Run integration tests
-	TESTCONTAINERS_RYUK_DISABLED=true HYPERFLEET_ENV=integration_testing $(call gotool,gotestsum) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) \
+	TESTCONTAINERS_RYUK_DISABLED=true $(call gotool,gotestsum) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) \
 			./test/integration
 
 .PHONY: ci-test-integration
 ci-test-integration: install ## Run integration tests with JSON output
-	TESTCONTAINERS_RYUK_DISABLED=true HYPERFLEET_ENV=integration_testing $(call gotool,gotestsum) --jsonfile-timing-events=$(integration_test_json_output) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) \
+	TESTCONTAINERS_RYUK_DISABLED=true $(call gotool,gotestsum) --jsonfile-timing-events=$(integration_test_json_output) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) \
 			./test/integration
 
 .PHONY: test-all

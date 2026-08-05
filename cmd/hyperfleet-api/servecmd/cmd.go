@@ -2,21 +2,22 @@ package servecmd
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
-	"strconv"
 	"syscall"
+	"time"
 
 	"github.com/spf13/cobra"
-	"go.opentelemetry.io/otel/sdk/trace"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/container"
-	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/environments"
 	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/server"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/auth"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/closer"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db/db_session"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/health"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
@@ -25,12 +26,21 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/telemetry"
 )
 
+const (
+	// Fixed drain budgets for lightweight servers and OTel flush.
+	// terminationGracePeriodSeconds must be > preStop (5s) + shutdown_timeout
+	// + metricsDrainTimeout + healthDrainTimeout + otelFlushTimeout.
+	metricsDrainTimeout = 2 * time.Second
+	healthDrainTimeout  = 2 * time.Second
+	otelFlushTimeout    = 5 * time.Second
+)
+
 func NewServeCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "serve",
 		Short: "Serve the hyperfleet",
 		Long:  "Serve the hyperfleet.",
-		Run:   runServe,
+		RunE:  runServe,
 	}
 
 	// Add configuration system flags
@@ -39,226 +49,186 @@ func NewServeCommand() *cobra.Command {
 	return cmd
 }
 
-func runServe(cmd *cobra.Command, args []string) {
-	ctx := context.Background()
+func runServe(cmd *cobra.Command, args []string) (runErr error) {
+	ctx := cmd.Context()
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(signals)
 
-	// ============================================================
-	// CONFIGURATION LOADING
-	// ============================================================
-	// Load configuration using Viper-based system
 	loader := config.NewConfigLoader()
 	cfg, err := loader.Load(ctx, cmd)
 	if err != nil {
-		logger.WithError(ctx, err).Error("Failed to load configuration")
-		os.Exit(1)
+		return fmt.Errorf("load configuration: %w", err)
 	}
 
-	// IMPORTANT: Set config BEFORE calling Initialize()
-	// Initialize() will apply environment-specific overrides (e.g., development disables JWT/TLS)
-	// and ensure SessionFactory, clients, services, handlers all use the correct config
-	environments.Environment().Config = cfg
-
-	// Load entity descriptors from config before services and routes are built.
-	// Descriptors must be registered before Initialize() because services call
-	// registry.MustGet() at construction time.
 	registry.LoadDescriptors(cfg.Entities)
 	registry.Validate()
 
-	// Initialize environment (applies overrides, creates SessionFactory, loads clients, services, handlers)
-	err = environments.Environment().Initialize()
-	if err != nil {
-		logger.WithError(ctx, err).Error("Unable to initialize environment")
-		os.Exit(1)
-	}
+	ctr := container.NewContainer(cfg)
 
-	// Initialize logger with configured settings
-	initLogger()
+	c := closer.New()
+	defer func() {
+		closeErr := c.Close()
+		runErr = errors.Join(runErr, closeErr)
+		if runErr == nil {
+			logger.Info(context.Background(), "Graceful shutdown completed")
+		}
+	}()
 
-	// Log effective configuration (with sensitive values redacted)
-	// This happens AFTER initLogger() so it uses the configured logger settings
+	initLogger(cfg, ctr.SessionFactory())
+
 	logger.Info(ctx, "Starting HyperFleet API with configuration (sensitive values redacted):")
-	logger.Info(ctx, config.DumpConfig(environments.Environment().Config))
+	logger.Info(ctx, config.DumpConfig(cfg))
 
-	var tp *trace.TracerProvider
-
-	// Check for deprecated HYPERFLEET_LOGGING_OTEL_ENABLED variable
-	if deprecatedEnv := os.Getenv("HYPERFLEET_LOGGING_OTEL_ENABLED"); deprecatedEnv != "" {
-		logger.With(ctx,
-			"deprecated_variable", "HYPERFLEET_LOGGING_OTEL_ENABLED",
-			"replacement", "HYPERFLEET_TRACING_ENABLED",
-		).Warn("HYPERFLEET_LOGGING_OTEL_ENABLED is deprecated and ignored. Please use HYPERFLEET_TRACING_ENABLED instead.")
-	}
-
-	// Check for deprecated HYPERFLEET_LOGGING_OTEL_SAMPLING_RATE variable
-	if deprecatedEnv := os.Getenv("HYPERFLEET_LOGGING_OTEL_SAMPLING_RATE"); deprecatedEnv != "" {
-		logger.With(ctx,
-			"deprecated_variable", "HYPERFLEET_LOGGING_OTEL_SAMPLING_RATE",
-			"replacement", "OTEL_TRACES_SAMPLER_ARG",
-		).Warn("HYPERFLEET_LOGGING_OTEL_SAMPLING_RATE is deprecated and ignored. Please use OTEL_TRACES_SAMPLER_ARG instead.")
-	}
-
-	// Determine if tracing is enabled using HYPERFLEET_TRACING_ENABLED (tracing standard)
-	var tracingEnabled bool
-	if tracingEnv := os.Getenv("HYPERFLEET_TRACING_ENABLED"); tracingEnv != "" {
-		if enabled, err := strconv.ParseBool(tracingEnv); err == nil {
-			tracingEnabled = enabled
+	// OTel registered first so it flushes last - teardown spans are preserved.
+	if cfg.Tracing.Enabled {
+		traceProvider, traceErr := telemetry.InitTraceProvider(ctx, cfg.Tracing.ServiceName, api.Version)
+		if traceErr != nil {
+			logger.WithError(ctx, traceErr).Warn("Failed to initialize OpenTelemetry")
 		} else {
-			logger.With(ctx,
-				logger.FieldHyperfleetTracingEnabled, tracingEnv,
-				"falling_back_to", environments.Environment().Config.Logging.OTel.Enabled).
-				WithError(err).Warn("Invalid HYPERFLEET_TRACING_ENABLED value, falling back to config")
-			tracingEnabled = environments.Environment().Config.Logging.OTel.Enabled
-		}
-	} else {
-		// Use config default if HYPERFLEET_TRACING_ENABLED not set
-		tracingEnabled = environments.Environment().Config.Logging.OTel.Enabled
-	}
-
-	if tracingEnabled {
-		// OpenTelemetry configuration is driven entirely by standard environment variables:
-		serviceName := "hyperfleet-api"
-		if svcName := os.Getenv("OTEL_SERVICE_NAME"); svcName != "" {
-			serviceName = svcName
-		}
-
-		traceProvider, err := telemetry.InitTraceProvider(ctx, serviceName, api.Version)
-		if err != nil {
-			logger.WithError(ctx, err).Warn("Failed to initialize OpenTelemetry")
-		} else {
-			tp = traceProvider
-			logger.With(ctx, logger.FieldServiceName, serviceName).Info("OpenTelemetry initialized")
+			logger.With(ctx, logger.FieldServiceName, cfg.Tracing.ServiceName).Info("OpenTelemetry initialized")
+			c.Add(func() error {
+				flushCtx, cancel := context.WithTimeout(context.Background(), otelFlushTimeout)
+				defer cancel()
+				return telemetry.Shutdown(flushCtx, traceProvider)
+			})
 		}
 	} else {
 		logger.With(ctx, logger.FieldOTelEnabled, false).Info("OpenTelemetry disabled")
 	}
 
+	c.Add(ctr.SessionFactory().Close)
+
 	logger.With(ctx,
-		"log_level", environments.Environment().Config.Logging.Level,
-		"log_format", environments.Environment().Config.Logging.Format,
-		"log_output", environments.Environment().Config.Logging.Output,
-		"masking_enabled", environments.Environment().Config.Logging.Masking.Enabled,
+		"log_level", cfg.Logging.Level,
+		"log_format", cfg.Logging.Format,
+		"log_output", cfg.Logging.Output,
+		"masking_enabled", cfg.Logging.Masking.Enabled,
 	).Info("Logger initialized")
 
-	if sf := environments.Environment().Database.SessionFactory; sf != nil {
-		if err := metrics.RegisterReconciliationCollector(
-			sf.DirectDB(),
-			environments.Environment().Config.Metrics.ReconciliationStuckThreshold,
-		); err != nil {
-			logger.WithError(ctx, err).Error("Failed to register reconciliation collector")
-		}
+	if collectorErr := metrics.RegisterReconciliationCollector(
+		ctr.SessionFactory().DirectDB(),
+		cfg.Metrics.ReconciliationStuckThreshold,
+	); collectorErr != nil {
+		logger.WithError(ctx, collectorErr).Error("Failed to register reconciliation collector")
 	}
 
-	ctr := container.NewContainer(cfg, environments.Environment().Database.SessionFactory)
-
-	// Only build the JWT handler when auth is on; it starts a JWKS refresh goroutine.
-	var jwtHandler *auth.JWTHandler
-	if cfg.Server.JWT.Enabled {
-		var jwtErr error
-		jwtHandler, jwtErr = ctr.JWTHandler()
-		if jwtErr != nil {
-			logger.WithError(ctx, jwtErr).Error("Unable to create JWT handler")
-			os.Exit(1)
-		}
+	if jwtHandler := ctr.JWTHandler(); jwtHandler != nil {
+		c.Add(func() error { jwtHandler.Close(); return nil })
 	}
 
-	schemaValidator, schemaErr := ctr.SchemaValidator()
-	if schemaErr != nil {
-		logger.WithError(ctx, schemaErr).Error("Unable to create schema validator")
-		os.Exit(1)
-	}
-
-	apiServer, buildErr := BuildAPIServer(
+	apiServer, err := BuildAPIServer(
 		cfg,
 		ctr.ResourceService(),
 		ctr.AdapterStatusService(),
-		schemaValidator,
-		jwtHandler,
+		ctr.SchemaValidator(),
+		ctr.JWTHandler(),
 		ctr.SessionFactory(),
-		tracingEnabled,
 	)
-	if buildErr != nil {
-		logger.WithError(ctx, buildErr).Error("Unable to build API server")
-		os.Exit(1)
+	if err != nil {
+		return fmt.Errorf("build API server: %w", err)
 	}
-	go apiServer.Start()
-
-	metricsServer := server.NewMetricsServer()
-	go metricsServer.Start()
-
-	healthServer := server.NewHealthServer()
-	go healthServer.Start()
-
-	// Wait for health server to be listening before marking as ready
-	if notifier, ok := healthServer.(server.ListenNotifier); ok {
-		<-notifier.NotifyListening()
-	}
-
-	// Mark application as ready to receive traffic
-	health.GetReadinessState().SetReady()
-	logger.Info(ctx, "Application ready to receive traffic")
-
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-	<-sigChan
-
-	logger.Info(ctx, "Shutdown signal received, starting graceful shutdown...")
-
-	// Mark application as not ready (returns 503 on /readyz)
-	health.GetReadinessState().SetShuttingDown()
-	logger.Info(ctx, "Marked as not ready, draining in-flight requests...")
-
-	if err := healthServer.Stop(); err != nil {
-		logger.WithError(ctx, err).Error("Failed to stop health server")
-	}
-	if err := apiServer.Stop(); err != nil {
-		logger.WithError(ctx, err).Error("Failed to stop API server")
-	}
-	if err := metricsServer.Stop(); err != nil {
-		logger.WithError(ctx, err).Error("Failed to stop metrics server")
-	}
-	ctr.Close()
-
-	if tp != nil {
-		shutdownCtx, cancel := context.WithTimeout(
-			context.Background(), environments.Environment().Config.Health.ShutdownTimeout,
-		)
+	// Do NOT register apiServer.Close bare - it compiles as func() error but
+	// severs in-flight requests without draining. Use Shutdown with a budget,
+	// falling back to Close only if the drain fails.
+	c.Add(func() error {
+		drainCtx, cancel := context.WithTimeout(context.Background(), cfg.Health.ShutdownTimeout)
 		defer cancel()
-		if err := telemetry.Shutdown(shutdownCtx, tp); err != nil {
-			logger.WithError(ctx, err).Error("Failed to shutdown OpenTelemetry")
+		if err := apiServer.Shutdown(drainCtx); err != nil {
+			return errors.Join(err, apiServer.Close())
+		}
+		return nil
+	})
+
+	metricsServer := server.NewMetricsServer(cfg.Metrics)
+	c.Add(func() error {
+		drainCtx, cancel := context.WithTimeout(context.Background(), metricsDrainTimeout)
+		defer cancel()
+		if err := metricsServer.Shutdown(drainCtx); err != nil {
+			return errors.Join(err, metricsServer.Close())
+		}
+		return nil
+	})
+
+	healthServer := server.NewHealthServer(cfg.Health, ctr.SessionFactory())
+	c.Add(func() error {
+		drainCtx, cancel := context.WithTimeout(context.Background(), healthDrainTimeout)
+		defer cancel()
+		if err := healthServer.Shutdown(drainCtx); err != nil {
+			return errors.Join(err, healthServer.Close())
+		}
+		return nil
+	})
+
+	// Readyz registered last so it runs first - immediately fails the probe.
+	c.Add(func() error {
+		health.GetReadinessState().SetShuttingDown()
+		logger.Info(context.Background(), "Marked as not ready, draining in-flight requests...")
+		return nil
+	})
+
+	serverResults := make(chan error, 3)
+	start := func(name string, srv server.Server) {
+		go func() {
+			if err := srv.Start(); err != nil {
+				serverResults <- fmt.Errorf("%s server failed: %w", name, err)
+				return
+			}
+			serverResults <- fmt.Errorf("%s server stopped unexpectedly", name)
+		}()
+	}
+	start("API", apiServer)
+	start("metrics", metricsServer)
+	start("health", healthServer)
+
+	var triggerErr error
+	ready := false
+	select {
+	case <-ctx.Done():
+	case <-signals:
+	case <-healthServer.NotifyListening():
+		ready = true
+	case triggerErr = <-serverResults:
+	}
+	if ready {
+		health.GetReadinessState().SetReady()
+		logger.Info(ctx, "Application ready to receive traffic")
+		select {
+		case <-ctx.Done():
+		case <-signals:
+		case triggerErr = <-serverResults:
 		}
 	}
 
-	// Close database connections
-	environments.Environment().Teardown()
-
-	logger.Info(ctx, "Graceful shutdown completed")
+	logger.Info(context.Background(), "Shutdown requested, starting graceful shutdown...")
+	runErr = triggerErr
+	return runErr
 }
 
 // initLogger initializes the global slog logger from configuration
-func initLogger() {
+func initLogger(cfg *config.ApplicationConfig, dbSessionFactory db.SessionFactory) {
 	ctx := context.Background()
-	cfg := environments.Environment().Config.Logging
+	loggingCfg := cfg.Logging
 
-	level, err := logger.ParseLogLevel(cfg.Level)
+	level, err := logger.ParseLogLevel(loggingCfg.Level)
 	if err != nil {
-		logger.With(ctx, logger.FieldLogLevel, cfg.Level).WithError(err).Warn("Invalid log level, using default")
+		logger.With(ctx, logger.FieldLogLevel, loggingCfg.Level).WithError(err).Warn("Invalid log level, using default")
 		level = slog.LevelInfo
 	}
 
-	format, err := logger.ParseLogFormat(cfg.Format)
+	format, err := logger.ParseLogFormat(loggingCfg.Format)
 	if err != nil {
-		logger.With(ctx, logger.FieldLogFormat, cfg.Format).WithError(err).Warn("Invalid log format, using default")
+		logger.With(ctx, logger.FieldLogFormat, loggingCfg.Format).WithError(err).Warn("Invalid log format, using default")
 		format = logger.FormatJSON
 	}
 
-	output, err := logger.ParseLogOutput(cfg.Output)
+	output, err := logger.ParseLogOutput(loggingCfg.Output)
 	if err != nil {
-		logger.With(ctx, logger.FieldLogOutput, cfg.Output).WithError(err).Warn("Invalid log output, using default")
+		logger.With(ctx, logger.FieldLogOutput, loggingCfg.Output).WithError(err).Warn("Invalid log output, using default")
 		output = os.Stdout
 	}
 
-	// Use configured hostname with fallback to os.Hostname()
-	hostname := environments.Environment().Config.Server.Hostname
+	hostname := cfg.Server.Hostname
 	if hostname == "" {
 		hostname, _ = os.Hostname() //nolint:errcheck // empty string is acceptable fallback
 	}
@@ -277,11 +247,8 @@ func initLogger() {
 	logger.ReconfigureGlobalLogger(logConfig)
 
 	// Reconfigure database logger to follow global logging level
-	dbSessionFactory := environments.Environment().Database.SessionFactory
 	if dbSessionFactory != nil {
-		gormLevel := environments.Environment().Config.Database.SetLogLevel(
-			environments.Environment().Config.Logging.Level,
-		)
+		gormLevel := cfg.Database.SetLogLevel(cfg.Logging.Level)
 		if reconfigurable, ok := dbSessionFactory.(db_session.LoggerReconfigurable); ok {
 			reconfigurable.ReconfigureLogger(gormLevel)
 		}

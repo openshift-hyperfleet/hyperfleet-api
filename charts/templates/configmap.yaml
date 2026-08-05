@@ -106,9 +106,6 @@ data:
       format: {{ .Values.config.logging.format }}
       output: {{ .Values.config.logging.output }}
 
-      otel:
-        enabled: {{ .Values.config.logging.otel.enabled }}
-
       masking:
         enabled: {{ .Values.config.logging.masking.enabled }}
         headers:
@@ -119,6 +116,10 @@ data:
 {{- range .Values.config.logging.masking.fields }}
           - {{ . }}
 {{- end }}
+
+    tracing:
+      enabled: {{ .Values.config.tracing.enabled }}
+      service_name: {{ .Values.config.tracing.service_name }}
 
     metrics:
       host: {{ .Values.config.metrics.host | default "0.0.0.0" }}

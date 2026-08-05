@@ -7,90 +7,97 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/health"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
-func NewHealthServer() Server {
+type healthCfg interface {
+	BindAddress() string
+	TLSEnabled() bool
+	TLSCertFile() string
+	TLSKeyFile() string
+	GetDBPingTimeout() time.Duration
+}
+
+func NewHealthServer(cfg healthCfg, sessionFactory db.SessionFactory) *HealthServer {
 	mainRouter := http.NewServeMux()
 
-	// health endpoints (HyperFleet standard)
-	healthHandler := health.NewHandler(env().Database.SessionFactory, env().Config.Health.DBPingTimeout)
+	healthHandler := health.NewHandler(sessionFactory, cfg.GetDBPingTimeout())
 	mainRouter.HandleFunc("GET /healthz", healthHandler.LivenessHandler)
 	mainRouter.HandleFunc("GET /readyz", healthHandler.ReadinessHandler)
 
 	mainHandler := WithNotFoundHandler(mainRouter)
 
-	s := &healthServer{
-		shutdownTimeout: env().Config.Health.ShutdownTimeout,
-		listening:       make(chan struct{}),
+	s := &HealthServer{
+		cfg:       cfg,
+		listening: make(chan struct{}),
 	}
 	s.httpServer = &http.Server{
-		Addr:              env().Config.Health.BindAddress(),
+		Addr:              cfg.BindAddress(),
 		Handler:           mainHandler,
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	return s
 }
 
-type healthServer struct {
-	httpServer      *http.Server
-	listening       chan struct{}
-	shutdownTimeout time.Duration
+type HealthServer struct {
+	cfg        healthCfg
+	httpServer *http.Server
+	listening  chan struct{}
 }
 
-var _ Server = &healthServer{}
+var _ Server = &HealthServer{}
 
-func (s *healthServer) Listen() (listener net.Listener, err error) {
+func (s *HealthServer) Listen() (listener net.Listener, err error) {
 	return net.Listen("tcp", s.httpServer.Addr)
 }
 
-func (s *healthServer) Serve(listener net.Listener) {
+func (s *HealthServer) Serve(listener net.Listener) error {
 	ctx := context.Background()
 	var err error
 
-	if env().Config.Health.TLS.Enabled {
-		if env().Config.Server.TLS.CertFile == "" || env().Config.Server.TLS.KeyFile == "" {
-			check(
-				fmt.Errorf("unspecified required --https-cert-file, --https-key-file"),
-				"Can't start https server",
-			)
+	if s.cfg.TLSEnabled() {
+		if s.cfg.TLSCertFile() == "" || s.cfg.TLSKeyFile() == "" {
+			_ = listener.Close()
+			return fmt.Errorf("unspecified required --https-cert-file, --https-key-file")
 		}
 
-		logger.With(ctx, logger.FieldBindAddress, env().Config.Health.BindAddress()).Info("Serving Health with TLS")
-		err = s.httpServer.ServeTLS(listener, env().Config.Server.TLS.CertFile, env().Config.Server.TLS.KeyFile)
+		logger.With(ctx, logger.FieldBindAddress, s.httpServer.Addr).Info("Serving Health with TLS")
+		err = s.httpServer.ServeTLS(listener, s.cfg.TLSCertFile(), s.cfg.TLSKeyFile())
 	} else {
-		logger.With(ctx, logger.FieldBindAddress, env().Config.Health.BindAddress()).Info("Serving Health without TLS")
+		logger.With(ctx, logger.FieldBindAddress, s.httpServer.Addr).Info("Serving Health without TLS")
 		err = s.httpServer.Serve(listener)
 	}
 	if err != nil && err != http.ErrServerClosed {
-		check(err, "Health server terminated with errors")
-	} else {
-		logger.Info(ctx, "Health server terminated")
+		return fmt.Errorf("health server terminated with errors: %w", err)
 	}
+	logger.Info(ctx, "Health server terminated")
+	return nil
 }
 
 // Start is a convenience wrapper that calls Listen() and Serve()
-func (s *healthServer) Start() {
+func (s *HealthServer) Start() error {
 	listener, err := s.Listen()
 	if err != nil {
-		check(err, "Failed to create health server listener")
-		return
+		return fmt.Errorf("failed to create health server listener: %w", err)
 	}
 
 	// Signal that we're listening
 	close(s.listening)
 
-	s.Serve(listener)
+	return s.Serve(listener)
 }
 
 // NotifyListening returns a channel that is closed when the server is listening
-func (s *healthServer) NotifyListening() <-chan struct{} {
+func (s *HealthServer) NotifyListening() <-chan struct{} {
 	return s.listening
 }
 
-func (s healthServer) Stop() error {
-	ctx, cancel := context.WithTimeout(context.Background(), s.shutdownTimeout)
-	defer cancel()
+func (s *HealthServer) Shutdown(ctx context.Context) error {
 	return s.httpServer.Shutdown(ctx)
+}
+
+func (s *HealthServer) Close() error {
+	return s.httpServer.Close()
 }

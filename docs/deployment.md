@@ -473,7 +473,7 @@ Before deploying to production, ensure:
 
 ## Production Best Practices
 
-- **Environment**: Use default (ProductionEnv) for production deployments; never set `HYPERFLEET_ENV=development`
+- **Configuration**: Use Helm values, config files, flags, or explicit `HYPERFLEET_*` configuration variables
 - **Database**: Use external managed database (Cloud SQL, RDS, Azure Database) with automated backups
 - **Secrets**: Store all sensitive data in Kubernetes Secrets, never in ConfigMap or values.yaml
 - **Authentication**: Enable JWT authentication with `config.server.jwt.enabled=true`

@@ -305,6 +305,12 @@ func (l *ConfigLoader) bindAllEnvVars() {
 	l.bindEnv("health.shutdown_timeout")
 	l.bindEnv("health.db_ping_timeout")
 
+	// Tracing config
+	l.bindEnv("tracing.enabled")
+	l.bindEnv("tracing.service_name")
+	// OTEL_SERVICE_NAME is a standard OTel env var without the HYPERFLEET_ prefix.
+	l.viper.BindEnv("tracing.service_name", "OTEL_SERVICE_NAME") //nolint:errcheck,gosec
+
 	// Entities: config-file-only (complex list-of-struct type).
 	// No env var or CLI flag bindings — loaded exclusively via YAML config.
 }
