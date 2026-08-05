@@ -19,23 +19,22 @@ type gzipResponseWriter struct {
 	wroteHeader bool
 }
 
-func (w *gzipResponseWriter) WriteHeader(statusCode int) {
+func (w *gzipResponseWriter) ensureHeaders() {
 	if !w.wroteHeader {
 		w.wroteHeader = true
 		w.Header().Set("Content-Encoding", "gzip")
 		w.Header().Add("Vary", "Accept-Encoding")
 		w.Header().Del("Content-Length")
 	}
+}
+
+func (w *gzipResponseWriter) WriteHeader(statusCode int) {
+	w.ensureHeaders()
 	w.ResponseWriter.WriteHeader(statusCode)
 }
 
 func (w *gzipResponseWriter) Write(b []byte) (int, error) {
-	if !w.wroteHeader {
-		w.wroteHeader = true
-		w.Header().Set("Content-Encoding", "gzip")
-		w.Header().Add("Vary", "Accept-Encoding")
-		w.Header().Del("Content-Length")
-	}
+	w.ensureHeaders()
 	return w.writer.Write(b)
 }
 

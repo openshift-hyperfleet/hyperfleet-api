@@ -41,10 +41,9 @@ func TestJWTHandler(t *testing.T) {
 			IssuerURL:  "https://test-issuer.example.com",
 			JWKCertURL: jwksServer.URL,
 		}},
-		PublicPaths: []string{"^/healthz$", "^/openapi$"},
-		Next:        nextHandler,
 	})
 	Expect(err).NotTo(HaveOccurred())
+	mw := handler.Middleware(nextHandler)
 
 	t.Run("valid token passes through", func(t *testing.T) {
 		RegisterTestingT(t)
@@ -53,7 +52,7 @@ func TestJWTHandler(t *testing.T) {
 			"exp": time.Now().Add(time.Hour).Unix(),
 			"iat": time.Now().Unix(),
 		})
-		rr := serve(handler, "/protected", "Bearer "+token)
+		rr := serve(mw, "/protected", "Bearer "+token)
 		Expect(rr.Code).To(Equal(http.StatusOK))
 		Expect(rr.Body.String()).To(Equal("ok"))
 	})
@@ -73,7 +72,6 @@ func TestJWTHandler(t *testing.T) {
 				IssuerURL:  "https://test-issuer.example.com",
 				JWKCertURL: jwksServer.URL,
 			}},
-			Next: claimsHandler,
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -83,7 +81,7 @@ func TestJWTHandler(t *testing.T) {
 			"iat":      time.Now().Unix(),
 			"username": "testuser",
 		})
-		rr := serve(h, "/protected", "Bearer "+token)
+		rr := serve(h.Middleware(claimsHandler), "/protected", "Bearer "+token)
 		Expect(rr.Code).To(Equal(http.StatusOK))
 	})
 
@@ -94,7 +92,7 @@ func TestJWTHandler(t *testing.T) {
 			"exp": time.Now().Add(-time.Hour).Unix(),
 			"iat": time.Now().Add(-2 * time.Hour).Unix(),
 		})
-		rr := serve(handler, "/protected", "Bearer "+token)
+		rr := serve(mw, "/protected", "Bearer "+token)
 		Expect(rr.Code).To(Equal(http.StatusUnauthorized))
 	})
 
@@ -107,7 +105,7 @@ func TestJWTHandler(t *testing.T) {
 			"exp": time.Now().Add(time.Hour).Unix(),
 			"iat": time.Now().Unix(),
 		})
-		rr := serve(handler, "/protected", "Bearer "+token)
+		rr := serve(mw, "/protected", "Bearer "+token)
 		Expect(rr.Code).To(Equal(http.StatusUnauthorized))
 	})
 
@@ -118,13 +116,13 @@ func TestJWTHandler(t *testing.T) {
 			"exp": time.Now().Add(time.Hour).Unix(),
 			"iat": time.Now().Unix(),
 		})
-		rr := serve(handler, "/protected", "Bearer "+token)
+		rr := serve(mw, "/protected", "Bearer "+token)
 		Expect(rr.Code).To(Equal(http.StatusUnauthorized))
 	})
 
 	t.Run("missing Authorization header returns 401", func(t *testing.T) {
 		RegisterTestingT(t)
-		rr := serve(handler, "/protected", "")
+		rr := serve(mw, "/protected", "")
 		Expect(rr.Code).To(Equal(http.StatusUnauthorized))
 	})
 
@@ -135,34 +133,20 @@ func TestJWTHandler(t *testing.T) {
 			"exp": time.Now().Add(time.Hour).Unix(),
 			"iat": time.Now().Unix(),
 		})
-		rr := serve(handler, "/protected", "bearer "+token)
+		rr := serve(mw, "/protected", "bearer "+token)
 		Expect(rr.Code).To(Equal(http.StatusOK))
 	})
 
 	t.Run("malformed Authorization header returns 401", func(t *testing.T) {
 		RegisterTestingT(t)
-		rr := serve(handler, "/protected", "Basic dXNlcjpwYXNz")
+		rr := serve(mw, "/protected", "Basic dXNlcjpwYXNz")
 		Expect(rr.Code).To(Equal(http.StatusUnauthorized))
 	})
 
 	t.Run("garbage token returns 401", func(t *testing.T) {
 		RegisterTestingT(t)
-		rr := serve(handler, "/protected", "Bearer not.a.jwt")
+		rr := serve(mw, "/protected", "Bearer not.a.jwt")
 		Expect(rr.Code).To(Equal(http.StatusUnauthorized))
-	})
-
-	t.Run("public endpoint without token passes through", func(t *testing.T) {
-		RegisterTestingT(t)
-		rr := serve(handler, "/healthz", "")
-		Expect(rr.Code).To(Equal(http.StatusOK))
-		Expect(rr.Body.String()).To(Equal("ok"))
-	})
-
-	t.Run("public endpoint with invalid token still passes through", func(t *testing.T) {
-		RegisterTestingT(t)
-		rr := serve(handler, "/healthz", "Bearer garbage")
-		Expect(rr.Code).To(Equal(http.StatusOK))
-		Expect(rr.Body.String()).To(Equal("ok"))
 	})
 
 	t.Run("HS256 signed token rejected", func(t *testing.T) {
@@ -175,7 +159,7 @@ func TestJWTHandler(t *testing.T) {
 		tok := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 		tokenString, err := tok.SignedString([]byte("secret-key-for-hmac"))
 		Expect(err).NotTo(HaveOccurred())
-		rr := serve(handler, "/protected", "Bearer "+tokenString)
+		rr := serve(mw, "/protected", "Bearer "+tokenString)
 		Expect(rr.Code).To(Equal(http.StatusUnauthorized))
 	})
 }
@@ -196,26 +180,25 @@ func TestJWTHandler_FailClosed_NoValidKeys(t *testing.T) {
 			IssuerURL:  "https://test-issuer.example.com",
 			JWKCertURL: badServer.URL,
 		}},
-		Next: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusOK)
-		}),
 	})
 	Expect(err).NotTo(HaveOccurred())
+
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
 
 	token := signToken(t, privateKey, jwt.MapClaims{
 		"iss": "https://test-issuer.example.com",
 		"exp": time.Now().Add(time.Hour).Unix(),
 	})
-	rr := serve(handler, "/protected", "Bearer "+token)
+	rr := serve(handler.Middleware(next), "/protected", "Bearer "+token)
 	Expect(rr.Code).To(Equal(http.StatusUnauthorized))
 }
 
 func TestJWTHandler_RequiresIssuersConfig(t *testing.T) {
 	RegisterTestingT(t)
 
-	_, err := NewJWTHandler(t.Context(), JWTHandlerConfig{
-		Next: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}),
-	})
+	_, err := NewJWTHandler(t.Context(), JWTHandlerConfig{})
 	Expect(err).To(HaveOccurred())
 	Expect(err.Error()).To(ContainSubstring("at least one issuer"))
 }
@@ -235,11 +218,13 @@ func TestJWTHandler_WithAudience(t *testing.T) {
 			JWKCertURL: jwksServer.URL,
 			Audience:   "my-api",
 		}},
-		Next: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusOK)
-		}),
 	})
 	Expect(err).NotTo(HaveOccurred())
+
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	mw := handler.Middleware(next)
 
 	t.Run("correct audience passes", func(t *testing.T) {
 		RegisterTestingT(t)
@@ -248,7 +233,7 @@ func TestJWTHandler_WithAudience(t *testing.T) {
 			"aud": "my-api",
 			"exp": time.Now().Add(time.Hour).Unix(),
 		})
-		rr := serve(handler, "/protected", "Bearer "+token)
+		rr := serve(mw, "/protected", "Bearer "+token)
 		Expect(rr.Code).To(Equal(http.StatusOK))
 	})
 
@@ -259,7 +244,7 @@ func TestJWTHandler_WithAudience(t *testing.T) {
 			"aud": "wrong-api",
 			"exp": time.Now().Add(time.Hour).Unix(),
 		})
-		rr := serve(handler, "/protected", "Bearer "+token)
+		rr := serve(mw, "/protected", "Bearer "+token)
 		Expect(rr.Code).To(Equal(http.StatusUnauthorized))
 	})
 }
@@ -278,18 +263,19 @@ func TestJWTHandler_WithoutAudience_AcceptsAny(t *testing.T) {
 			IssuerURL:  "https://test-issuer.example.com",
 			JWKCertURL: jwksServer.URL,
 		}},
-		Next: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusOK)
-		}),
 	})
 	Expect(err).NotTo(HaveOccurred())
+
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
 
 	token := signToken(t, privateKey, jwt.MapClaims{
 		"iss": "https://test-issuer.example.com",
 		"aud": "any-audience",
 		"exp": time.Now().Add(time.Hour).Unix(),
 	})
-	rr := serve(handler, "/protected", "Bearer "+token)
+	rr := serve(handler.Middleware(next), "/protected", "Bearer "+token)
 	Expect(rr.Code).To(Equal(http.StatusOK))
 }
 
@@ -306,12 +292,14 @@ func TestJWTHandler_FileOnlyKeyfunc(t *testing.T) {
 			IssuerURL:   "https://test-issuer.example.com",
 			JWKCertFile: jwksFile,
 		}},
-		Next: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusOK)
-			fmt.Fprint(w, "ok")
-		}),
 	})
 	Expect(err).NotTo(HaveOccurred())
+
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, "ok")
+	})
+	mw := handler.Middleware(next)
 
 	t.Run("valid token accepted via file keys", func(t *testing.T) {
 		RegisterTestingT(t)
@@ -320,7 +308,7 @@ func TestJWTHandler_FileOnlyKeyfunc(t *testing.T) {
 			"exp": time.Now().Add(time.Hour).Unix(),
 			"iat": time.Now().Unix(),
 		})
-		rr := serve(handler, "/protected", "Bearer "+token)
+		rr := serve(mw, "/protected", "Bearer "+token)
 		Expect(rr.Code).To(Equal(http.StatusOK))
 		Expect(rr.Body.String()).To(Equal("ok"))
 	})
@@ -334,7 +322,7 @@ func TestJWTHandler_FileOnlyKeyfunc(t *testing.T) {
 			"exp": time.Now().Add(time.Hour).Unix(),
 			"iat": time.Now().Unix(),
 		})
-		rr := serve(handler, "/protected", "Bearer "+token)
+		rr := serve(mw, "/protected", "Bearer "+token)
 		Expect(rr.Code).To(Equal(http.StatusUnauthorized))
 	})
 }
@@ -355,11 +343,13 @@ func TestJWTHandler_CombinedKeyfunc(t *testing.T) {
 			JWKCertFile: jwksFile,
 			JWKCertURL:  jwksServer.URL,
 		}},
-		Next: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusOK)
-		}),
 	})
 	Expect(err).NotTo(HaveOccurred())
+
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	mw := handler.Middleware(next)
 
 	t.Run("constructor succeeds with both file and URL", func(t *testing.T) {
 		RegisterTestingT(t)
@@ -372,7 +362,7 @@ func TestJWTHandler_CombinedKeyfunc(t *testing.T) {
 			"iss": "https://test-issuer.example.com",
 			"exp": time.Now().Add(time.Hour).Unix(),
 		})
-		rr := serve(handler, "/protected", "Bearer "+token)
+		rr := serve(mw, "/protected", "Bearer "+token)
 		Expect(rr.Code).To(Equal(http.StatusOK))
 	})
 
@@ -384,7 +374,7 @@ func TestJWTHandler_CombinedKeyfunc(t *testing.T) {
 			"iss": "https://test-issuer.example.com",
 			"exp": time.Now().Add(time.Hour).Unix(),
 		})
-		rr := serve(handler, "/protected", "Bearer "+token)
+		rr := serve(mw, "/protected", "Bearer "+token)
 		Expect(rr.Code).To(Equal(http.StatusUnauthorized))
 	})
 }
@@ -409,12 +399,14 @@ func TestJWTHandler_TLSWithCAFile(t *testing.T) {
 			JWKCertURL:    tlsServer.URL,
 			JWKCertCAFile: caFile,
 		}},
-		Next: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusOK)
-		}),
 	})
 	Expect(err).NotTo(HaveOccurred())
 	defer handler.Close()
+
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	mw := handler.Middleware(next)
 
 	cases := []struct {
 		signingKey *rsa.PrivateKey
@@ -432,7 +424,7 @@ func TestJWTHandler_TLSWithCAFile(t *testing.T) {
 				"exp": time.Now().Add(time.Hour).Unix(),
 				"iat": time.Now().Unix(),
 			})
-			rr := serve(handler, "/protected", "Bearer "+token)
+			rr := serve(mw, "/protected", "Bearer "+token)
 			Expect(rr.Code).To(Equal(tc.wantStatus))
 		})
 	}
@@ -453,18 +445,20 @@ func TestJWTHandler_CombinedKeyfuncWithCA(t *testing.T) {
 			JWKCertFile:   jwksFile,
 			JWKCertCAFile: caFile,
 		}},
-		Next: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusOK)
-		}),
 	})
 	Expect(err).NotTo(HaveOccurred())
 	defer handler.Close()
+
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
 	token := signToken(t, privateKey, jwt.MapClaims{
 		"iss": "https://test-issuer.example.com",
 		"exp": time.Now().Add(time.Hour).Unix(),
 		"iat": time.Now().Unix(),
 	})
-	rr := serve(handler, "/protected", "Bearer "+token)
+	rr := serve(handler.Middleware(next), "/protected", "Bearer "+token)
 	Expect(rr.Code).To(Equal(http.StatusOK))
 }
 
@@ -482,18 +476,19 @@ func TestJWTHandler_TLSWithoutCAFile_Fails(t *testing.T) {
 			IssuerURL:  "https://test-issuer.example.com",
 			JWKCertURL: tlsServer.URL,
 		}},
-		Next: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusOK)
-		}),
 	})
 	Expect(err).NotTo(HaveOccurred())
 	defer handler.Close()
+
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
 
 	token := signToken(t, privateKey, jwt.MapClaims{
 		"iss": "https://test-issuer.example.com",
 		"exp": time.Now().Add(time.Hour).Unix(),
 	})
-	rr := serve(handler, "/protected", "Bearer "+token)
+	rr := serve(handler.Middleware(next), "/protected", "Bearer "+token)
 	Expect(rr.Code).To(Equal(http.StatusUnauthorized))
 }
 
@@ -529,7 +524,6 @@ func TestJWTHandler_CAFileErrors(t *testing.T) {
 					JWKCertURL:    "https://keys.example.com",
 					JWKCertCAFile: tc.caFile(t),
 				}},
-				Next: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}),
 			})
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring(tc.wantErrSubstr))
@@ -551,7 +545,6 @@ func TestJWTHandler_Close(t *testing.T) {
 			IssuerURL:  "https://test-issuer.example.com",
 			JWKCertURL: jwksServer.URL,
 		}},
-		Next: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}),
 	})
 	Expect(err).NotTo(HaveOccurred())
 
@@ -573,13 +566,17 @@ func TestJWTHandler_ResponseBody(t *testing.T) {
 			IssuerURL:  "https://test-issuer.example.com",
 			JWKCertURL: jwksServer.URL,
 		}},
-		Next: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) }),
 	})
 	Expect(err).NotTo(HaveOccurred())
 
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	mw := handler.Middleware(next)
+
 	t.Run("missing header returns problem+json with no-credentials code", func(t *testing.T) {
 		RegisterTestingT(t)
-		rr := serve(handler, "/protected", "")
+		rr := serve(mw, "/protected", "")
 		Expect(rr.Code).To(Equal(http.StatusUnauthorized))
 		Expect(rr.Header().Get("Content-Type")).To(ContainSubstring("application/problem+json"))
 
@@ -596,7 +593,7 @@ func TestJWTHandler_ResponseBody(t *testing.T) {
 			"exp": time.Now().Add(-time.Hour).Unix(),
 			"iat": time.Now().Add(-2 * time.Hour).Unix(),
 		})
-		rr := serve(handler, "/protected", "Bearer "+token)
+		rr := serve(mw, "/protected", "Bearer "+token)
 		Expect(rr.Code).To(Equal(http.StatusUnauthorized))
 		Expect(rr.Header().Get("Content-Type")).To(ContainSubstring("application/problem+json"))
 
@@ -608,7 +605,7 @@ func TestJWTHandler_ResponseBody(t *testing.T) {
 
 	t.Run("invalid token returns problem+json with invalid-credentials code", func(t *testing.T) {
 		RegisterTestingT(t)
-		rr := serve(handler, "/protected", "Bearer not.a.jwt")
+		rr := serve(mw, "/protected", "Bearer not.a.jwt")
 		Expect(rr.Code).To(Equal(http.StatusUnauthorized))
 		Expect(rr.Header().Get("Content-Type")).To(ContainSubstring("application/problem+json"))
 
@@ -620,7 +617,7 @@ func TestJWTHandler_ResponseBody(t *testing.T) {
 
 	t.Run("non-Bearer scheme returns problem+json with invalid-credentials code", func(t *testing.T) {
 		RegisterTestingT(t)
-		rr := serve(handler, "/protected", "Basic dXNlcjpwYXNz")
+		rr := serve(mw, "/protected", "Basic dXNlcjpwYXNz")
 		Expect(rr.Code).To(Equal(http.StatusUnauthorized))
 		Expect(rr.Header().Get("Content-Type")).To(ContainSubstring("application/problem+json"))
 
@@ -657,9 +654,9 @@ func TestJWTHandler_MultiIssuer(t *testing.T) {
 			{IssuerURL: "https://issuer-1.example.com", JWKCertURL: jwksServer1.URL},
 			{IssuerURL: "https://issuer-2.example.com", JWKCertURL: jwksServer2.URL},
 		},
-		Next: nextHandler,
 	})
 	Expect(err).NotTo(HaveOccurred())
+	mw := handler.Middleware(nextHandler)
 
 	validIssuerCases := []struct {
 		name      string
@@ -676,7 +673,7 @@ func TestJWTHandler_MultiIssuer(t *testing.T) {
 				"iss": tc.issuerURL,
 				"exp": time.Now().Add(time.Hour).Unix(),
 			})
-			rr := serve(handler, "/protected", "Bearer "+token)
+			rr := serve(mw, "/protected", "Bearer "+token)
 			Expect(rr.Code).To(Equal(http.StatusOK))
 			Expect(rr.Header().Get("X-Matched-Issuer")).To(Equal(tc.issuerURL))
 		})
@@ -688,7 +685,7 @@ func TestJWTHandler_MultiIssuer(t *testing.T) {
 			"iss": "https://unknown-issuer.example.com",
 			"exp": time.Now().Add(time.Hour).Unix(),
 		})
-		rr := serve(handler, "/protected", "Bearer "+token)
+		rr := serve(mw, "/protected", "Bearer "+token)
 		Expect(rr.Code).To(Equal(http.StatusUnauthorized))
 	})
 
@@ -700,7 +697,7 @@ func TestJWTHandler_MultiIssuer(t *testing.T) {
 			"iss": "https://issuer-1.example.com",
 			"exp": time.Now().Add(time.Hour).Unix(),
 		})
-		rr := serve(handler, "/protected", "Bearer "+token)
+		rr := serve(mw, "/protected", "Bearer "+token)
 		Expect(rr.Code).To(Equal(http.StatusUnauthorized))
 	})
 }
@@ -728,9 +725,9 @@ func TestJWTHandler_CustomHeader(t *testing.T) {
 			JWKCertURL: jwksServer.URL,
 			Header:     "X-Custom-Auth",
 		}},
-		Next: nextHandler,
 	})
 	Expect(err).NotTo(HaveOccurred())
+	mw := handler.Middleware(nextHandler)
 
 	t.Run("valid token on custom header passes", func(t *testing.T) {
 		RegisterTestingT(t)
@@ -739,7 +736,7 @@ func TestJWTHandler_CustomHeader(t *testing.T) {
 			"exp": time.Now().Add(time.Hour).Unix(),
 			"iat": time.Now().Unix(),
 		})
-		rr := serveWithHeader(handler, "/protected", "X-Custom-Auth", "Bearer "+token)
+		rr := serveWithHeader(mw, "/protected", "X-Custom-Auth", "Bearer "+token)
 		Expect(rr.Code).To(Equal(http.StatusOK))
 		Expect(rr.Header().Get("X-Matched-Issuer")).To(Equal("https://test-issuer.example.com"))
 	})
@@ -751,7 +748,7 @@ func TestJWTHandler_CustomHeader(t *testing.T) {
 			"exp": time.Now().Add(time.Hour).Unix(),
 			"iat": time.Now().Unix(),
 		})
-		rr := serve(handler, "/protected", "Bearer "+token)
+		rr := serve(mw, "/protected", "Bearer "+token)
 		Expect(rr.Code).To(Equal(http.StatusUnauthorized))
 	})
 }

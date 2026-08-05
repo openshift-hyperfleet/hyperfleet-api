@@ -13,12 +13,6 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/servecmd"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
-
-	// Import plugins to trigger their init() functions
-	_ "github.com/openshift-hyperfleet/hyperfleet-api/plugins/adapterStatus"
-	_ "github.com/openshift-hyperfleet/hyperfleet-api/plugins/entities"
-	_ "github.com/openshift-hyperfleet/hyperfleet-api/plugins/generic"
-	_ "github.com/openshift-hyperfleet/hyperfleet-api/plugins/resources"
 )
 
 // nolint

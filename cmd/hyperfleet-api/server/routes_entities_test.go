@@ -1,4 +1,4 @@
-package entities
+package server
 
 import (
 	"net/http/httptest"
@@ -7,7 +7,6 @@ import (
 	"github.com/google/uuid"
 	. "github.com/onsi/gomega"
 
-	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/server"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/registry"
 )
 
@@ -20,7 +19,7 @@ func TestRegisterEntityRoutes_TopLevelEntity(t *testing.T) {
 		SpecSchemaName: "ChannelSpec",
 	})
 
-	apiV1 := server.NewRouter()
+	apiV1 := NewRouter().Group(apiV1BasePath)
 	RegisterEntityRoutes(apiV1, nil, nil, nil)
 
 	id := uuid.NewString()
@@ -47,7 +46,7 @@ func TestRegisterEntityRoutes_ChildEntity(t *testing.T) {
 		ParentKind: "Channel",
 	})
 
-	apiV1 := server.NewRouter()
+	apiV1 := NewRouter().Group(apiV1BasePath)
 	RegisterEntityRoutes(apiV1, nil, nil, nil)
 
 	parentID := uuid.NewString()
@@ -81,7 +80,7 @@ func TestRegisterEntityRoutes_UnresolvableParentKind_Panics(t *testing.T) {
 		ParentKind: "NonExistent",
 	})
 
-	apiV1 := server.NewRouter()
+	apiV1 := NewRouter().Group(apiV1BasePath)
 
 	Expect(func() {
 		RegisterEntityRoutes(apiV1, nil, nil, nil)
@@ -92,14 +91,14 @@ func TestRegisterEntityRoutes_EmptyRegistry(t *testing.T) {
 	RegisterTestingT(t)
 	registry.Reset()
 
-	apiV1 := server.NewRouter()
+	apiV1 := NewRouter().Group(apiV1BasePath)
 
 	Expect(func() {
 		RegisterEntityRoutes(apiV1, nil, nil, nil)
 	}).ToNot(Panic())
 }
 
-func assertRouteMatches(t *testing.T, router *server.Router, method, path string) {
+func assertRouteMatches(t *testing.T, router *Router, method, path string) {
 	t.Helper()
 	req := httptest.NewRequest(method, path, nil)
 	_, pattern := router.Handler(req)

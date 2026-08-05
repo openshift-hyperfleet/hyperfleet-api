@@ -21,17 +21,18 @@ import (
 	"github.com/spf13/pflag"
 	"gorm.io/gorm"
 
+	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/container"
 	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/environments"
+	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/servecmd"
 	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/server"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/auth"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/registry"
 	"github.com/openshift-hyperfleet/hyperfleet-api/test/factories"
 	"github.com/openshift-hyperfleet/hyperfleet-api/test/mocks"
-
-	_ "github.com/openshift-hyperfleet/hyperfleet-api/plugins/entities"
 )
 
 const (
@@ -58,17 +59,19 @@ var jwkURL string
 type TimeFunc func() time.Time
 
 type Helper struct {
-	Factories     factories.Factories
+	MetricsServer server.Server
 	Ctx           context.Context
 	DBFactory     db.SessionFactory
-	APIServer     server.Server
-	MetricsServer server.Server
+	Factories     factories.Factories
 	HealthServer  server.Server
+	Container     *container.Container
+	APIServer     *server.APIServer
 	AppConfig     *config.ApplicationConfig
 	TimeFunc      TimeFunc
 	JWTPrivateKey *rsa.PrivateKey
 	JWTCA         *rsa.PublicKey
 	T             *testing.T
+	jwkTeardown   func() error
 	teardowns     []func() error
 }
 
@@ -138,12 +141,9 @@ func NewHelper(t *testing.T) *Helper {
 		err = env.Initialize()
 		if err != nil {
 			logger.WithError(ctx, err).Error("Unable to initialize testing environment")
-			os.Exit(1)
-		}
-
-		// Integration tests must run with JWT enabled; fail fast if that ever regresses.
-		if !cfg.Server.JWT.Enabled {
-			logger.Error(ctx, "Integration tests require JWT enabled, check OverrideConfig() in e_integration_testing.go")
+			// env.Initialize() starts the PostgreSQL testcontainer before it can
+			// fail later in the sequence (e.g. Seed()); tear it down here too.
+			env.Teardown()
 			os.Exit(1)
 		}
 
@@ -152,22 +152,36 @@ func NewHelper(t *testing.T) *Helper {
 			DBFactory:     environments.Environment().Database.SessionFactory,
 			JWTPrivateKey: jwtKey,
 			JWTCA:         jwtCA,
+			T:             t,
 		}
-
-		// Start JWK certificate mock server for testing
-		jwkMockTeardown := helper.StartJWKCertServerMock()
 		// Teardown order: terminate the testcontainer FIRST so the
 		// container is removed before anything else. If server shutdown hangs
 		// and the force-exit goroutine kills the process, the container
 		// would remain alive and keep the Prow pod stuck (HYPERFLEET-625).
 		// CleanDB is omitted because the container is destroyed anyway.
+		// Every step is nil-safe so this same list can also run from
+		// failStartup before every resource in it has been created.
 		helper.teardowns = []func() error{
 			helper.teardownEnv,
 			helper.stopAPIServer,
+			helper.closeContainer,
 			helper.stopMetricsServer,
 			helper.stopHealthServer,
-			jwkMockTeardown,
+			helper.stopJWKMock,
 		}
+
+		// Integration tests must run with JWT enabled; fail fast if that ever regresses.
+		if !cfg.Server.JWT.Enabled {
+			helper.failStartup(ctx, nil,
+				"Integration tests require JWT enabled, check OverrideConfig() in e_integration_testing.go")
+		}
+
+		ctr := container.NewContainer(env.Config, env.Database.SessionFactory)
+		helper.Container = ctr
+		helper.Factories = factories.New(ctr.ResourceService())
+
+		// Start JWK certificate mock server for testing
+		helper.jwkTeardown = helper.StartJWKCertServerMock()
 		helper.startAPIServer()
 		helper.startMetricsServer()
 		helper.startHealthServer()
@@ -196,8 +210,27 @@ func (helper *Helper) Teardown() {
 
 func (helper *Helper) requireJWTIssuers() {
 	if helper.Env().Config.Server.JWT.Enabled && len(helper.Env().Config.Server.JWT.Configs) == 0 {
-		helper.T.Fatal("JWT enabled but no issuer configs defined")
+		helper.failStartup(context.Background(), nil, "JWT enabled but no issuer configs defined")
 	}
+}
+
+// failStartup logs a fatal startup error, runs whatever teardowns have been
+// registered so far (each is nil-safe for resources not yet created), and
+// exits. Startup failures must go through this instead of a bare os.Exit so
+// resources created earlier in NewHelper (e.g. the PostgreSQL testcontainer)
+// don't leak and block the Prow pod (HYPERFLEET-625).
+func (helper *Helper) failStartup(ctx context.Context, err error, msg string) {
+	if err != nil {
+		logger.WithError(ctx, err).Error(msg)
+	} else {
+		logger.Error(ctx, msg)
+	}
+	for _, teardown := range helper.teardowns {
+		if tdErr := teardown(); tdErr != nil {
+			logger.WithError(ctx, tdErr).Error("error running teardown during startup failure")
+		}
+	}
+	os.Exit(1)
 }
 
 func (helper *Helper) startAPIServer() {
@@ -211,12 +244,40 @@ func (helper *Helper) startAPIServer() {
 			cfg.IdentityHeader = defaultTestIdentityHeader
 		}
 	}
+	cfg := helper.Env().Config
+
+	// Only build the JWT handler when auth is on; it starts a JWKS refresh goroutine.
+	var jwtHandler *auth.JWTHandler
+	if cfg.Server.JWT.Enabled {
+		var jwtErr error
+		jwtHandler, jwtErr = helper.Container.JWTHandler()
+		if jwtErr != nil {
+			helper.failStartup(ctx, jwtErr, "Unable to create JWT handler")
+		}
+	}
+
+	schemaValidator, schemaErr := helper.Container.SchemaValidator()
+	if schemaErr != nil {
+		helper.failStartup(ctx, schemaErr, "Unable to create schema validator")
+	}
+
 	// Disable tracing for integration tests (no OTLP collector required)
-	helper.APIServer = server.NewAPIServer(false)
+	apiServer, err := servecmd.BuildAPIServer(
+		cfg,
+		helper.Container.ResourceService(),
+		helper.Container.AdapterStatusService(),
+		schemaValidator,
+		jwtHandler,
+		helper.Container.SessionFactory(),
+		false,
+	)
+	if err != nil {
+		helper.failStartup(ctx, err, "Unable to build Test API server")
+	}
+	helper.APIServer = apiServer
 	listener, err := helper.APIServer.Listen()
 	if err != nil {
-		logger.WithError(ctx, err).Error("Unable to start Test API server")
-		os.Exit(1)
+		helper.failStartup(ctx, err, "Unable to start Test API server")
 	}
 	go func() {
 		logger.Debug(ctx, "Test API server started")
@@ -226,10 +287,28 @@ func (helper *Helper) startAPIServer() {
 }
 
 func (helper *Helper) stopAPIServer() error {
+	if helper.APIServer == nil {
+		return nil
+	}
 	if err := helper.APIServer.Stop(); err != nil {
-		return fmt.Errorf("unable to stop api server: %s", err.Error())
+		return fmt.Errorf("unable to stop api server: %w", err)
 	}
 	return nil
+}
+
+func (helper *Helper) closeContainer() error {
+	if helper.Container == nil {
+		return nil
+	}
+	helper.Container.Close()
+	return nil
+}
+
+func (helper *Helper) stopJWKMock() error {
+	if helper.jwkTeardown == nil {
+		return nil
+	}
+	return helper.jwkTeardown()
 }
 
 func (helper *Helper) startMetricsServer() {
@@ -243,15 +322,21 @@ func (helper *Helper) startMetricsServer() {
 }
 
 func (helper *Helper) stopMetricsServer() error {
+	if helper.MetricsServer == nil {
+		return nil
+	}
 	if err := helper.MetricsServer.Stop(); err != nil {
-		return fmt.Errorf("unable to stop metrics server: %s", err.Error())
+		return fmt.Errorf("unable to stop metrics server: %w", err)
 	}
 	return nil
 }
 
 func (helper *Helper) stopHealthServer() error {
+	if helper.HealthServer == nil {
+		return nil
+	}
 	if err := helper.HealthServer.Stop(); err != nil {
-		return fmt.Errorf("unable to stop health server: %s", err.Error())
+		return fmt.Errorf("unable to stop health server: %w", err)
 	}
 	return nil
 }
@@ -266,15 +351,6 @@ func (helper *Helper) startHealthServer() {
 	}()
 }
 
-func (helper *Helper) RestartServer() {
-	ctx := context.Background()
-	if err := helper.stopAPIServer(); err != nil {
-		logger.WithError(ctx, err).Warn("unable to stop api server on restart")
-	}
-	helper.startAPIServer()
-	logger.Debug(ctx, "Test API server restarted")
-}
-
 func (helper *Helper) RestartMetricsServer() {
 	ctx := context.Background()
 	if err := helper.stopMetricsServer(); err != nil {
@@ -282,32 +358,6 @@ func (helper *Helper) RestartMetricsServer() {
 	}
 	helper.startMetricsServer()
 	logger.Debug(ctx, "Test metrics server restarted")
-}
-
-func (helper *Helper) Reset() {
-	ctx := context.Background()
-	logger.Info(ctx, "Resetting testing environment")
-	env := environments.Environment()
-	// Reset the configuration
-	env.Config = config.NewApplicationConfig()
-
-	// Re-read command-line configuration into a NEW flagset
-	// This new flag set ensures we don't hit conflicts defining the same flag twice
-	// Also on reset, we don't care to be re-defining 'v' and other glog flags
-	flagset := pflag.NewFlagSet(helper.NewID(), pflag.ContinueOnError)
-	if err := env.SetEnvironmentDefaults(flagset); err != nil {
-		logger.WithError(ctx, err).Error("Unable to set environment defaults on Reset")
-		os.Exit(1)
-	}
-	pflag.Parse()
-
-	err := env.Initialize()
-	if err != nil {
-		logger.WithError(ctx, err).Error("Unable to reset testing environment")
-		os.Exit(1)
-	}
-	helper.AppConfig = env.Config
-	helper.RestartServer()
 }
 
 // NewID creates a new unique ID used internally
@@ -703,18 +753,13 @@ func (helper *Helper) OpenapiError(body []byte) openapi.ProblemDetails {
 }
 
 func parseJWTKeys() (*rsa.PrivateKey, *rsa.PublicKey, error) {
-	// projectRootDir := getProjectRootDir()
-	// privateBytes, err := os.ReadFile(filepath.Join(projectRootDir, jwtKeyFile))
 	privateBytes, err := privatebytes()
 	if err != nil {
-		err = fmt.Errorf("unable to read JWT key file %s: %s", jwtKeyFile, err)
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("unable to read JWT key file %s: %w", jwtKeyFile, err)
 	}
-	// pubBytes, err := ioutil.ReadFile(filepath.Join(projectRootDir, jwtCAFile))
 	pubBytes, err := publicbytes()
 	if err != nil {
-		err = fmt.Errorf("unable to read JWT ca file %s: %s", jwtKeyFile, err)
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("unable to read JWT ca file %s: %w", jwtCAFile, err)
 	}
 
 	// Parse keys

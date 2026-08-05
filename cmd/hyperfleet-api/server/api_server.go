@@ -8,68 +8,43 @@ import (
 	"os"
 	"time"
 
-	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/environments"
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/auth"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
-type apiServer struct {
+type cfg interface {
+	BindAddress() string
+	ReadTimeout() time.Duration
+	WriteTimeout() time.Duration
+	TLSEnabled() bool
+	TLSCertFile() string
+	TLSKeyFile() string
+}
+
+type APIServer struct {
+	cfg        cfg
 	httpServer *http.Server
-	jwtHandler *auth.JWTHandler
 }
 
-var _ Server = &apiServer{}
-
-func env() *environments.Env {
-	return environments.Environment()
-}
-
-func NewAPIServer(tracingEnabled bool) Server {
-	s := &apiServer{}
-
-	mainRouter := s.routes(tracingEnabled)
-
-	// referring to the router as type http.Handler allows us to add middleware via more handlers
-	var mainHandler http.Handler = mainRouter
-
-	if env().Config.Server.JWT.Enabled {
-		jwtHandler, err := auth.NewJWTHandler(context.Background(), auth.JWTHandlerConfig{
-			Issuers: env().Config.Server.JWT.Configs,
-			PublicPaths: []string{
-				"^/api/hyperfleet/?$",
-				"^/api/hyperfleet/v1/?$",
-				"^/api/hyperfleet/v1/openapi/?$",
-				"^/api/hyperfleet/v1/openapi.html/?$",
-				"^/api/hyperfleet/v1/errors(/.*)?$",
-			},
-			Next: mainHandler,
-		})
-		check(err, "Unable to create JWT authentication handler")
-		s.jwtHandler = jwtHandler
-		mainHandler = jwtHandler
+func NewAPIServer(cfg cfg, handler http.Handler) *APIServer {
+	return &APIServer{
+		cfg: cfg,
+		httpServer: &http.Server{
+			Addr:              cfg.BindAddress(),
+			Handler:           removeTrailingSlash(handler),
+			ReadTimeout:       cfg.ReadTimeout(),
+			WriteTimeout:      cfg.WriteTimeout(),
+			ReadHeaderTimeout: 10 * time.Second, // Hardcoded to prevent Slowloris attacks (not user-configurable)
+		},
 	}
-
-	mainHandler = removeTrailingSlash(mainHandler)
-
-	s.httpServer = &http.Server{
-		Addr:              env().Config.Server.BindAddress(),
-		Handler:           mainHandler,
-		ReadTimeout:       env().Config.Server.Timeouts.Read,
-		WriteTimeout:      env().Config.Server.Timeouts.Write,
-		ReadHeaderTimeout: 10 * time.Second, // Hardcoded to prevent Slowloris attacks (not user-configurable)
-	}
-
-	return s
 }
 
 // Serve start the blocking call to Serve.
 // Useful for breaking up ListenAndServer (Start) when you require the server to be listening before continuing
-func (s apiServer) Serve(listener net.Listener) {
+func (s *APIServer) Serve(listener net.Listener) {
 	ctx := context.Background()
 	var err error
-	if env().Config.Server.TLS.Enabled {
-		// Check https cert and key path
-		if env().Config.Server.TLS.CertFile == "" || env().Config.Server.TLS.KeyFile == "" {
+	if s.cfg.TLSEnabled() {
+		if s.cfg.TLSCertFile() == "" || s.cfg.TLSKeyFile() == "" {
 			check(
 				fmt.Errorf(
 					"HTTPS certificate or key not configured; "+
@@ -79,15 +54,13 @@ func (s apiServer) Serve(listener net.Listener) {
 			)
 		}
 
-		// Serve with TLS
-		logger.With(ctx, logger.FieldBindAddress, env().Config.Server.BindAddress()).Info("Serving with TLS")
-		err = s.httpServer.ServeTLS(listener, env().Config.Server.TLS.CertFile, env().Config.Server.TLS.KeyFile)
+		logger.With(ctx, logger.FieldBindAddress, s.cfg.BindAddress()).Info("Serving with TLS")
+		err = s.httpServer.ServeTLS(listener, s.cfg.TLSCertFile(), s.cfg.TLSKeyFile())
 	} else {
-		logger.With(ctx, logger.FieldBindAddress, env().Config.Server.BindAddress()).Info("Serving without TLS")
+		logger.With(ctx, logger.FieldBindAddress, s.cfg.BindAddress()).Info("Serving without TLS")
 		err = s.httpServer.Serve(listener)
 	}
 
-	// Web server terminated.
 	if err != nil && err != http.ErrServerClosed {
 		check(err, "Web server terminated with errors")
 	} else {
@@ -97,36 +70,24 @@ func (s apiServer) Serve(listener net.Listener) {
 
 // Listen only start the listener, not the server.
 // Useful for breaking up ListenAndServer (Start) when you require the server to be listening before continuing
-func (s apiServer) Listen() (listener net.Listener, err error) {
-	return net.Listen("tcp", env().Config.Server.BindAddress())
+func (s *APIServer) Listen() (listener net.Listener, err error) {
+	return net.Listen("tcp", s.cfg.BindAddress())
 }
 
 // Start listening on the configured port and start the server.
 // This is a convenience wrapper for Listen() and Serve(listener Listener)
-func (s apiServer) Start() {
+func (s *APIServer) Start() {
 	ctx := context.Background()
 	listener, err := s.Listen()
 	if err != nil {
-		logger.WithError(ctx, err).Error("Unable to start API server")
+		logger.WithError(ctx, err).Error(fmt.Sprintf("Unable to start API server on %s", s.cfg.BindAddress()))
 		os.Exit(1)
 	}
 	s.Serve(listener)
-
-	// after the server exits but before the application terminates
-	// we need to explicitly close Go's sql connection pool.
-	// this needs to be called *exactly* once during an app's lifetime.
-	if err := env().Database.SessionFactory.Close(); err != nil {
-		logger.WithError(ctx, err).Error("Error closing database connection")
-	}
 }
 
-func (s apiServer) Stop() error {
+func (s *APIServer) Stop() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	err := s.httpServer.Shutdown(ctx)
-	// Close JWT handler after HTTP drain so in-flight requests can still verify tokens.
-	if s.jwtHandler != nil {
-		s.jwtHandler.Close()
-	}
-	return err
+	return s.httpServer.Shutdown(ctx)
 }

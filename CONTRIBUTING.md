@@ -55,7 +55,10 @@ Overview of key directories and their purpose.
 ```
 hyperfleet-api/
 ├── cmd/hyperfleet-api/          # Application entry point and CLI commands
-│   └── main.go                  # Server start, migrate, version commands
+│   ├── main.go                  # Server start, migrate, version commands
+│   ├── container/               # Dependency container (DAOs, services, validator, JWT handler)
+│   ├── servecmd/                # serve command; api_server.go composes the API server
+│   └── server/                  # HTTP servers, router, middleware, entity routes
 ├── pkg/
 │   ├── api/                     # Generated OpenAPI types (DO NOT EDIT)
 │   │   └── openapi/             # Generated from openapi/openapi.yaml
@@ -66,9 +69,6 @@ hyperfleet-api/
 │   ├── logger/                  # Structured logging (slog-based)
 │   ├── presenters/              # Response presenters (DAO models → API responses)
 │   └── services/                # Business logic layer (status aggregation, validation)
-├── plugins/                     # Plugin-based route registration (config-driven entities)
-│   ├── entities/                # Entity route auto-generation from config
-│   └── resources/               # Resource route registration
 ├── openapi/                     # API specification source
 │   ├── openapi.yaml             # Source spec (TypeSpec output, has $ref)
 │   └── oapi-codegen.yaml        # Code generation configuration

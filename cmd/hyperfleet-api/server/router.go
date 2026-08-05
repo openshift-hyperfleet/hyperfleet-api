@@ -17,10 +17,15 @@ type Middleware func(http.Handler) http.Handler
 // middleware chaining (.Use()) and grouping (.Group()) on top of Go's stdlib
 // method-prefixed routing patterns (e.g. "GET /clusters/{id}").
 //
+// Groups can carry a path prefix (via Group("/v1")) that is automatically
+// prepended to every pattern registered through that group, so route
+// handlers only declare their own path suffix.
+//
 // Middlewares registered via Use() are captured at HandleFunc/Handle time, so
 // Use() must be called before registering the routes it should apply to.
 type Router struct {
 	mux         *http.ServeMux
+	prefix      string
 	middlewares []Middleware
 }
 
@@ -39,10 +44,20 @@ func (r *Router) Use(mw ...Middleware) {
 // Group returns a child Router sharing the same underlying ServeMux but with
 // an independent copy of the current middleware chain, so further Use() calls
 // on the child don't affect the parent or any sibling groups.
-func (r *Router) Group() *Router {
+//
+// An optional path prefix can be passed to scope routes registered on the
+// child. The prefix is cumulative: if a parent already carries "/api/v1" and
+// the child adds "/clusters", routes on the child are prefixed with
+// "/api/v1/clusters". Omitting the prefix inherits the parent's prefix as-is.
+func (r *Router) Group(prefix ...string) *Router {
+	p := r.prefix
+	if len(prefix) > 0 {
+		p += prefix[0]
+	}
 	return &Router{
 		mux:         r.mux,
 		middlewares: append([]Middleware(nil), r.middlewares...),
+		prefix:      p,
 	}
 }
 
@@ -53,12 +68,25 @@ func (r *Router) HandleFunc(pattern string, handler http.HandlerFunc) {
 }
 
 // Handle registers handler for pattern, wrapped with this router's current
-// middleware chain.
+// middleware chain. If the router carries a prefix, it is prepended to the
+// path component of the pattern automatically.
 func (r *Router) Handle(pattern string, handler http.Handler) {
 	for _, mw := range slices.Backward(r.middlewares) {
 		handler = mw(handler)
 	}
-	r.mux.Handle(pattern, handler)
+	r.mux.Handle(r.withPrefix(pattern), handler)
+}
+
+// withPrefix prepends the router's prefix to the path component of a Go 1.22+
+// routing pattern ("METHOD /path" or just "/path").
+func (r *Router) withPrefix(pattern string) string {
+	if r.prefix == "" {
+		return pattern
+	}
+	if method, path, ok := strings.Cut(pattern, " "); ok {
+		return method + " " + r.prefix + path
+	}
+	return r.prefix + pattern
 }
 
 // ServeHTTP satisfies http.Handler, allowing a Router to be used directly as
