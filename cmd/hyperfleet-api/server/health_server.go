@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -69,7 +70,7 @@ func (s *HealthServer) Serve(listener net.Listener) error {
 		logger.With(ctx, logger.FieldBindAddress, s.httpServer.Addr).Info("Serving Health without TLS")
 		err = s.httpServer.Serve(listener)
 	}
-	if err != nil && err != http.ErrServerClosed {
+	if err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return fmt.Errorf("health server terminated with errors: %w", err)
 	}
 	logger.Info(ctx, "Health server terminated")
