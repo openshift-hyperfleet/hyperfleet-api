@@ -40,7 +40,7 @@ func (w *limitedWriter) Write(p []byte) (n int, err error) {
 // Used by both runtime evaluation and startup validation.
 const CELCostLimit = 10000
 
-// CEL context variable names (QUAL-01: prevent silent name mismatches)
+// CEL context variable names
 // These constants ensure consistency between environment declaration and activation map
 const (
 	CELVarStatuses = "statuses" // Array of adapter statuses

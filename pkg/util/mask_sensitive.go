@@ -2,20 +2,20 @@ package util
 
 import "strings"
 
-// RedactedPlaceholder is the string used to replace sensitive field values (QUAL-01)
+// RedactedPlaceholder is the string used to replace sensitive field values
 const RedactedPlaceholder = "***REDACTED***"
 
 // maxMaskingDepth limits recursion depth to prevent stack overflow from
 // deeply-nested adapter data payloads (SEC-03)
 const maxMaskingDepth = 20
 
-// Sensitive field patterns per HyperFleet security best practices (SEC-02)
+// Sensitive field patterns per HyperFleet security best practices
 // Matches common secret/credential field names case-insensitively
 var sensitivePatterns = []string{
 	"password",
 	"secret",
 	"token",
-	// Specific key patterns (SEC-02: avoid false positives like "partitionKey", "sortKey")
+	// Specific key patterns
 	"apikey",        // API keys
 	"privatekey",    // Private keys (SSH, TLS, etc.)
 	"secretkey",     // Secret keys
@@ -29,15 +29,15 @@ var sensitivePatterns = []string{
 	"credential",
 	"api_key", // Snake_case variant
 	"passphrase",
-	// Broad patterns (SEC-02): intentional over-masking for defense-in-depth
+	// Broad patterns: intentional over-masking for defense-in-depth
 	// Trade-off: May mask non-sensitive fields like "privateEndpoint", "authProvider", "connectionTimeout"
 	// Decision: Prefer over-masking to under-masking for security (prevents credential leakage)
 	"private",    // Private keys, private data - broad but catches "privateKey", "privateData"
 	"auth",       // Auth tokens, auth keys - broad but catches "authToken", "authKey", "authorization"
 	"connection", // Connection strings - broad but catches "connectionString", "dbConnection"
-	"cert",       // TLS certificates (SEC-02)
-	"kubeconfig", // Kubernetes config blobs (SEC-02)
-	"bearer",     // Bearer tokens (SEC-02)
+	"cert",       // TLS certificates
+	"kubeconfig", // Kubernetes config blobs
+	"bearer",     // Bearer tokens
 }
 
 // MaskSensitiveFields redacts adapter data keys matching sensitive patterns

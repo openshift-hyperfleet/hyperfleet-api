@@ -5,7 +5,7 @@ import (
 	"unicode"
 )
 
-// adapterConditionSuffix is the suffix appended to adapter names when generating condition types (QUAL-01)
+// adapterConditionSuffix is the suffix appended to adapter names when generating condition types
 const adapterConditionSuffix = "Successful"
 
 // MapAdapterToConditionType converts an adapter name to a semantic condition type (PascalCase + "Successful" suffix).

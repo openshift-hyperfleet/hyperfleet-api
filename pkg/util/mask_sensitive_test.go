@@ -302,14 +302,14 @@ func TestIsSensitiveKey(t *testing.T) {
 		{"api_key underscore", "service_api_key", true},
 		{"auth", "authToken", true},
 		{"private", "privateData", true},
-		// SEC-02 patterns
+		// security patterns
 		{"cert", "tlsCert", true},
 		{"kubeconfig", "adminKubeconfig", true},
 		{"bearer", "bearerToken", true},
 		{"connection", "dbConnectionString", true},
 		// Non-sensitive
 		{"non-sensitive", "clusterName", false},
-		{"non-sensitive with key substring", "keyboard", false}, // SEC-02: "key" alone is too broad
+		{"non-sensitive with key substring", "keyboard", false}, // "key" alone is too broad
 		{"region", "region", false},
 		{"count", "nodeCount", false},
 	}
@@ -324,12 +324,12 @@ func TestIsSensitiveKey(t *testing.T) {
 }
 
 // ============================================================================
-// SEC-02 Pattern Tests
+// security Pattern Tests
 // ============================================================================
 
 func TestMaskSensitiveFields_SEC02Patterns(t *testing.T) {
 	t.Parallel()
-	t.Run("TLS certificate fields are masked (SEC-02)", func(t *testing.T) {
+	t.Run("TLS certificate fields are masked", func(t *testing.T) {
 		RegisterTestingT(t)
 
 		input := map[string]interface{}{
@@ -352,7 +352,7 @@ func TestMaskSensitiveFields_SEC02Patterns(t *testing.T) {
 		Expect(result["serverCertChain"]).To(Equal(RedactedPlaceholder))
 	})
 
-	t.Run("kubeconfig fields are masked (SEC-02)", func(t *testing.T) {
+	t.Run("kubeconfig fields are masked", func(t *testing.T) {
 		RegisterTestingT(t)
 
 		input := map[string]interface{}{
@@ -372,7 +372,7 @@ func TestMaskSensitiveFields_SEC02Patterns(t *testing.T) {
 		Expect(result["adminKubeconfig"]).To(Equal(RedactedPlaceholder))
 	})
 
-	t.Run("bearer token fields are masked (SEC-02)", func(t *testing.T) {
+	t.Run("bearer token fields are masked", func(t *testing.T) {
 		RegisterTestingT(t)
 
 		input := map[string]interface{}{
@@ -390,7 +390,7 @@ func TestMaskSensitiveFields_SEC02Patterns(t *testing.T) {
 		Expect(result["bearerHeader"]).To(Equal(RedactedPlaceholder))
 	})
 
-	t.Run("connection string fields are masked (SEC-02)", func(t *testing.T) {
+	t.Run("connection string fields are masked", func(t *testing.T) {
 		RegisterTestingT(t)
 
 		input := map[string]interface{}{
@@ -411,7 +411,7 @@ func TestMaskSensitiveFields_SEC02Patterns(t *testing.T) {
 		Expect(result["redisConnectionString"]).To(Equal(RedactedPlaceholder))
 	})
 
-	t.Run("nested SEC-02 patterns in adapter data", func(t *testing.T) {
+	t.Run("nested security patterns in adapter data", func(t *testing.T) {
 		RegisterTestingT(t)
 
 		input := map[string]interface{}{
@@ -443,7 +443,7 @@ func TestMaskSensitiveFields_SEC02Patterns(t *testing.T) {
 		Expect(tlsConfig["serverName"]).To(Equal("api.cluster.example.com"))
 	})
 
-	t.Run("SEC-02 patterns in arrays", func(t *testing.T) {
+	t.Run("security patterns in arrays", func(t *testing.T) {
 		RegisterTestingT(t)
 
 		input := map[string]interface{}{
@@ -473,7 +473,7 @@ func TestMaskSensitiveFields_SEC02Patterns(t *testing.T) {
 		Expect(cluster2["connection"]).To(Equal(RedactedPlaceholder), "connection contains 'connection'")
 	})
 
-	t.Run("real-world HyperShift adapter data with SEC-02 patterns", func(t *testing.T) {
+	t.Run("real-world HyperShift adapter data with security patterns", func(t *testing.T) {
 		RegisterTestingT(t)
 
 		input := map[string]interface{}{
@@ -613,12 +613,12 @@ func TestMaskSensitiveFields_DepthLimit(t *testing.T) {
 }
 
 // ============================================================================
-// False Positive Prevention Tests (SEC-02)
+// False Positive Prevention Tests
 // ============================================================================
 
 func TestMaskSensitiveFields_FalsePositivePrevention(t *testing.T) {
 	t.Parallel()
-	t.Run("database fields with 'key' are NOT redacted (SEC-02)", func(t *testing.T) {
+	t.Run("database fields with 'key' are NOT redacted", func(t *testing.T) {
 		RegisterTestingT(t)
 
 		// Common database field names that should NOT be redacted
@@ -650,7 +650,7 @@ func TestMaskSensitiveFields_FalsePositivePrevention(t *testing.T) {
 		Expect(result["shardKey"]).To(Equal("region-us-west"))
 	})
 
-	t.Run("legitimate credential 'key' fields ARE redacted (SEC-02)", func(t *testing.T) {
+	t.Run("legitimate credential 'key' fields ARE redacted", func(t *testing.T) {
 		RegisterTestingT(t)
 
 		// Real credential fields that SHOULD be redacted
@@ -675,7 +675,7 @@ func TestMaskSensitiveFields_FalsePositivePrevention(t *testing.T) {
 		}
 	})
 
-	t.Run("service/product names with 'key' are NOT redacted (SEC-02)", func(t *testing.T) {
+	t.Run("service/product names with 'key' are NOT redacted", func(t *testing.T) {
 		RegisterTestingT(t)
 
 		// Service/product names that contain 'key' but aren't credentials

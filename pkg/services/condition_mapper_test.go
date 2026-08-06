@@ -1765,7 +1765,7 @@ func testBuildActivation(
 ) map[string]interface{} {
 	t.Helper()
 
-	// Convert adapter statuses using shared logic (PERF-03: avoid duplication)
+	// Convert adapter statuses using shared logic
 	statusesList := buildStatusesList(ctx, statuses)
 
 	// Convert resource to map and mask sensitive fields (defense-in-depth)
@@ -1775,6 +1775,6 @@ func testBuildActivation(
 	return map[string]interface{}{
 		util.CELVarStatuses: statusesList,
 		util.CELVarResource: resourceMap,
-		util.CELVarEnv:      emptyEnvMap, // Shared package-level var (PERF-03)
+		util.CELVarEnv:      emptyEnvMap, // Shared package-level var
 	}
 }
