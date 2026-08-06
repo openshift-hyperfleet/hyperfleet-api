@@ -99,7 +99,7 @@ make test
 make ci-test-unit
 ```
 
-Unit tests run with `HYPERFLEET_ENV=unit_testing` and do not require a running database.
+Unit tests do not require a running database.
 
 ### Integration Tests
 

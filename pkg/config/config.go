@@ -10,6 +10,7 @@ type ApplicationConfig struct {
 	Health   *HealthConfig               `mapstructure:"health" json:"health" validate:"required"`
 	Database *DatabaseConfig             `mapstructure:"database" json:"database" validate:"required"`
 	Logging  *LoggingConfig              `mapstructure:"logging" json:"logging" validate:"required"`
+	Tracing  *TracingConfig              `mapstructure:"tracing" json:"tracing" validate:"required"`
 	Entities []registry.EntityDescriptor `mapstructure:"entities" json:"entities"`
 }
 
@@ -22,5 +23,6 @@ func NewApplicationConfig() *ApplicationConfig {
 		Health:   NewHealthConfig(),
 		Database: NewDatabaseConfig(),
 		Logging:  NewLoggingConfig(),
+		Tracing:  NewTracingConfig(),
 	}
 }

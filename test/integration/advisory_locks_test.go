@@ -236,7 +236,7 @@ func TestConcurrentMigrations(t *testing.T) {
 	h, _ := test.RegisterIntegration(t)
 
 	// First, reset the database to a clean state
-	err := h.ResetDB()
+	err := h.RebuildSchema()
 	Expect(err).NotTo(HaveOccurred(), "Failed to reset database")
 
 	total := 5
@@ -450,7 +450,7 @@ func TestMigrationFailureUnderLock(t *testing.T) {
 	h, _ := test.RegisterIntegration(t)
 
 	// Reset database to clean state
-	err := h.ResetDB()
+	err := h.RebuildSchema()
 	Expect(err).NotTo(HaveOccurred(), "Failed to reset database")
 
 	// Channels to coordinate goroutines

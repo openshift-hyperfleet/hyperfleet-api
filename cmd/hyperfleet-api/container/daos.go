@@ -6,35 +6,35 @@ import (
 
 func (c *Container) ResourceDao() dao.ResourceDao {
 	if c.resourceDao == nil {
-		c.resourceDao = dao.NewResourceDao(c.sessionFactory)
+		c.resourceDao = dao.NewResourceDao(c.SessionFactory())
 	}
 	return c.resourceDao
 }
 
 func (c *Container) ResourceLabelDao() dao.ResourceLabelDao {
 	if c.resourceLabelDao == nil {
-		c.resourceLabelDao = dao.NewResourceLabelDao(c.sessionFactory)
+		c.resourceLabelDao = dao.NewResourceLabelDao(c.SessionFactory())
 	}
 	return c.resourceLabelDao
 }
 
 func (c *Container) AdapterStatusDao() dao.AdapterStatusDao {
 	if c.adapterStatusDao == nil {
-		c.adapterStatusDao = dao.NewAdapterStatusDao(c.sessionFactory)
+		c.adapterStatusDao = dao.NewAdapterStatusDao(c.SessionFactory())
 	}
 	return c.adapterStatusDao
 }
 
 func (c *Container) ResourceConditionDao() dao.ResourceConditionDao {
 	if c.resourceConditionDao == nil {
-		c.resourceConditionDao = dao.NewResourceConditionDao(c.sessionFactory)
+		c.resourceConditionDao = dao.NewResourceConditionDao(c.SessionFactory())
 	}
 	return c.resourceConditionDao
 }
 
 func (c *Container) GenericDao() dao.GenericDao {
 	if c.genericDao == nil {
-		c.genericDao = dao.NewGenericDao(c.sessionFactory)
+		c.genericDao = dao.NewGenericDao(c.SessionFactory())
 	}
 	return c.genericDao
 }

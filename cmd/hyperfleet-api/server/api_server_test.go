@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/tls"
@@ -79,7 +80,9 @@ func TestAPIServerServeWithoutTLS(t *testing.T) {
 	t.Cleanup(func() { _ = resp.Body.Close() })
 	Expect(resp.StatusCode).To(Equal(http.StatusNoContent))
 
-	Expect(s.Stop()).To(Succeed())
+	shutdownCtx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	Expect(s.Shutdown(shutdownCtx)).To(Succeed())
 	<-done
 }
 
@@ -128,8 +131,86 @@ func TestAPIServerServeWithTLS(t *testing.T) {
 	t.Cleanup(func() { _ = resp.Body.Close() })
 	Expect(resp.StatusCode).To(Equal(http.StatusAccepted))
 
-	Expect(s.Stop()).To(Succeed())
+	shutdownCtx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	Expect(s.Shutdown(shutdownCtx)).To(Succeed())
 	<-done
+}
+
+func TestAPIServerShutdownDrainsInFlightRequest(t *testing.T) {
+	RegisterTestingT(t)
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	Expect(err).NotTo(HaveOccurred())
+
+	requestStarted := make(chan struct{})
+	releaseRequest := make(chan struct{})
+	s := NewAPIServer(
+		testAPIServerConfig{bindAddress: listener.Addr().String()},
+		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			close(requestStarted)
+			<-releaseRequest
+			w.WriteHeader(http.StatusNoContent)
+		}),
+	)
+	serveDone := make(chan error, 1)
+	go func() {
+		serveDone <- s.Serve(listener)
+	}()
+
+	requestDone := make(chan error, 1)
+	go func() {
+		resp, requestErr := http.Get("http://" + listener.Addr().String())
+		if requestErr == nil {
+			requestErr = resp.Body.Close()
+		}
+		requestDone <- requestErr
+	}()
+	<-requestStarted
+
+	shutdownCtx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	shutdownDone := make(chan error, 1)
+	go func() {
+		shutdownDone <- s.Shutdown(shutdownCtx)
+	}()
+
+	Consistently(shutdownDone, "100ms").ShouldNot(Receive())
+	close(releaseRequest)
+	Eventually(shutdownDone).Should(Receive(Succeed()))
+	Eventually(requestDone).Should(Receive(Succeed()))
+	Eventually(serveDone).Should(Receive(Succeed()))
+}
+
+func TestAPIServerCloseCancelsRequestAfterDrainTimeout(t *testing.T) {
+	RegisterTestingT(t)
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	Expect(err).NotTo(HaveOccurred())
+
+	requestStarted := make(chan struct{})
+	requestCanceled := make(chan struct{})
+	s := NewAPIServer(
+		testAPIServerConfig{bindAddress: listener.Addr().String()},
+		http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+			close(requestStarted)
+			<-r.Context().Done()
+			close(requestCanceled)
+		}),
+	)
+	go func() {
+		_ = s.Serve(listener)
+	}()
+	go func() {
+		_, _ = http.Get("http://" + listener.Addr().String())
+	}()
+	<-requestStarted
+
+	shutdownCtx, cancel := context.WithTimeout(t.Context(), 25*time.Millisecond)
+	defer cancel()
+	Expect(s.Shutdown(shutdownCtx)).To(MatchError(context.DeadlineExceeded))
+	Expect(s.Close()).To(Succeed())
+	Eventually(requestCanceled).Should(BeClosed())
 }
 
 func writeSelfSignedCert(t *testing.T) (string, string) {

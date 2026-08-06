@@ -114,7 +114,7 @@ export HYPERFLEET_DATABASE_SSL_MODE=require   # for remote databases
 make run-no-auth
 ```
 
-**Note**: The default runtime environment is `production`. For local development without authentication, use `make run-no-auth` or set `HYPERFLEET_ENV=development` (see [Development Environment Configuration](#development-environment-configuration) below).
+**Note**: JWT and TLS are enabled by default. For local development without authentication, use `make run-no-auth` or disable JWT/TLS via flags or env vars (see [Runtime configuration](#runtime-configuration) below).
 
 The service starts on `localhost:8000` — see [Accessing the API](../README.md#accessing-the-api) for all available endpoints.
 
@@ -233,7 +233,7 @@ make db/login      # Connect to database shell
 | `make build` | Build hyperfleet-api executable to bin/ |
 | `make test` | Run unit tests |
 | `make test-integration` | Run integration tests |
-| `make run-no-auth` | Start server without authentication |
+| `make run-no-auth` | Start server without authentication or TLS |
 | `make run` | Start server with JWT authentication |
 | `make db/setup` | Create PostgreSQL container |
 | `make db/teardown` | Remove PostgreSQL container |
@@ -462,66 +462,37 @@ make db/setup
 make test-integration
 ```
 
-## Development Environment Configuration
+## Runtime configuration
 
-### Development Environment Analysis
-
-**Background**: Prior to HYPERFLEET-1133, the API defaulted to `DevelopmentEnv` (insecure). To protect production deployments, HYPERFLEET-1133 changed the default to `ProductionEnv` (secure by default).
-
-**Analysis Question**: Is `e_development.go` still needed after this change?
-
-**Decision**: **KEEP `e_development.go`** with improved documentation.
-**Why keep it**:
-
-- ✅ **One variable controls multiple settings** — `HYPERFLEET_ENV=development` forces JWT=false, TLS=false, SSL=disable
-- ✅ **Convenient for scripts/CI** — One environment variable vs three separate flags
-- ✅ **Semantic clarity** — "development mode" is clearer than remembering individual flags
-- ✅ **Consistent with tests** — `unit_testing` and `integration_testing` use the same pattern
-- ✅ **Production safe** — `EnvironmentDefault = ProductionEnv` prevents accidental use in production
-
-**How to use**:
+Configure JWT, TLS, and DB SSL with flags, config file, or `HYPERFLEET_*` env vars.
 
 ```bash
-# Full development mode (JWT/TLS/DB SSL all disabled)
-HYPERFLEET_ENV=development ./bin/hyperfleet-api serve
+# Local: disable auth, TLS, and DB SSL
+HYPERFLEET_SERVER_JWT_ENABLED=false \
+HYPERFLEET_SERVER_TLS_ENABLED=false \
+HYPERFLEET_DATABASE_SSL_MODE=disable \
+./bin/hyperfleet-api serve
 
-# JWT-only no-auth (TLS and DB SSL keep their defaults)
+# Same as above for JWT/TLS (DB SSL follows make db defaults)
 make run-no-auth
 
-# Production mode (JWT/TLS enabled, default)
-./bin/hyperfleet-api serve  # Uses EnvironmentDefault = ProductionEnv
+# Defaults (JWT/TLS enabled)
+./bin/hyperfleet-api serve
 ```
 
-**⚠️ IMPORTANT**: `HYPERFLEET_ENV=development` is for **local development ONLY**. Never use in production. The development environment forces insecure settings:
-
-- JWT authentication: **disabled**
-- TLS encryption: **disabled**
-- Database SSL: **disabled**
-
-**Production deployments**: Always use `EnvironmentDefault` (production) or explicitly enable security via Helm values:
+Production example (Helm values):
 
 ```yaml
 config:
   server:
     jwt:
-      enabled: true  # Production requires JWT
+      enabled: true
     tls:
-      enabled: true  # Production requires TLS
+      enabled: true
   database:
     ssl:
-      mode: verify-full  # Production requires SSL
+      mode: verify-full
 ```
-
-**Alternative to `HYPERFLEET_ENV=development`**: If you prefer explicit flags over environment-based config, you can pass flags directly:
-
-```bash
-./bin/hyperfleet-api serve \
-  --server-jwt-enabled=false \
-  --server-https-enabled=false \
-  --db-ssl-mode=disable
-```
-
-However, `HYPERFLEET_ENV=development` is recommended for local development as it's simpler and less error-prone.
 
 ---
 

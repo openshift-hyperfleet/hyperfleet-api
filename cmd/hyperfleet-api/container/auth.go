@@ -7,7 +7,10 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/auth"
 )
 
-func (c *Container) JWTHandler() (*auth.JWTHandler, error) {
+func (c *Container) JWTHandler() *auth.JWTHandler {
+	if !c.cfg.Server.JWT.Enabled {
+		return nil
+	}
 	if c.jwtHandler == nil {
 		jwtHandler, err := auth.NewJWTHandler(
 			context.Background(),
@@ -16,9 +19,10 @@ func (c *Container) JWTHandler() (*auth.JWTHandler, error) {
 			},
 		)
 		if err != nil {
-			return nil, fmt.Errorf("unable to create JWT handler: %w", err)
+			panic(fmt.Sprintf("create JWT handler: %v", err))
 		}
 		c.jwtHandler = jwtHandler
+		c.closer.Add(c.jwtHandler.Close)
 	}
-	return c.jwtHandler, nil
+	return c.jwtHandler
 }

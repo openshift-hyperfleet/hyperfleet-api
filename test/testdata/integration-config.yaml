@@ -1,0 +1,16 @@
+database:
+  name: hyperfleet_test
+  username: test
+  password: test
+  ssl:
+    mode: disable
+
+server:
+  jwt:
+    enabled: true
+    configs:
+      - issuer_url: https://test-issuer.example.com
+        jwk_cert_url: https://jwks.invalid/.well-known/jwks.json
+        header: Authorization
+        identity_claim: email
+        identity_header: X-HyperFleet-Identity
