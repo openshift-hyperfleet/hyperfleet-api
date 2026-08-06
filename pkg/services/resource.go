@@ -7,6 +7,9 @@ import (
 	"strings"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/dao"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
@@ -82,9 +85,11 @@ type sqlResourceService struct {
 
 // Get returns a single resource by kind and ID. Returns 404 if not found.
 func (s *sqlResourceService) Get(ctx context.Context, kind, id string) (*api.Resource, *errors.ServiceError) {
+	trace.SpanFromContext(ctx).SetAttributes(attribute.String("hyperfleet.resource_id", id))
 	if svcErr := validateKind(kind); svcErr != nil {
 		return nil, svcErr
 	}
+	trace.SpanFromContext(ctx).SetAttributes(attribute.String("hyperfleet.resource_type", registry.MustGet(kind).Plural))
 	resource, err := s.resourceDao.Get(ctx, kind, id)
 	if err != nil {
 		return nil, handleGetError(kind, "id", id, err)
@@ -104,7 +109,14 @@ func (s *sqlResourceService) Create(
 ) (*api.Resource, *errors.ServiceError) {
 	resource.Kind = kind
 
-	if svcErr := validateResourceName(kind, resource.Name); svcErr != nil {
+	if svcErr := validateKind(kind); svcErr != nil {
+		return nil, svcErr
+	}
+	trace.SpanFromContext(ctx).SetAttributes(
+		attribute.String("hyperfleet.resource_type", registry.MustGet(kind).Plural),
+	)
+
+	if svcErr := validateName(kind, resource.Name); svcErr != nil {
 		return nil, svcErr
 	}
 
@@ -137,6 +149,7 @@ func (s *sqlResourceService) Create(
 	if err != nil {
 		return nil, handleCreateError(kind, err)
 	}
+	trace.SpanFromContext(ctx).SetAttributes(attribute.String("hyperfleet.resource_id", resource.ID))
 
 	if len(resource.Labels) > 0 {
 		if labelErr := s.resourceLabelDao.ReplaceLabels(ctx, resource.ID, resource.Labels); labelErr != nil {
@@ -170,9 +183,11 @@ func (s *sqlResourceService) Create(
 func (s *sqlResourceService) Patch(
 	ctx context.Context, kind, id string, patch *api.ResourcePatch,
 ) (*api.Resource, *errors.ServiceError) {
+	trace.SpanFromContext(ctx).SetAttributes(attribute.String("hyperfleet.resource_id", id))
 	if svcErr := validateKind(kind); svcErr != nil {
 		return nil, svcErr
 	}
+	trace.SpanFromContext(ctx).SetAttributes(attribute.String("hyperfleet.resource_type", registry.MustGet(kind).Plural))
 	resource, err := s.resourceDao.GetForUpdate(ctx, kind, id)
 	if err != nil {
 		return nil, handleGetError(kind, "id", id, err)
@@ -245,9 +260,11 @@ func (s *sqlResourceService) Patch(
 
 // Resources with required adapters are soft-deleted; all others are hard-deleted.
 func (s *sqlResourceService) Delete(ctx context.Context, kind, id string) (*api.Resource, *errors.ServiceError) {
+	trace.SpanFromContext(ctx).SetAttributes(attribute.String("hyperfleet.resource_id", id))
 	if svcErr := validateKind(kind); svcErr != nil {
 		return nil, svcErr
 	}
+	trace.SpanFromContext(ctx).SetAttributes(attribute.String("hyperfleet.resource_type", registry.MustGet(kind).Plural))
 	resource, err := s.resourceDao.GetForUpdate(ctx, kind, id)
 	if err != nil {
 		return nil, handleSoftDeleteError(kind, err)
@@ -408,9 +425,11 @@ func (s *sqlResourceService) checkCanDelete(
 func (s *sqlResourceService) GetByOwner(
 	ctx context.Context, kind, id, ownerID string,
 ) (*api.Resource, *errors.ServiceError) {
+	trace.SpanFromContext(ctx).SetAttributes(attribute.String("hyperfleet.resource_id", id))
 	if svcErr := validateKind(kind); svcErr != nil {
 		return nil, svcErr
 	}
+	trace.SpanFromContext(ctx).SetAttributes(attribute.String("hyperfleet.resource_type", registry.MustGet(kind).Plural))
 	resource, err := s.resourceDao.GetByOwner(ctx, kind, id, ownerID)
 	if err != nil {
 		return nil, handleGetError(kind, "id", id, err)
@@ -486,10 +505,14 @@ func (s *sqlResourceService) ListByOwner(
 }
 
 func (s *sqlResourceService) GetByID(ctx context.Context, id string) (*api.Resource, *errors.ServiceError) {
+	trace.SpanFromContext(ctx).SetAttributes(attribute.String("hyperfleet.resource_id", id))
 	resource, err := s.resourceDao.GetByID(ctx, id)
 	if err != nil {
 		return nil, handleGetError("Resource", "id", id, err)
 	}
+	trace.SpanFromContext(ctx).SetAttributes(
+		attribute.String("hyperfleet.resource_type", registry.MustGet(resource.Kind).Plural),
+	)
 	return resource, nil
 }
 
@@ -523,9 +546,11 @@ func (s *sqlResourceService) ListAll(
 func (s *sqlResourceService) ProcessAdapterStatus(
 	ctx context.Context, kind, resourceID string, adapterStatus *api.AdapterStatus,
 ) (*api.AdapterStatus, *errors.ServiceError) {
+	trace.SpanFromContext(ctx).SetAttributes(attribute.String("hyperfleet.resource_id", resourceID))
 	if svcErr := validateKind(kind); svcErr != nil {
 		return nil, svcErr
 	}
+	trace.SpanFromContext(ctx).SetAttributes(attribute.String("hyperfleet.resource_type", registry.MustGet(kind).Plural))
 
 	// Step 1: Acquire a row-level exclusive lock on the resource. Concurrent
 	// adapter status updates for the same resource are serialized here.
@@ -852,10 +877,7 @@ func validateKind(kind string) *errors.ServiceError {
 }
 
 // Name format/length validation is handled by OpenAPI spec validation middleware.
-func validateResourceName(kind, name string) *errors.ServiceError {
-	if svcErr := validateKind(kind); svcErr != nil {
-		return svcErr
-	}
+func validateName(kind, name string) *errors.ServiceError {
 	if name == "" {
 		return errors.Validation("%s name cannot be empty", kind)
 	}
@@ -916,9 +938,11 @@ func applyResourcePatch(resource *api.Resource, patch *api.ResourcePatch) error 
 }
 
 func (s *sqlResourceService) ForceDelete(ctx context.Context, kind, id, reason string) *errors.ServiceError {
+	trace.SpanFromContext(ctx).SetAttributes(attribute.String("hyperfleet.resource_id", id))
 	if svcErr := validateKind(kind); svcErr != nil {
 		return svcErr
 	}
+	trace.SpanFromContext(ctx).SetAttributes(attribute.String("hyperfleet.resource_type", registry.MustGet(kind).Plural))
 
 	resource, err := s.resourceDao.GetForUpdate(ctx, kind, id)
 	if err != nil {
