@@ -84,11 +84,6 @@ func normalizeIdentity(raw string, source string) (string, error) {
 	return value, nil
 }
 
-func shouldSkipCallerIdentity(path string) bool {
-	return strings.HasPrefix(path, "/api/hyperfleet/v1/openapi") ||
-		strings.HasPrefix(path, "/api/hyperfleet/v1/errors")
-}
-
 func isMutatingMethod(method string) bool {
 	return method == http.MethodPost || method == http.MethodPatch || method == http.MethodDelete ||
 		method == http.MethodPut

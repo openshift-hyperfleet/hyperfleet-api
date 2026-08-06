@@ -5,6 +5,7 @@ import (
 
 	. "github.com/onsi/gomega"
 
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/closer"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
 	dbmocks "github.com/openshift-hyperfleet/hyperfleet-api/pkg/db/mocks"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/registry"
@@ -16,7 +17,7 @@ func newTestContainer(t *testing.T) *Container {
 	sessionFactory := dbmocks.NewMockSessionFactory()
 	t.Cleanup(func() { _ = sessionFactory.Close() })
 
-	c := NewContainer(config.NewApplicationConfig())
+	c := NewContainer(config.NewApplicationConfig(), closer.New())
 	c.sessionFactory = sessionFactory
 	return c
 }
@@ -71,6 +72,6 @@ func TestContainerDoesNotInitializeGlobalRegistry(t *testing.T) {
 	t.Cleanup(func() { _ = sessionFactory.Close() })
 
 	Expect(func() {
-		NewContainer(cfg)
+		NewContainer(cfg, closer.New())
 	}).NotTo(Panic())
 }

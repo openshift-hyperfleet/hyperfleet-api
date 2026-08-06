@@ -1,3 +1,10 @@
+database:
+  name: hyperfleet_test
+  username: test
+  password: test
+  ssl:
+    mode: disable
+
 server:
   jwt:
     enabled: true
@@ -7,3 +14,6 @@ server:
         header: Authorization
         identity_claim: email
         identity_header: X-HyperFleet-Identity
+
+tracing:
+  enabled: false

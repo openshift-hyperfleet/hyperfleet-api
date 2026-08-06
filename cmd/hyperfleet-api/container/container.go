@@ -2,6 +2,7 @@ package container
 
 import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/auth"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/closer"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/dao"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
@@ -13,6 +14,7 @@ import (
 // sequential startup. It is not safe for concurrent initialization.
 type Container struct {
 	cfg            *config.ApplicationConfig
+	closer         *closer.Closer
 	sessionFactory db.SessionFactory
 
 	resourceDao          dao.ResourceDao
@@ -29,6 +31,6 @@ type Container struct {
 	jwtHandler      *auth.JWTHandler
 }
 
-func NewContainer(cfg *config.ApplicationConfig) *Container {
-	return &Container{cfg: cfg}
+func NewContainer(cfg *config.ApplicationConfig, c *closer.Closer) *Container {
+	return &Container{cfg: cfg, closer: c}
 }

@@ -77,6 +77,15 @@ func TestConfigLoader_TracingFromEnv(t *testing.T) {
 			expectedEnabled:     true,
 			expectedServiceName: "otel-api",
 		},
+		{
+			name: "HYPERFLEET prefix wins over OTEL_SERVICE_NAME",
+			envVars: map[string]string{
+				"HYPERFLEET_TRACING_SERVICE_NAME": "hyperfleet-name",
+				"OTEL_SERVICE_NAME":               "otel-name",
+			},
+			expectedEnabled:     true,
+			expectedServiceName: "hyperfleet-name",
+		},
 	}
 
 	for _, tt := range tests {

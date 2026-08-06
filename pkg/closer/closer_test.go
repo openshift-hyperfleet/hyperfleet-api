@@ -167,7 +167,7 @@ func TestAddDuringClosePanics(t *testing.T) {
 		return nil
 	})
 
-	_ = c.Close()
+	Expect(c.Close()).NotTo(HaveOccurred())
 }
 
 func TestConcurrentClose(t *testing.T) {

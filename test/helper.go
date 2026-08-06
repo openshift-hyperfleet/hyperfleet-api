@@ -13,7 +13,6 @@ import (
 	"slices"
 	"strings"
 	"sync"
-	"testing"
 	"time"
 
 	"github.com/brianvoe/gofakeit/v7"
@@ -30,7 +29,6 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/closer"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db/db_session"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/registry"
 	"github.com/openshift-hyperfleet/hyperfleet-api/test/factories"
@@ -38,9 +36,8 @@ import (
 )
 
 const (
-	jwkKID                 = "uhctestkey"
-	jwkAlg                 = "RS256"
-	databaseSSLModeDisable = "disable"
+	jwkKID = "uhctestkey"
+	jwkAlg = "RS256"
 )
 
 var (
@@ -49,17 +46,6 @@ var (
 )
 
 const defaultTestIdentityHeader = "X-HyperFleet-Identity"
-
-func applyIntegrationTestConfigOverrides(cfg *config.ApplicationConfig) {
-	cfg.Database.Name = "hyperfleet_test"
-	cfg.Database.Username = "test"
-	cfg.Database.Password = "test"
-	cfg.Database.Host = "localhost"
-	cfg.Database.Port = 5432
-	if cfg.Database.SSL.Mode == "" {
-		cfg.Database.SSL.Mode = databaseSSLModeDisable
-	}
-}
 
 func integrationTestConfigPath() string {
 	_, thisFile, _, ok := runtime.Caller(0)
@@ -155,9 +141,10 @@ type Helper struct {
 	JWTCA         *rsa.PublicKey
 	jwtHandler    *auth.JWTHandler
 	closer        *closer.Closer
+	tables        []string
 }
 
-func NewHelper(t *testing.T) *Helper {
+func NewHelper() *Helper {
 	once.Do(func() {
 		initTestLogger()
 		ctx := context.Background()
@@ -167,12 +154,13 @@ func NewHelper(t *testing.T) *Helper {
 			panic(fmt.Sprintf("test setup: unable to load JWT keys: %v", err))
 		}
 
-		if os.Getenv("HYPERFLEET_CONFIG") == "" {
-			os.Setenv("HYPERFLEET_CONFIG", integrationTestConfigPath()) //nolint:errcheck
-		}
+		// Use an explicit --config flag, not HYPERFLEET_CONFIG, so we never hijack a developer's own env var.
+		cmd := &cobra.Command{}
+		cmd.Flags().String("config", "", "config file path")
+		cmd.Flags().Set("config", integrationTestConfigPath()) //nolint:errcheck // string flag, Set never errors
 
 		loader := config.NewConfigLoader()
-		cfg, err := loader.Load(ctx, &cobra.Command{})
+		cfg, err := loader.Load(ctx, cmd)
 		if err != nil {
 			panic(fmt.Sprintf("test setup: load config: %v", err))
 		}
@@ -182,31 +170,25 @@ func NewHelper(t *testing.T) *Helper {
 			cfg.Logging.Level = logLevel
 		}
 
-		applyIntegrationTestConfigOverrides(cfg)
-
 		if len(cfg.Entities) == 0 {
 			cfg.Entities = defaultTestEntities()
 		}
 		registry.LoadDescriptors(cfg.Entities)
 		registry.Validate()
 
-		ctr := container.NewContainer(cfg)
-		ctr.SetSessionFactory(db_session.NewTestcontainerFactory(cfg.Database))
-
 		c := closer.New()
+		ctr := container.NewContainer(cfg, c)
 
-		// LIFO teardown order (last registered runs first):
-		// 1. API server shutdown + JWT handler close (registered by startAPIServer)
-		// 2. JWK mock teardown (safe after refresh goroutine stopped)
-		// 3. Session factory close (database connections + testcontainer)
-		c.Add(ctr.SessionFactory().Close)
+		if err = db.Migrate(ctr.SessionFactory().New(ctx)); err != nil {
+			abortSetup(ctx, c, err, "migration failed")
+		}
 
 		jwkURL, jwkTeardown := mocks.NewJWKCertServerMock(jwtCA, jwkKID, jwkAlg)
+		c.Add(jwkTeardown)
 		if len(cfg.Server.JWT.Configs) == 0 {
-			panic("test setup: integration-config.yaml must define at least one JWT issuer")
+			abortSetup(ctx, c, nil, "integration-config.yaml must define at least one JWT issuer")
 		}
 		cfg.Server.JWT.Configs[0].JWKCertURL = jwkURL
-		c.Add(jwkTeardown)
 
 		helper = &Helper{
 			Factories:     factories.New(ctr.ResourceService()),
@@ -217,6 +199,12 @@ func NewHelper(t *testing.T) *Helper {
 			JWTCA:         jwtCA,
 			closer:        c,
 		}
+
+		tables, err := helper.getAllTables(ctr.SessionFactory().New(ctx))
+		if err != nil {
+			abortSetup(ctx, c, err, "discover tables for truncation")
+		}
+		helper.tables = tables
 
 		helper.startAPIServer()
 	})
@@ -231,21 +219,19 @@ func (helper *Helper) Teardown() {
 
 func (helper *Helper) requireJWTIssuers() {
 	if helper.AppConfig.Server.JWT.Enabled && len(helper.AppConfig.Server.JWT.Configs) == 0 {
-		helper.failStartup(context.Background(), nil, "JWT enabled but no issuer configs defined")
+		abortSetup(context.Background(), helper.closer, nil, "JWT enabled but no issuer configs defined")
 	}
 }
 
-// failStartup runs the closer to clean up resources already created (e.g. the
-// PostgreSQL testcontainer) and exits. Without this, a bare os.Exit would
-// leak the container and block the Prow pod (HYPERFLEET-625).
-func (helper *Helper) failStartup(ctx context.Context, err error, msg string) {
+// abortSetup logs msg, cleans up already-created resources via c, then panics - for unrecoverable NewHelper failures.
+func abortSetup(ctx context.Context, c *closer.Closer, err error, msg string) {
 	if err != nil {
 		logger.WithError(ctx, err).Error(msg)
 	} else {
 		logger.Error(ctx, msg)
 	}
-	_ = helper.closer.Close()
-	os.Exit(1)
+	_ = c.Close()
+	panic(fmt.Sprintf("test setup: %s", msg))
 }
 
 func (helper *Helper) startAPIServer() {
@@ -260,9 +246,6 @@ func (helper *Helper) startAPIServer() {
 
 	jwtHandler := helper.Container.JWTHandler()
 	helper.jwtHandler = jwtHandler
-	if jwtHandler != nil {
-		helper.closer.Add(func() error { jwtHandler.Close(); return nil })
-	}
 
 	apiServer, err := servecmd.BuildAPIServer(
 		cfg,
@@ -273,21 +256,15 @@ func (helper *Helper) startAPIServer() {
 		helper.DBFactory,
 	)
 	if err != nil {
-		helper.failStartup(ctx, err, "Unable to build Test API server")
+		abortSetup(ctx, helper.closer, err, "Unable to build Test API server")
 	}
 	helper.APIServer = apiServer
-	helper.closer.Add(func() error {
-		drainCtx, cancel := context.WithTimeout(context.Background(), cfg.Health.ShutdownTimeout)
-		defer cancel()
-		if shutdownErr := helper.APIServer.Shutdown(drainCtx); shutdownErr != nil {
-			return fmt.Errorf("unable to stop api server: %w", shutdownErr)
-		}
-		return nil
-	})
+	// No graceful drain here: nothing depends on it, the test binary exits right after Teardown.
+	helper.closer.Add(helper.APIServer.Close)
 
 	listener, err := helper.APIServer.Listen()
 	if err != nil {
-		helper.failStartup(ctx, err, "Unable to start Test API server")
+		abortSetup(ctx, helper.closer, err, "Unable to start Test API server")
 	}
 	go func() {
 		logger.Debug(ctx, "Test API server started")
@@ -307,21 +284,20 @@ func (helper *Helper) NewID() string {
 	return id.String()
 }
 
-func (helper *Helper) RestURL(path string) string {
-	protocol := "http" //nolint:goconst // Protocol strings used across URL builders
+func (helper *Helper) baseURL() string {
+	scheme := "http"
 	if helper.AppConfig.Server.TLS.Enabled {
-		protocol = "https" //nolint:goconst // Protocol strings used across URL builders
+		scheme = "https"
 	}
-	return fmt.Sprintf("%s://%s/api/hyperfleet/v1%s", protocol, helper.AppConfig.Server.BindAddress(), path)
+	return fmt.Sprintf("%s://%s", scheme, helper.AppConfig.Server.BindAddress())
+}
+
+func (helper *Helper) RestURL(path string) string {
+	return helper.baseURL() + "/api/hyperfleet/v1" + path
 }
 
 func (helper *Helper) NewAPIClient() *openapi.ClientWithResponses {
-	protocol := "http" //nolint:goconst // Protocol strings used across URL builders
-	if helper.AppConfig.Server.TLS.Enabled {
-		protocol = "https" //nolint:goconst // Protocol strings used across URL builders
-	}
-	serverURL := fmt.Sprintf("%s://%s", protocol, helper.AppConfig.Server.BindAddress())
-	client, err := openapi.NewClientWithResponses(serverURL)
+	client, err := openapi.NewClientWithResponses(helper.baseURL())
 	if err != nil {
 		panic(fmt.Sprintf("test setup: failed to create API client: %v", err))
 	}
@@ -397,15 +373,26 @@ func WithIdentityHeader(headerName, headerValue string) openapi.RequestEditorFn 
 }
 
 // IdentityHeaderName returns the configured identity header name from the first JWT issuer config.
-func (h *Helper) IdentityHeaderName() string {
-	if h == nil || h.AppConfig == nil {
+func (helper *Helper) IdentityHeaderName() string {
+	if helper == nil || helper.AppConfig == nil {
 		return ""
 	}
-	configs := h.AppConfig.Server.JWT.Configs
+	configs := helper.AppConfig.Server.JWT.Configs
 	if len(configs) > 0 {
 		return configs[0].IdentityHeader
 	}
 	return ""
+}
+
+func (helper *Helper) ResetDB() error {
+	if len(helper.tables) == 0 {
+		return nil
+	}
+	g2 := helper.DBFactory.New(context.Background())
+	if err := g2.Exec(fmt.Sprintf("TRUNCATE TABLE %s CASCADE", strings.Join(helper.tables, ", "))).Error; err != nil {
+		return fmt.Errorf("truncate business tables: %w", err)
+	}
+	return nil
 }
 
 func (helper *Helper) MigrateDB() error {
@@ -426,10 +413,8 @@ func (helper *Helper) CleanDB() error {
 	}
 
 	for _, table := range orderedTables {
-		if g2.Migrator().HasTable(table) {
-			if err := g2.Migrator().DropTable(table); err != nil {
-				return fmt.Errorf("error dropping table %s: %w", table, err)
-			}
+		if err := g2.Migrator().DropTable(table); err != nil {
+			return fmt.Errorf("error dropping table %s: %w", table, err)
 		}
 	}
 
@@ -443,12 +428,7 @@ func (helper *Helper) CleanDB() error {
 var systemTables = []string{"migrations"}
 
 func isSystemTable(tableName string) bool {
-	for _, sysTable := range systemTables {
-		if tableName == sysTable {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(systemTables, tableName)
 }
 
 func (helper *Helper) getAllTables(g2 *gorm.DB) ([]string, error) {
@@ -467,22 +447,43 @@ func (helper *Helper) getAllTables(g2 *gorm.DB) ([]string, error) {
 	return tables, nil
 }
 
+type fkEdge struct {
+	TableName      string
+	ReferencedName string
+}
+
 func (helper *Helper) orderTablesByDependencies(g2 *gorm.DB, tables []string) ([]string, error) {
-	dependencies := make(map[string][]string)
+	var edges []fkEdge
+	query := `
+		SELECT DISTINCT tc.table_name, ccu.table_name AS referenced_name
+		FROM information_schema.table_constraints AS tc
+		JOIN information_schema.key_column_usage AS kcu
+			ON tc.constraint_name = kcu.constraint_name
+			AND tc.table_schema = kcu.table_schema
+		JOIN information_schema.constraint_column_usage AS ccu
+			ON ccu.constraint_name = tc.constraint_name
+			AND ccu.table_schema = tc.table_schema
+		WHERE tc.constraint_type = 'FOREIGN KEY'
+			AND tc.table_schema = 'public'
+	`
+	if err := g2.Raw(query).Scan(&edges).Error; err != nil {
+		return nil, fmt.Errorf("query foreign key edges: %w", err)
+	}
 
+	dependencies := make(map[string][]string, len(tables))
 	for _, table := range tables {
-		deps, err := helper.getTableDependencies(g2, table)
-		if err != nil {
-			return nil, err
+		dependencies[table] = nil
+	}
+	for _, e := range edges {
+		if e.TableName == e.ReferencedName {
+			continue
 		}
-
-		filteredDeps := []string{}
-		for _, dep := range deps {
-			if !isSystemTable(dep) {
-				filteredDeps = append(filteredDeps, dep)
-			}
+		if _, inScope := dependencies[e.ReferencedName]; !inScope {
+			continue
 		}
-		dependencies[table] = filteredDeps
+		if !isSystemTable(e.ReferencedName) {
+			dependencies[e.TableName] = append(dependencies[e.TableName], e.ReferencedName)
+		}
 	}
 
 	ordered := []string{}
@@ -521,33 +522,19 @@ func (helper *Helper) orderTablesByDependencies(g2 *gorm.DB, tables []string) ([
 	return ordered, nil
 }
 
-func (helper *Helper) getTableDependencies(g2 *gorm.DB, tableName string) ([]string, error) {
-	var dependencies []string
-	query := `
-		SELECT DISTINCT ccu.table_name
-		FROM information_schema.table_constraints AS tc
-		JOIN information_schema.key_column_usage AS kcu
-			ON tc.constraint_name = kcu.constraint_name
-			AND tc.table_schema = kcu.table_schema
-		JOIN information_schema.constraint_column_usage AS ccu
-			ON ccu.constraint_name = tc.constraint_name
-			AND ccu.table_schema = tc.table_schema
-		WHERE tc.constraint_type = 'FOREIGN KEY'
-			AND tc.table_schema = 'public'
-			AND tc.table_name = ?
-	`
-	err := g2.Raw(query, tableName).Scan(&dependencies).Error
-	if err != nil {
-		return nil, err
-	}
-	return dependencies, nil
-}
-
-func (helper *Helper) ResetDB() error {
+func (helper *Helper) RebuildSchema() error {
 	if err := helper.CleanDB(); err != nil {
 		return err
 	}
-	return helper.MigrateDB()
+	if err := helper.MigrateDB(); err != nil {
+		return err
+	}
+	tables, err := helper.getAllTables(helper.DBFactory.New(context.Background()))
+	if err != nil {
+		return fmt.Errorf("discover tables for truncation: %w", err)
+	}
+	helper.tables = tables
+	return nil
 }
 
 func (helper *Helper) CreateJWTString(account *TestAccount) string {

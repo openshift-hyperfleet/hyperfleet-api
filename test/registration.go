@@ -11,14 +11,11 @@ import (
 // RegisterIntegration Register a test
 // This should be run before every integration test
 func RegisterIntegration(t *testing.T) (*Helper, *openapi.ClientWithResponses) {
-	// Register the test with gomega
 	gm.RegisterTestingT(t)
-	// Create a new helper
-	helper := NewHelper(t)
-	// Reset the database to a seeded blank state
-	helper.DBFactory.ResetDB()
-	// Create an api client
+	helper := NewHelper()
+	if err := helper.ResetDB(); err != nil {
+		t.Fatalf("failed to reset database: %v", err)
+	}
 	client := helper.NewAPIClient()
-
 	return helper, client
 }

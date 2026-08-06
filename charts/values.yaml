@@ -156,14 +156,6 @@ config:
         - refresh_token
         - client_secret
 
-  # -- OpenTelemetry tracing.
-  # See the [tracing standard](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/standards/tracing.md#configuration).
-  tracing:
-    # -- Enable OpenTelemetry tracing
-    enabled: false
-    # -- OTel service name (overridden by OTEL_SERVICE_NAME env var if set)
-    service_name: hyperfleet-api
-
   # -- Prometheus metrics endpoint settings
   metrics:
     # -- Listen address (must be `0.0.0.0` for in-cluster access)
@@ -193,7 +185,9 @@ config:
       # -- Enable TLS on the health endpoint
       enabled: false
 
-    # -- How long the API server waits for in-flight requests to complete during graceful shutdown
+    # -- How long the API server waits for in-flight requests to complete during
+    # graceful shutdown. Lives under `health` for historical reasons - it governs
+    # the API server's drain budget, not the health server's (see terminationGracePeriodSeconds).
     shutdown_timeout: 20s
     # -- Timeout for the database liveness ping
     db_ping_timeout: 2s
@@ -311,8 +305,9 @@ strategy:
     maxUnavailable: 0
   type: RollingUpdate
 
-# -- Must be > preStop (5s) + shutdown_timeout (20s) + 9s overhead (2s metrics + 2s health + 5s OTel)
-terminationGracePeriodSeconds: 35
+# -- Must be > preStop (5s) + shutdown_timeout (20s, API drain) + 14s overhead
+# (2s metrics + 2s health + 5s OTel + 5s DB close) + buffer for JWT close and scheduling
+terminationGracePeriodSeconds: 45
 
 # -- Node selector constraints for pod scheduling
 nodeSelector: {}
@@ -453,7 +448,10 @@ monitoring:
     # -- Create a ConfigMap with the Grafana dashboard JSON
     enabled: false
 
-  # -- Distributed tracing configuration (OpenTelemetry)
+  # -- Distributed tracing configuration (OpenTelemetry). This is the single
+  # source of truth for tracing - it's templated into HYPERFLEET_TRACING_ENABLED
+  # and OTEL_* environment variables in deployment.yaml, which the app's own
+  # config system reads (env vars take precedence over the ConfigMap).
   tracing:
     # -- Enable trace export
     enabled: false
@@ -464,9 +462,9 @@ monitoring:
     # -- OTLP protocol (`grpc` or `http/protobuf`)
     otlpProtocol: "grpc"
     # -- Sampler type
-    sampler: "parentbased_always_on"
-    # -- Sampling rate (only used with ratio-based samplers)
-    samplerArg: ""
+    sampler: "parentbased_traceidratio"
+    # -- Sampling rate (`1.0` for dev, `0.01` for production)
+    samplerArg: "1.0"
     # -- Context propagation formats
     propagators: "tracecontext,baggage"
 

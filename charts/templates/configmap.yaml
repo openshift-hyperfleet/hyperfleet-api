@@ -117,10 +117,6 @@ data:
           - {{ . }}
 {{- end }}
 
-    tracing:
-      enabled: {{ .Values.config.tracing.enabled }}
-      service_name: {{ .Values.config.tracing.service_name }}
-
     metrics:
       host: {{ .Values.config.metrics.host | default "0.0.0.0" }}
       port: {{ .Values.config.metrics.port | default 9090 }}
