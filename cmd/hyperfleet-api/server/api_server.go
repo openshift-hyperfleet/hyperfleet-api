@@ -45,11 +45,11 @@ func (s *APIServer) Serve(listener net.Listener) error {
 	var err error
 	if s.cfg.TLSEnabled() {
 		if s.cfg.TLSCertFile() == "" || s.cfg.TLSKeyFile() == "" {
-			_ = listener.Close()
-			return fmt.Errorf(
+			configErr := fmt.Errorf(
 				"HTTPS certificate or key not configured; " +
 					"set via server.tls.cert_file/key_file in config file, env vars, or flags",
 			)
+			return errors.Join(configErr, listener.Close())
 		}
 
 		logger.With(ctx, logger.FieldBindAddress, s.cfg.BindAddress()).Info("Serving with TLS")

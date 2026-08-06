@@ -31,6 +31,9 @@ func NewMetricsServer(cfg metricsCfg) Server {
 	s.httpServer = &http.Server{
 		Addr:              cfg.BindAddress(),
 		Handler:           mainHandler,
+		ReadTimeout:       5 * time.Second,
+		WriteTimeout:      10 * time.Second,
+		IdleTimeout:       60 * time.Second,
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	return s

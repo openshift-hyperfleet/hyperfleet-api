@@ -64,6 +64,6 @@ func (h *HealthConfig) TLSKeyFile() string {
 	return h.TLS.KeyFile
 }
 
-func (h *HealthConfig) GetDBPingTimeout() time.Duration {
+func (h *HealthConfig) PingTimeout() time.Duration {
 	return h.DBPingTimeout
 }

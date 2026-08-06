@@ -119,7 +119,6 @@ type Helper struct {
 	AppConfig     *config.ApplicationConfig
 	JWTPrivateKey *rsa.PrivateKey
 	JWTCA         *rsa.PublicKey
-	T             *testing.T
 	jwtHandler    *auth.JWTHandler
 	closer        *closer.Closer
 }
@@ -168,7 +167,7 @@ func NewHelper(t *testing.T) *Helper {
 		// 3. Session factory close (database connections + testcontainer)
 		c.Add(ctr.SessionFactory().Close)
 
-		jwkURL, jwkTeardown := mocks.NewJWKCertServerMock(t, jwtCA, jwkKID, jwkAlg)
+		jwkURL, jwkTeardown := mocks.NewJWKCertServerMock(jwtCA, jwkKID, jwkAlg)
 		if len(cfg.Server.JWT.Configs) == 0 {
 			panic("test setup: integration-config.yaml must define at least one JWT issuer")
 		}
@@ -182,13 +181,11 @@ func NewHelper(t *testing.T) *Helper {
 			Container:     ctr,
 			JWTPrivateKey: jwtKey,
 			JWTCA:         jwtCA,
-			T:             t,
 			closer:        c,
 		}
 
 		helper.startAPIServer()
 	})
-	helper.T = t
 	return helper
 }
 
