@@ -22,6 +22,7 @@ func (c *Container) JWTHandler() *auth.JWTHandler {
 			panic(fmt.Sprintf("create JWT handler: %v", err))
 		}
 		c.jwtHandler = jwtHandler
+		c.closer.Add(c.jwtHandler.Close)
 	}
 	return c.jwtHandler
 }

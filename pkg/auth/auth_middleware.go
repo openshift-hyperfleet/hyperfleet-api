@@ -26,11 +26,6 @@ func NewCallerIdentityMiddleware() CallerIdentityMiddleware {
 // If an identity header is configured, it takes precedence over JWT claims.
 func (m *callerIdentityMiddleware) ResolveCallerIdentity(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if shouldSkipCallerIdentity(r.URL.Path) {
-			next.ServeHTTP(w, r)
-			return
-		}
-
 		ctx := r.Context()
 		identity, err := CallerIdentityFromRequest(ctx, r)
 

@@ -8,10 +8,7 @@ import (
 func (c *Container) SessionFactory() db.SessionFactory {
 	if c.sessionFactory == nil {
 		c.sessionFactory = db_session.NewProdFactory(c.cfg.Database)
+		c.closer.Add(c.sessionFactory.Close)
 	}
 	return c.sessionFactory
-}
-
-func (c *Container) SetSessionFactory(sf db.SessionFactory) {
-	c.sessionFactory = sf
 }

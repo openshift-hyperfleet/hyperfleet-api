@@ -11,6 +11,15 @@ type LoggingConfig struct {
 	Format  string        `mapstructure:"format" json:"format" validate:"required,oneof=json text"`
 	Output  string        `mapstructure:"output" json:"output" validate:"required,oneof=stdout stderr"`
 	Masking MaskingConfig `mapstructure:"masking" json:"masking" validate:"required"`
+	// Deprecated: use TracingConfig.Enabled. Kept so UnmarshalExact accepts
+	// existing config files that still carry logging.otel.enabled.
+	OTel DeprecatedOTelConfig `mapstructure:"otel" json:"otel,omitempty"`
+}
+
+// DeprecatedOTelConfig exists solely to let viper unmarshal the old
+// logging.otel key without rejecting it as unknown.
+type DeprecatedOTelConfig struct {
+	Enabled bool `mapstructure:"enabled" json:"enabled"`
 }
 
 // MaskingConfig holds log masking configuration

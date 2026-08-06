@@ -73,6 +73,9 @@ func (l *ConfigLoader) Load(ctx context.Context, cmd *cobra.Command) (*Applicati
 			err)
 	}
 
+	// Step 6.5: Migrate deprecated configuration before validation
+	l.migrateDeprecatedConfig(ctx, config)
+
 	// Step 7: Validate configuration
 	if err := l.validateConfig(config); err != nil {
 		return nil, err
@@ -187,6 +190,9 @@ func (l *ConfigLoader) validateConfig(config *ApplicationConfig) error {
 		if valErr := config.Metrics.Validate(); valErr != nil {
 			return fmt.Errorf("metrics config validation failed: %w", valErr)
 		}
+		if valErr := config.Tracing.Validate(); valErr != nil {
+			return fmt.Errorf("tracing config validation failed: %w", valErr)
+		}
 		return nil
 	}
 
@@ -230,6 +236,28 @@ func (l *ConfigLoader) validateConfig(config *ApplicationConfig) error {
 	}
 
 	return fmt.Errorf("%s", strings.Join(errMessages, "\n"))
+}
+
+// migrateDeprecatedConfig applies backward-compat shims for renamed config.
+// Keep until the Helm chart templates cert_file/key_file for health/metrics.
+func (l *ConfigLoader) migrateDeprecatedConfig(ctx context.Context, config *ApplicationConfig) {
+	propagateTLS := func(name string, tls *TLSConfig) {
+		if tls.Enabled && tls.CertFile == "" && tls.KeyFile == "" {
+			tls.CertFile = config.Server.TLS.CertFile
+			tls.KeyFile = config.Server.TLS.KeyFile
+			logger.With(ctx, "server", name).
+				Warn("TLS enabled without cert/key - inheriting from server.tls (deprecated: set cert_file/key_file explicitly)")
+		}
+	}
+	propagateTLS("health", &config.Health.TLS)
+	propagateTLS("metrics", &config.Metrics.TLS)
+
+	if l.viper.IsSet("logging.otel.enabled") {
+		if !l.viper.IsSet("tracing.enabled") {
+			config.Tracing.Enabled = config.Logging.OTel.Enabled
+		}
+		logger.Warn(ctx, "logging.otel.enabled is deprecated, use tracing.enabled instead")
+	}
 }
 
 // bindEnv wraps viper.BindEnv and tracks the key for validation
@@ -294,11 +322,14 @@ func (l *ConfigLoader) bindAllEnvVars() {
 	l.bindEnv("logging.masking.enabled")
 	l.bindEnv("logging.masking.headers")
 	l.bindEnv("logging.masking.fields")
+	l.bindEnv("logging.otel.enabled") // deprecated: mapped to tracing.enabled
 
 	// Metrics config
 	l.bindEnv("metrics.host")
 	l.bindEnv("metrics.port")
 	l.bindEnv("metrics.tls.enabled")
+	l.bindEnv("metrics.tls.cert_file")
+	l.bindEnv("metrics.tls.key_file")
 	l.bindEnv("metrics.label_metrics_inclusion_duration")
 	l.bindEnv("metrics.reconciliation_stuck_threshold")
 
@@ -306,6 +337,8 @@ func (l *ConfigLoader) bindAllEnvVars() {
 	l.bindEnv("health.host")
 	l.bindEnv("health.port")
 	l.bindEnv("health.tls.enabled")
+	l.bindEnv("health.tls.cert_file")
+	l.bindEnv("health.tls.key_file")
 	l.bindEnv("health.shutdown_timeout")
 	l.bindEnv("health.db_ping_timeout")
 

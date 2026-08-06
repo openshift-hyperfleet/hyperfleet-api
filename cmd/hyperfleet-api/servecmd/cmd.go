@@ -41,6 +41,8 @@ func NewServeCommand() *cobra.Command {
 		Short: "Serve the hyperfleet",
 		Long:  "Serve the hyperfleet.",
 		RunE:  runServe,
+		// runServe errors are runtime failures, not CLI misuse - don't dump usage on them.
+		SilenceUsage: true,
 	}
 
 	// Add configuration system flags
@@ -64,8 +66,6 @@ func runServe(cmd *cobra.Command, args []string) (runErr error) {
 	registry.LoadDescriptors(cfg.Entities)
 	registry.Validate()
 
-	ctr := container.NewContainer(cfg)
-
 	c := closer.New()
 	defer func() {
 		closeErr := c.Close()
@@ -75,7 +75,12 @@ func runServe(cmd *cobra.Command, args []string) (runErr error) {
 		}
 	}()
 
-	initLogger(cfg, ctr.SessionFactory())
+	ctr := container.NewContainer(cfg, c)
+
+	initLogger(cfg)
+
+	sf := ctr.SessionFactory()
+	configureDBLogger(cfg, sf)
 
 	logger.Info(ctx, "Starting HyperFleet API with configuration (sensitive values redacted):")
 	logger.Info(ctx, config.DumpConfig(cfg))
@@ -97,8 +102,6 @@ func runServe(cmd *cobra.Command, args []string) (runErr error) {
 		logger.With(ctx, logger.FieldOTelEnabled, false).Info("OpenTelemetry disabled")
 	}
 
-	c.Add(ctr.SessionFactory().Close)
-
 	logger.With(ctx,
 		"log_level", cfg.Logging.Level,
 		"log_format", cfg.Logging.Format,
@@ -113,16 +116,14 @@ func runServe(cmd *cobra.Command, args []string) (runErr error) {
 		logger.WithError(ctx, collectorErr).Error("Failed to register reconciliation collector")
 	}
 
-	if jwtHandler := ctr.JWTHandler(); jwtHandler != nil {
-		c.Add(func() error { jwtHandler.Close(); return nil })
-	}
+	jwtHandler := ctr.JWTHandler()
 
 	apiServer, err := BuildAPIServer(
 		cfg,
 		ctr.ResourceService(),
 		ctr.AdapterStatusService(),
 		ctr.SchemaValidator(),
-		ctr.JWTHandler(),
+		jwtHandler,
 		ctr.SessionFactory(),
 	)
 	if err != nil {
@@ -150,25 +151,32 @@ func runServe(cmd *cobra.Command, args []string) (runErr error) {
 		go func() {
 			if err := srv.Start(); err != nil {
 				serverResults <- fmt.Errorf("%s server failed: %w", name, err)
-				return
 			}
-			serverResults <- fmt.Errorf("%s server stopped unexpectedly", name)
 		}()
 	}
 	start("API", apiServer)
 	start("metrics", metricsServer)
 	start("health", healthServer)
 
+	allListening := make(chan struct{})
+	go func() {
+		<-apiServer.NotifyListening()
+		<-metricsServer.NotifyListening()
+		<-healthServer.NotifyListening()
+		close(allListening)
+	}()
+
 	var triggerErr error
-	ready := false
+	shutdown := false
 	select {
 	case <-ctx.Done():
+		shutdown = true
 	case <-signals:
-	case <-healthServer.NotifyListening():
-		ready = true
+		shutdown = true
 	case triggerErr = <-serverResults:
+	case <-allListening:
 	}
-	if ready {
+	if triggerErr == nil && !shutdown {
 		health.GetReadinessState().SetReady()
 		logger.Info(ctx, "Application ready to receive traffic")
 		select {
@@ -183,7 +191,6 @@ func runServe(cmd *cobra.Command, args []string) (runErr error) {
 	return runErr
 }
 
-// initLogger initializes the global slog logger from configuration
 func addDrain(c *closer.Closer, srv server.Server, budget time.Duration) {
 	c.Add(func() error {
 		drainCtx, cancel := context.WithTimeout(context.Background(), budget)
@@ -195,7 +202,7 @@ func addDrain(c *closer.Closer, srv server.Server, budget time.Duration) {
 	})
 }
 
-func initLogger(cfg *config.ApplicationConfig, dbSessionFactory db.SessionFactory) {
+func initLogger(cfg *config.ApplicationConfig) {
 	ctx := context.Background()
 	loggingCfg := cfg.Logging
 
@@ -234,12 +241,11 @@ func initLogger(cfg *config.ApplicationConfig, dbSessionFactory db.SessionFactor
 	// Use ReconfigureGlobalLogger instead of InitGlobalLogger because
 	// InitGlobalLogger was already called in main() with default config
 	logger.ReconfigureGlobalLogger(logConfig)
+}
 
-	// Reconfigure database logger to follow global logging level
-	if dbSessionFactory != nil {
-		gormLevel := cfg.Database.SetLogLevel(cfg.Logging.Level)
-		if reconfigurable, ok := dbSessionFactory.(db_session.LoggerReconfigurable); ok {
-			reconfigurable.ReconfigureLogger(gormLevel)
-		}
+func configureDBLogger(cfg *config.ApplicationConfig, sessionFactory db.SessionFactory) {
+	gormLevel := cfg.Database.SetLogLevel(cfg.Logging.Level)
+	if reconfigurable, ok := sessionFactory.(db_session.LoggerReconfigurable); ok {
+		reconfigurable.ReconfigureLogger(gormLevel)
 	}
 }
