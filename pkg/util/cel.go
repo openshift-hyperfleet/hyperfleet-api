@@ -3,6 +3,7 @@ package util
 import (
 	"encoding/json"
 	"errors"
+	"reflect"
 	"strconv"
 	"strings"
 
@@ -84,8 +85,9 @@ func toJSONFunc(val ref.Val) ref.Val {
 	// Limit matches Kubernetes ConfigMap max size (1MB) as a reasonable upper bound
 	const maxJSONSize = 1 * 1024 * 1024 // 1MB
 
-	// Use json.Encoder with a size-limited writer to bound allocation during encoding
-	// (not after). This prevents OOM when encoding very large structures.
+	// Use json.Encoder with a size-limited writer to reject output exceeding 1MB.
+	// Note: json.Encoder buffers the full value in memory before writing, so this
+	// bounds written output size, not peak memory during encoding.
 	var buf limitedWriter
 	buf.limit = maxJSONSize
 	enc := json.NewEncoder(&buf)
@@ -145,7 +147,15 @@ func digFunc(target ref.Val, path ref.Val) ref.Val {
 			}
 			current = v[idx]
 		default:
-			return types.NullValue
+			rv := reflect.ValueOf(current)
+			if rv.Kind() != reflect.Slice && rv.Kind() != reflect.Array {
+				return types.NullValue
+			}
+			idx, err := strconv.Atoi(part)
+			if err != nil || idx < 0 || idx >= rv.Len() {
+				return types.NullValue
+			}
+			current = rv.Index(idx).Interface()
 		}
 	}
 
