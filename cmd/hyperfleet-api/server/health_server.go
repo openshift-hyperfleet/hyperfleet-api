@@ -18,13 +18,13 @@ type healthCfg interface {
 	TLSEnabled() bool
 	TLSCertFile() string
 	TLSKeyFile() string
-	GetDBPingTimeout() time.Duration
+	PingTimeout() time.Duration
 }
 
 func NewHealthServer(cfg healthCfg, sessionFactory db.SessionFactory) *HealthServer {
 	mainRouter := http.NewServeMux()
 
-	healthHandler := health.NewHandler(sessionFactory, cfg.GetDBPingTimeout())
+	healthHandler := health.NewHandler(sessionFactory, cfg.PingTimeout())
 	mainRouter.HandleFunc("GET /healthz", healthHandler.LivenessHandler)
 	mainRouter.HandleFunc("GET /readyz", healthHandler.ReadinessHandler)
 
@@ -37,6 +37,9 @@ func NewHealthServer(cfg healthCfg, sessionFactory db.SessionFactory) *HealthSer
 	s.httpServer = &http.Server{
 		Addr:              cfg.BindAddress(),
 		Handler:           mainHandler,
+		ReadTimeout:       5 * time.Second,
+		WriteTimeout:      10 * time.Second,
+		IdleTimeout:       60 * time.Second,
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	return s

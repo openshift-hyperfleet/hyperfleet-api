@@ -234,7 +234,9 @@ func (l *ConfigLoader) validateConfig(config *ApplicationConfig) error {
 
 // bindEnv wraps viper.BindEnv and tracks the key for validation
 func (l *ConfigLoader) bindEnv(key string) {
-	l.viper.BindEnv(key) //nolint:errcheck,gosec // BindEnv errors are rare and indicate programming errors
+	if err := l.viper.BindEnv(key); err != nil {
+		panic(fmt.Sprintf("bind env %q: %v", key, err))
+	}
 	l.explicitlyBoundKeys[key] = true
 }
 
@@ -243,7 +245,9 @@ func (l *ConfigLoader) bindPFlag(key string, flag *pflag.Flag) {
 	if flag == nil {
 		return
 	}
-	l.viper.BindPFlag(key, flag) //nolint:errcheck,gosec // BindPFlag errors are rare and indicate programming errors
+	if err := l.viper.BindPFlag(key, flag); err != nil {
+		panic(fmt.Sprintf("bind pflag %q: %v", key, err))
+	}
 	l.explicitlyBoundKeys[key] = true
 	// Record the mapping from Viper key to flag name for validation error messages
 	l.viperKeyToFlag[key] = flag.Name
@@ -309,7 +313,9 @@ func (l *ConfigLoader) bindAllEnvVars() {
 	l.bindEnv("tracing.enabled")
 	l.bindEnv("tracing.service_name")
 	// OTEL_SERVICE_NAME is a standard OTel env var without the HYPERFLEET_ prefix.
-	l.viper.BindEnv("tracing.service_name", "OTEL_SERVICE_NAME") //nolint:errcheck,gosec
+	if err := l.viper.BindEnv("tracing.service_name", "OTEL_SERVICE_NAME"); err != nil {
+		panic(fmt.Sprintf("bind env %q: %v", "tracing.service_name", err))
+	}
 
 	// Entities: config-file-only (complex list-of-struct type).
 	// No env var or CLI flag bindings — loaded exclusively via YAML config.
