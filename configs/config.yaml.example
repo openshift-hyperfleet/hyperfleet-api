@@ -105,40 +105,7 @@ health:
 # Entity Registration
 # Generic resource types registered at startup. Each entry auto-generates
 # REST endpoints, spec validation, and delete policies.
-#
-# Condition Mapping (HYPERFLEET-538):
-# Each entity can define CEL-based condition mapping rules that expose
-# provider-specific adapter conditions in the public status.conditions array.
-#
-# Rules are compiled at startup (fail-fast). Invalid CEL expressions prevent API startup.
-# Evaluation happens during status aggregation. Unknown adapter conditions are filtered.
-#
-# Reserved condition types (cannot be overridden by mapping):
-# - Reconciled
-# - LastKnownReconciled
-# - Per-adapter synthesized types (auto-generated from required_adapters):
-#   Example: "validation" adapter → "ValidationSuccessful" condition type
-#
-# CEL Context Variables:
-# - statuses: array of adapter statuses (adapter entries with any Unknown condition are excluded entirely)
-#   Each status: adapter (string), observed_generation (number), conditions (array), data (map)
-# - resource: full cluster/nodepool object as map (sensitive fields masked)
-# - env: environment variables as map (currently always empty, future enhancement)
-#
-# Custom CEL Functions:
-# - toJson(value): marshal to JSON string
-# - dig(target, "dot.path"): safe nested navigation
-#
-# Security: Adapter data fields matching sensitive patterns (password, secret, token,
-# auth, private, connection, cert, credential, etc.) are automatically masked with
-# "***REDACTED***" before CEL evaluation. This prevents credential leakage in public
-# condition messages/reasons. See pkg/util/mask_sensitive.go for the full pattern list.
-#
-# Field Length Constraints:
-# - type: 128 bytes (validation error if exceeded, prevents startup)
-# - reason: 256 bytes (truncated if exceeded)
-# - message: 2048 bytes (truncated if exceeded)
-#
+# See docs/config.md for condition mapping documentation.
 entities:
   - kind: Cluster
     plural: clusters
@@ -149,9 +116,7 @@ entities:
     name_max_len: 53
     require_spec_schema: true
 
-    # CEL-based condition mapping rules (HYPERFLEET-538)
-    # Maps adapter conditions to public API conditions
-    # See inline comments below for detailed documentation
+    # CEL-based condition mapping rules
     conditions: []
       # Example: Expose Landing Zone namespace readiness
       # - type: LandingZoneReady
@@ -182,7 +147,7 @@ entities:
     name_max_len: 15
     require_spec_schema: true
 
-    # CEL-based condition mapping rules (HYPERFLEET-538)
+    # CEL-based condition mapping rules
     conditions: []
       # Example: Expose Validation quota check status
       # - type: QuotaValid

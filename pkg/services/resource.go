@@ -40,16 +40,25 @@ func NewResourceService(
 	resourceConditionDao dao.ResourceConditionDao,
 	generic GenericService,
 ) ResourceService {
-	// Create condition mappers from entity descriptors
-	// Iterate all registered entities and build mappers from inline conditions
+	return &sqlResourceService{
+		resourceDao:          resourceDao,
+		resourceLabelDao:     resourceLabelDao,
+		adapterStatusDao:     adapterStatusDao,
+		resourceConditionDao: resourceConditionDao,
+		generic:              generic,
+		conditionMappers:     buildConditionMappers(registry.All()),
+	}
+}
+
+func buildConditionMappers(entities []registry.EntityDescriptor) map[string]*ConditionMapper {
 	conditionMappers := make(map[string]*ConditionMapper)
-	for _, descriptor := range registry.All() {
+	for _, descriptor := range entities {
 		if len(descriptor.Conditions) > 0 {
 			mapper, err := NewConditionMapper(descriptor.Kind, descriptor.Conditions)
 			if err != nil {
-				// This should not happen since config was validated at startup - indicates a code bug
-				// (e.g., validation logic vs. mapper logic mismatch). Use Error level to alert ops team,
-				// but continue in degraded mode (no CEL mapping) to keep service available per HYG-02.
+				// This should not happen since config was validated at startup — indicates a code bug
+				// (e.g., validation logic vs. mapper logic mismatch). Continue in degraded mode
+				// (no CEL mapping) to keep service available.
 				logger.With(context.Background(), "resource_kind", descriptor.Kind).
 					WithError(err).
 					Error("Failed to create condition mapper, continuing without CEL mapping")
@@ -58,15 +67,7 @@ func NewResourceService(
 			}
 		}
 	}
-
-	return &sqlResourceService{
-		resourceDao:          resourceDao,
-		resourceLabelDao:     resourceLabelDao,
-		adapterStatusDao:     adapterStatusDao,
-		resourceConditionDao: resourceConditionDao,
-		generic:              generic,
-		conditionMappers:     conditionMappers,
-	}
+	return conditionMappers
 }
 
 var _ ResourceService = &sqlResourceService{}

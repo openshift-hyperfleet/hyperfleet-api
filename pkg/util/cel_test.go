@@ -270,7 +270,7 @@ func TestToJsonFunc_SizeLimit(t *testing.T) {
 
 func TestCELVariableConstants(t *testing.T) {
 	t.Parallel()
-	t.Run("CEL variable constants prevent name mismatches (QUAL-01)", func(t *testing.T) {
+	t.Run("CEL variable constants prevent name mismatches", func(t *testing.T) {
 		g := NewWithT(t)
 
 		// Create environment using constants

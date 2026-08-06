@@ -21,12 +21,12 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/util"
 )
 
-// emptyEnvMap is a shared empty map for the env CEL variable (PERF-03)
+// emptyEnvMap is a shared empty map for the env CEL variable
 // Hoisted to package level to avoid allocation on every Apply() call
 // Safe to share because it is never mutated (env variables not yet implemented)
 var emptyEnvMap = map[string]string{}
 
-// CEL adapter status map keys (QUAL-01)
+// CEL adapter status map keys
 // Used in both nil-guard and normal paths to prevent key mismatches
 const (
 	celKeyAdapter            = "adapter"
@@ -35,14 +35,14 @@ const (
 	celKeyData               = "data"
 )
 
-// CEL boolean string representations (QUAL-01)
+// CEL boolean string representations
 // Used in status parsing (evaluateRule) and extractString to ensure consistency
 const (
 	celBoolTrue  = "True"  // Title-case matches extractString output
 	celBoolFalse = "False" // Title-case matches extractString output
 )
 
-// Condition sub-field keys (QUAL-01)
+// Condition sub-field keys
 // Used when building adapter condition maps for CEL context
 const (
 	condKeyType    = "type"
@@ -51,7 +51,7 @@ const (
 	condKeyMessage = "message"
 )
 
-// Resource field keys (QUAL-01)
+// Resource field keys
 // Used when extracting fields from resource map in CEL context
 const (
 	resourceKeyGeneration = "generation"
@@ -60,7 +60,7 @@ const (
 // ConditionMapper evaluates CEL-based condition mapping rules
 type ConditionMapper struct {
 	rules          map[string]*compiledRule
-	cachedResource *cachedResourceContext // Cache for masked resource map (PERF-03)
+	cachedResource *cachedResourceContext // Cache for masked resource map
 	resourceKind   string
 	sortedNames    []string     // Pre-sorted rule names for deterministic ordering
 	mu             sync.RWMutex // Protects cachedResource from concurrent access
@@ -147,7 +147,7 @@ func (m *ConditionMapper) Apply(ctx context.Context, input ApplyInput) ([]api.Re
 	}
 
 	// Build CEL activation context (filtering Unknown conditions happens inside buildActivationWithCache)
-	// Use cached resource map when possible to avoid redundant marshal + mask operations (PERF-03)
+	// Use cached resource map when possible to avoid redundant marshal + mask operations
 	activation := m.buildActivationWithCache(ctx, input.AdapterStatuses, input.Resource)
 
 	// Build lookup map for previous conditions to avoid O(N×M) linear scans
@@ -228,20 +228,20 @@ func (m *ConditionMapper) evaluateRule(
 	reasonStr := extractString(reasonResult)
 	messageStr := extractString(messageResult)
 
-	// Validate field lengths and truncate message if needed (QUAL-03)
+	// Validate field lengths and truncate message if needed
 	validatedReason, validatedMessage, err := m.validateFieldLengths(ctx, rule, reasonStr, messageStr)
 	if err != nil {
 		// Propagate error to trigger rollback (consistent with CEL evaluation error handling)
 		return nil, fmt.Errorf("field validation failed for %s: %w", rule.conditionType, err)
 	}
 
-	// Build the mapped condition with all required fields (QUAL-03)
+	// Build the mapped condition with all required fields
 	return m.buildMappedCondition(
 		ctx, rule, statusStr, validatedReason, validatedMessage, activation, refTime, prevCondition,
 	)
 }
 
-// validateFieldLengths validates and enforces field length constraints (QUAL-03)
+// validateFieldLengths validates and enforces field length constraints
 // Returns (validatedReason, validatedMessage, error)
 // If error is non-nil, the condition should be skipped
 func (m *ConditionMapper) validateFieldLengths(
@@ -280,7 +280,7 @@ func (m *ConditionMapper) validateFieldLengths(
 	return validatedReason, validatedMessage, nil
 }
 
-// buildMappedCondition builds the final ResourceCondition from validated inputs (QUAL-03)
+// buildMappedCondition builds the final ResourceCondition from validated inputs
 func (m *ConditionMapper) buildMappedCondition(
 	ctx context.Context,
 	rule *compiledRule,
@@ -423,7 +423,7 @@ func (m *ConditionMapper) buildActivationWithCache(
 	statuses api.AdapterStatusList,
 	resource interface{},
 ) map[string]interface{} {
-	// Build statuses list using shared logic (PERF-03: avoid duplication)
+	// Build statuses list using shared logic
 	statusesList := buildStatusesList(ctx, statuses)
 
 	// Get cached or build resource map (cache invalidates on ID/generation change)
@@ -479,7 +479,7 @@ func (m *ConditionMapper) getCachedOrBuildResource(
 }
 
 // buildStatusesList converts adapter statuses to CEL-compatible format, filtering Unknown conditions.
-// Extracted to shared function to avoid duplication (PERF-03).
+// Extracted to shared function to avoid duplication.
 func buildStatusesList(ctx context.Context, statuses api.AdapterStatusList) []interface{} {
 	statusesList := make([]interface{}, 0, len(statuses))
 	for _, status := range statuses {
@@ -514,7 +514,7 @@ func parseConditionsWithUnknownCheck(
 
 	var parsedConds []api.AdapterCondition
 	if err := json.Unmarshal(conditionsJSON, &parsedConds); err != nil {
-		// Unmarshal failure: return empty conditions array (ERR-02).
+		// Unmarshal failure: return empty conditions array.
 		// Degraded mode: statuses array contains entry with empty conditions, allowing
 		// resource-level CEL expressions to still run (e.g., counting adapters).
 		logger.With(ctx, "adapter", adapterName).
@@ -523,7 +523,7 @@ func parseConditionsWithUnknownCheck(
 		return conditions, hasUnknown
 	}
 
-	// Preallocate with exact capacity to avoid reallocation (PERF-01)
+	// Preallocate with exact capacity to avoid reallocation
 	conditions = make([]map[string]interface{}, 0, len(parsedConds))
 	for _, cond := range parsedConds {
 		// Check for Unknown status while building the map (single pass)
@@ -539,7 +539,7 @@ func parseConditionsWithUnknownCheck(
 			condKeyReason:  "",
 			condKeyMessage: "",
 		}
-		// SEC-02: Adapter contract requires condition reason/message to be user-safe
+		// Adapter contract requires condition reason/message to be user-safe
 		// (no secrets, credentials, or sensitive data). Currently unmasked to preserve
 		// human-readable diagnostic messages. Defense-in-depth improvement (HYPERFLEET-1128):
 		// Consider applying pattern-based string scanning to reason/message before placing
@@ -579,7 +579,7 @@ func parseAdapterData(ctx context.Context, dataJSON []byte, adapterName string) 
 
 // adapterStatusToMapWithUnknownCheck converts an AdapterStatus to a CEL-compatible map
 // and reports whether any condition has Unknown status.
-// Returns (statusMap, hasUnknown) to allow filtering in a single pass (PERF-03).
+// Returns (statusMap, hasUnknown) to allow filtering in a single pass.
 func adapterStatusToMapWithUnknownCheck(ctx context.Context, status *api.AdapterStatus) (map[string]interface{}, bool) {
 	// Guard against nil pointer (AdapterStatusList is []*AdapterStatus, so elements can be nil)
 	if status == nil {
@@ -591,16 +591,16 @@ func adapterStatusToMapWithUnknownCheck(ctx context.Context, status *api.Adapter
 		}, false
 	}
 
-	// Parse conditions and check for Unknown status (QUAL-03)
+	// Parse conditions and check for Unknown status
 	conditions, hasUnknown := parseConditionsWithUnknownCheck(ctx, status.Conditions, status.Adapter)
 
-	// Early return if Unknown found - buildStatusesList discards the map anyway (PERF-03)
+	// Early return if Unknown found - buildStatusesList discards the map anyway
 	// Return nil instead of allocating a throwaway map (saves allocation on hot path)
 	if hasUnknown {
 		return nil, true
 	}
 
-	// Parse data field from JSONB (QUAL-03)
+	// Parse data field from JSONB
 	data := parseAdapterData(ctx, status.Data, status.Adapter)
 
 	statusMap := map[string]interface{}{
@@ -622,7 +622,7 @@ func resourceToMap(ctx context.Context, resource interface{}, resourceKind strin
 	// Use JSON marshaling for generic conversion
 	data, err := json.Marshal(resource)
 	if err != nil {
-		// Marshal failure: return empty map (ERR-02).
+		// Marshal failure: return empty map.
 		// Degraded mode: CEL expressions using resource.* will receive empty object.
 		logger.With(ctx, "resource_kind", resourceKind).WithError(err).
 			Warn("Failed to marshal resource to JSON, using empty map")
@@ -631,7 +631,7 @@ func resourceToMap(ctx context.Context, resource interface{}, resourceKind strin
 
 	var result map[string]interface{}
 	if err := json.Unmarshal(data, &result); err != nil {
-		// Unmarshal failure: return empty map (ERR-02).
+		// Unmarshal failure: return empty map.
 		// Degraded mode: CEL expressions using resource.* will receive empty object.
 		logger.With(ctx, "resource_kind", resourceKind).WithError(err).
 			Warn("Failed to unmarshal resource JSON to map, using empty map")

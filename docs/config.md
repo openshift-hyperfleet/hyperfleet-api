@@ -312,6 +312,80 @@ health:
 
 </details>
 
+<details>
+<summary><b>Condition Mapping (CEL)</b> (click to expand)</summary>
+
+Each entity can define CEL-based condition mapping rules that expose
+provider-specific adapter conditions in the public `status.conditions` array.
+
+**Lifecycle:**
+
+- Rules are compiled at startup (fail-fast). Invalid CEL expressions prevent API startup.
+- Evaluation happens during status aggregation. Adapter entries with any `Unknown` condition are excluded entirely.
+
+**Reserved condition types** (cannot be overridden by mapping):
+
+- `Reconciled`
+- `LastKnownReconciled`
+- Per-adapter synthesized types (auto-generated from `required_adapters`).
+  Example: `validation` adapter produces `ValidationSuccessful` condition type.
+
+**CEL Context Variables:**
+
+| Variable | Type | Description |
+|----------|------|-------------|
+| `statuses` | `list(dyn)` | Array of adapter statuses. Each entry: `adapter` (string), `observed_generation` (number), `conditions` (array), `data` (map) |
+| `resource` | `dyn` | Full cluster/nodepool object as map (sensitive fields masked) |
+| `env` | `map(string, string)` | Environment variables (currently empty, reserved for future use) |
+
+**Custom CEL Functions:**
+
+| Function | Description |
+|----------|-------------|
+| `toJson(value)` | Marshal any value to a JSON string |
+| `dig(target, "dot.path")` | Safe nested navigation returning `null` on missing keys |
+
+**Security:** Adapter data fields matching sensitive patterns (`password`, `secret`, `token`,
+`auth`, `private`, `connection`, `cert`, `credential`, etc.) are automatically masked with
+`***REDACTED***` before CEL evaluation. This prevents credential leakage in public
+condition messages/reasons. See `pkg/util/mask_sensitive.go` for the full pattern list.
+
+**Field Length Constraints:**
+
+| Field | Limit | Behavior |
+|-------|-------|----------|
+| `type` | 128 bytes | Validation error (prevents startup) |
+| `reason` | 256 bytes | Truncated if exceeded |
+| `message` | 2048 bytes | Truncated if exceeded |
+
+**Example:**
+
+```yaml
+entities:
+  - kind: Cluster
+    conditions:
+      - type: LandingZoneReady
+        when:
+          expression: |
+            statuses.exists(s, s.adapter == "landing-zone-adapter"
+              && s.conditions.exists(c, c.type == "NamespaceReady"))
+        output:
+          status:
+            expression: |
+              statuses.filter(s, s.adapter == "landing-zone-adapter")[0]
+                .conditions.filter(c, c.type == "NamespaceReady")[0].status
+          reason:
+            expression: |
+              statuses.filter(s, s.adapter == "landing-zone-adapter")[0]
+                .conditions.filter(c, c.type == "NamespaceReady")[0].reason
+          message:
+            expression: |
+              "Landing zone: " + statuses.filter(s, s.adapter == "landing-zone-adapter")[0]
+                .conditions.filter(c, c.type == "NamespaceReady")[0].message
+```
+
+</details>
+
 ---
 
 ## Complete Reference
