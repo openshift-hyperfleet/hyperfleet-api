@@ -32,7 +32,6 @@ type EntityDescriptor struct {
 	References []ReferenceDescriptor `mapstructure:"references" json:"references,omitempty"`
 	// CEL-based condition mapping rules for this entity type
 	// Each rule maps adapter conditions to public API conditions
-	// See HYPERFLEET-538 for condition mapping design
 	Conditions []ConditionMappingRule `mapstructure:"conditions" json:"conditions,omitempty"`
 	// discriminator value stored in Resource.Kind
 	Kind string `mapstructure:"kind" json:"kind"`
