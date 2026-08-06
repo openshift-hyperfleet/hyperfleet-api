@@ -117,7 +117,7 @@ entities:
     require_spec_schema: true
 
     # CEL-based condition mapping rules
-    conditions: []
+    # conditions:
       # Example: Expose Landing Zone namespace readiness
       # - type: LandingZoneReady
       #   when:
@@ -148,7 +148,7 @@ entities:
     require_spec_schema: true
 
     # CEL-based condition mapping rules
-    conditions: []
+    # conditions:
       # Example: Expose Validation quota check status
       # - type: QuotaValid
       #   when:
