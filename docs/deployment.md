@@ -290,11 +290,11 @@ helm uninstall hyperfleet-api --namespace hyperfleet-system
 | `database.postgresql.enabled` | Enable built-in PostgreSQL | `true` |
 | `database.external.enabled` | Use external database | `false` |
 | `database.external.secretName` | Secret containing database credentials | `hyperfleet-db-external` |
-| `serviceMonitor.enabled` | Enable Prometheus Operator ServiceMonitor | `false` |
-| `serviceMonitor.interval` | Metrics scrape interval | `30s` |
-| `serviceMonitor.scrapeTimeout` | Metrics scrape timeout | `10s` |
-| `serviceMonitor.labels` | Additional labels for Prometheus selector | `{}` |
-| `serviceMonitor.namespace` | Namespace for ServiceMonitor (if different) | `""` |
+| `monitoring.serviceMonitor.enabled` | Enable Prometheus Operator ServiceMonitor | `false` |
+| `monitoring.serviceMonitor.interval` | Metrics scrape interval | `30s` |
+| `monitoring.serviceMonitor.scrapeTimeout` | Metrics scrape timeout | `10s` |
+| `monitoring.serviceMonitor.labels` | Additional labels for Prometheus selector | `{}` |
+| `monitoring.serviceMonitor.namespace` | Namespace for ServiceMonitor (if different) | `""` |
 | `replicaCount` | Number of API replicas | `1` |
 | `resources.limits.cpu` | CPU limit | `500m` |
 | `resources.limits.memory` | Memory limit | `512Mi` |
@@ -369,11 +369,11 @@ helm install hyperfleet-api oci://quay.io/redhat-services-prod/hyperfleet-tenant
 | `resources.limits.memory` | Memory limit | `512Mi` |
 | `podDisruptionBudget.enabled` | Enable PodDisruptionBudget | `false` |
 | `podDisruptionBudget.minAvailable` | Minimum available pods during disruption | `1` |
-| `serviceMonitor.enabled` | Enable Prometheus Operator ServiceMonitor | `false` |
-| `serviceMonitor.interval` | Metrics scrape interval | `30s` |
-| `serviceMonitor.scrapeTimeout` | Metrics scrape timeout | `10s` |
-| `serviceMonitor.labels` | Additional labels for Prometheus selector | `{}` |
-| `serviceMonitor.namespace` | Namespace for ServiceMonitor (if different) | `""` |
+| `monitoring.serviceMonitor.enabled` | Enable Prometheus Operator ServiceMonitor | `false` |
+| `monitoring.serviceMonitor.interval` | Metrics scrape interval | `30s` |
+| `monitoring.serviceMonitor.scrapeTimeout` | Metrics scrape timeout | `10s` |
+| `monitoring.serviceMonitor.labels` | Additional labels for Prometheus selector | `{}` |
+| `monitoring.serviceMonitor.namespace` | Namespace for ServiceMonitor (if different) | `""` |
 
 See [Configuration Guide](config.md) for the complete application configuration reference and [`charts/values.yaml`](../charts/values.yaml) for all Helm-specific settings.
 
@@ -445,13 +445,13 @@ helm install hyperfleet-api oci://quay.io/redhat-services-prod/hyperfleet-tenant
   --set image.registry=quay.io \
   --set image.repository=redhat-services-prod/hyperfleet-tenant/hyperfleet/hyperfleet-api \
   --set image.tag=<tag> \
-  --set serviceMonitor.enabled=true
+  --set monitoring.serviceMonitor.enabled=true
 
 # With custom Prometheus selector labels
---set serviceMonitor.labels.release=prometheus
+--set monitoring.serviceMonitor.labels.release=prometheus
 
 # ServiceMonitor in a different namespace
---set serviceMonitor.namespace=monitoring
+--set monitoring.serviceMonitor.namespace=monitoring
 ```
 
 ---

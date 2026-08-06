@@ -74,8 +74,8 @@ HyperFleet uses standard OpenTelemetry environment variables for tracing configu
 | `OTEL_SERVICE_NAME` | Service name in traces | `hyperfleet-api` | `hyperfleet-api-prod` |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP collector endpoint (if not set, uses stdout) | - | `http://otel-collector:4317` |
 | `OTEL_EXPORTER_OTLP_PROTOCOL` | OTLP protocol | `grpc` | `grpc`, `http/protobuf` |
-| `OTEL_TRACES_SAMPLER` | Sampler type | `parentbased_traceidratio` | `always_on`, `traceidratio` |
-| `OTEL_TRACES_SAMPLER_ARG` | Sampling rate (0.0-1.0) | `1.0` | `0.1` (10%) |
+| `OTEL_TRACES_SAMPLER` | Sampler type | `parentbased_always_on` | `always_on`, `traceidratio` |
+| `OTEL_TRACES_SAMPLER_ARG` | Argument passed to the sampler | - | `0.1` (10%) |
 | `OTEL_RESOURCE_ATTRIBUTES` | Additional resource attributes | - | `env=prod,region=us-east` |
 
 **Variable Precedence (highest to lowest):**
@@ -389,26 +389,17 @@ The OTel middleware automatically:
 
 ### Sampling
 
-Configure sampling using standard OpenTelemetry environment variables:
+By default, all traces are sampled (`parentbased_always_on`). To reduce overhead, switch to ratio-based sampling:
 
 ```bash
-# Sampler type (default: parentbased_traceidratio)
 export OTEL_TRACES_SAMPLER=parentbased_traceidratio
-
-# Sampling rate: 0.0-1.0 (default: 1.0)
-export OTEL_TRACES_SAMPLER_ARG=0.1  # 10% of requests traced
+export OTEL_TRACES_SAMPLER_ARG=0.1  # 10% of root spans
 ```
 
-**Sampling rate examples:**
-- `0.0`: No traces (disabled)
-- `0.1`: 10% of requests traced (recommended for production)
-- `1.0`: All requests traced (development only)
-
 **Sampler types:**
-- `always_on`: Sample all requests
-- `always_off`: Sample no requests
-- `traceidratio`: Sample based on trace ID ratio (use with OTEL_TRACES_SAMPLER_ARG)
-- `parentbased_traceidratio`: Respect parent decision, otherwise use trace ID ratio (default)
+- `parentbased_always_on`: Sample all root spans (default)
+- `parentbased_traceidratio`: Sample a percentage of root spans (set rate via `OTEL_TRACES_SAMPLER_ARG`)
+- `always_on` / `always_off`: Sample all or none, ignoring parent context
 
 ## Data Masking
 
