@@ -104,7 +104,6 @@ func TestValidateConditionMapping_OversizedType(t *testing.T) {
 	env, err := util.NewConditionMappingEnvironment()
 	g.Expect(err).ToNot(HaveOccurred())
 
-	// Create a type string longer than MaxConditionTypeLength (128)
 	oversizedType := strings.Repeat("A", MaxConditionTypeLength+1)
 
 	rule := ConditionMappingRule{
@@ -120,7 +119,7 @@ func TestValidateConditionMapping_OversizedType(t *testing.T) {
 	err = validateConditionMapping("Cluster", oversizedType, rule, map[string]bool{}, env)
 	g.Expect(err).To(HaveOccurred())
 	g.Expect(err.Error()).To(ContainSubstring("exceeds max length"))
-	g.Expect(err.Error()).To(ContainSubstring("128"))
+	g.Expect(err.Error()).To(ContainSubstring("100"))
 }
 
 func TestValidateCELExpression_ValidExpressions(t *testing.T) {
@@ -226,10 +225,10 @@ func TestValidateCELExpression_MalformedExpressions(t *testing.T) {
 func TestValidateEntityConditions_Integration(t *testing.T) {
 	//nolint:govet // fieldalignment: gofmt ordering conflicts with memory alignment
 	tests := []struct {
-		entities    []EntityDescriptor
-		descriptor  EntityDescriptor
 		name        string
 		errorMatch  string
+		descriptor  EntityDescriptor
+		entities    []EntityDescriptor
 		expectError bool
 	}{
 		{

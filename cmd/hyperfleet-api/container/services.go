@@ -6,13 +6,17 @@ import (
 
 func (c *Container) ResourceService() services.ResourceService {
 	if c.resourceService == nil {
-		c.resourceService = services.NewResourceService(
+		svc, err := services.NewResourceService(
 			c.ResourceDao(),
 			c.ResourceLabelDao(),
 			c.AdapterStatusDao(),
 			c.ResourceConditionDao(),
 			c.GenericService(),
 		)
+		if err != nil {
+			panic("failed to create resource service: " + err.Error())
+		}
+		c.resourceService = svc
 	}
 	return c.resourceService
 }

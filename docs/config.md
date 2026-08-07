@@ -336,7 +336,6 @@ provider-specific adapter conditions in the public `status.conditions` array.
 |----------|------|-------------|
 | `statuses` | `list(dyn)` | Array of adapter statuses. Each entry: `adapter` (string), `observed_generation` (number), `conditions` (array), `data` (map) |
 | `resource` | `dyn` | Full cluster/nodepool object as map (sensitive fields masked) |
-| `env` | `map(string, string)` | Environment variables (currently empty, reserved for future use) |
 
 **Custom CEL Functions:**
 

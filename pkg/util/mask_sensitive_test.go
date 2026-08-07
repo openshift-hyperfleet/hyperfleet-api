@@ -3,7 +3,7 @@ package util
 import (
 	"testing"
 
-	. "github.com/onsi/gomega"
+	"github.com/onsi/gomega"
 )
 
 // ============================================================================
@@ -13,19 +13,19 @@ import (
 func TestMaskSensitiveFields(t *testing.T) {
 	t.Parallel()
 	t.Run("nil map returns nil", func(t *testing.T) {
-		RegisterTestingT(t)
+		g := gomega.NewWithT(t)
 		result := MaskSensitiveFields(nil)
-		Expect(result).To(BeNil())
+		g.Expect(result).To(gomega.BeNil())
 	})
 
 	t.Run("empty map returns empty", func(t *testing.T) {
-		RegisterTestingT(t)
+		g := gomega.NewWithT(t)
 		result := MaskSensitiveFields(map[string]interface{}{})
-		Expect(result).To(BeEmpty())
+		g.Expect(result).To(gomega.BeEmpty())
 	})
 
 	t.Run("non-sensitive fields pass through unchanged", func(t *testing.T) {
-		RegisterTestingT(t)
+		g := gomega.NewWithT(t)
 
 		input := map[string]interface{}{
 			"clusterName": "test-cluster",
@@ -35,14 +35,14 @@ func TestMaskSensitiveFields(t *testing.T) {
 
 		result := MaskSensitiveFields(input)
 
-		Expect(result).To(HaveLen(3))
-		Expect(result["clusterName"]).To(Equal("test-cluster"))
-		Expect(result["region"]).To(Equal("us-west-2"))
-		Expect(result["count"]).To(Equal(3))
+		g.Expect(result).To(gomega.HaveLen(3))
+		g.Expect(result["clusterName"]).To(gomega.Equal("test-cluster"))
+		g.Expect(result["region"]).To(gomega.Equal("us-west-2"))
+		g.Expect(result["count"]).To(gomega.Equal(3))
 	})
 
 	t.Run("password field is redacted", func(t *testing.T) {
-		RegisterTestingT(t)
+		g := gomega.NewWithT(t)
 
 		input := map[string]interface{}{
 			"username": "admin",
@@ -51,12 +51,12 @@ func TestMaskSensitiveFields(t *testing.T) {
 
 		result := MaskSensitiveFields(input)
 
-		Expect(result["username"]).To(Equal("admin"))
-		Expect(result["password"]).To(Equal(RedactedPlaceholder))
+		g.Expect(result["username"]).To(gomega.Equal("admin"))
+		g.Expect(result["password"]).To(gomega.Equal(RedactedPlaceholder))
 	})
 
 	t.Run("all sensitive patterns are redacted case-insensitively", func(t *testing.T) {
-		RegisterTestingT(t)
+		g := gomega.NewWithT(t)
 
 		input := map[string]interface{}{
 			"adminPassword":        "secret1",
@@ -73,12 +73,12 @@ func TestMaskSensitiveFields(t *testing.T) {
 
 		// All should be redacted
 		for k := range input {
-			Expect(result[k]).To(Equal(RedactedPlaceholder), "field %s should be redacted", k)
+			g.Expect(result[k]).To(gomega.Equal(RedactedPlaceholder), "field %s should be redacted", k)
 		}
 	})
 
 	t.Run("nested maps are recursively masked", func(t *testing.T) {
-		RegisterTestingT(t)
+		g := gomega.NewWithT(t)
 
 		input := map[string]interface{}{
 			"clusterName": "test-cluster",
@@ -90,14 +90,14 @@ func TestMaskSensitiveFields(t *testing.T) {
 
 		result := MaskSensitiveFields(input)
 
-		Expect(result["clusterName"]).To(Equal("test-cluster"))
+		g.Expect(result["clusterName"]).To(gomega.Equal("test-cluster"))
 
 		// "auth" key itself is redacted (contains "auth" pattern)
-		Expect(result["auth"]).To(Equal(RedactedPlaceholder))
+		g.Expect(result["auth"]).To(gomega.Equal(RedactedPlaceholder))
 	})
 
 	t.Run("nested non-sensitive map is recursively processed", func(t *testing.T) {
-		RegisterTestingT(t)
+		g := gomega.NewWithT(t)
 
 		input := map[string]interface{}{
 			"clusterName": "test-cluster",
@@ -109,17 +109,17 @@ func TestMaskSensitiveFields(t *testing.T) {
 
 		result := MaskSensitiveFields(input)
 
-		Expect(result["clusterName"]).To(Equal("test-cluster"))
+		g.Expect(result["clusterName"]).To(gomega.Equal("test-cluster"))
 
 		// "config" itself is not sensitive, so we get nested map
 		configMap, ok := result["config"].(map[string]interface{})
-		Expect(ok).To(BeTrue())
-		Expect(configMap["region"]).To(Equal("us-west-2"))
-		Expect(configMap["password"]).To(Equal(RedactedPlaceholder))
+		g.Expect(ok).To(gomega.BeTrue())
+		g.Expect(configMap["region"]).To(gomega.Equal("us-west-2"))
+		g.Expect(configMap["password"]).To(gomega.Equal(RedactedPlaceholder))
 	})
 
 	t.Run("deeply nested sensitive fields are redacted", func(t *testing.T) {
-		RegisterTestingT(t)
+		g := gomega.NewWithT(t)
 
 		input := map[string]interface{}{
 			"level1": map[string]interface{}{
@@ -138,12 +138,12 @@ func TestMaskSensitiveFields(t *testing.T) {
 		level2 := level1["level2"].(map[string]interface{})
 		level3 := level2["level3"].(map[string]interface{})
 
-		Expect(level3["password"]).To(Equal(RedactedPlaceholder))
-		Expect(level3["region"]).To(Equal("us-east-1"))
+		g.Expect(level3["password"]).To(gomega.Equal(RedactedPlaceholder))
+		g.Expect(level3["region"]).To(gomega.Equal("us-east-1"))
 	})
 
 	t.Run("complex real-world adapter data", func(t *testing.T) {
-		RegisterTestingT(t)
+		g := gomega.NewWithT(t)
 
 		input := map[string]interface{}{
 			"cluster_name": "prod-cluster-1",
@@ -161,23 +161,23 @@ func TestMaskSensitiveFields(t *testing.T) {
 		result := MaskSensitiveFields(input)
 
 		// Non-sensitive fields preserved
-		Expect(result["cluster_name"]).To(Equal("prod-cluster-1"))
-		Expect(result["namespace"]).To(Equal("default"))
-		Expect(result["region"]).To(Equal("us-west-2"))
-		Expect(result["node_count"]).To(Equal(3))
+		g.Expect(result["cluster_name"]).To(gomega.Equal("prod-cluster-1"))
+		g.Expect(result["namespace"]).To(gomega.Equal("default"))
+		g.Expect(result["region"]).To(gomega.Equal("us-west-2"))
+		g.Expect(result["node_count"]).To(gomega.Equal(3))
 
 		// Sensitive top-level fields redacted
-		Expect(result["pull_secret"]).To(Equal(RedactedPlaceholder))
-		Expect(result["admin_password"]).To(Equal(RedactedPlaceholder))
+		g.Expect(result["pull_secret"]).To(gomega.Equal(RedactedPlaceholder))
+		g.Expect(result["admin_password"]).To(gomega.Equal(RedactedPlaceholder))
 
 		// Nested sensitive field redacted
 		sa := result["service_account"].(map[string]interface{})
-		Expect(sa["name"]).To(Equal("hypershift-sa"))
-		Expect(sa["privateKey"]).To(Equal(RedactedPlaceholder))
+		g.Expect(sa["name"]).To(gomega.Equal("hypershift-sa"))
+		g.Expect(sa["privateKey"]).To(gomega.Equal(RedactedPlaceholder))
 	})
 
 	t.Run("arrays with sensitive fields in elements are masked", func(t *testing.T) {
-		RegisterTestingT(t)
+		g := gomega.NewWithT(t)
 
 		input := map[string]interface{}{
 			"clusterName": "test-cluster",
@@ -195,24 +195,24 @@ func TestMaskSensitiveFields(t *testing.T) {
 
 		result := MaskSensitiveFields(input)
 
-		Expect(result["clusterName"]).To(Equal("test-cluster"))
+		g.Expect(result["clusterName"]).To(gomega.Equal("test-cluster"))
 
 		users := result["users"].([]interface{})
-		Expect(users).To(HaveLen(2))
+		g.Expect(users).To(gomega.HaveLen(2))
 
 		// First user: password should be masked
 		user0 := users[0].(map[string]interface{})
-		Expect(user0["name"]).To(Equal("admin"))
-		Expect(user0["password"]).To(Equal(RedactedPlaceholder))
+		g.Expect(user0["name"]).To(gomega.Equal("admin"))
+		g.Expect(user0["password"]).To(gomega.Equal(RedactedPlaceholder))
 
 		// Second user: token should be masked
 		user1 := users[1].(map[string]interface{})
-		Expect(user1["name"]).To(Equal("viewer"))
-		Expect(user1["token"]).To(Equal(RedactedPlaceholder))
+		g.Expect(user1["name"]).To(gomega.Equal("viewer"))
+		g.Expect(user1["token"]).To(gomega.Equal(RedactedPlaceholder))
 	})
 
 	t.Run("nested arrays are recursively masked", func(t *testing.T) {
-		RegisterTestingT(t)
+		g := gomega.NewWithT(t)
 
 		input := map[string]interface{}{
 			"environments": []interface{}{
@@ -233,17 +233,17 @@ func TestMaskSensitiveFields(t *testing.T) {
 
 		envs := result["environments"].([]interface{})
 		env0 := envs[0].(map[string]interface{})
-		Expect(env0["name"]).To(Equal("production"))
+		g.Expect(env0["name"]).To(gomega.Equal("production"))
 
 		providers := env0["providers"].([]interface{})
 		provider0 := providers[0].(map[string]interface{})
-		Expect(provider0["type"]).To(Equal("aws"))
-		Expect(provider0["apiKey"]).To(Equal(RedactedPlaceholder))
-		Expect(provider0["region"]).To(Equal("us-east-1"))
+		g.Expect(provider0["type"]).To(gomega.Equal("aws"))
+		g.Expect(provider0["apiKey"]).To(gomega.Equal(RedactedPlaceholder))
+		g.Expect(provider0["region"]).To(gomega.Equal("us-east-1"))
 	})
 
 	t.Run("arrays of primitives pass through unchanged", func(t *testing.T) {
-		RegisterTestingT(t)
+		g := gomega.NewWithT(t)
 
 		input := map[string]interface{}{
 			"regions": []interface{}{"us-east-1", "us-west-2", "eu-west-1"},
@@ -253,14 +253,14 @@ func TestMaskSensitiveFields(t *testing.T) {
 		result := MaskSensitiveFields(input)
 
 		regions := result["regions"].([]interface{})
-		Expect(regions).To(Equal([]interface{}{"us-east-1", "us-west-2", "eu-west-1"}))
+		g.Expect(regions).To(gomega.Equal([]interface{}{"us-east-1", "us-west-2", "eu-west-1"}))
 
 		ports := result["ports"].([]interface{})
-		Expect(ports).To(Equal([]interface{}{80, 443, 8080}))
+		g.Expect(ports).To(gomega.Equal([]interface{}{80, 443, 8080}))
 	})
 
 	t.Run("deeply nested arrays of arrays are masked", func(t *testing.T) {
-		RegisterTestingT(t)
+		g := gomega.NewWithT(t)
 
 		input := map[string]interface{}{
 			"matrix": []interface{}{
@@ -278,8 +278,8 @@ func TestMaskSensitiveFields(t *testing.T) {
 		matrix := result["matrix"].([]interface{})
 		row0 := matrix[0].([]interface{})
 		cell := row0[0].(map[string]interface{})
-		Expect(cell["value"]).To(Equal("data"))
-		Expect(cell["password"]).To(Equal(RedactedPlaceholder))
+		g.Expect(cell["value"]).To(gomega.Equal("data"))
+		g.Expect(cell["password"]).To(gomega.Equal(RedactedPlaceholder))
 	})
 }
 
@@ -316,9 +316,9 @@ func TestIsSensitiveKey(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			RegisterTestingT(t)
+			g := gomega.NewWithT(t)
 			result := isSensitiveKey(tt.key)
-			Expect(result).To(Equal(tt.sensitive))
+			g.Expect(result).To(gomega.Equal(tt.sensitive))
 		})
 	}
 }
@@ -330,7 +330,7 @@ func TestIsSensitiveKey(t *testing.T) {
 func TestMaskSensitiveFields_SEC02Patterns(t *testing.T) {
 	t.Parallel()
 	t.Run("TLS certificate fields are masked", func(t *testing.T) {
-		RegisterTestingT(t)
+		g := gomega.NewWithT(t)
 
 		input := map[string]interface{}{
 			"clusterName":     "prod-cluster",
@@ -343,17 +343,17 @@ func TestMaskSensitiveFields_SEC02Patterns(t *testing.T) {
 		result := MaskSensitiveFields(input)
 
 		// Non-sensitive field preserved
-		Expect(result["clusterName"]).To(Equal("prod-cluster"))
+		g.Expect(result["clusterName"]).To(gomega.Equal("prod-cluster"))
 
 		// All cert fields should be masked
-		Expect(result["tlsCert"]).To(Equal(RedactedPlaceholder))
-		Expect(result["clientCert"]).To(Equal(RedactedPlaceholder))
-		Expect(result["caCertificate"]).To(Equal(RedactedPlaceholder))
-		Expect(result["serverCertChain"]).To(Equal(RedactedPlaceholder))
+		g.Expect(result["tlsCert"]).To(gomega.Equal(RedactedPlaceholder))
+		g.Expect(result["clientCert"]).To(gomega.Equal(RedactedPlaceholder))
+		g.Expect(result["caCertificate"]).To(gomega.Equal(RedactedPlaceholder))
+		g.Expect(result["serverCertChain"]).To(gomega.Equal(RedactedPlaceholder))
 	})
 
 	t.Run("kubeconfig fields are masked", func(t *testing.T) {
-		RegisterTestingT(t)
+		g := gomega.NewWithT(t)
 
 		input := map[string]interface{}{
 			"clusterName":   "prod-cluster",
@@ -366,14 +366,14 @@ func TestMaskSensitiveFields_SEC02Patterns(t *testing.T) {
 
 		result := MaskSensitiveFields(input)
 
-		Expect(result["clusterName"]).To(Equal("prod-cluster"))
-		Expect(result["kubeconfig"]).To(Equal(RedactedPlaceholder))
-		Expect(result["kubeconfigRaw"]).To(Equal(RedactedPlaceholder))
-		Expect(result["adminKubeconfig"]).To(Equal(RedactedPlaceholder))
+		g.Expect(result["clusterName"]).To(gomega.Equal("prod-cluster"))
+		g.Expect(result["kubeconfig"]).To(gomega.Equal(RedactedPlaceholder))
+		g.Expect(result["kubeconfigRaw"]).To(gomega.Equal(RedactedPlaceholder))
+		g.Expect(result["adminKubeconfig"]).To(gomega.Equal(RedactedPlaceholder))
 	})
 
 	t.Run("bearer token fields are masked", func(t *testing.T) {
-		RegisterTestingT(t)
+		g := gomega.NewWithT(t)
 
 		input := map[string]interface{}{
 			"clusterName":  "prod-cluster",
@@ -384,14 +384,14 @@ func TestMaskSensitiveFields_SEC02Patterns(t *testing.T) {
 
 		result := MaskSensitiveFields(input)
 
-		Expect(result["clusterName"]).To(Equal("prod-cluster"))
-		Expect(result["bearerToken"]).To(Equal(RedactedPlaceholder))
-		Expect(result["bearer"]).To(Equal(RedactedPlaceholder))
-		Expect(result["bearerHeader"]).To(Equal(RedactedPlaceholder))
+		g.Expect(result["clusterName"]).To(gomega.Equal("prod-cluster"))
+		g.Expect(result["bearerToken"]).To(gomega.Equal(RedactedPlaceholder))
+		g.Expect(result["bearer"]).To(gomega.Equal(RedactedPlaceholder))
+		g.Expect(result["bearerHeader"]).To(gomega.Equal(RedactedPlaceholder))
 	})
 
 	t.Run("connection string fields are masked", func(t *testing.T) {
-		RegisterTestingT(t)
+		g := gomega.NewWithT(t)
 
 		input := map[string]interface{}{
 			"dbHost":                "postgres.example.com",
@@ -403,16 +403,16 @@ func TestMaskSensitiveFields_SEC02Patterns(t *testing.T) {
 		result := MaskSensitiveFields(input)
 
 		// Non-sensitive field preserved
-		Expect(result["dbHost"]).To(Equal("postgres.example.com"))
+		g.Expect(result["dbHost"]).To(gomega.Equal("postgres.example.com"))
 
 		// All connection string fields should be masked (contain "connection")
-		Expect(result["connection_string"]).To(Equal(RedactedPlaceholder))
-		Expect(result["dbConnectionString"]).To(Equal(RedactedPlaceholder))
-		Expect(result["redisConnectionString"]).To(Equal(RedactedPlaceholder))
+		g.Expect(result["connection_string"]).To(gomega.Equal(RedactedPlaceholder))
+		g.Expect(result["dbConnectionString"]).To(gomega.Equal(RedactedPlaceholder))
+		g.Expect(result["redisConnectionString"]).To(gomega.Equal(RedactedPlaceholder))
 	})
 
 	t.Run("nested security patterns in adapter data", func(t *testing.T) {
-		RegisterTestingT(t)
+		g := gomega.NewWithT(t)
 
 		input := map[string]interface{}{
 			"clusterName": "prod-cluster",
@@ -429,22 +429,22 @@ func TestMaskSensitiveFields_SEC02Patterns(t *testing.T) {
 
 		result := MaskSensitiveFields(input)
 
-		Expect(result["clusterName"]).To(Equal("prod-cluster"))
+		g.Expect(result["clusterName"]).To(gomega.Equal("prod-cluster"))
 
 		// hypershift is not sensitive, but nested fields are
 		hypershift := result["hypershift"].(map[string]interface{})
-		Expect(hypershift["kubeconfig"]).To(Equal(RedactedPlaceholder))
-		Expect(hypershift["pullSecrets"]).To(Equal(RedactedPlaceholder), "pullSecrets contains 'secret'")
+		g.Expect(hypershift["kubeconfig"]).To(gomega.Equal(RedactedPlaceholder))
+		g.Expect(hypershift["pullSecrets"]).To(gomega.Equal(RedactedPlaceholder), "pullSecrets contains 'secret'")
 
 		// tlsConfig is not sensitive, but nested cert fields are
 		tlsConfig := result["tlsConfig"].(map[string]interface{})
-		Expect(tlsConfig["caCert"]).To(Equal(RedactedPlaceholder))
-		Expect(tlsConfig["clientCert"]).To(Equal(RedactedPlaceholder))
-		Expect(tlsConfig["serverName"]).To(Equal("api.cluster.example.com"))
+		g.Expect(tlsConfig["caCert"]).To(gomega.Equal(RedactedPlaceholder))
+		g.Expect(tlsConfig["clientCert"]).To(gomega.Equal(RedactedPlaceholder))
+		g.Expect(tlsConfig["serverName"]).To(gomega.Equal("api.cluster.example.com"))
 	})
 
 	t.Run("security patterns in arrays", func(t *testing.T) {
-		RegisterTestingT(t)
+		g := gomega.NewWithT(t)
 
 		input := map[string]interface{}{
 			"clusters": []interface{}{
@@ -462,19 +462,19 @@ func TestMaskSensitiveFields_SEC02Patterns(t *testing.T) {
 		result := MaskSensitiveFields(input)
 
 		clusters := result["clusters"].([]interface{})
-		Expect(clusters).To(HaveLen(2))
+		g.Expect(clusters).To(gomega.HaveLen(2))
 
 		cluster1 := clusters[0].(map[string]interface{})
-		Expect(cluster1["name"]).To(Equal("cluster-1"))
-		Expect(cluster1["kubeconfig"]).To(Equal(RedactedPlaceholder))
+		g.Expect(cluster1["name"]).To(gomega.Equal("cluster-1"))
+		g.Expect(cluster1["kubeconfig"]).To(gomega.Equal(RedactedPlaceholder))
 
 		cluster2 := clusters[1].(map[string]interface{})
-		Expect(cluster2["name"]).To(Equal("cluster-2"))
-		Expect(cluster2["connection"]).To(Equal(RedactedPlaceholder), "connection contains 'connection'")
+		g.Expect(cluster2["name"]).To(gomega.Equal("cluster-2"))
+		g.Expect(cluster2["connection"]).To(gomega.Equal(RedactedPlaceholder), "connection contains 'connection'")
 	})
 
 	t.Run("real-world HyperShift adapter data with security patterns", func(t *testing.T) {
-		RegisterTestingT(t)
+		g := gomega.NewWithT(t)
 
 		input := map[string]interface{}{
 			"clusterName": "prod-hypershift-cluster",
@@ -494,18 +494,18 @@ func TestMaskSensitiveFields_SEC02Patterns(t *testing.T) {
 		result := MaskSensitiveFields(input)
 
 		// Non-sensitive fields preserved
-		Expect(result["clusterName"]).To(Equal("prod-hypershift-cluster"))
-		Expect(result["namespace"]).To(Equal("clusters"))
-		Expect(result["baseDomain"]).To(Equal("example.com"))
+		g.Expect(result["clusterName"]).To(gomega.Equal("prod-hypershift-cluster"))
+		g.Expect(result["namespace"]).To(gomega.Equal("clusters"))
+		g.Expect(result["baseDomain"]).To(gomega.Equal("example.com"))
 
 		// Sensitive fields masked
-		Expect(result["pullSecret"]).To(Equal(RedactedPlaceholder))
-		Expect(result["sshKey"]).To(Equal(RedactedPlaceholder), "sshKey contains 'key'")
+		g.Expect(result["pullSecret"]).To(gomega.Equal(RedactedPlaceholder))
+		g.Expect(result["sshKey"]).To(gomega.Equal(RedactedPlaceholder), "sshKey contains 'key'")
 
 		// hostedCluster contains kubeconfig (nested sensitive)
 		hostedCluster := result["hostedCluster"].(map[string]interface{})
-		Expect(hostedCluster["name"]).To(Equal("my-cluster"))
-		Expect(hostedCluster["kubeconfig"]).To(Equal(RedactedPlaceholder))
+		g.Expect(hostedCluster["name"]).To(gomega.Equal("my-cluster"))
+		g.Expect(hostedCluster["kubeconfig"]).To(gomega.Equal(RedactedPlaceholder))
 	})
 }
 
@@ -516,7 +516,7 @@ func TestMaskSensitiveFields_SEC02Patterns(t *testing.T) {
 func TestMaskSensitiveFields_DepthLimit(t *testing.T) {
 	t.Parallel()
 	t.Run("deeply nested structure stops at max depth (SEC-03)", func(t *testing.T) {
-		RegisterTestingT(t)
+		g := gomega.NewWithT(t)
 
 		// Build a structure nested 25 levels deep (exceeds maxMaskingDepth=20)
 		deeplyNested := make(map[string]interface{})
@@ -534,25 +534,25 @@ func TestMaskSensitiveFields_DepthLimit(t *testing.T) {
 		result := MaskSensitiveFields(deeplyNested)
 
 		// Verify first few levels are intact
-		Expect(result["level"]).To(Equal(0))
-		Expect(result["data"]).To(Equal("value"))
+		g.Expect(result["level"]).To(gomega.Equal(0))
+		g.Expect(result["data"]).To(gomega.Equal("value"))
 
 		// Navigate down to depth 19 (last allowed level)
 		current = result
 		for i := 0; i < 19; i++ {
 			nested, ok := current["nested"].(map[string]interface{})
-			Expect(ok).To(BeTrue(), "Level %d should be a map", i)
+			g.Expect(ok).To(gomega.BeTrue(), "Level %d should be a map", i)
 			current = nested
 		}
 
 		// At depth 20, we should hit the limit and get an empty map
 		nested, ok := current["nested"].(map[string]interface{})
-		Expect(ok).To(BeTrue())
-		Expect(nested).To(BeEmpty(), "Depth 20 should return empty map (limit reached)")
+		g.Expect(ok).To(gomega.BeTrue())
+		g.Expect(nested).To(gomega.BeEmpty(), "Depth 20 should return empty map (limit reached)")
 	})
 
 	t.Run("deeply nested array stops at max depth (SEC-03)", func(t *testing.T) {
-		RegisterTestingT(t)
+		g := gomega.NewWithT(t)
 
 		// Build an array nested 25 levels deep
 		deepest := []interface{}{"final"}
@@ -565,21 +565,21 @@ func TestMaskSensitiveFields_DepthLimit(t *testing.T) {
 		// Navigate down to depth 19
 		currentSlice := result
 		for i := 0; i < 19; i++ {
-			Expect(currentSlice).To(HaveLen(1))
+			g.Expect(currentSlice).To(gomega.HaveLen(1))
 			next, ok := currentSlice[0].([]interface{})
-			Expect(ok).To(BeTrue(), "Level %d should be a slice", i)
+			g.Expect(ok).To(gomega.BeTrue(), "Level %d should be a slice", i)
 			currentSlice = next
 		}
 
 		// At depth 20, should get empty slice (limit reached)
-		Expect(currentSlice).To(HaveLen(1))
+		g.Expect(currentSlice).To(gomega.HaveLen(1))
 		final, ok := currentSlice[0].([]interface{})
-		Expect(ok).To(BeTrue())
-		Expect(final).To(BeEmpty(), "Depth 20 should return empty slice (limit reached)")
+		g.Expect(ok).To(gomega.BeTrue())
+		g.Expect(final).To(gomega.BeEmpty(), "Depth 20 should return empty slice (limit reached)")
 	})
 
 	t.Run("normal nested structures work fine (SEC-03)", func(t *testing.T) {
-		RegisterTestingT(t)
+		g := gomega.NewWithT(t)
 
 		// Build a reasonably nested structure (5 levels, well under limit)
 		input := map[string]interface{}{
@@ -607,8 +607,8 @@ func TestMaskSensitiveFields_DepthLimit(t *testing.T) {
 		level5 := level4["level5"].(map[string]interface{})
 
 		// Verify masking works at all levels
-		Expect(level5["password"]).To(Equal(RedactedPlaceholder))
-		Expect(level5["name"]).To(Equal("final"))
+		g.Expect(level5["password"]).To(gomega.Equal(RedactedPlaceholder))
+		g.Expect(level5["name"]).To(gomega.Equal("final"))
 	})
 }
 
@@ -619,7 +619,7 @@ func TestMaskSensitiveFields_DepthLimit(t *testing.T) {
 func TestMaskSensitiveFields_FalsePositivePrevention(t *testing.T) {
 	t.Parallel()
 	t.Run("database fields with 'key' are NOT redacted", func(t *testing.T) {
-		RegisterTestingT(t)
+		g := gomega.NewWithT(t)
 
 		// Common database field names that should NOT be redacted
 		input := map[string]interface{}{
@@ -638,20 +638,20 @@ func TestMaskSensitiveFields_FalsePositivePrevention(t *testing.T) {
 		result := MaskSensitiveFields(input)
 
 		// None should be redacted - these are metadata, not credentials
-		Expect(result["partitionKey"]).To(Equal("user-123"))
-		Expect(result["sortKey"]).To(Equal("timestamp"))
-		Expect(result["primaryKey"]).To(Equal(42))
-		Expect(result["foreignKey"]).To(Equal(99))
-		Expect(result["uniqueKey"]).To(Equal("abc"))
-		Expect(result["indexKey"]).To(Equal("idx_users_email"))
-		Expect(result["cacheKey"]).To(Equal("session:xyz"))
-		Expect(result["lookupKey"]).To(Equal("search-term"))
-		Expect(result["routingKey"]).To(Equal("orders"))
-		Expect(result["shardKey"]).To(Equal("region-us-west"))
+		g.Expect(result["partitionKey"]).To(gomega.Equal("user-123"))
+		g.Expect(result["sortKey"]).To(gomega.Equal("timestamp"))
+		g.Expect(result["primaryKey"]).To(gomega.Equal(42))
+		g.Expect(result["foreignKey"]).To(gomega.Equal(99))
+		g.Expect(result["uniqueKey"]).To(gomega.Equal("abc"))
+		g.Expect(result["indexKey"]).To(gomega.Equal("idx_users_email"))
+		g.Expect(result["cacheKey"]).To(gomega.Equal("session:xyz"))
+		g.Expect(result["lookupKey"]).To(gomega.Equal("search-term"))
+		g.Expect(result["routingKey"]).To(gomega.Equal("orders"))
+		g.Expect(result["shardKey"]).To(gomega.Equal("region-us-west"))
 	})
 
 	t.Run("legitimate credential 'key' fields ARE redacted", func(t *testing.T) {
-		RegisterTestingT(t)
+		g := gomega.NewWithT(t)
 
 		// Real credential fields that SHOULD be redacted
 		input := map[string]interface{}{
@@ -671,12 +671,12 @@ func TestMaskSensitiveFields_FalsePositivePrevention(t *testing.T) {
 
 		// All should be redacted - these are credentials
 		for k := range input {
-			Expect(result[k]).To(Equal(RedactedPlaceholder), "field %s should be redacted", k)
+			g.Expect(result[k]).To(gomega.Equal(RedactedPlaceholder), "field %s should be redacted", k)
 		}
 	})
 
 	t.Run("service/product names with 'key' are NOT redacted", func(t *testing.T) {
-		RegisterTestingT(t)
+		g := gomega.NewWithT(t)
 
 		// Service/product names that contain 'key' but aren't credentials
 		input := map[string]interface{}{
@@ -691,11 +691,11 @@ func TestMaskSensitiveFields_FalsePositivePrevention(t *testing.T) {
 		result := MaskSensitiveFields(input)
 
 		// None should be redacted - these are not credentials
-		Expect(result["keystoneEndpoint"]).To(Equal("https://keystone.example.com"))
-		Expect(result["monkeyPatch"]).To(Equal(true))
-		Expect(result["turkeyMode"]).To(Equal(false))
-		Expect(result["keyValueStore"]).To(Equal("redis"))
-		Expect(result["hotkey"]).To(Equal("Ctrl+S"))
-		Expect(result["keyframe"]).To(Equal(60))
+		g.Expect(result["keystoneEndpoint"]).To(gomega.Equal("https://keystone.example.com"))
+		g.Expect(result["monkeyPatch"]).To(gomega.Equal(true))
+		g.Expect(result["turkeyMode"]).To(gomega.Equal(false))
+		g.Expect(result["keyValueStore"]).To(gomega.Equal("redis"))
+		g.Expect(result["hotkey"]).To(gomega.Equal("Ctrl+S"))
+		g.Expect(result["keyframe"]).To(gomega.Equal(60))
 	})
 }

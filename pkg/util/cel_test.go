@@ -282,7 +282,6 @@ func TestCELVariableConstants(t *testing.T) {
 		validExpressions := []string{
 			"size(statuses) > 0",                   // Uses CELVarStatuses
 			"resource.metadata.name",               // Uses CELVarResource
-			"env.REGION",                           // Uses CELVarEnv
 			"statuses.exists(s, s.adapter == 'x')", // Complex usage
 			"resource.generation > 0",              // Resource field access
 		}
@@ -320,6 +319,5 @@ func TestCELVariableConstants(t *testing.T) {
 		// Verify constant values are what we expect (prevents accidental changes)
 		g.Expect(CELVarStatuses).To(Equal("statuses"))
 		g.Expect(CELVarResource).To(Equal("resource"))
-		g.Expect(CELVarEnv).To(Equal("env"))
 	})
 }

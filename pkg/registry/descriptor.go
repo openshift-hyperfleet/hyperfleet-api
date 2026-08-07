@@ -23,16 +23,7 @@ type ReferenceDescriptor struct {
 
 // EntityDescriptor defines everything specific to a HyperFleet entity type.
 // Descriptors are loaded from the application config YAML at startup via LoadDescriptors.
-//
-//nolint:govet // fieldalignment: gofmt field ordering conflicts with memory alignment optimization
 type EntityDescriptor struct {
-	// adapters that must finalize before hard-delete
-	RequiredAdapters []string `mapstructure:"required_adapters" json:"required_adapters,omitempty"`
-	// non-ownership associations to other entity types (HYPERFLEET-1156)
-	References []ReferenceDescriptor `mapstructure:"references" json:"references,omitempty"`
-	// CEL-based condition mapping rules for this entity type
-	// Each rule maps adapter conditions to public API conditions
-	Conditions []ConditionMappingRule `mapstructure:"conditions" json:"conditions,omitempty"`
 	// discriminator value stored in Resource.Kind
 	Kind string `mapstructure:"kind" json:"kind"`
 	// URL path segment, e.g. "channels"
@@ -41,12 +32,18 @@ type EntityDescriptor struct {
 	ParentKind string `mapstructure:"parent_kind" json:"parent_kind,omitempty"`
 	// OpenAPI component name for spec validation
 	SpecSchemaName string `mapstructure:"spec_schema_name" json:"spec_schema_name,omitempty"`
+	// only meaningful when ParentKind != ""
+	OnParentDelete OnParentDeletePolicy `mapstructure:"on_parent_delete" json:"on_parent_delete,omitempty"`
+	// adapters that must finalize before hard-delete
+	RequiredAdapters []string `mapstructure:"required_adapters" json:"required_adapters,omitempty"`
+	// non-ownership associations to other entity types (HYPERFLEET-1156)
+	References []ReferenceDescriptor `mapstructure:"references" json:"references,omitempty"`
+	// CEL-based condition mapping rules for this entity type
+	Conditions []ConditionMappingRule `mapstructure:"conditions" json:"conditions,omitempty"`
 	// minimum name length (0 = no constraint)
 	NameMinLen int `mapstructure:"name_min_len" json:"name_min_len,omitempty"`
 	// maximum name length (0 = no constraint)
 	NameMaxLen int `mapstructure:"name_max_len" json:"name_max_len,omitempty"`
-	// only meaningful when ParentKind != ""
-	OnParentDelete OnParentDeletePolicy `mapstructure:"on_parent_delete" json:"on_parent_delete,omitempty"`
 	// panic at startup if SpecSchemaName missing from spec
 	RequireSpecSchema bool `mapstructure:"require_spec_schema" json:"require_spec_schema,omitempty"`
 }
