@@ -279,7 +279,7 @@ var _ dao.ResourceConditionDao = &resourceConditionMock{}
 
 func newTestResourceService(mockDao *mockResourceDao) (ResourceService, *mockResourceDao, *resourceGenericMock) {
 	generic := &resourceGenericMock{}
-	svc := NewResourceService(
+	svc, _ := NewResourceService(
 		mockDao, newMockResourceLabelDao(), newMockAdapterStatusDao(), newResourceConditionMock(), generic,
 	)
 	return svc, mockDao, generic
@@ -290,7 +290,7 @@ func newTestResourceServiceWithLabelDao(
 ) (ResourceService, *mockResourceDao, *resourceGenericMock, *mockResourceLabelDao) {
 	generic := &resourceGenericMock{}
 	labelDao := newMockResourceLabelDao()
-	svc := NewResourceService(
+	svc, _ := NewResourceService(
 		mockDao, labelDao, newMockAdapterStatusDao(), newResourceConditionMock(), generic,
 	)
 	return svc, mockDao, generic, labelDao
@@ -302,7 +302,17 @@ func newTestResourceServiceWithAdapterStatus(
 	asDao := newMockAdapterStatusDao()
 	rcDao := newResourceConditionMock()
 	generic := &resourceGenericMock{}
-	svc := NewResourceService(mockDao, newMockResourceLabelDao(), asDao, rcDao, generic)
+	svc, _ := NewResourceService(mockDao, newMockResourceLabelDao(), asDao, rcDao, generic)
+	return svc, mockDao, asDao, rcDao
+}
+
+func newTestResourceServiceWithConditions(
+	mockDao *mockResourceDao,
+) (ResourceService, *mockResourceDao, *mockAdapterStatusDao, *resourceConditionMock) {
+	asDao := newMockAdapterStatusDao()
+	rcDao := newResourceConditionMock()
+	generic := &resourceGenericMock{}
+	svc, _ := NewResourceService(mockDao, newMockResourceLabelDao(), asDao, rcDao, generic)
 	return svc, mockDao, asDao, rcDao
 }
 
@@ -1770,6 +1780,73 @@ func TestProcessAdapterStatus_HappyPath(t *testing.T) {
 	Expect(rcDao.conditions["r-1"]).ToNot(BeEmpty())
 }
 
+func TestProcessAdapterStatus_ConditionMapperError_TriggersRollback(t *testing.T) {
+	RegisterTestingT(t)
+	registry.Reset()
+	t.Cleanup(registry.Reset)
+
+	// Register entity with condition mapping rule that will fail at runtime
+	// The expression divides by zero, which compiles successfully but fails during evaluation
+	registry.Register(registry.EntityDescriptor{
+		Kind:   "Cluster",
+		Plural: "clusters",
+		Conditions: []registry.ConditionMappingRule{
+			{
+				Type: "TestCondition",
+				When: registry.MappingExpression{
+					Expression: `true`, // Always evaluates
+				},
+				Output: registry.MappingOutput{
+					Status: registry.MappingExpression{
+						// Division by zero: compiles but fails at runtime
+						Expression: `1 / 0 == 0 ? "True" : "False"`,
+					},
+					Reason: registry.MappingExpression{
+						Expression: `"TestReason"`,
+					},
+					Message: registry.MappingExpression{
+						Expression: `"Test message"`,
+					},
+				},
+			},
+		},
+	})
+
+	mockDao := newMockResourceDao()
+	svc, _, _, _ := newTestResourceServiceWithConditions(mockDao)
+
+	cluster := testResource("Cluster", "cl-1", "test-cluster")
+	cluster.Generation = 1
+	mockDao.addResource(cluster)
+
+	req := &api.AdapterStatus{
+		Adapter:            "test-adapter",
+		ObservedGeneration: 1,
+		LastReportTime:     time.Now().UTC(),
+		Conditions: testConditionsJSON(
+			api.AdapterCondition{Type: api.AdapterConditionTypeAvailable, Status: api.AdapterConditionTrue},
+			api.AdapterCondition{Type: api.AdapterConditionTypeApplied, Status: api.AdapterConditionTrue},
+			api.AdapterCondition{Type: api.AdapterConditionTypeHealth, Status: api.AdapterConditionTrue},
+		),
+	}
+
+	// ProcessAdapterStatus should return error when condition mapper fails
+	result, svcErr := svc.ProcessAdapterStatus(context.Background(), "Cluster", cluster.ID, req)
+
+	// Verify error is returned (triggers rollback)
+	Expect(svcErr).ToNot(BeNil(), "should return error when condition mapping fails")
+	Expect(svcErr.RFC9457Code).To(Equal("HYPERFLEET-INT-001"), "should be GeneralError (internal error)")
+	Expect(svcErr.Reason).To(ContainSubstring("Condition mapping failed"), "error reason should mention condition mapping")
+
+	Expect(result).To(BeNil(), "result should be nil when error occurs")
+
+	// Note: In a real database transaction, returning an error from the service
+	// would trigger MarkForRollback() in the DAO layer, causing the transaction to rollback.
+	// This unit test uses mocks (no real transaction), so the mock DAO still has the data.
+	// The critical validation is: service returns error → handler marks transaction for rollback.
+	// For full rollback validation, see integration tests with testcontainers.
+}
+
 func TestProcessAdapterStatus_UnknownKind_Returns400(t *testing.T) {
 	RegisterTestingT(t)
 	setupAdapterStatusDescriptors()
@@ -3141,4 +3218,84 @@ func TestProcessAdapterStatus_FinalizedTrue_RecomputesConditions_WhenHardDeleteB
 		"Reconciled should be False (waiting for children), not absent")
 	Expect(*recon.Reason).To(ContainSubstring("Children"),
 		"Reason should indicate waiting for child resources")
+}
+
+// --- Condition Mapping ---
+
+func TestResourceService_ConditionMapper_IntegrationPath(t *testing.T) {
+	RegisterTestingT(t)
+	registry.Reset()
+	t.Cleanup(registry.Reset)
+	// Register entity descriptor with inline conditions
+	registry.Register(registry.EntityDescriptor{
+		Kind:   "Cluster",
+		Plural: "clusters",
+		Conditions: []registry.ConditionMappingRule{
+			{
+				Type: "CustomReady",
+				When: registry.MappingExpression{
+					Expression: `statuses.exists(s, s.adapter == "test-adapter" && ` +
+						`s.conditions.exists(c, c.type == "CustomCondition" && c.status == "True"))`,
+				},
+				Output: registry.MappingOutput{
+					Status: registry.MappingExpression{
+						Expression: `"True"`,
+					},
+					Reason: registry.MappingExpression{
+						Expression: `"CustomOK"`,
+					},
+					Message: registry.MappingExpression{
+						Expression: `"Custom condition is ready"`,
+					},
+				},
+			},
+		},
+	})
+
+	mockDao := newMockResourceDao()
+	// Conditions now come from entity descriptor registered above
+	svc, _, _, rcDao := newTestResourceServiceWithConditions(mockDao)
+
+	cluster := testResource("Cluster", "cl-1", "test-cluster")
+	cluster.Generation = 1
+	mockDao.addResource(cluster)
+
+	// Report adapter status with custom condition
+	req := &api.AdapterStatus{
+		Adapter:            "test-adapter",
+		ObservedGeneration: 1,
+		LastReportTime:     time.Now().UTC(),
+		Conditions: testConditionsJSON(
+			api.AdapterCondition{Type: api.AdapterConditionTypeAvailable, Status: api.AdapterConditionTrue},
+			api.AdapterCondition{Type: api.AdapterConditionTypeApplied, Status: api.AdapterConditionTrue},
+			api.AdapterCondition{Type: api.AdapterConditionTypeHealth, Status: api.AdapterConditionTrue},
+			api.AdapterCondition{Type: "CustomCondition", Status: api.AdapterConditionTrue},
+		),
+	}
+
+	result, svcErr := svc.ProcessAdapterStatus(context.Background(), "Cluster", cluster.ID, req)
+	Expect(svcErr).To(BeNil())
+	Expect(result).ToNot(BeNil())
+
+	// Verify mapped condition was created
+	conditions := rcDao.conditions[cluster.ID]
+	Expect(conditions).ToNot(BeEmpty())
+
+	// Should have standard conditions + mapped condition
+	var customReady *api.ResourceCondition
+	for i := range conditions {
+		if conditions[i].Type == "CustomReady" {
+			customReady = &conditions[i]
+			break
+		}
+	}
+
+	Expect(customReady).ToNot(BeNil(), "CustomReady condition should be created by mapper")
+	Expect(customReady.Status).To(Equal(api.ConditionTrue))
+	Expect(*customReady.Reason).To(Equal("CustomOK"))
+	Expect(*customReady.Message).To(Equal("Custom condition is ready"))
+	Expect(customReady.ObservedGeneration).To(
+		Equal(cluster.Generation),
+		"ObservedGeneration should match resource generation",
+	)
 }

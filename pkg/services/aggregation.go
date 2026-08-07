@@ -7,10 +7,10 @@ import (
 	"sort"
 	"strings"
 	"time"
-	"unicode"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/util"
 )
 
 // mandatoryConditions returns the condition types that must be present in all adapter status updates.
@@ -59,37 +59,6 @@ func ValidateMandatoryConditions(conditions []api.AdapterCondition) (errorType, 
 }
 
 // --- Aggregated Reconciled / LastKnownReconciled ----------------------------------
-
-// adapterConditionSuffixMap allows overriding the default suffix for specific adapters (reserved).
-var adapterConditionSuffixMap = map[string]string{}
-
-// MapAdapterToConditionType converts an adapter name to a semantic condition type (PascalCase + suffix).
-// Used to derive the type name for per-adapter conditions mirrored into resource status
-// (e.g. "adapter1" → "Adapter1Successful", "my-adapter" → "MyAdapterSuccessful").
-func MapAdapterToConditionType(adapterName string) string {
-	return mapAdapterToConditionType(adapterName, adapterConditionSuffixMap)
-}
-
-func mapAdapterToConditionType(adapterName string, suffixMap map[string]string) string {
-	suffix, exists := suffixMap[adapterName]
-	if !exists {
-		suffix = "Successful"
-	}
-
-	parts := strings.Split(adapterName, "-")
-	var result strings.Builder
-
-	for _, part := range parts {
-		if len(part) > 0 {
-			runes := []rune(part)
-			runes[0] = unicode.ToUpper(runes[0])
-			result.WriteString(string(runes))
-		}
-	}
-
-	result.WriteString(suffix)
-	return result.String()
-}
 
 // AggregateResourceStatusInput carries everything needed to compute deterministic conditions.
 // RefTime must be resource.updated_time (never time.Now) so results are reproducible.
@@ -683,7 +652,7 @@ func computeGenericLastTransitionTime(
 }
 
 // computeAdapterConditions produces one ResourceCondition per required adapter that has reported.
-// The condition type is derived from the adapter name via MapAdapterToConditionType.
+// The condition type is derived from the adapter name via util.MapAdapterToConditionType.
 // Status, reason, and message are taken from the adapter's Available condition snapshot.
 // last_transition_time is updated only when the status (True/False) changes from the previous value.
 func computeAdapterConditions(
@@ -698,7 +667,7 @@ func computeAdapterConditions(
 		if !ok {
 			continue
 		}
-		condType := MapAdapterToConditionType(adapterName)
+		condType := util.MapAdapterToConditionType(adapterName)
 		prev := prevByType[condType]
 
 		status := api.ConditionFalse

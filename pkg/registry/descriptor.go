@@ -38,10 +38,12 @@ type EntityDescriptor struct {
 	RequiredAdapters []string `mapstructure:"required_adapters" json:"required_adapters,omitempty"`
 	// non-ownership associations to other entity types (HYPERFLEET-1156)
 	References []ReferenceDescriptor `mapstructure:"references" json:"references,omitempty"`
-	// panic at startup if SpecSchemaName missing from spec
-	RequireSpecSchema bool `mapstructure:"require_spec_schema" json:"require_spec_schema,omitempty"`
+	// CEL-based condition mapping rules for this entity type
+	Conditions []ConditionMappingRule `mapstructure:"conditions" json:"conditions,omitempty"`
 	// minimum name length (0 = no constraint)
 	NameMinLen int `mapstructure:"name_min_len" json:"name_min_len,omitempty"`
 	// maximum name length (0 = no constraint)
 	NameMaxLen int `mapstructure:"name_max_len" json:"name_max_len,omitempty"`
+	// panic at startup if SpecSchemaName missing from spec
+	RequireSpecSchema bool `mapstructure:"require_spec_schema" json:"require_spec_schema,omitempty"`
 }
