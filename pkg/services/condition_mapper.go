@@ -221,12 +221,8 @@ func (m *ConditionMapper) evaluateRule(
 	reasonStr := extractString(reasonResult)
 	messageStr := extractString(messageResult)
 
-	// Validate field lengths and truncate message if needed
-	validatedReason, validatedMessage, err := m.validateFieldLengths(ctx, rule, reasonStr, messageStr)
-	if err != nil {
-		// Propagate error to trigger rollback (consistent with CEL evaluation error handling)
-		return nil, fmt.Errorf("field validation failed for %s: %w", rule.conditionType, err)
-	}
+	// Validate field lengths and truncate if needed
+	validatedReason, validatedMessage := m.validateFieldLengths(ctx, rule, reasonStr, messageStr)
 
 	// Build the mapped condition with all required fields
 	return m.buildMappedCondition(
@@ -234,15 +230,13 @@ func (m *ConditionMapper) evaluateRule(
 	)
 }
 
-// validateFieldLengths validates and enforces field length constraints
-// Returns (validatedReason, validatedMessage, error)
+// validateFieldLengths enforces field length constraints by truncating oversized values.
 func (m *ConditionMapper) validateFieldLengths(
 	ctx context.Context,
 	rule *compiledRule,
 	reasonStr string,
 	messageStr string,
-) (string, string, error) {
-	// Truncate reason if too long (rune-aware to preserve valid UTF-8)
+) (string, string) {
 	validatedReason := reasonStr
 	if len(reasonStr) > registry.MaxConditionReasonLength {
 		validatedReason = truncateUTF8(reasonStr, registry.MaxConditionReasonLength)
@@ -250,7 +244,6 @@ func (m *ConditionMapper) validateFieldLengths(
 			Info("Condition reason truncated to max length")
 	}
 
-	// Truncate message if too long (rune-aware to preserve valid UTF-8)
 	validatedMessage := messageStr
 	if len(messageStr) > registry.MaxConditionMessageLength {
 		validatedMessage = truncateUTF8(messageStr, registry.MaxConditionMessageLength)
@@ -258,7 +251,7 @@ func (m *ConditionMapper) validateFieldLengths(
 			Info("Condition message truncated to max length")
 	}
 
-	return validatedReason, validatedMessage, nil
+	return validatedReason, validatedMessage
 }
 
 // buildMappedCondition builds the final ResourceCondition from validated inputs
@@ -340,7 +333,10 @@ func extractResourceGeneration(
 // compileRule compiles all CEL expressions in a mapping rule
 func compileRule(env *cel.Env, condType string, rule registry.ConditionMappingRule) (*compiledRule, error) {
 	if len(condType) > registry.MaxConditionTypeLength {
-		return nil, fmt.Errorf("condition type exceeds max length %d (got %d)", registry.MaxConditionTypeLength, len(condType))
+		return nil, fmt.Errorf(
+			"condition type exceeds max length %d (got %d)",
+			registry.MaxConditionTypeLength, len(condType),
+		)
 	}
 
 	// Compile when expression
