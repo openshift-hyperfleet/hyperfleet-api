@@ -279,7 +279,7 @@ var _ dao.ResourceConditionDao = &resourceConditionMock{}
 
 func newTestResourceService(mockDao *mockResourceDao) (ResourceService, *mockResourceDao, *resourceGenericMock) {
 	generic := &resourceGenericMock{}
-	svc := NewResourceService(
+	svc, _ := NewResourceService(
 		mockDao, newMockResourceLabelDao(), newMockAdapterStatusDao(), newResourceConditionMock(), generic,
 	)
 	return svc, mockDao, generic
@@ -290,7 +290,7 @@ func newTestResourceServiceWithLabelDao(
 ) (ResourceService, *mockResourceDao, *resourceGenericMock, *mockResourceLabelDao) {
 	generic := &resourceGenericMock{}
 	labelDao := newMockResourceLabelDao()
-	svc := NewResourceService(
+	svc, _ := NewResourceService(
 		mockDao, labelDao, newMockAdapterStatusDao(), newResourceConditionMock(), generic,
 	)
 	return svc, mockDao, generic, labelDao
@@ -302,7 +302,7 @@ func newTestResourceServiceWithAdapterStatus(
 	asDao := newMockAdapterStatusDao()
 	rcDao := newResourceConditionMock()
 	generic := &resourceGenericMock{}
-	svc := NewResourceService(mockDao, newMockResourceLabelDao(), asDao, rcDao, generic)
+	svc, _ := NewResourceService(mockDao, newMockResourceLabelDao(), asDao, rcDao, generic)
 	return svc, mockDao, asDao, rcDao
 }
 
@@ -312,7 +312,7 @@ func newTestResourceServiceWithConditions(
 	asDao := newMockAdapterStatusDao()
 	rcDao := newResourceConditionMock()
 	generic := &resourceGenericMock{}
-	svc := NewResourceService(mockDao, newMockResourceLabelDao(), asDao, rcDao, generic)
+	svc, _ := NewResourceService(mockDao, newMockResourceLabelDao(), asDao, rcDao, generic)
 	return svc, mockDao, asDao, rcDao
 }
 

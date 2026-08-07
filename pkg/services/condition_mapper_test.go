@@ -585,7 +585,7 @@ func TestAdapterStatusToMapWithUnknownCheck_NilGuard(t *testing.T) {
 		}
 
 		// Should not panic
-		activation := testBuildActivation(t, context.Background(), statuses, map[string]interface{}{}, "Cluster")
+		activation := (&ConditionMapper{resourceKind: "Cluster"}).buildActivationWithCache(context.Background(), statuses, map[string]interface{}{})
 
 		statusesList := activation[util.CELVarStatuses].([]interface{})
 		// Nil element should be skipped, only valid adapter present
@@ -1005,7 +1005,7 @@ func TestBuildActivation_NumericTypesConsistency(t *testing.T) {
 			"generation": 5, // Will be float64 after JSON round-trip
 		}
 
-		activation := testBuildActivation(t, context.Background(), statuses, resource, "Cluster")
+		activation := (&ConditionMapper{resourceKind: "Cluster"}).buildActivationWithCache(context.Background(), statuses, resource)
 
 		// Verify statuses[0].observed_generation is float64
 		statusesList := activation[util.CELVarStatuses].([]interface{})
@@ -1750,31 +1750,5 @@ func TestConditionMapper_ConcurrentApply(t *testing.T) {
 		Expect(res.err).ToNot(HaveOccurred())
 		Expect(res.conditions).To(HaveLen(1))
 		Expect(res.conditions[0].Type).To(Equal("TestCondition"))
-	}
-}
-
-// testBuildActivation is the test-only variant of buildActivationWithCache that doesn't use caching.
-// Used by unit tests to validate CEL context construction without needing a full ConditionMapper instance.
-// Production code exclusively uses buildActivationWithCache through the mapper.
-func testBuildActivation(
-	t *testing.T,
-	ctx context.Context,
-	statuses api.AdapterStatusList,
-	resource interface{},
-	resourceKind string,
-) map[string]interface{} {
-	t.Helper()
-
-	// Convert adapter statuses using shared logic
-	statusesList := buildStatusesList(ctx, statuses)
-
-	// Convert resource to map and mask sensitive fields (defense-in-depth)
-	// Matches the protection applied to adapter data to prevent credential leakage
-	resourceMap := util.MaskSensitiveFields(resourceToMap(ctx, resource, resourceKind))
-
-	return map[string]interface{}{
-		util.CELVarStatuses: statusesList,
-		util.CELVarResource: resourceMap,
-		util.CELVarEnv:      emptyEnvMap, // Shared package-level var
 	}
 }

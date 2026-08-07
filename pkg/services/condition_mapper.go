@@ -21,11 +21,6 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/util"
 )
 
-// emptyEnvMap is a shared empty map for the env CEL variable
-// Hoisted to package level to avoid allocation on every Apply() call
-// Safe to share because it is never mutated (env variables not yet implemented)
-var emptyEnvMap = map[string]string{}
-
 // CEL adapter status map keys
 // Used in both nil-guard and normal paths to prevent key mismatches
 const (
@@ -150,7 +145,6 @@ func (m *ConditionMapper) Apply(ctx context.Context, input ApplyInput) ([]api.Re
 	// Use cached resource map when possible to avoid redundant marshal + mask operations
 	activation := m.buildActivationWithCache(ctx, input.AdapterStatuses, input.Resource)
 
-	// Build lookup map for previous conditions to avoid O(N×M) linear scans
 	prevConditionsByType := make(map[string]*api.ResourceCondition, len(input.PrevConditions))
 	for i := range input.PrevConditions {
 		prevConditionsByType[input.PrevConditions[i].Type] = &input.PrevConditions[i]
@@ -163,7 +157,6 @@ func (m *ConditionMapper) Apply(ctx context.Context, input ApplyInput) ([]api.Re
 	for _, name := range m.sortedNames {
 		rule := m.rules[name]
 
-		// Lookup previous condition for this type (O(1) instead of O(N))
 		prevCondition := prevConditionsByType[rule.conditionType]
 
 		condition, err := m.evaluateRule(ctx, rule, activation, input.RefTime, prevCondition)
@@ -243,24 +236,12 @@ func (m *ConditionMapper) evaluateRule(
 
 // validateFieldLengths validates and enforces field length constraints
 // Returns (validatedReason, validatedMessage, error)
-// If error is non-nil, the condition should be skipped
 func (m *ConditionMapper) validateFieldLengths(
 	ctx context.Context,
 	rule *compiledRule,
 	reasonStr string,
 	messageStr string,
 ) (string, string, error) {
-	// Validate condition type length
-	if len(rule.conditionType) > registry.MaxConditionTypeLength {
-		logger.With(
-			ctx,
-			"resource_kind", m.resourceKind,
-			"condition_type", rule.conditionType,
-			"length", len(rule.conditionType),
-		).Warn("Condition type exceeds max length, skipping")
-		return "", "", fmt.Errorf("condition type exceeds max length")
-	}
-
 	// Truncate reason if too long (rune-aware to preserve valid UTF-8)
 	validatedReason := reasonStr
 	if len(reasonStr) > registry.MaxConditionReasonLength {
@@ -358,6 +339,10 @@ func extractResourceGeneration(
 
 // compileRule compiles all CEL expressions in a mapping rule
 func compileRule(env *cel.Env, condType string, rule registry.ConditionMappingRule) (*compiledRule, error) {
+	if len(condType) > registry.MaxConditionTypeLength {
+		return nil, fmt.Errorf("condition type exceeds max length %d (got %d)", registry.MaxConditionTypeLength, len(condType))
+	}
+
 	// Compile when expression
 	whenPrg, err := compileExpression(env, rule.When.Expression)
 	if err != nil {
@@ -432,7 +417,6 @@ func (m *ConditionMapper) buildActivationWithCache(
 	return map[string]interface{}{
 		util.CELVarStatuses: statusesList,
 		util.CELVarResource: resourceMap,
-		util.CELVarEnv:      emptyEnvMap,
 	}
 }
 

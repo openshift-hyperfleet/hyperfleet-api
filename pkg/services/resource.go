@@ -39,35 +39,33 @@ func NewResourceService(
 	adapterStatusDao dao.AdapterStatusDao,
 	resourceConditionDao dao.ResourceConditionDao,
 	generic GenericService,
-) ResourceService {
+) (ResourceService, error) {
+	mappers, err := buildConditionMappers(registry.All())
+	if err != nil {
+		return nil, err
+	}
 	return &sqlResourceService{
 		resourceDao:          resourceDao,
 		resourceLabelDao:     resourceLabelDao,
 		adapterStatusDao:     adapterStatusDao,
 		resourceConditionDao: resourceConditionDao,
 		generic:              generic,
-		conditionMappers:     buildConditionMappers(registry.All()),
-	}
+		conditionMappers:     mappers,
+	}, nil
 }
 
-func buildConditionMappers(entities []registry.EntityDescriptor) map[string]*ConditionMapper {
+func buildConditionMappers(entities []registry.EntityDescriptor) (map[string]*ConditionMapper, error) {
 	conditionMappers := make(map[string]*ConditionMapper)
 	for _, descriptor := range entities {
 		if len(descriptor.Conditions) > 0 {
 			mapper, err := NewConditionMapper(descriptor.Kind, descriptor.Conditions)
 			if err != nil {
-				// This should not happen since config was validated at startup — indicates a code bug
-				// (e.g., validation logic vs. mapper logic mismatch). Continue in degraded mode
-				// (no CEL mapping) to keep service available.
-				logger.With(context.Background(), "resource_kind", descriptor.Kind).
-					WithError(err).
-					Error("Failed to create condition mapper, continuing without CEL mapping")
-			} else {
-				conditionMappers[descriptor.Kind] = mapper
+				return nil, fmt.Errorf("failed to create condition mapper for %s: %w", descriptor.Kind, err)
 			}
+			conditionMappers[descriptor.Kind] = mapper
 		}
 	}
-	return conditionMappers
+	return conditionMappers, nil
 }
 
 var _ ResourceService = &sqlResourceService{}

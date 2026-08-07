@@ -17,7 +17,7 @@ var reservedConditionTypes = map[string]bool{
 
 // Field length constraints
 const (
-	MaxConditionTypeLength    = 128
+	MaxConditionTypeLength    = 100
 	MaxConditionReasonLength  = 256
 	MaxConditionMessageLength = 2048
 )
@@ -51,7 +51,7 @@ func ValidateEntityConditions(entities []EntityDescriptor, descriptor EntityDesc
 		return nil
 	}
 
-	// Build reserved types for this specific entity
+	// Build reserved types from all entities (adapter-synthesized types are global)
 	reserved := buildReservedConditionTypes(entities)
 
 	// Create CEL environment once

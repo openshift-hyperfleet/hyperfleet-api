@@ -3,7 +3,7 @@ package util
 import (
 	"testing"
 
-	. "github.com/onsi/gomega"
+	"github.com/onsi/gomega"
 )
 
 func TestMapAdapterToConditionType(t *testing.T) {
@@ -24,9 +24,9 @@ func TestMapAdapterToConditionType(t *testing.T) {
 
 	for _, tt := range testCases {
 		t.Run(tt.adapter, func(t *testing.T) {
-			RegisterTestingT(t)
+			g := gomega.NewWithT(t)
 			result := MapAdapterToConditionType(tt.adapter)
-			Expect(result).To(Equal(tt.expected),
+			g.Expect(result).To(gomega.Equal(tt.expected),
 				"MapAdapterToConditionType(%q) should return %q", tt.adapter, tt.expected)
 		})
 	}

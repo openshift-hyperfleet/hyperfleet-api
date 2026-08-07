@@ -46,7 +46,6 @@ const CELCostLimit = 10000
 const (
 	CELVarStatuses = "statuses" // Array of adapter statuses
 	CELVarResource = "resource" // Full cluster/nodepool object
-	CELVarEnv      = "env"      // Environment variables map
 )
 
 // NewConditionMappingEnvironment creates a CEL environment for condition mapping
@@ -60,7 +59,6 @@ func NewConditionMappingEnvironment() (*cel.Env, error) {
 		// Context variables
 		cel.Variable(CELVarStatuses, cel.ListType(cel.DynType)),
 		cel.Variable(CELVarResource, cel.DynType),
-		cel.Variable(CELVarEnv, cel.MapType(cel.StringType, cel.StringType)),
 
 		// Custom functions (reused from hyperfleet-adapter patterns)
 		cel.Function("toJson",
