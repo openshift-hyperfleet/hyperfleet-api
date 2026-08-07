@@ -585,7 +585,10 @@ func TestAdapterStatusToMapWithUnknownCheck_NilGuard(t *testing.T) {
 		}
 
 		// Should not panic
-		activation := (&ConditionMapper{resourceKind: "Cluster"}).buildActivationWithCache(context.Background(), statuses, map[string]interface{}{})
+		mapper := &ConditionMapper{resourceKind: "Cluster"}
+		activation := mapper.buildActivationWithCache(
+			context.Background(), statuses, map[string]interface{}{},
+		)
 
 		statusesList := activation[util.CELVarStatuses].([]interface{})
 		// Nil element should be skipped, only valid adapter present
@@ -1005,7 +1008,10 @@ func TestBuildActivation_NumericTypesConsistency(t *testing.T) {
 			"generation": 5, // Will be float64 after JSON round-trip
 		}
 
-		activation := (&ConditionMapper{resourceKind: "Cluster"}).buildActivationWithCache(context.Background(), statuses, resource)
+		mapper := &ConditionMapper{resourceKind: "Cluster"}
+		activation := mapper.buildActivationWithCache(
+			context.Background(), statuses, resource,
+		)
 
 		// Verify statuses[0].observed_generation is float64
 		statusesList := activation[util.CELVarStatuses].([]interface{})
