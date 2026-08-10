@@ -221,37 +221,35 @@ func (m *ConditionMapper) evaluateRule(
 	reasonStr := extractString(reasonResult)
 	messageStr := extractString(messageResult)
 
-	// Validate field lengths and truncate if needed
-	validatedReason, validatedMessage := m.validateFieldLengths(ctx, rule, reasonStr, messageStr)
+	// Skip condition if reason exceeds max length (per JIRA AC: "skip condition")
+	if len(reasonStr) > registry.MaxConditionReasonLength {
+		logger.With(ctx, "resource_kind", m.resourceKind, "condition_type", rule.conditionType).
+			Warn("Condition skipped: reason exceeds max length")
+		return nil, nil
+	}
+
+	// Truncate message if needed (message is best-effort, not a skip trigger)
+	validatedMessage := m.truncateMessage(ctx, rule, messageStr)
 
 	// Build the mapped condition with all required fields
 	return m.buildMappedCondition(
-		ctx, rule, statusStr, validatedReason, validatedMessage, activation, refTime, prevCondition,
+		ctx, rule, statusStr, reasonStr, validatedMessage, activation, refTime, prevCondition,
 	)
 }
 
-// validateFieldLengths enforces field length constraints by truncating oversized values.
-func (m *ConditionMapper) validateFieldLengths(
+// truncateMessage truncates message if it exceeds the max length.
+func (m *ConditionMapper) truncateMessage(
 	ctx context.Context,
 	rule *compiledRule,
-	reasonStr string,
 	messageStr string,
-) (string, string) {
-	validatedReason := reasonStr
-	if len(reasonStr) > registry.MaxConditionReasonLength {
-		validatedReason = truncateUTF8(reasonStr, registry.MaxConditionReasonLength)
-		logger.With(ctx, "resource_kind", m.resourceKind, "condition_type", rule.conditionType).
-			Info("Condition reason truncated to max length")
-	}
-
-	validatedMessage := messageStr
+) string {
 	if len(messageStr) > registry.MaxConditionMessageLength {
-		validatedMessage = truncateUTF8(messageStr, registry.MaxConditionMessageLength)
+		truncated := truncateUTF8(messageStr, registry.MaxConditionMessageLength)
 		logger.With(ctx, "resource_kind", m.resourceKind, "condition_type", rule.conditionType).
 			Info("Condition message truncated to max length")
+		return truncated
 	}
-
-	return validatedReason, validatedMessage
+	return messageStr
 }
 
 // buildMappedCondition builds the final ResourceCondition from validated inputs

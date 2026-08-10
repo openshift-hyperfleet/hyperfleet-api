@@ -1578,6 +1578,45 @@ func TestConditionMapper_MessageTruncationThroughPipeline(t *testing.T) {
 	Expect(*result[0].Reason).To(Equal("TestReason"), "reason should be unchanged")
 }
 
+func TestConditionMapper_ReasonExceedsMaxSkipsCondition(t *testing.T) {
+	RegisterTestingT(t)
+
+	longReason := strings.Repeat("R", registry.MaxConditionReasonLength+1)
+	reasonExpr := fmt.Sprintf(`"%s"`, longReason)
+
+	rules := []registry.ConditionMappingRule{
+		{Type: "TestCondition",
+			When: registry.MappingExpression{
+				Expression: "true",
+			},
+			Output: registry.MappingOutput{
+				Status: registry.MappingExpression{
+					Expression: `"True"`,
+				},
+				Reason: registry.MappingExpression{
+					Expression: reasonExpr,
+				},
+				Message: registry.MappingExpression{
+					Expression: `"msg"`,
+				},
+			},
+		},
+	}
+
+	mapper, err := NewConditionMapper("Cluster", rules)
+	Expect(err).NotTo(HaveOccurred())
+
+	input := ApplyInput{
+		AdapterStatuses: api.AdapterStatusList{},
+		Resource:        map[string]interface{}{},
+		RefTime:         time.Now(),
+	}
+
+	result, err := mapper.Apply(context.Background(), input)
+	Expect(err).ToNot(HaveOccurred())
+	Expect(result).To(BeEmpty(), "condition should be skipped when reason exceeds max length")
+}
+
 func TestConditionMapper_OutputExpressionRuntimeError(t *testing.T) {
 	t.Run("status expression runtime error returns error", func(t *testing.T) {
 		RegisterTestingT(t)

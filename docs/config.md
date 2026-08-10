@@ -354,7 +354,7 @@ condition messages/reasons. See `pkg/util/mask_sensitive.go` for the full patter
 | Field | Limit | Behavior |
 |-------|-------|----------|
 | `type` | 128 bytes | Validation error (prevents startup) |
-| `reason` | 256 bytes | Truncated if exceeded |
+| `reason` | 256 bytes | Condition skipped if exceeded |
 | `message` | 2048 bytes | Truncated if exceeded |
 
 **Example:**

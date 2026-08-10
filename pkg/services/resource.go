@@ -42,7 +42,7 @@ func NewResourceService(
 ) (ResourceService, error) {
 	mappers, err := buildConditionMappers(registry.All())
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("initialize resource service: %w", err)
 	}
 	return &sqlResourceService{
 		resourceDao:          resourceDao,
