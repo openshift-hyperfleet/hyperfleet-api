@@ -1,6 +1,6 @@
 # hyperfleet-api
 
-![Version: 1.1.0](https://img.shields.io/badge/Version-1.1.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.0.0-dev](https://img.shields.io/badge/AppVersion-0.0.0--dev-informational?style=flat-square)
+![Version: 1.2.0](https://img.shields.io/badge/Version-1.2.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.0.0-dev](https://img.shields.io/badge/AppVersion-0.0.0--dev-informational?style=flat-square)
 
 HyperFleet API - Cluster Lifecycle Management Service
 
@@ -149,7 +149,7 @@ helm install hyperfleet-api oci://REGISTRY/hyperfleet-api \
 | database.postgresql.persistence.enabled | bool | `false` | Enable persistent storage (uses emptyDir when disabled) |
 | database.postgresql.persistence.size | string | `"1Gi"` | Volume size |
 | database.postgresql.persistence.storageClass | string | `""` | StorageClass name (empty for cluster default) |
-| monitoring | object | `{"podMonitoring":{"additionalLabels":{},"enabled":false,"interval":"30s","metricRelabeling":[],"tlsConfig":{"insecureSkipVerify":false}},"prometheusRule":{"additionalLabels":{},"enabled":false,"namespace":"","rules":{"reconciliationStuck":{"for":"5m","runbookUrl":""},"reconciliationTimeout":{"durationSeconds":1800,"for":"5m","runbookUrl":""}}}}` | Monitoring and alerting configuration |
+| monitoring | object | `{"dashboard":{"enabled":false},"podMonitoring":{"additionalLabels":{},"enabled":false,"interval":"30s","metricRelabeling":[],"tlsConfig":{"insecureSkipVerify":false}},"prometheusRule":{"additionalLabels":{},"enabled":false,"namespace":"","rules":{"reconciliationStuck":{"for":"5m","runbookUrl":""},"reconciliationTimeout":{"durationSeconds":1800,"for":"5m","runbookUrl":""}}},"serviceMonitor":{"enabled":false,"honorLabels":true,"interval":"30s","labels":{},"metricRelabeling":[],"namespace":"","namespaceSelector":{},"scrapeTimeout":"10s"},"tracing":{"enabled":false,"otlpEndpoint":"","otlpProtocol":"grpc","propagators":"tracecontext,baggage","sampler":"parentbased_always_on","samplerArg":"","serviceName":"hyperfleet-api"}}` | Monitoring and alerting configuration |
 | monitoring.podMonitoring | object | `{"additionalLabels":{},"enabled":false,"interval":"30s","metricRelabeling":[],"tlsConfig":{"insecureSkipVerify":false}}` | PodMonitoring for Google Managed Prometheus (GMP) scraping |
 | monitoring.podMonitoring.enabled | bool | `false` | Create a PodMonitoring resource |
 | monitoring.podMonitoring.interval | string | `"30s"` | Scrape interval |
@@ -169,20 +169,25 @@ helm install hyperfleet-api oci://REGISTRY/hyperfleet-api \
 | monitoring.prometheusRule.rules.reconciliationTimeout.durationSeconds | int | `1800` | Stuck duration in seconds that triggers the critical alert |
 | monitoring.prometheusRule.rules.reconciliationTimeout.for | string | `"5m"` | Stabilization window before firing (short — the duration check is the real gate) |
 | monitoring.prometheusRule.rules.reconciliationTimeout.runbookUrl | string | `""` | Runbook URL included in the alert |
-| serviceMonitor | object | `{"enabled":false,"interval":"30s","labels":{},"namespace":"","scrapeTimeout":"10s"}` | ServiceMonitor for Prometheus Operator scrape configuration |
-| serviceMonitor.enabled | bool | `false` | Create a ServiceMonitor resource |
-| serviceMonitor.interval | string | `"30s"` | Scrape interval |
-| serviceMonitor.scrapeTimeout | string | `"10s"` | Scrape timeout |
-| serviceMonitor.labels | object | `{}` | Additional labels for ServiceMonitor discovery |
-| serviceMonitor.namespace | string | `""` | Namespace to create the ServiceMonitor in (defaults to release namespace) |
-| tracing | object | `{"enabled":false,"otlpEndpoint":"","otlpProtocol":"grpc","propagators":"tracecontext,baggage","sampler":"parentbased_traceidratio","samplerArg":"1.0","serviceName":"hyperfleet-api"}` | Distributed tracing configuration (OpenTelemetry) |
-| tracing.enabled | bool | `false` | Enable trace export |
-| tracing.serviceName | string | `"hyperfleet-api"` | Service name reported in traces |
-| tracing.otlpEndpoint | string | `""` | OTLP exporter endpoint (traces go to stdout when empty) |
-| tracing.otlpProtocol | string | `"grpc"` | OTLP protocol (`grpc` or `http/protobuf`) |
-| tracing.sampler | string | `"parentbased_traceidratio"` | Sampler type |
-| tracing.samplerArg | string | `"1.0"` | Sampling rate (`1.0` for dev, `0.01` for production) |
-| tracing.propagators | string | `"tracecontext,baggage"` | Context propagation formats |
+| monitoring.serviceMonitor | object | `{"enabled":false,"honorLabels":true,"interval":"30s","labels":{},"metricRelabeling":[],"namespace":"","namespaceSelector":{},"scrapeTimeout":"10s"}` | ServiceMonitor for Prometheus Operator scrape configuration |
+| monitoring.serviceMonitor.enabled | bool | `false` | Create a ServiceMonitor resource |
+| monitoring.serviceMonitor.interval | string | `"30s"` | Scrape interval |
+| monitoring.serviceMonitor.scrapeTimeout | string | `"10s"` | Scrape timeout (must be less than interval) |
+| monitoring.serviceMonitor.labels | object | `{}` | Additional labels for ServiceMonitor discovery |
+| monitoring.serviceMonitor.honorLabels | bool | `true` | Honor labels from the target to avoid overwriting |
+| monitoring.serviceMonitor.metricRelabeling | list | `[]` | Metric relabel configs applied before ingestion |
+| monitoring.serviceMonitor.namespaceSelector | object | `{}` | Namespace selector for cross-namespace monitoring |
+| monitoring.serviceMonitor.namespace | string | `""` | Namespace to create the ServiceMonitor in (defaults to release namespace) |
+| monitoring.dashboard | object | `{"enabled":false}` | Grafana dashboard provisioning via sidecar ConfigMap |
+| monitoring.dashboard.enabled | bool | `false` | Create a ConfigMap with the Grafana dashboard JSON |
+| monitoring.tracing | object | `{"enabled":false,"otlpEndpoint":"","otlpProtocol":"grpc","propagators":"tracecontext,baggage","sampler":"parentbased_always_on","samplerArg":"","serviceName":"hyperfleet-api"}` | Distributed tracing configuration (OpenTelemetry) |
+| monitoring.tracing.enabled | bool | `false` | Enable trace export |
+| monitoring.tracing.serviceName | string | `"hyperfleet-api"` | Service name reported in traces |
+| monitoring.tracing.otlpEndpoint | string | `""` | OTLP exporter endpoint (traces go to stdout when empty) |
+| monitoring.tracing.otlpProtocol | string | `"grpc"` | OTLP protocol (`grpc` or `http/protobuf`) |
+| monitoring.tracing.sampler | string | `"parentbased_always_on"` | Sampler type |
+| monitoring.tracing.samplerArg | string | `""` | Sampling rate (only used with ratio-based samplers) |
+| monitoring.tracing.propagators | string | `"tracecontext,baggage"` | Context propagation formats |
 | nativeSidecars | list | `[]` | Native sidecar containers (Kubernetes 1.28+). Native sidecars are init containers with `restartPolicy: Always` — they start before other init containers and keep running throughout the pod lifecycle. Use this for database proxies that must be available during `db-migrate`. Each entry is a full Kubernetes container spec. |
 | sidecars | list | `[]` | Regular sidecar containers. These start after init containers complete. Use `nativeSidecars` above for containers that must be available during init (e.g. database proxies). Each entry is a full Kubernetes container spec. |
 | validationSchema | object | `{"content":"","enabled":false,"existingConfigMap":""}` | Validation schema configuration. Supply a custom OpenAPI schema for resource spec validation. When enabled, the schema is mounted into the container and every create/update request is validated against it. The API will fail to start if the schema is invalid. |
