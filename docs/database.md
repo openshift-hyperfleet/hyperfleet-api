@@ -65,6 +65,7 @@ Migrations are:
 - Non-destructive (never drops columns or tables)
 - Additive (creates missing tables, columns, indexes)
 - Run via `./bin/hyperfleet-api migrate`
+- Fix-forward only — a bad migration is corrected by a new migration, never a rollback
 
 ### Migration Coordination
 
