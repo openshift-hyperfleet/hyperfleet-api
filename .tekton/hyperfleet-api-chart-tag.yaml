@@ -1,0 +1,277 @@
+# Helm chart OCI build pipeline — tag trigger (HYPERFLEET-1214).
+#
+# Builds a versioned chart when a semver tag is pushed (v1.0.0 or v1.0.0-rc1).
+# Extracts the version from the git tag and passes it as CHART_VERSION and
+# APP_VERSION so the published chart carries the release version instead of the
+# commit-distance default.
+#
+# Modeled on hyperfleet-api-chart-push.yaml (main merge trigger) with the CEL
+# expression and extract-version task from hyperfleet-api-tag.yaml.
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  annotations:
+    build.appstudio.openshift.io/repo: https://github.com/openshift-hyperfleet/hyperfleet-api?rev={{revision}}
+    build.appstudio.redhat.com/commit_sha: '{{revision}}'
+    build.appstudio.redhat.com/target_branch: '{{target_branch}}'
+    pipelinesascode.tekton.dev/cancel-in-progress: "false"
+    pipelinesascode.tekton.dev/max-keep-runs: "3"
+    pipelinesascode.tekton.dev/on-cel-expression: |
+      event == "push"
+      && target_branch.matches("^refs/tags/v[0-9]+\\.[0-9]+\\.[0-9]+(-rc[0-9]+)?$")
+  creationTimestamp: null
+  labels:
+    appstudio.openshift.io/application: hyperfleet-charts
+    appstudio.openshift.io/component: hyperfleet-api-chart
+    pipelines.appstudio.openshift.io/type: build
+  name: hyperfleet-api-chart-on-tag
+  namespace: hyperfleet-tenant
+spec:
+  params:
+  - name: git-url
+    value: '{{source_url}}'
+  - name: revision
+    value: '{{revision}}'
+  - name: output-image
+    value: quay.io/redhat-user-workloads/hyperfleet-tenant/hyperfleet/hyperfleet-api-chart:{{revision}}
+  - name: path-context
+    value: charts
+  - name: target-branch
+    value: '{{target_branch}}'
+  pipelineSpec:
+    description: |
+      Builds a versioned Helm chart OCI artifact when a semver tag is pushed.
+    params:
+    - description: Source Repository URL
+      name: git-url
+      type: string
+    - default: ""
+      description: Revision of the Source Repository
+      name: revision
+      type: string
+    - description: Fully Qualified Output Image
+      name: output-image
+      type: string
+    - default: .
+      description: Path to the source code of an application's component from where
+        to build the chart.
+      name: path-context
+      type: string
+    - default: "false"
+      description: Skip checks against built image
+      name: skip-checks
+      type: string
+    - default: ""
+      description: Build dependencies to be prefetched by Cachi2
+      name: prefetch-input
+      type: string
+    - default: ""
+      description: Image tag expiration time, time values could be something like
+        1h, 2d, 3w for hours, days, and weeks, respectively.
+      name: image-expires-after
+      type: string
+    - default: "true"
+      description: Use the package registry proxy when prefetching dependencies
+      name: enable-package-registry-proxy
+      type: string
+    - default: .
+      description: Target directories to scan with SAST tools. Multiple values should
+        be separated with commas.
+      name: sast-target-dirs
+      type: string
+    - default: ""
+      description: Git ref that triggered the build (e.g., refs/tags/v1.0.0-rc1)
+      name: target-branch
+      type: string
+    results:
+    - description: OCI artifact URL of the built Helm chart
+      name: IMAGE_URL
+      value: $(tasks.build-helm-chart.results.IMAGE_URL)
+    - description: Digest of the built Helm chart OCI artifact
+      name: IMAGE_DIGEST
+      value: $(tasks.build-helm-chart.results.IMAGE_DIGEST)
+    - description: Source repository URL, consumed by Tekton Chains for provenance
+      name: CHAINS-GIT_URL
+      value: $(tasks.clone-repository.results.url)
+    - description: Source commit SHA, consumed by Tekton Chains for provenance
+      name: CHAINS-GIT_COMMIT
+      value: $(tasks.clone-repository.results.commit)
+    tasks:
+    - name: init
+      taskRef:
+        params:
+        - name: name
+          value: init
+        - name: bundle
+          value: quay.io/konflux-ci/tekton-catalog/task-init:0.4.3@sha256:fb17ececc359d7e330395d6a562eacbf0089776697ffe1b10c08f91273e6b2c0
+        - name: kind
+          value: task
+        resolver: bundles
+    - name: extract-version
+      params:
+      - name: TAG_REF
+        value: $(params.target-branch)
+      taskSpec:
+        params:
+        - name: TAG_REF
+          type: string
+        results:
+        - name: VERSION
+          description: Semantic version extracted from git tag ref
+        steps:
+        - name: extract
+          image: registry.access.redhat.com/ubi9-minimal:latest
+          script: |
+            #!/usr/bin/env bash
+            VERSION="${TAG_REF#refs/tags/v}"
+            printf '%s' "$VERSION" > "$(results.VERSION.path)"
+          env:
+          - name: TAG_REF
+            value: $(params.TAG_REF)
+      runAfter:
+      - init
+    - name: clone-repository
+      params:
+      - name: url
+        value: $(params.git-url)
+      - name: revision
+        value: $(params.revision)
+      - name: ociStorage
+        value: $(params.output-image).git
+      - name: ociArtifactExpiresAfter
+        value: $(params.image-expires-after)
+      runAfter:
+      - init
+      taskRef:
+        params:
+        - name: name
+          value: git-clone-oci-ta
+        - name: bundle
+          value: quay.io/konflux-ci/tekton-catalog/task-git-clone-oci-ta:0.2.5@sha256:d5f39d5a89e8073774bac1a9b9013709c5931921dd4fb1cf662f800e6c5c9ee7
+        - name: kind
+          value: task
+        resolver: bundles
+      workspaces:
+      - name: basic-auth
+        workspace: git-auth
+    - name: prefetch-dependencies
+      params:
+      - name: input
+        value: $(params.prefetch-input)
+      - name: SOURCE_ARTIFACT
+        value: $(tasks.clone-repository.results.SOURCE_ARTIFACT)
+      - name: ociStorage
+        value: $(params.output-image).prefetch
+      - name: ociArtifactExpiresAfter
+        value: $(params.image-expires-after)
+      - name: enable-package-registry-proxy
+        value: $(params.enable-package-registry-proxy)
+      runAfter:
+      - clone-repository
+      taskRef:
+        params:
+        - name: name
+          value: prefetch-dependencies-oci-ta
+        - name: bundle
+          value: quay.io/konflux-ci/tekton-catalog/task-prefetch-dependencies-oci-ta:0.6.0@sha256:99611be897902ed47741f143d4ca40d0375d4e920a7142142d359953ce25cd33
+        - name: kind
+          value: task
+        resolver: bundles
+      workspaces:
+      - name: git-basic-auth
+        workspace: git-auth
+      - name: netrc
+        workspace: netrc
+    - name: build-helm-chart
+      params:
+      - name: IMAGE
+        value: $(params.output-image)
+      - name: CHART_CONTEXT
+        value: $(params.path-context)
+      - name: COMMIT_SHA
+        value: $(tasks.clone-repository.results.commit)
+      - name: SOURCE_ARTIFACT
+        value: $(tasks.prefetch-dependencies.results.SOURCE_ARTIFACT)
+      - name: CHART_VERSION
+        value: $(tasks.extract-version.results.VERSION)
+      - name: APP_VERSION
+        value: $(tasks.extract-version.results.VERSION)
+      runAfter:
+      - prefetch-dependencies
+      taskRef:
+        params:
+        - name: name
+          value: build-helm-chart-oci-ta
+        - name: bundle
+          value: quay.io/konflux-ci/tekton-catalog/task-build-helm-chart-oci-ta:0.3@sha256:1957c1277bd77f6dcce669c6b303e37331a45ee98c9e6e1a5e0c7caf3025ec27
+        - name: kind
+          value: task
+        resolver: bundles
+    - name: sast-shell-check
+      params:
+      - name: image-digest
+        value: $(tasks.build-helm-chart.results.IMAGE_DIGEST)
+      - name: image-url
+        value: $(tasks.build-helm-chart.results.IMAGE_URL)
+      - name: SOURCE_ARTIFACT
+        value: $(tasks.prefetch-dependencies.results.SOURCE_ARTIFACT)
+      - name: CACHI2_ARTIFACT
+        value: $(tasks.prefetch-dependencies.results.CACHI2_ARTIFACT)
+      - name: TARGET_DIRS
+        value: $(params.sast-target-dirs)
+      runAfter:
+      - build-helm-chart
+      taskRef:
+        params:
+        - name: name
+          value: sast-shell-check-oci-ta
+        - name: bundle
+          value: quay.io/konflux-ci/tekton-catalog/task-sast-shell-check-oci-ta:0.1@sha256:5e4586b010f0d09aeb1cf5a19502a601524ae28b7cad3eaf3c93a058bd9d1acc
+        - name: kind
+          value: task
+        resolver: bundles
+      when:
+      - input: $(params.skip-checks)
+        operator: in
+        values:
+        - "false"
+    - name: sast-unicode-check
+      params:
+      - name: image-digest
+        value: $(tasks.build-helm-chart.results.IMAGE_DIGEST)
+      - name: image-url
+        value: $(tasks.build-helm-chart.results.IMAGE_URL)
+      - name: SOURCE_ARTIFACT
+        value: $(tasks.prefetch-dependencies.results.SOURCE_ARTIFACT)
+      - name: CACHI2_ARTIFACT
+        value: $(tasks.prefetch-dependencies.results.CACHI2_ARTIFACT)
+      - name: TARGET_DIRS
+        value: $(params.sast-target-dirs)
+      runAfter:
+      - build-helm-chart
+      taskRef:
+        params:
+        - name: name
+          value: sast-unicode-check-oci-ta
+        - name: bundle
+          value: quay.io/konflux-ci/tekton-catalog/task-sast-unicode-check-oci-ta:0.4@sha256:eb9d5392f215cb8b52b16382098cac4885b1e6cd989f88ebd83fdb234d283eb9
+        - name: kind
+          value: task
+        resolver: bundles
+      when:
+      - input: $(params.skip-checks)
+        operator: in
+        values:
+        - "false"
+    workspaces:
+    - name: git-auth
+      optional: true
+    - name: netrc
+      optional: true
+  taskRunTemplate:
+    serviceAccountName: build-pipeline-hyperfleet-api-chart
+  workspaces:
+  - name: git-auth
+    secret:
+      secretName: '{{ git_auth_secret }}'
+status: {}
