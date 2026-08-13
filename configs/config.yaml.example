@@ -105,6 +105,7 @@ health:
 # Entity Registration
 # Generic resource types registered at startup. Each entry auto-generates
 # REST endpoints, spec validation, and delete policies.
+# See docs/config.md for condition mapping documentation.
 entities:
   - kind: Cluster
     plural: clusters
@@ -114,6 +115,26 @@ entities:
     name_min_len: 3
     name_max_len: 53
     require_spec_schema: true
+
+    # CEL-based condition mapping rules
+    # conditions:
+      # Example: Expose Landing Zone namespace readiness
+      # - type: LandingZoneReady
+      #   when:
+      #     expression: 'statuses.exists(s, s.adapter == "landing-zone-adapter" && s.conditions.exists(c, c.type == "NamespaceReady"))'
+      #   output:
+      #     status:
+      #       expression: |
+      #         statuses.filter(s, s.adapter == "landing-zone-adapter")[0]
+      #           .conditions.filter(c, c.type == "NamespaceReady")[0].status
+      #     reason:
+      #       expression: |
+      #         statuses.filter(s, s.adapter == "landing-zone-adapter")[0]
+      #           .conditions.filter(c, c.type == "NamespaceReady")[0].reason
+      #     message:
+      #       expression: |
+      #         "Landing zone: " + statuses.filter(s, s.adapter == "landing-zone-adapter")[0]
+      #           .conditions.filter(c, c.type == "NamespaceReady")[0].message
 
   - kind: NodePool
     plural: nodepools
@@ -125,6 +146,26 @@ entities:
     name_min_len: 3
     name_max_len: 15
     require_spec_schema: true
+
+    # CEL-based condition mapping rules
+    # conditions:
+      # Example: Expose Validation quota check status
+      # - type: QuotaValid
+      #   when:
+      #     expression: 'statuses.exists(s, s.adapter == "validation-adapter" && s.conditions.exists(c, c.type == "QuotaSufficient"))'
+      #   output:
+      #     status:
+      #       expression: |
+      #         statuses.filter(s, s.adapter == "validation-adapter")[0]
+      #           .conditions.filter(c, c.type == "QuotaSufficient")[0].status
+      #     reason:
+      #       expression: |
+      #         statuses.filter(s, s.adapter == "validation-adapter")[0]
+      #           .conditions.filter(c, c.type == "QuotaSufficient")[0].reason
+      #     message:
+      #       expression: |
+      #         statuses.filter(s, s.adapter == "validation-adapter")[0]
+      #           .conditions.filter(c, c.type == "QuotaSufficient")[0].message
 
   - kind: Channel
     plural: channels
@@ -141,7 +182,6 @@ entities:
   - kind: WifConfig
     plural: wifconfigs
     spec_schema_name: WifConfigSpec
-
 
 # ----------------------------------------------------------------------------
 # Configuration Priority (highest to lowest):

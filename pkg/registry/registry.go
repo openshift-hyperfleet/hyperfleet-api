@@ -168,6 +168,16 @@ func Validate() {
 		}
 	}
 
+	// Validate condition mappings for each entity
+	entities := All() // snapshot of all descriptors
+	for _, d := range entities {
+		if len(d.Conditions) > 0 {
+			if err := ValidateEntityConditions(entities, d); err != nil {
+				panic(fmt.Sprintf("entity %q: invalid conditions: %v", d.Kind, err))
+			}
+		}
+	}
+
 	// Detect cycles among required references (Min > 0).
 	// A cycle means two or more kinds mutually require each other, making
 	// Create impossible (each resource needs the other to exist first).

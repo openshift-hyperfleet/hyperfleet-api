@@ -39,14 +39,33 @@ func NewResourceService(
 	adapterStatusDao dao.AdapterStatusDao,
 	resourceConditionDao dao.ResourceConditionDao,
 	generic GenericService,
-) ResourceService {
+) (ResourceService, error) {
+	mappers, err := buildConditionMappers(registry.All())
+	if err != nil {
+		return nil, fmt.Errorf("initialize resource service: %w", err)
+	}
 	return &sqlResourceService{
 		resourceDao:          resourceDao,
 		resourceLabelDao:     resourceLabelDao,
 		adapterStatusDao:     adapterStatusDao,
 		resourceConditionDao: resourceConditionDao,
 		generic:              generic,
+		conditionMappers:     mappers,
+	}, nil
+}
+
+func buildConditionMappers(entities []registry.EntityDescriptor) (map[string]*ConditionMapper, error) {
+	conditionMappers := make(map[string]*ConditionMapper)
+	for _, descriptor := range entities {
+		if len(descriptor.Conditions) > 0 {
+			mapper, err := NewConditionMapper(descriptor.Kind, descriptor.Conditions)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create condition mapper for %s: %w", descriptor.Kind, err)
+			}
+			conditionMappers[descriptor.Kind] = mapper
+		}
 	}
+	return conditionMappers, nil
 }
 
 var _ ResourceService = &sqlResourceService{}
@@ -57,6 +76,7 @@ type sqlResourceService struct {
 	adapterStatusDao     dao.AdapterStatusDao
 	resourceConditionDao dao.ResourceConditionDao
 	generic              GenericService
+	conditionMappers     map[string]*ConditionMapper // Indexed by Kind (e.g., "Cluster", "NodePool")
 }
 
 // Get returns a single resource by kind and ID. Returns 404 if not found.
@@ -568,9 +588,20 @@ func (s *sqlResourceService) ProcessAdapterStatus(
 	}
 
 	// Step 4: Re-aggregate conditions from all adapter statuses and persist
-	// to the resource_conditions table. Only runs when the Available condition
-	// changed to True or False (not on Unknown or discarded updates).
-	if triggerAggregation {
+	// to the resource_conditions table. Runs when:
+	// 1. Available condition changed to True or False (not on Unknown or discarded updates), OR
+	// 2. A CEL condition mapper is configured AND (conditions or data changed from previous report)
+	//
+	// Rationale: mapper recompute is expensive (JSON marshal + MaskSensitiveFields + CEL eval),
+	// runs inside the GetForUpdate row-level lock, and most adapter reports are duplicates.
+	// Gating on actual changes reduces CPU waste and lock hold time (CWE-400 mitigation).
+	hasMapper := s.conditionMappers[resource.Kind] != nil
+
+	// Inline statusChanged computation so jsonEqual is skipped when hasMapper=false,
+	// avoiding unnecessary JSON marshaling for entities without condition mappings.
+	if triggerAggregation || (hasMapper && (existingStatus == nil ||
+		!jsonEqual(existingStatus.Conditions, adapterStatus.Conditions) ||
+		!jsonEqual(existingStatus.Data, adapterStatus.Data))) {
 		if aggregateErr := s.recomputeAndSaveResourceConditions(
 			ctx, resource, updatedStatuses,
 		); aggregateErr != nil {
@@ -638,10 +669,32 @@ func (s *sqlResourceService) recomputeAndSaveResourceConditions(
 		},
 	)
 
-	// Build the full conditions slice: Reconciled + LastKnownReconciled + per-adapter conditions.
-	newConditions := make([]api.ResourceCondition, 0, fixedConditionCount+len(adapterConditions))
+	// Build the full conditions slice: Reconciled + LastKnownReconciled + per-adapter + mapped conditions.
+	mapper := s.conditionMappers[resource.Kind]
+	var mappedCapacity int
+	if mapper != nil {
+		mappedCapacity = len(mapper.sortedNames)
+	}
+	newConditions := make([]api.ResourceCondition, 0, fixedConditionCount+len(adapterConditions)+mappedCapacity)
 	newConditions = append(newConditions, reconciled, lastKnownReconciled)
 	newConditions = append(newConditions, adapterConditions...)
+
+	// Apply CEL condition mapping if configured
+	if mapper != nil {
+		mappedConditions, err := mapper.Apply(ctx, ApplyInput{
+			AdapterStatuses: adapterStatuses,
+			Resource:        resource,
+			RefTime:         refTime,
+			PrevConditions:  resource.Conditions, // Preserve timestamps from previous conditions
+		})
+		if err != nil {
+			// Mark transaction for rollback - ensures adapter status update is retried
+			// in 10s instead of 30min delay that would occur with partial commit
+			db.MarkForRollback(ctx, fmt.Errorf("condition mapping failed for %s: %w", resource.Kind, err))
+			return errors.GeneralError("Condition mapping failed: %s", err)
+		}
+		newConditions = append(newConditions, mappedConditions...)
+	}
 
 	// Compare via JSON to detect actual changes.
 	newJSON, marshalErr := json.Marshal(newConditions)
