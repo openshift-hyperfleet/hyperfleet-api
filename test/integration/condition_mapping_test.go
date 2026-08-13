@@ -2,7 +2,6 @@ package integration
 
 import (
 	"net/http"
-	"os"
 	"testing"
 
 	. "github.com/onsi/gomega"
@@ -17,24 +16,21 @@ const (
 	conditionTypeQuotaValid = "QuotaValid"
 )
 
-// TestConditionMapping_BEFORE tests behavior without CEL mapping configured
-// Expected: adapter custom conditions do NOT appear in public status.conditions
-// NOTE: This test will PASS when the API is configured WITHOUT CEL mapping.
-func TestConditionMapping_BEFORE(t *testing.T) {
-	if os.Getenv("HYPERFLEET_TEST_CONDITION_MAPPING") != "" {
-		t.Skip("Skipped when CEL mapping is enabled - set HYPERFLEET_TEST_CONDITION_MAPPING='' (empty) to run. " +
-			"Requires API configured WITHOUT CEL mapping.")
-	}
-
+// TestConditionMapping_UnmappedConditionsFiltered verifies that adapter custom
+// conditions without a corresponding CEL mapping rule do NOT leak into the
+// public resource status.conditions, while mapped conditions DO appear.
+func TestConditionMapping_UnmappedConditionsFiltered(t *testing.T) {
 	h, client := test.RegisterIntegration(t)
 	account := h.NewRandAccount()
 	ctx := h.NewAuthenticatedContext(account)
 
-	// Create a cluster
 	cluster, err := h.Factories.NewClusters(h.NewID())
 	Expect(err).NotTo(HaveOccurred())
 
-	// Report validation adapter status with custom condition QuotaSufficient
+	// Report validation adapter status with:
+	// - standard conditions (Available, Applied, Health)
+	// - QuotaSufficient (has a CEL mapping → QuotaValid)
+	// - InternalDebugMetric (NO mapping → must not appear)
 	statusInput := newAdapterStatusRequest(
 		"validation",
 		cluster.Generation,
@@ -58,10 +54,16 @@ func TestConditionMapping_BEFORE(t *testing.T) {
 				Message: util.PtrString("Healthy"),
 			},
 			{
-				Type:    "QuotaSufficient", // Custom condition
+				Type:    "QuotaSufficient",
 				Status:  openapi.AdapterConditionStatusTrue,
 				Reason:  util.PtrString("QuotaOK"),
 				Message: util.PtrString("Cluster quota is sufficient"),
+			},
+			{
+				Type:    "InternalDebugMetric",
+				Status:  openapi.AdapterConditionStatusTrue,
+				Reason:  util.PtrString("DebugOK"),
+				Message: util.PtrString("Internal metric - should not leak"),
 			},
 		},
 		nil,
@@ -74,23 +76,18 @@ func TestConditionMapping_BEFORE(t *testing.T) {
 	Expect(err).NotTo(HaveOccurred())
 	Expect(resp.StatusCode()).To(Equal(http.StatusCreated))
 
-	// Get the cluster and verify conditions
 	getResp, err := client.GetClusterByIdWithResponse(ctx, cluster.ID, nil, test.WithAuthToken(ctx))
 	Expect(err).NotTo(HaveOccurred())
 	Expect(getResp.StatusCode()).To(Equal(http.StatusOK))
 	Expect(getResp.JSON200).NotTo(BeNil())
 
-	resource := getResp.JSON200
-
-	// Verify conditions (BEFORE - without mapping)
-	conditions := resource.Status.Conditions
+	conditions := getResp.JSON200.Status.Conditions
 	Expect(conditions).NotTo(BeEmpty())
 
-	// Should have standard conditions
 	hasReconciled := false
 	hasLastKnownReconciled := false
-	hasValidationSuccessful := false
 	hasQuotaValid := false
+	hasInternalDebug := false
 
 	for _, cond := range conditions {
 		switch cond.Type {
@@ -98,65 +95,30 @@ func TestConditionMapping_BEFORE(t *testing.T) {
 			hasReconciled = true
 		case "LastKnownReconciled":
 			hasLastKnownReconciled = true
-		case "ValidationSuccessful":
-			hasValidationSuccessful = true
 		case conditionTypeQuotaValid, "quotavalid":
 			hasQuotaValid = true
+		case "InternalDebugMetric", "internaldebugmetric":
+			hasInternalDebug = true
 		}
 	}
 
-	// BEFORE expectations
 	Expect(hasReconciled).To(BeTrue(), "should have Reconciled condition")
 	Expect(hasLastKnownReconciled).To(BeTrue(), "should have LastKnownReconciled condition")
-	Expect(hasValidationSuccessful).To(BeTrue(), "should have ValidationSuccessful condition")
-	Expect(hasQuotaValid).To(BeFalse(), "BEFORE: should NOT have QuotaValid/quotavalid condition (no CEL mapping)")
+	Expect(hasQuotaValid).To(BeTrue(), "mapped condition QuotaValid should appear")
+	Expect(hasInternalDebug).To(BeFalse(), "unmapped condition InternalDebugMetric must not leak into public conditions")
 }
 
-// TestConditionMapping_AFTER tests behavior with CEL mapping configured
-// This test expects the API to be started with condition mapping configured in config.yaml
-// Expected: adapter custom conditions ARE mapped and appear in public status.conditions
-//
-// To enable this test, set environment variable:
-//
-//	HYPERFLEET_TEST_CONDITION_MAPPING=1
-//
-// And ensure your config.yaml has the QuotaValid mapping configured:
-//
-//	conditions:
-//	  clusters:
-//	    QuotaValid:
-//	      when:
-//	        expression: >
-//	          statuses.exists(s, s.adapter == "validation" &&
-//	            s.conditions.exists(c, c.type == "QuotaSufficient"))
-//	      output:
-//	        status:
-//	          expression: >
-//	            statuses.filter(s, s.adapter == "validation")[0]
-//	              .conditions.filter(c, c.type == "QuotaSufficient")[0].status
-//	        reason:
-//	          expression: >
-//	            statuses.filter(s, s.adapter == "validation")[0]
-//	              .conditions.filter(c, c.type == "QuotaSufficient")[0].reason
-//	        message:
-//	          expression: >
-//	            "Quota: " + statuses.filter(s, s.adapter == "validation")[0]
-//	              .conditions.filter(c, c.type == "QuotaSufficient")[0].message
-func TestConditionMapping_AFTER(t *testing.T) {
-	if os.Getenv("HYPERFLEET_TEST_CONDITION_MAPPING") == "" {
-		t.Skip("Skipped by default - set HYPERFLEET_TEST_CONDITION_MAPPING=1 to enable. " +
-			"Requires API configured with CEL mapping.")
-	}
-
+// TestConditionMapping_MappedConditionValues verifies that CEL mapping correctly
+// transforms adapter conditions into public resource conditions with the expected
+// status, reason, and message values.
+func TestConditionMapping_MappedConditionValues(t *testing.T) {
 	h, client := test.RegisterIntegration(t)
 	account := h.NewRandAccount()
 	ctx := h.NewAuthenticatedContext(account)
 
-	// Create a cluster
 	cluster, err := h.Factories.NewClusters(h.NewID())
 	Expect(err).NotTo(HaveOccurred())
 
-	// Report validation adapter status with custom condition QuotaSufficient
 	statusInput := newAdapterStatusRequest(
 		"validation",
 		cluster.Generation,
@@ -180,7 +142,7 @@ func TestConditionMapping_AFTER(t *testing.T) {
 				Message: util.PtrString("Healthy"),
 			},
 			{
-				Type:    "QuotaSufficient", // Custom condition
+				Type:    "QuotaSufficient",
 				Status:  openapi.AdapterConditionStatusTrue,
 				Reason:  util.PtrString("QuotaOK"),
 				Message: util.PtrString("Cluster quota is sufficient"),
@@ -196,19 +158,14 @@ func TestConditionMapping_AFTER(t *testing.T) {
 	Expect(err).NotTo(HaveOccurred())
 	Expect(resp.StatusCode()).To(Equal(http.StatusCreated))
 
-	// Get the cluster and verify conditions
 	getResp, err := client.GetClusterByIdWithResponse(ctx, cluster.ID, nil, test.WithAuthToken(ctx))
 	Expect(err).NotTo(HaveOccurred())
 	Expect(getResp.StatusCode()).To(Equal(http.StatusOK))
 	Expect(getResp.JSON200).NotTo(BeNil())
 
-	resource := getResp.JSON200
-
-	// Verify conditions (AFTER - with mapping)
-	conditions := resource.Status.Conditions
+	conditions := getResp.JSON200.Status.Conditions
 	Expect(conditions).NotTo(BeEmpty())
 
-	// Should have standard conditions + mapped condition
 	hasReconciled := false
 	hasLastKnownReconciled := false
 	hasValidationSuccessful := false
@@ -229,42 +186,26 @@ func TestConditionMapping_AFTER(t *testing.T) {
 		}
 	}
 
-	// AFTER expectations
 	Expect(hasReconciled).To(BeTrue(), "should have Reconciled condition")
 	Expect(hasLastKnownReconciled).To(BeTrue(), "should have LastKnownReconciled condition")
 	Expect(hasValidationSuccessful).To(BeTrue(), "should have ValidationSuccessful condition")
-	Expect(hasQuotaValid).To(BeTrue(), "AFTER: should have QuotaValid/quotavalid condition (CEL mapping active)")
+	Expect(hasQuotaValid).To(BeTrue(), "should have QuotaValid condition (CEL mapping active)")
 
-	// Verify the mapped condition details
 	Expect(quotaValidCondition).NotTo(BeNil())
 	Expect(string(quotaValidCondition.Status)).To(Equal(string(api.ConditionTrue)))
 	Expect(*quotaValidCondition.Reason).To(Equal("QuotaOK"))
 	Expect(*quotaValidCondition.Message).To(ContainSubstring("Quota"))
 }
 
-// TestConditionMapping_MultipleRules tests multiple mapping rules active simultaneously
-//
-// To enable this test, set environment variable:
-//
-//	HYPERFLEET_TEST_CONDITION_MAPPING=1
-//
-// And ensure your config.yaml has multiple mapping rules configured.
+// TestConditionMapping_MultipleRules tests multiple mapping rules active simultaneously.
 func TestConditionMapping_MultipleRules(t *testing.T) {
-	if os.Getenv("HYPERFLEET_TEST_CONDITION_MAPPING") == "" {
-		t.Skip("Skipped by default - set HYPERFLEET_TEST_CONDITION_MAPPING=1 to enable. " +
-			"Requires API configured with multiple CEL mappings.")
-	}
-
 	h, client := test.RegisterIntegration(t)
 	account := h.NewRandAccount()
 	ctx := h.NewAuthenticatedContext(account)
 
-	// Create a cluster
 	cluster, err := h.Factories.NewClusters(h.NewID())
 	Expect(err).NotTo(HaveOccurred())
 
-	// Report validation adapter with TWO custom conditions
-	// Use distinct adapter condition names to verify CEL mapping actually transforms them
 	statusInput := newAdapterStatusRequest(
 		"validation",
 		cluster.Generation,
@@ -310,19 +251,12 @@ func TestConditionMapping_MultipleRules(t *testing.T) {
 	Expect(err).NotTo(HaveOccurred())
 	Expect(resp.StatusCode()).To(Equal(http.StatusCreated))
 
-	// Get the cluster
 	getResp, err := client.GetClusterByIdWithResponse(ctx, cluster.ID, nil, test.WithAuthToken(ctx))
 	Expect(err).NotTo(HaveOccurred())
 	Expect(getResp.JSON200).NotTo(BeNil())
 
-	resource := getResp.JSON200
-
-	// Verify both custom conditions were mapped
-	// The test assumes config has two mapping rules:
-	// - QuotaValid maps from QuotaSufficient
-	// - PolicyValid maps from PolicyCheckPassed
 	var hasQuotaValid, hasPolicyValid bool
-	for _, cond := range resource.Status.Conditions {
+	for _, cond := range getResp.JSON200.Status.Conditions {
 		if cond.Type == "QuotaValid" {
 			hasQuotaValid = true
 			Expect(string(cond.Status)).To(Equal(string(api.ConditionTrue)))

@@ -866,6 +866,7 @@ func loadDefaultTestEntities() {
 			NameMaxLen:        53,
 			RequireSpecSchema: true,
 			RequiredAdapters:  []string{"validation", "dns", "pullsecret", "hypershift"},
+			Conditions:        testConditionMappingRules(),
 		},
 		{
 			Kind:              "NodePool",
@@ -896,4 +897,37 @@ func loadDefaultTestEntities() {
 			SpecSchemaName: "WifConfigSpec",
 		},
 	})
+}
+
+func testConditionMappingRules() []registry.ConditionMappingRule {
+	const (
+		quotaWhen = `statuses.exists(s, s.adapter == "validation"` +
+			` && s.conditions.exists(c, c.type == "QuotaSufficient"))`
+		quotaPrefix = `statuses.filter(s, s.adapter == "validation")[0]` +
+			`.conditions.filter(c, c.type == "QuotaSufficient")[0]`
+		policyWhen = `statuses.exists(s, s.adapter == "validation"` +
+			` && s.conditions.exists(c, c.type == "PolicyCheckPassed"))`
+		policyPrefix = `statuses.filter(s, s.adapter == "validation")[0]` +
+			`.conditions.filter(c, c.type == "PolicyCheckPassed")[0]`
+	)
+	return []registry.ConditionMappingRule{
+		{
+			Type: "QuotaValid",
+			When: registry.MappingExpression{Expression: quotaWhen},
+			Output: registry.MappingOutput{
+				Status:  registry.MappingExpression{Expression: quotaPrefix + `.status`},
+				Reason:  registry.MappingExpression{Expression: quotaPrefix + `.reason`},
+				Message: registry.MappingExpression{Expression: `"Quota: " + ` + quotaPrefix + `.message`},
+			},
+		},
+		{
+			Type: "PolicyValid",
+			When: registry.MappingExpression{Expression: policyWhen},
+			Output: registry.MappingOutput{
+				Status:  registry.MappingExpression{Expression: policyPrefix + `.status`},
+				Reason:  registry.MappingExpression{Expression: policyPrefix + `.reason`},
+				Message: registry.MappingExpression{Expression: policyPrefix + `.message`},
+			},
+		},
+	}
 }
