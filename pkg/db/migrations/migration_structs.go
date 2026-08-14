@@ -8,9 +8,9 @@ import (
 	"github.com/go-gormigrate/gormigrate/v2"
 )
 
-// gormigrate is a wrapper for gorm's migration functions that adds schema versioning
-// and rollback capabilities. For help writing migration steps, see the gorm documentation
-// on migrations: http://doc.gorm.io/database.html#migration
+// gormigrate is a wrapper for gorm's migration functions that adds schema versioning.
+// For help writing migration steps, see the gorm documentation on migrations:
+// http://doc.gorm.io/database.html#migration
 
 // MigrationList rules:
 //
@@ -29,6 +29,7 @@ var MigrationList = []*gormigrate.Migration{
 	addAdapterStatus(),
 	addResources(),
 	addConditionStatusIndex(),
+	addResourceTenancy(),
 }
 
 // Model represents the base model struct. All entities will have this struct embedded.

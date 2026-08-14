@@ -9,7 +9,7 @@ HyperFleet API uses PostgreSQL with GORM ORM. The schema follows a simple relati
 ## Core Tables
 
 ### resources
-Unified resource table for all entity types (Cluster, NodePool, Channel, Version, WifConfig, etc.). Stores `kind`, `name`, `spec` (JSONB), and optional owner references (`owner_id`, `owner_kind`, `owner_href`) for parent-child relationships. Labels are stored in the separate `resource_labels` table; conditions in `resource_conditions`. Uses `deleted_time`/`deleted_by` for soft delete. Unique name constraints are scoped by `kind` and `owner_id`.
+Unified resource table for all entity types (Cluster, NodePool, Channel, Version, WifConfig, etc.). Stores `kind`, `name`, `spec` (JSONB), `tenancy` (JSONB), and optional owner references (`owner_id`, `owner_kind`, `owner_href`) for parent-child relationships. Labels are stored in the separate `resource_labels` table; conditions in `resource_conditions`. Uses `deleted_time`/`deleted_by` for soft delete. Unique name constraints are scoped by `kind` and `owner_id`.
 
 ### adapter_statuses
 Status records for resources. Stores adapter-reported conditions in JSONB format. No soft delete — rows are hard-deleted or replaced.
@@ -34,6 +34,7 @@ resources (self-referencing parent-child via owner_id)
 
 Flexible schema storage for:
 - **spec** - Provider-specific resource configurations
+- **tenancy** - Tenancy dimensions carried by the resource (not null, defaults to `{}`); indexed with a GIN index using `jsonb_path_ops` to serve containment queries
 - **conditions** - Adapter status condition arrays
 - **data** - Adapter metadata
 
@@ -64,6 +65,7 @@ Migrations are:
 - Non-destructive (never drops columns or tables)
 - Additive (creates missing tables, columns, indexes)
 - Run via `./bin/hyperfleet-api migrate`
+- Fix-forward only — a bad migration is corrected by a new migration, never a rollback
 
 ### Migration Coordination
 

@@ -15,10 +15,5 @@ func addConditionStatusIndex() *gormigrate.Migration {
 					"WHERE status = 'False';",
 			).Error
 		},
-		Rollback: func(tx *gorm.DB) error {
-			return tx.Exec(
-				"DROP INDEX IF EXISTS idx_resource_conditions_type_status;",
-			).Error
-		},
 	}
 }

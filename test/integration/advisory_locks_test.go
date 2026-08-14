@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db/migrations"
 	"github.com/openshift-hyperfleet/hyperfleet-api/test"
 )
 
@@ -232,48 +234,76 @@ func TestLocksAndExpectedWaits(t *testing.T) {
 // TestConcurrentMigrations validates that the MigrateWithLock function
 // properly serializes concurrent migration attempts, ensuring only one
 // instance actually runs migrations at a time.
+//
+// It starts from a fully unmigrated database (unlike a pre-migrated one, where every
+// concurrent call is a no-op and the test would pass even with no locking at all) and
+// instruments the real gormigrate execution with an atomic "in-flight" counter plus a
+// sleep, so any overlap between concurrent migration runs is directly observable.
 func TestConcurrentMigrations(t *testing.T) {
 	h, _ := test.RegisterIntegration(t)
 
-	// First, reset the database to a clean state
-	err := h.ResetDB()
-	Expect(err).NotTo(HaveOccurred(), "Failed to reset database")
+	// Drop every table, including gormigrate's own tracking table, so all migrations
+	// are pending when the concurrent goroutines start below.
+	err := h.CleanDB()
+	Expect(err).NotTo(HaveOccurred(), "Failed to clean database")
+
+	var inFlight atomic.Int32
+	var maxObservedConcurrency atomic.Int32
+
+	// Wraps the real migration execution with concurrency instrumentation. The sleep
+	// widens the race window so two overlapping executions reliably show up in
+	// maxObservedConcurrency instead of racing past each other undetected.
+	instrumentedMigration := func(g2 *gorm.DB) error {
+		n := inFlight.Add(1)
+		defer inFlight.Add(-1)
+
+		for {
+			current := maxObservedConcurrency.Load()
+			if n <= current {
+				break
+			}
+			if maxObservedConcurrency.CompareAndSwap(current, n) {
+				break
+			}
+		}
+
+		time.Sleep(50 * time.Millisecond)
+
+		return db.Migrate(g2)
+	}
 
 	total := 5
 	var waiter sync.WaitGroup
 	waiter.Add(total)
-
-	// Track which goroutines successfully acquired the lock
-	var successCount int
-	var mu sync.Mutex
-	errors := make([]error, 0)
+	errCh := make(chan error, total)
 
 	// Simulate multiple pods trying to run migrations concurrently
 	for i := 0; i < total; i++ {
 		go func() {
 			defer waiter.Done()
-
-			ctx := context.Background()
-			err := db.MigrateWithLock(ctx, h.DBFactory)
-
-			mu.Lock()
-			defer mu.Unlock()
-
-			if err != nil {
-				errors = append(errors, err)
-			} else {
-				successCount++
-			}
+			errCh <- migrateWithLockAndCustomMigration(context.Background(), h.DBFactory, instrumentedMigration)
 		}()
 	}
 
 	waiter.Wait()
+	close(errCh)
 
-	// All migrations should succeed (they're idempotent)
-	Expect(errors).To(BeEmpty(), "Expected no errors during concurrent migrations")
+	for err := range errCh {
+		Expect(err).NotTo(HaveOccurred(), "Expected no errors during concurrent migrations")
+	}
 
-	// All goroutines should complete successfully
-	Expect(successCount).To(Equal(total), "All migrations should succeed")
+	// The direct, causal proof that migration execution was never concurrent: if the
+	// advisory lock didn't serialize callers, two instrumented migration bodies would
+	// have overlapped in time and this would be greater than 1.
+	Expect(maxObservedConcurrency.Load()).To(Equal(int32(1)),
+		"advisory lock should have prevented concurrent migration execution")
+
+	// Confirm the real schema converged correctly exactly once (not partially or
+	// duplicated) rather than just trusting the absence of errors.
+	var appliedCount int64
+	err = h.DBFactory.New(context.Background()).Table("migrations").Count(&appliedCount).Error
+	Expect(err).NotTo(HaveOccurred(), "Failed to count applied migrations")
+	Expect(appliedCount).To(Equal(int64(len(migrations.MigrationList))), "All migrations should be applied exactly once")
 }
 
 // TestAdvisoryLockBlocking validates that a second goroutine trying to acquire
