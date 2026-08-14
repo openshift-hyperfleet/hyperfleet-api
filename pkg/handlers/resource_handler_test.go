@@ -1005,6 +1005,7 @@ func TestResourceHandler_Patch_RejectsUnknownFields(t *testing.T) {
 		{"rejects id", `{"id":"some-id","spec":{"is_default":true}}`},
 		{"rejects generation", `{"generation":5,"spec":{"is_default":true}}`},
 		{"rejects kind", `{"kind":"Channel","spec":{"is_default":true}}`},
+		{"rejects tenancy", `{"tenancy":{"org":"acme"},"spec":{"is_default":true}}`},
 	}
 
 	for _, tt := range tests {
@@ -1080,6 +1081,7 @@ func TestResourceHandler_PatchByOwner_RejectsUnknownFields(t *testing.T) {
 		{"rejects id", `{"id":"some-id","spec":{"enabled":true}}`},
 		{"rejects generation", `{"generation":5,"spec":{"enabled":true}}`},
 		{"rejects kind", `{"kind":"Version","spec":{"enabled":true}}`},
+		{"rejects tenancy", `{"tenancy":{"org":"acme"},"spec":{"enabled":true}}`},
 	}
 
 	for _, tt := range tests {

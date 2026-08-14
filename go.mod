@@ -18,7 +18,7 @@ require (
 	github.com/mendsley/gojwk v0.0.0-20141217222730-4d5ec6e58103
 	github.com/oapi-codegen/runtime v1.6.0
 	github.com/onsi/gomega v1.42.1
-	github.com/openshift-hyperfleet/hyperfleet-api-spec v1.0.26
+	github.com/openshift-hyperfleet/hyperfleet-api-spec v1.0.27
 	github.com/prometheus/client_golang v1.24.1
 	github.com/prometheus/client_model v0.6.2
 	github.com/spf13/cobra v1.10.2

@@ -264,6 +264,57 @@ func TestPresentResource_WithReferences(t *testing.T) {
 	Expect(*refs["wif_config"][1].Id).To(Equal("wif-2"))
 }
 
+func TestPresentResource_WithTenancy(t *testing.T) {
+	RegisterTestingT(t)
+
+	now := time.Now()
+	resource := &api.Resource{
+		Meta:      api.Meta{ID: "id", CreatedTime: now, UpdatedTime: now},
+		Kind:      "Channel",
+		Name:      "test",
+		Spec:      datatypes.JSON(`{}`),
+		Tenancy:   datatypes.JSON(`{"org":"acme"}`),
+		CreatedBy: "user@test.com",
+		UpdatedBy: "user@test.com",
+	}
+
+	resp := PresentResource(resource)
+	Expect(resp.Tenancy).ToNot(BeNil())
+	Expect(*resp.Tenancy).To(HaveKeyWithValue("org", "acme"))
+}
+
+func TestPresentResource_EmptyTenancy(t *testing.T) {
+	RegisterTestingT(t)
+
+	now := time.Now()
+	resource := &api.Resource{
+		Meta:      api.Meta{ID: "id", CreatedTime: now, UpdatedTime: now},
+		Kind:      "Channel",
+		Name:      "test",
+		Spec:      datatypes.JSON(`{}`),
+		Tenancy:   datatypes.JSON(`{}`),
+		CreatedBy: "user@test.com",
+		UpdatedBy: "user@test.com",
+	}
+
+	resp := PresentResource(resource)
+	Expect(resp.Tenancy).ToNot(BeNil(), "empty tenancy should present as explicit {}, not be omitted")
+	Expect(*resp.Tenancy).To(BeEmpty())
+}
+
+func TestConvertResource_IgnoresTenancyInBody(t *testing.T) {
+	RegisterTestingT(t)
+
+	body := []byte(`{"kind":"Channel","name":"stable","spec":{"is_default":true},"tenancy":{"org":"forged"}}`)
+	var req openapi.ResourceCreateRequest
+	err := json.Unmarshal(body, &req)
+	Expect(err).NotTo(HaveOccurred())
+
+	resource, convErr := ConvertResource(&req)
+	Expect(convErr).NotTo(HaveOccurred())
+	Expect(resource.Tenancy).To(BeEmpty())
+}
+
 func TestPresentResourceList(t *testing.T) {
 	RegisterTestingT(t)
 

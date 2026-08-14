@@ -9,6 +9,7 @@ import (
 	"time"
 
 	. "github.com/onsi/gomega"
+	"gorm.io/datatypes"
 	"gorm.io/gorm"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
@@ -16,6 +17,7 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/dao"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/registry"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/tenant"
 )
 
 const (
@@ -409,6 +411,55 @@ func TestResourceService_Create_SetsUserFromAuthContext(t *testing.T) {
 	Expect(result.UpdatedBy).To(Equal("user@test.com"))
 }
 
+func TestResourceService_Create_StampsTenancyFromContext(t *testing.T) {
+	RegisterTestingT(t)
+	setupTestDescriptors()
+
+	mockDao := newMockResourceDao()
+	svc, _, _ := newTestResourceService(mockDao)
+
+	ctx := tenant.WithTenant(context.Background(), &tenant.ResolvedTenant{
+		Dimensions: map[string]string{"org": "acme"},
+	})
+	resource := testResource("Channel", "ch-1", "stable")
+
+	result, svcErr := svc.Create(ctx, "Channel", resource, nil)
+	Expect(svcErr).To(BeNil())
+	Expect(string(result.Tenancy)).To(MatchJSON(`{"org":"acme"}`))
+}
+
+func TestResourceService_Create_SystemIdentityGetsEmptyTenancy(t *testing.T) {
+	RegisterTestingT(t)
+	setupTestDescriptors()
+
+	mockDao := newMockResourceDao()
+	svc, _, _ := newTestResourceService(mockDao)
+
+	ctx := tenant.WithTenant(context.Background(), &tenant.ResolvedTenant{
+		System:     true,
+		Dimensions: map[string]string{"org": "acme"},
+	})
+	resource := testResource("Channel", "ch-1", "stable")
+
+	result, svcErr := svc.Create(ctx, "Channel", resource, nil)
+	Expect(svcErr).To(BeNil())
+	Expect(string(result.Tenancy)).To(MatchJSON(`{}`))
+}
+
+func TestResourceService_Create_NoTenantContext_GetsEmptyTenancy(t *testing.T) {
+	RegisterTestingT(t)
+	setupTestDescriptors()
+
+	mockDao := newMockResourceDao()
+	svc, _, _ := newTestResourceService(mockDao)
+
+	resource := testResource("Channel", "ch-1", "stable")
+
+	result, svcErr := svc.Create(context.Background(), "Channel", resource, nil)
+	Expect(svcErr).To(BeNil())
+	Expect(string(result.Tenancy)).To(MatchJSON(`{}`))
+}
+
 func TestResourceService_Create_PreservesExplicitValues(t *testing.T) {
 	RegisterTestingT(t)
 	setupTestDescriptors()
@@ -562,6 +613,23 @@ func TestResourceService_Patch_SpecChanged_IncrementsGeneration(t *testing.T) {
 	result, svcErr := svc.Patch(context.Background(), "Channel", "ch-1", patch)
 	Expect(svcErr).To(BeNil())
 	Expect(result.Generation).To(Equal(int32(2)))
+}
+
+func TestResourceService_Patch_DoesNotModifyTenancy(t *testing.T) {
+	RegisterTestingT(t)
+	setupTestDescriptors()
+
+	mockDao := newMockResourceDao()
+	svc, _, _ := newTestResourceService(mockDao)
+
+	existing := testResource("Channel", "ch-1", "stable")
+	existing.Tenancy = datatypes.JSON(`{"org":"acme"}`)
+	mockDao.addResource(existing)
+
+	patch := &api.ResourcePatch{Spec: map[string]interface{}{"key": "new-value"}}
+	result, svcErr := svc.Patch(context.Background(), "Channel", "ch-1", patch)
+	Expect(svcErr).To(BeNil())
+	Expect(string(result.Tenancy)).To(MatchJSON(`{"org":"acme"}`))
 }
 
 func TestResourceService_Patch_LabelsChanged_IncrementsGeneration(t *testing.T) {
