@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"gorm.io/datatypes"
+
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/registry"
@@ -54,6 +56,7 @@ func PresentResource(r *api.Resource) openapi.Resource {
 	}
 
 	labels := presentLabels(r.Labels)
+	tenancy := presentTenancy(r.Tenancy)
 
 	resp := openapi.Resource{
 		Id:          r.ID,
@@ -62,6 +65,7 @@ func PresentResource(r *api.Resource) openapi.Resource {
 		Href:        util.PtrString(r.Href),
 		Spec:        spec,
 		Labels:      labels,
+		Tenancy:     tenancy,
 		Generation:  r.Generation,
 		CreatedTime: r.CreatedTime,
 		UpdatedTime: r.UpdatedTime,
@@ -169,6 +173,16 @@ func presentLabels(labels []api.ResourceLabel) *map[string]string {
 	m := make(map[string]string, len(labels))
 	for _, l := range labels {
 		m[l.Key] = l.Value
+	}
+	return &m
+}
+
+func presentTenancy(t datatypes.JSON) *map[string]string {
+	m := map[string]string{}
+	if len(t) > 0 {
+		if err := json.Unmarshal(t, &m); err != nil {
+			m = map[string]string{}
+		}
 	}
 	return &m
 }
