@@ -264,42 +264,44 @@ func TestPresentResource_WithReferences(t *testing.T) {
 	Expect(*refs["wif_config"][1].Id).To(Equal("wif-2"))
 }
 
-func TestPresentResource_WithTenancy(t *testing.T) {
-	RegisterTestingT(t)
-
-	now := time.Now()
-	resource := &api.Resource{
-		Meta:      api.Meta{ID: "id", CreatedTime: now, UpdatedTime: now},
-		Kind:      "Channel",
-		Name:      "test",
-		Spec:      datatypes.JSON(`{}`),
-		Tenancy:   datatypes.JSON(`{"org":"acme"}`),
-		CreatedBy: "user@test.com",
-		UpdatedBy: "user@test.com",
+func TestPresentResource_Tenancy(t *testing.T) {
+	tests := []struct {
+		name      string
+		wantKey   string
+		wantVal   string
+		tenancy   datatypes.JSON
+		wantEmpty bool
+	}{
+		{name: "with dimensions", tenancy: datatypes.JSON(`{"org":"acme"}`), wantKey: "org", wantVal: "acme"},
+		{name: "stored empty object", tenancy: datatypes.JSON(`{}`), wantEmpty: true},
+		{name: "zero-value (unset)", wantEmpty: true},
 	}
 
-	resp := PresentResource(resource)
-	Expect(resp.Tenancy).ToNot(BeNil())
-	Expect(*resp.Tenancy).To(HaveKeyWithValue("org", "acme"))
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			RegisterTestingT(t)
 
-func TestPresentResource_EmptyTenancy(t *testing.T) {
-	RegisterTestingT(t)
+			now := time.Now()
+			resource := &api.Resource{
+				Meta:      api.Meta{ID: "id", CreatedTime: now, UpdatedTime: now},
+				Kind:      "Channel",
+				Name:      "test",
+				Spec:      datatypes.JSON(`{}`),
+				Tenancy:   tt.tenancy,
+				CreatedBy: "user@test.com",
+				UpdatedBy: "user@test.com",
+			}
 
-	now := time.Now()
-	resource := &api.Resource{
-		Meta:      api.Meta{ID: "id", CreatedTime: now, UpdatedTime: now},
-		Kind:      "Channel",
-		Name:      "test",
-		Spec:      datatypes.JSON(`{}`),
-		Tenancy:   datatypes.JSON(`{}`),
-		CreatedBy: "user@test.com",
-		UpdatedBy: "user@test.com",
+			resp := PresentResource(resource)
+			Expect(resp.Tenancy).ToNot(BeNil(),
+				"tenancy should always present as explicit {} or a populated map, never be omitted")
+			if tt.wantEmpty {
+				Expect(*resp.Tenancy).To(BeEmpty())
+			} else {
+				Expect(*resp.Tenancy).To(HaveKeyWithValue(tt.wantKey, tt.wantVal))
+			}
+		})
 	}
-
-	resp := PresentResource(resource)
-	Expect(resp.Tenancy).ToNot(BeNil(), "empty tenancy should present as explicit {}, not be omitted")
-	Expect(*resp.Tenancy).To(BeEmpty())
 }
 
 func TestConvertResource_IgnoresTenancyInBody(t *testing.T) {

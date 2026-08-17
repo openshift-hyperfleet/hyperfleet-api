@@ -411,53 +411,58 @@ func TestResourceService_Create_SetsUserFromAuthContext(t *testing.T) {
 	Expect(result.UpdatedBy).To(Equal("user@test.com"))
 }
 
-func TestResourceService_Create_StampsTenancyFromContext(t *testing.T) {
-	RegisterTestingT(t)
-	setupTestDescriptors()
+func TestResourceService_Create_StampsTenancy(t *testing.T) {
+	tests := []struct {
+		ctx           context.Context
+		name          string
+		want          string
+		presetTenancy datatypes.JSON
+	}{
+		{
+			name: "tenant context with dimensions",
+			ctx: tenant.WithTenant(context.Background(), &tenant.ResolvedTenant{
+				Dimensions: map[string]string{"org": "acme"},
+			}),
+			want: `{"org":"acme"}`,
+		},
+		{
+			name: "system identity gets empty tenancy",
+			ctx: tenant.WithTenant(context.Background(), &tenant.ResolvedTenant{
+				System:     true,
+				Dimensions: map[string]string{"org": "acme"},
+			}),
+			want: `{}`,
+		},
+		{
+			name: "no tenant context gets empty tenancy",
+			ctx:  context.Background(),
+			want: `{}`,
+		},
+		{
+			name: "overwrites a preset/forged tenancy value",
+			ctx: tenant.WithTenant(context.Background(), &tenant.ResolvedTenant{
+				Dimensions: map[string]string{"org": "acme"},
+			}),
+			presetTenancy: datatypes.JSON(`{"forged":"true"}`),
+			want:          `{"org":"acme"}`,
+		},
+	}
 
-	mockDao := newMockResourceDao()
-	svc, _, _ := newTestResourceService(mockDao)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			RegisterTestingT(t)
+			setupTestDescriptors()
 
-	ctx := tenant.WithTenant(context.Background(), &tenant.ResolvedTenant{
-		Dimensions: map[string]string{"org": "acme"},
-	})
-	resource := testResource("Channel", "ch-1", "stable")
+			mockDao := newMockResourceDao()
+			svc, _, _ := newTestResourceService(mockDao)
+			resource := testResource("Channel", "ch-1", "stable")
+			resource.Tenancy = tt.presetTenancy // no-op when zero-valued
 
-	result, svcErr := svc.Create(ctx, "Channel", resource, nil)
-	Expect(svcErr).To(BeNil())
-	Expect(string(result.Tenancy)).To(MatchJSON(`{"org":"acme"}`))
-}
-
-func TestResourceService_Create_SystemIdentityGetsEmptyTenancy(t *testing.T) {
-	RegisterTestingT(t)
-	setupTestDescriptors()
-
-	mockDao := newMockResourceDao()
-	svc, _, _ := newTestResourceService(mockDao)
-
-	ctx := tenant.WithTenant(context.Background(), &tenant.ResolvedTenant{
-		System:     true,
-		Dimensions: map[string]string{"org": "acme"},
-	})
-	resource := testResource("Channel", "ch-1", "stable")
-
-	result, svcErr := svc.Create(ctx, "Channel", resource, nil)
-	Expect(svcErr).To(BeNil())
-	Expect(string(result.Tenancy)).To(MatchJSON(`{}`))
-}
-
-func TestResourceService_Create_NoTenantContext_GetsEmptyTenancy(t *testing.T) {
-	RegisterTestingT(t)
-	setupTestDescriptors()
-
-	mockDao := newMockResourceDao()
-	svc, _, _ := newTestResourceService(mockDao)
-
-	resource := testResource("Channel", "ch-1", "stable")
-
-	result, svcErr := svc.Create(context.Background(), "Channel", resource, nil)
-	Expect(svcErr).To(BeNil())
-	Expect(string(result.Tenancy)).To(MatchJSON(`{}`))
+			result, svcErr := svc.Create(tt.ctx, "Channel", resource, nil)
+			Expect(svcErr).To(BeNil())
+			Expect(string(result.Tenancy)).To(MatchJSON(tt.want))
+		})
+	}
 }
 
 func TestResourceService_Create_PreservesExplicitValues(t *testing.T) {

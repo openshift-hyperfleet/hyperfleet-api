@@ -178,15 +178,11 @@ func presentLabels(labels []api.ResourceLabel) *map[string]string {
 }
 
 func presentTenancy(t datatypes.JSON) *map[string]string {
-	if len(t) == 0 {
-		return nil
-	}
-	var m map[string]string
-	if err := json.Unmarshal(t, &m); err != nil {
-		return nil
-	}
-	if m == nil {
-		m = map[string]string{}
+	m := map[string]string{}
+	if len(t) > 0 {
+		if err := json.Unmarshal(t, &m); err != nil {
+			m = map[string]string{}
+		}
 	}
 	return &m
 }
