@@ -12,17 +12,18 @@ import (
 
 // Error type URIs for RFC 9457
 const (
-	ErrorTypeBase       = "https://api.hyperfleet.io/errors/"
-	ErrorTypeValidation = ErrorTypeBase + "validation-error"
-	ErrorTypeAuth       = ErrorTypeBase + "authentication-error"
-	ErrorTypeNotFound   = ErrorTypeBase + "not-found"
-	ErrorTypeConflict   = ErrorTypeBase + "conflict"
-	ErrorTypeRateLimit  = ErrorTypeBase + "rate-limit"
-	ErrorTypeInternal   = ErrorTypeBase + "internal-error"
-	ErrorTypeService    = ErrorTypeBase + "service-unavailable"
-	ErrorTypeBadRequest = ErrorTypeBase + "bad-request"
-	ErrorTypeMalformed  = ErrorTypeBase + "malformed-request"
-	ErrorTypeNotImpl    = ErrorTypeBase + "not-implemented"
+	ErrorTypeBase             = "https://api.hyperfleet.io/errors/"
+	ErrorTypeValidation       = ErrorTypeBase + "validation-error"
+	ErrorTypeAuth             = ErrorTypeBase + "authentication-error"
+	ErrorTypePermissionDenied = ErrorTypeBase + "permission-denied"
+	ErrorTypeNotFound         = ErrorTypeBase + "not-found"
+	ErrorTypeConflict         = ErrorTypeBase + "conflict"
+	ErrorTypeRateLimit        = ErrorTypeBase + "rate-limit"
+	ErrorTypeInternal         = ErrorTypeBase + "internal-error"
+	ErrorTypeService          = ErrorTypeBase + "service-unavailable"
+	ErrorTypeBadRequest       = ErrorTypeBase + "bad-request"
+	ErrorTypeMalformed        = ErrorTypeBase + "malformed-request"
+	ErrorTypeNotImpl          = ErrorTypeBase + "not-implemented"
 )
 
 // Error codes in HYPERFLEET-CAT-NUM format
@@ -38,6 +39,9 @@ const (
 	CodeAuthNoCredentials      = "HYPERFLEET-AUT-001" //nolint:gosec // Not actual credentials, just error code names
 	CodeAuthInvalidCredentials = "HYPERFLEET-AUT-002" //nolint:gosec // Not actual credentials, just error code names
 	CodeAuthExpiredToken       = "HYPERFLEET-AUT-003" //nolint:gosec // Not actual credentials, just error code names
+
+	// Authorization errors (AUZ) - 403
+	CodeAuthzPermissionDenied = "HYPERFLEET-AUZ-001" //nolint:gosec // Not actual credentials, just error code names
 
 	// Not Found errors (NTF) - 404
 	CodeNotFoundEndpoint = "HYPERFLEET-NTF-000"
@@ -107,6 +111,12 @@ var errorDefinitions = map[string]errorDefinition{
 	},
 	CodeAuthExpiredToken: {
 		ErrorTypeAuth, "Invalid Token", "Invalid token provided", http.StatusUnauthorized,
+	},
+
+	// Authorization errors (AUZ) - 403
+	CodeAuthzPermissionDenied: {
+		ErrorTypePermissionDenied, "Permission Denied",
+		"The caller's tenant identity does not grant access to this resource", http.StatusForbidden,
 	},
 
 	// Validation errors (VAL) - 400
@@ -374,4 +384,8 @@ func ServiceUnavailable(reason string, values ...interface{}) *ServiceError {
 
 func InvalidToken(reason string, values ...interface{}) *ServiceError {
 	return New(CodeAuthExpiredToken, reason, values...)
+}
+
+func Forbidden(reason string, values ...interface{}) *ServiceError {
+	return New(CodeAuthzPermissionDenied, reason, values...)
 }

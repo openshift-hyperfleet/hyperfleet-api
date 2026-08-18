@@ -30,6 +30,11 @@ server:
         identity_claim_pattern: ""  # Regex pattern to validate the identity claim value (optional)
         identity_header: ""         # Per-issuer HTTP header for caller identity; overrides JWT claim when set (e.g. X-HyperFleet-Identity)
 
+  tenant:
+    enabled: false                  # Enable tenant enforcement middleware
+    system_header: ""               # Header marking system callers (required when enabled=true)
+    dimensions: []                  # Tenant dimension headers (header, key, required); at least one required=true if enabled
+
 # Database Configuration
 database:
   dialect: postgres                 # Database dialect (postgres, mysql)

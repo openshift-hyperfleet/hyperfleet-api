@@ -175,6 +175,9 @@ func (l *ConfigLoader) validateConfig(config *ApplicationConfig) error {
 		if valErr := config.Server.JWT.Validate(); valErr != nil {
 			return fmt.Errorf("server JWT validation failed: %w", valErr)
 		}
+		if valErr := config.Server.Tenant.Validate(); valErr != nil {
+			return fmt.Errorf("server tenant validation failed: %w", valErr)
+		}
 		if valErr := config.Health.Validate(); valErr != nil {
 			return fmt.Errorf("health config validation failed: %w", valErr)
 		}
@@ -265,6 +268,10 @@ func (l *ConfigLoader) bindAllEnvVars() {
 	l.bindEnv("server.jwt.enabled")
 	// server.jwt.configs is a list of structs — loaded from YAML config only.
 	// Viper cannot bind env vars to individual list elements.
+	l.bindEnv("server.tenant.enabled")
+	l.bindEnv("server.tenant.system_header")
+	// server.tenant.dimensions is a list of structs — loaded from YAML config only,
+	// same reason as server.jwt.configs above.
 	// Database config
 	l.bindEnv("database.dialect")
 	l.bindEnv("database.host")
@@ -330,6 +337,9 @@ func (l *ConfigLoader) bindFlags(cmd *cobra.Command) {
 	l.bindPFlag("server.tls.enabled", cmd.Flags().Lookup("server-https-enabled"))
 	l.bindPFlag("server.jwt.enabled", cmd.Flags().Lookup("server-jwt-enabled"))
 	// server.jwt.configs: no CLI flags — per-issuer config is YAML-only
+	l.bindPFlag("server.tenant.enabled", cmd.Flags().Lookup("server-tenant-enabled"))
+	l.bindPFlag("server.tenant.system_header", cmd.Flags().Lookup("server-tenant-system-header"))
+	// server.tenant.dimensions: no CLI flags — per-dimension config is YAML-only
 	// Database flags: --db-* -> database.*
 	l.bindPFlag("database.host", cmd.Flags().Lookup("db-host"))
 	l.bindPFlag("database.port", cmd.Flags().Lookup("db-port"))

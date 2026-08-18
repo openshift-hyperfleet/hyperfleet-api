@@ -20,6 +20,7 @@ type ServerConfig struct {
 	OpenAPISchemaPath string         `mapstructure:"openapi_schema_path" json:"openapi_schema_path"`
 	TLS               TLSConfig      `mapstructure:"tls" json:"tls" validate:"required"`
 	JWT               JWTConfig      `mapstructure:"jwt" json:"jwt" validate:"required"`
+	Tenant            TenantConfig   `mapstructure:"tenant" json:"tenant" validate:"required"`
 	Timeouts          TimeoutsConfig `mapstructure:"timeouts" json:"timeouts" validate:"required"`
 	Port              int            `mapstructure:"port" json:"port" validate:"required,min=1,max=65535"`
 }
@@ -192,6 +193,9 @@ func NewServerConfig() *ServerConfig {
 		},
 		JWT: JWTConfig{
 			Enabled: true,
+		},
+		Tenant: TenantConfig{
+			Enabled: false,
 		},
 	}
 }

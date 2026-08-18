@@ -84,7 +84,10 @@ func normalizeIdentity(raw string, source string) (string, error) {
 	return value, nil
 }
 
-func shouldSkipCallerIdentity(path string) bool {
+// ShouldSkipCallerIdentity reports whether path bypasses caller identity
+// resolution. Exported so pkg/tenant can reuse the same skip list for tenant
+// enforcement instead of maintaining a second copy of these path prefixes.
+func ShouldSkipCallerIdentity(path string) bool {
 	return strings.HasPrefix(path, "/api/hyperfleet/v1/openapi") ||
 		strings.HasPrefix(path, "/api/hyperfleet/v1/errors")
 }
