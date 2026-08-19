@@ -57,6 +57,24 @@ func TestTenantConfig_Validate(t *testing.T) {
 			expectErr: "system_header \"Authorization\" is not allowed",
 		},
 		{
+			name: "system header with whitespace fails",
+			config: TenantConfig{
+				Enabled:      true,
+				SystemHeader: "X Tenant",
+				Dimensions:   []TenantDimension{validDimension},
+			},
+			expectErr: "system_header \"X Tenant\" is not a valid HTTP header name",
+		},
+		{
+			name: "whitespace-only system header fails",
+			config: TenantConfig{
+				Enabled:      true,
+				SystemHeader: "   ",
+				Dimensions:   []TenantDimension{validDimension},
+			},
+			expectErr: "is not a valid HTTP header name",
+		},
+		{
 			name: "enabled with zero dimensions fails",
 			config: TenantConfig{
 				Enabled:      true,
@@ -90,6 +108,24 @@ func TestTenantConfig_Validate(t *testing.T) {
 				Dimensions:   []TenantDimension{{Header: "Cookie", Key: "org", Required: true}},
 			},
 			expectErr: "dimensions[0].header \"Cookie\" is not allowed",
+		},
+		{
+			name: "dimension header with whitespace fails",
+			config: TenantConfig{
+				Enabled:      true,
+				SystemHeader: "X-HyperFleet-System",
+				Dimensions:   []TenantDimension{{Header: "X Tenant", Key: "org", Required: true}},
+			},
+			expectErr: "dimensions[0].header \"X Tenant\" is not a valid HTTP header name",
+		},
+		{
+			name: "whitespace-only dimension header fails",
+			config: TenantConfig{
+				Enabled:      true,
+				SystemHeader: "X-HyperFleet-System",
+				Dimensions:   []TenantDimension{{Header: "   ", Key: "org", Required: true}},
+			},
+			expectErr: "dimensions[0].header",
 		},
 		{
 			name: "dimension header equal to system header fails",

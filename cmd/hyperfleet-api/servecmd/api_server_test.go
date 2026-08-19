@@ -10,17 +10,13 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/registry"
 )
 
-// TestBuildAPIServer_TenantMiddlewareWiredWhenEnabled guards the composition-root
-// wiring in BuildAPIServer: when cfg.Server.Tenant.Enabled is true, the tenant
-// middleware must actually be appended to the auth chain and enforced. Without
-// this test, a broken or dropped wiring (e.g. reordered/removed the append)
-// would ship silently since pkg/tenant's own tests only exercise the middleware
-// in isolation, never through BuildAPIServer.
+// TestBuildAPIServer_TenantMiddlewareWiredWhenEnabled guards the tenant
+// middleware's wiring into the composition root, since pkg/tenant's own tests
+// never exercise it there and wouldn't catch a dropped/reordered append.
 //
 // resourceService, adapterStatusService, schemaValidator, and sessionFactory
-// are all nil: the tenant middleware runs in authMiddleware, ahead of
-// protectedAPIMiddleware and the entity handlers, so a request rejected for a
-// missing required tenant header never reaches code that would dereference them.
+// are nil: tenant middleware runs ahead of the handlers that would need them,
+// so a rejected request never reaches code that dereferences them.
 func TestBuildAPIServer_TenantMiddlewareWiredWhenEnabled(t *testing.T) {
 	RegisterTestingT(t)
 	registry.Reset()
@@ -44,8 +40,18 @@ func TestBuildAPIServer_TenantMiddlewareWiredWhenEnabled(t *testing.T) {
 
 	listener, err := apiServer.Listen()
 	Expect(err).NotTo(HaveOccurred())
-	go apiServer.Serve(listener)
-	t.Cleanup(func() { _ = apiServer.Stop() })
+
+	// served closes once Serve returns, so cleanup can block until the
+	// goroutine has actually exited instead of racing the next test.
+	served := make(chan struct{})
+	go func() {
+		defer close(served)
+		apiServer.Serve(listener)
+	}()
+	t.Cleanup(func() {
+		Expect(apiServer.Stop()).To(Succeed())
+		<-served
+	})
 
 	baseURL := "http://" + listener.Addr().String()
 

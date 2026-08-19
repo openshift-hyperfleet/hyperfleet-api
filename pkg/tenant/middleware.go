@@ -104,7 +104,7 @@ func handleForbidden(
 	ctx context.Context, w http.ResponseWriter, r *http.Request, reason string, values ...interface{},
 ) {
 	err := errors.Forbidden(reason, values...)
-	logger.WithError(ctx, err).Info("Tenant identity rejected")
+	logger.WithError(ctx, err).Warn("Tenant identity rejected")
 	response.WriteServiceErrorResponse(ctx, w, r, err)
 }
 

@@ -36,6 +36,9 @@ func (c *TenantConfig) Validate() error {
 	if c.SystemHeader == "" {
 		return fmt.Errorf("server.tenant.system_header is required when tenant is enabled")
 	}
+	if !validation.IsValidHeaderName(c.SystemHeader) {
+		return fmt.Errorf("server.tenant.system_header %q is not a valid HTTP header name", c.SystemHeader)
+	}
 	if validation.IsForbiddenIdentityHeaderName(c.SystemHeader) {
 		return fmt.Errorf("server.tenant.system_header %q is not allowed", c.SystemHeader)
 	}
@@ -75,6 +78,9 @@ func (c *TenantConfig) validateDimension(
 	}
 	if dim.Key == "" {
 		return fmt.Errorf("server.tenant.dimensions[%d].key is required", i)
+	}
+	if !validation.IsValidHeaderName(dim.Header) {
+		return fmt.Errorf("server.tenant.dimensions[%d].header %q is not a valid HTTP header name", i, dim.Header)
 	}
 	if validation.IsForbiddenIdentityHeaderName(dim.Header) {
 		return fmt.Errorf("server.tenant.dimensions[%d].header %q is not allowed", i, dim.Header)
