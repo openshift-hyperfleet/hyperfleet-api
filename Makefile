@@ -181,7 +181,7 @@ run: db/migrate ## Run the application with JWT auth
 .PHONY: dev-token
 dev-token: ## Generate a fresh JWT using the existing dev key (no server restart needed)
 	@install -m 600 /dev/null $(DEV_TOKEN_FILE) && configs/gen-dev-token.sh > $(DEV_TOKEN_FILE)
-	@echo 'Usage: curl -H "Authorization: Bearer $$(cat $(DEV_TOKEN_FILE))" http://localhost:8000/api/hyperfleet/v1/clusters'
+	@echo 'Token saved to $(DEV_TOKEN_FILE)'
 
 .PHONY: run-no-auth
 run-no-auth: db/migrate ## Run the application without auth
