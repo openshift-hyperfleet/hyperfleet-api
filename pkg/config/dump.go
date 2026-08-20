@@ -30,7 +30,9 @@ func DumpConfig(config *ApplicationConfig) string {
   Logging:
     Level: %s
     Format: %s
-    OTel.Enabled: %t
+  Tracing:
+    Enabled: %t
+    ServiceName: %s
   Metrics:
     BindAddress: %s
   Health:
@@ -50,7 +52,8 @@ func DumpConfig(config *ApplicationConfig) string {
 		config.Database.Debug,
 		config.Logging.Level,
 		config.Logging.Format,
-		config.Logging.OTel.Enabled,
+		config.Tracing.Enabled,
+		config.Tracing.ServiceName,
 		config.Metrics.BindAddress(),
 		config.Health.BindAddress(),
 		len(config.Entities),

@@ -75,7 +75,7 @@ func TestCallerIdentityCreate(t *testing.T) {
 
 			opts := []openapi.RequestEditorFn{test.WithAuthToken(ctx)}
 			if tc.setHeader {
-				opts = append(opts, test.WithIdentityHeader(test.IdentityHeaderName(), tc.headerActor))
+				opts = append(opts, test.WithIdentityHeader(h.IdentityHeaderName(), tc.headerActor))
 			}
 
 			resp, err := client.PostClusterWithResponse(
@@ -151,7 +151,7 @@ func TestCallerIdentityPatch(t *testing.T) {
 
 			opts := []openapi.RequestEditorFn{test.WithAuthToken(patchCtx)}
 			if tc.setHeader {
-				opts = append(opts, test.WithIdentityHeader(test.IdentityHeaderName(), tc.headerActor))
+				opts = append(opts, test.WithIdentityHeader(h.IdentityHeaderName(), tc.headerActor))
 			}
 
 			patchResp, err := client.PatchClusterByIdWithResponse(
@@ -218,7 +218,7 @@ func TestCallerIdentityMultiplePatches(t *testing.T) {
 		ctxA, clusterID,
 		openapi.PatchClusterByIdJSONRequestBody{Spec: &spec3},
 		test.WithAuthToken(ctxA),
-		test.WithIdentityHeader(test.IdentityHeaderName(), "user-c@gateway.com"),
+		test.WithIdentityHeader(h.IdentityHeaderName(), "user-c@gateway.com"),
 	)
 	Expect(err).NotTo(HaveOccurred())
 	Expect(patch2.StatusCode()).To(Equal(http.StatusOK))
@@ -253,7 +253,7 @@ func TestCallerIdentityDelete(t *testing.T) {
 	createResp, err := client.PostClusterWithResponse(
 		ctx, openapi.PostClusterJSONRequestBody(clusterInput),
 		test.WithAuthToken(ctx),
-		test.WithIdentityHeader(test.IdentityHeaderName(), "header-creator@corp.com"),
+		test.WithIdentityHeader(h.IdentityHeaderName(), "header-creator@corp.com"),
 	)
 	Expect(err).NotTo(HaveOccurred())
 	Expect(createResp.StatusCode()).To(Equal(http.StatusCreated))
@@ -290,7 +290,7 @@ func TestCallerIdentityEmptyHeaderFallback(t *testing.T) {
 	resp, err := client.PostClusterWithResponse(
 		ctx, openapi.PostClusterJSONRequestBody(clusterInput),
 		test.WithAuthToken(ctx),
-		test.WithIdentityHeader(test.IdentityHeaderName(), ""),
+		test.WithIdentityHeader(h.IdentityHeaderName(), ""),
 	)
 	Expect(err).NotTo(HaveOccurred())
 	Expect(resp.StatusCode()).To(Equal(http.StatusCreated))
@@ -316,7 +316,7 @@ func TestCallerIdentityOversizedHeader(t *testing.T) {
 	resp, err := client.PostClusterWithResponse(
 		ctx, openapi.PostClusterJSONRequestBody(clusterInput),
 		test.WithAuthToken(ctx),
-		test.WithIdentityHeader(test.IdentityHeaderName(), oversized),
+		test.WithIdentityHeader(h.IdentityHeaderName(), oversized),
 	)
 	Expect(err).NotTo(HaveOccurred())
 	Expect(resp.StatusCode()).To(Equal(http.StatusUnauthorized))

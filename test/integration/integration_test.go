@@ -9,11 +9,19 @@ import (
 	"testing"
 	"time"
 
+	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/modules/postgres"
+	"github.com/testcontainers/testcontainers-go/wait"
+
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 	"github.com/openshift-hyperfleet/hyperfleet-api/test"
 )
 
 func TestMain(m *testing.M) {
+	os.Exit(runTestMain(m))
+}
+
+func runTestMain(m *testing.M) int {
 	flag.Parse()
 	ctx := context.Background()
 	logger.With(ctx, "go_version", runtime.Version()).Info("Starting integration test")
@@ -22,35 +30,29 @@ func TestMain(m *testing.M) {
 	// This enables schema validation middleware during tests
 	// Uses HYPERFLEET_SERVER_OPENAPI_SCHEMA_PATH (config system standard)
 	if os.Getenv("HYPERFLEET_SERVER_OPENAPI_SCHEMA_PATH") == "" {
-		// Get the repo root directory (2 levels up from test/integration)
-		// Use runtime.Caller to find this file's path
 		_, filename, _, ok := runtime.Caller(0)
 		if !ok {
 			logger.Warn(ctx, "Failed to determine current file path via runtime.Caller, skipping schema path setup")
 		} else {
-			// filename is like: /path/to/repo/test/integration/integration_test.go
-			// Navigate up: integration_test.go -> integration -> test -> repo
-			integrationDir := filepath.Dir(filename) // /path/to/repo/test/integration
-			testDir := filepath.Dir(integrationDir)  // /path/to/repo/test
-			repoRoot := filepath.Dir(testDir)        // /path/to/repo
+			integrationDir := filepath.Dir(filename)
+			testDir := filepath.Dir(integrationDir)
+			repoRoot := filepath.Dir(testDir)
 
-			// Prefer the integration test validation schema, which includes every
-			// registered entity that declares SpecSchemaName.
 			schemaPath := filepath.Join(repoRoot, "test", "validation-schema.yaml")
 
-			// Verify the schema file exists before setting the env var
 			if _, err := os.Stat(schemaPath); err != nil {
-				logger.With(ctx, logger.FieldSchemaPath, schemaPath).WithError(err).
-					Warn("Schema file not found, skipping schema path setup")
-			} else {
-				_ = os.Setenv("HYPERFLEET_SERVER_OPENAPI_SCHEMA_PATH", schemaPath)
-				logger.With(ctx, logger.FieldSchemaPath, schemaPath).
-					Info("Set HYPERFLEET_SERVER_OPENAPI_SCHEMA_PATH for integration tests")
+				schemaPath = filepath.Join(repoRoot, "openapi", "openapi.yaml")
 			}
+			_ = os.Setenv("HYPERFLEET_SERVER_OPENAPI_SCHEMA_PATH", schemaPath)
+			logger.With(ctx, logger.FieldSchemaPath, schemaPath).
+				Info("Set HYPERFLEET_SERVER_OPENAPI_SCHEMA_PATH for integration tests")
 		}
 	}
 
-	helper := test.NewHelper(&testing.T{})
+	pgContainer := startTestcontainer(ctx)
+	defer terminateContainer(ctx, pgContainer)
+
+	helper := test.NewHelper()
 	exitCode := m.Run()
 
 	// Force exit if teardown hangs (e.g., due to a panic leaving resources in a bad state).
@@ -64,9 +66,65 @@ func TestMain(m *testing.M) {
 		if localExit == 0 {
 			localExit = 1
 		}
+		terminateContainer(ctx, pgContainer)
 		os.Exit(localExit)
 	}()
 
 	helper.Teardown()
-	os.Exit(exitCode)
+
+	return exitCode
+}
+
+func terminateContainer(ctx context.Context, pgContainer *postgres.PostgresContainer) {
+	termCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	if err := pgContainer.Terminate(termCtx); err != nil {
+		logger.WithError(ctx, err).Error("Failed to terminate testcontainer")
+	}
+}
+
+func envOrDefault(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
+
+func startTestcontainer(ctx context.Context) *postgres.PostgresContainer {
+	dbName := envOrDefault("HYPERFLEET_DATABASE_NAME", "hyperfleet_test")
+	dbUser := envOrDefault("HYPERFLEET_DATABASE_USERNAME", "test")
+	dbPass := envOrDefault("HYPERFLEET_DATABASE_PASSWORD", "test")
+
+	pgContainer, err := postgres.Run(ctx,
+		"postgres:14.23",
+		postgres.WithDatabase(dbName),
+		postgres.WithUsername(dbUser),
+		postgres.WithPassword(dbPass),
+		testcontainers.WithWaitStrategy(
+			wait.ForListeningPort("5432/tcp").
+				WithStartupTimeout(60*time.Second)),
+	)
+	if err != nil {
+		logger.WithError(ctx, err).Error("Failed to start PostgreSQL testcontainer")
+		os.Exit(1)
+	}
+
+	host, err := pgContainer.Host(ctx)
+	if err != nil {
+		logger.WithError(ctx, err).Error("Failed to get testcontainer host")
+		terminateContainer(ctx, pgContainer)
+		os.Exit(1)
+	}
+	mappedPort, err := pgContainer.MappedPort(ctx, "5432/tcp")
+	if err != nil {
+		logger.WithError(ctx, err).Error("Failed to get testcontainer mapped port")
+		terminateContainer(ctx, pgContainer)
+		os.Exit(1)
+	}
+
+	os.Setenv("HYPERFLEET_DATABASE_HOST", host)
+	os.Setenv("HYPERFLEET_DATABASE_PORT", mappedPort.Port())
+
+	logger.With(ctx, "host", host, "port", mappedPort.Port()).Info("PostgreSQL testcontainer started")
+	return pgContainer
 }

@@ -18,7 +18,6 @@ func TestNewLoggingConfig_Defaults(t *testing.T) {
 	Expect(cfg.Level).To(Equal("info"))
 	Expect(cfg.Format).To(Equal("json"))
 	Expect(cfg.Output).To(Equal("stdout"))
-	Expect(cfg.OTel.Enabled).To(BeTrue())
 	Expect(cfg.Masking.Enabled).To(BeTrue())
 	Expect(cfg.Masking.Headers).NotTo(BeEmpty())
 	Expect(cfg.Masking.Fields).NotTo(BeEmpty())
@@ -42,8 +41,69 @@ func TestConfigLoader_LoggingFromEnv(t *testing.T) {
 	Expect(err).NotTo(HaveOccurred())
 	Expect(appConfig.Logging.Level).To(Equal("debug"))
 	Expect(appConfig.Logging.Format).To(Equal("text"))
-	// OTel.Enabled defaults to true
-	Expect(appConfig.Logging.OTel.Enabled).To(BeTrue())
+	Expect(appConfig.Tracing.Enabled).To(BeTrue())
+	Expect(appConfig.Tracing.ServiceName).To(Equal("hyperfleet-api"))
+}
+
+func TestConfigLoader_TracingFromEnv(t *testing.T) {
+	RegisterTestingT(t)
+
+	tests := []struct {
+		envVars             map[string]string
+		name                string
+		expectedServiceName string
+		expectedEnabled     bool
+	}{
+		{
+			name:                "defaults",
+			expectedEnabled:     true,
+			expectedServiceName: "hyperfleet-api",
+		},
+		{
+			name:                "tracing disabled via env",
+			envVars:             map[string]string{"HYPERFLEET_TRACING_ENABLED": "false"},
+			expectedEnabled:     false,
+			expectedServiceName: "hyperfleet-api",
+		},
+		{
+			name:                "service name via HYPERFLEET prefix",
+			envVars:             map[string]string{"HYPERFLEET_TRACING_SERVICE_NAME": "custom-api"},
+			expectedEnabled:     true,
+			expectedServiceName: "custom-api",
+		},
+		{
+			name:                "OTEL_SERVICE_NAME overrides default",
+			envVars:             map[string]string{"OTEL_SERVICE_NAME": "otel-api"},
+			expectedEnabled:     true,
+			expectedServiceName: "otel-api",
+		},
+		{
+			name: "HYPERFLEET prefix wins over OTEL_SERVICE_NAME",
+			envVars: map[string]string{
+				"HYPERFLEET_TRACING_SERVICE_NAME": "hyperfleet-name",
+				"OTEL_SERVICE_NAME":               "otel-name",
+			},
+			expectedEnabled:     true,
+			expectedServiceName: "hyperfleet-name",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			RegisterTestingT(t)
+			SetMinimalTestEnv(t)
+			for k, v := range tt.envVars {
+				t.Setenv(k, v)
+			}
+
+			loader := NewConfigLoader()
+			appConfig, err := loader.Load(context.Background(), &cobra.Command{})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(appConfig.Tracing.Enabled).To(Equal(tt.expectedEnabled))
+			Expect(appConfig.Tracing.ServiceName).To(Equal(tt.expectedServiceName))
+		})
+	}
 }
 
 // TestLoggingConfig_GetSensitiveHeadersList tests the headers array accessor

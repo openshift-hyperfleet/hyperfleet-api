@@ -106,9 +106,6 @@ data:
       format: {{ .Values.config.logging.format }}
       output: {{ .Values.config.logging.output }}
 
-      otel:
-        enabled: {{ .Values.config.logging.otel.enabled }}
-
       masking:
         enabled: {{ .Values.config.logging.masking.enabled }}
         headers:

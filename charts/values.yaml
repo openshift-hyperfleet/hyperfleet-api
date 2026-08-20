@@ -134,12 +134,6 @@ config:
     # -- Log output destination
     output: stdout
 
-    # -- OpenTelemetry tracing integration.
-    # See the [tracing standard](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/standards/tracing.md#configuration).
-    otel:
-      # -- Enable OpenTelemetry log correlation
-      enabled: false
-
     # -- Sensitive-data masking for logs
     masking:
       # -- Enable log masking
@@ -191,7 +185,9 @@ config:
       # -- Enable TLS on the health endpoint
       enabled: false
 
-    # -- Graceful shutdown timeout
+    # -- How long the API server waits for in-flight requests to complete during
+    # graceful shutdown. Lives under `health` for historical reasons - it governs
+    # the API server's drain budget, not the health server's (see terminationGracePeriodSeconds).
     shutdown_timeout: 20s
     # -- Timeout for the database liveness ping
     db_ping_timeout: 2s
@@ -309,13 +305,9 @@ strategy:
     maxUnavailable: 0
   type: RollingUpdate
 
-# -- Seconds Kubernetes waits after SIGTERM before SIGKILL.
-# Shutdown sequence is sequential: preStop sleep (5s) + health server (20s max)
-# + API server (10s max) + metrics server (10s max) + OTel (20s max) + DB close
-# (no timeout). Typical shutdown is ~8s total; worst case exceeds 60s.
-# Set to 70s to cover worst case with buffer. If the DB close hangs beyond
-# this, Kubernetes sends SIGKILL — acceptable as a last resort.
-terminationGracePeriodSeconds: 70
+# -- Must be > preStop (5s) + shutdown_timeout (20s, API drain) + 14s overhead
+# (2s metrics + 2s health + 5s OTel + 5s DB close) + buffer for JWT close and scheduling
+terminationGracePeriodSeconds: 45
 
 # -- Node selector constraints for pod scheduling
 nodeSelector: {}
@@ -456,7 +448,10 @@ monitoring:
     # -- Create a ConfigMap with the Grafana dashboard JSON
     enabled: false
 
-  # -- Distributed tracing configuration (OpenTelemetry)
+  # -- Distributed tracing configuration (OpenTelemetry). This is the single
+  # source of truth for tracing - it's templated into HYPERFLEET_TRACING_ENABLED
+  # and OTEL_* environment variables in deployment.yaml, which the app's own
+  # config system reads (env vars take precedence over the ConfigMap).
   tracing:
     # -- Enable trace export
     enabled: false
@@ -467,9 +462,9 @@ monitoring:
     # -- OTLP protocol (`grpc` or `http/protobuf`)
     otlpProtocol: "grpc"
     # -- Sampler type
-    sampler: "parentbased_always_on"
-    # -- Sampling rate (only used with ratio-based samplers)
-    samplerArg: ""
+    sampler: "parentbased_traceidratio"
+    # -- Sampling rate (`1.0` for dev, `0.01` for production)
+    samplerArg: "1.0"
     # -- Context propagation formats
     propagators: "tracecontext,baggage"
 

@@ -480,7 +480,7 @@ func TestMigrationFailureUnderLock(t *testing.T) {
 	h, _ := test.RegisterIntegration(t)
 
 	// Reset database to clean state
-	err := h.ResetDB()
+	err := h.RebuildSchema()
 	Expect(err).NotTo(HaveOccurred(), "Failed to reset database")
 
 	// Channels to coordinate goroutines

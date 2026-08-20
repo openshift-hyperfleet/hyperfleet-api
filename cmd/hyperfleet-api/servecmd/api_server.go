@@ -21,9 +21,6 @@ import (
 // Middleware slices that depend on runtime decisions (tracing on/off, auth
 // on/off) are built here rather than inside the server package, so that package
 // stays free of both pkg/config and those decisions.
-//
-// jwtHandler may be nil when cfg.Server.JWT.Enabled is false. When JWT is
-// enabled, jwtHandler must be non-nil or BuildAPIServer returns an error.
 func BuildAPIServer(
 	cfg *config.ApplicationConfig,
 	resourceService services.ResourceService,
@@ -31,22 +28,19 @@ func BuildAPIServer(
 	schemaValidator *validators.SchemaValidator,
 	jwtHandler *auth.JWTHandler,
 	sessionFactory db.SessionFactory,
-	tracingEnabled bool,
 ) (*server.APIServer, error) {
 	mainMiddleware := []server.Middleware{logger.RequestIDMiddleware}
-	if tracingEnabled {
+	if cfg.Tracing.Enabled {
 		mainMiddleware = append(mainMiddleware, middleware.OTelMiddleware)
 	}
 	masker := middleware.NewMaskingMiddleware(cfg.Logging)
 	mainMiddleware = append(mainMiddleware, requestlogging.RequestLoggingMiddleware(masker))
 
-	// Applied to every API route (public and protected) - observability and compression.
 	apiMiddleware := []server.Middleware{
 		server.MetricsMiddleware,
 		server.CompressMiddleware,
 	}
 
-	// Applied only behind auth - schema validation and DB transaction.
 	protectedAPIMiddleware := []server.Middleware{
 		middleware.SchemaValidationMiddleware(schemaValidator),
 		func(next http.Handler) http.Handler {
