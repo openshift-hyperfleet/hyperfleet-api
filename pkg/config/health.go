@@ -51,3 +51,19 @@ func NewHealthConfig() *HealthConfig {
 func (h *HealthConfig) BindAddress() string {
 	return net.JoinHostPort(h.Host, strconv.Itoa(h.Port))
 }
+
+func (h *HealthConfig) TLSEnabled() bool {
+	return h.TLS.Enabled
+}
+
+func (h *HealthConfig) TLSCertFile() string {
+	return h.TLS.CertFile
+}
+
+func (h *HealthConfig) TLSKeyFile() string {
+	return h.TLS.KeyFile
+}
+
+func (h *HealthConfig) PingTimeout() time.Duration {
+	return h.DBPingTimeout
+}

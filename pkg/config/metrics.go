@@ -49,7 +49,14 @@ func (m *MetricsConfig) BindAddress() string {
 	return net.JoinHostPort(m.Host, strconv.Itoa(m.Port))
 }
 
-// GetLabelMetricsInclusionDuration returns label metrics inclusion duration
-func (m *MetricsConfig) GetLabelMetricsInclusionDuration() time.Duration {
-	return m.LabelMetricsInclusionDuration
+func (m *MetricsConfig) TLSEnabled() bool {
+	return m.TLS.Enabled
+}
+
+func (m *MetricsConfig) TLSCertFile() string {
+	return m.TLS.CertFile
+}
+
+func (m *MetricsConfig) TLSKeyFile() string {
+	return m.TLS.KeyFile
 }

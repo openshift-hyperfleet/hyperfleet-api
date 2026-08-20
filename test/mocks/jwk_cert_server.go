@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"testing"
 
 	"github.com/mendsley/gojwk"
 )
@@ -15,7 +14,6 @@ const (
 )
 
 func NewJWKCertServerMock(
-	t *testing.T,
 	pubKey crypto.PublicKey,
 	jwkKID string,
 	jwkAlg string,
@@ -25,19 +23,17 @@ func NewJWKCertServerMock(
 		func(w http.ResponseWriter, r *http.Request) {
 			pubjwk, err := gojwk.PublicKey(pubKey)
 			if err != nil {
-				t.Errorf("Unable to generate public jwk: %s", err)
+				http.Error(w, fmt.Sprintf("generate public jwk: %v", err), http.StatusInternalServerError)
 				return
 			}
 			pubjwk.Kid = jwkKID
 			pubjwk.Alg = jwkAlg
 			jwkBytes, err := gojwk.Marshal(pubjwk)
 			if err != nil {
-				t.Errorf("Unable to marshal public jwk: %s", err)
+				http.Error(w, fmt.Sprintf("marshal public jwk: %v", err), http.StatusInternalServerError)
 				return
 			}
-			if _, err := fmt.Fprintf(w, `{"keys":[%s]}`, string(jwkBytes)); err != nil {
-				t.Errorf("error writing jwk response: %v", err)
-			}
+			fmt.Fprintf(w, `{"keys":[%s]}`, string(jwkBytes))
 		},
 	)
 

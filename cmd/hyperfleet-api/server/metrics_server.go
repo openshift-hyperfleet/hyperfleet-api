@@ -1,73 +1,42 @@
 package server
 
 import (
-	"context"
-	"fmt"
-	"net"
 	"net/http"
 	"time"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/handlers"
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
-func NewMetricsServer() Server {
+type metricsCfg interface {
+	tlsCfg
+	BindAddress() string
+}
+
+func NewMetricsServer(cfg metricsCfg) *MetricsServer {
 	mainRouter := http.NewServeMux()
 
-	// metrics endpoint only (health endpoints moved to health_server.go on port 8080)
 	prometheusMetricsHandler := handlers.NewPrometheusMetricsHandler()
-	mainRouter.Handle("/metrics", prometheusMetricsHandler.Handler())
+	mainRouter.Handle("GET /metrics", prometheusMetricsHandler.Handler())
 
 	mainHandler := WithNotFoundHandler(mainRouter)
 
-	s := &metricsServer{}
-	s.httpServer = &http.Server{
-		Addr:              env().Config.Metrics.BindAddress(),
-		Handler:           mainHandler,
-		ReadHeaderTimeout: 10 * time.Second,
-	}
-	return s
-}
-
-type metricsServer struct {
-	httpServer *http.Server
-}
-
-var _ Server = &metricsServer{}
-
-func (s metricsServer) Listen() (listener net.Listener, err error) {
-	return nil, nil
-}
-
-func (s metricsServer) Serve(listener net.Listener) {
-}
-
-func (s metricsServer) Start() {
-	ctx := context.Background()
-	var err error
-	if env().Config.Metrics.TLS.Enabled {
-		if env().Config.Server.TLS.CertFile == "" || env().Config.Server.TLS.KeyFile == "" {
-			check(
-				fmt.Errorf("unspecified required --https-cert-file, --https-key-file"),
-				"Can't start https server",
-			)
-		}
-
-		logger.With(ctx, logger.FieldBindAddress, env().Config.Metrics.BindAddress()).Info("Serving Metrics with TLS")
-		err = s.httpServer.ListenAndServeTLS(env().Config.Server.TLS.CertFile, env().Config.Server.TLS.KeyFile)
-	} else {
-		logger.With(ctx, logger.FieldBindAddress, env().Config.Metrics.BindAddress()).Info("Serving Metrics without TLS")
-		err = s.httpServer.ListenAndServe()
-	}
-	if err != nil && err != http.ErrServerClosed {
-		check(err, "Metrics server terminated with errors")
-	} else {
-		logger.Info(ctx, "Metrics server terminated")
+	return &MetricsServer{
+		baseServer: baseServer{
+			name:      "metrics server",
+			cfg:       cfg,
+			listening: make(chan struct{}),
+			httpServer: &http.Server{
+				Addr:              cfg.BindAddress(),
+				Handler:           mainHandler,
+				ReadTimeout:       5 * time.Second,
+				WriteTimeout:      10 * time.Second,
+				IdleTimeout:       60 * time.Second,
+				ReadHeaderTimeout: 10 * time.Second,
+			},
+		},
 	}
 }
 
-func (s metricsServer) Stop() error {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	return s.httpServer.Shutdown(ctx)
+type MetricsServer struct {
+	baseServer
 }

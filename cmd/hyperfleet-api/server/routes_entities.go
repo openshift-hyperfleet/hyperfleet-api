@@ -1,8 +1,9 @@
 package server
 
 import (
+	"cmp"
 	"fmt"
-	"sort"
+	"slices"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/handlers"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/registry"
@@ -18,8 +19,7 @@ func NewEntityRouteRegistrar(
 	return RouteRegistrar{
 		Name: "entities",
 		Register: func(router *Router) error {
-			RegisterEntityRoutes(router, resourceService, adapterStatusService, schemaValidator)
-			return nil
+			return RegisterEntityRoutes(router, resourceService, adapterStatusService, schemaValidator)
 		},
 	}
 }
@@ -39,27 +39,30 @@ func RegisterEntityRoutes(
 	resourceService services.ResourceService,
 	adapterStatusService services.AdapterStatusService,
 	schemaValidator *validators.SchemaValidator,
-) {
-	registerPerEntityRoutes(router, resourceService, adapterStatusService)
+) error {
+	if err := registerPerEntityRoutes(router, resourceService, adapterStatusService); err != nil {
+		return fmt.Errorf("register entity routes: %w", err)
+	}
 	registerRootResourceRoutes(router, resourceService, adapterStatusService, schemaValidator)
+	return nil
 }
 
 func registerPerEntityRoutes(
 	router *Router,
 	resourceService services.ResourceService,
 	adapterStatusService services.AdapterStatusService,
-) {
+) error {
 	descriptors := registry.All()
-	sort.Slice(descriptors, func(i, j int) bool {
-		return descriptors[i].Kind < descriptors[j].Kind
+	slices.SortFunc(descriptors, func(a, b registry.EntityDescriptor) int {
+		return cmp.Compare(a.Kind, b.Kind)
 	})
 
 	for _, descriptor := range descriptors {
 		if descriptor.Plural == "resources" {
-			panic(fmt.Sprintf(
+			return fmt.Errorf(
 				"entity kind %q uses reserved plural %q which would shadow /resources root endpoint",
 				descriptor.Kind, descriptor.Plural,
-			))
+			)
 		}
 		h := handlers.NewResourceHandler(descriptor, resourceService)
 		sh := handlers.NewResourceStatusHandler(descriptor, resourceService, adapterStatusService)
@@ -70,6 +73,7 @@ func registerPerEntityRoutes(
 		}
 		registerEntityResourceRoutes(router, "/"+descriptor.Plural, h, sh)
 	}
+	return nil
 }
 
 func registerRootResourceRoutes(

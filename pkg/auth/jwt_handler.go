@@ -94,10 +94,11 @@ type JWTHandler struct {
 	validators []issuerValidator
 }
 
-func (h *JWTHandler) Close() {
+func (h *JWTHandler) Close() error {
 	if h.cancel != nil {
 		h.cancel()
 	}
+	return nil
 }
 
 // matchValidator tries each configured issuer validator against the request headers.
