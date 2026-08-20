@@ -12,6 +12,7 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/middleware"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/services"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/tenant"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/validators"
 )
 
@@ -59,6 +60,10 @@ func BuildAPIServer(
 			jwtHandler.Middleware,
 			callerIdentityMiddleware.ResolveCallerIdentity,
 		)
+	}
+	if cfg.Server.Tenant.Enabled {
+		tenantResolver := tenant.NewResolver(cfg.Server.Tenant)
+		authMiddleware = append(authMiddleware, tenantResolver.ResolveTenant)
 	}
 
 	registrars := []server.RouteRegistrar{

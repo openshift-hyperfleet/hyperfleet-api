@@ -29,6 +29,9 @@ func AddServerFlags(cmd *cobra.Command) {
 	cmd.Flags().String("server-https-key-file", defaults.TLS.KeyFile, "Path to TLS key file")
 	cmd.Flags().Bool("server-https-enabled", defaults.TLS.Enabled, "Enable HTTPS rather than HTTP")
 	cmd.Flags().Bool("server-jwt-enabled", defaults.JWT.Enabled, "Enable JWT authentication")
+	cmd.Flags().Bool("server-tenant-enabled", defaults.Tenant.Enabled, "Enable tenant enforcement middleware")
+	cmd.Flags().String("server-tenant-system-header", defaults.Tenant.SystemHeader,
+		"Trusted header identifying system callers (bypasses tenant scoping)")
 }
 
 // AddDatabaseFlags adds database configuration flags following standard naming

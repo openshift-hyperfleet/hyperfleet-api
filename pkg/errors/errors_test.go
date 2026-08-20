@@ -128,6 +128,14 @@ func TestConstructors(t *testing.T) {
 			expectedType:   ErrorTypeAuth,
 			expectedReason: "token expired",
 		},
+		{
+			name:           "Forbidden",
+			build:          func() *ServiceError { return Forbidden("tenant header %q is missing", "X-HyperFleet-Org") },
+			expectedCode:   CodeAuthzPermissionDenied,
+			expectedHTTP:   http.StatusForbidden,
+			expectedType:   ErrorTypePermissionDenied,
+			expectedReason: `tenant header "X-HyperFleet-Org" is missing`,
+		},
 	}
 
 	for _, tt := range tests {
