@@ -1,8 +1,10 @@
 package servecmd
 
 import (
+	"context"
 	"net/http"
 	"testing"
+	"time"
 
 	. "github.com/onsi/gomega"
 
@@ -35,7 +37,7 @@ func TestBuildAPIServer_TenantMiddlewareWiredWhenEnabled(t *testing.T) {
 		},
 	}
 
-	apiServer, err := BuildAPIServer(cfg, nil, nil, nil, nil, nil, false)
+	apiServer, err := BuildAPIServer(cfg, nil, nil, nil, nil, nil)
 	Expect(err).NotTo(HaveOccurred())
 
 	listener, err := apiServer.Listen()
@@ -49,7 +51,9 @@ func TestBuildAPIServer_TenantMiddlewareWiredWhenEnabled(t *testing.T) {
 		apiServer.Serve(listener)
 	}()
 	t.Cleanup(func() {
-		Expect(apiServer.Stop()).To(Succeed())
+		shutdownCtx, cancel := context.WithTimeout(t.Context(), time.Second)
+		defer cancel()
+		Expect(apiServer.Shutdown(shutdownCtx)).To(Succeed())
 		<-served
 	})
 
