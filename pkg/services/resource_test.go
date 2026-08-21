@@ -9,6 +9,8 @@ import (
 	"time"
 
 	. "github.com/onsi/gomega"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 
@@ -3383,4 +3385,236 @@ func TestResourceService_ConditionMapper_IntegrationPath(t *testing.T) {
 		Equal(cluster.Generation),
 		"ObservedGeneration should match resource generation",
 	)
+}
+
+// --- Span attribute tests ---
+
+func setupTestTracer(t *testing.T) (*sdktrace.TracerProvider, *tracetest.InMemoryExporter) {
+	t.Helper()
+	exporter := tracetest.NewInMemoryExporter()
+	tp := sdktrace.NewTracerProvider(
+		sdktrace.WithSampler(sdktrace.AlwaysSample()),
+		sdktrace.WithSyncer(exporter),
+	)
+	t.Cleanup(func() {
+		if err := tp.Shutdown(context.Background()); err != nil {
+			t.Errorf("failed to shutdown tracer: %v", err)
+		}
+	})
+	return tp, exporter
+}
+
+func findSpanAttribute(spans tracetest.SpanStubs, attrKey string) (string, bool) {
+	for _, span := range spans {
+		for _, attr := range span.Attributes {
+			if string(attr.Key) == attrKey {
+				return attr.Value.AsString(), true
+			}
+		}
+	}
+	return "", false
+}
+
+func TestResourceService_SetsSpanAttributes(t *testing.T) {
+	setupTestDescriptors()
+
+	tests := []struct {
+		invoke             func(ctx context.Context, svc ResourceService) error
+		name               string
+		seedID             string
+		expectedResourceID string
+		expectedType       string
+		expectError        bool
+	}{
+		{
+			name:               "Get",
+			seedID:             "ch-1",
+			expectedResourceID: "ch-1",
+			expectedType:       "channels",
+			invoke: func(ctx context.Context, svc ResourceService) error {
+				_, err := svc.Get(ctx, "Channel", "ch-1")
+				return svcErrOrNil(err)
+			},
+		},
+		{
+			name:               "Get not found still tags span",
+			expectedResourceID: "nonexistent",
+			expectedType:       "channels",
+			expectError:        true,
+			invoke: func(ctx context.Context, svc ResourceService) error {
+				_, err := svc.Get(ctx, "Channel", "nonexistent")
+				return svcErrOrNil(err)
+			},
+		},
+		{
+			name:               "Create",
+			expectedResourceID: "ch-new",
+			expectedType:       "channels",
+			invoke: func(ctx context.Context, svc ResourceService) error {
+				_, err := svc.Create(ctx, "Channel", testResource("Channel", "ch-new", "beta"), nil)
+				return svcErrOrNil(err)
+			},
+		},
+		{
+			name:         "Create failure still tags resource_type",
+			expectedType: "channels",
+			expectError:  true,
+			invoke: func(ctx context.Context, svc ResourceService) error {
+				r := testResource("Channel", "", "")
+				r.Name = "" // triggers name validation error
+				_, err := svc.Create(ctx, "Channel", r, nil)
+				return svcErrOrNil(err)
+			},
+		},
+		{
+			name:               "Patch",
+			seedID:             "ch-1",
+			expectedResourceID: "ch-1",
+			expectedType:       "channels",
+			invoke: func(ctx context.Context, svc ResourceService) error {
+				_, err := svc.Patch(ctx, "Channel", "ch-1", &api.ResourcePatch{
+					Spec: map[string]interface{}{"key": "updated"},
+				})
+				return svcErrOrNil(err)
+			},
+		},
+		{
+			name:               "Delete",
+			seedID:             "ch-1",
+			expectedResourceID: "ch-1",
+			expectedType:       "channels",
+			invoke: func(ctx context.Context, svc ResourceService) error {
+				_, err := svc.Delete(ctx, "Channel", "ch-1")
+				return svcErrOrNil(err)
+			},
+		},
+		{
+			name:               "GetByID",
+			seedID:             "ch-1",
+			expectedResourceID: "ch-1",
+			expectedType:       "channels",
+			invoke: func(ctx context.Context, svc ResourceService) error {
+				_, err := svc.GetByID(ctx, "ch-1")
+				return svcErrOrNil(err)
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			RegisterTestingT(t)
+			tp, exporter := setupTestTracer(t)
+
+			mockDao := newMockResourceDao()
+			svc, _, _ := newTestResourceService(mockDao)
+			if tc.seedID != "" {
+				mockDao.addResource(testResource("Channel", tc.seedID, "stable"))
+			}
+
+			ctx, span := tp.Tracer("test").Start(context.Background(), "test")
+			err := tc.invoke(ctx, svc)
+			span.End()
+			if tc.expectError {
+				Expect(err).ToNot(BeNil())
+			} else {
+				Expect(err).To(BeNil())
+			}
+
+			if flushErr := tp.ForceFlush(context.Background()); flushErr != nil {
+				t.Fatalf("failed to flush spans: %v", flushErr)
+			}
+			spans := exporter.GetSpans()
+
+			if tc.expectedResourceID != "" {
+				resourceID, found := findSpanAttribute(spans, "hyperfleet.resource_id")
+				Expect(found).To(BeTrue(), "hyperfleet.resource_id attribute not found")
+				Expect(resourceID).To(Equal(tc.expectedResourceID))
+			}
+
+			resourceType, found := findSpanAttribute(spans, "hyperfleet.resource_type")
+			Expect(found).To(BeTrue(), "hyperfleet.resource_type attribute not found")
+			Expect(resourceType).To(Equal(tc.expectedType))
+		})
+	}
+}
+
+func svcErrOrNil(err *errors.ServiceError) error {
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func assertSpanAttributes(
+	t *testing.T, tp *sdktrace.TracerProvider, exporter *tracetest.InMemoryExporter,
+	expectedID, expectedType string,
+) {
+	t.Helper()
+	if err := tp.ForceFlush(context.Background()); err != nil {
+		t.Fatalf("failed to flush spans: %v", err)
+	}
+	spans := exporter.GetSpans()
+
+	resourceID, found := findSpanAttribute(spans, "hyperfleet.resource_id")
+	Expect(found).To(BeTrue(), "hyperfleet.resource_id attribute not found")
+	Expect(resourceID).To(Equal(expectedID))
+
+	resourceType, found := findSpanAttribute(spans, "hyperfleet.resource_type")
+	Expect(found).To(BeTrue(), "hyperfleet.resource_type attribute not found")
+	Expect(resourceType).To(Equal(expectedType))
+}
+
+func TestResourceService_GetByOwner_SetsSpanAttributes(t *testing.T) {
+	RegisterTestingT(t)
+	setupTestDescriptors()
+	tp, exporter := setupTestTracer(t)
+
+	mockDao := newMockResourceDao()
+	svc, _, _ := newTestResourceService(mockDao)
+	r := testResource("Version", "v-1", "1.0")
+	r.OwnerID = strPtr("ch-1")
+	mockDao.addResource(r)
+
+	ctx, span := tp.Tracer("test").Start(context.Background(), "test")
+	_, svcErr := svc.GetByOwner(ctx, "Version", "v-1", "ch-1")
+	span.End()
+	Expect(svcErr).To(BeNil())
+	assertSpanAttributes(t, tp, exporter, "v-1", "versions")
+}
+
+func TestResourceService_ForceDelete_SetsSpanAttributes(t *testing.T) {
+	RegisterTestingT(t)
+	setupTestDescriptors()
+	tp, exporter := setupTestTracer(t)
+
+	mockDao := newMockResourceDao()
+	svc, _, _ := newTestResourceService(mockDao)
+	r := testResource("Channel", "ch-1", "stable")
+	now := time.Now().UTC()
+	r.DeletedTime = &now
+	mockDao.addResource(r)
+
+	ctx, span := tp.Tracer("test").Start(context.Background(), "test")
+	svcErr := svc.ForceDelete(ctx, "Channel", "ch-1", "test cleanup")
+	span.End()
+	Expect(svcErr).To(BeNil())
+	assertSpanAttributes(t, tp, exporter, "ch-1", "channels")
+}
+
+func TestResourceService_ProcessAdapterStatus_SetsSpanAttributes(t *testing.T) {
+	RegisterTestingT(t)
+	setupAdapterStatusDescriptors()
+	tp, exporter := setupTestTracer(t)
+
+	mockDao := newMockResourceDao()
+	svc, _, _, _ := newTestResourceServiceWithAdapterStatus(mockDao)
+	r := testResource("TestResource", "r-1", "test")
+	r.Generation = 1
+	mockDao.addResource(r)
+
+	ctx, span := tp.Tracer("test").Start(context.Background(), "test")
+	_, svcErr := svc.ProcessAdapterStatus(ctx, "TestResource", "r-1", testAdapterStatusRequest(1))
+	span.End()
+	Expect(svcErr).To(BeNil())
+	assertSpanAttributes(t, tp, exporter, "r-1", "testresources")
 }
