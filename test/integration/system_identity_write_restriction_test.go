@@ -116,10 +116,15 @@ func TestSystemIdentityStatusWriteSucceeds(t *testing.T) {
 	Expect(svcErr).To(BeNil())
 	Expect(result).ToNot(BeNil())
 
-	// Adapter status should be stored.
+	// Adapter status should be stored with the reported fields intact.
 	statuses, err := h.Container.AdapterStatusDao().FindByResource(t.Context(), "Channel", channel.ID)
 	Expect(err).ToNot(HaveOccurred())
 	Expect(statuses).To(HaveLen(1))
+	Expect(statuses[0].Adapter).To(Equal("test-adapter"))
+	Expect(statuses[0].ResourceType).To(Equal("Channel"))
+	Expect(statuses[0].ResourceID).To(Equal(channel.ID))
+	Expect(statuses[0].ObservedGeneration).To(Equal(channel.Generation))
+	Expect(statuses[0].Conditions).To(MatchJSON(mandatoryAdapterConditionsJSON(t, api.AdapterConditionTrue)))
 
 	// Conditions should be written on the resource (aggregation triggered by Available=True).
 	updated, svcErr := svc.Get(t.Context(), "Channel", channel.ID)
@@ -140,4 +145,7 @@ func TestNonSystemCallerWritesUnaffected(t *testing.T) {
 	updated, svcErr := svc.Patch(t.Context(), "Channel", channel.ID, patch)
 	Expect(svcErr).To(BeNil())
 	Expect(updated).ToNot(BeNil())
+
+	_, svcErr = svc.Delete(t.Context(), "Channel", channel.ID)
+	Expect(svcErr).To(BeNil())
 }
