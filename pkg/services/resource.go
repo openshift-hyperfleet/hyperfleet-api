@@ -92,6 +92,17 @@ func (s *sqlResourceService) Get(ctx context.Context, kind, id string) (*api.Res
 	return resource, nil
 }
 
+// rejectSystemIdentityWrite returns a Forbidden error if the caller is a
+// system identity (Sentinel, adapters). System identities may only write
+// status and conditions via ProcessAdapterStatus; every other resource
+// mutation is rejected here.
+func rejectSystemIdentityWrite(ctx context.Context) *errors.ServiceError {
+	if t := tenant.FromContext(ctx); t != nil && t.System {
+		return errors.Forbidden("system identities may only write status and conditions")
+	}
+	return nil
+}
+
 // Create validates name constraints from the EntityDescriptor, sets CreatedBy/UpdatedBy
 // from the auth context, and persists a new resource. ID generation, timestamps, href
 // computation, and generation initialisation are handled by the GORM BeforeCreate hook.
@@ -102,6 +113,9 @@ func (s *sqlResourceService) Create(
 	ctx context.Context, kind string, resource *api.Resource,
 	refs api.ReferenceMap,
 ) (*api.Resource, *errors.ServiceError) {
+	if svcErr := rejectSystemIdentityWrite(ctx); svcErr != nil {
+		return nil, svcErr
+	}
 	resource.Kind = kind
 
 	if svcErr := validateResourceName(kind, resource.Name); svcErr != nil {
@@ -170,6 +184,9 @@ func (s *sqlResourceService) Create(
 func (s *sqlResourceService) Patch(
 	ctx context.Context, kind, id string, patch *api.ResourcePatch,
 ) (*api.Resource, *errors.ServiceError) {
+	if svcErr := rejectSystemIdentityWrite(ctx); svcErr != nil {
+		return nil, svcErr
+	}
 	if svcErr := validateKind(kind); svcErr != nil {
 		return nil, svcErr
 	}
@@ -245,6 +262,9 @@ func (s *sqlResourceService) Patch(
 
 // Resources with required adapters are soft-deleted; all others are hard-deleted.
 func (s *sqlResourceService) Delete(ctx context.Context, kind, id string) (*api.Resource, *errors.ServiceError) {
+	if svcErr := rejectSystemIdentityWrite(ctx); svcErr != nil {
+		return nil, svcErr
+	}
 	if svcErr := validateKind(kind); svcErr != nil {
 		return nil, svcErr
 	}
@@ -916,6 +936,9 @@ func applyResourcePatch(resource *api.Resource, patch *api.ResourcePatch) error 
 }
 
 func (s *sqlResourceService) ForceDelete(ctx context.Context, kind, id, reason string) *errors.ServiceError {
+	if svcErr := rejectSystemIdentityWrite(ctx); svcErr != nil {
+		return svcErr
+	}
 	if svcErr := validateKind(kind); svcErr != nil {
 		return svcErr
 	}

@@ -426,14 +426,6 @@ func TestResourceService_Create_StampsTenancy(t *testing.T) {
 			want: `{"org":"acme"}`,
 		},
 		{
-			name: "system identity gets empty tenancy",
-			ctx: tenant.WithTenant(context.Background(), &tenant.ResolvedTenant{
-				System:     true,
-				Dimensions: map[string]string{"org": "acme"},
-			}),
-			want: `{}`,
-		},
-		{
 			name: "no tenant context gets empty tenancy",
 			ctx:  context.Background(),
 			want: `{}`,
@@ -463,6 +455,112 @@ func TestResourceService_Create_StampsTenancy(t *testing.T) {
 			Expect(string(result.Tenancy)).To(MatchJSON(tt.want))
 		})
 	}
+}
+
+// ─── System-identity write restriction ─────────────────────────
+
+func systemCtx() context.Context {
+	return tenant.WithTenant(context.Background(), &tenant.ResolvedTenant{System: true})
+}
+
+func TestResourceService_RejectsSystemIdentityWrites(t *testing.T) {
+	RegisterTestingT(t)
+	setupTestDescriptors()
+
+	mockDao := newMockResourceDao()
+	svc, _, _ := newTestResourceService(mockDao)
+	mockDao.addResource(testResource("Channel", "ch-1", "stable"))
+
+	tests := []struct {
+		action func() *errors.ServiceError
+		op     string
+	}{
+		{
+			op: "create",
+			action: func() *errors.ServiceError {
+				_, svcErr := svc.Create(systemCtx(), "Channel", testResource("Channel", "ch-2", "new"), nil)
+				return svcErr
+			},
+		},
+		{
+			op: "patch",
+			action: func() *errors.ServiceError {
+				patch := &api.ResourcePatch{Spec: map[string]interface{}{"key": "value"}}
+				_, svcErr := svc.Patch(systemCtx(), "Channel", "ch-1", patch)
+				return svcErr
+			},
+		},
+		{
+			op: "delete",
+			action: func() *errors.ServiceError {
+				_, svcErr := svc.Delete(systemCtx(), "Channel", "ch-1")
+				return svcErr
+			},
+		},
+		{
+			op: "force delete",
+			action: func() *errors.ServiceError {
+				return svc.ForceDelete(systemCtx(), "Channel", "ch-1", "some reason")
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		name := fmt.Sprintf("system identity %s is rejected", tt.op)
+		t.Run(name, func(t *testing.T) {
+			svcErr := tt.action()
+			Expect(svcErr).ToNot(BeNil(), "%s: system identity write should have been rejected but succeeded", name)
+			Expect(svcErr.HTTPCode).To(Equal(403), "%s: expected 403 Forbidden", name)
+			Expect(svcErr.RFC9457Code).To(
+				Equal(errors.CodeAuthzPermissionDenied), "%s: expected %s error code", name, errors.CodeAuthzPermissionDenied,
+			)
+		})
+	}
+}
+
+func TestResourceService_NonSystemIdentityWritesUnaffected(t *testing.T) {
+	RegisterTestingT(t)
+	setupTestDescriptors()
+
+	mockDao := newMockResourceDao()
+	svc, _, _ := newTestResourceService(mockDao)
+
+	tenantCtx := tenant.WithTenant(context.Background(), &tenant.ResolvedTenant{
+		Dimensions: map[string]string{"org": "acme"},
+	})
+
+	created, svcErr := svc.Create(tenantCtx, "Channel", testResource("Channel", "ch-1", "stable"), nil)
+	Expect(svcErr).To(BeNil())
+
+	patch := &api.ResourcePatch{Spec: map[string]interface{}{"key": "value"}}
+	_, svcErr = svc.Patch(tenantCtx, "Channel", created.ID, patch)
+	Expect(svcErr).To(BeNil())
+}
+
+func TestProcessAdapterStatus_SystemIdentityWriteSucceeds(t *testing.T) {
+	RegisterTestingT(t)
+	setupAdapterStatusDescriptors()
+
+	mockDao := newMockResourceDao()
+	svc, _, asDao, rcDao := newTestResourceServiceWithAdapterStatus(mockDao)
+
+	r := testResource("TestResource", "r-1", "test")
+	r.Generation = 1
+	mockDao.addResource(r)
+
+	result, svcErr := svc.ProcessAdapterStatus(
+		systemCtx(), "TestResource", "r-1", testAdapterStatusRequest(1),
+	)
+
+	Expect(svcErr).To(BeNil())
+	Expect(result).ToNot(BeNil())
+
+	// Adapter status should be stored
+	Expect(asDao.statuses).To(HaveLen(1))
+
+	// Conditions should be written (aggregation triggered by Available=True)
+	Expect(rcDao.conditions).To(HaveKey("r-1"))
+	Expect(rcDao.conditions["r-1"]).ToNot(BeEmpty())
 }
 
 func TestResourceService_Create_PreservesExplicitValues(t *testing.T) {
