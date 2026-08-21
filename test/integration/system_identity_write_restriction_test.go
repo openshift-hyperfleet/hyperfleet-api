@@ -24,13 +24,17 @@ func systemCtx() context.Context {
 
 // mandatoryAdapterConditionsJSON marshals the three conditions required on every
 // adapter status report (Available, Applied, Health).
-func mandatoryAdapterConditionsJSON(availableStatus api.AdapterConditionStatus) datatypes.JSON {
+func mandatoryAdapterConditionsJSON(t *testing.T, availableStatus api.AdapterConditionStatus) datatypes.JSON {
+	t.Helper()
 	conditions := []api.AdapterCondition{
 		{Type: api.AdapterConditionTypeAvailable, Status: availableStatus},
 		{Type: api.AdapterConditionTypeApplied, Status: api.AdapterConditionTrue},
 		{Type: api.AdapterConditionTypeHealth, Status: api.AdapterConditionTrue},
 	}
-	b, _ := json.Marshal(conditions)
+	b, err := json.Marshal(conditions)
+	if err != nil {
+		t.Fatalf("failed to marshal adapter conditions: %v", err)
+	}
 	return b
 }
 
@@ -105,7 +109,7 @@ func TestSystemIdentityStatusWriteSucceeds(t *testing.T) {
 		Adapter:            "test-adapter",
 		ObservedGeneration: channel.Generation,
 		LastReportTime:     time.Now().UTC(),
-		Conditions:         mandatoryAdapterConditionsJSON(api.AdapterConditionTrue),
+		Conditions:         mandatoryAdapterConditionsJSON(t, api.AdapterConditionTrue),
 	}
 
 	result, svcErr := svc.ProcessAdapterStatus(systemCtx(), "Channel", channel.ID, adapterStatus)
