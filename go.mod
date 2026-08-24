@@ -6,17 +6,17 @@ require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/MicahParks/jwkset v0.11.3
 	github.com/MicahParks/keyfunc/v3 v3.8.1
-	github.com/brianvoe/gofakeit/v7 v7.15.0
-	github.com/getkin/kin-openapi v0.146.0
+	github.com/brianvoe/gofakeit/v7 v7.16.0
+	github.com/getkin/kin-openapi v0.147.0
 	github.com/go-gormigrate/gormigrate/v2 v2.1.6
 	github.com/go-playground/validator/v10 v10.30.3
 	github.com/golang-jwt/jwt/v5 v5.3.1
-	github.com/google/cel-go v0.31.0
+	github.com/google/cel-go v0.32.0
 	github.com/google/uuid v1.6.0
 	github.com/jinzhu/inflection v1.0.0
 	github.com/lib/pq v1.12.3
 	github.com/mendsley/gojwk v0.0.0-20141217222730-4d5ec6e58103
-	github.com/oapi-codegen/runtime v1.6.0
+	github.com/oapi-codegen/runtime v1.7.0
 	github.com/onsi/gomega v1.42.1
 	github.com/openshift-hyperfleet/hyperfleet-api-spec v1.0.27
 	github.com/prometheus/client_golang v1.24.1
@@ -24,7 +24,7 @@ require (
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
 	github.com/spf13/viper v1.21.0
-	github.com/stretchr/testify v1.12.0
+	github.com/stretchr/testify v1.12.1
 	github.com/testcontainers/testcontainers-go v0.44.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.44.0
 	github.com/yaacov/tree-search-language/v6 v6.0.11
