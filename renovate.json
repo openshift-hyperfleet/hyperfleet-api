@@ -1,7 +1,7 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "schedule": [
-    "on monday"
+    "* * * * 1"
   ],
   "gomod": {
     "packageRules": [
@@ -25,16 +25,86 @@
         "gomod"
       ],
       "matchUpdateTypes": [
+        "patch",
         "minor",
-        "patch"
+        "pin"
       ],
-      "groupName": "go module minor/patch updates"
+      "groupName": "gomod non-major",
+      "addLabels": [
+        "lgtm",
+        "approved"
+      ],
+      "automerge": false,
+      "platformAutomerge": false
+    },
+    {
+      "matchManagers": [
+        "gomod"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "groupName": "gomod major",
+      "addLabels": [
+        "manual-review-required"
+      ]
     },
     {
       "matchManagers": [
         "dockerfile"
       ],
       "groupName": "docker image updates"
+    },
+    {
+      "matchManagers": [
+        "dockerfile"
+      ],
+      "matchDatasources": [
+        "docker"
+      ],
+      "matchPackageNames": [
+        "registry.access.redhat.com/ubi9/go-toolset"
+      ],
+      "matchUpdateTypes": [
+        "patch"
+      ],
+      "groupName": "ubi9 go-toolset",
+      "addLabels": [
+        "lgtm",
+        "approved"
+      ],
+      "automerge": false,
+      "platformAutomerge": false
+    },
+    {
+      "matchManagers": [
+        "tekton"
+      ],
+      "matchUpdateTypes": [
+        "patch",
+        "minor",
+        "pin",
+        "digest"
+      ],
+      "groupName": "Konflux references non-major",
+      "addLabels": [
+        "lgtm",
+        "approved"
+      ],
+      "automerge": false,
+      "platformAutomerge": false
+    },
+    {
+      "matchManagers": [
+        "tekton"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "groupName": "Konflux references major",
+      "addLabels": [
+        "manual-review-required"
+      ]
     }
   ],
   "postUpdateOptions": [
