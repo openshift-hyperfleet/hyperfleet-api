@@ -36,5 +36,8 @@
       ],
       "groupName": "docker image updates"
     }
+  ],
+  "postUpdateOptions": [
+    "gomodTidy"
   ]
 }
