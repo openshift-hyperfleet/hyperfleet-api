@@ -128,6 +128,21 @@ func testConditionMappingRules() []registry.ConditionMappingRule {
 				Message: registry.MappingExpression{Expression: policyPrefix + `.message`},
 			},
 		},
+		{
+			// Probe rule for the rollback integration test: it compiles fine but its
+			// status expression divides by zero, failing at CEL evaluation time. It
+			// only fires when an adapter reports a "TriggerMappingError" condition, so
+			// no other test (which never sends that type) is affected.
+			Type: "MappingErrorProbe",
+			When: registry.MappingExpression{
+				Expression: `statuses.exists(s, s.conditions.exists(c, c.type == "TriggerMappingError"))`,
+			},
+			Output: registry.MappingOutput{
+				Status:  registry.MappingExpression{Expression: `1 / 0 == 0 ? "True" : "False"`},
+				Reason:  registry.MappingExpression{Expression: `"probe"`},
+				Message: registry.MappingExpression{Expression: `"probe"`},
+			},
+		},
 	}
 }
 

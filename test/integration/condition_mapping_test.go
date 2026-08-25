@@ -270,3 +270,94 @@ func TestConditionMapping_MultipleRules(t *testing.T) {
 	Expect(hasQuotaValid).To(BeTrue(), "QuotaValid condition should be mapped from QuotaSufficient adapter condition")
 	Expect(hasPolicyValid).To(BeTrue(), "PolicyValid condition should be mapped from PolicyCheckPassed adapter condition")
 }
+
+// TestConditionMapping_CELError_RollsBackTransaction verifies that a CEL evaluation
+// failure during mapping rolls back the ENTIRE write transaction: neither the adapter
+// status nor any aggregated/mapped conditions are persisted, and the caller receives
+// an RFC 9457 error response. The "MappingErrorProbe" rule (see testConditionMappingRules)
+// divides by zero at runtime and only fires when a "TriggerMappingError" condition is reported.
+func TestConditionMapping_CELError_RollsBackTransaction(t *testing.T) {
+	h, client := test.RegisterIntegration(t)
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+
+	cluster, err := h.Factories.NewClusters(h.NewID())
+	Expect(err).NotTo(HaveOccurred())
+
+	// Baseline: a freshly created cluster already carries seed conditions
+	// (Reconciled=False / LastKnownReconciled=False, "adapters have not reported").
+	// The failing PUT must leave this state untouched.
+	baselineResp, err := client.GetClusterByIdWithResponse(ctx, cluster.ID, nil, test.WithAuthToken(ctx))
+	Expect(err).NotTo(HaveOccurred())
+	Expect(baselineResp.JSON200).NotTo(BeNil())
+	baseline := make(map[string]openapi.ResourceConditionStatus)
+	for _, cond := range baselineResp.JSON200.Status.Conditions {
+		baseline[cond.Type] = cond.Status
+	}
+
+	// Mandatory conditions are present so validation passes and aggregation runs;
+	// the TriggerMappingError condition then triggers the failing probe rule.
+	statusInput := newAdapterStatusRequest(
+		"validation",
+		cluster.Generation,
+		[]openapi.ConditionRequest{
+			{
+				Type:    api.AdapterConditionTypeAvailable,
+				Status:  openapi.AdapterConditionStatusTrue,
+				Reason:  util.PtrString("OK"),
+				Message: util.PtrString("OK"),
+			},
+			{
+				Type:    api.AdapterConditionTypeApplied,
+				Status:  openapi.AdapterConditionStatusTrue,
+				Reason:  util.PtrString("OK"),
+				Message: util.PtrString("OK"),
+			},
+			{
+				Type:    api.AdapterConditionTypeHealth,
+				Status:  openapi.AdapterConditionStatusTrue,
+				Reason:  util.PtrString("OK"),
+				Message: util.PtrString("OK"),
+			},
+			{
+				Type:    "TriggerMappingError",
+				Status:  openapi.AdapterConditionStatusTrue,
+				Reason:  util.PtrString("Trigger"),
+				Message: util.PtrString("Triggers the failing probe rule"),
+			},
+		},
+		nil,
+	)
+
+	// The PUT must fail with an RFC 9457 error (GeneralError → 500), not persist a partial state.
+	resp, err := client.PutClusterStatusesWithResponse(
+		ctx, cluster.ID,
+		openapi.PutClusterStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
+	)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(resp.StatusCode()).To(Equal(http.StatusInternalServerError),
+		"CEL evaluation failure should surface as an error response")
+
+	// Rollback proof #1: no adapter status was persisted.
+	statusesResp, err := client.GetClusterStatusesWithResponse(ctx, cluster.ID, nil, test.WithAuthToken(ctx))
+	Expect(err).NotTo(HaveOccurred())
+	Expect(statusesResp.StatusCode()).To(Equal(http.StatusOK))
+	Expect(statusesResp.JSON200).NotTo(BeNil())
+	Expect(statusesResp.JSON200.Items).To(BeEmpty(),
+		"adapter status must not be persisted when the mapping transaction rolls back")
+
+	// Rollback proof #2: the resource conditions are byte-for-byte the pre-PUT baseline.
+	// A successful PUT would have flipped Reconciled to True and appended the
+	// ValidationSuccessful + mapped conditions; after rollback none of that survives.
+	getResp, err := client.GetClusterByIdWithResponse(ctx, cluster.ID, nil, test.WithAuthToken(ctx))
+	Expect(err).NotTo(HaveOccurred())
+	Expect(getResp.StatusCode()).To(Equal(http.StatusOK))
+	Expect(getResp.JSON200).NotTo(BeNil())
+
+	after := make(map[string]openapi.ResourceConditionStatus)
+	for _, cond := range getResp.JSON200.Status.Conditions {
+		after[cond.Type] = cond.Status
+	}
+	Expect(after).To(Equal(baseline),
+		"conditions must be unchanged after rollback: no new/mapped conditions and no status flipped")
+}
