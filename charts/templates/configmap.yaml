@@ -59,6 +59,20 @@ data:
           {{- end }}
         {{- end }}
 
+      tenant:
+        enabled: {{ .Values.config.server.tenant.enabled }}
+        system_header: {{ .Values.config.server.tenant.system_header | quote }}
+        {{- if .Values.config.server.tenant.dimensions }}
+        dimensions:
+          {{- range .Values.config.server.tenant.dimensions }}
+          - header: {{ .header | quote }}
+            key: {{ .key | quote }}
+            required: {{ .required | default false }}
+          {{- end }}
+        {{- else }}
+        dimensions: []
+        {{- end }}
+
     database:
       dialect: {{ .Values.config.database.dialect }}
 

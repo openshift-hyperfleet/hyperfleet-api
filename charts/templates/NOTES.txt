@@ -41,5 +41,20 @@ Or at install/upgrade:
 Full issuer field reference (header, audience, identity_claim, identity_claim_pattern, identity_header):
   https://github.com/openshift-hyperfleet/hyperfleet-api/blob/main/docs/authentication.md#issuer-configuration-reference
 
+{{- if .Values.config.existingConfigMap }}
+
+Tenant enforcement settings are defined by the external ConfigMap "{{ .Values.config.existingConfigMap }}" —
+this chart's config.server.tenant.* values are ignored.
+{{- else if .Values.config.server.tenant.enabled }}
+
+Tenant enforcement is ENABLED.
+  System bypass header: {{ .Values.config.server.tenant.system_header }}
+  Dimensions: {{ range .Values.config.server.tenant.dimensions }}{{ .key }} (header: {{ .header }}, required: {{ .required | default false }}) {{ end }}
+
+Identity must arrive as trusted headers injected by the gateway (Envoy + Authorino) —
+the API never extracts tenancy from JWT claims. Only trusted gateways should set
+these headers in production.
+{{- end }}
+
 Documentation:
   https://github.com/openshift-hyperfleet/hyperfleet-api/blob/main/docs/deployment.md

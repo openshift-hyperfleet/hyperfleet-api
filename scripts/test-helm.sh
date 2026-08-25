@@ -149,6 +149,79 @@ assert_contains "$OUTPUT" '/var/run/secrets/kubernetes.io/serviceaccount/ca.crt'
   "Configured jwk_cert_ca_file value not found in rendered configmap"
 pass "JWT with jwk_cert_ca_file config template"
 
+run_test "template with tenant disabled (default)"
+OUTPUT=$(render)
+CONFIG_YAML=$(echo "$OUTPUT" | extract_config_yaml)
+echo "$CONFIG_YAML" | validate_yaml || fail "rendered config.yaml is not valid YAML with tenant disabled"
+TENANT_ENABLED=$(echo "$CONFIG_YAML" | $YQ eval '.server.tenant.enabled' -)
+[ "$TENANT_ENABLED" = "false" ] || fail "expected server.tenant.enabled: false by default, got: $TENANT_ENABLED"
+TENANT_DIMENSIONS_LEN=$(echo "$CONFIG_YAML" | $YQ eval '.server.tenant.dimensions | length' -)
+[ "$TENANT_DIMENSIONS_LEN" = "0" ] || fail "expected server.tenant.dimensions: [] by default, got length: $TENANT_DIMENSIONS_LEN"
+echo "$OUTPUT" | kubeconform_validate
+pass "Tenant disabled by default config template"
+
+run_test "template with tenant enabled (org/project dimensions)"
+OUTPUT=$(render \
+  --set config.server.tenant.enabled=true \
+  --set config.server.tenant.system_header=X-HyperFleet-System \
+  --set-json 'config.server.tenant.dimensions=[{"header":"X-HyperFleet-Org","key":"org","required":true},{"header":"X-HyperFleet-Project","key":"project","required":false}]')
+CONFIG_YAML=$(echo "$OUTPUT" | extract_config_yaml)
+echo "$CONFIG_YAML" | validate_yaml || fail "rendered config.yaml is not valid YAML with tenant enabled"
+TENANT_ENABLED=$(echo "$CONFIG_YAML" | $YQ eval '.server.tenant.enabled' -)
+[ "$TENANT_ENABLED" = "true" ] || fail "expected server.tenant.enabled: true, got: $TENANT_ENABLED"
+assert_contains "$CONFIG_YAML" 'system_header: "X-HyperFleet-System"' "system_header not found in config.yaml"
+assert_contains "$CONFIG_YAML" 'header: "X-HyperFleet-Org"' "org dimension header not found in config.yaml"
+assert_contains "$CONFIG_YAML" 'key: "org"' "org dimension key not found in config.yaml"
+assert_contains "$CONFIG_YAML" 'header: "X-HyperFleet-Project"' "project dimension header not found in config.yaml"
+echo "$OUTPUT" | kubeconform_validate
+pass "Tenant enabled with org/project dimensions config template"
+
+run_test "template with tenant dimensions swapped via values only (different dimension model)"
+OUTPUT=$(render \
+  --set config.server.tenant.enabled=true \
+  --set config.server.tenant.system_header=X-HyperFleet-System \
+  --set-json 'config.server.tenant.dimensions=[{"header":"X-HyperFleet-Account","key":"account","required":true},{"header":"X-HyperFleet-Segment","key":"segment","required":true}]')
+CONFIG_YAML=$(echo "$OUTPUT" | extract_config_yaml)
+echo "$CONFIG_YAML" | validate_yaml || fail "rendered config.yaml is not valid YAML with swapped tenant dimensions"
+assert_contains "$CONFIG_YAML" 'key: "account"' "account dimension not found in config.yaml"
+assert_contains "$CONFIG_YAML" 'key: "segment"' "segment dimension not found in config.yaml"
+assert_not_contains "$CONFIG_YAML" 'key: "org"' "unexpected leftover org dimension after values-only swap"
+echo "$OUTPUT" | kubeconform_validate
+pass "Tenant dimensions swapped via values only, no template edits"
+
+run_test "tenant enabled with no required dimension fails schema validation"
+if OUTPUT=$(render \
+  --set config.server.tenant.enabled=true \
+  --set config.server.tenant.system_header=X-HyperFleet-System \
+  --set-json 'config.server.tenant.dimensions=[{"header":"X-HyperFleet-Org","key":"org","required":false}]' 2>&1); then
+  fail "expected schema validation error when no dimension is required, but render succeeded"
+else
+  assert_contains "$OUTPUT" 'dimensions' "expected schema validation error to reference tenant dimensions"
+fi
+pass "Tenant enabled with no required dimension (validation failure)"
+
+run_test "tenant enabled with invalid system_header fails schema validation"
+if OUTPUT=$(render \
+  --set config.server.tenant.enabled=true \
+  --set config.server.tenant.system_header="X Bad Header" \
+  --set-json 'config.server.tenant.dimensions=[{"header":"X-HyperFleet-Org","key":"org","required":true}]' 2>&1); then
+  fail "expected schema validation error for malformed system_header, but render succeeded"
+else
+  assert_contains "$OUTPUT" 'system_header' "expected schema validation error to reference system_header"
+fi
+pass "Tenant enabled with invalid system_header (validation failure)"
+
+run_test "tenant enabled with invalid dimension header fails schema validation"
+if OUTPUT=$(render \
+  --set config.server.tenant.enabled=true \
+  --set config.server.tenant.system_header=X-HyperFleet-System \
+  --set-json 'config.server.tenant.dimensions=[{"header":"Invalid Header","key":"org","required":true}]' 2>&1); then
+  fail "expected schema validation error for malformed dimension header, but render succeeded"
+else
+  assert_contains "$OUTPUT" 'dimensions' "expected schema validation error to reference tenant dimensions"
+fi
+pass "Tenant enabled with invalid dimension header (validation failure)"
+
 run_test "template with custom image"
 helm template "$RELEASE_NAME" "$CHART_DIR" \
   --set image.registry=quay.io \
