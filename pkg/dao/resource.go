@@ -8,6 +8,7 @@ import (
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/tenant"
 )
 
 type ResourceDao interface {
@@ -40,7 +41,7 @@ func NewResourceDao(sessionFactory db.SessionFactory) ResourceDao {
 }
 
 func (d *sqlResourceDao) Get(ctx context.Context, kind, id string) (*api.Resource, error) {
-	g2 := d.sessionFactory.New(ctx)
+	g2 := tenant.ScopeDB(d.sessionFactory.New(ctx), ctx)
 	var resource api.Resource
 	if err := g2.Preload("Conditions").Preload("Labels").Preload("References").
 		Take(&resource, "kind = ? AND id = ?", kind, id).Error; err != nil {
@@ -50,7 +51,7 @@ func (d *sqlResourceDao) Get(ctx context.Context, kind, id string) (*api.Resourc
 }
 
 func (d *sqlResourceDao) GetForUpdate(ctx context.Context, kind, id string) (*api.Resource, error) {
-	g2 := d.sessionFactory.New(ctx)
+	g2 := tenant.ScopeDB(d.sessionFactory.New(ctx), ctx)
 	var resource api.Resource
 	if err := g2.Clauses(clause.Locking{Strength: "UPDATE"}).
 		Preload("Conditions").Preload("Labels").Preload("References").
@@ -61,7 +62,7 @@ func (d *sqlResourceDao) GetForUpdate(ctx context.Context, kind, id string) (*ap
 }
 
 func (d *sqlResourceDao) GetByOwner(ctx context.Context, kind, id, ownerID string) (*api.Resource, error) {
-	g2 := d.sessionFactory.New(ctx)
+	g2 := tenant.ScopeDB(d.sessionFactory.New(ctx), ctx)
 	var resource api.Resource
 	if err := g2.Preload("Conditions").Preload("Labels").Preload("References").
 		Take(&resource, "kind = ? AND id = ? AND owner_id = ?", kind, id, ownerID).Error; err != nil {
@@ -99,7 +100,7 @@ func (d *sqlResourceDao) Save(ctx context.Context, resource *api.Resource) error
 }
 
 func (d *sqlResourceDao) Delete(ctx context.Context, kind, id string) error {
-	g2 := d.sessionFactory.New(ctx)
+	g2 := tenant.ScopeDB(d.sessionFactory.New(ctx), ctx)
 	if err := g2.Omit(clause.Associations).Where("kind = ?", kind).Delete(
 		&api.Resource{Meta: api.Meta{ID: id}}).Error; err != nil {
 		db.MarkForRollback(ctx, err)
@@ -110,10 +111,15 @@ func (d *sqlResourceDao) Delete(ctx context.Context, kind, id string) error {
 
 func (d *sqlResourceDao) ExistsByOwner(ctx context.Context, kind, ownerID string) (bool, error) {
 	g2 := d.sessionFactory.New(ctx)
+	query := "SELECT EXISTS(SELECT 1 FROM resources WHERE kind = ? AND owner_id = ? AND deleted_time IS NULL"
+	args := []any{kind, ownerID}
+	if scopeClause, arg := tenant.ScopeClause(ctx); scopeClause != "" {
+		query += " AND " + scopeClause
+		args = append(args, arg)
+	}
+	query += ")"
 	var exists bool
-	if err := g2.Raw(
-		"SELECT EXISTS(SELECT 1 FROM resources WHERE kind = ? AND owner_id = ? AND deleted_time IS NULL)",
-		kind, ownerID).Scan(&exists).Error; err != nil {
+	if err := g2.Raw(query, args...).Scan(&exists).Error; err != nil {
 		return false, err
 	}
 	return exists, nil
@@ -124,17 +130,22 @@ func (d *sqlResourceDao) ExistsSoftDeletedByOwner(ctx context.Context, kinds []s
 		return false, nil
 	}
 	g2 := d.sessionFactory.New(ctx)
+	query := "SELECT EXISTS(SELECT 1 FROM resources WHERE kind IN (?) AND owner_id = ? AND deleted_time IS NOT NULL"
+	args := []any{kinds, ownerID}
+	if scopeClause, arg := tenant.ScopeClause(ctx); scopeClause != "" {
+		query += " AND " + scopeClause
+		args = append(args, arg)
+	}
+	query += ")"
 	var exists bool
-	if err := g2.Raw(
-		"SELECT EXISTS(SELECT 1 FROM resources WHERE kind IN (?) AND owner_id = ? AND deleted_time IS NOT NULL)",
-		kinds, ownerID).Scan(&exists).Error; err != nil {
+	if err := g2.Raw(query, args...).Scan(&exists).Error; err != nil {
 		return false, fmt.Errorf("failed to check soft-deleted children: %w", err)
 	}
 	return exists, nil
 }
 
 func (d *sqlResourceDao) FindByKind(ctx context.Context, kind string) (api.ResourceList, error) {
-	g2 := d.sessionFactory.New(ctx)
+	g2 := tenant.ScopeDB(d.sessionFactory.New(ctx), ctx)
 	var resources api.ResourceList
 	if err := g2.Preload("Labels").Preload("Conditions").Preload("References").
 		Where("kind = ?", kind).Find(&resources).Error; err != nil {
@@ -144,7 +155,7 @@ func (d *sqlResourceDao) FindByKind(ctx context.Context, kind string) (api.Resou
 }
 
 func (d *sqlResourceDao) FindByKindAndOwner(ctx context.Context, kind, ownerID string) (api.ResourceList, error) {
-	g2 := d.sessionFactory.New(ctx)
+	g2 := tenant.ScopeDB(d.sessionFactory.New(ctx), ctx)
 	var resources api.ResourceList
 	if err := g2.Preload("Labels").Preload("Conditions").Preload("References").
 		Where("kind = ? AND owner_id = ?", kind, ownerID).Find(&resources).Error; err != nil {
@@ -154,7 +165,7 @@ func (d *sqlResourceDao) FindByKindAndOwner(ctx context.Context, kind, ownerID s
 }
 
 func (d *sqlResourceDao) GetByID(ctx context.Context, id string) (*api.Resource, error) {
-	g2 := d.sessionFactory.New(ctx)
+	g2 := tenant.ScopeDB(d.sessionFactory.New(ctx), ctx)
 	var resource api.Resource
 	if err := g2.Preload("Conditions").Preload("Labels").Preload("References").
 		Take(&resource, "id = ?", id).Error; err != nil {
@@ -166,7 +177,7 @@ func (d *sqlResourceDao) GetByID(ctx context.Context, id string) (*api.Resource,
 func (d *sqlResourceDao) FindByKindAndOwnerForUpdate(
 	ctx context.Context, kind, ownerID string,
 ) (api.ResourceList, error) {
-	g2 := d.sessionFactory.New(ctx)
+	g2 := tenant.ScopeDB(d.sessionFactory.New(ctx), ctx)
 	var resources api.ResourceList
 	if err := g2.Preload("Labels").Preload("Conditions").Preload("References").
 		Clauses(clause.Locking{Strength: "UPDATE"}).
@@ -201,7 +212,7 @@ func (d *sqlResourceDao) ReplaceReferences(
 func (d *sqlResourceDao) FindReferencers(
 	ctx context.Context, targetID string,
 ) ([]api.ResourceSummary, error) {
-	g2 := d.sessionFactory.New(ctx)
+	g2 := tenant.ScopeDB(d.sessionFactory.New(ctx), ctx)
 	var summaries []api.ResourceSummary
 	err := g2.Model(&api.ResourceReference{}).
 		Select("resources.kind, resources.name").
