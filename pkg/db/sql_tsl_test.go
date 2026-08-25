@@ -374,6 +374,15 @@ func TestTSLToSQL_ConditionStatus(t *testing.T) {
 			expectedArgs: []any{"Available", "False"},
 		},
 		{
+			// A CEL-mapped condition type (not a built-in aggregated one) must be
+			// searchable exactly like the standard types — the query is type-agnostic.
+			name:   "mapped custom condition type",
+			search: "status.conditions.CustomReady = 'True'",
+			sqlContains: "(SELECT rc.status FROM resource_conditions rc" +
+				" WHERE rc.resource_id = resources.id AND rc.type = ?) = ?",
+			expectedArgs: []any{"CustomReady", "True"},
+		},
+		{
 			name:          "invalid status value",
 			search:        "status.conditions.Reconciled = 'Invalid'",
 			expectError:   true,

@@ -3482,3 +3482,60 @@ func TestResourceService_ConditionMapper_IntegrationPath(t *testing.T) {
 		"ObservedGeneration should match resource generation",
 	)
 }
+
+// TestResourceService_ConditionMapper_DefaultWithoutConfig verifies the default
+// behavior when an entity has no condition mapping rules configured: status
+// aggregation still runs, only the standard aggregated conditions are produced,
+// no mapped conditions are appended, and no error is returned (nil-safe default).
+func TestResourceService_ConditionMapper_DefaultWithoutConfig(t *testing.T) {
+	RegisterTestingT(t)
+	registry.Reset()
+	t.Cleanup(registry.Reset)
+	// Register entity descriptor WITHOUT any condition mapping rules.
+	registry.Register(registry.EntityDescriptor{
+		Kind:   "Cluster",
+		Plural: "clusters",
+	})
+
+	mockDao := newMockResourceDao()
+	svc, _, _, rcDao := newTestResourceServiceWithConditions(mockDao)
+
+	cluster := testResource("Cluster", "cl-1", "test-cluster")
+	cluster.Generation = 1
+	mockDao.addResource(cluster)
+
+	// Include a custom adapter condition that a mapping rule COULD target — but
+	// none is configured, so nothing should be mapped from it.
+	req := &api.AdapterStatus{
+		Adapter:            "test-adapter",
+		ObservedGeneration: 1,
+		LastReportTime:     time.Now().UTC(),
+		Conditions: testConditionsJSON(
+			api.AdapterCondition{Type: api.AdapterConditionTypeAvailable, Status: api.AdapterConditionTrue},
+			api.AdapterCondition{Type: api.AdapterConditionTypeApplied, Status: api.AdapterConditionTrue},
+			api.AdapterCondition{Type: api.AdapterConditionTypeHealth, Status: api.AdapterConditionTrue},
+			api.AdapterCondition{Type: "CustomCondition", Status: api.AdapterConditionTrue},
+		),
+	}
+
+	result, svcErr := svc.ProcessAdapterStatus(context.Background(), "Cluster", cluster.ID, req)
+	Expect(svcErr).To(BeNil(), "aggregation must not error when no mapping config is present")
+	Expect(result).ToNot(BeNil())
+
+	// Aggregation still ran: the standard Reconciled condition is present.
+	conditions := rcDao.conditions[cluster.ID]
+	Expect(conditions).ToNot(BeEmpty())
+	Expect(findCondition(conditions, api.ResourceConditionTypeReconciled)).ToNot(BeNil(),
+		"standard Reconciled condition should still be produced without mapping config")
+
+	// No mapped conditions were appended: every condition is a standard aggregated
+	// one (Reconciled / LastKnownReconciled / Available) or a per-adapter "*Successful" mirror.
+	for _, c := range conditions {
+		isStandard := c.Type == api.ResourceConditionTypeReconciled ||
+			c.Type == api.ResourceConditionTypeLastKnownReconciled ||
+			c.Type == api.ResourceConditionTypeAvailable ||
+			strings.HasSuffix(c.Type, "Successful")
+		Expect(isStandard).To(BeTrue(),
+			fmt.Sprintf("unexpected mapped condition %q should not appear without mapping config", c.Type))
+	}
+}
