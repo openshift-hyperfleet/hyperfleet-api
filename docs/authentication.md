@@ -11,6 +11,7 @@ This document describes authentication mechanisms for the HyperFleet API.
   - [Issuer configuration reference](#issuer-configuration-reference)
   - [Creating a service account token](#creating-a-service-account-token)
 - [Caller identity for audit](#caller-identity-for-audit)
+- [Tenant isolation](#tenant-isolation)
 - [Configuration](#configuration-1)
 - [Troubleshooting](#troubleshooting)
 - [Related Documentation](#related-documentation)
@@ -187,7 +188,7 @@ curl -H "Authorization: Bearer ${TOKEN}" \
 Each entry in `server.jwt.configs` supports the following fields:
 
 | Field | Required | Default | Description |
-|-------|----------|---------|-------------|
+| ------- | ---------- | --------- | ------------- |
 | `issuer_url` | Yes | | Expected `iss` claim for this issuer. Must use `https` (`http` allowed only for loopback: `localhost`, `127.0.0.1`, `::1`). |
 | `jwk_cert_url` | One of `jwk_cert_url` / `jwk_cert_file` | | JWKS endpoint URL for this issuer's public keys. Must use `https` (`http` allowed only for loopback). |
 | `jwk_cert_file` | One of `jwk_cert_url` / `jwk_cert_file` | | Path to a local JWKS file |
@@ -280,6 +281,14 @@ server:
 **Security:** Clients must not be able to set this header directly. Configure your ingress/gateway to strip the header from external requests and set it from the authenticated upstream user.
 
 Identity values from both sources are validated: trimmed of whitespace, limited to 256 characters, and rejected if they contain control characters.
+
+## Tenant isolation
+
+Authentication (JWT validation) and tenant isolation are separate concerns. Tenant identity arrives as trusted headers injected by a gateway (e.g. Envoy + Authorino) — the API does not extract tenant dimensions from JWT claims.
+
+When `server.tenant.enabled` is `true`, a resolver middleware reads a system header (grants an unscoped context, e.g. for internal services like Sentinel and adapters) and configured dimension headers (collected into the caller's tenancy map). A non-system caller missing a required dimension, or resolving zero dimensions, is rejected with `403 Forbidden`.
+
+Once a tenant context is resolved, resource reads, lists, and deletes are scoped to it (see [database.md](database.md#jsonb-fields)). A resource outside the caller's tenancy returns `404 Not Found`, not `403` — this avoids leaking a cross-tenant resource's existence. System callers bypass this scoping entirely.
 
 ## Configuration
 
