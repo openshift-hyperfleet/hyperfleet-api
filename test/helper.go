@@ -95,6 +95,16 @@ func defaultTestEntities() []registry.EntityDescriptor {
 			Plural:         "wifconfigs",
 			SpecSchemaName: "WifConfigSpec",
 		},
+		{
+			// Dedicated entity for the CEL-mapping rollback test. It carries ONLY
+			// the failure-injection probe rule, so no other entity's status flow
+			// can trigger it and no mapping-rule-count assertion elsewhere is
+			// affected. See TestConditionMapping_CELError_RollsBackTransaction.
+			Kind:             "MappingProbe",
+			Plural:           "mappingprobes",
+			RequiredAdapters: []string{"validation"},
+			Conditions:       probeConditionMappingRules(),
+		},
 	}
 }
 
@@ -126,6 +136,38 @@ func testConditionMappingRules() []registry.ConditionMappingRule {
 				Status:  registry.MappingExpression{Expression: policyPrefix + `.status`},
 				Reason:  registry.MappingExpression{Expression: policyPrefix + `.reason`},
 				Message: registry.MappingExpression{Expression: policyPrefix + `.message`},
+			},
+		},
+	}
+}
+
+// probeConditionMappingRules returns the failure-injection rule used exclusively
+// by the CEL-mapping rollback test. The rule compiles fine but its status
+// expression divides by zero, failing at CEL evaluation time. It only fires when
+// an adapter reports a "TriggerMappingError" condition. It is registered on the
+// dedicated "MappingProbe" entity (see defaultTestEntities) rather than on any
+// real entity, so it cannot affect other tests' status flows or rule-count
+// assertions.
+//
+// The divisor is derived from the runtime activation — size() of a filter that
+// matches no adapter is always 0 but depends on `statuses`, so it cannot be
+// constant-folded during Program construction. This keeps the failure at Eval
+// time (the single rollback test fails) even if CEL constant folding is ever
+// enabled, rather than at compile time (which would break helper setup for the
+// whole integration suite). Avoid a literal `1 / 0` here for that reason.
+func probeConditionMappingRules() []registry.ConditionMappingRule {
+	return []registry.ConditionMappingRule{
+		{
+			Type: "MappingErrorProbe",
+			When: registry.MappingExpression{
+				Expression: `statuses.exists(s, s.conditions.exists(c, c.type == "TriggerMappingError"))`,
+			},
+			Output: registry.MappingOutput{
+				Status: registry.MappingExpression{
+					Expression: `1 / size(statuses.filter(s, s.adapter == "__no_such_adapter__")) == 0 ? "True" : "False"`,
+				},
+				Reason:  registry.MappingExpression{Expression: `"probe"`},
+				Message: registry.MappingExpression{Expression: `"probe"`},
 			},
 		},
 	}
