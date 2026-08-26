@@ -120,7 +120,7 @@ func (d *sqlResourceDao) ExistsByOwner(ctx context.Context, kind, ownerID string
 	query += ")"
 	var exists bool
 	if err := g2.Raw(query, args...).Scan(&exists).Error; err != nil {
-		return false, err
+		return false, fmt.Errorf("failed to check owner existence: %w", err)
 	}
 	return exists, nil
 }
@@ -212,14 +212,17 @@ func (d *sqlResourceDao) ReplaceReferences(
 func (d *sqlResourceDao) FindReferencers(
 	ctx context.Context, targetID string,
 ) ([]api.ResourceSummary, error) {
-	g2 := tenant.ScopeDB(d.sessionFactory.New(ctx), ctx)
-	var summaries []api.ResourceSummary
-	err := g2.Model(&api.ResourceReference{}).
+	g2 := d.sessionFactory.New(ctx).Model(&api.ResourceReference{}).
 		Select("resources.kind, resources.name").
 		Joins("JOIN resources ON resource_references.source_id = resources.id").
-		Where("resource_references.target_id = ? AND resources.deleted_time IS NULL", targetID).
-		Scan(&summaries).Error
-	if err != nil {
+		Where("resource_references.target_id = ? AND resources.deleted_time IS NULL", targetID)
+	if scopeClause, scopeArgs := tenant.ScopeClause(ctx); scopeClause != "" {
+		// Qualify with "resources." explicitly: the base model here is ResourceReference,
+		// which has no tenancy column, only the joined resources table does.
+		g2 = g2.Where("resources."+scopeClause, scopeArgs...)
+	}
+	var summaries []api.ResourceSummary
+	if err := g2.Scan(&summaries).Error; err != nil {
 		return nil, err
 	}
 	return summaries, nil

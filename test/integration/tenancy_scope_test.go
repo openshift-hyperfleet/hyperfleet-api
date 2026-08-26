@@ -325,11 +325,13 @@ func TestResourceScopeDaoFindAndExistsPaths(t *testing.T) {
 	Expect(svcErr).To(BeNil())
 
 	refs := makeRefs("dep", struct{ id, kind string }{target.ID, "RefTarget"})
-	refTxCtx, err := db.NewContext(ctxA, sf)
-	Expect(err).NotTo(HaveOccurred())
-	source, svcErr := svc.Create(refTxCtx, "RefSource",
-		newRefTestResource("RefSource", "scope-dao-refsource-"+h.NewID()), refs)
-	db.Resolve(refTxCtx)
+	source, svcErr := func() (*api.Resource, *errors.ServiceError) {
+		refTxCtx, err := db.NewContext(ctxA, sf)
+		Expect(err).NotTo(HaveOccurred())
+		defer db.Resolve(refTxCtx)
+		return svc.Create(refTxCtx, "RefSource",
+			newRefTestResource("RefSource", "scope-dao-refsource-"+h.NewID()), refs)
+	}()
 	Expect(svcErr).To(BeNil())
 
 	checkCases := []struct {
@@ -426,6 +428,11 @@ func TestResourceScopeDaoFindAndExistsPaths(t *testing.T) {
 		exists, err := resourceDao.ExistsByOwner(ctxDenied, scopeNodePoolKind, cluster.ID)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(exists).To(BeFalse())
+
+		svcList, paging, svcErr := svc.List(ctxDenied, tenancyClusterKind, services.NewListArguments())
+		Expect(svcErr).To(BeNil())
+		Expect(svcList).To(BeEmpty())
+		Expect(paging.Total).To(Equal(int64(0)))
 	})
 }
 
