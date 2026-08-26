@@ -319,71 +319,123 @@ func TestResourceScopeDaoFindAndExistsPaths(t *testing.T) {
 	nodePool, svcErr := createResourceInTx(ctxA, sf, svc, scopeNodePoolKind, np)
 	Expect(svcErr).To(BeNil())
 
-	findCases := []struct {
-		fetch func(ctx context.Context) (api.ResourceList, error)
+	registerRefTestDescriptors()
+	target, svcErr := createResourceInTx(ctxA, sf, svc, "RefTarget",
+		newRefTestResource("RefTarget", "scope-dao-reftarget-"+h.NewID()))
+	Expect(svcErr).To(BeNil())
+
+	refs := makeRefs("dep", struct{ id, kind string }{target.ID, "RefTarget"})
+	refTxCtx, err := db.NewContext(ctxA, sf)
+	Expect(err).NotTo(HaveOccurred())
+	source, svcErr := svc.Create(refTxCtx, "RefSource",
+		newRefTestResource("RefSource", "scope-dao-refsource-"+h.NewID()), refs)
+	db.Resolve(refTxCtx)
+	Expect(svcErr).To(BeNil())
+
+	checkCases := []struct {
+		fetch func(ctx context.Context) ([]string, error)
 		name  string
+		want  string
 	}{
-		{name: "FindByKind", fetch: func(ctx context.Context) (api.ResourceList, error) {
-			return resourceDao.FindByKind(ctx, scopeNodePoolKind)
+		{name: "FindByKind", want: nodePool.ID, fetch: func(ctx context.Context) ([]string, error) {
+			list, err := resourceDao.FindByKind(ctx, scopeNodePoolKind)
+			return idsOf(list), err
 		}},
-		{name: "FindByKindAndOwner", fetch: func(ctx context.Context) (api.ResourceList, error) {
-			return resourceDao.FindByKindAndOwner(ctx, scopeNodePoolKind, cluster.ID)
+		{name: "FindByKindAndOwner", want: nodePool.ID, fetch: func(ctx context.Context) ([]string, error) {
+			list, err := resourceDao.FindByKindAndOwner(ctx, scopeNodePoolKind, cluster.ID)
+			return idsOf(list), err
 		}},
-		{name: "FindByKindAndOwnerForUpdate", fetch: func(ctx context.Context) (api.ResourceList, error) {
-			return resourceDao.FindByKindAndOwnerForUpdate(ctx, scopeNodePoolKind, cluster.ID)
+		{name: "FindByKindAndOwnerForUpdate", want: nodePool.ID, fetch: func(ctx context.Context) ([]string, error) {
+			list, err := resourceDao.FindByKindAndOwnerForUpdate(ctx, scopeNodePoolKind, cluster.ID)
+			return idsOf(list), err
+		}},
+		{name: "FindReferencers", want: source.Name, fetch: func(ctx context.Context) ([]string, error) {
+			summaries, err := resourceDao.FindReferencers(ctx, target.ID)
+			return namesOf(summaries), err
 		}},
 	}
-	for _, tc := range findCases {
+	for _, tc := range checkCases {
 		t.Run(tc.name+" omits cross-tenant rows", func(t *testing.T) {
 			RegisterTestingT(t)
 			listA, err := tc.fetch(ctxA)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(idsOf(listA)).To(ContainElement(nodePool.ID))
+			Expect(listA).To(ContainElement(tc.want))
 
 			listSystem, err := tc.fetch(ctxSystem)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(idsOf(listSystem)).To(ContainElement(nodePool.ID))
+			Expect(listSystem).To(ContainElement(tc.want))
 
 			listB, err := tc.fetch(ctxB)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(idsOf(listB)).NotTo(ContainElement(nodePool.ID))
+			Expect(listB).NotTo(ContainElement(tc.want))
 		})
 	}
 
-	t.Run("ExistsByOwner hides cross-tenant children", func(t *testing.T) {
+	existsCases := []struct {
+		setup func()
+		fetch func(ctx context.Context) (bool, error)
+		name  string
+	}{
+		{
+			name: "ExistsByOwner",
+			fetch: func(ctx context.Context) (bool, error) {
+				return resourceDao.ExistsByOwner(ctx, scopeNodePoolKind, cluster.ID)
+			},
+		},
+		{
+			name: "ExistsSoftDeletedByOwner",
+			setup: func() {
+				deletedChild, svcErr := createResourceInTx(
+					ctxA, sf, svc, scopeNodePoolKind, newTenancyNodePool("scope-dao-deleted-child", cluster.ID))
+				Expect(svcErr).To(BeNil())
+				Expect(deleteResourceInTx(ctxA, sf, svc, scopeNodePoolKind, deletedChild.ID)).To(BeNil())
+			},
+			fetch: func(ctx context.Context) (bool, error) {
+				return resourceDao.ExistsSoftDeletedByOwner(ctx, []string{scopeNodePoolKind}, cluster.ID)
+			},
+		},
+	}
+	for _, tc := range existsCases {
+		t.Run(tc.name+" hides cross-tenant children", func(t *testing.T) {
+			RegisterTestingT(t)
+			if tc.setup != nil {
+				tc.setup()
+			}
+			existsA, err := tc.fetch(ctxA)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(existsA).To(BeTrue())
+
+			existsSystem, err := tc.fetch(ctxSystem)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(existsSystem).To(BeTrue())
+
+			existsB, err := tc.fetch(ctxB)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(existsB).To(BeFalse(), "cross-tenant caller must not observe existence")
+		})
+	}
+
+	t.Run("non-system caller with zero dimensions is denied without erroring", func(t *testing.T) {
 		RegisterTestingT(t)
-		existsA, err := resourceDao.ExistsByOwner(ctxA, scopeNodePoolKind, cluster.ID)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(existsA).To(BeTrue())
+		ctxDenied := tenancyCtx(map[string]string{})
 
-		existsSystem, err := resourceDao.ExistsByOwner(ctxSystem, scopeNodePoolKind, cluster.ID)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(existsSystem).To(BeTrue())
+		list, err := resourceDao.FindByKind(ctxDenied, scopeNodePoolKind)
+		Expect(err).NotTo(HaveOccurred(), "deny-all clause must not error against a real driver")
+		Expect(list).To(BeEmpty())
 
-		existsB, err := resourceDao.ExistsByOwner(ctxB, scopeNodePoolKind, cluster.ID)
+		exists, err := resourceDao.ExistsByOwner(ctxDenied, scopeNodePoolKind, cluster.ID)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(existsB).To(BeFalse(), "cross-tenant caller must not observe child existence")
+		Expect(exists).To(BeFalse())
 	})
+}
 
-	t.Run("ExistsSoftDeletedByOwner hides cross-tenant soft-deleted children", func(t *testing.T) {
-		RegisterTestingT(t)
-		deletedChild, svcErr := createResourceInTx(
-			ctxA, sf, svc, scopeNodePoolKind, newTenancyNodePool("scope-dao-deleted-child", cluster.ID))
-		Expect(svcErr).To(BeNil())
-		Expect(deleteResourceInTx(ctxA, sf, svc, scopeNodePoolKind, deletedChild.ID)).To(BeNil())
-
-		existsA, err := resourceDao.ExistsSoftDeletedByOwner(ctxA, []string{scopeNodePoolKind}, cluster.ID)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(existsA).To(BeTrue())
-
-		existsSystem, err := resourceDao.ExistsSoftDeletedByOwner(ctxSystem, []string{scopeNodePoolKind}, cluster.ID)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(existsSystem).To(BeTrue())
-
-		existsB, err := resourceDao.ExistsSoftDeletedByOwner(ctxB, []string{scopeNodePoolKind}, cluster.ID)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(existsB).To(BeFalse(), "cross-tenant caller must not observe soft-deleted child existence")
-	})
+// namesOf extracts resource names from a ResourceSummary slice.
+func namesOf(summaries []api.ResourceSummary) []string {
+	names := make([]string, len(summaries))
+	for i, s := range summaries {
+		names[i] = s.Name
+	}
+	return names
 }
 
 // idsOf extracts resource IDs from a slice.

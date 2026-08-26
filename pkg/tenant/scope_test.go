@@ -88,6 +88,8 @@ func TestScopeDB(t *testing.T) {
 				if tt.wantContained != "" {
 					Expect(stmt.Vars).To(HaveLen(1))
 					Expect(stmt.Vars[0]).To(MatchJSON(tt.wantContained))
+				} else {
+					Expect(stmt.Vars).To(BeEmpty(), "deny-all clause must not carry an unconsumed bound argument")
 				}
 			} else {
 				Expect(stmt.SQL.String()).ToNot(ContainSubstring("WHERE"))
@@ -101,18 +103,19 @@ func TestScopeClause(t *testing.T) {
 	for _, tt := range scopeCases() {
 		t.Run(tt.name, func(t *testing.T) {
 			RegisterTestingT(t)
-			clause, arg := ScopeClause(tt.ctx)
+			clause, args := ScopeClause(tt.ctx)
 
 			if tt.wantScoped {
 				Expect(clause).To(Equal(tt.wantClause))
 				if tt.wantContained != "" {
-					Expect(arg).To(MatchJSON(tt.wantContained))
+					Expect(args).To(HaveLen(1))
+					Expect(args[0]).To(MatchJSON(tt.wantContained))
 				} else {
-					Expect(arg).To(BeNil())
+					Expect(args).To(BeEmpty(), "deny-all clause must return no args for callers to spread")
 				}
 			} else {
 				Expect(clause).To(BeEmpty())
-				Expect(arg).To(BeNil())
+				Expect(args).To(BeEmpty())
 			}
 		})
 	}

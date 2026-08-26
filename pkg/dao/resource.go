@@ -113,9 +113,9 @@ func (d *sqlResourceDao) ExistsByOwner(ctx context.Context, kind, ownerID string
 	g2 := d.sessionFactory.New(ctx)
 	query := "SELECT EXISTS(SELECT 1 FROM resources WHERE kind = ? AND owner_id = ? AND deleted_time IS NULL"
 	args := []any{kind, ownerID}
-	if scopeClause, arg := tenant.ScopeClause(ctx); scopeClause != "" {
+	if scopeClause, scopeArgs := tenant.ScopeClause(ctx); scopeClause != "" {
 		query += " AND " + scopeClause
-		args = append(args, arg)
+		args = append(args, scopeArgs...)
 	}
 	query += ")"
 	var exists bool
@@ -132,9 +132,9 @@ func (d *sqlResourceDao) ExistsSoftDeletedByOwner(ctx context.Context, kinds []s
 	g2 := d.sessionFactory.New(ctx)
 	query := "SELECT EXISTS(SELECT 1 FROM resources WHERE kind IN (?) AND owner_id = ? AND deleted_time IS NOT NULL"
 	args := []any{kinds, ownerID}
-	if scopeClause, arg := tenant.ScopeClause(ctx); scopeClause != "" {
+	if scopeClause, scopeArgs := tenant.ScopeClause(ctx); scopeClause != "" {
 		query += " AND " + scopeClause
-		args = append(args, arg)
+		args = append(args, scopeArgs...)
 	}
 	query += ")"
 	var exists bool

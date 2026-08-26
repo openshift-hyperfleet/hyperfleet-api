@@ -145,8 +145,8 @@ func (s *sqlGenericService) buildOrderBy(listCtx *listContext, d dao.GenericDao)
 // buildTenantScope applies the caller's tenancy filter to the list query.
 // No-op for system callers or requests with no resolved tenant.
 func (s *sqlGenericService) buildTenantScope(listCtx *listContext, d dao.GenericDao) (bool, *errors.ServiceError) {
-	if clause, arg := tenant.ScopeClause(listCtx.ctx); clause != "" {
-		d.Where(dao.NewWhere(clause, []any{arg}))
+	if clause, args := tenant.ScopeClause(listCtx.ctx); clause != "" {
+		d.Where(dao.NewWhere(clause, args))
 	}
 	return false, nil
 }

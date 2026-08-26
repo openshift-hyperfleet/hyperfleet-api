@@ -8,12 +8,13 @@ import (
 
 const tenancyContainsClause = "tenancy @> ?"
 
-// ScopeClause returns the JSONB containment predicate and its bound argument for the
-// caller resolved from ctx. Returns an empty clause for system callers and requests
-// with no resolved tenant (unscoped). Non-system callers with empty dimensions are
-// denied (fail-closed). This is the single source of truth for the scoping decision;
-// ScopeDB is a thin wrapper around it.
-func ScopeClause(ctx context.Context) (clause string, arg any) {
+// ScopeClause returns the JSONB containment predicate and its bound arguments for
+// the caller resolved from ctx: empty clause with nil args for system callers and
+// requests with no resolved tenant (unscoped); "1 = 0" with nil args for non-system
+// callers with no dimensions (fail-closed, see below); or the containment clause
+// with one bound argument for a resolved tenant. Callers must spread args (e.g.
+// db.Where(clause, args...)) rather than assume exactly one value.
+func ScopeClause(ctx context.Context) (clause string, args []any) {
 	t := FromContext(ctx)
 	if t == nil || t.System {
 		return "", nil
@@ -23,14 +24,15 @@ func ScopeClause(ctx context.Context) (clause string, arg any) {
 		// unscoped access; the tenant middleware should already reject this case.
 		return "1 = 0", nil
 	}
-	return tenancyContainsClause, TenancyJSON(ctx)
+	return tenancyContainsClause, []any{TenancyJSON(ctx)}
 }
 
 // ScopeDB applies ScopeClause to db as a WHERE clause, for callers using GORM's
 // query builder instead of raw SQL.
 func ScopeDB(db *gorm.DB, ctx context.Context) *gorm.DB {
-	if clause, arg := ScopeClause(ctx); clause != "" {
-		return db.Where(clause, arg)
+	clause, args := ScopeClause(ctx)
+	if clause == "" {
+		return db
 	}
-	return db
+	return db.Where(clause, args...)
 }
