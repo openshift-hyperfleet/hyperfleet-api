@@ -3522,20 +3522,26 @@ func TestResourceService_ConditionMapper_DefaultWithoutConfig(t *testing.T) {
 	Expect(svcErr).To(BeNil(), "aggregation must not error when no mapping config is present")
 	Expect(result).ToNot(BeNil())
 
-	// Aggregation still ran: the standard Reconciled condition is present.
+	// This entity declares no required adapters and no mapping rules, so aggregation
+	// must produce EXACTLY the two standard conditions: Reconciled and
+	// LastKnownReconciled. There is no per-adapter mirror (mirrors derive from
+	// RequiredAdapters, of which this entity has none) and no mapped condition.
+	//
+	// Asserting the exact set (rather than a subset/superset check) makes this a
+	// meaningful negative test in both directions: it fails if aggregation ever
+	// drops a standard condition AND if it ever leaks a mapped/mirror condition.
 	conditions := rcDao.conditions[cluster.ID]
-	Expect(conditions).ToNot(BeEmpty())
 	Expect(findCondition(conditions, api.ResourceConditionTypeReconciled)).ToNot(BeNil(),
-		"standard Reconciled condition should still be produced without mapping config")
+		"standard Reconciled condition should be produced without mapping config")
+	Expect(findCondition(conditions, api.ResourceConditionTypeLastKnownReconciled)).ToNot(BeNil(),
+		"standard LastKnownReconciled condition should be produced without mapping config")
 
-	// No mapped conditions were appended: every condition is a standard aggregated
-	// one (Reconciled / LastKnownReconciled / Available) or a per-adapter "*Successful" mirror.
+	producedTypes := make([]string, 0, len(conditions))
 	for _, c := range conditions {
-		isStandard := c.Type == api.ResourceConditionTypeReconciled ||
-			c.Type == api.ResourceConditionTypeLastKnownReconciled ||
-			c.Type == api.ResourceConditionTypeAvailable ||
-			strings.HasSuffix(c.Type, "Successful")
-		Expect(isStandard).To(BeTrue(),
-			fmt.Sprintf("unexpected mapped condition %q should not appear without mapping config", c.Type))
+		producedTypes = append(producedTypes, c.Type)
 	}
+	Expect(producedTypes).To(ConsistOf(
+		api.ResourceConditionTypeReconciled,
+		api.ResourceConditionTypeLastKnownReconciled,
+	), "only the two standard conditions should appear without mapping config or required adapters")
 }
