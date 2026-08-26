@@ -284,7 +284,7 @@ Identity values from both sources are validated: trimmed of whitespace, limited 
 
 ## Tenant isolation
 
-Authentication (JWT validation) and tenant isolation are separate concerns. Tenant identity arrives as trusted headers injected by a gateway (e.g. Envoy + Authorino) — the API does not extract tenant dimensions from JWT claims.
+Authentication (JWT validation) and tenant isolation are separate concerns. Tenant identity arrives as trusted headers injected by a gateway (e.g. Envoy + Authorino) — the API does not extract tenant dimensions from JWT claims. This is safe only because the gateway strips client-supplied system/dimension headers, injects validated values, and blocks any direct route to the API pod — see [ADR-0020 — Envoy and Authorino as the API Authentication Gateway](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/adrs/0020-envoy-authorino-api-gateway.md).
 
 When `server.tenant.enabled` is `true`, a resolver middleware reads a system header (grants an unscoped context, e.g. for internal services like Sentinel and adapters) and configured dimension headers (collected into the caller's tenancy map). A non-system caller missing a required dimension, or resolving zero dimensions, is rejected with `403 Forbidden`.
 
