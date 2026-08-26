@@ -306,7 +306,7 @@ func TestConditionMapping_CELError_RollsBackTransaction(t *testing.T) {
 	// because it declares required adapters. The failing PUT must leave this untouched.
 	baselineResource, svcErr := svc.Get(ctx, "MappingProbe", probe.ID)
 	Expect(svcErr).To(BeNil())
-	baseline := conditionsByTypeJSON(baselineResource.Conditions)
+	baseline := conditionsByTypeJSON(t, baselineResource.Conditions)
 	Expect(baseline).ToNot(BeEmpty(), "seed conditions should exist before the failing PUT")
 
 	// Mandatory conditions are present so validation passes and aggregation runs;
@@ -382,7 +382,7 @@ func TestConditionMapping_CELError_RollsBackTransaction(t *testing.T) {
 	// status values identical.
 	afterResource, svcErr := svc.Get(ctx, "MappingProbe", probe.ID)
 	Expect(svcErr).To(BeNil())
-	Expect(conditionsByTypeJSON(afterResource.Conditions)).To(Equal(baseline),
+	Expect(conditionsByTypeJSON(t, afterResource.Conditions)).To(Equal(baseline),
 		"conditions must be unchanged after rollback: no new/mapped conditions and no field altered")
 }
 
@@ -391,7 +391,8 @@ func TestConditionMapping_CELError_RollsBackTransaction(t *testing.T) {
 // order-independent, while comparing the marshaled condition (rather than just
 // its status) detects changes to any field, including reason, message, and
 // timestamps.
-func conditionsByTypeJSON(conditions []api.ResourceCondition) map[string]string {
+func conditionsByTypeJSON(t *testing.T, conditions []api.ResourceCondition) map[string]string {
+	t.Helper()
 	m := make(map[string]string, len(conditions))
 	for _, cond := range conditions {
 		b, err := json.Marshal(cond)
