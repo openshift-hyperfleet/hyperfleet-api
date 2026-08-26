@@ -429,6 +429,10 @@ func TestResourceScopeDaoFindAndExistsPaths(t *testing.T) {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(exists).To(BeFalse())
 
+		refs, err := resourceDao.FindReferencers(ctxDenied, target.ID)
+		Expect(err).NotTo(HaveOccurred(), "deny-all in FindReferencers must not produce invalid SQL")
+		Expect(refs).To(BeEmpty())
+
 		svcList, paging, svcErr := svc.List(ctxDenied, tenancyClusterKind, services.NewListArguments())
 		Expect(svcErr).To(BeNil())
 		Expect(svcList).To(BeEmpty())

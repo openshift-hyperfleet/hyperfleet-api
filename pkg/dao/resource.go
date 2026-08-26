@@ -217,9 +217,12 @@ func (d *sqlResourceDao) FindReferencers(
 		Joins("JOIN resources ON resource_references.source_id = resources.id").
 		Where("resource_references.target_id = ? AND resources.deleted_time IS NULL", targetID)
 	if scopeClause, scopeArgs := tenant.ScopeClause(ctx); scopeClause != "" {
-		// Qualify with "resources." explicitly: the base model here is ResourceReference,
-		// which has no tenancy column, only the joined resources table does.
-		g2 = g2.Where("resources."+scopeClause, scopeArgs...)
+		if len(scopeArgs) > 0 {
+			// Qualify column predicates with "resources.": the base model is
+			// ResourceReference, only the joined resources table has tenancy.
+			scopeClause = "resources." + scopeClause
+		}
+		g2 = g2.Where(scopeClause, scopeArgs...)
 	}
 	var summaries []api.ResourceSummary
 	if err := g2.Scan(&summaries).Error; err != nil {
