@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Tenant-scoped resource access: all read, list, and delete operations now filter by JSONB containment (`tenancy @> ?`) against the caller's resolved tenant dimensions; a resource outside the caller's tenancy returns 404 (not 403, avoiding an existence leak); system callers remain unscoped
 - Write-path restriction limiting system identities (Sentinel, adapters) to status and conditions writes only; `Create`, `Patch`, `Delete`, and `ForceDelete` reject system-identity callers with `HYPERFLEET-AUZ-001`
 - Tenant enforcement middleware that resolves caller tenant identity from trusted gateway-injected headers; configurable via `server.tenant` (`enabled`, `system_header`, `dimensions` with header, key, and required flag); system callers receive unscoped context, non-system callers missing required dimensions or resolving zero dimensions receive 403 problem+json
 - `HYPERFLEET-AUZ-001` Permission Denied error code for tenant identity rejection responses

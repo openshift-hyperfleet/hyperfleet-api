@@ -14,6 +14,7 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/dao"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/tenant"
 )
 
 //go:generate go tool -modfile=../../tools/go.mod mockgen -source=generic.go -package=services -destination=generic_mock.go
@@ -83,6 +84,10 @@ func (s *sqlGenericService) List(
 		// add "ORDER BY"
 		s.buildOrderBy,
 
+		// scope to caller's tenancy before search filtering, so cross-tenant rows
+		// never reach the search/pagination stage. no-op for system callers.
+		s.buildTenantScope,
+
 		// translate "search" into "WHERE"(s), and "JOIN"(s) if related resource is searched.
 		s.buildSearch,
 
@@ -133,6 +138,15 @@ func (s *sqlGenericService) buildOrderBy(listCtx *listContext, d dao.GenericDao)
 		for _, orderArg := range cleanedOrderList {
 			d.OrderBy(orderArg)
 		}
+	}
+	return false, nil
+}
+
+// buildTenantScope applies the caller's tenancy filter to the list query.
+// No-op for system callers or requests with no resolved tenant.
+func (s *sqlGenericService) buildTenantScope(listCtx *listContext, d dao.GenericDao) (bool, *errors.ServiceError) {
+	if clause, args := tenant.ScopeClause(listCtx.ctx); clause != "" {
+		d.Where(dao.NewWhere(clause, args))
 	}
 	return false, nil
 }

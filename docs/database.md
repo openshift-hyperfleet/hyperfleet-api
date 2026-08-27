@@ -9,12 +9,15 @@ HyperFleet API uses PostgreSQL with GORM ORM. The schema follows a simple relati
 ## Core Tables
 
 ### resources
+
 Unified resource table for all entity types (Cluster, NodePool, Channel, Version, WifConfig, etc.). Stores `kind`, `name`, `spec` (JSONB), `tenancy` (JSONB), and optional owner references (`owner_id`, `owner_kind`, `owner_href`) for parent-child relationships. Labels are stored in the separate `resource_labels` table; conditions in `resource_conditions`. Uses `deleted_time`/`deleted_by` for soft delete. Unique name constraints are tenant-scoped: root resources (`owner_id IS NULL`) are unique on `(kind, name, tenancy)`, so two tenants can own a resource with the same name; child resources (`owner_id IS NOT NULL`) are unique on `(kind, owner_id, name)` — tenant isolation for children follows transitively from their owner (the globally-unique root row that carries the tenancy), so their own index does not include `tenancy`. Both constraints apply only to active rows (via `WHERE deleted_time IS NULL`), so soft-deleted resources do not block name reuse.
 
 ### adapter_statuses
+
 Status records for resources. Stores adapter-reported conditions in JSONB format. No soft delete — rows are hard-deleted or replaced.
 
 **Polymorphic pattern:**
+
 - `resource_type` + `resource_id` identifies the owning resource
 - Unique constraint on `(resource_type, resource_id, adapter)` — one record per adapter per resource
 
@@ -33,16 +36,17 @@ resources (self-referencing parent-child via owner_id)
 ### JSONB Fields
 
 Flexible schema storage for:
+
 - **spec** - Provider-specific resource configurations
-- **tenancy** - Tenancy dimensions carried by the resource (not null, defaults to `{}`); indexed with a GIN index using `jsonb_path_ops` to serve containment queries
+- **tenancy** - Tenancy dimensions carried by the resource (not null, defaults to `{}`); indexed with a GIN index using `jsonb_path_ops` to serve containment queries. DAO reads, lists, and deletes filter on `tenancy @> ?` against the caller's resolved tenant dimensions, so this column drives per-request access control, not just uniqueness
 - **conditions** - Adapter status condition arrays
 - **data** - Adapter metadata
 
 **Benefits:**
+
 - Support multiple cloud providers without schema changes
 - Runtime validation against OpenAPI schema
 - PostgreSQL JSON query capabilities
-
 
 Adapter statuses do not use soft delete — they are hard-deleted when their parent resource is hard-deleted.
 
@@ -62,6 +66,7 @@ Resources without required adapters skip the Finalizing phase entirely — they 
 ### Migration System
 
 Migrations are:
+
 - Non-destructive (never drops columns or tables)
 - Additive (creates missing tables, columns, indexes)
 - Run via `./bin/hyperfleet-api migrate`
@@ -100,7 +105,7 @@ Because list queries run without a transaction, the `total` count and the return
 The connection pool is configured via CLI flags:
 
 | Flag | Default | Description |
-|------|---------|-------------|
+| ------ | --------- | ------------- |
 | `--db-max-open-connections` | 50 | Maximum open connections to the database |
 | `--db-max-idle-connections` | 10 | Maximum idle connections retained in the pool |
 | `--db-conn-max-lifetime` | 5m | Maximum time a connection can be reused before being closed |
