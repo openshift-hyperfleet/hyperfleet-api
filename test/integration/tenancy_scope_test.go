@@ -3,8 +3,10 @@ package integration
 import (
 	"context"
 	"testing"
+	"time"
 
 	. "github.com/onsi/gomega"
+	"gorm.io/datatypes"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
@@ -156,6 +158,43 @@ func TestResourceScopeCrossTenantAccess(t *testing.T) {
 	Expect(svcErr).To(BeNil())
 }
 
+// TestResourceScopeForceDeleteCrossTenant verifies that ForceDelete (hard delete) is
+// scoped: a cross-tenant caller gets 404 because GetForUpdate misses before the delete
+// logic runs. This guards a distinct destructive code path from the soft-delete test above.
+func TestResourceScopeForceDeleteCrossTenant(t *testing.T) {
+	h, _ := test.RegisterIntegration(t)
+	svc := h.Container.ResourceService()
+	sf := h.Container.SessionFactory()
+
+	ctxA, ctxB, _ := twoTenantContexts(h)
+
+	created, svcErr := createInTx(ctxA, sf, svc, newTenancyCluster("scope-force-delete"))
+	Expect(svcErr).To(BeNil())
+
+	// Soft-delete first (ForceDelete requires Finalizing state).
+	svcErr = deleteInTx(ctxA, sf, svc, created.ID)
+	Expect(svcErr).To(BeNil())
+
+	t.Run("cross-tenant ForceDelete returns 404", func(t *testing.T) {
+		RegisterTestingT(t)
+		txCtx, err := db.NewContext(ctxB, sf)
+		Expect(err).NotTo(HaveOccurred())
+		defer db.Resolve(txCtx)
+		svcErr := svc.ForceDelete(txCtx, tenancyClusterKind, created.ID, "cross-tenant attempt")
+		Expect(svcErr).NotTo(BeNil())
+		Expect(svcErr.Is404()).To(BeTrue())
+	})
+
+	t.Run("same-tenant ForceDelete succeeds", func(t *testing.T) {
+		RegisterTestingT(t)
+		txCtx, err := db.NewContext(ctxA, sf)
+		Expect(err).NotTo(HaveOccurred())
+		defer db.Resolve(txCtx)
+		svcErr := svc.ForceDelete(txCtx, tenancyClusterKind, created.ID, "owner cleanup")
+		Expect(svcErr).To(BeNil())
+	})
+}
+
 // TestResourceScopeParentChildHierarchy verifies parent-child tenancy inheritance
 // and cross-tenant isolation on child resources.
 func TestResourceScopeParentChildHierarchy(t *testing.T) {
@@ -182,14 +221,16 @@ func TestResourceScopeParentChildHierarchy(t *testing.T) {
 	Expect(svcErr.Is404()).To(BeTrue())
 
 	// Cross-tenant ListByOwner returns an empty list rather than leaking the parent's children.
-	children, _, svcErr := svc.ListByOwner(ctxB, scopeNodePoolKind, cluster.ID, services.NewListArguments())
+	children, paging, svcErr := svc.ListByOwner(ctxB, scopeNodePoolKind, cluster.ID, services.NewListArguments())
 	Expect(svcErr).To(BeNil())
 	Expect(children).To(BeEmpty())
+	Expect(paging.Total).To(Equal(int64(0)))
 
 	// Same-tenant ListByOwner sees the child.
-	children, _, svcErr = svc.ListByOwner(ctxA, scopeNodePoolKind, cluster.ID, services.NewListArguments())
+	children, paging, svcErr = svc.ListByOwner(ctxA, scopeNodePoolKind, cluster.ID, services.NewListArguments())
 	Expect(svcErr).To(BeNil())
 	Expect(idsOf(children)).To(ContainElement(nodePool.ID))
+	Expect(paging.Total).To(Equal(int64(1)))
 }
 
 // TestResourceScopeListTotalReflectsScopedCount verifies that List totals reflect
@@ -211,6 +252,10 @@ func TestResourceScopeListTotalReflectsScopedCount(t *testing.T) {
 	_, paging, svcErr := svc.List(ctxA, tenancyClusterKind, services.NewListArguments())
 	Expect(svcErr).To(BeNil())
 	Expect(paging.Total).To(Equal(int64(2)), "total should count only tenant A's resources, not tenant B's")
+
+	_, paging, svcErr = svc.List(ctxB, tenancyClusterKind, services.NewListArguments())
+	Expect(svcErr).To(BeNil())
+	Expect(paging.Total).To(Equal(int64(1)), "total should count only tenant B's resources, not tenant A's")
 }
 
 // TestResourceScopeAppliesToAllKinds verifies tenant scoping applies uniformly
@@ -456,4 +501,258 @@ func idsOf(list api.ResourceList) []string {
 		ids[i] = r.ID
 	}
 	return ids
+}
+
+// TestResourceScopeTenancyImmutableThroughPatch verifies that patching spec or labels
+// does not alter the stored tenancy. ResourcePatch structurally excludes tenancy (no field
+// for it), so this test is a regression guard: if someone accidentally adds tenancy to the
+// patch path or the Save overwrites it, this catches it.
+func TestResourceScopeTenancyImmutableThroughPatch(t *testing.T) {
+	h, _ := test.RegisterIntegration(t)
+	svc := h.Container.ResourceService()
+	sf := h.Container.SessionFactory()
+
+	ctxA, _, _ := twoTenantContexts(h)
+
+	created, svcErr := createInTx(ctxA, sf, svc, newTenancyCluster("scope-immutable-tenancy"))
+	Expect(svcErr).To(BeNil())
+	originalTenancy := created.Tenancy
+
+	t.Run("spec patch preserves tenancy", func(t *testing.T) {
+		RegisterTestingT(t)
+		patched, svcErr := patchInTx(ctxA, sf, svc, tenancyClusterKind, created.ID,
+			&api.ResourcePatch{Spec: map[string]interface{}{"region": "eu-west1"}})
+		Expect(svcErr).To(BeNil())
+		Expect(patched.Tenancy).To(MatchJSON(originalTenancy))
+	})
+
+	t.Run("labels patch preserves tenancy", func(t *testing.T) {
+		RegisterTestingT(t)
+		patched, svcErr := patchInTx(ctxA, sf, svc, tenancyClusterKind, created.ID,
+			&api.ResourcePatch{Labels: map[string]string{"env": "staging"}})
+		Expect(svcErr).To(BeNil())
+		Expect(patched.Tenancy).To(MatchJSON(originalTenancy))
+	})
+
+	t.Run("re-read from DB confirms tenancy unchanged", func(t *testing.T) {
+		RegisterTestingT(t)
+		got, svcErr := svc.Get(ctxA, tenancyClusterKind, created.ID)
+		Expect(svcErr).To(BeNil())
+		Expect(got.Tenancy).To(MatchJSON(originalTenancy))
+	})
+}
+
+// newTestAdapterStatus builds an AdapterStatus with the three mandatory conditions
+// (Available, Applied, Health) for use in ProcessAdapterStatus calls.
+func newTestAdapterStatus(t *testing.T, adapter string, generation int32) *api.AdapterStatus {
+	t.Helper()
+	now := time.Now()
+	return &api.AdapterStatus{
+		Adapter:            adapter,
+		ObservedGeneration: generation,
+		LastReportTime:     now,
+		Conditions:         mandatoryAdapterConditionsJSON(t, api.AdapterConditionTrue),
+	}
+}
+
+// TestResourceScopeStatusSubResourceCrossTenant verifies that ProcessAdapterStatus
+// rejects cross-tenant callers with 404: the parent resource lookup (GetForUpdate) is
+// scoped, so a tenant caller targeting another tenant's resource gets "not found" before
+// any status logic runs.
+func TestResourceScopeStatusSubResourceCrossTenant(t *testing.T) {
+	h, _ := test.RegisterIntegration(t)
+	svc := h.Container.ResourceService()
+	sf := h.Container.SessionFactory()
+
+	ctxA, ctxB, ctxSystem := twoTenantContexts(h)
+
+	created, svcErr := createInTx(ctxA, sf, svc, newTenancyCluster("scope-status-parent"))
+	Expect(svcErr).To(BeNil())
+
+	adapterStatus := newTestAdapterStatus(t, "test-adapter", created.Generation)
+
+	t.Run("same-tenant status write succeeds", func(t *testing.T) {
+		RegisterTestingT(t)
+		txCtx, err := db.NewContext(ctxA, sf)
+		Expect(err).NotTo(HaveOccurred())
+		defer db.Resolve(txCtx)
+		result, svcErr := svc.ProcessAdapterStatus(txCtx, tenancyClusterKind, created.ID, adapterStatus)
+		Expect(svcErr).To(BeNil())
+		Expect(result).NotTo(BeNil())
+	})
+
+	t.Run("system identity status write succeeds", func(t *testing.T) {
+		RegisterTestingT(t)
+		txCtx, err := db.NewContext(ctxSystem, sf)
+		Expect(err).NotTo(HaveOccurred())
+		defer db.Resolve(txCtx)
+		result, svcErr := svc.ProcessAdapterStatus(txCtx, tenancyClusterKind, created.ID, adapterStatus)
+		Expect(svcErr).To(BeNil())
+		Expect(result).NotTo(BeNil())
+	})
+
+	t.Run("cross-tenant status write returns 404", func(t *testing.T) {
+		RegisterTestingT(t)
+		txCtx, err := db.NewContext(ctxB, sf)
+		Expect(err).NotTo(HaveOccurred())
+		defer db.Resolve(txCtx)
+		_, svcErr := svc.ProcessAdapterStatus(txCtx, tenancyClusterKind, created.ID, adapterStatus)
+		Expect(svcErr).NotTo(BeNil())
+		Expect(svcErr.Is404()).To(BeTrue())
+	})
+}
+
+// TestResourceScopeSearchFiltersComposeWithTenancy verifies that TSL search and label
+// filters compose with tenant scoping: a tenant caller searching for a label that exists
+// on both their own and another tenant's resources sees only their own matches, and the
+// paging total reflects the scoped+filtered count.
+func TestResourceScopeSearchFiltersComposeWithTenancy(t *testing.T) {
+	h, _ := test.RegisterIntegration(t)
+	svc := h.Container.ResourceService()
+	sf := h.Container.SessionFactory()
+
+	ctxA, ctxB, _ := twoTenantContexts(h)
+
+	// Both tenants create a resource with the same label value.
+	clusterA, svcErr := createInTx(ctxA, sf, svc, newTenancyCluster("scope-search-a"))
+	Expect(svcErr).To(BeNil())
+	_, svcErr = patchInTx(ctxA, sf, svc, tenancyClusterKind, clusterA.ID,
+		&api.ResourcePatch{Labels: map[string]string{"env": "prod"}})
+	Expect(svcErr).To(BeNil())
+
+	clusterB, svcErr := createInTx(ctxB, sf, svc, newTenancyCluster("scope-search-b"))
+	Expect(svcErr).To(BeNil())
+	_, svcErr = patchInTx(ctxB, sf, svc, tenancyClusterKind, clusterB.ID,
+		&api.ResourcePatch{Labels: map[string]string{"env": "prod"}})
+	Expect(svcErr).To(BeNil())
+
+	searchArgs := &services.ListArguments{
+		Page:   1,
+		Size:   100,
+		Search: "labels.env='prod'",
+	}
+
+	t.Run("tenant A search sees only its own matching resource", func(t *testing.T) {
+		RegisterTestingT(t)
+		list, paging, svcErr := svc.List(ctxA, tenancyClusterKind, searchArgs)
+		Expect(svcErr).To(BeNil())
+		Expect(idsOf(list)).To(ContainElement(clusterA.ID))
+		Expect(idsOf(list)).NotTo(ContainElement(clusterB.ID))
+		Expect(paging.Total).To(Equal(int64(1)))
+	})
+
+	t.Run("tenant B search sees only its own matching resource", func(t *testing.T) {
+		RegisterTestingT(t)
+		list, paging, svcErr := svc.List(ctxB, tenancyClusterKind, searchArgs)
+		Expect(svcErr).To(BeNil())
+		Expect(idsOf(list)).To(ContainElement(clusterB.ID))
+		Expect(idsOf(list)).NotTo(ContainElement(clusterA.ID))
+		Expect(paging.Total).To(Equal(int64(1)))
+	})
+}
+
+// TestResourceScopeContainmentHierarchy verifies that JSONB containment gives hierarchy
+// for free: an org-scoped caller sees resources across all projects within that org,
+// a project-scoped caller sees only its own project, and a different org sees neither.
+func TestResourceScopeContainmentHierarchy(t *testing.T) {
+	h, _ := test.RegisterIntegration(t)
+	svc := h.Container.ResourceService()
+	sf := h.Container.SessionFactory()
+
+	orgID := "acme-" + h.NewID()
+	projectAlpha := "alpha-" + h.NewID()
+	projectBeta := "beta-" + h.NewID()
+	otherOrg := "globex-" + h.NewID()
+
+	// Project-level contexts (two projects under the same org).
+	ctxAlpha := tenancyCtx(map[string]string{"org": orgID, "project": projectAlpha})
+	ctxBeta := tenancyCtx(map[string]string{"org": orgID, "project": projectBeta})
+	// Org-level context (sees across both projects).
+	ctxOrg := tenancyCtx(map[string]string{"org": orgID})
+	// Different org (sees neither).
+	ctxOther := tenancyCtx(map[string]string{"org": otherOrg})
+
+	clusterAlpha, svcErr := createInTx(ctxAlpha, sf, svc, newTenancyCluster("hierarchy-alpha"))
+	Expect(svcErr).To(BeNil())
+
+	clusterBeta, svcErr := createInTx(ctxBeta, sf, svc, newTenancyCluster("hierarchy-beta"))
+	Expect(svcErr).To(BeNil())
+
+	t.Run("org-scoped caller sees resources across both projects", func(t *testing.T) {
+		RegisterTestingT(t)
+		list, _, svcErr := svc.List(ctxOrg, tenancyClusterKind, services.NewListArguments())
+		Expect(svcErr).To(BeNil())
+		ids := idsOf(list)
+		Expect(ids).To(ContainElement(clusterAlpha.ID))
+		Expect(ids).To(ContainElement(clusterBeta.ID))
+	})
+
+	t.Run("project-scoped caller sees only its own project", func(t *testing.T) {
+		RegisterTestingT(t)
+		list, _, svcErr := svc.List(ctxAlpha, tenancyClusterKind, services.NewListArguments())
+		Expect(svcErr).To(BeNil())
+		ids := idsOf(list)
+		Expect(ids).To(ContainElement(clusterAlpha.ID))
+		Expect(ids).NotTo(ContainElement(clusterBeta.ID))
+	})
+
+	t.Run("different org sees neither", func(t *testing.T) {
+		RegisterTestingT(t)
+		list, _, svcErr := svc.List(ctxOther, tenancyClusterKind, services.NewListArguments())
+		Expect(svcErr).To(BeNil())
+		ids := idsOf(list)
+		Expect(ids).NotTo(ContainElement(clusterAlpha.ID))
+		Expect(ids).NotTo(ContainElement(clusterBeta.ID))
+	})
+}
+
+// TestResourceScopeEmptyTenancyVisibility verifies that resources with an empty tenancy
+// map ({}) are visible to system callers but invisible to any tenant-scoped caller.
+// Empty-tenancy rows represent pre-migration or system-seeded data; the JSONB containment
+// predicate naturally excludes them because {} does not contain any non-empty dimension set.
+func TestResourceScopeEmptyTenancyVisibility(t *testing.T) {
+	h, _ := test.RegisterIntegration(t)
+	svc := h.Container.ResourceService()
+	sf := h.Container.SessionFactory()
+
+	ctxA, _, ctxSystem := twoTenantContexts(h)
+
+	// Create as tenant A (system identity can't create per HYPERFLEET-1472), then
+	// overwrite tenancy to {} at the DB level to simulate a legacy/unscoped row.
+	created, svcErr := createInTx(ctxA, sf, svc, newTenancyCluster("scope-empty-tenancy"))
+	Expect(svcErr).To(BeNil())
+
+	g := sf.New(context.Background())
+	Expect(g.Model(&api.Resource{}).Where("id = ?", created.ID).
+		Update("tenancy", datatypes.JSON([]byte("{}"))).Error).To(Succeed())
+
+	t.Run("system caller sees the empty-tenancy row via Get", func(t *testing.T) {
+		RegisterTestingT(t)
+		got, svcErr := svc.Get(ctxSystem, tenancyClusterKind, created.ID)
+		Expect(svcErr).To(BeNil())
+		Expect(got.ID).To(Equal(created.ID))
+	})
+
+	t.Run("system caller includes it in List", func(t *testing.T) {
+		RegisterTestingT(t)
+		list, _, svcErr := svc.List(ctxSystem, tenancyClusterKind, services.NewListArguments())
+		Expect(svcErr).To(BeNil())
+		Expect(idsOf(list)).To(ContainElement(created.ID))
+	})
+
+	t.Run("tenant caller gets 404 on Get", func(t *testing.T) {
+		RegisterTestingT(t)
+		_, svcErr := svc.Get(ctxA, tenancyClusterKind, created.ID)
+		Expect(svcErr).NotTo(BeNil())
+		Expect(svcErr.Is404()).To(BeTrue())
+	})
+
+	t.Run("tenant caller List omits it and total excludes it", func(t *testing.T) {
+		RegisterTestingT(t)
+		list, paging, svcErr := svc.List(ctxA, tenancyClusterKind, services.NewListArguments())
+		Expect(svcErr).To(BeNil())
+		Expect(idsOf(list)).NotTo(ContainElement(created.ID))
+		Expect(paging.Total).To(Equal(int64(0)),
+			"total must exclude empty-tenancy rows for tenant callers")
+	})
 }
