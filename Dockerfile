@@ -1,6 +1,6 @@
 ARG BASE_IMAGE=registry.access.redhat.com/ubi9-micro:latest
 
-FROM registry.access.redhat.com/ubi9/go-toolset:9.8-1787559109 AS builder
+FROM registry.access.redhat.com/ubi9/go-toolset:9.8-1787774815 AS builder
 
 ARG GIT_SHA=unknown
 ARG GIT_DIRTY=""
