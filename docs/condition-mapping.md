@@ -533,14 +533,14 @@ The condition mapping configuration uses `when` and `output` keywords that are c
 
 | Component | `when` keyword | Output keywords | CEL engine |
 |-----------|---------------|-----------------|------------|
-| **API condition mapping** | `when.expression` — boolean gate | `output.status.expression`, `output.reason.expression`, `output.message.expression` | `google/cel-go` |
-| **Adapter framework** | `when.expression` — task precondition | `expression` in params, payload builders | `google/cel-go` |
-| **Sentinel decision engine** | `when.expression` — reconciliation trigger | `params[].expression` for parameter extraction | `google/cel-go` |
+| **API condition mapping** | `when.expression` — boolean gate | `output.status.expression`, `output.reason.expression`, `output.message.expression` | `cel-go` |
+| **Adapter framework** | `when.expression` — task precondition | `expression` in params, payload builders | `cel-go` |
+| **Sentinel decision engine** | `when.expression` — reconciliation trigger | `params[].expression` for parameter extraction | `cel-go` |
 
 All three components:
 
 - Compile CEL expressions at startup (fail-fast)
-- Use `google/cel-go` as the expression engine
+- Use `cel-go` as the expression engine (module import path may differ per component/version — see each repo's `go.mod`)
 - Support optional chaining (`?.`, `hasValue()`, `orValue()`)
 - Provide `env.*` access for environment-specific logic (adapter and Sentinel; API condition mapping currently exposes `resource` instead)
 
