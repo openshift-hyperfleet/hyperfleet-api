@@ -3,6 +3,7 @@ module github.com/openshift-hyperfleet/hyperfleet-api
 go 1.26.0
 
 require (
+	cel.dev/cel-go v0.32.0
 	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/MicahParks/jwkset v0.11.3
 	github.com/MicahParks/keyfunc/v3 v3.8.1
@@ -11,7 +12,6 @@ require (
 	github.com/go-gormigrate/gormigrate/v2 v2.1.6
 	github.com/go-playground/validator/v10 v10.30.3
 	github.com/golang-jwt/jwt/v5 v5.3.1
-	github.com/google/cel-go v0.31.0
 	github.com/google/uuid v1.6.0
 	github.com/jinzhu/inflection v1.0.0
 	github.com/lib/pq v1.12.3

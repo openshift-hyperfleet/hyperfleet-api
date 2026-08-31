@@ -9,7 +9,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/google/cel-go/common/types"
+	"cel.dev/cel-go/common/types"
 	. "github.com/onsi/gomega"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
