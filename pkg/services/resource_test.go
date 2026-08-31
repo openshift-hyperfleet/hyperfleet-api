@@ -2111,6 +2111,65 @@ func TestProcessAdapterStatus_UpsertSecondReport(t *testing.T) {
 	Expect(asDao.statuses).To(HaveLen(1))
 }
 
+// TestProcessAdapterStatus_TruncatesLastReportTimeToMicrosecond guards against
+// HYPERFLEET-1608: a nanosecond-precision LastReportTime must be truncated
+// before it's compared/persisted, so a later read of the same report can't be
+// pushed past the original in-memory value by storage-layer rounding.
+func TestProcessAdapterStatus_TruncatesLastReportTimeToMicrosecond(t *testing.T) {
+	RegisterTestingT(t)
+	setupAdapterStatusDescriptors()
+
+	mockDao := newMockResourceDao()
+	svc, _, _, _ := newTestResourceServiceWithAdapterStatus(mockDao)
+
+	r := testResource("TestResource", "r-1", "test")
+	r.Generation = 1
+	mockDao.addResource(r)
+
+	req := testAdapterStatusRequest(1)
+	// Fixed, non-microsecond-aligned timestamp so the test deterministically
+	// exercises truncation instead of depending on time.Now()'s remainder.
+	req.LastReportTime = time.Date(2026, 1, 1, 0, 0, 0, 123456789, time.UTC)
+	Expect(req.LastReportTime.Nanosecond()%1000).ToNot(Equal(0), "fixture must not already be microsecond-aligned")
+
+	result, svcErr := svc.ProcessAdapterStatus(context.Background(), "TestResource", "r-1", req)
+	Expect(svcErr).To(BeNil())
+	Expect(result).ToNot(BeNil())
+	Expect(result.LastReportTime.Nanosecond() % 1000).To(Equal(0))
+}
+
+// TestProcessAdapterStatus_ResubmitSameGenerationAndTimestamp_Succeeds guards
+// against HYPERFLEET-1608: resubmitting an equivalent report (same generation,
+// same logical LastReportTime, but an independently constructed request) must
+// not be silently discarded as stale.
+func TestProcessAdapterStatus_ResubmitSameGenerationAndTimestamp_Succeeds(t *testing.T) {
+	RegisterTestingT(t)
+	setupAdapterStatusDescriptors()
+
+	mockDao := newMockResourceDao()
+	svc, _, _, _ := newTestResourceServiceWithAdapterStatus(mockDao)
+
+	r := testResource("TestResource", "r-1", "test")
+	r.Generation = 1
+	mockDao.addResource(r)
+
+	// Fixed, non-microsecond-aligned timestamp shared by both requests.
+	sharedTimestamp := time.Date(2026, 1, 1, 0, 0, 0, 123456789, time.UTC)
+
+	first := testAdapterStatusRequest(1)
+	first.LastReportTime = sharedTimestamp
+	_, svcErr := svc.ProcessAdapterStatus(context.Background(), "TestResource", "r-1", first)
+	Expect(svcErr).To(BeNil())
+
+	// Independently constructed request carrying the same logical timestamp,
+	// as a system-identity or retried caller might send.
+	second := testAdapterStatusRequest(1)
+	second.LastReportTime = sharedTimestamp
+	result, svcErr := svc.ProcessAdapterStatus(context.Background(), "TestResource", "r-1", second)
+	Expect(svcErr).To(BeNil())
+	Expect(result).ToNot(BeNil())
+}
+
 func TestProcessAdapterStatus_SoftDeleted_AllFinalized_HardDeletes(t *testing.T) {
 	RegisterTestingT(t)
 	setupAdapterStatusDescriptors()
