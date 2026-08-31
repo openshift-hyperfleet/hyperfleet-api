@@ -2111,6 +2111,56 @@ func TestProcessAdapterStatus_UpsertSecondReport(t *testing.T) {
 	Expect(asDao.statuses).To(HaveLen(1))
 }
 
+// TestProcessAdapterStatus_TruncatesLastReportTimeToMicrosecond guards against
+// HYPERFLEET-1608: a nanosecond-precision LastReportTime must be truncated
+// before it's compared/persisted, so a later read of the same report can't be
+// pushed past the original in-memory value by storage-layer rounding.
+func TestProcessAdapterStatus_TruncatesLastReportTimeToMicrosecond(t *testing.T) {
+	RegisterTestingT(t)
+	setupAdapterStatusDescriptors()
+
+	mockDao := newMockResourceDao()
+	svc, _, _, _ := newTestResourceServiceWithAdapterStatus(mockDao)
+
+	r := testResource("TestResource", "r-1", "test")
+	r.Generation = 1
+	mockDao.addResource(r)
+
+	req := testAdapterStatusRequest(1)
+	req.LastReportTime = req.LastReportTime.Add(123 * time.Nanosecond)
+
+	result, svcErr := svc.ProcessAdapterStatus(context.Background(), "TestResource", "r-1", req)
+	Expect(svcErr).To(BeNil())
+	Expect(result).ToNot(BeNil())
+	Expect(result.LastReportTime.Nanosecond() % 1000).To(Equal(0))
+}
+
+// TestProcessAdapterStatus_ResubmitSameGenerationAndTimestamp_Succeeds guards
+// against HYPERFLEET-1608: resubmitting the exact same report object (same
+// generation, same LastReportTime) must not be silently discarded as stale.
+func TestProcessAdapterStatus_ResubmitSameGenerationAndTimestamp_Succeeds(t *testing.T) {
+	RegisterTestingT(t)
+	setupAdapterStatusDescriptors()
+
+	mockDao := newMockResourceDao()
+	svc, _, _, _ := newTestResourceServiceWithAdapterStatus(mockDao)
+
+	r := testResource("TestResource", "r-1", "test")
+	r.Generation = 1
+	mockDao.addResource(r)
+
+	req := testAdapterStatusRequest(1)
+
+	_, svcErr := svc.ProcessAdapterStatus(context.Background(), "TestResource", "r-1", req)
+	Expect(svcErr).To(BeNil())
+
+	// Resubmit the identical object (same generation, same LastReportTime),
+	// as a system-identity or retried caller might.
+	result, svcErr := svc.ProcessAdapterStatus(context.Background(), "TestResource", "r-1", req)
+	Expect(svcErr).To(BeNil())
+	Expect(result).ToNot(BeNil())
+}
+
 func TestProcessAdapterStatus_SoftDeleted_AllFinalized_HardDeletes(t *testing.T) {
 	RegisterTestingT(t)
 	setupAdapterStatusDescriptors()

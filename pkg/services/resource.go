@@ -576,6 +576,13 @@ func (s *sqlResourceService) ProcessAdapterStatus(
 	}
 	trace.SpanFromContext(ctx).SetAttributes(attribute.String("hyperfleet.resource_type", registry.MustGet(kind).Plural))
 
+	// Truncate to microsecond precision up front so the value used for staleness
+	// comparisons below matches exactly what Postgres persists and returns on
+	// read-back. Without this, a nanosecond-precision timestamp can round up
+	// during storage, making a later read of the same report compare as "after"
+	// the original in-memory value and incorrectly flip the staleness check.
+	adapterStatus.LastReportTime = adapterStatus.LastReportTime.Truncate(time.Microsecond)
+
 	// Step 1: Acquire a row-level exclusive lock on the resource. Concurrent
 	// adapter status updates for the same resource are serialized here.
 	// GetForUpdate also preloads Conditions (needed for aggregation diff).
