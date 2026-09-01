@@ -3,6 +3,7 @@ package config
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"testing"
 
 	. "github.com/onsi/gomega"
@@ -369,6 +370,13 @@ func TestValidationFailures(t *testing.T) {
 			},
 			expectedError: "metrics TLS validation failed",
 		},
+		{
+			name: "database password file missing",
+			envVars: map[string]string{
+				"HYPERFLEET_DATABASE_PASSWORD_FILE": "/nonexistent/path/to/password",
+			},
+			expectedError: "database config file resolution failed",
+		},
 	}
 
 	for _, tt := range tests {
@@ -391,6 +399,53 @@ func TestValidationFailures(t *testing.T) {
 
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring(tt.expectedError))
+		})
+	}
+}
+
+func TestDatabaseFileOverridesEndToEnd(t *testing.T) {
+	tests := []struct {
+		name     string
+		expected string
+		setFlag  bool
+	}{
+		{
+			name:     "file wins over plain env var",
+			expected: "from-file-secret",
+		},
+		{
+			name:     "flag wins over file",
+			setFlag:  true,
+			expected: "from-flag",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			RegisterTestingT(t)
+			SetMinimalTestEnv(t)
+
+			passwordFile := filepath.Join(t.TempDir(), "password")
+			if err := os.WriteFile(passwordFile, []byte("from-file-secret"), 0o600); err != nil {
+				t.Fatalf("failed to write password file: %v", err)
+			}
+
+			t.Setenv("HYPERFLEET_DATABASE_PASSWORD", "from-env-var")
+			t.Setenv("HYPERFLEET_DATABASE_PASSWORD_FILE", passwordFile)
+
+			cmd := &cobra.Command{}
+			if tt.setFlag {
+				AddDatabaseFlags(cmd)
+				if err := cmd.Flags().Set("db-password", "from-flag"); err != nil {
+					t.Fatalf("failed to set db-password flag: %v", err)
+				}
+			}
+
+			loader := NewConfigLoader()
+			appConfig, err := loader.Load(context.Background(), cmd)
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(appConfig.Database.Password).To(Equal(tt.expected))
 		})
 	}
 }

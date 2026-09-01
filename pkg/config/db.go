@@ -3,7 +3,9 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -23,15 +25,20 @@ var simpleDSNValuePattern = regexp.MustCompile(`^[a-zA-Z0-9.-]+$`)
 // DatabaseConfig holds database connection configuration
 // Follows HyperFleet Configuration Standard
 type DatabaseConfig struct {
-	SSL      SSLConfig  `mapstructure:"ssl" json:"ssl" validate:"required"`
-	Dialect  string     `mapstructure:"dialect" json:"dialect" validate:"required,oneof=postgres"`
-	Host     string     `mapstructure:"host" json:"host" validate:"required,hostname|ip"`
-	Name     string     `mapstructure:"name" json:"name" validate:"required"`
-	Username string     `mapstructure:"username" json:"-"`
-	Password string     `mapstructure:"password" json:"-"`
-	Pool     PoolConfig `mapstructure:"pool" json:"pool" validate:"required"`
-	Port     int        `mapstructure:"port" json:"port" validate:"required,min=1,max=65535"`
-	Debug    bool       `mapstructure:"debug" json:"debug"`
+	Dialect      string     `mapstructure:"dialect" json:"dialect" validate:"required,oneof=postgres"`
+	Host         string     `mapstructure:"host" json:"host" validate:"required,hostname|ip"`
+	HostFile     string     `mapstructure:"host_file" json:"host_file"`
+	Name         string     `mapstructure:"name" json:"name" validate:"required"`
+	NameFile     string     `mapstructure:"name_file" json:"name_file"`
+	Username     string     `mapstructure:"username" json:"-"`
+	UsernameFile string     `mapstructure:"username_file" json:"username_file"`
+	Password     string     `mapstructure:"password" json:"-"`
+	PasswordFile string     `mapstructure:"password_file" json:"password_file"`
+	PortFile     string     `mapstructure:"port_file" json:"port_file"`
+	SSL          SSLConfig  `mapstructure:"ssl" json:"ssl" validate:"required"`
+	Pool         PoolConfig `mapstructure:"pool" json:"pool" validate:"required"`
+	Port         int        `mapstructure:"port" json:"port" validate:"required,min=1,max=65535"`
+	Debug        bool       `mapstructure:"debug" json:"debug"`
 }
 
 // SSLConfig holds SSL/TLS configuration
@@ -74,6 +81,60 @@ func redactIfSet(value string) string {
 		return ""
 	}
 	return RedactedValue
+}
+
+// resolveFileValue reads filePath and trims whitespace
+func resolveFileValue(envVar, filePath string) (string, error) {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return "", fmt.Errorf("failed to read %s (%s): %w", envVar, filePath, err)
+	}
+	return strings.TrimSpace(string(data)), nil
+}
+
+// ResolveFileOverrides applies HYPERFLEET_DATABASE_*_FILE overrides
+func (c *DatabaseConfig) ResolveFileOverrides() error {
+	if c.HostFile != "" {
+		value, err := resolveFileValue("HYPERFLEET_DATABASE_HOST_FILE", c.HostFile)
+		if err != nil {
+			return err
+		}
+		c.Host = value
+	}
+	if c.PortFile != "" {
+		value, err := resolveFileValue("HYPERFLEET_DATABASE_PORT_FILE", c.PortFile)
+		if err != nil {
+			return err
+		}
+		port, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("HYPERFLEET_DATABASE_PORT_FILE (%s) does not contain a valid port number: %w",
+				c.PortFile, err)
+		}
+		c.Port = port
+	}
+	if c.NameFile != "" {
+		value, err := resolveFileValue("HYPERFLEET_DATABASE_NAME_FILE", c.NameFile)
+		if err != nil {
+			return err
+		}
+		c.Name = value
+	}
+	if c.UsernameFile != "" {
+		value, err := resolveFileValue("HYPERFLEET_DATABASE_USERNAME_FILE", c.UsernameFile)
+		if err != nil {
+			return err
+		}
+		c.Username = value
+	}
+	if c.PasswordFile != "" {
+		value, err := resolveFileValue("HYPERFLEET_DATABASE_PASSWORD_FILE", c.PasswordFile)
+		if err != nil {
+			return err
+		}
+		c.Password = value
+	}
+	return nil
 }
 
 // NewDatabaseConfig returns default DatabaseConfig values

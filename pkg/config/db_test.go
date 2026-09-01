@@ -1,9 +1,12 @@
 package config
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"gorm.io/gorm/logger"
 )
 
@@ -429,6 +432,195 @@ func TestDatabaseConfigMarshalJSON_EmptyCredentials(t *testing.T) {
 	// Verify empty credentials show as empty strings, not redacted
 	assert.Contains(t, jsonStr, `"username":""`)
 	assert.Contains(t, jsonStr, `"password":""`)
+}
+
+func TestDatabaseConfigResolveFileOverrides(t *testing.T) {
+	tests := []struct {
+		setup           func(t *testing.T) *DatabaseConfig
+		checkConfig     func(t *testing.T, config *DatabaseConfig)
+		name            string
+		wantErrContains []string
+	}{
+		{
+			name: "file set takes precedence over plain value",
+			setup: func(t *testing.T) *DatabaseConfig {
+				dir := t.TempDir()
+				hostFile := filepath.Join(dir, "host")
+				portFile := filepath.Join(dir, "port")
+				nameFile := filepath.Join(dir, "name")
+				userFile := filepath.Join(dir, "username")
+				passFile := filepath.Join(dir, "password")
+
+				require.NoError(t, os.WriteFile(hostFile, []byte("db.from-file.example.com\n"), 0o600))
+				require.NoError(t, os.WriteFile(portFile, []byte("5433\n"), 0o600))
+				require.NoError(t, os.WriteFile(nameFile, []byte("filedb\n"), 0o600))
+				require.NoError(t, os.WriteFile(userFile, []byte("fileuser\n"), 0o600))
+				require.NoError(t, os.WriteFile(passFile, []byte("filepass"), 0o600))
+
+				return &DatabaseConfig{
+					Host:         "plainhost",
+					HostFile:     hostFile,
+					Port:         5432,
+					PortFile:     portFile,
+					Name:         "plaindb",
+					NameFile:     nameFile,
+					Username:     "plainuser",
+					UsernameFile: userFile,
+					Password:     "plainpass",
+					PasswordFile: passFile,
+				}
+			},
+			checkConfig: func(t *testing.T, config *DatabaseConfig) {
+				assert.Equal(t, "db.from-file.example.com", config.Host)
+				assert.Equal(t, 5433, config.Port)
+				assert.Equal(t, "filedb", config.Name)
+				assert.Equal(t, "fileuser", config.Username)
+				assert.Equal(t, "filepass", config.Password)
+			},
+		},
+		{
+			name: "missing file fails with a clear error naming the variable",
+			setup: func(t *testing.T) *DatabaseConfig {
+				return &DatabaseConfig{
+					Password:     "plainpass",
+					PasswordFile: "/nonexistent/path/to/password",
+				}
+			},
+			wantErrContains: []string{"HYPERFLEET_DATABASE_PASSWORD_FILE", "/nonexistent/path/to/password"},
+		},
+		{
+			name: "only plain value set",
+			setup: func(t *testing.T) *DatabaseConfig {
+				return &DatabaseConfig{
+					Host:     "plainhost",
+					Port:     5432,
+					Name:     "plaindb",
+					Username: "plainuser",
+					Password: "plainpass",
+				}
+			},
+			checkConfig: func(t *testing.T, config *DatabaseConfig) {
+				assert.Equal(t, "plainhost", config.Host)
+				assert.Equal(t, 5432, config.Port)
+				assert.Equal(t, "plaindb", config.Name)
+				assert.Equal(t, "plainuser", config.Username)
+				assert.Equal(t, "plainpass", config.Password)
+			},
+		},
+		{
+			name: "only file value set",
+			setup: func(t *testing.T) *DatabaseConfig {
+				dir := t.TempDir()
+				hostFile := filepath.Join(dir, "host")
+				portFile := filepath.Join(dir, "port")
+				nameFile := filepath.Join(dir, "name")
+				userFile := filepath.Join(dir, "username")
+				passFile := filepath.Join(dir, "password")
+
+				require.NoError(t, os.WriteFile(hostFile, []byte("db.from-file.example.com"), 0o600))
+				require.NoError(t, os.WriteFile(portFile, []byte("5433"), 0o600))
+				require.NoError(t, os.WriteFile(nameFile, []byte("filedb"), 0o600))
+				require.NoError(t, os.WriteFile(userFile, []byte("fileuser"), 0o600))
+				require.NoError(t, os.WriteFile(passFile, []byte("filepass"), 0o600))
+
+				return &DatabaseConfig{
+					HostFile:     hostFile,
+					PortFile:     portFile,
+					NameFile:     nameFile,
+					UsernameFile: userFile,
+					PasswordFile: passFile,
+				}
+			},
+			checkConfig: func(t *testing.T, config *DatabaseConfig) {
+				assert.Equal(t, "db.from-file.example.com", config.Host)
+				assert.Equal(t, 5433, config.Port)
+				assert.Equal(t, "filedb", config.Name)
+				assert.Equal(t, "fileuser", config.Username)
+				assert.Equal(t, "filepass", config.Password)
+			},
+		},
+		{
+			name: "password file trailing newline is stripped",
+			setup: func(t *testing.T) *DatabaseConfig {
+				dir := t.TempDir()
+				passFile := filepath.Join(dir, "password")
+				require.NoError(t, os.WriteFile(passFile, []byte("filepass\n"), 0o600))
+
+				return &DatabaseConfig{PasswordFile: passFile}
+			},
+			checkConfig: func(t *testing.T, config *DatabaseConfig) {
+				assert.Equal(t, "filepass", config.Password)
+			},
+		},
+		{
+			name: "password file leading/trailing whitespace is trimmed but internal spaces are preserved",
+			setup: func(t *testing.T) *DatabaseConfig {
+				dir := t.TempDir()
+				passFile := filepath.Join(dir, "password")
+				require.NoError(t, os.WriteFile(passFile, []byte(" \tpass with spaces\n"), 0o600))
+
+				return &DatabaseConfig{PasswordFile: passFile}
+			},
+			checkConfig: func(t *testing.T, config *DatabaseConfig) {
+				assert.Equal(t, "pass with spaces", config.Password)
+			},
+		},
+		{
+			name: "host/name/username file whitespace is trimmed",
+			setup: func(t *testing.T) *DatabaseConfig {
+				dir := t.TempDir()
+				hostFile := filepath.Join(dir, "host")
+				nameFile := filepath.Join(dir, "name")
+				userFile := filepath.Join(dir, "username")
+
+				require.NoError(t, os.WriteFile(hostFile, []byte("  db.example.com  \n"), 0o600))
+				require.NoError(t, os.WriteFile(nameFile, []byte("  filedb  \n"), 0o600))
+				require.NoError(t, os.WriteFile(userFile, []byte("  fileuser  \n"), 0o600))
+
+				return &DatabaseConfig{
+					HostFile:     hostFile,
+					NameFile:     nameFile,
+					UsernameFile: userFile,
+				}
+			},
+			checkConfig: func(t *testing.T, config *DatabaseConfig) {
+				assert.Equal(t, "db.example.com", config.Host)
+				assert.Equal(t, "filedb", config.Name)
+				assert.Equal(t, "fileuser", config.Username)
+			},
+		},
+		{
+			name: "port file with invalid content fails with a clear error",
+			setup: func(t *testing.T) *DatabaseConfig {
+				dir := t.TempDir()
+				portFile := filepath.Join(dir, "port")
+				require.NoError(t, os.WriteFile(portFile, []byte("not-a-port"), 0o600))
+
+				return &DatabaseConfig{Port: 5432, PortFile: portFile}
+			},
+			wantErrContains: []string{"HYPERFLEET_DATABASE_PORT_FILE"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			config := tt.setup(t)
+			err := config.ResolveFileOverrides()
+
+			if len(tt.wantErrContains) > 0 {
+				require.Error(t, err)
+				for _, substr := range tt.wantErrContains {
+					assert.Contains(t, err.Error(), substr)
+				}
+				return
+			}
+
+			require.NoError(t, err)
+			if tt.checkConfig != nil {
+				tt.checkConfig(t, config)
+			}
+		})
+	}
 }
 
 func TestSetLogLevel(t *testing.T) {
