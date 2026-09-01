@@ -76,6 +76,12 @@ func (l *ConfigLoader) Load(ctx context.Context, cmd *cobra.Command) (*Applicati
 	// Step 6.5: Migrate deprecated configuration before validation
 	l.migrateDeprecatedConfig(ctx, config)
 
+	// Step 6.6: Resolve database credential *_FILE overrides and preserve flag precedence
+	suppressFlagOverriddenDatabaseFileFields(cmd, config)
+	if err := config.Database.ResolveFileOverrides(); err != nil {
+		return nil, fmt.Errorf("database config file resolution failed: %w", err)
+	}
+
 	// Step 7: Validate configuration
 	if err := l.validateConfig(config); err != nil {
 		return nil, err
@@ -265,6 +271,22 @@ func (l *ConfigLoader) migrateDeprecatedConfig(ctx context.Context, config *Appl
 	}
 }
 
+// suppressFlagOverriddenDatabaseFileFields: an explicit CLI flag takes precedence over its *_FILE value
+func suppressFlagOverriddenDatabaseFileFields(cmd *cobra.Command, config *ApplicationConfig) {
+	flagToFileField := map[string]*string{
+		"db-host":     &config.Database.HostFile,
+		"db-port":     &config.Database.PortFile,
+		"db-name":     &config.Database.NameFile,
+		"db-username": &config.Database.UsernameFile,
+		"db-password": &config.Database.PasswordFile,
+	}
+	for flagName, fileField := range flagToFileField {
+		if flag := cmd.Flags().Lookup(flagName); flag != nil && flag.Changed {
+			*fileField = ""
+		}
+	}
+}
+
 // bindEnv wraps viper.BindEnv and tracks the key for validation
 func (l *ConfigLoader) bindEnv(key string) {
 	if err := l.viper.BindEnv(key); err != nil {
@@ -309,10 +331,15 @@ func (l *ConfigLoader) bindAllEnvVars() {
 	// Database config
 	l.bindEnv("database.dialect")
 	l.bindEnv("database.host")
+	l.bindEnv("database.host_file")
 	l.bindEnv("database.port")
+	l.bindEnv("database.port_file")
 	l.bindEnv("database.name")
+	l.bindEnv("database.name_file")
 	l.bindEnv("database.username")
+	l.bindEnv("database.username_file")
 	l.bindEnv("database.password")
+	l.bindEnv("database.password_file")
 	l.bindEnv("database.debug")
 	l.bindEnv("database.ssl.mode")
 	l.bindEnv("database.ssl.root_cert_file")

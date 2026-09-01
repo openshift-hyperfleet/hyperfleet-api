@@ -123,10 +123,15 @@ PostgreSQL database connection settings.
 |----------|------|---------|-------------|
 | `database.dialect` | string | `postgres` | Database dialect |
 | `database.host` | string | `localhost` | Database server hostname |
+| `database.host_file` | string | `""` | Path to a file containing the database host (overrides `database.host` when set) |
 | `database.port` | int | `5432` | Database server port |
+| `database.port_file` | string | `""` | Path to a file containing the database port (overrides `database.port` when set) |
 | `database.name` | string | `hyperfleet` | Database name |
+| `database.name_file` | string | `""` | Path to a file containing the database name (overrides `database.name` when set) |
 | `database.username` | string | `hyperfleet` | Database username |
+| `database.username_file` | string | `""` | Path to a file containing the database username (overrides `database.username` when set) |
 | `database.password` | string | `""` | Database password (**use env var with secretKeyRef for Kubernetes**) |
+| `database.password_file` | string | `""` | Path to a file containing the database password (overrides `database.password` when set) |
 | `database.ssl.mode` | string | `disable` | SSL mode: `disable`, `require`, `verify-ca`, `verify-full` |
 | `database.ssl.root_cert_file` | string | `""` | Root CA certificate for SSL verification |
 | `database.pool.max_connections` | int | `50` | Maximum open database connections |
@@ -410,10 +415,15 @@ Complete table of all configuration properties, their environment variables, and
 | **Database** | | | |
 | `database.dialect` | `HYPERFLEET_DATABASE_DIALECT` | string | `postgres` |
 | `database.host` | `HYPERFLEET_DATABASE_HOST` | string | `localhost` |
+| `database.host_file` | `HYPERFLEET_DATABASE_HOST_FILE` | string | `""` |
 | `database.port` | `HYPERFLEET_DATABASE_PORT` | int | `5432` |
+| `database.port_file` | `HYPERFLEET_DATABASE_PORT_FILE` | string | `""` |
 | `database.name` | `HYPERFLEET_DATABASE_NAME` | string | `hyperfleet` |
+| `database.name_file` | `HYPERFLEET_DATABASE_NAME_FILE` | string | `""` |
 | `database.username` | `HYPERFLEET_DATABASE_USERNAME` | string | `hyperfleet` |
+| `database.username_file` | `HYPERFLEET_DATABASE_USERNAME_FILE` | string | `""` |
 | `database.password` | `HYPERFLEET_DATABASE_PASSWORD` | string | `""` |
+| `database.password_file` | `HYPERFLEET_DATABASE_PASSWORD_FILE` | string | `""` |
 | `database.debug` | `HYPERFLEET_DATABASE_DEBUG` | bool | `false` |
 | `database.ssl.mode` | `HYPERFLEET_DATABASE_SSL_MODE` | string | `disable` |
 | `database.ssl.root_cert_file` | `HYPERFLEET_DATABASE_SSL_ROOT_CERT_FILE` | string | `""` |
