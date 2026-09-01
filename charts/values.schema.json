@@ -204,6 +204,82 @@
                   }
                 }
               }
+            },
+            "tenant": {
+              "type": "object",
+              "description": "Tenant enforcement middleware configuration",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "description": "Enable tenant enforcement middleware"
+                },
+                "system_header": {
+                  "type": "string",
+                  "description": "Trusted header identifying system callers that bypass tenant scoping (required when enabled is true)",
+                  "pattern": "^$|^[!#$%&'*+.^_`|~0-9A-Za-z-]+$"
+                },
+                "dimensions": {
+                  "type": "array",
+                  "description": "Tenant dimensions: each maps a trusted gateway-injected header to a tenancy key",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "header",
+                      "key"
+                    ],
+                    "properties": {
+                      "header": {
+                        "type": "string",
+                        "description": "Trusted HTTP header injected by the gateway for this dimension",
+                        "pattern": "^[!#$%&'*+.^_`|~0-9A-Za-z-]+$"
+                      },
+                      "key": {
+                        "type": "string",
+                        "description": "Tenancy key this header's value is stored under",
+                        "minLength": 1
+                      },
+                      "required": {
+                        "type": "boolean",
+                        "description": "Whether this dimension must be present for non-system callers"
+                      }
+                    }
+                  }
+                }
+              },
+              "if": {
+                "properties": {
+                  "enabled": {
+                    "const": true
+                  }
+                },
+                "required": [
+                  "enabled"
+                ]
+              },
+              "then": {
+                "properties": {
+                  "system_header": {
+                    "minLength": 1
+                  },
+                  "dimensions": {
+                    "minItems": 1,
+                    "contains": {
+                      "properties": {
+                        "required": {
+                          "const": true
+                        }
+                      },
+                      "required": [
+                        "required"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "system_header",
+                  "dimensions"
+                ]
+              }
             }
           }
         },
