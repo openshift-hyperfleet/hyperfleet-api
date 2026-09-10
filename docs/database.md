@@ -50,6 +50,41 @@ Flexible schema storage for:
 
 Adapter statuses do not use soft delete — they are hard-deleted when their parent resource is hard-deleted.
 
+### Tenant Scoping
+
+When tenant enforcement is enabled, the caller's resolved tenancy is applied as a JSONB containment predicate (`tenancy @> ?`) on reads, lists, updates, and deletes (updates and deletes go through the same scoped `GetForUpdate` lookup, so a cross-tenant target is not found). Matching is by **containment, not equality**: a caller is authorized for a resource when the caller's tenancy map is a subset of the resource's. An org-scoped caller (`{org: acme}`) therefore sees every resource under that org, including those with extra dimensions (`{org: acme, project: platform}`), while a caller scoped to `{org: acme, project: p1}` does not see `{org: acme, project: p2}`.
+
+#### Where `tenancy` comes from
+
+On create by a non-system caller, the API fills the resource's `tenancy` column from the caller's resolved dimensions. Clients cannot set it: any `tenancy` sent in the request body is ignored, and the column can never change after creation. So a resource permanently carries the tenancy of whoever created it.
+
+System identities cannot create resources at all — they may write only `status`/`conditions`, so a create (or any other spec mutation) from a system identity is rejected with `403 Forbidden` before any `tenancy` is assigned. The creator-dimension rule therefore applies only to non-system creates.
+
+#### Fail-closed on zero dimensions
+
+A non-system caller that resolves to *no* dimensions is rejected with `403` in the middleware, before any query runs. The DAO has a second safeguard in case such a request ever slips through: instead of running an unscoped query, it applies a `1 = 0` predicate that matches nothing.
+
+This backstop exists because matching is by containment and the empty map `{}` is a subset of *every* row. Without it, a zero-dimension caller's predicate (`tenancy @> '{}'`) would match every resource — an accidental "see everything." Failing closed turns that into "see nothing."
+
+#### System callers and pre-existing rows
+
+System callers (e.g. Sentinel, adapters) skip scoping entirely — no `tenancy` predicate is added, so they see all resources.
+
+> **Security:** because `System=true` removes the tenancy predicate, the system header is only trustworthy when it originates from the Envoy + Authorino gateway. The gateway must authenticate and allowlist system clients, strip any client-supplied system header, and block direct routes to the API pod (see [ADR-0020](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/adrs/0020-envoy-authorino-api-gateway.md)). Without that boundary, a spoofed system header — or direct pod access — would expose cross-tenant resources. Only enable tenant enforcement behind such a gateway.
+
+Rows created *before* enforcement was enabled carry `tenancy = '{}'`. Since a scoped caller is only authorized when its (non-empty) tenancy is a subset of the row's, no scoped caller can be a subset of `{}` — so these legacy rows are visible only to system/unscoped callers. Because `tenancy` is immutable after creation and there is no backfill or re-stamp operation, this is permanent: a legacy `{}` resource can never be brought into a tenant's scope. Enable tenant enforcement before creating tenant-owned resources.
+
+#### Uniqueness vs. visibility
+
+These use `tenancy` in two different ways, and it matters:
+
+- **Uniqueness** — the root-resource index `(kind, name, tenancy)` compares `tenancy` by **exact equality**.
+- **Visibility** — access scoping compares `tenancy` by **containment** (subset).
+
+Because uniqueness is by exact equality, two callers scoped to different tenancy documents can each create a resource with the same `kind` and `name` without colliding — their rows differ in the `tenancy` column.
+
+See [Tenant isolation](authentication.md#tenant-isolation) for the request-path behavior and trust model.
+
 ### Delete Policies
 
 Resources use delete policies to control child behavior when a parent is deleted. Each resource type declares its policy in its entity descriptor:

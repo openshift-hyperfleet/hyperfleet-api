@@ -10,6 +10,17 @@ Mutating requests (POST, PATCH, PUT, DELETE) additionally require a resolvable c
 
 > **Note**: The API does not enforce role-based access control (RBAC). Any authenticated caller can invoke any endpoint, including destructive operations like force-delete. Access control should be enforced at the infrastructure layer (e.g., ingress policies, gateway authorization).
 
+### Tenant scoping
+
+When tenant enforcement is enabled (`server.tenant.enabled=true`), reads, lists, updates, and deletes are scoped to the caller's tenant, which is resolved from trusted gateway-injected headers (never from JWT claims). This affects API behavior:
+
+- A resource that belongs to a different tenant returns `404 Not Found`, not `403`, on `GET`, `PATCH`/update, and `DELETE` — cross-tenant existence is never leaked.
+- List endpoints return only resources within the caller's tenancy; `total` reflects the scoped result set.
+- A non-system caller missing a required tenant dimension header (or presenting an invalid value) is rejected with `403 Forbidden` before the request reaches any resource.
+- The `tenancy` field is server-populated on create from the caller's resolved dimensions; it is read-only and any `tenancy` supplied in a create or patch body is ignored.
+
+System callers (e.g. Sentinel, adapters) bypass scoping but may only write `status`/`conditions` — any other resource mutation (create, update, or delete) from a system identity is rejected with `403 Forbidden`. See [Tenant isolation](authentication.md#tenant-isolation) for details.
+
 ## Cluster Management
 
 ### Endpoints
@@ -649,6 +660,7 @@ See **[search.md](search.md)** for complete documentation.
 - `updated_time` - When resource was last updated (API-managed)
 - `created_by` - User who created the resource (email)
 - `updated_by` - User who last updated the resource (email)
+- `tenancy` - Tenant dimensions the resource belongs to (server-populated, read-only). Present as `{}` when tenant enforcement is disabled or the caller resolved no dimensions. Ignored if supplied in a create/patch body. See [Tenant scoping](#tenant-scoping)
 
 ### Status Fields
 

@@ -11,6 +11,8 @@ This document describes authentication mechanisms for the HyperFleet API.
   - [Issuer configuration reference](#issuer-configuration-reference)
   - [Creating a service account token](#creating-a-service-account-token)
 - [Caller identity for audit](#caller-identity-for-audit)
+- [Gateway authentication (Envoy and Authorino)](#gateway-authentication-envoy-and-authorino)
+  - [Trusted header contract](#trusted-header-contract)
 - [Tenant isolation](#tenant-isolation)
 - [Configuration](#configuration-1)
 - [Troubleshooting](#troubleshooting)
@@ -282,13 +284,56 @@ server:
 
 Identity values from both sources are validated: trimmed of whitespace, limited to 256 characters, and rejected if they contain control characters.
 
+## Gateway authentication (Envoy and Authorino)
+
+In production, HyperFleet API runs behind the Envoy + Authorino gateway ([ADR-0020](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/adrs/0020-envoy-authorino-api-gateway.md)), which authenticates every caller and injects trusted identity and tenant headers. Two caller types use different `Authorization` schemes:
+
+| Caller | Scheme | Validated by |
+|--------|--------|--------------|
+| Human operators | `Bearer <oidc-jwt>` | OIDC issuer |
+| Sentinel and adapters (machine) | `ServiceAccount <k8s-token>` | Kubernetes TokenReview at the gateway, against a subject allowlist |
+
+The `ServiceAccount` (TokenReview) validation for machine callers happens at the gateway; the API itself does not perform it. The API's in-app JWT middleware accepts the `Bearer` scheme only and returns `401 Unauthorized` ("authorization header does not use Bearer scheme") for anything else.
+
+> **Note:** Because the in-app JWT middleware is `Bearer`-only, in-app JWT validation and gateway machine authentication cannot both be enabled for machine callers yet — a `ServiceAccount` token would be rejected by the in-app middleware. Running both is tracked by [HYPERFLEET-1484](https://redhat.atlassian.net/browse/HYPERFLEET-1484).
+
+### Trusted header contract
+
+After authenticating a caller, the gateway injects identity and tenant headers derived from validated claims, and the API treats these as authoritative. This is safe only because Envoy strips any client-supplied copy of these headers **before** the authorization filter runs, so a client cannot forge them ([ADR-0020](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/adrs/0020-envoy-authorino-api-gateway.md)). It applies to:
+
+- the tenant system header (`server.tenant.system_header`, gateway convention `X-HyperFleet-System`) — value `true` bypasses tenant scoping, and only the gateway may set it
+- the caller-identity header (per-issuer `identity_header`, gateway convention `X-HyperFleet-Identity`) — only consumed when `server.jwt.enabled` is `true`; the resolver that reads it is not mounted otherwise, so with JWT disabled the API ignores this header even if tenant scoping is on
+- the tenant dimension headers (`server.tenant.dimensions[].header`, gateway convention `X-HyperFleet-Org`, `X-HyperFleet-Project`, …) — resolved independently of JWT, so these still apply when `server.jwt.enabled` is `false` and `server.tenant.enabled` is `true`
+
+The API reads whatever header names are configured; the `X-HyperFleet-*` names are the gateway's convention, not hardcoded. See [Tenant isolation](#tenant-isolation) for how these drive scoping.
+
 ## Tenant isolation
 
 Authentication (JWT validation) and tenant isolation are separate concerns. Tenant identity arrives as trusted headers injected by a gateway (e.g. Envoy + Authorino) — the API does not extract tenant dimensions from JWT claims. This is safe only because the gateway strips client-supplied system/dimension headers, injects validated values, and blocks any direct route to the API pod — see [ADR-0020 — Envoy and Authorino as the API Authentication Gateway](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/adrs/0020-envoy-authorino-api-gateway.md).
 
-When `server.tenant.enabled` is `true`, a resolver middleware reads a system header (grants an unscoped context, e.g. for internal services like Sentinel and adapters) and configured dimension headers (collected into the caller's tenancy map). A non-system caller missing a required dimension, or resolving zero dimensions, is rejected with `403 Forbidden`.
+When `server.tenant.enabled` is `true`, a resolver middleware reads a system header (grants an unscoped context, e.g. for internal services like Sentinel and adapters) and configured dimension headers (collected into the caller's tenancy map). A caller is treated as a system caller when the `system_header` value equals `true` (case-insensitive). A non-system caller missing a required dimension, presenting an invalid dimension value (values must match `^[A-Za-z0-9._-]+$` and be at most 63 characters), or resolving zero dimensions, is rejected with `403 Forbidden` before any database access.
 
-Once a tenant context is resolved, resource reads, lists, and deletes are scoped to it (see [database.md](database.md#jsonb-fields)). A resource outside the caller's tenancy returns `404 Not Found`, not `403` — this avoids leaking a cross-tenant resource's existence. System callers bypass this scoping entirely.
+Once a tenant context is resolved, resource reads, lists, updates, and deletes are scoped to it (see [database.md](database.md#tenant-scoping)). A resource outside the caller's tenancy returns `404 Not Found`, not `403`, on read, update, and delete — this avoids leaking a cross-tenant resource's existence. System callers bypass this scoping entirely, but may only write `status`/`conditions`: any other resource mutation (create, update, or delete) from a system identity is rejected with `403 Forbidden`.
+
+### Configuration
+
+The tenant middleware runs after JWT validation and caller-identity resolution when those are mounted (`server.jwt.enabled: true`), and is only mounted itself when `server.tenant.enabled` is `true`. In gateway-only mode (`server.jwt.enabled: false`, `server.tenant.enabled: true`), JWT validation and caller-identity resolution are not mounted at all, and the tenant middleware runs directly off the gateway-injected headers:
+
+```yaml
+server:
+  tenant:
+    enabled: true
+    system_header: X-HyperFleet-System   # value "true" marks system callers that bypass scoping
+    dimensions:
+      - header: X-HyperFleet-Org         # trusted gateway-injected header
+        key: org                          # tenancy map key
+        required: true
+      - header: X-HyperFleet-Project
+        key: project
+        required: false
+```
+
+See [Configuration Guide - Tenant Enforcement](config.md#tenant-enforcement) for the full field reference, environment variables, and validation rules.
 
 ## Configuration
 

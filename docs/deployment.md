@@ -185,6 +185,41 @@ See [Issuer configuration reference](authentication.md#issuer-configuration-refe
 
 ---
 
+## Configuring Tenant Enforcement
+
+Tenant enforcement scopes resource reads, lists, updates, and deletes to the caller's tenant. It is **disabled by default** and is **only safe behind the Envoy + Authorino gateway**, which injects the trusted tenant headers the API relies on. That trust holds only when a NetworkPolicy restricts API pod ingress to the Envoy pod, so no in-cluster workload can reach the API directly and forge tenant headers — see [ADR-0020](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/adrs/0020-envoy-authorino-api-gateway.md). See [Tenant isolation](authentication.md#tenant-isolation) for the trust model.
+
+Enable it by setting the `config.server.tenant.*` values:
+
+```yaml
+config:
+  server:
+    tenant:
+      enabled: true
+      system_header: X-HyperFleet-System   # value "true" marks system callers that bypass scoping
+      dimensions:
+        - header: X-HyperFleet-Org
+          key: org
+          required: true
+        - header: X-HyperFleet-Project
+          key: project
+          required: false
+```
+
+| Value | Required when tenant enabled | Description |
+|-------|------------------------------|-------------|
+| `config.server.tenant.enabled` | Yes | Set to `true` |
+| `config.server.tenant.system_header` | Yes | Trusted header that marks system callers (Sentinel, adapters). A caller is treated as system when this header's value equals `true`. |
+| `config.server.tenant.dimensions` | Yes | List of dimension mappings (`header`, `key`, `required`). At least one entry is required, and at least one must have `required: true`. |
+
+For tenant values supplied inline through Helm, the chart's `values.schema.json` enforces these invariants at install time, so a misconfigured tenant block (e.g. enabled without `system_header` or without a required dimension) fails `helm install`/`helm upgrade` before reaching the cluster. This check does not cover a tenant block loaded via `config.existingConfigMap` (see the note below) — that ConfigMap is consumed as-is and is not validated against the schema.
+
+> **Note:** When `config.existingConfigMap` is set, these `config.server.tenant.*` values are ignored — tenant settings must come from the referenced ConfigMap.
+
+See [Configuration Guide - Tenant Enforcement](config.md#tenant-enforcement) for the full field reference and validation rules.
+
+---
+
 ## Configuring Required Adapters
 
 Adapters are external components (validation, DNS, pull-secret, HyperShift) that report status back to HyperFleet API. Each entity type declares its required adapters via the `required_adapters` field in the entity descriptor. These define which adapters must report "ready" before a resource is considered **Reconciled**.
@@ -359,6 +394,9 @@ helm install hyperfleet-api oci://quay.io/redhat-services-prod/hyperfleet-tenant
 | `image.tag` | Image tag | `""` (must be set) |
 | `image.pullPolicy` | Image pull policy | `Always` |
 | `config.server.jwt.enabled` | Enable JWT authentication | `false` |
+| `config.server.tenant.enabled` | Enable tenant enforcement middleware | `false` |
+| `config.server.tenant.system_header` | Trusted header marking system callers that bypass tenant scoping | `""` |
+| `config.server.tenant.dimensions` | Tenant dimension mappings (`header`, `key`, `required`) | `[]` |
 | `config.entities` | Entity descriptors (kinds, required adapters, schemas) | (see values.yaml) |
 | `database.postgresql.enabled` | Enable built-in PostgreSQL | `true` |
 | `database.external.enabled` | Use external database | `false` |

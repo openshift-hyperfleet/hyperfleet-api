@@ -296,6 +296,35 @@ kubectl get secret hyperfleet-db -n hyperfleet-system -o go-template='{{range $k
 4. Check database is running and accepting connections
 5. Verify SSL settings match database requirements
 
+### Tenant Enforcement Issues
+
+Applies only when tenant enforcement is enabled (`server.tenant.enabled=true`). See [Tenant isolation](authentication.md#tenant-isolation) for the model.
+
+**Symptoms:** Callers get unexpected `403 Forbidden` on all requests, or `404 Not Found` for resources they expect to see.
+
+**Diagnosis:**
+
+```bash
+# Inspect the rendered tenant config
+kubectl get configmap <release>-config -n hyperfleet-system -o yaml | grep -A8 'tenant:'
+
+# Look for rejection logs (middleware logs a warning on every rejected request)
+kubectl logs deployment/hyperfleet-api -n hyperfleet-system --since=15m | grep -i "Tenant identity rejected"
+```
+
+**Common causes:**
+
+- **All requests get 403** — the gateway (Envoy + Authorino) is not injecting the configured dimension headers, or a `required: true` dimension header is missing/empty. Verify the gateway `AuthConfig` injects the headers named in `server.tenant.dimensions[].header`.
+- **Invalid dimension value** — dimension header values must match `^[A-Za-z0-9._-]+$` and be ≤ 63 characters; other values are rejected with 403.
+- **System caller can't write resources** — system identities (system header value `true`) may only write `status`/`conditions`; any other resource mutation (create, update, or delete) returns 403. This is expected — route resource writes through a tenant-scoped identity.
+- **Resources "disappear" (404)** — the resource's tenancy does not contain the caller's resolved tenancy (the caller's dimensions are not a subset of the resource's). Confirm the caller's dimension headers match the tenant the resource was created under. Cross-tenant reads return 404 by design.
+
+**Resolution:**
+
+1. Confirm the API sits behind the gateway and direct pod access is blocked (NetworkPolicy) — tenant headers are only trustworthy in that topology.
+2. Compare the gateway-injected headers against `server.tenant.system_header` and `server.tenant.dimensions[].header`.
+3. If tenant enforcement was enabled after resources already existed, those rows carry `tenancy = {}` and are only visible to unscoped/system callers — see [database.md](database.md#tenant-scoping).
+
 ### Memory Issues
 
 **Symptoms:** OOMKilled, high memory usage

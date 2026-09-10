@@ -26,6 +26,8 @@ A practical guide for deploying, configuring, and operating the HyperFleet API c
    - [Server Binding](#34-server-binding)
    - [Logging Configuration](#35-logging-configuration)
    - [Schema Validation](#36-schema-validation)
+   - [Tenant Enforcement](#37-tenant-enforcement)
+   - [Gateway and In-App JWT Modes](#38-gateway-and-in-app-jwt-modes)
 4. [Deployment Checklist](#4-deployment-checklist)
    - [Phase 1: Database Preparation](#phase-1-database-preparation)
    - [Phase 2: Configuration Planning](#phase-2-configuration-planning)
@@ -731,6 +733,55 @@ The API uses a two-step process to validate specs:
 
 For details on how schemas are imported for code generation and which schema components map to each resource type, see [openapi/README.md](../openapi/README.md) in this repository.
 
+### 3.7 Tenant Enforcement
+
+Tenant enforcement scopes each resource read, list, update, and delete to the caller's tenant. It is **disabled by default** and is a separate concern from JWT authentication.
+
+**Only enable it when the API runs behind the Envoy + Authorino gateway** ([ADR-0020](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/adrs/0020-envoy-authorino-api-gateway.md)): tenant identity comes from trusted gateway-injected headers, never JWT claims, and the gateway must strip client-supplied tenant headers and block direct routes to the API pod. Without it, clients could forge tenancy.
+
+Enable it under `server.tenant.*` (`HYPERFLEET_SERVER_TENANT_*` for the scalar fields; dimensions are YAML/Helm-values only):
+
+```yaml
+server:
+  tenant:
+    enabled: true
+    system_header: X-HyperFleet-System   # value "true" marks system callers (Sentinel, adapters)
+    dimensions:
+      - header: X-HyperFleet-Org         # trusted gateway-injected header
+        key: org                          # tenancy map key
+        required: true
+      - header: X-HyperFleet-Project
+        key: project
+        required: false
+```
+
+At runtime, once enabled:
+
+- **System callers** (system header value `true`, e.g. Sentinel and adapters) bypass scoping, but may only write `status`/`conditions` (reported through a separate status path). Any other resource mutation — create, update, or delete — from a system identity returns `403 Forbidden`.
+- **Tenant-scoped callers** must present the configured dimension headers. A missing required dimension, an invalid value, or zero resolved dimensions is rejected with `403 Forbidden` before any database access.
+- **Cross-tenant access** returns `404 Not Found` (not `403`) for reads, updates, and deletes, so a resource's existence is never leaked across tenants.
+
+For the field reference, environment variables, and validation rules see [Configuration Guide - Tenant Enforcement](config.md#tenant-enforcement); for the full trust model see [Tenant isolation](authentication.md#tenant-isolation). Common tenant errors are in [Appendix B: Troubleshooting](#appendix-b-troubleshooting).
+
+### 3.8 Gateway and In-App JWT Modes
+
+The gateway ([ADR-0020](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/adrs/0020-envoy-authorino-api-gateway.md)) authenticates callers and injects trusted identity/tenant headers; the API's in-app JWT middleware (`server.jwt.enabled`) validates `Bearer` tokens directly. These are independent switches, but not every combination is currently valid.
+
+Two `Authorization` schemes reach the gateway: human operators use `Bearer <oidc-jwt>`, while machine callers (Sentinel, adapters) use `ServiceAccount <k8s-token>`, validated by Kubernetes TokenReview at the gateway. The in-app JWT middleware accepts the `Bearer` scheme **only** — a `ServiceAccount` token presented to the API is rejected with `401 Unauthorized`. This does not block machine callers outright: a Kubernetes service-account JWT presented directly as `Bearer <k8s-token>` (bypassing gateway TokenReview) validates like any other issuer's token — see [Creating a service account token](authentication.md#creating-a-service-account-token). Only the gateway's `ServiceAccount <k8s-token>` scheme itself has no in-app equivalent.
+
+| `server.jwt.enabled` | `server.tenant.enabled` | Behavior |
+|---|---|---|
+| `false` | `false` | No auth, no scoping. Local development only (`make run-no-auth`). |
+| `true` | `false` | In-app JWT validation, no tenant scoping. `Bearer` callers only — human OIDC or a Kubernetes service-account JWT presented as `Bearer`; the gateway's `ServiceAccount` scheme is not supported. |
+| `true` | `true` | Full production posture behind the gateway: JWT validated, requests scoped to gateway-injected tenant headers. `Bearer` callers only; the gateway's `ServiceAccount` scheme is not supported until [HYPERFLEET-1484](https://redhat.atlassian.net/browse/HYPERFLEET-1484). |
+| `false` | `true` | Gateway performs all authentication (including machine `ServiceAccount` callers); the API trusts injected headers and scopes on them. |
+
+A machine caller authenticating with the gateway's `ServiceAccount <k8s-token>` scheme cannot yet traverse the in-app JWT middleware, because it is `Bearer`-only. Until [HYPERFLEET-1484](https://redhat.atlassian.net/browse/HYPERFLEET-1484) adds `ServiceAccount`-scheme support to the in-app middleware, deployments that must authenticate such callers should keep `server.jwt.enabled: false` and let the gateway authenticate every caller (bottom row above).
+
+#### Mixed dimension cardinality
+
+Within a single deployment, all callers are expected to resolve the same set of tenant dimensions. Mixing callers that resolve different dimension sets (for example, some presenting only `org` and others presenting `org` + `project`) against the same resources is not yet supported — JSONB containment scoping (`tenancy @> caller`) would let a coarser-scoped caller match finer-scoped resources. Support for heterogeneous dimension cardinality is tracked by [HYPERFLEET-1634](https://redhat.atlassian.net/browse/HYPERFLEET-1634).
+
 ---
 
 ## 4. Deployment Checklist
@@ -1048,7 +1099,8 @@ This section provides a **quick reference** for common API-specific issues and t
 | **High API latency, slow responses** | Resource limits, database slow queries, or connection pool exhausted | Check metrics: `curl http://<api-service>:9090/metrics \| grep hyperfleet_api_request_duration_seconds`. Check resources: `kubectl top pods -n hyperfleet-system`. Check slow queries: `kubectl logs -n hyperfleet-system deployment/hyperfleet-api \| grep "slow query"`. Resolution: Increase resource limits/replicas, add database indexes, or increase `--db-max-open-connections` (default: 50).                                                                                                                                                                                         |
 | **400 Bad Request** | Resource spec doesn't match OpenAPI schema | Check the loaded schema path: `kubectl logs -n hyperfleet-system deployment/hyperfleet-api \| grep "schema_path"`. Retrieve and inspect the schema: `kubectl exec -n hyperfleet-system deployment/hyperfleet-api -- cat $HYPERFLEET_SERVER_OPENAPI_SCHEMA_PATH`. Validate and fix spec. |
 | **401 Unauthorized** | Missing or invalid JWT token | Verify authentication is enabled (`server.jwt.enabled=true`). If production, ensure valid JWT token is provided. Reference: [Authentication Guide](authentication.md).                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| **404 Not Found** | Resource doesn't exist | Verify resource ID is correct. Check if resource was deleted: `curl http://<api-service>:8000/api/hyperfleet/v1/clusters/$CLUSTER_ID`.                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| **403 Forbidden** | Tenant enforcement rejected the caller: missing/empty required dimension header, invalid dimension value, zero resolved dimensions, or a system identity attempting a resource create/update | Confirm the gateway (Envoy + Authorino) is injecting the configured dimension headers and the system header. Check config: `kubectl get configmap <release>-config -o yaml \| grep -A6 tenant`. Verify each `required: true` dimension header is present and its value matches `^[A-Za-z0-9._-]+$` (max 63 chars). A system caller's request must carry the configured system header (`server.tenant.system_header`, e.g. `X-HyperFleet-System`) with the value `true`; system callers may only write status/conditions. See [Tenant isolation](authentication.md#tenant-isolation). |
+| **404 Not Found** | Resource doesn't exist, or (with tenant enforcement enabled) the resource belongs to a different tenant | Verify resource ID is correct. Check if resource was deleted: `curl http://<api-service>:8000/api/hyperfleet/v1/clusters/$CLUSTER_ID`. If tenant enforcement is enabled, confirm the caller's dimension headers scope to the resource's tenancy — cross-tenant resources return 404 by design.                                                                                                                                                                                                                                                                                                    |
 | **409 Conflict** | Concurrent update or generation mismatch | Retry with exponential backoff. Ensure only one controller updates the same resource.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | **500 Internal Server Error** | Database error or unexpected panic | Check API logs: `kubectl logs -n hyperfleet-system -l app=hyperfleet-api --tail=100`. Verify database connectivity with `/readyz` endpoint.                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | **503 Service Unavailable** | Readiness probe failing | Check readiness: `curl http://<api-service>:8080/readyz`. Verify database connectivity and API initialization. Check logs for startup errors.                                                                                                                                                                                                                                                                                                                                                                                                                                                  |

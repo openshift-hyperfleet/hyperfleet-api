@@ -266,6 +266,42 @@ See [Issuer configuration reference](authentication.md#issuer-configuration-refe
 
 See [Caller identity for audit](authentication.md#caller-identity-for-audit) for full details on identity resolution, precedence rules, and per-issuer configuration.
 
+### Tenant Enforcement
+
+Optional per-request tenant scoping. Tenant identity is **not** taken from JWT claims — it arrives as trusted HTTP headers injected by a gateway (Envoy + Authorino). See [Tenant isolation](authentication.md#tenant-isolation) for the conceptual model and trust boundary.
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `server.tenant.enabled` | bool | `false` | Enable the tenant enforcement middleware |
+| `server.tenant.system_header` | string | `""` | Trusted header marking system callers (e.g. Sentinel, adapters) that bypass scoping. A caller is treated as system when this header's value equals `true` (case-insensitive). Required when `enabled` is `true`. |
+| `server.tenant.dimensions` | list | `[]` | YAML only. Tenant dimension mappings. Required (non-empty) when `enabled` is `true`, and at least one entry must have `required: true`. |
+
+Each entry in `server.tenant.dimensions` has the following fields:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `header` | string | Yes | Trusted gateway-injected HTTP header carrying this dimension's value |
+| `key` | string | Yes | Tenancy map key the header value is stored under (drives the `tenancy @> ?` DB match) |
+| `required` | bool | No (default `false`) | Whether a non-system caller must present this dimension |
+
+**Example:**
+
+```yaml
+server:
+  tenant:
+    enabled: true
+    system_header: X-HyperFleet-System
+    dimensions:
+      - header: X-HyperFleet-Org
+        key: org
+        required: true
+      - header: X-HyperFleet-Project
+        key: project
+        required: false
+```
+
+Header values for dimensions must be at most 63 characters and match `^[A-Za-z0-9._-]+$`. A non-system caller missing a required dimension, presenting an invalid dimension value, or resolving zero dimensions is rejected with `403 Forbidden` before any database access.
+
 </details>
 
 <details>
@@ -412,6 +448,9 @@ Complete table of all configuration properties, their environment variables, and
 | `server.tls.key_file` | `HYPERFLEET_SERVER_TLS_KEY_FILE` | string | `""` |
 | `server.jwt.enabled` | `HYPERFLEET_SERVER_JWT_ENABLED` | bool | `true` |
 | `server.jwt.configs` | (YAML only) | list | `[]` |
+| `server.tenant.enabled` | `HYPERFLEET_SERVER_TENANT_ENABLED` | bool | `false` |
+| `server.tenant.system_header` | `HYPERFLEET_SERVER_TENANT_SYSTEM_HEADER` | string | `""` |
+| `server.tenant.dimensions` | (YAML only) | list | `[]` |
 | **Database** | | | |
 | `database.dialect` | `HYPERFLEET_DATABASE_DIALECT` | string | `postgres` |
 | `database.host` | `HYPERFLEET_DATABASE_HOST` | string | `localhost` |
@@ -472,6 +511,8 @@ All CLI flags and their corresponding configuration paths.
 | `--server-https-cert-file` | `server.tls.cert_file` | string |
 | `--server-https-key-file` | `server.tls.key_file` | string |
 | `--server-jwt-enabled` | `server.jwt.enabled` | bool |
+| `--server-tenant-enabled` | `server.tenant.enabled` | bool |
+| `--server-tenant-system-header` | `server.tenant.system_header` | string |
 | **Database** | | |
 | `--db-dialect` | `database.dialect` | string |
 | `--db-host` | `database.host` | string |
@@ -549,6 +590,10 @@ The application performs comprehensive validation at startup.
 - `server.timeouts.write`: ≥ 1s
 - `server.jwt.configs`: required non-empty when `server.jwt.enabled=true`; see [Issuer configuration reference](authentication.md#issuer-configuration-reference) for per-field validation rules
 - `server.jwt.configs[].issuer_url` / `jwk_cert_url`: must use `https` (`http` allowed only for loopback: `localhost`, `127.0.0.1`, `::1`)
+- `server.tenant` (validated only when `server.tenant.enabled=true`):
+  - `system_header`: required; must be a valid HTTP header name and must not be an authentication header (`Authorization`, `Cookie`, `Set-Cookie`, `X-Api-Key`, `X-Auth-Token`, `X-Forwarded-Authorization`, `Proxy-Authorization`)
+  - `dimensions`: at least one entry required, and at least one entry must have `required: true`
+  - `dimensions[].header` / `dimensions[].key`: both required; `header` must be a valid HTTP header name, must not be an authentication header (same denylist as `system_header`), must differ from `system_header`, and must be unique (case-insensitive) across dimensions; `key` must be unique across dimensions
 
 **Database**:
 
