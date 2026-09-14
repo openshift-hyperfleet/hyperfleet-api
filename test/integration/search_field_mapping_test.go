@@ -1127,3 +1127,26 @@ func TestSearchNonexistentField(t *testing.T) {
 	Expect(body).NotTo(ContainSubstring("SQLSTATE"))
 	Expect(body).To(ContainSubstring("HYPERFLEET-VAL-005"))
 }
+
+// TestSearchTautologyRejected verifies that a literal-vs-literal tautology
+// bypass is rejected with 400
+func TestSearchTautologyRejected(t *testing.T) {
+	RegisterTestingT(t)
+	h, client := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+
+	search := openapi.SearchParams("name = 'test' OR 1 = 1")
+	params := &openapi.GetClustersParams{
+		Search: &search,
+	}
+	resp, err := client.GetClustersWithResponse(ctx, params, test.WithAuthToken(ctx))
+
+	Expect(err).NotTo(HaveOccurred())
+	Expect(resp.StatusCode()).To(Equal(http.StatusBadRequest))
+	body := string(resp.Body)
+	Expect(body).NotTo(ContainSubstring("pq:"))
+	Expect(body).NotTo(ContainSubstring("SQLSTATE"))
+	Expect(body).To(ContainSubstring("HYPERFLEET-VAL-005"))
+}
