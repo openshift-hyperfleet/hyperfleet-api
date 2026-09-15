@@ -3,6 +3,7 @@ package telemetry
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"strconv"
 	"strings"
@@ -58,12 +59,11 @@ func InitTraceProvider(ctx context.Context, serviceName, serviceVersion string) 
 	)
 	if err != nil {
 		if shutdownErr := exporter.Shutdown(ctx); shutdownErr != nil {
-			logger.WithError(ctx, shutdownErr).Warn("Failed to shutdown exporter")
+			slog.WarnContext(ctx, "Failed to shutdown exporter", "error", shutdownErr)
 		}
-		logger.With(ctx,
-			logger.FieldServiceName, serviceName,
-			logger.FieldServiceVersion, serviceVersion,
-		).WithError(err).Error("Failed to create OpenTelemetry resource")
+		slog.ErrorContext(ctx,
+			"Failed to create OpenTelemetry resource", logger.FieldServiceName, serviceName,
+			logger.FieldServiceVersion, serviceVersion, "error", err)
 		return nil, fmt.Errorf("failed to create OTel resource: %w", err)
 	}
 
@@ -94,7 +94,7 @@ func createExporter(ctx context.Context) (trace.SpanExporter, error) {
 		// Create stdout exporter when no OTLP endpoint is configured
 		exporter, err := stdouttrace.New()
 		if err != nil {
-			logger.WithError(ctx, err).Error("Failed to create OpenTelemetry stdout exporter")
+			slog.ErrorContext(ctx, "Failed to create OpenTelemetry stdout exporter", "error", err)
 			return nil, fmt.Errorf("failed to create OpenTelemetry stdout exporter: %w", err)
 		}
 		return exporter, nil
@@ -107,23 +107,23 @@ func createExporter(ctx context.Context) (trace.SpanExporter, error) {
 		// Note: http/json not yet supported - use http/protobuf
 		exporter, err := otlptracehttp.New(ctx)
 		if err != nil {
-			logger.With(ctx, logger.FieldProtocol, protocol).WithError(err).Error("Failed to create OTLP exporter")
+			slog.ErrorContext(ctx, "Failed to create OTLP exporter", logger.FieldProtocol, protocol, "error", err)
 			return nil, fmt.Errorf("failed to create OTLP exporter (protocol=%s): %w", protocol, err)
 		}
 		return exporter, nil
 	case "grpc", "": // Default to gRPC per standard
 		exporter, err := otlptracegrpc.New(ctx)
 		if err != nil {
-			logger.With(ctx, logger.FieldProtocol, protocol).WithError(err).Error("Failed to create OTLP exporter")
+			slog.ErrorContext(ctx, "Failed to create OTLP exporter", logger.FieldProtocol, protocol, "error", err)
 			return nil, fmt.Errorf("failed to create OTLP exporter (protocol=%s): %w", protocol, err)
 		}
 		return exporter, nil
 	default:
 		// Spec-compliant values: grpc, http/protobuf
-		logger.With(ctx, logger.FieldProtocol, protocol).Warn("Unrecognized OTEL_EXPORTER_OTLP_PROTOCOL, using default grpc")
+		slog.WarnContext(ctx, "Unrecognized OTEL_EXPORTER_OTLP_PROTOCOL, using default grpc", logger.FieldProtocol, protocol)
 		exporter, err := otlptracegrpc.New(ctx)
 		if err != nil {
-			logger.With(ctx, logger.FieldProtocol, protocol).WithError(err).Error("Failed to create OTLP exporter")
+			slog.ErrorContext(ctx, "Failed to create OTLP exporter", logger.FieldProtocol, protocol, "error", err)
 			return nil, fmt.Errorf("failed to create OTLP exporter (protocol=%s): %w", protocol, err)
 		}
 		return exporter, nil
@@ -149,7 +149,7 @@ func selectSampler(ctx context.Context) trace.Sampler {
 	case parentBasedAlwaysOff:
 		return trace.ParentBased(trace.NeverSample())
 	default:
-		logger.With(ctx, logger.FieldSampler, samplerType).Warn("Unrecognized sampler, using default")
+		slog.WarnContext(ctx, "Unrecognized sampler, using default", logger.FieldSampler, samplerType)
 		return trace.ParentBased(trace.TraceIDRatioBased(parseSamplingRate(ctx)))
 	}
 }
@@ -169,8 +169,9 @@ func parseSamplingRate(ctx context.Context) float64 {
 		if parsedRate, err := strconv.ParseFloat(arg, 64); err == nil && parsedRate >= 0.0 && parsedRate <= 1.0 {
 			rate = parsedRate
 		} else {
-			logger.With(ctx, logger.FieldSamplingRate, rate, "raw_value", arg).
-				Warn("Invalid OTEL_TRACES_SAMPLER_ARG value, using default")
+			slog.WarnContext(ctx,
+				"Invalid OTEL_TRACES_SAMPLER_ARG value, using default", logger.FieldSamplingRate, rate, "raw_value", arg,
+			)
 		}
 	}
 	return rate

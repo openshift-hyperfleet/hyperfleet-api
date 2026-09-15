@@ -18,6 +18,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
@@ -45,10 +46,9 @@ func (h MetadataHandler) Get(w http.ResponseWriter, r *http.Request) {
 	}
 	data, err := json.Marshal(body)
 	if err != nil {
-		logger.With(r.Context(),
-			logger.HTTPPath(r.URL.Path),
-			logger.HTTPMethod(r.Method),
-		).WithError(err).Error("Failed to marshal metadata response")
+		slog.ErrorContext(r.Context(),
+			"Failed to marshal metadata response", logger.HTTPPath(r.URL.Path),
+			logger.HTTPMethod(r.Method), "error", err)
 		api.SendPanic(w, r)
 		return
 	}
@@ -56,10 +56,9 @@ func (h MetadataHandler) Get(w http.ResponseWriter, r *http.Request) {
 	// Send the response:
 	_, err = w.Write(data)
 	if err != nil {
-		logger.With(r.Context(),
-			logger.HTTPPath(r.URL.Path),
-			logger.HTTPMethod(r.Method),
-		).WithError(err).Error("Failed to send metadata response body")
+		slog.ErrorContext(r.Context(),
+			"Failed to send metadata response body", logger.HTTPPath(r.URL.Path),
+			logger.HTTPMethod(r.Method), "error", err)
 		return
 	}
 }

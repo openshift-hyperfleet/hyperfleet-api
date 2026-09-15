@@ -14,7 +14,6 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/auth"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
 const defaultSystemUser = "system@hyperfleet.local"
@@ -79,31 +78,6 @@ func handleDeleteError(resourceType string, err error) *errors.ServiceError {
 		return errors.ServiceUnavailable("Database connection unavailable")
 	}
 	return errors.GeneralError("Unable to delete %s: %s", resourceType, err.Error())
-}
-
-type adapterSummary struct {
-	Conditions map[string]string `json:"conditions"`
-	Adapter    string            `json:"adapter"`
-}
-
-func buildAdapterSummaries(ctx context.Context, statuses api.AdapterStatusList) []adapterSummary {
-	summaries := make([]adapterSummary, 0, len(statuses))
-	for _, st := range statuses {
-		conds := make(map[string]string)
-		if len(st.Conditions) > 0 {
-			var parsed []api.AdapterCondition
-			if err := json.Unmarshal(st.Conditions, &parsed); err != nil {
-				logger.With(ctx, "adapter", st.Adapter).
-					WithError(err).Warn("Failed to parse adapter conditions for summary")
-			} else {
-				for _, c := range parsed {
-					conds[c.Type] = string(c.Status)
-				}
-			}
-		}
-		summaries = append(summaries, adapterSummary{Adapter: st.Adapter, Conditions: conds})
-	}
-	return summaries
 }
 
 func actorFromContext(ctx context.Context) string {

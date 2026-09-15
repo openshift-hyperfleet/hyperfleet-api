@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
+	hfl "github.com/openshift-hyperfleet/hyperfleet-logger"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
@@ -14,7 +16,6 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/dao"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/metrics"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/registry"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/tenant"
@@ -609,6 +610,8 @@ func (s *sqlResourceService) ListAll(
 func (s *sqlResourceService) ProcessAdapterStatus(
 	ctx context.Context, kind, resourceID string, adapterStatus *api.AdapterStatus,
 ) (*api.AdapterStatus, *errors.ServiceError) {
+	ctx = hfl.WithResourceType(ctx, kind)
+	ctx = hfl.WithResourceID(ctx, resourceID)
 	trace.SpanFromContext(ctx).SetAttributes(attribute.String("hyperfleet.resource_id", resourceID))
 	if svcErr := validateKind(kind); svcErr != nil {
 		return nil, svcErr
@@ -629,10 +632,8 @@ func (s *sqlResourceService) ProcessAdapterStatus(
 		}
 
 		existingStatus := findAdapterStatusInList(allStatuses, adapterStatus.Adapter)
-		log := logger.With(ctx, "resource_type", kind, "resource_id", resourceID,
-			logger.FieldAdapter, adapterStatus.Adapter)
 		conditions, triggerAggregation, svcErr := validateAndClassifyAdapterStatus(
-			resource.Generation, adapterStatus, existingStatus, log,
+			resource.Generation, adapterStatus, existingStatus, ctx,
 		)
 		if svcErr != nil {
 			return svcErr
@@ -800,6 +801,8 @@ func (s *sqlResourceService) tryHardDeleteResource(
 	conditions []api.AdapterCondition,
 	allStatuses api.AdapterStatusList,
 ) (bool, *errors.ServiceError) {
+	resourceCtx := hfl.WithResourceType(ctx, resource.Kind)
+	resourceCtx = hfl.WithResourceID(resourceCtx, resource.ID)
 	// Quick check: does the incoming report contain Finalized=True?
 	// If not, hard-delete is not possible regardless of other adapters.
 	if !incomingReportedFinalized(conditions) {
@@ -841,18 +844,16 @@ func (s *sqlResourceService) tryHardDeleteResource(
 	// All checks passed — clean up associated data and hard-delete the resource.
 	// Order matters: adapter statuses and conditions must be removed before the
 	// resource row, since they reference it.
-	if err := s.adapterStatusDao.DeleteByResource(ctx, resource.Kind, resource.ID); err != nil {
+	if err := s.adapterStatusDao.DeleteByResource(resourceCtx, resource.Kind, resource.ID); err != nil {
 		return false, errors.GeneralError("Failed to delete adapter statuses during hard-delete: %s", err)
 	}
-	if err := s.resourceConditionDao.DeleteByResource(ctx, resource.ID); err != nil {
+	if err := s.resourceConditionDao.DeleteByResource(resourceCtx, resource.ID); err != nil {
 		return false, errors.GeneralError("Failed to delete resource conditions during hard-delete: %s", err)
 	}
-	if err := s.resourceDao.Delete(ctx, resource.Kind, resource.ID); err != nil {
+	if err := s.resourceDao.Delete(resourceCtx, resource.Kind, resource.ID); err != nil {
 		return false, errors.GeneralError("Failed to hard-delete %s: %s", resource.Kind, err)
 	}
-
-	logger.With(ctx, "resource_type", resource.Kind, "resource_id", resource.ID).
-		Info("Hard-deleted resource after all required adapters reported Finalized=True")
+	slog.InfoContext(resourceCtx, "Hard-deleted resource after all required adapters reported Finalized=True")
 
 	return true, nil
 }
@@ -1008,14 +1009,15 @@ func (s *sqlResourceService) ForceDelete(ctx context.Context, kind, id, reason s
 func (s *sqlResourceService) forceDeleteResourceTree(
 	ctx context.Context, resource *api.Resource, caller, reason string,
 ) *errors.ServiceError {
+	resourceCtx := hfl.WithResourceType(ctx, resource.Kind)
+	resourceCtx = hfl.WithResourceID(resourceCtx, resource.ID)
 	children := registry.ChildrenOf(resource.Kind)
 
 	childIDs := make([]string, 0)
 	for _, child := range children {
-		items, err := s.resourceDao.FindByKindAndOwnerForUpdate(ctx, child.Kind, resource.ID)
+		items, err := s.resourceDao.FindByKindAndOwnerForUpdate(resourceCtx, child.Kind, resource.ID)
 		if err != nil {
-			logger.With(ctx, "resource_id", resource.ID, "child_kind", child.Kind).
-				WithError(err).Error("Failed to find children for force-delete")
+			slog.ErrorContext(resourceCtx, "Failed to find children for force-delete", "child_kind", child.Kind, "error", err)
 			return errors.GeneralError("Unable to find %s children for force-delete", child.Kind)
 		}
 		for _, item := range items {
@@ -1025,32 +1027,27 @@ func (s *sqlResourceService) forceDeleteResourceTree(
 			}
 		}
 	}
-
-	logger.With(ctx,
-		"resource_kind", resource.Kind,
-		"resource_id", resource.ID,
+	slog.InfoContext(resourceCtx,
+		"Force-deleting resource",
 		"caller", caller,
 		"reason", reason,
 		"child_resource_ids", childIDs,
-	).Info("Force-deleting resource")
+	)
 
-	if err := s.adapterStatusDao.DeleteByResource(ctx, resource.Kind, resource.ID); err != nil {
+	if err := s.adapterStatusDao.DeleteByResource(resourceCtx, resource.Kind, resource.ID); err != nil {
 		return errors.GeneralError("Failed to delete adapter statuses during force-delete: %s", err)
 	}
-	if err := s.resourceConditionDao.DeleteByResource(ctx, resource.ID); err != nil {
+	if err := s.resourceConditionDao.DeleteByResource(resourceCtx, resource.ID); err != nil {
 		return errors.GeneralError("Failed to delete resource conditions during force-delete: %s", err)
 	}
 	// Clear inbound references before hard-deleting (FK uses ON DELETE RESTRICT).
 	// Note: referencing resources with Min>0 on this ref type will silently
 	// violate their required-reference invariant after this operation.
-	if err := s.resourceDao.ClearTargetReferences(ctx, resource.ID); err != nil {
+	if err := s.resourceDao.ClearTargetReferences(resourceCtx, resource.ID); err != nil {
 		return errors.GeneralError("failed to clear references: %s", err)
 	}
-	logger.With(ctx,
-		"resource_kind", resource.Kind,
-		"resource_id", resource.ID,
-	).Info("Cleared inbound references for force-delete")
-	if err := s.resourceDao.Delete(ctx, resource.Kind, resource.ID); err != nil {
+	slog.InfoContext(resourceCtx, "Cleared inbound references for force-delete")
+	if err := s.resourceDao.Delete(resourceCtx, resource.Kind, resource.ID); err != nil {
 		return handleDeleteError(resource.Kind, err)
 	}
 

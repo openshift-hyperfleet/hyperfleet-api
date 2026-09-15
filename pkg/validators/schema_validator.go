@@ -3,11 +3,11 @@ package validators
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/registry"
 )
 
@@ -56,11 +56,11 @@ func buildSchemasMap(doc *openapi3.T) map[string]*ResourceSchema {
 	for _, d := range registry.WithSpecSchema() {
 		schemaRef := doc.Components.Schemas[d.SpecSchemaName]
 		if schemaRef == nil {
-			logger.With(ctx,
-				"schema_name", d.SpecSchemaName,
+			slog.WarnContext(ctx,
+				"OpenAPI spec schema not found, skipping validation for entity", "schema_name", d.SpecSchemaName,
 				"kind", d.Kind,
 				"plural", d.Plural,
-			).Warn("OpenAPI spec schema not found, skipping validation for entity")
+			)
 			continue
 		}
 		schemas[d.Plural] = &ResourceSchema{

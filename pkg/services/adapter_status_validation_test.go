@@ -10,7 +10,6 @@ import (
 	"gorm.io/datatypes"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
 func testConditionsJSON(conditions ...api.AdapterCondition) datatypes.JSON {
@@ -35,15 +34,11 @@ func adapterStatusWithGenAndTime(gen int32, observedTime time.Time) *api.Adapter
 	}
 }
 
-func testLog() *logger.ContextLogger {
-	return logger.With(context.Background(), "test", "true")
-}
-
 func TestValidateAndClassify_FutureGeneration_Discards(t *testing.T) {
 	RegisterTestingT(t)
 
 	status := adapterStatusWithGenAndTime(5, time.Now())
-	conditions, trigger, err := validateAndClassifyAdapterStatus(3, status, nil, testLog())
+	conditions, trigger, err := validateAndClassifyAdapterStatus(3, status, nil, context.Background())
 
 	Expect(err).To(BeNil())
 	Expect(conditions).To(BeNil())
@@ -55,7 +50,7 @@ func TestValidateAndClassify_StaleGeneration_Discards(t *testing.T) {
 
 	existing := &api.AdapterStatus{ObservedGeneration: 3}
 	status := adapterStatusWithGenAndTime(2, time.Now())
-	conditions, trigger, err := validateAndClassifyAdapterStatus(5, status, existing, testLog())
+	conditions, trigger, err := validateAndClassifyAdapterStatus(5, status, existing, context.Background())
 
 	Expect(err).To(BeNil())
 	Expect(conditions).To(BeNil())
@@ -70,7 +65,7 @@ func TestValidateAndClassify_ZeroObservedTime_Discards(t *testing.T) {
 		ObservedGeneration: 1,
 		Conditions:         testConditionsJSON(testMandatoryConditions(api.AdapterConditionTrue)...),
 	}
-	conditions, trigger, err := validateAndClassifyAdapterStatus(1, status, nil, testLog())
+	conditions, trigger, err := validateAndClassifyAdapterStatus(1, status, nil, context.Background())
 
 	Expect(err).To(BeNil())
 	Expect(conditions).To(BeNil())
@@ -84,7 +79,7 @@ func TestValidateAndClassify_StaleObservedTime_Discards(t *testing.T) {
 	existing := adapterStatusWithGenAndTime(1, now)
 	status := adapterStatusWithGenAndTime(1, now.Add(-time.Minute))
 
-	conditions, trigger, err := validateAndClassifyAdapterStatus(1, status, existing, testLog())
+	conditions, trigger, err := validateAndClassifyAdapterStatus(1, status, existing, context.Background())
 
 	Expect(err).To(BeNil())
 	Expect(conditions).To(BeNil())
@@ -99,7 +94,7 @@ func TestValidateAndClassify_MissingMandatoryCondition_ReturnsError(t *testing.T
 		api.AdapterCondition{Type: api.AdapterConditionTypeAvailable, Status: api.AdapterConditionTrue},
 	)
 
-	_, _, err := validateAndClassifyAdapterStatus(1, status, nil, testLog())
+	_, _, err := validateAndClassifyAdapterStatus(1, status, nil, context.Background())
 
 	Expect(err).ToNot(BeNil())
 	Expect(err.Error()).To(ContainSubstring("mandatory condition"))
@@ -115,7 +110,7 @@ func TestValidateAndClassify_InvalidAvailableStatus_ReturnsError(t *testing.T) {
 		api.AdapterCondition{Type: api.AdapterConditionTypeHealth, Status: api.AdapterConditionTrue},
 	)
 
-	_, _, err := validateAndClassifyAdapterStatus(1, status, nil, testLog())
+	_, _, err := validateAndClassifyAdapterStatus(1, status, nil, context.Background())
 
 	Expect(err).ToNot(BeNil())
 	Expect(err.Error()).To(ContainSubstring("invalid status"))
@@ -127,7 +122,7 @@ func TestValidateAndClassify_FirstUnknownAvailable_Accepted(t *testing.T) {
 	status := adapterStatusWithGenAndTime(1, time.Now())
 	status.Conditions = testConditionsJSON(testMandatoryConditions(api.AdapterConditionUnknown)...)
 
-	conditions, trigger, err := validateAndClassifyAdapterStatus(1, status, nil, testLog())
+	conditions, trigger, err := validateAndClassifyAdapterStatus(1, status, nil, context.Background())
 
 	Expect(err).To(BeNil())
 	Expect(conditions).ToNot(BeNil())
@@ -141,7 +136,7 @@ func TestValidateAndClassify_SubsequentUnknownAvailable_Discards(t *testing.T) {
 	status := adapterStatusWithGenAndTime(1, time.Now())
 	status.Conditions = testConditionsJSON(testMandatoryConditions(api.AdapterConditionUnknown)...)
 
-	conditions, trigger, err := validateAndClassifyAdapterStatus(1, status, existing, testLog())
+	conditions, trigger, err := validateAndClassifyAdapterStatus(1, status, existing, context.Background())
 
 	Expect(err).To(BeNil())
 	Expect(conditions).To(BeNil())
@@ -153,7 +148,7 @@ func TestValidateAndClassify_AvailableTrue_TriggersAggregation(t *testing.T) {
 
 	status := adapterStatusWithGenAndTime(1, time.Now())
 
-	conditions, trigger, err := validateAndClassifyAdapterStatus(1, status, nil, testLog())
+	conditions, trigger, err := validateAndClassifyAdapterStatus(1, status, nil, context.Background())
 
 	Expect(err).To(BeNil())
 	Expect(conditions).ToNot(BeNil())
@@ -166,7 +161,7 @@ func TestValidateAndClassify_AvailableFalse_TriggersAggregation(t *testing.T) {
 	status := adapterStatusWithGenAndTime(1, time.Now())
 	status.Conditions = testConditionsJSON(testMandatoryConditions(api.AdapterConditionFalse)...)
 
-	conditions, trigger, err := validateAndClassifyAdapterStatus(1, status, nil, testLog())
+	conditions, trigger, err := validateAndClassifyAdapterStatus(1, status, nil, context.Background())
 
 	Expect(err).To(BeNil())
 	Expect(conditions).ToNot(BeNil())

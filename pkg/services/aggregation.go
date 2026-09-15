@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"sort"
 	"strings"
 	"time"
@@ -122,7 +123,8 @@ func parsePrevConditions(ctx context.Context, raw []byte) (
 	}
 	var conditions []api.ResourceCondition
 	if err := json.Unmarshal(raw, &conditions); err != nil {
-		logger.WithError(ctx, err).Error("Failed to unmarshal previous conditions JSON; proceeding with empty state")
+		slog.ErrorContext(ctx, "Failed to unmarshal previous conditions JSON; proceeding with empty state",
+			"error", err)
 		return nil, nil, prevAdapterByType
 	}
 	for i := range conditions {
@@ -176,8 +178,9 @@ func normalizeAdapterReportsForAggregation(
 		var conditions []api.AdapterCondition
 		if len(as.Conditions) > 0 {
 			if err := json.Unmarshal(as.Conditions, &conditions); err != nil {
-				logger.With(ctx, "adapter", as.Adapter).WithError(err).
-					Error("Failed to unmarshal adapter status conditions; skipping adapter")
+				slog.ErrorContext(logger.WithAdapter(ctx, as.Adapter),
+					"Failed to unmarshal adapter status conditions; skipping adapter", "error", err,
+				)
 				continue
 			}
 		}

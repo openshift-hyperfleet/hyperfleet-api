@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"strings"
@@ -18,7 +19,6 @@ import (
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
 	hferrors "github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
 const (
@@ -149,7 +149,7 @@ func (h *JWTHandler) Middleware(next http.Handler) http.Handler {
 
 		// No validator matched - return the most appropriate error
 		if lastErr != nil {
-			logger.WithError(r.Context(), lastErr).Warn("JWT validation failed")
+			slog.WarnContext(r.Context(), "JWT validation failed", "error", lastErr)
 			if errors.Is(lastErr, jwt.ErrTokenExpired) {
 				handleError(r.Context(), w, r, hferrors.CodeAuthExpiredToken, "JWT token has expired")
 			} else {
@@ -270,14 +270,15 @@ func newStorageWithCA(ctx context.Context, jwkURL, caFile string) (jwkset.Storag
 	if err != nil {
 		return nil, err
 	}
-	logger.With(ctx, "url", jwkURL, "ca_file", caFile).Info("JWKS client configured with custom CA")
+	slog.InfoContext(ctx, "JWKS client configured with custom CA", "url", jwkURL, "ca_file", caFile)
 	storage, err := jwkset.NewStorageFromHTTP(jwkURL, jwkset.HTTPClientStorageOptions{
 		Client:                    httpClient,
 		Ctx:                       ctx,
 		NoErrorReturnFirstHTTPReq: true,
 		RefreshErrorHandler: func(ctx context.Context, err error) {
-			logger.With(ctx, "url", jwkURL, "ca_file", caFile).WithError(err).
-				Error("failed to refresh JWKS from URL with custom CA")
+			slog.ErrorContext(ctx,
+				"failed to refresh JWKS from URL with custom CA", "url", jwkURL, "ca_file", caFile, "error", err,
+			)
 		},
 		RefreshInterval: defaultJWKSRefreshInterval,
 	})

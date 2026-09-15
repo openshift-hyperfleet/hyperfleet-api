@@ -30,14 +30,13 @@ func RequestLoggingMiddleware(masker *middleware.MaskingMiddleware) func(http.Ha
 			} else {
 				maskedHeaders = r.Header
 			}
-
-			logger.With(ctx,
-				logger.HTTPMethod(r.Method),
+			slog.InfoContext(ctx,
+				"HTTP request received", logger.HTTPMethod(r.Method),
 				logger.HTTPPath(r.URL.Path),
 				slog.String("remote_addr", r.RemoteAddr),
 				logger.HTTPUserAgent(r.UserAgent()),
 				slog.Any("headers", maskedHeaders),
-			).Info("HTTP request received")
+			)
 
 			rw := &responseWriter{ResponseWriter: w}
 
@@ -48,15 +47,14 @@ func RequestLoggingMiddleware(masker *middleware.MaskingMiddleware) func(http.Ha
 			if rw.statusCode == 0 {
 				rw.statusCode = http.StatusOK
 			}
-
-			logger.With(ctx,
-				logger.HTTPMethod(r.Method),
+			slog.InfoContext(ctx,
+				"HTTP request completed", logger.HTTPMethod(r.Method),
 				logger.HTTPPath(r.URL.Path),
 				logger.HTTPStatusCode(rw.statusCode),
 				logger.HTTPDuration(duration),
 				slog.String("remote_addr", r.RemoteAddr),
 				logger.HTTPUserAgent(r.UserAgent()),
-			).Info("HTTP request completed")
+			)
 		})
 	}
 }

@@ -5,13 +5,13 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db/db_metrics"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db/internal/txcontext"
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
 // TransactionRunner executes callbacks inside database transactions.
@@ -34,7 +34,7 @@ func (r *TransactionRunner) Do(ctx context.Context, callback func(context.Contex
 
 	gormTx := r.connection.New(ctx).Begin()
 	if gormTx.Error != nil {
-		logger.WithError(ctx, gormTx.Error).Error("Could not begin transaction")
+		slog.ErrorContext(ctx, "Could not begin transaction", "error", gormTx.Error)
 		recordTransactionError("begin", "begin_failed")
 		return fmt.Errorf("db: begin transaction: %w", gormTx.Error)
 	}
@@ -44,7 +44,7 @@ func (r *TransactionRunner) Do(ctx context.Context, callback func(context.Contex
 		if !completed {
 			rollbackErr := gormTx.Rollback().Error
 			if rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
-				logger.WithError(txCtx, rollbackErr).Error("Could not rollback transaction")
+				slog.ErrorContext(txCtx, "Could not rollback transaction", "error", rollbackErr)
 				recordTransactionError("rollback", "rollback_failed")
 			}
 		}
@@ -54,7 +54,7 @@ func (r *TransactionRunner) Do(ctx context.Context, callback func(context.Contex
 		return fmt.Errorf("db: transaction callback: %w", err)
 	}
 	if err := gormTx.Commit().Error; err != nil {
-		logger.WithError(txCtx, err).Error("Could not commit transaction")
+		slog.ErrorContext(txCtx, "Could not commit transaction", "error", err)
 		recordTransactionError("commit", "commit_failed")
 		return fmt.Errorf("db: commit transaction: %w", err)
 	}

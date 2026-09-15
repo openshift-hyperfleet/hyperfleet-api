@@ -2,12 +2,12 @@ package db
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/go-gormigrate/gormigrate/v2"
 	"gorm.io/gorm"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db/migrations"
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
 // gormigrate is a wrapper for gorm's migration functions that adds schema versioning
@@ -28,7 +28,7 @@ func MigrateWithLock(ctx context.Context, factory SessionFactory) error {
 	// Acquire advisory lock for migrations
 	ctx, lockOwnerID, err := NewAdvisoryLockContext(ctx, factory, MigrationsLockID, Migrations)
 	if err != nil {
-		logger.WithError(ctx, err).Error("Could not lock migrations")
+		slog.ErrorContext(ctx, "Could not lock migrations", "error", err)
 		return err
 	}
 	defer Unlock(ctx, lockOwnerID)
@@ -36,11 +36,11 @@ func MigrateWithLock(ctx context.Context, factory SessionFactory) error {
 	// Run migrations with the locked context
 	g2 := factory.New(ctx)
 	if err := Migrate(g2); err != nil {
-		logger.WithError(ctx, err).Error("Could not migrate")
+		slog.ErrorContext(ctx, "Could not migrate", "error", err)
 		return err
 	}
 
-	logger.Info(ctx, "Migration completed successfully")
+	slog.InfoContext(ctx, "Migration completed successfully")
 	return nil
 }
 

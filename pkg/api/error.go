@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"time"
@@ -34,7 +35,7 @@ func SendNotFound(w http.ResponseWriter, r *http.Request) {
 
 	data, err := json.Marshal(body)
 	if err != nil {
-		logger.WithError(r.Context(), err).Error("Failed to marshal not found response")
+		slog.ErrorContext(r.Context(), "Failed to marshal not found response", "error", err)
 		SendPanic(w, r)
 		return
 	}
@@ -43,7 +44,7 @@ func SendNotFound(w http.ResponseWriter, r *http.Request) {
 	_, err = w.Write(data)
 	if err != nil {
 		err = fmt.Errorf("can't send response body for request '%s'", r.URL.Path)
-		logger.WithError(r.Context(), err).Error("Failed to send response")
+		slog.ErrorContext(r.Context(), "Failed to send response", "error", err)
 	}
 }
 
@@ -84,7 +85,7 @@ func SendPanic(w http.ResponseWriter, r *http.Request) {
 			r.URL.Path,
 			err.Error(),
 		)
-		logger.WithError(r.Context(), err).Error("Failed to send panic response")
+		slog.ErrorContext(r.Context(), "Failed to send panic response", "error", err)
 	}
 }
 
@@ -111,7 +112,7 @@ func init() {
 	panicBody, err = json.Marshal(panicError)
 	if err != nil {
 		err = fmt.Errorf("can't create the panic error body: %s", err.Error())
-		logger.WithError(ctx, err).Error("Failed to create panic error body")
+		slog.ErrorContext(ctx, "Failed to create panic error body", "error", err)
 		os.Exit(1)
 	}
 }

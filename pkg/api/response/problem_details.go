@@ -3,6 +3,7 @@ package response
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
@@ -29,9 +30,8 @@ func WriteProblemDetailsResponse(w http.ResponseWriter, r *http.Request, code in
 }
 
 func logResponseError(ctx context.Context, r *http.Request, code int, message string, err error) {
-	logger.With(ctx,
-		logger.HTTPPath(r.URL.Path),
+	slog.ErrorContext(ctx,
+		message, logger.HTTPPath(r.URL.Path),
 		logger.HTTPMethod(r.Method),
-		logger.HTTPStatusCode(code),
-	).WithError(err).Error(message)
+		logger.HTTPStatusCode(code), "error", err)
 }

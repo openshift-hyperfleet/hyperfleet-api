@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	goerrors "errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"reflect"
 
@@ -28,20 +29,18 @@ func writeJSONResponse(w http.ResponseWriter, r *http.Request, code int, payload
 		response, err := json.Marshal(payload)
 		if err != nil {
 			// Headers already sent, can't change status code
-			logger.With(r.Context(),
-				logger.HTTPPath(r.URL.Path),
+			slog.ErrorContext(r.Context(),
+				"Failed to marshal JSON response payload", logger.HTTPPath(r.URL.Path),
 				logger.HTTPMethod(r.Method),
-				logger.HTTPStatusCode(code),
-			).WithError(err).Error("Failed to marshal JSON response payload")
+				logger.HTTPStatusCode(code), "error", err)
 			return
 		}
 		if _, err := w.Write(response); err != nil {
 			// Writing failed, nothing we can do at this point
-			logger.With(r.Context(),
-				logger.HTTPPath(r.URL.Path),
+			slog.ErrorContext(r.Context(),
+				"Failed to write JSON response body", logger.HTTPPath(r.URL.Path),
 				logger.HTTPMethod(r.Method),
-				logger.HTTPStatusCode(code),
-			).WithError(err).Error("Failed to write JSON response body")
+				logger.HTTPStatusCode(code), "error", err)
 			return
 		}
 	}
@@ -85,15 +84,15 @@ func handleError(r *http.Request, w http.ResponseWriter, err *errors.ServiceErro
 
 	// Log with RFC 9457 code format
 	if err.HTTPCode >= 400 && err.HTTPCode <= 499 {
-		logger.With(r.Context(),
-			"code", err.RFC9457Code,
+		slog.InfoContext(r.Context(),
+			"Client error response", "code", err.RFC9457Code,
 			"http_code", err.HTTPCode,
-			"reason", err.Reason).Info("Client error response")
+			"reason", err.Reason)
 	} else {
-		logger.With(r.Context(),
-			"code", err.RFC9457Code,
+		slog.ErrorContext(r.Context(),
+			"Server error response", "code", err.RFC9457Code,
 			"http_code", err.HTTPCode,
-			"reason", err.Reason).Error("Server error response")
+			"reason", err.Reason)
 	}
 
 	response.WriteProblemDetailsResponse(w, r, err.HTTPCode, err.AsProblemDetails(instance, traceID))

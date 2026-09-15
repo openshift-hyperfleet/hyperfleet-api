@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	hfl "github.com/openshift-hyperfleet/hyperfleet-logger"
 	"github.com/spf13/cobra"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/container"
@@ -57,8 +58,9 @@ func runServe(cmd *cobra.Command, args []string) (runErr error) {
 	// container.Container's accessors panic by design; log the stack here since main.go can't see it.
 	defer func() {
 		if r := recover(); r != nil {
-			logger.With(context.Background(), "panic_stack", string(debug.Stack())).
-				Error(fmt.Sprintf("recovered from panic in runServe: %v", r))
+			slog.ErrorContext(context.Background(),
+				fmt.Sprintf("recovered from panic in runServe: %v", r), "panic_stack", string(debug.Stack()),
+			)
 			runErr = fmt.Errorf("%v", r)
 		}
 	}()
@@ -82,27 +84,27 @@ func runServe(cmd *cobra.Command, args []string) (runErr error) {
 		closeErr := c.Close()
 		runErr = errors.Join(runErr, closeErr)
 		if runErr == nil {
-			logger.Info(context.Background(), "Graceful shutdown completed")
+			slog.InfoContext(context.Background(), "Graceful shutdown completed")
 		}
 	}()
 
-	ctr := container.NewContainer(cfg, c)
-
 	initLogger(cfg)
+
+	ctr := container.NewContainer(cfg, c)
 
 	sf := ctr.SessionFactory()
 	configureDBLogger(cfg, sf)
 
-	logger.Info(ctx, "Starting HyperFleet API with configuration (sensitive values redacted):")
-	logger.Info(ctx, config.DumpConfig(cfg))
+	slog.InfoContext(ctx, "Starting HyperFleet API with configuration (sensitive values redacted):")
+	slog.InfoContext(ctx, config.DumpConfig(cfg))
 
 	// OTel registered first so it flushes last - teardown spans are preserved.
 	if cfg.Tracing.Enabled {
 		traceProvider, traceErr := telemetry.InitTraceProvider(ctx, cfg.Tracing.ServiceName, api.Version)
 		if traceErr != nil {
-			logger.WithError(ctx, traceErr).Warn("Failed to initialize OpenTelemetry")
+			slog.WarnContext(ctx, "Failed to initialize OpenTelemetry", "error", traceErr)
 		} else {
-			logger.With(ctx, logger.FieldServiceName, cfg.Tracing.ServiceName).Info("OpenTelemetry initialized")
+			slog.InfoContext(ctx, "OpenTelemetry initialized", logger.FieldServiceName, cfg.Tracing.ServiceName)
 			c.Add(func() error {
 				flushCtx, cancel := context.WithTimeout(context.Background(), otelFlushTimeout)
 				defer cancel()
@@ -110,21 +112,20 @@ func runServe(cmd *cobra.Command, args []string) (runErr error) {
 			})
 		}
 	} else {
-		logger.With(ctx, logger.FieldOTelEnabled, false).Info("OpenTelemetry disabled")
+		slog.InfoContext(ctx, "OpenTelemetry disabled", logger.FieldOTelEnabled, false)
 	}
-
-	logger.With(ctx,
-		"log_level", cfg.Logging.Level,
+	slog.InfoContext(ctx,
+		"Logger initialized", "log_level", cfg.Logging.Level,
 		"log_format", cfg.Logging.Format,
 		"log_output", cfg.Logging.Output,
 		"masking_enabled", cfg.Logging.Masking.Enabled,
-	).Info("Logger initialized")
+	)
 
 	if collectorErr := metrics.RegisterReconciliationCollector(
 		ctr.SessionFactory().DirectDB(),
 		cfg.Metrics.ReconciliationStuckThreshold,
 	); collectorErr != nil {
-		logger.WithError(ctx, collectorErr).Error("Failed to register reconciliation collector")
+		slog.ErrorContext(ctx, "Failed to register reconciliation collector", "error", collectorErr)
 	}
 
 	apiServer, err := BuildAPIServer(
@@ -150,7 +151,7 @@ func runServe(cmd *cobra.Command, args []string) (runErr error) {
 	// Readyz registered last so it runs first - immediately fails the probe.
 	c.Add(func() error {
 		health.GetReadinessState().SetShuttingDown()
-		logger.Info(context.Background(), "Marked as not ready, draining in-flight requests...")
+		slog.InfoContext(context.Background(), "Marked as not ready, draining in-flight requests...")
 		return nil
 	})
 
@@ -190,7 +191,7 @@ func runServe(cmd *cobra.Command, args []string) (runErr error) {
 	}
 	if triggerErr == nil && !shutdown {
 		health.GetReadinessState().SetReady()
-		logger.Info(ctx, "Application ready to receive traffic")
+		slog.InfoContext(ctx, "Application ready to receive traffic")
 		select {
 		case <-ctx.Done():
 		case <-signals:
@@ -198,7 +199,7 @@ func runServe(cmd *cobra.Command, args []string) (runErr error) {
 		}
 	}
 
-	logger.Info(context.Background(), "Shutdown requested, starting graceful shutdown...")
+	slog.InfoContext(context.Background(), "Shutdown requested, starting graceful shutdown...")
 	runErr = triggerErr
 	return runErr
 }
@@ -218,41 +219,27 @@ func initLogger(cfg *config.ApplicationConfig) {
 	ctx := context.Background()
 	loggingCfg := cfg.Logging
 
-	level, err := logger.ParseLogLevel(loggingCfg.Level)
+	level, err := hfl.ParseLevel(loggingCfg.Level)
 	if err != nil {
-		logger.With(ctx, logger.FieldLogLevel, loggingCfg.Level).WithError(err).Warn("Invalid log level, using default")
+		slog.WarnContext(ctx, "Invalid log level, using default", logger.FieldLogLevel, loggingCfg.Level, "error", err)
 		level = slog.LevelInfo
 	}
 
-	format, err := logger.ParseLogFormat(loggingCfg.Format)
+	format, err := hfl.ParseFormat(loggingCfg.Format)
 	if err != nil {
-		logger.With(ctx, logger.FieldLogFormat, loggingCfg.Format).WithError(err).Warn("Invalid log format, using default")
-		format = logger.FormatJSON
+		slog.WarnContext(ctx, "Invalid log format, using default", logger.FieldLogFormat, loggingCfg.Format, "error", err)
+		format = hfl.FormatJSON
 	}
 
-	output, err := logger.ParseLogOutput(loggingCfg.Output)
+	output, err := hfl.ParseOutput(loggingCfg.Output)
 	if err != nil {
-		logger.With(ctx, logger.FieldLogOutput, loggingCfg.Output).WithError(err).Warn("Invalid log output, using default")
+		slog.WarnContext(ctx, "Invalid log output, using default", logger.FieldLogOutput, loggingCfg.Output, "error", err)
 		output = os.Stdout
 	}
 
-	hostname := cfg.Server.Hostname
-	if hostname == "" {
-		hostname, _ = os.Hostname() //nolint:errcheck // empty string is acceptable fallback
-	}
-
-	logConfig := &logger.LogConfig{
-		Level:     level,
-		Format:    format,
-		Output:    output,
-		Component: "api",
-		Version:   api.Version,
-		Hostname:  hostname,
-	}
-
-	// Use ReconfigureGlobalLogger instead of InitGlobalLogger because
-	// InitGlobalLogger was already called in main() with default config
-	logger.ReconfigureGlobalLogger(logConfig)
+	slog.SetDefault(logger.NewLogger(api.Version, logger.HandlerConfig{
+		Level: level, Format: format, Output: output,
+	}))
 }
 
 func configureDBLogger(cfg *config.ApplicationConfig, sessionFactory db.SessionFactory) {
