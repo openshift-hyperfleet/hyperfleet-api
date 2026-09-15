@@ -12,6 +12,7 @@ func (c *Container) ResourceService() services.ResourceService {
 			c.AdapterStatusDao(),
 			c.ResourceConditionDao(),
 			c.GenericService(),
+			c.TxRunner(),
 		)
 		if err != nil {
 			panic("failed to create resource service: " + err.Error())

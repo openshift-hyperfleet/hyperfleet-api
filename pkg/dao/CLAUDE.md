@@ -18,15 +18,11 @@ Always get the GORM session from context — never create direct DB connections:
 ```go
 db := d.sessionFactory.New(ctx)
 ```
-This retrieves the transaction-aware session created by `TransactionMiddleware`.
+This retrieves the transaction-aware session created by the service's `db.TxRunner.Do` callback.
 
 ## Error Handling
 
-On any write error, mark the transaction for rollback:
-```go
-db.MarkForRollback(ctx, err)
-```
-This is critical — without it, the middleware will commit a partially-failed transaction.
+Return ordinary errors. The service transaction callback rolls back automatically when it returns an error.
 
 ## Patterns
 
@@ -45,4 +41,4 @@ This is critical — without it, the middleware will commit a partially-failed t
 ## Related CLAUDE.md Files
 
 - `pkg/services/CLAUDE.md` — Service layer that consumes DAOs
-- `pkg/db/CLAUDE.md` — SessionFactory and transaction middleware
+- `pkg/db/CLAUDE.md` — SessionFactory and service-owned transactions

@@ -151,19 +151,17 @@ func TestAdvisoryLockFailsWithExistingTransaction(t *testing.T) {
 
 	ctx := context.Background()
 
-	// Create transaction first
-	ctx, err := db.NewContext(ctx, h.DBFactory)
-	Expect(err).NotTo(HaveOccurred(), "Failed to create transaction context")
-	defer db.Resolve(ctx)
-
-	// Try to acquire advisory lock (should fail)
-	_, lockID, err := db.NewAdvisoryLockContext(ctx, h.DBFactory, "test-resource", db.Migrations)
-
-	// Should fail with clear error
-	Expect(err).To(HaveOccurred(), "Advisory lock should fail when transaction exists")
-	Expect(err.Error()).To(ContainSubstring("transaction"), "Error should mention transaction")
-	Expect(err.Error()).To(ContainSubstring("SELECT FOR UPDATE"), "Error should suggest SELECT FOR UPDATE")
-	Expect(lockID).To(BeEmpty(), "Lock ID should be empty on error")
+	runner := db.NewTxRunner(h.DBFactory)
+	err := runner.Do(ctx, func(txCtx context.Context) error {
+		// Try to acquire an advisory lock after the transaction has started.
+		_, lockID, err := db.NewAdvisoryLockContext(txCtx, h.DBFactory, "test-resource", db.Migrations)
+		Expect(err).To(HaveOccurred(), "Advisory lock should fail when transaction exists")
+		Expect(err.Error()).To(ContainSubstring("transaction"), "Error should mention transaction")
+		Expect(err.Error()).To(ContainSubstring("SELECT FOR UPDATE"), "Error should suggest SELECT FOR UPDATE")
+		Expect(lockID).To(BeEmpty(), "Lock ID should be empty on error")
+		return nil
+	})
+	Expect(err).NotTo(HaveOccurred(), "rejected lock attempt should not abort the test transaction")
 }
 
 // TestLocksAndExpectedWaits validates the behavior of advisory locks:

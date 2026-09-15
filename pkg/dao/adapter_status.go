@@ -49,7 +49,6 @@ func (d *sqlAdapterStatusDao) Create(
 ) (*api.AdapterStatus, error) {
 	g2 := d.sessionFactory.New(ctx)
 	if err := g2.Omit(clause.Associations).Create(adapterStatus).Error; err != nil {
-		db.MarkForRollback(ctx, err)
 		return nil, err
 	}
 	return adapterStatus, nil
@@ -78,7 +77,6 @@ func (d *sqlAdapterStatusDao) Upsert(
 				"last_report_time":    adapterStatus.LastReportTime,
 			})
 		if updateResult.Error != nil {
-			db.MarkForRollback(ctx, updateResult.Error)
 			return nil, updateResult.Error
 		}
 
@@ -91,7 +89,6 @@ func (d *sqlAdapterStatusDao) Upsert(
 
 	createResult := g2.Omit(clause.Associations).Clauses(clause.OnConflict{DoNothing: true}).Create(adapterStatus)
 	if createResult.Error != nil {
-		db.MarkForRollback(ctx, createResult.Error)
 		return nil, createResult.Error
 	}
 	if createResult.RowsAffected > 0 {
@@ -106,7 +103,6 @@ func (d *sqlAdapterStatusDao) Delete(ctx context.Context, id string) error {
 	g2 := d.sessionFactory.New(ctx)
 	adapterStatus := &api.AdapterStatus{Meta: api.Meta{ID: id}}
 	if err := g2.Omit(clause.Associations).Delete(adapterStatus).Error; err != nil {
-		db.MarkForRollback(ctx, err)
 		return err
 	}
 	return nil
@@ -116,7 +112,6 @@ func (d *sqlAdapterStatusDao) DeleteByResource(ctx context.Context, resourceType
 	g2 := d.sessionFactory.New(ctx)
 	if err := g2.Where("resource_type = ? AND resource_id = ?", resourceType, resourceID).
 		Delete(&api.AdapterStatus{}).Error; err != nil {
-		db.MarkForRollback(ctx, err)
 		return err
 	}
 	return nil

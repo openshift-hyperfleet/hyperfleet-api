@@ -84,7 +84,6 @@ func (d *sqlResourceDao) Create(ctx context.Context, resource *api.Resource) (*a
 	}
 	g2 := d.sessionFactory.New(ctx)
 	if err := g2.Omit(clause.Associations).Create(resource).Error; err != nil {
-		db.MarkForRollback(ctx, err)
 		return nil, err
 	}
 	return resource, nil
@@ -93,7 +92,6 @@ func (d *sqlResourceDao) Create(ctx context.Context, resource *api.Resource) (*a
 func (d *sqlResourceDao) Save(ctx context.Context, resource *api.Resource) error {
 	g2 := d.sessionFactory.New(ctx)
 	if err := g2.Omit(clause.Associations).Save(resource).Error; err != nil {
-		db.MarkForRollback(ctx, err)
 		return err
 	}
 	return nil
@@ -103,7 +101,6 @@ func (d *sqlResourceDao) Delete(ctx context.Context, kind, id string) error {
 	g2 := tenant.ScopeDB(d.sessionFactory.New(ctx), ctx)
 	if err := g2.Omit(clause.Associations).Where("kind = ?", kind).Delete(
 		&api.Resource{Meta: api.Meta{ID: id}}).Error; err != nil {
-		db.MarkForRollback(ctx, err)
 		return err
 	}
 	return nil
@@ -192,7 +189,6 @@ func (d *sqlResourceDao) ReplaceReferences(
 ) error {
 	g2 := d.sessionFactory.New(ctx)
 	if err := g2.Where("source_id = ?", sourceID).Delete(&api.ResourceReference{}).Error; err != nil {
-		db.MarkForRollback(ctx, err)
 		return err
 	}
 	for i := range refs {
@@ -200,7 +196,6 @@ func (d *sqlResourceDao) ReplaceReferences(
 	}
 	if len(refs) > 0 {
 		if err := g2.Create(&refs).Error; err != nil {
-			db.MarkForRollback(ctx, err)
 			return err
 		}
 	}
@@ -237,7 +232,6 @@ func (d *sqlResourceDao) FindReferencers(
 func (d *sqlResourceDao) ClearTargetReferences(ctx context.Context, targetID string) error {
 	g2 := d.sessionFactory.New(ctx)
 	if err := g2.Where("target_id = ?", targetID).Delete(&api.ResourceReference{}).Error; err != nil {
-		db.MarkForRollback(ctx, err)
 		return err
 	}
 	return nil

@@ -14,8 +14,8 @@ import (
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db/db_context"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db/db_metrics"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db/internal/txcontext"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
@@ -205,11 +205,8 @@ func (f *Default) NewListener(ctx context.Context, channel string, callback func
 // If a transaction exists in context, returns that transaction so DAO operations participate.
 // Otherwise returns a non-transactional session.
 func (f *Default) New(ctx context.Context) *gorm.DB {
-	if tx, ok := db_context.Transaction(ctx); ok {
-		if tx.DB == nil {
-			panic("transaction context contains nil DB handle - check newTransaction() implementation")
-		}
-		return tx.DB
+	if tx, ok := txcontext.Session(ctx); ok {
+		return tx
 	}
 
 	if f.g2 == nil {

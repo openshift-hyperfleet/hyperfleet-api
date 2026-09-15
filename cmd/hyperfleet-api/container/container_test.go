@@ -59,8 +59,18 @@ func TestContainerConstructionIsLazy(t *testing.T) {
 	Expect(c.resourceService).To(BeNil())
 	Expect(c.adapterStatusService).To(BeNil())
 	Expect(c.genericService).To(BeNil())
+	Expect(c.txRunner).To(BeNil())
 	Expect(c.schemaValidator).To(BeNil())
 	Expect(c.jwtHandler).To(BeNil())
+}
+
+func TestContainerCachesTxRunner(t *testing.T) {
+	RegisterTestingT(t)
+
+	c := newTestContainer(t)
+	first := c.TxRunner()
+	Expect(first).NotTo(BeNil())
+	Expect(c.TxRunner()).To(BeIdenticalTo(first))
 }
 
 func TestContainerDoesNotInitializeGlobalRegistry(t *testing.T) {

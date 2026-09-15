@@ -16,6 +16,7 @@ func NewResourceService(resourceDao, resourceLabelDao, adapterStatusDao, resourc
 
 - All methods return `*errors.ServiceError` (from `pkg/errors/`), never stdlib `error`
 - Constructor injection: DAOs and config passed to `New*Service()` constructor
+- Mutation services receive `db.TxRunner` and open one transaction with `Do` at their public boundary. Every dependent DAO call must use the callback context. Reconciliation outcomes are emitted only after `Do` succeeds.
 - Compile-time interface check: `var _ ResourceService = &sqlResourceService{}`
 - Mock generation: add `//go:generate mockgen` directive, then `make generate-mocks`
 

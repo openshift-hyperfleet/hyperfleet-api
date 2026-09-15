@@ -128,8 +128,9 @@ See [development.md](development.md) for detailed setup instructions.
 
 ## Transaction Strategy
 
-- **Write operations** (POST/PUT/PATCH/DELETE) run inside a database transaction with automatic commit on success and rollback on error.
+- **Mutation services** own one `db.TxRunner.Do` boundary for each complete write operation. The runner commits before success and rolls back on callback errors or panics; nested transaction execution is rejected.
 - **Read operations** (GET) run without a transaction for lower latency and reduced connection pool pressure.
+- **Reconciliation metrics** are collected as explicit outcomes during the write and emitted only after the transaction commits.
 
 ### Pagination note
 
@@ -145,7 +146,7 @@ The connection pool is configured via CLI flags:
 | `--db-max-idle-connections` | 10 | Maximum idle connections retained in the pool |
 | `--db-conn-max-lifetime` | 5m | Maximum time a connection can be reused before being closed |
 | `--db-conn-max-idle-time` | 1m | Maximum time a connection can sit idle before being closed |
-| `--db-request-timeout` | 30s | Context deadline applied to each HTTP request's database transaction |
+| `--db-request-timeout` | 30s | Context deadline applied to each HTTP request's database work |
 | `--db-conn-retry-attempts` | 10 | Retry attempts for initial database connection on startup |
 | `--db-conn-retry-interval` | 3s | Wait time between connection retry attempts |
 

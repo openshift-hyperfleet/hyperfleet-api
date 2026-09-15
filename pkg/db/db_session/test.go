@@ -13,7 +13,7 @@ import (
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db/db_context"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db/internal/txcontext"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
@@ -199,8 +199,8 @@ func (f *Test) New(ctx context.Context) *gorm.DB {
 		f.wasDisconnected = false
 	}
 
-	if tx, ok := db_context.Transaction(ctx); ok {
-		return tx.DB
+	if tx, ok := txcontext.Session(ctx); ok {
+		return tx
 	}
 
 	return f.g2.Session(&gorm.Session{

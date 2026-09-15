@@ -45,7 +45,6 @@ func (d *sqlResourceConditionDao) UpdateConditions(
 
 	var existing []api.ResourceCondition
 	if err := g2.Where("resource_id = ?", resourceID).Find(&existing).Error; err != nil {
-		db.MarkForRollback(ctx, err)
 		return err
 	}
 
@@ -75,13 +74,11 @@ func (d *sqlResourceConditionDao) UpdateConditions(
 	}
 
 	if err := g2.Where("resource_id = ?", resourceID).Delete(&api.ResourceCondition{}).Error; err != nil {
-		db.MarkForRollback(ctx, err)
 		return err
 	}
 
 	if len(conditions) > 0 {
 		if err := g2.Create(&conditions).Error; err != nil {
-			db.MarkForRollback(ctx, err)
 			return err
 		}
 	}
@@ -92,7 +89,6 @@ func (d *sqlResourceConditionDao) UpdateConditions(
 func (d *sqlResourceConditionDao) DeleteByResource(ctx context.Context, resourceID string) error {
 	g2 := d.sessionFactory.New(ctx)
 	if err := g2.Where("resource_id = ?", resourceID).Delete(&api.ResourceCondition{}).Error; err != nil {
-		db.MarkForRollback(ctx, err)
 		return err
 	}
 	return nil
