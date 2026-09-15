@@ -2,9 +2,7 @@ package dao
 
 import (
 	"context"
-	"strings"
 
-	"github.com/jinzhu/inflection"
 	"gorm.io/gorm"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
@@ -28,14 +26,11 @@ type GenericDao interface {
 	GetInstanceDao(ctx context.Context, model interface{}) GenericDao
 	Preload(preload string)
 	OrderBy(orderBy string)
-	Joins(sql string)
-	Group(sql string)
 	Where(where Where)
 	Count(model interface{}, total *int64) error
 	Validate(resourceList interface{}) error
 
 	GetTableName() string
-	GetTableRelation(fieldName string) (TableRelation, bool)
 }
 
 var _ GenericDao = &sqlGenericDao{}
@@ -43,15 +38,6 @@ var _ GenericDao = &sqlGenericDao{}
 type sqlGenericDao struct {
 	sessionFactory db.SessionFactory
 	g2             *gorm.DB
-}
-
-// TableRelation represents a relationship between two tables. They can be joined,
-// ON TableName.ColumnName = ForeignTableName.ForeignColumnName
-type TableRelation struct {
-	TableName         string
-	ColumnName        string
-	ForeignTableName  string
-	ForeignColumnName string
 }
 
 func NewGenericDao(sessionFactory db.SessionFactory) GenericDao {
@@ -75,14 +61,6 @@ func (d *sqlGenericDao) Preload(preload string) {
 
 func (d *sqlGenericDao) OrderBy(orderBy string) {
 	d.g2 = d.g2.Order(orderBy)
-}
-
-func (d *sqlGenericDao) Joins(sql string) {
-	d.g2 = d.g2.Joins(sql)
-}
-
-func (d *sqlGenericDao) Group(sql string) {
-	d.g2 = d.g2.Group(sql)
 }
 
 func (d *sqlGenericDao) Where(where Where) {
@@ -113,40 +91,4 @@ func (d *sqlGenericDao) Validate(resourceList interface{}) error {
 
 func (d *sqlGenericDao) GetTableName() string {
 	return db.GetTableName(d.g2)
-}
-
-// extract the relation from the api model
-func (d *sqlGenericDao) GetTableRelation(fieldName string) (TableRelation, bool) {
-	// try singular
-	fieldName = strings.ToUpper(fieldName[:1]) + fieldName[1:]
-	table := inflection.Singular(fieldName)
-	association := d.g2.Association(table)
-	// the relation must exist in the model
-	if association.Relationship == nil {
-		// try plural
-		table = inflection.Plural(fieldName)
-		association = d.g2.Association(table)
-		if association.Relationship == nil {
-			return TableRelation{}, false
-		}
-	}
-
-	if association.Relationship.Type != "belongs_to" && association.Relationship.Type != "has_many" {
-		// we don't use has_one or many_to_many relations
-		return TableRelation{}, false
-	}
-
-	columnName := association.Relationship.References[0].ForeignKey.DBName
-	foreignColumnName := association.Relationship.References[0].PrimaryKey.DBName
-	if association.Relationship.Type == "has_many" {
-		columnName = association.Relationship.References[0].PrimaryKey.DBName
-		foreignColumnName = association.Relationship.References[0].ForeignKey.DBName
-	}
-
-	return TableRelation{
-		TableName:         association.Relationship.Field.Schema.Table,
-		ForeignTableName:  association.Relationship.FieldSchema.Table,
-		ForeignColumnName: foreignColumnName,
-		ColumnName:        columnName,
-	}, true
 }

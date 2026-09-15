@@ -64,8 +64,3 @@ func (g *genericDaoMock) GetTableName() string {
 	// Mock implementation - returns empty string
 	return ""
 }
-
-func (g *genericDaoMock) GetTableRelation(fieldName string) (dao.TableRelation, bool) {
-	// Mock implementation - returns empty relation and false
-	return dao.TableRelation{}, false
-}

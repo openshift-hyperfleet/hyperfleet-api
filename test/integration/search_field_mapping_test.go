@@ -1087,7 +1087,7 @@ func TestSearchInvalidFieldReturnsError(t *testing.T) {
 		Expect(bodyStr).To(ContainSubstring("HYPERFLEET-VAL-005"))
 	}
 
-	// label.environment: no such column after Labels JOIN - undefined column (42703)
+	// label.environment: dotted field with no known prefix (labels./spec./status.conditions.) is rejected
 	t.Run("label.environment undefined column", func(t *testing.T) {
 		RegisterTestingT(t)
 		search := openapi.SearchParams("label.environment = 'production'")
@@ -1096,7 +1096,7 @@ func TestSearchInvalidFieldReturnsError(t *testing.T) {
 		assertCleanBadRequest(t, resp.Body, resp.StatusCode())
 	})
 
-	// label.id: id exists in both joined tables - ambiguous column (42702
+	// label.id: dotted field with no known prefix is rejected
 	t.Run("label.id ambiguous column", func(t *testing.T) {
 		RegisterTestingT(t)
 		search := openapi.SearchParams("label.id = 'foo'")
@@ -1138,6 +1138,28 @@ func TestSearchTautologyRejected(t *testing.T) {
 	ctx := h.NewAuthenticatedContext(account)
 
 	search := openapi.SearchParams("name = 'test' OR 1 = 1")
+	params := &openapi.GetClustersParams{
+		Search: &search,
+	}
+	resp, err := client.GetClustersWithResponse(ctx, params, test.WithAuthToken(ctx))
+
+	Expect(err).NotTo(HaveOccurred())
+	Expect(resp.StatusCode()).To(Equal(http.StatusBadRequest))
+	body := string(resp.Body)
+	Expect(body).NotTo(ContainSubstring("pq:"))
+	Expect(body).NotTo(ContainSubstring("SQLSTATE"))
+	Expect(body).To(ContainSubstring("HYPERFLEET-VAL-005"))
+}
+
+// TestSearchConditionsTableColumnRejected verifies "conditions.type=" is rejected
+func TestSearchConditionsTableColumnRejected(t *testing.T) {
+	RegisterTestingT(t)
+	h, client := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+
+	search := openapi.SearchParams("conditions.type = 'Reconciled'")
 	params := &openapi.GetClustersParams{
 		Search: &search,
 	}

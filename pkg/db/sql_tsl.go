@@ -85,10 +85,9 @@ var typedKindHints = map[tsl.Kind]string{
 	tsl.KindTimestampLiteral: "an RFC3339 timestamp (e.g. 2026-01-01T00:00:00Z)",
 }
 
-// WalkConfig provides table context and a hook for related-table resolution.
+// WalkConfig provides table context for the walk
 type WalkConfig struct {
-	ResolveRelated func(name string) (string, error)
-	TableName      string
+	TableName string
 }
 
 type walkContext struct {
@@ -279,19 +278,13 @@ func resolveField(name string, ctx *walkContext) (string, []any, *errors.Service
 		}
 	}
 
-	if len(fieldParts) == 1 {
-		return fmt.Sprintf("%s.%s", ctx.cfg.TableName, trimmedName), nil, nil
+	// dotted fields are only supported via the labels./spec./status.conditions.
+	// prefixes handled above in resolveColumn
+	if len(fieldParts) != 1 {
+		return "", nil, errors.BadRequest("%s is not a valid field name", name)
 	}
 
-	if ctx.cfg.ResolveRelated != nil {
-		resolved, relErr := ctx.cfg.ResolveRelated(name)
-		if relErr != nil {
-			return "", nil, errors.BadRequest("%s", relErr.Error())
-		}
-		return resolved, nil, nil
-	}
-
-	return "", nil, errors.BadRequest("%s is not a valid field name", name)
+	return fmt.Sprintf("%s.%s", ctx.cfg.TableName, trimmedName), nil, nil
 }
 
 func walkNaryExpr(n *tsl.TSLNode, ctx *walkContext) (string, []any, *errors.ServiceError) {
