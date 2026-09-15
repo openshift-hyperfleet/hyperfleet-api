@@ -3,9 +3,7 @@ package services
 import (
 	"context"
 	e "errors"
-	"fmt"
 	"reflect"
-	"strings"
 
 	"github.com/yaacov/tree-search-language/v6/pkg/tsl"
 	"gorm.io/gorm"
@@ -41,10 +39,7 @@ type listContext struct {
 	resourceList interface{}
 	args         *ListArguments
 	pagingMeta   *api.PagingMeta
-	joins        map[string]dao.TableRelation
-	set          map[string]bool
 	resourceType string
-	groupBy      []string
 }
 
 func (s *sqlGenericService) newListContext(
@@ -117,12 +112,6 @@ func (s *sqlGenericService) List(
 type listBuilder func(*listContext, dao.GenericDao) (finished bool, err *errors.ServiceError)
 
 func (s *sqlGenericService) buildPreload(listCtx *listContext, d dao.GenericDao) (bool, *errors.ServiceError) {
-	listCtx.set = make(map[string]bool)
-
-	for _, preload := range listCtx.args.Preloads {
-		listCtx.set[preload] = true
-	}
-	// preload each table only once; struct{} doesn't occupy any additional space
 	for _, preload := range listCtx.args.Preloads {
 		d.Preload(preload)
 	}
@@ -153,7 +142,6 @@ func (s *sqlGenericService) buildTenantScope(listCtx *listContext, d dao.Generic
 
 func (s *sqlGenericService) buildSearch(listCtx *listContext, d dao.GenericDao) (bool, *errors.ServiceError) {
 	if listCtx.args.Search == "" {
-		s.addJoins(listCtx, d)
 		return true, nil
 	}
 
@@ -169,59 +157,15 @@ func (s *sqlGenericService) buildSearch(listCtx *listContext, d dao.GenericDao) 
 		return false, errors.BadRequest("failed to parse search query: %s", err.Error())
 	}
 
-	if listCtx.joins == nil {
-		listCtx.joins = map[string]dao.TableRelation{}
-	}
-
 	sql, values, serviceErr := db.TSLToSQL(tslTree, db.WalkConfig{
 		TableName: d.GetTableName(),
-		ResolveRelated: func(name string) (string, error) {
-			parts := strings.Split(name, ".")
-			fieldName := parts[0]
-			if _, exists := listCtx.joins[fieldName]; !exists {
-				if relation, ok := d.GetTableRelation(fieldName); ok {
-					listCtx.joins[fieldName] = relation
-				} else {
-					return "", fmt.Errorf("%s is not a related resource of %s",
-						fieldName, listCtx.resourceType)
-				}
-			}
-			parts[0] = listCtx.joins[fieldName].ForeignTableName
-			return strings.Join(parts, "."), nil
-		},
 	})
 	if serviceErr != nil {
 		return false, serviceErr
 	}
 
-	s.addJoins(listCtx, d)
 	d.Where(dao.NewWhere(sql, values))
 	return true, nil
-}
-
-// JOIN the tables that appear in the search string
-func (s *sqlGenericService) addJoins(listCtx *listContext, d dao.GenericDao) {
-	for _, r := range listCtx.joins {
-		if _, ok := listCtx.set[r.ForeignTableName]; ok {
-			// skip already included preloads
-			continue
-		}
-		sql := fmt.Sprintf(
-			"LEFT JOIN %s ON %s.%s = %s.%s AND %s.deleted_time IS NULL",
-			r.ForeignTableName, r.ForeignTableName, r.ForeignColumnName, r.TableName, r.ColumnName, r.ForeignTableName)
-		d.Joins(sql)
-
-		listCtx.groupBy = append(listCtx.groupBy, r.ForeignTableName+".id")
-		listCtx.set[r.ForeignTableName] = true
-	}
-	if len(listCtx.joins) > 0 {
-		// Add base relation
-		listCtx.groupBy = append(listCtx.groupBy, d.GetTableName()+".id")
-		d.Group(strings.Join(listCtx.groupBy, ","))
-	}
-
-	// Reset list of joins and group by's
-	listCtx.joins = map[string]dao.TableRelation{}
 }
 
 func (s *sqlGenericService) loadList(listCtx *listContext, d dao.GenericDao) *errors.ServiceError {

@@ -647,51 +647,22 @@ func TestResolveField_PlainField(t *testing.T) {
 	}
 }
 
-func TestTSLToSQL_ResolveRelated(t *testing.T) {
-	t.Run("related field resolved via callback", func(t *testing.T) {
-		RegisterTestingT(t)
-		tree, err := tsl.ParseTSL("creator.username = 'alice'")
-		Expect(err).ToNot(HaveOccurred())
+func TestTSLToSQL_DottedFieldRejection(t *testing.T) {
+	tests := []struct {
+		name  string
+		query string
+	}{
+		{name: "dotted field with no known prefix is rejected", query: "creator.username = 'alice'"},
+		{name: "unauthorized table name is rejected", query: "unauthorized_table.name = 'value'"},
+		{name: "uppercase segment in dotted field is rejected", query: "creator.UserName = 'alice'"},
+	}
 
-		sql, values, svcErr := TSLToSQL(tree, WalkConfig{
-			TableName: "resources",
-			ResolveRelated: func(name string) (string, error) {
-				return "users.username", nil
-			},
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svcErr := walkExpectError(t, tt.query)
+			Expect(svcErr.Error()).To(ContainSubstring("is not a valid field name"))
 		})
-		Expect(svcErr).To(BeNil())
-		Expect(sql).To(Equal("users.username = ?"))
-		Expect(values).To(ConsistOf("alice"))
-	})
-
-	t.Run("related field without callback rejected", func(t *testing.T) {
-		RegisterTestingT(t)
-		tree, err := tsl.ParseTSL("creator.username = 'alice'")
-		Expect(err).ToNot(HaveOccurred())
-
-		_, _, svcErr := TSLToSQL(tree, WalkConfig{TableName: "resources"})
-		Expect(svcErr).ToNot(BeNil())
-	})
-
-	t.Run("uppercase segment in related path rejected before ResolveRelated", func(t *testing.T) {
-		RegisterTestingT(t)
-		tree, err := tsl.ParseTSL("creator.UserName = 'alice'")
-		Expect(err).ToNot(HaveOccurred())
-
-		called := false
-		_, _, svcErr := TSLToSQL(tree, WalkConfig{
-			TableName: "resources",
-			ResolveRelated: func(name string) (string, error) {
-				called = true
-				return "users.username", nil
-			},
-		})
-		if svcErr == nil {
-			t.Fatal("expected a service error but got nil")
-		}
-		Expect(called).To(BeFalse())
-		Expect(svcErr.Error()).To(ContainSubstring("is not a valid field name"))
-	})
+	}
 }
 
 func TestTSLToSQL_LogicalOperators(t *testing.T) {
@@ -712,6 +683,81 @@ func TestTSLToSQL_LogicalOperators(t *testing.T) {
 		sql, _ := walkHelper(t, "NOT (name = 'a')")
 		Expect(sql).To(Equal("NOT (resources.name = ?)"))
 	})
+}
+
+func TestTSLToSQL_TautologyRejection(t *testing.T) {
+	const tautologyErr = "literal-only comparisons are not allowed"
+
+	tests := []struct {
+		expectValue     any
+		name            string
+		query           string
+		wantErrContains string
+		expectSQL       string
+	}{
+		{name: "numeric literal tautology", query: "1 = 1", wantErrContains: tautologyErr},
+		{name: "string literal tautology", query: "'a' = 'a'", wantErrContains: tautologyErr},
+		{name: "boolean literal tautology", query: "true = true", wantErrContains: tautologyErr},
+		{name: "literal-vs-literal with unequal values is also rejected", query: "1 = 2", wantErrContains: tautologyErr},
+		{
+			name: "literal tautology bypass via OR is rejected", query: "name = 'test' OR 1 = 1",
+			wantErrContains: tautologyErr,
+		},
+		{name: "arithmetic-only comparison is rejected", query: "(1 + 1) = 2", wantErrContains: tautologyErr},
+		{
+			name: "field vs literal is allowed", query: "name = 'test'",
+			expectSQL: "resources.name = ?", expectValue: "test",
+		},
+		{
+			name: "literal vs field is allowed", query: "'test' = name",
+			expectSQL: "? = resources.name", expectValue: "test",
+		},
+		{name: "field vs field is allowed", query: "name = kind", expectSQL: "resources.name = resources.kind"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.wantErrContains != "" {
+				svcErr := walkExpectError(t, tt.query)
+				Expect(svcErr.Error()).To(ContainSubstring(tt.wantErrContains))
+				return
+			}
+			sql, values := walkHelper(t, tt.query)
+			Expect(sql).To(Equal(tt.expectSQL))
+			if tt.expectValue != nil {
+				Expect(values).To(ConsistOf(tt.expectValue))
+			}
+		})
+	}
+}
+
+func TestTSLToSQL_PredicateTautologyRejection(t *testing.T) {
+	const tautologyErr = "literal-only comparisons are not allowed"
+
+	tests := []struct {
+		name  string
+		query string
+	}{
+		{name: "constant IN", query: "1 IN [1, 2]"},
+		{name: "constant IN bypass via OR", query: "name = 'test' OR 1 IN [1]"},
+		{name: "constant BETWEEN", query: "1 BETWEEN 0 AND 10"},
+		{name: "constant BETWEEN bypass via OR", query: "name = 'test' OR 1 BETWEEN 0 AND 10"},
+		{name: "constant IS NULL", query: "1 IS NULL"},
+		{name: "constant IS NULL bypass via OR", query: "name = 'test' OR 1 IS NULL"},
+		{name: "constant LIKE", query: "'a' LIKE 'a'"},
+		{name: "constant LIKE bypass via OR", query: "name = 'test' OR 'a' LIKE 'a'"},
+		{name: "bare boolean literal as whole query", query: "true"},
+		{name: "bare boolean literal under NOT", query: "NOT false"},
+		{name: "bare boolean literal bypass via OR", query: "name = 'test' OR true"},
+		{name: "bare boolean literal under NOT bypass via OR", query: "name = 'test' OR NOT false"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svcErr := walkExpectError(t, tt.query)
+			Expect(svcErr.Error()).To(ContainSubstring(tautologyErr))
+		})
+	}
 }
 
 func TestTSLToSQL_StringMatch(t *testing.T) {

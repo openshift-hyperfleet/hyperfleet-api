@@ -85,10 +85,9 @@ var typedKindHints = map[tsl.Kind]string{
 	tsl.KindTimestampLiteral: "an RFC3339 timestamp (e.g. 2026-01-01T00:00:00Z)",
 }
 
-// WalkConfig provides table context and a hook for related-table resolution.
+// WalkConfig provides table context for the walk
 type WalkConfig struct {
-	ResolveRelated func(name string) (string, error)
-	TableName      string
+	TableName string
 }
 
 type walkContext struct {
@@ -110,8 +109,23 @@ func isConditionNode(n *tsl.TSLNode) bool {
 // subqueries; JSONB mapping, CAST wrapping, and table-name prefixing all
 // happen during emission.
 func TSLToSQL(node *tsl.TSLNode, cfg WalkConfig) (string, []any, *errors.ServiceError) {
+	if svcErr := requirePredicate(node); svcErr != nil {
+		return "", nil, svcErr
+	}
 	ctx := &walkContext{cfg: cfg}
 	return walkNode(node, ctx)
+}
+
+// requirePredicate rejects a bare literal or field used as a full predicate (e.g. "OR true")
+func requirePredicate(n *tsl.TSLNode) *errors.ServiceError {
+	if n == nil {
+		return nil
+	}
+	if n.Type() != tsl.KindBinaryExpr && n.Type() != tsl.KindUnaryExpr {
+		return errors.BadRequest(
+			"search comparisons must reference a field; literal-only comparisons are not allowed")
+	}
+	return nil
 }
 
 func walkNode(n *tsl.TSLNode, ctx *walkContext) (string, []any, *errors.ServiceError) {
@@ -264,19 +278,13 @@ func resolveField(name string, ctx *walkContext) (string, []any, *errors.Service
 		}
 	}
 
-	if len(fieldParts) == 1 {
-		return fmt.Sprintf("%s.%s", ctx.cfg.TableName, trimmedName), nil, nil
+	// dotted fields are only supported via the labels./spec./status.conditions.
+	// prefixes handled above in resolveColumn
+	if len(fieldParts) != 1 {
+		return "", nil, errors.BadRequest("%s is not a valid field name", name)
 	}
 
-	if ctx.cfg.ResolveRelated != nil {
-		resolved, relErr := ctx.cfg.ResolveRelated(name)
-		if relErr != nil {
-			return "", nil, errors.BadRequest("%s", relErr.Error())
-		}
-		return resolved, nil, nil
-	}
-
-	return "", nil, errors.BadRequest("%s is not a valid field name", name)
+	return fmt.Sprintf("%s.%s", ctx.cfg.TableName, trimmedName), nil, nil
 }
 
 func walkNaryExpr(n *tsl.TSLNode, ctx *walkContext) (string, []any, *errors.ServiceError) {
@@ -294,6 +302,9 @@ func walkNaryExpr(n *tsl.TSLNode, ctx *walkContext) (string, []any, *errors.Serv
 	case tsl.OpLike, tsl.OpILike:
 		return walkStringMatch(op, ctx)
 	case tsl.OpNot:
+		if svcErr := requirePredicate(op.Right); svcErr != nil {
+			return "", nil, svcErr
+		}
 		childCtx := &walkContext{cfg: ctx.cfg, inNot: true}
 		childSQL, childArgs, err := walkNode(op.Right, childCtx)
 		if err != nil {
@@ -313,6 +324,12 @@ func walkNaryExpr(n *tsl.TSLNode, ctx *walkContext) (string, []any, *errors.Serv
 }
 
 func walkLogical(op tsl.TSLExpressionOp, ctx *walkContext) (string, []any, *errors.ServiceError) {
+	if svcErr := requirePredicate(op.Left); svcErr != nil {
+		return "", nil, svcErr
+	}
+	if svcErr := requirePredicate(op.Right); svcErr != nil {
+		return "", nil, svcErr
+	}
 	leftSQL, leftArgs, err := walkNode(op.Left, ctx)
 	if err != nil {
 		return "", nil, err
@@ -337,6 +354,10 @@ func walkLogical(op tsl.TSLExpressionOp, ctx *walkContext) (string, []any, *erro
 }
 
 func walkComparison(op tsl.TSLExpressionOp, ctx *walkContext) (string, []any, *errors.ServiceError) { //nolint:cyclop
+	if isConstantExpr(op.Left) && isConstantExpr(op.Right) {
+		return "", nil, errors.BadRequest(
+			"search comparisons must reference a field; literal-only comparisons are not allowed")
+	}
 	if svcErr := validateTypedSide(op.Left, op.Right); svcErr != nil {
 		return "", nil, svcErr
 	}
@@ -389,6 +410,10 @@ func walkIn(op tsl.TSLExpressionOp, ctx *walkContext) (string, []any, *errors.Se
 		return "", nil, errors.BadRequest(
 			"IN is not supported for condition queries; use comparison operators (=, !=, <, <=, >, >=)")
 	}
+	if isConstantExpr(op.Left) {
+		return "", nil, errors.BadRequest(
+			"search comparisons must reference a field; literal-only comparisons are not allowed")
+	}
 	if svcErr := validateTypedArray(op.Left, op.Right); svcErr != nil {
 		return "", nil, svcErr
 	}
@@ -436,6 +461,10 @@ func walkBetween(op tsl.TSLExpressionOp, ctx *walkContext) (string, []any, *erro
 		return "", nil, errors.BadRequest(
 			"BETWEEN is not supported for condition queries; use comparison operators (=, !=, <, <=, >, >=)")
 	}
+	if isConstantExpr(op.Left) {
+		return "", nil, errors.BadRequest(
+			"search comparisons must reference a field; literal-only comparisons are not allowed")
+	}
 	leftSQL, leftArgs, err := walkNode(op.Left, ctx)
 	if err != nil {
 		return "", nil, err
@@ -471,6 +500,10 @@ func walkBetween(op tsl.TSLExpressionOp, ctx *walkContext) (string, []any, *erro
 }
 
 func walkIsNull(op tsl.TSLExpressionOp, ctx *walkContext) (string, []any, *errors.ServiceError) {
+	if isConstantExpr(op.Left) {
+		return "", nil, errors.BadRequest(
+			"search comparisons must reference a field; literal-only comparisons are not allowed")
+	}
 	leftSQL, leftArgs, err := walkNode(op.Left, ctx)
 	if err != nil {
 		return "", nil, err
@@ -483,6 +516,10 @@ func walkStringMatch(op tsl.TSLExpressionOp, ctx *walkContext) (string, []any, *
 	if isConditionNode(op.Left) {
 		return "", nil, errors.BadRequest(
 			"LIKE/ILIKE is not supported for condition queries; use comparison operators (=, !=, <, <=, >, >=)")
+	}
+	if isConstantExpr(op.Left) && isConstantExpr(op.Right) {
+		return "", nil, errors.BadRequest(
+			"search comparisons must reference a field; literal-only comparisons are not allowed")
 	}
 	leftSQL, leftArgs, err := walkNode(op.Left, ctx)
 	if err != nil {
@@ -520,6 +557,26 @@ func walkArrayLiteral(n *tsl.TSLNode, ctx *walkContext) (string, []any, *errors.
 	}
 
 	return fmt.Sprintf("(%s)", strings.Join(placeholders, ", ")), args, nil
+}
+
+// isConstantExpr reports whether n has no field reference (a literal, or
+// arithmetic over literals like (1+1)).
+func isConstantExpr(n *tsl.TSLNode) bool {
+	if n == nil {
+		return true
+	}
+	switch n.Type() {
+	case tsl.KindIdentifier:
+		return false
+	case tsl.KindBinaryExpr, tsl.KindUnaryExpr:
+		op, ok := n.AsExprOp()
+		if !ok {
+			return false
+		}
+		return isConstantExpr(op.Left) && isConstantExpr(op.Right)
+	default:
+		return true
+	}
 }
 
 // validateTypedSide checks that if ident is a typed field (generation, timestamps),
