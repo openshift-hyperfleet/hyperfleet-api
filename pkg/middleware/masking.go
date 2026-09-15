@@ -3,12 +3,12 @@ package middleware
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"regexp"
 	"strings"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
 const (
@@ -99,7 +99,7 @@ func (m *MaskingMiddleware) MaskHeaders(headers http.Header) http.Header {
 // Handles both top-level objects and top-level arrays
 // If masking is disabled, returns original body unchanged
 // If masking is enabled but JSON parsing fails, applies text-based fallback masking
-func (m *MaskingMiddleware) MaskBody(body []byte) []byte {
+func (m *MaskingMiddleware) MaskBody(ctx context.Context, body []byte) []byte {
 	if len(body) == 0 {
 		return body
 	}
@@ -110,15 +110,14 @@ func (m *MaskingMiddleware) MaskBody(body []byte) []byte {
 	}
 
 	if len(body) > maxBodySize {
-		logger.With(context.Background()).Warn("Body too large for JSON masking, using text fallback")
+		slog.WarnContext(ctx, "Body too large for JSON masking, using text fallback")
 		return m.maskTextFallback(body)
 	}
 
 	var data interface{}
 	if err := json.Unmarshal(body, &data); err != nil {
 		// JSON parsing failed - use text-based fallback masking to prevent leakage
-		logger.WithError(context.Background(), err).
-			Warn("JSON parsing failed in MaskBody, applying text-based fallback masking")
+		slog.WarnContext(ctx, "JSON parsing failed in MaskBody, applying text-based fallback masking", "error", err)
 		return m.maskTextFallback(body)
 	}
 
@@ -127,8 +126,7 @@ func (m *MaskingMiddleware) MaskBody(body []byte) []byte {
 	masked, err := json.Marshal(data)
 	if err != nil {
 		// JSON marshaling failed - use text-based fallback masking to prevent leakage
-		logger.WithError(context.Background(), err).
-			Warn("JSON marshaling failed in MaskBody, applying text-based fallback masking")
+		slog.WarnContext(ctx, "JSON marshaling failed in MaskBody, applying text-based fallback masking", "error", err)
 		return m.maskTextFallback(body)
 	}
 	return masked

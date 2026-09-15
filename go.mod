@@ -19,6 +19,7 @@ require (
 	github.com/oapi-codegen/runtime v1.7.0
 	github.com/onsi/gomega v1.43.0
 	github.com/openshift-hyperfleet/hyperfleet-api-spec v1.0.27
+	github.com/openshift-hyperfleet/hyperfleet-logger v0.0.0-20260811173525-c9f9e282d029
 	github.com/prometheus/client_golang v1.24.1
 	github.com/prometheus/client_model v0.6.2
 	github.com/spf13/cobra v1.10.2

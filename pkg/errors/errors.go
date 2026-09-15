@@ -3,6 +3,7 @@ package errors
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -220,7 +221,7 @@ func New(code string, reason string, values ...interface{}) *ServiceError {
 	exists, err := Find(code)
 	if !exists {
 		ctx := context.Background()
-		logger.With(ctx, logger.FieldErrorCode, code).Error("Undefined error code used")
+		slog.ErrorContext(ctx, "Undefined error code used", logger.FieldErrorCode, code)
 		err = &ServiceError{
 			RFC9457Code: CodeInternalGeneral,
 			Type:        ErrorTypeInternal,
@@ -373,7 +374,7 @@ func FailedToParseSearch(reason string, values ...interface{}) *ServiceError {
 func DatabaseAdvisoryLock(err error) *ServiceError {
 	// Log the full error server-side for debugging
 	ctx := context.Background()
-	logger.WithError(ctx, err).Error("Database advisory lock error")
+	slog.ErrorContext(ctx, "Database advisory lock error", "error", err)
 	// Return a generic message to avoid leaking sensitive database info
 	return New(CodeInternalDatabase, "internal database error")
 }

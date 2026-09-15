@@ -3,6 +3,7 @@ package tenant
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"regexp"
 	"strings"
@@ -11,7 +12,6 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/auth"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
 // maxDimensionValueLen bounds tenant dimension header values to the RFC 1123
@@ -104,7 +104,7 @@ func handleForbidden(
 	ctx context.Context, w http.ResponseWriter, r *http.Request, reason string, values ...interface{},
 ) {
 	err := errors.Forbidden(reason, values...)
-	logger.WithError(ctx, err).Warn("Tenant identity rejected")
+	slog.WarnContext(ctx, "Tenant identity rejected", "error", err)
 	response.WriteServiceErrorResponse(ctx, w, r, err)
 }
 

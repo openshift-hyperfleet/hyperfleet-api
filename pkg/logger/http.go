@@ -7,34 +7,34 @@ import (
 
 // HTTP field name constants
 const (
-	FieldHTTPMethod     = "method"
-	FieldHTTPPath       = "path"
-	FieldHTTPStatusCode = "status_code"
-	FieldHTTPDuration   = "duration_ms"
-	FieldHTTPUserAgent  = "user_agent"
+	fieldHTTPMethod     = "method"
+	fieldHTTPPath       = "path"
+	fieldHTTPStatusCode = "status_code"
+	fieldHTTPDuration   = "duration_ms"
+	fieldHTTPUserAgent  = "user_agent"
 )
 
 // HTTPMethod returns a slog attribute for HTTP method
 func HTTPMethod(method string) slog.Attr {
-	return slog.String(FieldHTTPMethod, method)
+	return slog.String(fieldHTTPMethod, method)
 }
 
 // HTTPPath returns a slog attribute for HTTP path
 func HTTPPath(path string) slog.Attr {
-	return slog.String(FieldHTTPPath, path)
+	return slog.String(fieldHTTPPath, path)
 }
 
 // HTTPStatusCode returns a slog attribute for HTTP status code
 func HTTPStatusCode(code int) slog.Attr {
-	return slog.Int(FieldHTTPStatusCode, code)
+	return slog.Int(fieldHTTPStatusCode, code)
 }
 
 // HTTPDuration returns a slog attribute for HTTP request duration in milliseconds
 func HTTPDuration(d time.Duration) slog.Attr {
-	return slog.Int64(FieldHTTPDuration, d.Milliseconds())
+	return slog.Int64(fieldHTTPDuration, d.Milliseconds())
 }
 
 // HTTPUserAgent returns a slog attribute for HTTP user agent
 func HTTPUserAgent(ua string) slog.Attr {
-	return slog.String(FieldHTTPUserAgent, ua)
+	return slog.String(fieldHTTPUserAgent, ua)
 }

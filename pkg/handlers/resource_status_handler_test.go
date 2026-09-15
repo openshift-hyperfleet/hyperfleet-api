@@ -1,7 +1,10 @@
 package handlers
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -9,16 +12,90 @@ import (
 	"time"
 
 	. "github.com/onsi/gomega"
+	hfl "github.com/openshift-hyperfleet/hyperfleet-logger"
 	"go.uber.org/mock/gomock"
 	"gorm.io/datatypes"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/services"
 )
 
 const testChannelID = "ch-1"
+
+func TestStatusHandlers_AdapterContextReachesServiceAndErrorResponse(t *testing.T) {
+	for _, route := range []string{"entity", "root"} {
+		t.Run(route, func(t *testing.T) {
+			var output bytes.Buffer
+			previous := slog.Default()
+			slog.SetDefault(logger.NewLogger("test", logger.HandlerConfig{
+				Level: slog.LevelInfo, Format: hfl.FormatJSON, Output: &output,
+			}))
+			t.Cleanup(func() { slog.SetDefault(previous) })
+			ctrl := gomock.NewController(t)
+			resourceSvc := services.NewMockResourceService(ctrl)
+			adapterSvc := services.NewMockAdapterStatusService(ctrl)
+			resource := &api.Resource{Kind: "Channel"}
+			resource.ID = testChannelID
+			resourceSvc.EXPECT().ProcessAdapterStatus(
+				gomock.Any(), resource.Kind, resource.ID, gomock.Any(),
+			).DoAndReturn(func(
+				ctx context.Context, _, _ string, _ *api.AdapterStatus,
+			) (*api.AdapterStatus, *errors.ServiceError) {
+				if adapter, _ := hfl.Get(ctx, logger.AdapterKey); adapter != "adapter1" {
+					t.Errorf("service adapter = %q, want adapter1", adapter)
+				}
+				if requestID, _ := logger.GetRequestID(ctx); requestID != "request-1" {
+					t.Errorf("service request ID = %q, want request-1", requestID)
+				}
+				return nil, errors.GeneralError("test failure")
+			})
+			body := openapi.AdapterStatusCreateRequest{
+				Adapter: "adapter1", ObservedGeneration: 1, ObservedTime: time.Now().UTC(),
+				Conditions: []openapi.ConditionRequest{
+					{Type: "Available", Status: openapi.AdapterConditionStatusTrue},
+					{Type: "Applied", Status: openapi.AdapterConditionStatusTrue},
+					{Type: "Health", Status: openapi.AdapterConditionStatusTrue},
+				},
+			}
+			bodyJSON, err := json.Marshal(body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			parent := hfl.Set(t.Context(), logger.ReqIDKey, "request-1")
+			parent = hfl.WithTraceID(parent, "trace-1")
+			req := httptest.NewRequest(http.MethodPut, "/statuses", bytes.NewReader(bodyJSON)).WithContext(parent)
+			req.SetPathValue("id", testChannelID)
+			res := httptest.NewRecorder()
+			if route == "entity" {
+				resourceSvc.EXPECT().Get(gomock.Any(), resource.Kind, resource.ID).Return(resource, nil)
+				NewResourceStatusHandler(channelDescriptor, resourceSvc, adapterSvc).Create(res, req)
+			} else {
+				resourceSvc.EXPECT().GetByID(gomock.Any(), resource.ID).Return(resource, nil)
+				NewRootResourceHandler(resourceSvc, adapterSvc, nil).CreateStatus(res, req)
+			}
+			if res.Code != http.StatusInternalServerError {
+				t.Fatalf("HTTP status = %d, want 500", res.Code)
+			}
+			var record map[string]any
+			if err := json.Unmarshal(output.Bytes(), &record); err != nil {
+				t.Fatal(err)
+			}
+			for key, want := range map[string]string{
+				"adapter": "adapter1", "request_id": "request-1", "trace_id": "trace-1",
+			} {
+				if record[key] != want {
+					t.Errorf("error log %s = %v, want %q", key, record[key], want)
+				}
+			}
+			if _, ok := hfl.Get(parent, logger.AdapterKey); ok {
+				t.Error("handler must not modify the caller's context")
+			}
+		})
+	}
+}
 
 func newTestResourceStatusHandler(
 	ctrl *gomock.Controller,

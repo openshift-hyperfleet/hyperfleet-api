@@ -52,7 +52,7 @@ func AddDatabaseFlags(cmd *cobra.Command) {
 }
 
 // AddLoggingFlags adds logging configuration flags following standard naming
-// Format: --log-<field> maps to HYPERFLEET_LOGGING_<FIELD> and logging.<field>
+// Format: --log-<field> maps to HYPERFLEET_LOGGING_<FIELD> and logging.<field>.
 func AddLoggingFlags(cmd *cobra.Command) {
 	defaults := NewLoggingConfig()
 

@@ -20,13 +20,13 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
 const metricsSubsystem = "hyperfleet_api"
@@ -158,7 +158,7 @@ func (c *ReconciliationCollector) Collect(ch chan<- prometheus.Metric) {
 
 	rows, err := c.db.QueryContext(ctx, reconciliationQuery, threshold) //nolint:gosec // compile-time SQL
 	if err != nil {
-		logger.WithError(ctx, err).Error("Failed to query reconciliation metrics")
+		slog.ErrorContext(ctx, "Failed to query reconciliation metrics", "error", err)
 		c.emitInvalid(ch, err)
 		return
 	}
@@ -170,7 +170,7 @@ func (c *ReconciliationCollector) Collect(ch chan<- prometheus.Metric) {
 		var maxDuration float64
 
 		if err := rows.Scan(&resourceType, &isDelete, &pending, &stuck, &maxDuration); err != nil {
-			logger.WithError(ctx, err).Error("Failed to scan reconciliation metric row")
+			slog.ErrorContext(ctx, "Failed to scan reconciliation metric row", "error", err)
 			c.emitInvalid(ch, err)
 			return
 		}
@@ -182,7 +182,7 @@ func (c *ReconciliationCollector) Collect(ch chan<- prometheus.Metric) {
 	}
 
 	if err := rows.Err(); err != nil {
-		logger.WithError(ctx, err).Error("Error iterating reconciliation metric rows")
+		slog.ErrorContext(ctx, "Error iterating reconciliation metric rows", "error", err)
 		c.emitInvalid(ch, err)
 	}
 }

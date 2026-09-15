@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	gormlogger "gorm.io/gorm/logger"
@@ -30,19 +31,19 @@ func (l *GormLogger) LogMode(level gormlogger.LogLevel) gormlogger.Interface {
 
 func (l *GormLogger) Info(ctx context.Context, msg string, data ...interface{}) {
 	if l.logLevel >= gormlogger.Info {
-		With(ctx, "gorm_info", formatMessage(msg, data)).Info("GORM info")
+		slog.InfoContext(ctx, "GORM info", "gorm_info", formatMessage(msg, data))
 	}
 }
 
 func (l *GormLogger) Warn(ctx context.Context, msg string, data ...interface{}) {
 	if l.logLevel >= gormlogger.Warn {
-		With(ctx, "gorm_warn", formatMessage(msg, data)).Warn("GORM warning")
+		slog.WarnContext(ctx, "GORM warning", "gorm_warn", formatMessage(msg, data))
 	}
 }
 
 func (l *GormLogger) Error(ctx context.Context, msg string, data ...interface{}) {
 	if l.logLevel >= gormlogger.Error {
-		With(ctx, "gorm_error", formatMessage(msg, data)).Error("GORM error")
+		slog.ErrorContext(ctx, "GORM error", "gorm_error", formatMessage(msg, data))
 	}
 }
 
@@ -61,27 +62,27 @@ func (l *GormLogger) Trace(
 
 	switch {
 	case err != nil && l.logLevel >= gormlogger.Error && !errors.Is(err, gormlogger.ErrRecordNotFound):
-		With(ctx,
-			"error", err.Error(),
+		slog.ErrorContext(ctx, "GORM query error",
+			"error", err,
 			"duration_ms", float64(elapsed.Nanoseconds())/1e6,
 			"rows", rows,
 			"sql", sql,
-		).Error("GORM query error")
+		)
 
 	case elapsed > l.slowThreshold && l.slowThreshold != 0 && l.logLevel >= gormlogger.Warn:
-		With(ctx,
+		slog.WarnContext(ctx, "GORM slow query",
 			"duration_ms", float64(elapsed.Nanoseconds())/1e6,
 			"threshold_ms", float64(l.slowThreshold.Nanoseconds())/1e6,
 			"rows", rows,
 			"sql", sql,
-		).Warn("GORM slow query")
+		)
 
 	case l.logLevel >= gormlogger.Info:
-		With(ctx,
+		slog.InfoContext(ctx, "GORM query",
 			"duration_ms", float64(elapsed.Nanoseconds())/1e6,
 			"rows", rows,
 			"sql", sql,
-		).Info("GORM query")
+		)
 	}
 }
 

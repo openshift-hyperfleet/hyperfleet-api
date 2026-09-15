@@ -3,6 +3,7 @@ package container
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/validators"
@@ -16,7 +17,7 @@ func (c *Container) SchemaValidator() *validators.SchemaValidator {
 			panic(fmt.Sprintf("create schema validator: %v", err))
 		}
 		c.schemaValidator = schemaValidator
-		logger.With(context.Background(), logger.FieldSchemaPath, schemaPath).Info("Schema validation enabled")
+		slog.InfoContext(context.Background(), "Schema validation enabled", logger.FieldSchemaPath, schemaPath)
 	}
 	return c.schemaValidator
 }

@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"strings"
@@ -48,16 +49,16 @@ func (s *baseServer) Serve(listener net.Listener) error {
 			return errors.Join(configErr, listener.Close())
 		}
 
-		logger.With(ctx, logger.FieldBindAddress, s.httpServer.Addr).Info("Serving " + s.name + " with TLS")
+		slog.InfoContext(ctx, "Serving "+s.name+" with TLS", logger.FieldBindAddress, s.httpServer.Addr)
 		err = s.httpServer.ServeTLS(listener, s.cfg.TLSCertFile(), s.cfg.TLSKeyFile())
 	} else {
-		logger.With(ctx, logger.FieldBindAddress, s.httpServer.Addr).Info("Serving " + s.name + " without TLS")
+		slog.InfoContext(ctx, "Serving "+s.name+" without TLS", logger.FieldBindAddress, s.httpServer.Addr)
 		err = s.httpServer.Serve(listener)
 	}
 	if err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return fmt.Errorf("%s terminated with errors: %w", s.name, err)
 	}
-	logger.Info(ctx, s.name+" terminated")
+	slog.InfoContext(ctx, s.name+" terminated")
 	return nil
 }
 

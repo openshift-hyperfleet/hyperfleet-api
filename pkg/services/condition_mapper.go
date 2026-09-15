@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"math"
 	"sort"
 	"strings"
@@ -223,8 +224,10 @@ func (m *ConditionMapper) evaluateRule(
 
 	// Skip condition if reason exceeds max length (per JIRA AC: "skip condition")
 	if len(reasonStr) > registry.MaxConditionReasonLength {
-		logger.With(ctx, "resource_kind", m.resourceKind, "condition_type", rule.conditionType).
-			Warn("Condition skipped: reason exceeds max length")
+		slog.WarnContext(ctx,
+			"Condition skipped: reason exceeds max length",
+			"resource_kind", m.resourceKind, "condition_type", rule.conditionType,
+		)
 		return nil, nil
 	}
 
@@ -245,8 +248,9 @@ func (m *ConditionMapper) truncateMessage(
 ) string {
 	if len(messageStr) > registry.MaxConditionMessageLength {
 		truncated := truncateUTF8(messageStr, registry.MaxConditionMessageLength)
-		logger.With(ctx, "resource_kind", m.resourceKind, "condition_type", rule.conditionType).
-			Info("Condition message truncated to max length")
+		slog.InfoContext(ctx,
+			"Condition message truncated to max length", "resource_kind", m.resourceKind, "condition_type", rule.conditionType,
+		)
 		return truncated
 	}
 	return messageStr
@@ -321,8 +325,10 @@ func extractResourceGeneration(
 		return 0
 	}
 	if gen < math.MinInt32 || gen > math.MaxInt32 {
-		logger.With(ctx, "resource_kind", resourceKind, "condition_type", conditionType, "generation", gen).
-			Warn("Resource generation out of int32 range, using 0")
+		slog.WarnContext(ctx,
+			"Resource generation out of int32 range, "+
+				"using 0", "resource_kind", resourceKind, "condition_type", conditionType, "generation", gen,
+		)
 		return 0
 	}
 	return int32(gen)
@@ -480,7 +486,6 @@ func buildStatusesList(ctx context.Context, statuses api.AdapterStatusList) []in
 func parseConditionsWithUnknownCheck(
 	ctx context.Context,
 	conditionsJSON []byte,
-	adapterName string,
 ) ([]map[string]interface{}, bool) {
 	// Initialize to empty slice (not nil) so CEL receives [] instead of null
 	conditions := make([]map[string]interface{}, 0)
@@ -495,9 +500,9 @@ func parseConditionsWithUnknownCheck(
 		// Unmarshal failure: return empty conditions array.
 		// Degraded mode: statuses array contains entry with empty conditions, allowing
 		// resource-level CEL expressions to still run (e.g., counting adapters).
-		logger.With(ctx, "adapter", adapterName).
-			WithError(err).
-			Warn("Failed to unmarshal adapter conditions JSONB, using empty conditions array")
+		slog.WarnContext(ctx,
+			"Failed to unmarshal adapter conditions JSONB, using empty conditions array", "error", err,
+		)
 		return conditions, hasUnknown
 	}
 
@@ -537,7 +542,7 @@ func parseConditionsWithUnknownCheck(
 
 // parseAdapterData unmarshals adapter data from JSONB to a map.
 // Returns empty map on unmarshal failure to maintain CEL context consistency.
-func parseAdapterData(ctx context.Context, dataJSON []byte, adapterName string) map[string]interface{} {
+func parseAdapterData(ctx context.Context, dataJSON []byte) map[string]interface{} {
 	data := make(map[string]interface{})
 
 	if dataJSON == nil {
@@ -546,9 +551,9 @@ func parseAdapterData(ctx context.Context, dataJSON []byte, adapterName string) 
 
 	if err := json.Unmarshal(dataJSON, &data); err != nil {
 		// Reset to empty map on parse failure to maintain consistency
-		logger.With(ctx, "adapter", adapterName).
-			WithError(err).
-			Warn("Failed to unmarshal adapter data JSONB, using empty map")
+		slog.WarnContext(ctx,
+			"Failed to unmarshal adapter data JSONB, using empty map", "error", err,
+		)
 		return make(map[string]interface{})
 	}
 
@@ -570,7 +575,8 @@ func adapterStatusToMapWithUnknownCheck(ctx context.Context, status *api.Adapter
 	}
 
 	// Parse conditions and check for Unknown status
-	conditions, hasUnknown := parseConditionsWithUnknownCheck(ctx, status.Conditions, status.Adapter)
+	ctx = logger.WithAdapter(ctx, status.Adapter)
+	conditions, hasUnknown := parseConditionsWithUnknownCheck(ctx, status.Conditions)
 
 	// Early return if Unknown found - buildStatusesList discards the map anyway
 	// Return nil instead of allocating a throwaway map (saves allocation on hot path)
@@ -579,7 +585,7 @@ func adapterStatusToMapWithUnknownCheck(ctx context.Context, status *api.Adapter
 	}
 
 	// Parse data field from JSONB
-	data := parseAdapterData(ctx, status.Data, status.Adapter)
+	data := parseAdapterData(ctx, status.Data)
 
 	statusMap := map[string]interface{}{
 		celKeyAdapter: status.Adapter,
@@ -602,8 +608,9 @@ func resourceToMap(ctx context.Context, resource interface{}, resourceKind strin
 	if err != nil {
 		// Marshal failure: return empty map.
 		// Degraded mode: CEL expressions using resource.* will receive empty object.
-		logger.With(ctx, "resource_kind", resourceKind).WithError(err).
-			Warn("Failed to marshal resource to JSON, using empty map")
+		slog.WarnContext(ctx,
+			"Failed to marshal resource to JSON, using empty map", "resource_kind", resourceKind, "error", err,
+		)
 		return make(map[string]interface{})
 	}
 
@@ -611,8 +618,9 @@ func resourceToMap(ctx context.Context, resource interface{}, resourceKind strin
 	if err := json.Unmarshal(data, &result); err != nil {
 		// Unmarshal failure: return empty map.
 		// Degraded mode: CEL expressions using resource.* will receive empty object.
-		logger.With(ctx, "resource_kind", resourceKind).WithError(err).
-			Warn("Failed to unmarshal resource JSON to map, using empty map")
+		slog.WarnContext(ctx,
+			"Failed to unmarshal resource JSON to map, using empty map", "resource_kind", resourceKind, "error", err,
+		)
 		return make(map[string]interface{})
 	}
 
