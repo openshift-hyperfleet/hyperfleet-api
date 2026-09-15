@@ -18,6 +18,7 @@ import (
 	"github.com/brianvoe/gofakeit/v7"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	hfl "github.com/openshift-hyperfleet/hyperfleet-logger"
 	"github.com/spf13/cobra"
 	"gorm.io/gorm"
 
@@ -208,7 +209,7 @@ func NewHelper() *Helper {
 		}
 
 		if logLevel := os.Getenv("LOGLEVEL"); logLevel != "" {
-			logger.With(ctx, logger.FieldLogLevel, logLevel).Info("Using custom loglevel")
+			slog.InfoContext(ctx, "Using custom loglevel", logger.FieldLogLevel, logLevel)
 			cfg.Logging.Level = logLevel
 		}
 
@@ -255,7 +256,7 @@ func NewHelper() *Helper {
 
 func (helper *Helper) Teardown() {
 	if err := helper.closer.Close(); err != nil {
-		logger.WithError(context.Background(), err).Error("teardown errors")
+		slog.ErrorContext(context.Background(), "teardown errors", "error", err)
 	}
 }
 
@@ -268,9 +269,9 @@ func (helper *Helper) requireJWTIssuers() {
 // abortSetup logs msg, cleans up already-created resources via c, then panics - for unrecoverable NewHelper failures.
 func abortSetup(ctx context.Context, c *closer.Closer, err error, msg string) {
 	if err != nil {
-		logger.WithError(ctx, err).Error(msg)
+		slog.ErrorContext(ctx, msg, "error", err)
 	} else {
-		logger.Error(ctx, msg)
+		slog.ErrorContext(ctx, msg)
 	}
 	_ = c.Close()
 	panic(fmt.Sprintf("test setup: %s", msg))
@@ -309,11 +310,11 @@ func (helper *Helper) startAPIServer() {
 		abortSetup(ctx, helper.closer, err, "Unable to start Test API server")
 	}
 	go func() {
-		logger.Debug(ctx, "Test API server started")
+		slog.DebugContext(ctx, "Test API server started")
 		if err := helper.APIServer.Serve(listener); err != nil {
-			logger.WithError(ctx, err).Error("Test API server terminated with errors")
+			slog.ErrorContext(ctx, "Test API server terminated with errors", "error", err)
 		}
-		logger.Debug(ctx, "Test API server stopped")
+		slog.DebugContext(ctx, "Test API server stopped")
 	}()
 }
 
@@ -696,13 +697,7 @@ RVJUSUZJQ0FURS0tLS0tCg==`
 }
 
 func initTestLogger() {
-	cfg := &logger.LogConfig{
-		Level:     slog.LevelInfo,
-		Format:    logger.FormatText,
-		Output:    os.Stdout,
-		Component: "hyperfleet-api-test",
-		Version:   "test",
-		Hostname:  "test-host",
-	}
-	logger.InitGlobalLogger(cfg)
+	slog.SetDefault(logger.NewLogger("test", logger.HandlerConfig{
+		Level: slog.LevelInfo, Format: hfl.FormatText, Output: os.Stdout, Hostname: "test-host",
+	}))
 }

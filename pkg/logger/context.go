@@ -5,58 +5,32 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	hfl "github.com/openshift-hyperfleet/hyperfleet-logger"
 )
 
-// contextKey is an unexported type for keys defined in this package.
-// This prevents collisions with keys defined in other packages.
-type contextKey string
+// Context keys for API-specific correlation fields. Trace, span, resource type,
+// and resource ID keys are owned by the shared logger package.
+var ReqIDKey = hfl.NewKey[string](FieldRequestID)
 
-// Context keys for storing correlation fields
-const (
-	ReqIDKey           contextKey = "request_id"
-	TraceIDCtxKey      contextKey = "trace_id"
-	SpanIDCtxKey       contextKey = "span_id"
-	ClusterIDCtxKey    contextKey = "cluster_id"
-	ResourceTypeCtxKey contextKey = "resource_type"
-	ResourceIDCtxKey   contextKey = "resource_id"
-)
+// AdapterKey identifies the adapter whose report is being processed.
+var AdapterKey = hfl.NewKey[string](FieldAdapter)
+
+// WithAdapter derives a context carrying adapter identity without losing request correlation.
+func WithAdapter(ctx context.Context, adapter string) context.Context {
+	return hfl.Set(ctx, AdapterKey, adapter)
+}
 
 // HTTP header names
 const (
 	ReqIDHeader = "X-Request-ID"
 )
 
-// WithTraceID adds trace ID to context
-func WithTraceID(ctx context.Context, traceID string) context.Context {
-	return context.WithValue(ctx, TraceIDCtxKey, traceID)
-}
-
-// WithSpanID adds span ID to context
-func WithSpanID(ctx context.Context, spanID string) context.Context {
-	return context.WithValue(ctx, SpanIDCtxKey, spanID)
-}
-
-// WithClusterID adds cluster ID to context
-func WithClusterID(ctx context.Context, clusterID string) context.Context {
-	return context.WithValue(ctx, ClusterIDCtxKey, clusterID)
-}
-
-// WithResourceType adds resource type to context
-func WithResourceType(ctx context.Context, resourceType string) context.Context {
-	return context.WithValue(ctx, ResourceTypeCtxKey, resourceType)
-}
-
-// WithResourceID adds resource ID to context
-func WithResourceID(ctx context.Context, resourceID string) context.Context {
-	return context.WithValue(ctx, ResourceIDCtxKey, resourceID)
-}
-
 // WithRequestID adds request ID to context
 // If request ID already exists in context, it returns the context unchanged
 // Otherwise, it generates a new UUID v7 and adds it to the context
 // Returns an error if UUID generation fails (extremely unlikely in practice)
 func WithRequestID(ctx context.Context) (context.Context, error) {
-	if ctx.Value(ReqIDKey) != nil {
+	if _, ok := hfl.Get(ctx, ReqIDKey); ok {
 		return ctx, nil
 	}
 
@@ -65,60 +39,20 @@ func WithRequestID(ctx context.Context) (context.Context, error) {
 		return ctx, fmt.Errorf("failed to generate request ID: %w", err)
 	}
 
-	return context.WithValue(ctx, ReqIDKey, reqID.String()), nil
+	return hfl.Set(ctx, ReqIDKey, reqID.String()), nil
 }
 
 // GetRequestID retrieves request ID from context
 func GetRequestID(ctx context.Context) (string, bool) {
-	reqID, ok := ctx.Value(ReqIDKey).(string)
-	return reqID, ok
+	return hfl.Get(ctx, ReqIDKey)
 }
 
-// GetTraceID retrieves trace ID from context
-func GetTraceID(ctx context.Context) (string, bool) {
-	traceID, ok := ctx.Value(TraceIDCtxKey).(string)
-	return traceID, ok
-}
-
-// GetSpanID retrieves span ID from context
-func GetSpanID(ctx context.Context) (string, bool) {
-	spanID, ok := ctx.Value(SpanIDCtxKey).(string)
-	return spanID, ok
-}
-
-// GetClusterID retrieves cluster ID from context
-func GetClusterID(ctx context.Context) (string, bool) {
-	clusterID, ok := ctx.Value(ClusterIDCtxKey).(string)
-	return clusterID, ok
-}
-
-// GetResourceType retrieves resource type from context
-func GetResourceType(ctx context.Context) (string, bool) {
-	resourceType, ok := ctx.Value(ResourceTypeCtxKey).(string)
-	return resourceType, ok
-}
-
-// GetResourceID retrieves resource ID from context
-func GetResourceID(ctx context.Context) (string, bool) {
-	resourceID, ok := ctx.Value(ResourceIDCtxKey).(string)
-	return resourceID, ok
-}
-
-// ContextField defines metadata for a string-type context log field
-type ContextField struct {
-	Getter func(context.Context) (string, bool)
-	Key    contextKey
-	Name   string
-}
-
-// ContextFieldsRegistry defines all string-type context fields for logging
-// This is the single source of truth for string field management
-// Fields are ordered as per HyperFleet Logging Specification (docs/logging.md:384)
-var ContextFieldsRegistry = []ContextField{
-	{GetRequestID, ReqIDKey, "request_id"},
-	{GetTraceID, TraceIDCtxKey, "trace_id"},
-	{GetSpanID, SpanIDCtxKey, "span_id"},
-	{GetClusterID, ClusterIDCtxKey, "cluster_id"},
-	{GetResourceType, ResourceTypeCtxKey, "resource_type"},
-	{GetResourceID, ResourceIDCtxKey, "resource_id"},
+// ContextFields returns API-specific fields for the shared handler. Standard
+// correlation fields (trace_id, span_id, resource_type, resource_id) are
+// registered by hyperfleet-logger itself.
+func ContextFields() []hfl.ContextField {
+	return []hfl.ContextField{
+		hfl.StringField(ReqIDKey),
+		hfl.StringField(AdapterKey),
+	}
 }

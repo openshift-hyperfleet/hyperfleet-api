@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/lib/pq"
@@ -52,12 +53,12 @@ func (f *Test) Init(config *config.DatabaseConfig) {
 	once.Do(func() {
 		ctx := context.Background()
 		if err := initDatabase(config, db.Migrate); err != nil {
-			logger.WithError(ctx, err).Error("Error initializing test database")
+			slog.ErrorContext(ctx, "Error initializing test database", "error", err)
 			panic(fmt.Errorf("error initializing test database: %w", err))
 		}
 
 		if err := resetDB(config); err != nil {
-			logger.WithError(ctx, err).Error("Error resetting test database")
+			slog.ErrorContext(ctx, "Error resetting test database", "error", err)
 			panic(fmt.Errorf("error resetting test database: %w", err))
 		}
 	})

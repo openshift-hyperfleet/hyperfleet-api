@@ -4,11 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
 // Handler provides HTTP handlers for health checks
@@ -79,7 +79,7 @@ func (h *Handler) ReadinessHandler(w http.ResponseWriter, r *http.Request) {
 			if pingCtx.Err() == context.DeadlineExceeded || errors.Is(err, context.DeadlineExceeded) {
 				reason = "database ping timeout"
 			}
-			logger.WithError(r.Context(), err).Warn("Readiness check: database ping failed")
+			slog.WarnContext(r.Context(), "Readiness check: database ping failed", "error", err)
 			w.WriteHeader(http.StatusServiceUnavailable)
 			json.NewEncoder(w).Encode(map[string]string{ //nolint:errcheck // best-effort response after header is written
 				"status": "not_ready",

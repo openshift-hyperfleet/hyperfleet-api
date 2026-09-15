@@ -4,6 +4,7 @@ import (
 	"context"
 	stderrors "errors"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"time"
@@ -51,7 +52,7 @@ func TransactionMiddleware(next http.Handler, connection SessionFactory, request
 			var err error
 			ctx, err = NewContext(ctx, connection)
 			if err != nil {
-				logger.WithError(ctx, err).Error("Could not create transaction")
+				slog.ErrorContext(ctx, "Could not create transaction", "error", err)
 				var serviceErr *errors.ServiceError
 				if IsDBConnectionError(err) {
 					serviceErr = errors.ServiceUnavailable("Database connection unavailable")

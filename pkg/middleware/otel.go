@@ -7,7 +7,7 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
+	hfl "github.com/openshift-hyperfleet/hyperfleet-logger"
 )
 
 // OTelMiddleware extracts W3C trace context and enriches logger context
@@ -27,8 +27,8 @@ func OTelMiddleware(handler http.Handler) http.Handler {
 		if span.SpanContext().IsValid() {
 			traceID := span.SpanContext().TraceID().String()
 			spanID := span.SpanContext().SpanID().String()
-			ctx = logger.WithTraceID(ctx, traceID)
-			ctx = logger.WithSpanID(ctx, spanID)
+			ctx = hfl.WithTraceID(ctx, traceID)
+			ctx = hfl.WithSpanID(ctx, spanID)
 		}
 
 		r = r.WithContext(ctx)

@@ -2,6 +2,7 @@ package logger
 
 import (
 	"fmt"
+	"log/slog"
 	"net/http"
 )
 
@@ -11,7 +12,7 @@ func RequestIDMiddleware(handler http.Handler) http.Handler {
 		ctx, err := WithRequestID(r.Context())
 		if err != nil {
 			wrappedErr := fmt.Errorf("request ID middleware: %w", err)
-			WithError(r.Context(), wrappedErr).Error("Failed to generate request ID; continuing without it")
+			slog.ErrorContext(r.Context(), "Failed to generate request ID; continuing without it", "error", wrappedErr)
 			ctx = r.Context()
 		}
 

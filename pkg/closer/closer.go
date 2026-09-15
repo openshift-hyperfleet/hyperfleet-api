@@ -4,10 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
-
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
 type Closer struct {
@@ -47,10 +46,10 @@ func (c *Closer) Close() error {
 			err := fns[i]()
 			elapsed := time.Since(start)
 			if err != nil {
-				logger.With(ctx, "step", i, "duration", elapsed).WithError(err).Error("closer: step failed")
+				slog.ErrorContext(ctx, "closer: step failed", "step", i, "duration", elapsed, "error", err)
 				joined = errors.Join(joined, fmt.Errorf("step %d: %w", i, err))
 			} else {
-				logger.With(ctx, "step", i, "duration", elapsed).Info("closer: step completed")
+				slog.InfoContext(ctx, "closer: step completed", "step", i, "duration", elapsed)
 			}
 		}
 

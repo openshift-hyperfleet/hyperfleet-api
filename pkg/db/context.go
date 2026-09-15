@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"errors"
+	"log/slog"
 
 	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
@@ -52,23 +53,23 @@ func NewContext(ctx context.Context, connection SessionFactory) (context.Context
 func Resolve(ctx context.Context) {
 	tx, ok := dbContext.Transaction(ctx)
 	if !ok {
-		logger.With(ctx,
-			"error_type", "missing_transaction",
+		slog.ErrorContext(ctx,
+			"Transaction resolution failed: no active transaction in context", "error_type", "missing_transaction",
 			"error", "no active transaction found in context",
-		).Error("Transaction resolution failed: no active transaction in context")
+		)
 		return
 	}
 
 	if tx.MarkedForRollback() {
 		if err := tx.Rollback(); err != nil {
-			logger.WithError(ctx, err).Error("Could not rollback transaction")
+			slog.ErrorContext(ctx, "Could not rollback transaction", "error", err)
 			recordTransactionError("rollback", "rollback_failed")
 			return
 		}
-		logger.Info(ctx, "Rolled back transaction")
+		slog.InfoContext(ctx, "Rolled back transaction")
 	} else {
 		if err := tx.Commit(); err != nil {
-			logger.WithError(ctx, err).Error("Could not commit transaction")
+			slog.ErrorContext(ctx, "Could not commit transaction", "error", err)
 			recordTransactionError("commit", "commit_failed")
 			return
 		}
@@ -79,11 +80,11 @@ func Resolve(ctx context.Context) {
 func MarkForRollback(ctx context.Context, err error) {
 	transaction, ok := dbContext.Transaction(ctx)
 	if !ok {
-		logger.Error(ctx, "failed to mark transaction for rollback: could not retrieve transaction from context")
+		slog.ErrorContext(ctx, "failed to mark transaction for rollback: could not retrieve transaction from context")
 		return
 	}
 	transaction.SetRollbackFlag(true)
-	logger.WithError(ctx, err).Info("Marked transaction for rollback")
+	slog.InfoContext(ctx, "Marked transaction for rollback", "error", err)
 }
 
 // NewAdvisoryLockContext returns a new context with AdvisoryLock stored in it.
@@ -125,14 +126,14 @@ func NewAdvisoryLockContext(
 
 	lock, err := newAdvisoryLock(ctx, connection, &lockOwnerID, &id, &lockType)
 	if err != nil {
-		logger.WithError(ctx, err).Error("Failed to create advisory lock")
+		slog.ErrorContext(ctx, "Failed to create advisory lock", "error", err)
 		return ctx, lockOwnerID, err
 	}
 
 	// obtain the advisory lock (blocking)
 	err = lock.lock()
 	if err != nil {
-		logger.WithError(ctx, err).Error("Failed to acquire advisory lock")
+		slog.ErrorContext(ctx, "Failed to acquire advisory lock", "error", err)
 		lock.g2.Rollback() // clean up the open transaction
 		return ctx, lockOwnerID, err
 	}
@@ -140,7 +141,7 @@ func NewAdvisoryLockContext(
 	locks.set(id, lockType, lock)
 
 	ctx = context.WithValue(ctx, advisoryLock, locks)
-	logger.With(ctx, logger.FieldLockID, id, logger.FieldLockType, lockType).Info("Acquired advisory lock")
+	slog.InfoContext(ctx, "Acquired advisory lock", logger.FieldLockID, id, logger.FieldLockType, lockType)
 
 	return ctx, lockOwnerID, nil
 }
@@ -149,13 +150,13 @@ func NewAdvisoryLockContext(
 func Unlock(ctx context.Context, callerUUID string) {
 	locks, ok := ctx.Value(advisoryLock).(advisoryLockMap)
 	if !ok {
-		logger.Error(ctx, "Could not retrieve locks from context")
+		slog.ErrorContext(ctx, "Could not retrieve locks from context")
 		return
 	}
 
 	for k, lock := range locks {
 		if lock.ownerUUID == nil {
-			logger.With(ctx, logger.FieldLockID, lock.id).Warn("lockOwnerID could not be found in AdvisoryLock")
+			slog.WarnContext(ctx, "lockOwnerID could not be found in AdvisoryLock", logger.FieldLockID, lock.id)
 		} else if *lock.ownerUUID == callerUUID {
 			lockID := "<missing>"
 			lockType := LockType("<missing>")
@@ -168,11 +169,11 @@ func Unlock(ctx context.Context, callerUUID string) {
 			}
 
 			if err := lock.unlock(ctx); err != nil {
-				logger.With(ctx, logger.FieldLockID, lockID, logger.FieldLockType, lockType).
-					WithError(err).Error("Could not unlock lock")
+				slog.ErrorContext(ctx,
+					"Could not unlock lock", logger.FieldLockID, lockID, logger.FieldLockType, lockType, "error", err)
 				continue
 			}
-			logger.With(ctx, logger.FieldLockID, lockID, logger.FieldLockType, lockType).Info("Unlocked lock")
+			slog.InfoContext(ctx, "Unlocked lock", logger.FieldLockID, lockID, logger.FieldLockType, lockType)
 			delete(locks, k)
 		}
 		// Note: if ownerUUID doesn't match callerUUID, the lock belongs to a different

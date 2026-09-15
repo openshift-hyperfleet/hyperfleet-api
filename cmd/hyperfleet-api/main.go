@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 
+	hfl "github.com/openshift-hyperfleet/hyperfleet-logger"
 	"github.com/spf13/cobra"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/migrate"
@@ -36,27 +37,27 @@ func main() {
 	rootCmd.AddCommand(migrateCmd, serveCmd, versionCmd)
 
 	if err := rootCmd.Execute(); err != nil {
-		logger.WithError(ctx, err).Error("Error running command")
+		slog.ErrorContext(ctx, "Error running command", "error", err)
 		os.Exit(1)
 	}
 }
 
 // initDefaultLogger initializes a default logger with INFO level
 // This ensures logging works before environment/config is loaded
-// Reads HYPERFLEET_LOGGING_* from environment variables if set
+// Reads HYPERFLEET_LOGGING_* variables if set.
 func initDefaultLogger() {
 	// Read log level from environment with default fallback
 	level := slog.LevelInfo
 	if levelStr := os.Getenv("HYPERFLEET_LOGGING_LEVEL"); levelStr != "" {
-		if parsed, err := logger.ParseLogLevel(levelStr); err == nil {
+		if parsed, err := hfl.ParseLevel(levelStr); err == nil {
 			level = parsed
 		}
 	}
 
 	// Read log format from environment with default fallback
-	format := logger.FormatJSON
+	format := hfl.FormatJSON
 	if formatStr := os.Getenv("HYPERFLEET_LOGGING_FORMAT"); formatStr != "" {
-		if parsed, err := logger.ParseLogFormat(formatStr); err == nil {
+		if parsed, err := hfl.ParseFormat(formatStr); err == nil {
 			format = parsed
 		}
 	}
@@ -64,28 +65,14 @@ func initDefaultLogger() {
 	// Read log output from environment with default fallback
 	var output io.Writer = os.Stdout
 	if outputStr := os.Getenv("HYPERFLEET_LOGGING_OUTPUT"); outputStr != "" {
-		if parsed, err := logger.ParseLogOutput(outputStr); err == nil {
+		if parsed, err := hfl.ParseOutput(outputStr); err == nil {
 			output = parsed
 		}
 	}
 
-	cfg := &logger.LogConfig{
-		Level:     level,
-		Format:    format,
-		Output:    output,
-		Component: "hyperfleet-api",
-		Version:   api.Version,
-		Hostname:  getHostname(),
-	}
-	logger.InitGlobalLogger(cfg)
-}
-
-func getHostname() string {
-	hostname, err := os.Hostname()
-	if err != nil {
-		return "unknown"
-	}
-	return hostname
+	slog.SetDefault(logger.NewLogger(api.Version, logger.HandlerConfig{
+		Level: level, Format: format, Output: output,
+	}))
 }
 
 func newVersionCommand() *cobra.Command {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"hash/fnv"
+	"log/slog"
 	"time"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
@@ -114,7 +115,7 @@ func (l *AdvisoryLock) unlock(ctx context.Context) error {
 	l.g2 = nil
 
 	if err == nil {
-		logger.With(ctx, logger.FieldLockDurationMs, duration.Milliseconds()).Info("Released advisory lock")
+		slog.InfoContext(ctx, "Released advisory lock", logger.FieldLockDurationMs, duration.Milliseconds())
 	}
 
 	return err
