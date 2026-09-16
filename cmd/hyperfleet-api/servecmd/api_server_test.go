@@ -37,7 +37,7 @@ func TestBuildAPIServer_TenantMiddlewareWiredWhenEnabled(t *testing.T) {
 		},
 	}
 
-	apiServer, err := BuildAPIServer(cfg, nil, nil, nil, nil, nil)
+	apiServer, err := BuildAPIServer(cfg, nil, nil, nil, nil)
 	Expect(err).NotTo(HaveOccurred())
 
 	listener, err := apiServer.Listen()

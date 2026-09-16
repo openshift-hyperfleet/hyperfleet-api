@@ -29,7 +29,6 @@ func (d *sqlResourceLabelDao) ReplaceLabels(
 	g2 := d.sessionFactory.New(ctx)
 
 	if err := g2.Where("resource_id = ?", resourceID).Delete(&api.ResourceLabel{}).Error; err != nil {
-		db.MarkForRollback(ctx, err)
 		return err
 	}
 
@@ -40,7 +39,6 @@ func (d *sqlResourceLabelDao) ReplaceLabels(
 			rows[i].ResourceID = resourceID
 		}
 		if err := g2.Create(&rows).Error; err != nil {
-			db.MarkForRollback(ctx, err)
 			return err
 		}
 	}

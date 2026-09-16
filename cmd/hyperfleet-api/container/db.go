@@ -26,3 +26,10 @@ func (c *Container) SessionFactory() db.SessionFactory {
 	}
 	return c.sessionFactory
 }
+
+func (c *Container) TxRunner() db.TxRunner {
+	if c.txRunner == nil {
+		c.txRunner = db.NewTxRunner(c.SessionFactory())
+	}
+	return c.txRunner
+}

@@ -133,7 +133,6 @@ func runServe(cmd *cobra.Command, args []string) (runErr error) {
 		ctr.AdapterStatusService(),
 		ctr.SchemaValidator(),
 		ctr.JWTHandler(),
-		ctr.SessionFactory(),
 	)
 	if err != nil {
 		return fmt.Errorf("build API server: %w", err)

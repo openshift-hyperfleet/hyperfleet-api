@@ -11,7 +11,7 @@ import (
 // TestNewRouterFromConfig_PublicVsProtectedMiddleware guards the middleware layering:
 //
 //   - apiMiddleware (metrics, compress) runs for ALL API routes, public and protected.
-//   - protectedAPIMiddleware (schema validation, DB transaction) runs only for
+//   - protectedAPIMiddleware (schema validation and timeout) runs only for
 //     protected routes, after auth passes.
 //   - authMiddleware gates protected routes; unauthenticated requests never reach
 //     protectedAPIMiddleware.
@@ -101,7 +101,7 @@ func TestNewRouterFromConfig_PublicVsProtectedMiddleware(t *testing.T) {
 	Expect(apiMiddlewareCalls).To(Equal(1), "apiMiddleware must run for protected routes")
 	Expect(authMiddlewareCalls).To(Equal(1), "authMiddleware must run for protected routes")
 	Expect(protectedAPIMiddlewareCalls).To(Equal(0),
-		"protectedAPIMiddleware (schema validation, DB transaction) must not run when auth rejects the request")
+		"protectedAPIMiddleware (schema validation and timeout) must not run when auth rejects the request")
 
 	// Protected route, authorized - all middleware layers run.
 	authorized = true

@@ -2,13 +2,11 @@ package servecmd
 
 import (
 	"fmt"
-	"net/http"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/server"
 	requestlogging "github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/server/logging"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/auth"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/middleware"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/services"
@@ -28,7 +26,6 @@ func BuildAPIServer(
 	adapterStatusService services.AdapterStatusService,
 	schemaValidator *validators.SchemaValidator,
 	jwtHandler *auth.JWTHandler,
-	sessionFactory db.SessionFactory,
 ) (*server.APIServer, error) {
 	mainMiddleware := []server.Middleware{logger.RequestIDMiddleware}
 	if cfg.Tracing.Enabled {
@@ -44,9 +41,7 @@ func BuildAPIServer(
 
 	protectedAPIMiddleware := []server.Middleware{
 		middleware.SchemaValidationMiddleware(schemaValidator),
-		func(next http.Handler) http.Handler {
-			return db.TransactionMiddleware(next, sessionFactory, cfg.Database.Pool.RequestTimeout)
-		},
+		middleware.RequestTimeoutMiddleware(cfg.Database.Pool.RequestTimeout),
 	}
 
 	var authMiddleware []server.Middleware

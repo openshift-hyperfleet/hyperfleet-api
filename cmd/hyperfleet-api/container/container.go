@@ -16,6 +16,7 @@ type Container struct {
 	cfg            *config.ApplicationConfig
 	closer         *closer.Closer
 	sessionFactory db.SessionFactory
+	txRunner       db.TxRunner
 
 	resourceDao          dao.ResourceDao
 	resourceLabelDao     dao.ResourceLabelDao

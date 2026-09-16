@@ -295,7 +295,6 @@ func (helper *Helper) startAPIServer() {
 		helper.Container.AdapterStatusService(),
 		helper.Container.SchemaValidator(),
 		jwtHandler,
-		helper.DBFactory,
 	)
 	if err != nil {
 		abortSetup(ctx, helper.closer, err, "Unable to build Test API server")

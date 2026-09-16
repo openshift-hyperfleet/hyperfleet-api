@@ -5,11 +5,7 @@ import (
 	"errors"
 
 	"github.com/google/uuid"
-	"github.com/prometheus/client_golang/prometheus"
-
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
-	dbContext "github.com/openshift-hyperfleet/hyperfleet-api/pkg/db/db_context"
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db/db_metrics"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db/internal/txcontext"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
@@ -34,58 +30,6 @@ func (m advisoryLockMap) set(id string, lockType LockType, lock *AdvisoryLock) {
 	m[m.key(id, lockType)] = lock
 }
 
-// NewContext returns a new context with transaction stored in it.
-// Upon error, the original context is still returned along with an error
-func NewContext(ctx context.Context, connection SessionFactory) (context.Context, error) {
-	tx, err := newTransaction(ctx, connection)
-	if err != nil {
-		return ctx, err
-	}
-
-	ctx = dbContext.WithTransaction(ctx, tx)
-
-	return ctx, nil
-}
-
-// Resolve commits or rolls back the transaction based on the rollback flag.
-// Should only be called by TransactionMiddleware for write operations.
-func Resolve(ctx context.Context) {
-	tx, ok := dbContext.Transaction(ctx)
-	if !ok {
-		logger.With(ctx,
-			"error_type", "missing_transaction",
-			"error", "no active transaction found in context",
-		).Error("Transaction resolution failed: no active transaction in context")
-		return
-	}
-
-	if tx.MarkedForRollback() {
-		if err := tx.Rollback(); err != nil {
-			logger.WithError(ctx, err).Error("Could not rollback transaction")
-			recordTransactionError("rollback", "rollback_failed")
-			return
-		}
-		logger.Info(ctx, "Rolled back transaction")
-	} else {
-		if err := tx.Commit(); err != nil {
-			logger.WithError(ctx, err).Error("Could not commit transaction")
-			recordTransactionError("commit", "commit_failed")
-			return
-		}
-	}
-}
-
-// MarkForRollback flags the transaction stored in the context for rollback and logs whatever error caused the rollback
-func MarkForRollback(ctx context.Context, err error) {
-	transaction, ok := dbContext.Transaction(ctx)
-	if !ok {
-		logger.Error(ctx, "failed to mark transaction for rollback: could not retrieve transaction from context")
-		return
-	}
-	transaction.SetRollbackFlag(true)
-	logger.WithError(ctx, err).Info("Marked transaction for rollback")
-}
-
 // NewAdvisoryLockContext returns a new context with AdvisoryLock stored in it.
 // Upon error, the original context is still returned along with an error.
 //
@@ -99,7 +43,7 @@ func NewAdvisoryLockContext(
 	ctx context.Context, connection SessionFactory, id string, lockType LockType,
 ) (context.Context, string, error) {
 	// FAIL-FAST: Detect transaction created before advisory lock
-	if _, hasTransaction := dbContext.Transaction(ctx); hasTransaction {
+	if txcontext.Has(ctx) {
 		return ctx, "", errors.New(
 			"advisory lock cannot be acquired within an existing transaction.\n" +
 				"This causes a race condition where lock is released before transaction commits.\n\n" +
@@ -178,14 +122,4 @@ func Unlock(ctx context.Context, callerUUID string) {
 		// Note: if ownerUUID doesn't match callerUUID, the lock belongs to a different
 		// service call and is intentionally not unlocked here
 	}
-}
-
-// recordTransactionError records transaction commit/rollback failures.
-func recordTransactionError(operation, errorType string) {
-	db_metrics.ErrorsMetric.With(prometheus.Labels{
-		"operation":  operation,
-		"error_type": errorType,
-		"component":  "api",
-		"version":    api.Version,
-	}).Inc()
 }

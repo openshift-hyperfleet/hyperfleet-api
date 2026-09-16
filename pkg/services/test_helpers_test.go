@@ -7,6 +7,23 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 )
 
+type controlledTxRunner struct {
+	afterCallbackErr error
+	callbackContext  context.Context
+	calls            int
+}
+
+func (r *controlledTxRunner) Do(ctx context.Context, callback func(context.Context) error) error {
+	r.calls++
+	if r.callbackContext != nil {
+		ctx = r.callbackContext
+	}
+	if err := callback(ctx); err != nil {
+		return err
+	}
+	return r.afterCallbackErr
+}
+
 type mockAdapterStatusDao struct {
 	statuses            map[string]*api.AdapterStatus
 	findByResourceErr   error
