@@ -19,3 +19,10 @@ type SessionFactory interface {
 	NewListener(ctx context.Context, channel string, callback func(id string))
 	GetAdvisoryLockTimeout() int
 }
+
+// TxRunner executes one callback inside a database transaction.
+type TxRunner interface {
+	// Do commits only after callback returns nil. Nested executions are rejected;
+	// public mutation methods therefore remain the sole owners of their transaction.
+	Do(ctx context.Context, callback func(context.Context) error) error
+}

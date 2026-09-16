@@ -43,6 +43,7 @@ func NewResourceService(
 	adapterStatusDao dao.AdapterStatusDao,
 	resourceConditionDao dao.ResourceConditionDao,
 	generic GenericService,
+	transactionRunner db.TxRunner,
 ) (ResourceService, error) {
 	mappers, err := buildConditionMappers(registry.All())
 	if err != nil {
@@ -54,6 +55,7 @@ func NewResourceService(
 		adapterStatusDao:     adapterStatusDao,
 		resourceConditionDao: resourceConditionDao,
 		generic:              generic,
+		txRunner:             transactionRunner,
 		conditionMappers:     mappers,
 	}, nil
 }
@@ -80,6 +82,7 @@ type sqlResourceService struct {
 	adapterStatusDao     dao.AdapterStatusDao
 	resourceConditionDao dao.ResourceConditionDao
 	generic              GenericService
+	txRunner             db.TxRunner
 	conditionMappers     map[string]*ConditionMapper // Indexed by Kind (e.g., "Cluster", "NodePool")
 }
 
@@ -92,7 +95,7 @@ func (s *sqlResourceService) Get(ctx context.Context, kind, id string) (*api.Res
 	trace.SpanFromContext(ctx).SetAttributes(attribute.String("hyperfleet.resource_type", registry.MustGet(kind).Plural))
 	resource, err := s.resourceDao.Get(ctx, kind, id)
 	if err != nil {
-		return nil, handleGetError(kind, "id", id, err)
+		return nil, handleGetError(kind, id, err)
 	}
 	return resource, nil
 }
@@ -122,76 +125,84 @@ func (s *sqlResourceService) Create(
 		return nil, svcErr
 	}
 	resource.Kind = kind
-
 	if svcErr := validateKind(kind); svcErr != nil {
 		return nil, svcErr
 	}
-	trace.SpanFromContext(ctx).SetAttributes(
-		attribute.String("hyperfleet.resource_type", registry.MustGet(kind).Plural),
-	)
-
+	trace.SpanFromContext(ctx).SetAttributes(attribute.String("hyperfleet.resource_type", registry.MustGet(kind).Plural))
 	if svcErr := validateName(kind, resource.Name); svcErr != nil {
 		return nil, svcErr
 	}
 
-	// Lock parent row to serialize with concurrent deletes.
-	if ownerID := util.FromPtr(resource.OwnerID); ownerID != "" {
-		desc := registry.MustGet(kind)
-		parent, err := s.resourceDao.GetForUpdate(ctx, desc.ParentKind, ownerID)
-		if err != nil {
-			return nil, handleGetError(desc.ParentKind, "id", ownerID, err)
+	var result *api.Resource
+	var outcome *reconciliationOutcome
+	err := s.txRunner.Do(ctx, func(ctx context.Context) error {
+		// Lock parent row to serialize with concurrent deletes.
+		if ownerID := util.FromPtr(resource.OwnerID); ownerID != "" {
+			desc := registry.MustGet(kind)
+			parent, err := s.resourceDao.GetForUpdate(ctx, desc.ParentKind, ownerID)
+			if err != nil {
+				return handleGetError(desc.ParentKind, ownerID, err)
+			}
+			if parent.DeletedTime != nil {
+				return errors.ConflictState("%s '%s' is marked for deletion", desc.ParentKind, ownerID)
+			}
 		}
-		if parent.DeletedTime != nil {
-			return nil, errors.ConflictState("%s '%s' is marked for deletion", desc.ParentKind, ownerID)
-		}
-	}
 
-	if svcErr := s.validateReferences(ctx, kind, refs); svcErr != nil {
+		if svcErr := s.validateReferences(ctx, kind, refs); svcErr != nil {
+			return svcErr
+		}
+
+		username := actorFromContext(ctx)
+		if resource.CreatedBy == "" {
+			resource.CreatedBy = username
+		}
+		if resource.UpdatedBy == "" {
+			resource.UpdatedBy = username
+		}
+		resource.Tenancy = tenant.TenancyJSON(ctx)
+
+		created, err := s.resourceDao.Create(ctx, resource)
+		if err != nil {
+			return handleCreateError(kind, err)
+		}
+		result = created
+		trace.SpanFromContext(ctx).SetAttributes(attribute.String("hyperfleet.resource_id", created.ID))
+
+		if len(created.Labels) > 0 {
+			if labelErr := s.resourceLabelDao.ReplaceLabels(ctx, created.ID, created.Labels); labelErr != nil {
+				return handleCreateError(kind, labelErr)
+			}
+		}
+
+		// Persist references after the resource row exists (FK requires source_id).
+		if len(refs) > 0 {
+			refRows := convertRefs(kind, created.ID, refs)
+			if refErr := s.resourceDao.ReplaceReferences(ctx, created.ID, refRows); refErr != nil {
+				return errors.GeneralError("failed to save references: %s", refErr)
+			}
+			created.References = refRows
+		}
+
+		// Initialize conditions for entities with required adapters, matching the
+		// old ClusterService/NodePoolService behavior.
+		desc := registry.MustGet(kind)
+		if len(desc.RequiredAdapters) > 0 {
+			recomputed, svcErr := s.recomputeAndSaveResourceConditions(ctx, created, nil)
+			if svcErr != nil {
+				return svcErr
+			}
+			outcome = recomputed
+		}
+
+		return nil
+	})
+	if svcErr := serviceErrorFromTransaction(err); svcErr != nil {
 		return nil, svcErr
 	}
-
-	username := actorFromContext(ctx)
-	if resource.CreatedBy == "" {
-		resource.CreatedBy = username
+	if outcome != nil {
+		metrics.RecordReconciliationStarted(outcome.kind, outcome.isDelete)
 	}
-	if resource.UpdatedBy == "" {
-		resource.UpdatedBy = username
-	}
-	resource.Tenancy = tenant.TenancyJSON(ctx)
-
-	resource, err := s.resourceDao.Create(ctx, resource)
-	if err != nil {
-		return nil, handleCreateError(kind, err)
-	}
-	trace.SpanFromContext(ctx).SetAttributes(attribute.String("hyperfleet.resource_id", resource.ID))
-
-	if len(resource.Labels) > 0 {
-		if labelErr := s.resourceLabelDao.ReplaceLabels(ctx, resource.ID, resource.Labels); labelErr != nil {
-			return nil, handleCreateError(kind, labelErr)
-		}
-	}
-
-	// Persist references after the resource row exists (FK requires source_id).
-	if len(refs) > 0 {
-		refRows := convertRefs(kind, resource.ID, refs)
-		if refErr := s.resourceDao.ReplaceReferences(ctx, resource.ID, refRows); refErr != nil {
-			return nil, errors.GeneralError("failed to save references: %s", refErr)
-		}
-		resource.References = refRows
-	}
-
-	// Initialize conditions for entities with required adapters, matching the
-	// old ClusterService/NodePoolService behavior. Without this, newly created
-	// resources have no conditions rows, making them invisible to reconciliation
-	// metrics (INNER JOIN resource_conditions) and status search queries.
-	desc := registry.MustGet(kind)
-	if len(desc.RequiredAdapters) > 0 {
-		if svcErr := s.recomputeAndSaveResourceConditions(ctx, resource, nil); svcErr != nil {
-			return nil, svcErr
-		}
-	}
-
-	return resource, nil
+	return result, nil
 }
 
 func (s *sqlResourceService) Patch(
@@ -205,74 +216,83 @@ func (s *sqlResourceService) Patch(
 		return nil, svcErr
 	}
 	trace.SpanFromContext(ctx).SetAttributes(attribute.String("hyperfleet.resource_type", registry.MustGet(kind).Plural))
-	resource, err := s.resourceDao.GetForUpdate(ctx, kind, id)
-	if err != nil {
-		return nil, handleGetError(kind, "id", id, err)
-	}
 
-	if resource.DeletedTime != nil {
-		return nil, errors.ConflictState("%s '%s' is marked for deletion", kind, id)
-	}
-
-	oldSpec := append([]byte(nil), resource.Spec...)
-	oldLabels := resource.Labels
-
-	if applyErr := applyResourcePatch(resource, patch); applyErr != nil {
-		return nil, errors.Validation("Invalid patch data: %v", applyErr)
-	}
-
-	specChanged := !jsonBytesEqual(oldSpec, resource.Spec)
-	labelsChanged := !labelsEqual(oldLabels, resource.Labels)
-	refsChanged := patch.References != nil
-
-	// Validate and persist references when the patch includes them (nil = skip, {} = clear).
-	if refsChanged {
-		if svcErr := s.validateReferences(ctx, kind, patch.References); svcErr != nil {
-			return nil, svcErr
+	var result *api.Resource
+	var outcome *reconciliationOutcome
+	err := s.txRunner.Do(ctx, func(ctx context.Context) error {
+		resource, err := s.resourceDao.GetForUpdate(ctx, kind, id)
+		if err != nil {
+			return handleGetError(kind, id, err)
 		}
-		refRows := convertRefs(kind, resource.ID, patch.References)
-		if refErr := s.resourceDao.ReplaceReferences(
-			ctx, resource.ID, refRows,
-		); refErr != nil {
-			return nil, errors.GeneralError("failed to save references: %s", refErr)
+
+		if resource.DeletedTime != nil {
+			return errors.ConflictState("%s '%s' is marked for deletion", kind, id)
 		}
-		resource.References = refRows
-	}
 
-	if !specChanged && !labelsChanged && !refsChanged {
-		return resource, nil
-	}
+		oldSpec := append([]byte(nil), resource.Spec...)
+		oldLabels := resource.Labels
 
-	resource.IncrementGeneration()
-	resource.UpdatedBy = actorFromContext(ctx)
-
-	if saveErr := s.resourceDao.Save(ctx, resource); saveErr != nil {
-		return nil, handleUpdateError(kind, saveErr)
-	}
-
-	if labelsChanged {
-		if labelErr := s.resourceLabelDao.ReplaceLabels(ctx, resource.ID, resource.Labels); labelErr != nil {
-			return nil, handleUpdateError(kind, labelErr)
+		if applyErr := applyResourcePatch(resource, patch); applyErr != nil {
+			return errors.Validation("Invalid patch data: %v", applyErr)
 		}
-	}
 
-	// Recompute conditions after generation change - the Reconciled condition
-	// must flip to False when the new generation hasn't been observed by adapters yet.
-	// Only applies to entities with required adapters; zero-adapter entities have no
-	// conditions to track.
-	desc := registry.MustGet(kind)
-	if len(desc.RequiredAdapters) > 0 {
-		adapterStatuses, statusErr := s.adapterStatusDao.FindByResource(ctx, kind, resource.ID)
-		if statusErr != nil {
-			db.MarkForRollback(ctx, statusErr)
-			return nil, errors.GeneralError("failed to get adapter statuses for condition recompute: %s", statusErr)
-		}
-		if svcErr := s.recomputeAndSaveResourceConditions(ctx, resource, adapterStatuses); svcErr != nil {
-			return nil, svcErr
-		}
-	}
+		specChanged := !jsonBytesEqual(oldSpec, resource.Spec)
+		labelsChanged := !labelsEqual(oldLabels, resource.Labels)
+		refsChanged := patch.References != nil
 
-	return resource, nil
+		// Validate and persist references when the patch includes them (nil = skip, {} = clear).
+		if refsChanged {
+			if svcErr := s.validateReferences(ctx, kind, patch.References); svcErr != nil {
+				return svcErr
+			}
+			refRows := convertRefs(kind, resource.ID, patch.References)
+			if refErr := s.resourceDao.ReplaceReferences(ctx, resource.ID, refRows); refErr != nil {
+				return errors.GeneralError("failed to save references: %s", refErr)
+			}
+			resource.References = refRows
+		}
+
+		if !specChanged && !labelsChanged && !refsChanged {
+			result = resource
+			return nil
+		}
+
+		resource.IncrementGeneration()
+		resource.UpdatedBy = actorFromContext(ctx)
+
+		if saveErr := s.resourceDao.Save(ctx, resource); saveErr != nil {
+			return handleUpdateError(kind, saveErr)
+		}
+
+		if labelsChanged {
+			if labelErr := s.resourceLabelDao.ReplaceLabels(ctx, resource.ID, resource.Labels); labelErr != nil {
+				return handleUpdateError(kind, labelErr)
+			}
+		}
+
+		// Recompute conditions after generation change.
+		desc := registry.MustGet(kind)
+		if len(desc.RequiredAdapters) > 0 {
+			adapterStatuses, statusErr := s.adapterStatusDao.FindByResource(ctx, kind, resource.ID)
+			if statusErr != nil {
+				return errors.GeneralError("failed to get adapter statuses for condition recompute: %s", statusErr)
+			}
+			recomputed, svcErr := s.recomputeAndSaveResourceConditions(ctx, resource, adapterStatuses)
+			if svcErr != nil {
+				return svcErr
+			}
+			outcome = recomputed
+		}
+		result = resource
+		return nil
+	})
+	if svcErr := serviceErrorFromTransaction(err); svcErr != nil {
+		return nil, svcErr
+	}
+	if outcome != nil {
+		metrics.RecordReconciliationStarted(outcome.kind, outcome.isDelete)
+	}
+	return result, nil
 }
 
 // Resources with required adapters are soft-deleted; all others are hard-deleted.
@@ -285,39 +305,53 @@ func (s *sqlResourceService) Delete(ctx context.Context, kind, id string) (*api.
 		return nil, svcErr
 	}
 	trace.SpanFromContext(ctx).SetAttributes(attribute.String("hyperfleet.resource_type", registry.MustGet(kind).Plural))
-	resource, err := s.resourceDao.GetForUpdate(ctx, kind, id)
-	if err != nil {
-		return nil, handleSoftDeleteError(kind, err)
-	}
 
-	deletedBy := actorFromContext(ctx)
-	deletedAt := time.Now().UTC().Truncate(time.Microsecond)
+	var result *api.Resource
+	var outcomes []reconciliationOutcome
+	err := s.txRunner.Do(ctx, func(ctx context.Context) error {
+		resource, err := s.resourceDao.GetForUpdate(ctx, kind, id)
+		if err != nil {
+			return handleSoftDeleteError(kind, err)
+		}
 
-	// Mark for deletion if not already soft-deleted
-	if resource.DeletedTime == nil {
-		resource.MarkDeleted(deletedBy, deletedAt)
-		resource.IncrementGeneration()
-	}
+		deletedBy := actorFromContext(ctx)
+		deletedAt := time.Now().UTC().Truncate(time.Microsecond)
 
-	if svcErr := s.deleteResourceTree(ctx, resource, deletedBy, deletedAt); svcErr != nil {
-		db.MarkForRollback(ctx, svcErr)
+		// Mark for deletion if not already soft-deleted.
+		if resource.DeletedTime == nil {
+			resource.MarkDeleted(deletedBy, deletedAt)
+			resource.IncrementGeneration()
+		}
+
+		deleteOutcomes, svcErr := s.deleteResourceTree(ctx, resource, deletedBy, deletedAt)
+		if svcErr != nil {
+			return svcErr
+		}
+		outcomes = append(outcomes, deleteOutcomes...)
+		result = resource
+		return nil
+	})
+	if svcErr := serviceErrorFromTransaction(err); svcErr != nil {
 		return nil, svcErr
 	}
-
-	return resource, nil
+	for _, outcome := range outcomes {
+		metrics.RecordReconciliationStarted(outcome.kind, outcome.isDelete)
+	}
+	return result, nil
 }
 
 // deleteResourceTree enforces child delete policies then persists bottom-up.
 func (s *sqlResourceService) deleteResourceTree(
 	ctx context.Context, resource *api.Resource,
 	deletedBy string, deletedAt time.Time,
-) *errors.ServiceError {
+) ([]reconciliationOutcome, *errors.ServiceError) {
+	var outcomes []reconciliationOutcome
 	children := registry.ChildrenOf(resource.Kind)
 
 	for _, child := range children {
 		if child.OnParentDelete == registry.OnParentDeleteRestrict {
 			if svcErr := s.checkCanDelete(ctx, resource, child); svcErr != nil {
-				return svcErr
+				return nil, svcErr
 			}
 		}
 	}
@@ -326,7 +360,7 @@ func (s *sqlResourceService) deleteResourceTree(
 		if child.OnParentDelete == registry.OnParentDeleteCascade {
 			items, err := s.resourceDao.FindByKindAndOwnerForUpdate(ctx, child.Kind, resource.ID)
 			if err != nil {
-				return errors.GeneralError(
+				return nil, errors.GeneralError(
 					"Unable to find %s children for cascade delete: %s", child.Kind, err,
 				)
 			}
@@ -335,9 +369,11 @@ func (s *sqlResourceService) deleteResourceTree(
 					item.MarkDeleted(deletedBy, deletedAt)
 					item.IncrementGeneration()
 				}
-				if svcErr := s.deleteResourceTree(ctx, item, deletedBy, deletedAt); svcErr != nil {
-					return svcErr
+				childOutcomes, svcErr := s.deleteResourceTree(ctx, item, deletedBy, deletedAt)
+				if svcErr != nil {
+					return nil, svcErr
 				}
+				outcomes = append(outcomes, childOutcomes...)
 			}
 		}
 	}
@@ -345,7 +381,7 @@ func (s *sqlResourceService) deleteResourceTree(
 	// Check if other resources reference this one before any deletion.
 	referencers, refErr := s.resourceDao.FindReferencers(ctx, resource.ID)
 	if refErr != nil {
-		return errors.GeneralError("failed to check references: %s", refErr)
+		return nil, errors.GeneralError("failed to check references: %s", refErr)
 	}
 	// List out all the references for a specific resource
 	if len(referencers) > 0 {
@@ -353,41 +389,44 @@ func (s *sqlResourceService) deleteResourceTree(
 		for i, r := range referencers {
 			names[i] = fmt.Sprintf("%s %q", r.Kind, r.Name)
 		}
-		return errors.ConflictState(
+		return nil, errors.ConflictState(
 			"cannot delete %s %q: referenced by %s — remove the reference(s) before deleting",
 			resource.Kind, resource.Name, strings.Join(names, ", "))
 	}
 
 	shouldSoftDelete, svcErr := s.shouldSoftDelete(ctx, resource, children)
 	if svcErr != nil {
-		return svcErr
+		return nil, svcErr
 	}
 
 	if shouldSoftDelete {
 		if saveErr := s.resourceDao.Save(ctx, resource); saveErr != nil {
-			return handleSoftDeleteError(resource.Kind, saveErr)
+			return nil, handleSoftDeleteError(resource.Kind, saveErr)
 		}
 		// Soft-delete should clear all resource references to satisfy the ON DELETE RESTRICT FK constraint.
 		if err := s.resourceDao.ReplaceReferences(ctx, resource.ID, nil); err != nil {
-			return errors.GeneralError("failed to clear outbound references on soft-delete: %s", err)
+			return nil, errors.GeneralError("failed to clear outbound references on soft-delete: %s", err)
 		}
 		// Recompute conditions — generation incremented, Reconciled must flip to False.
 		adapterStatuses, statusErr := s.adapterStatusDao.FindByResource(ctx, resource.Kind, resource.ID)
 		if statusErr != nil {
-			db.MarkForRollback(ctx, statusErr)
-			return errors.GeneralError("failed to get adapter statuses for condition recompute: %s", statusErr)
+			return nil, errors.GeneralError("failed to get adapter statuses for condition recompute: %s", statusErr)
 		}
-		if svcErr := s.recomputeAndSaveResourceConditions(ctx, resource, adapterStatuses); svcErr != nil {
-			return svcErr
+		outcome, svcErr := s.recomputeAndSaveResourceConditions(ctx, resource, adapterStatuses)
+		if svcErr != nil {
+			return nil, svcErr
 		}
-		return nil
+		if outcome != nil {
+			outcomes = append(outcomes, *outcome)
+		}
+		return outcomes, nil
 	}
 
 	if err := s.resourceDao.Delete(ctx, resource.Kind, resource.ID); err != nil {
-		return handleDeleteError(resource.Kind, err)
+		return nil, handleDeleteError(resource.Kind, err)
 	}
 
-	return nil
+	return outcomes, nil
 }
 
 // shouldSoftDelete determines whether a resource requires soft-deletion.
@@ -452,7 +491,7 @@ func (s *sqlResourceService) GetByOwner(
 	trace.SpanFromContext(ctx).SetAttributes(attribute.String("hyperfleet.resource_type", registry.MustGet(kind).Plural))
 	resource, err := s.resourceDao.GetByOwner(ctx, kind, id, ownerID)
 	if err != nil {
-		return nil, handleGetError(kind, "id", id, err)
+		return nil, handleGetError(kind, id, err)
 	}
 	return resource, nil
 }
@@ -528,7 +567,7 @@ func (s *sqlResourceService) GetByID(ctx context.Context, id string) (*api.Resou
 	trace.SpanFromContext(ctx).SetAttributes(attribute.String("hyperfleet.resource_id", id))
 	resource, err := s.resourceDao.GetByID(ctx, id)
 	if err != nil {
-		return nil, handleGetError("Resource", "id", id, err)
+		return nil, handleGetError("Resource", id, err)
 	}
 	desc, ok := registry.Get(resource.Kind)
 	if ok {
@@ -575,99 +614,76 @@ func (s *sqlResourceService) ProcessAdapterStatus(
 		return nil, svcErr
 	}
 	trace.SpanFromContext(ctx).SetAttributes(attribute.String("hyperfleet.resource_type", registry.MustGet(kind).Plural))
-
-	// Truncate to microsecond precision up front so the value used for staleness
-	// comparisons below matches exactly what Postgres persists and returns on
-	// read-back. Without this, a nanosecond-precision timestamp can round up
-	// during storage, making a later read of the same report compare as "after"
-	// the original in-memory value and incorrectly flip the staleness check.
 	adapterStatus.LastReportTime = adapterStatus.LastReportTime.Truncate(time.Microsecond)
 
-	// Step 1: Acquire a row-level exclusive lock on the resource. Concurrent
-	// adapter status updates for the same resource are serialized here.
-	// GetForUpdate also preloads Conditions (needed for aggregation diff).
-	resource, err := s.resourceDao.GetForUpdate(ctx, kind, resourceID)
-	if err != nil {
-		return nil, handleGetError(kind, "id", resourceID, err)
-	}
+	var result *api.AdapterStatus
+	var outcome *reconciliationOutcome
+	err := s.txRunner.Do(ctx, func(ctx context.Context) error {
+		resource, err := s.resourceDao.GetForUpdate(ctx, kind, resourceID)
+		if err != nil {
+			return handleGetError(kind, resourceID, err)
+		}
+		allStatuses, err := s.adapterStatusDao.FindByResource(ctx, kind, resourceID)
+		if err != nil {
+			return errors.GeneralError("Failed to get adapter statuses: %s", err)
+		}
 
-	// Step 2: Fetch all existing adapter statuses for this resource.
-	// The existing status for the incoming adapter is found in-memory from
-	// this list — no additional DB call needed.
-	allStatuses, err := s.adapterStatusDao.FindByResource(ctx, kind, resourceID)
-	if err != nil {
-		return nil, errors.GeneralError("Failed to get adapter statuses: %s", err)
-	}
+		existingStatus := findAdapterStatusInList(allStatuses, adapterStatus.Adapter)
+		log := logger.With(ctx, "resource_type", kind, "resource_id", resourceID,
+			logger.FieldAdapter, adapterStatus.Adapter)
+		conditions, triggerAggregation, svcErr := validateAndClassifyAdapterStatus(
+			resource.Generation, adapterStatus, existingStatus, log,
+		)
+		if svcErr != nil {
+			return svcErr
+		}
+		if conditions == nil && !triggerAggregation {
+			return nil
+		}
 
-	existingStatus := findAdapterStatusInList(allStatuses, adapterStatus.Adapter)
+		adapterStatus.ResourceType = kind
+		adapterStatus.ResourceID = resourceID
+		setConditionTransitionTimes(adapterStatus, existingStatus)
+		upsertedStatus, err := s.adapterStatusDao.Upsert(ctx, adapterStatus, existingStatus)
+		if err != nil {
+			return handleCreateError("AdapterStatus", err)
+		}
+		updatedStatuses := replaceAdapterStatusInList(allStatuses, upsertedStatus)
 
-	// Validate the incoming report: discard stale/future generations, zero
-	// observed times, subsequent Unknown Available, and missing mandatory
-	// conditions. Returns (nil, false, nil) when the update should be
-	// silently discarded (handler returns 204 No Content).
-	log := logger.With(ctx, "resource_type", kind, "resource_id", resourceID,
-		logger.FieldAdapter, adapterStatus.Adapter)
-	conditions, triggerAggregation, svcErr := validateAndClassifyAdapterStatus(
-		resource.Generation, adapterStatus, existingStatus, log,
-	)
-	if svcErr != nil {
+		if resource.DeletedTime != nil {
+			hardDeleted, hdErr := s.tryHardDeleteResource(ctx, resource, conditions, updatedStatuses)
+			if hdErr != nil {
+				return hdErr
+			}
+			if hardDeleted {
+				result = upsertedStatus
+				return nil
+			}
+		}
+
+		hasMapper := s.conditionMappers[resource.Kind] != nil
+		if triggerAggregation || (hasMapper && (existingStatus == nil ||
+			!jsonEqual(existingStatus.Conditions, adapterStatus.Conditions) ||
+			!jsonEqual(existingStatus.Data, adapterStatus.Data))) {
+			recomputed, aggregateErr := s.recomputeAndSaveResourceConditions(
+				ctx, resource, updatedStatuses,
+			)
+			if aggregateErr != nil {
+				return aggregateErr
+			}
+			outcome = recomputed
+		}
+
+		result = upsertedStatus
+		return nil
+	})
+	if svcErr := serviceErrorFromTransaction(err); svcErr != nil {
 		return nil, svcErr
 	}
-	if conditions == nil && !triggerAggregation {
-		return nil, nil
+	if outcome != nil {
+		metrics.RecordReconciliationStarted(outcome.kind, outcome.isDelete)
 	}
-
-	// Step 3: Persist the adapter status. setConditionTransitionTimes preserves
-	// LastTransitionTime from the existing status when the condition status
-	// hasn't changed (Kubernetes-style semantics).
-	adapterStatus.ResourceType = kind
-	adapterStatus.ResourceID = resourceID
-	setConditionTransitionTimes(adapterStatus, existingStatus)
-
-	upsertedStatus, err := s.adapterStatusDao.Upsert(ctx, adapterStatus, existingStatus)
-	if err != nil {
-		return nil, handleCreateError("AdapterStatus", err)
-	}
-
-	// Build the post-upsert snapshot of all statuses. Using the pre-upsert
-	// list for hard-delete or aggregation would miss the just-written status.
-	updatedStatuses := replaceAdapterStatusInList(allStatuses, upsertedStatus)
-
-	// If the resource is soft-deleted, check whether all adapters have now
-	// reported Finalized=True — if so, hard-delete the resource.
-	if resource.DeletedTime != nil {
-		hardDeleted, hdErr := s.tryHardDeleteResource(ctx, resource, conditions, updatedStatuses)
-		if hdErr != nil {
-			return nil, hdErr
-		}
-		if hardDeleted {
-			return upsertedStatus, nil
-		}
-	}
-
-	// Step 4: Re-aggregate conditions from all adapter statuses and persist
-	// to the resource_conditions table. Runs when:
-	// 1. Available condition changed to True or False (not on Unknown or discarded updates), OR
-	// 2. A CEL condition mapper is configured AND (conditions or data changed from previous report)
-	//
-	// Rationale: mapper recompute is expensive (JSON marshal + MaskSensitiveFields + CEL eval),
-	// runs inside the GetForUpdate row-level lock, and most adapter reports are duplicates.
-	// Gating on actual changes reduces CPU waste and lock hold time (CWE-400 mitigation).
-	hasMapper := s.conditionMappers[resource.Kind] != nil
-
-	// Inline statusChanged computation so jsonEqual is skipped when hasMapper=false,
-	// avoiding unnecessary JSON marshaling for entities without condition mappings.
-	if triggerAggregation || (hasMapper && (existingStatus == nil ||
-		!jsonEqual(existingStatus.Conditions, adapterStatus.Conditions) ||
-		!jsonEqual(existingStatus.Data, adapterStatus.Data))) {
-		if aggregateErr := s.recomputeAndSaveResourceConditions(
-			ctx, resource, updatedStatuses,
-		); aggregateErr != nil {
-			return nil, aggregateErr
-		}
-	}
-
-	return upsertedStatus, nil
+	return result, nil
 }
 
 // recomputeAndSaveResourceConditions runs AggregateResourceStatus and persists
@@ -677,7 +693,7 @@ func (s *sqlResourceService) recomputeAndSaveResourceConditions(
 	ctx context.Context,
 	resource *api.Resource,
 	adapterStatuses api.AdapterStatusList,
-) *errors.ServiceError {
+) (*reconciliationOutcome, *errors.ServiceError) {
 	desc := registry.MustGet(resource.Kind)
 
 	// Convert the GORM association ([]ResourceCondition) to JSON so it can be
@@ -689,11 +705,9 @@ func (s *sqlResourceService) recomputeAndSaveResourceConditions(
 		var marshalErr error
 		prevConditionsJSON, marshalErr = json.Marshal(resource.Conditions)
 		if marshalErr != nil {
-			return errors.GeneralError("Failed to marshal previous conditions: %s", marshalErr)
+			return nil, errors.GeneralError("Failed to marshal previous conditions: %s", marshalErr)
 		}
 	}
-
-	// Extract previous Reconciled status for metric emission below.
 	prevReconciledStatus := extractPrevReconciledStatus(ctx, prevConditionsJSON)
 
 	// During deletion, check if child resources still exist. The aggregation
@@ -704,7 +718,7 @@ func (s *sqlResourceService) recomputeAndSaveResourceConditions(
 		var err error
 		hasChildResources, err = s.hasActiveChildren(ctx, resource)
 		if err != nil {
-			return errors.GeneralError("Failed to check children for status aggregation: %s", err)
+			return nil, errors.GeneralError("Failed to check children for status aggregation: %s", err)
 		}
 	}
 
@@ -746,10 +760,7 @@ func (s *sqlResourceService) recomputeAndSaveResourceConditions(
 			PrevConditions:  resource.Conditions, // Preserve timestamps from previous conditions
 		})
 		if err != nil {
-			// Mark transaction for rollback - ensures adapter status update is retried
-			// in 10s instead of 30min delay that would occur with partial commit
-			db.MarkForRollback(ctx, fmt.Errorf("condition mapping failed for %s: %w", resource.Kind, err))
-			return errors.GeneralError("Condition mapping failed: %s", err)
+			return nil, errors.GeneralError("Condition mapping failed: %s", err)
 		}
 		newConditions = append(newConditions, mappedConditions...)
 	}
@@ -757,28 +768,27 @@ func (s *sqlResourceService) recomputeAndSaveResourceConditions(
 	// Compare via JSON to detect actual changes.
 	newJSON, marshalErr := json.Marshal(newConditions)
 	if marshalErr != nil {
-		return errors.GeneralError("Failed to marshal conditions: %s", marshalErr)
+		return nil, errors.GeneralError("Failed to marshal conditions: %s", marshalErr)
 	}
 	if jsonEqual(prevConditionsJSON, newJSON) {
-		return nil
+		return nil, nil
 	}
 
 	// Write to resource_conditions table (not JSONB on the resource row).
-	// MarkForRollback is handled by the DAO internally.
 	if err := s.resourceConditionDao.UpdateConditions(ctx, resource.ID, newConditions); err != nil {
-		return errors.GeneralError("Failed to update resource conditions: %s", err)
+		return nil, errors.GeneralError("Failed to update resource conditions: %s", err)
 	}
 
 	// Update the in-memory resource so callers see the new conditions.
 	resource.Conditions = newConditions
 
-	// Emit metric on Reconciled=False transition (reconciliation started).
+	// Return reconciliation work for the public mutation to emit after commit.
 	if reconciled.Status == api.ConditionFalse &&
 		(prevReconciledStatus == nil || *prevReconciledStatus != api.ConditionFalse) {
-		metrics.RecordReconciliationStarted(resource.Kind, resource.DeletedTime != nil)
+		return &reconciliationOutcome{kind: resource.Kind, isDelete: resource.DeletedTime != nil}, nil
 	}
 
-	return nil
+	return nil, nil
 }
 
 // tryHardDeleteResource checks whether all required adapters have reported
@@ -977,22 +987,22 @@ func (s *sqlResourceService) ForceDelete(ctx context.Context, kind, id, reason s
 		return svcErr
 	}
 	trace.SpanFromContext(ctx).SetAttributes(attribute.String("hyperfleet.resource_type", registry.MustGet(kind).Plural))
+	err := s.txRunner.Do(ctx, func(ctx context.Context) error {
+		resource, err := s.resourceDao.GetForUpdate(ctx, kind, id)
+		if err != nil {
+			return handleGetError(kind, id, err)
+		}
+		if resource.DeletedTime == nil {
+			return errors.ConflictState("%s '%s' is not in Finalizing state", kind, id)
+		}
 
-	resource, err := s.resourceDao.GetForUpdate(ctx, kind, id)
-	if err != nil {
-		return handleGetError(kind, "id", id, err)
-	}
-
-	if resource.DeletedTime == nil {
-		return errors.ConflictState("%s '%s' is not in Finalizing state", kind, id)
-	}
-
-	caller := actorFromContext(ctx)
-	if svcErr := s.forceDeleteResourceTree(ctx, resource, caller, reason); svcErr != nil {
-		db.MarkForRollback(ctx, svcErr)
-		return svcErr
-	}
-	return nil
+		caller := actorFromContext(ctx)
+		if svcErr := s.forceDeleteResourceTree(ctx, resource, caller, reason); svcErr != nil {
+			return svcErr
+		}
+		return nil
+	})
+	return serviceErrorFromTransaction(err)
 }
 
 func (s *sqlResourceService) forceDeleteResourceTree(

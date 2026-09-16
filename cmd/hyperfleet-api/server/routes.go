@@ -49,7 +49,7 @@ func NewRouterFromConfig(
 	apiV1Router.HandleFunc("GET /openapi", openapiHandler.GetOpenAPI)
 
 	// authMiddleware must be outermost so unauthenticated requests are rejected
-	// before protectedAPIMiddleware opens a DB transaction or runs schema validation.
+	// before protectedAPIMiddleware runs schema validation or reaches mutation services.
 	protectedRouter := apiV1Router.Group()
 	for _, mw := range authMiddleware {
 		protectedRouter.Use(mw)

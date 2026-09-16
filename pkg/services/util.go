@@ -34,30 +34,14 @@ func jsonEqual(a, b []byte) bool {
 	return reflect.DeepEqual(va, vb)
 }
 
-// Field names suspected to contain personally identifiable information
-var piiFields = []string{
-	"username",
-	"first_name",
-	"last_name",
-	"email",
-	"address",
-}
-
-func handleGetError(resourceType, field string, value interface{}, err error) *errors.ServiceError {
-	// Sanitize errors of any personally identifiable information
-	for _, f := range piiFields {
-		if field == f {
-			value = "<redacted>"
-			break
-		}
-	}
+func handleGetError(resourceType, id string, err error) *errors.ServiceError {
 	if e.Is(err, gorm.ErrRecordNotFound) {
-		return errors.NotFound("%s with %s='%v' not found", resourceType, field, value)
+		return errors.NotFound("%s with id='%s' not found", resourceType, id)
 	}
 	if db.IsDBConnectionError(err) {
 		return errors.ServiceUnavailable("Database connection unavailable")
 	}
-	return errors.GeneralError("Unable to find %s with %s='%v': %s", resourceType, field, value, err)
+	return errors.GeneralError("Unable to find %s with id='%s': %s", resourceType, id, err)
 }
 
 func handleCreateError(resourceType string, err error) *errors.ServiceError {

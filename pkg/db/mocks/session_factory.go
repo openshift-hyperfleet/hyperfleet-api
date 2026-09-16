@@ -11,6 +11,7 @@ import (
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db/internal/txcontext"
 )
 
 var _ db.SessionFactory = &MockSessionFactory{}
@@ -56,6 +57,9 @@ func (m *MockSessionFactory) DirectDB() *sql.DB {
 }
 
 func (m *MockSessionFactory) New(ctx context.Context) *gorm.DB {
+	if tx, ok := txcontext.Session(ctx); ok {
+		return tx
+	}
 	return m.gormDB.WithContext(ctx)
 }
 

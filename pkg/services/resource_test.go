@@ -284,7 +284,9 @@ var _ dao.ResourceConditionDao = &resourceConditionMock{}
 func newTestResourceService(mockDao *mockResourceDao) (ResourceService, *mockResourceDao, *resourceGenericMock) {
 	generic := &resourceGenericMock{}
 	svc, err := NewResourceService(
-		mockDao, newMockResourceLabelDao(), newMockAdapterStatusDao(), newResourceConditionMock(), generic,
+		mockDao,
+		newMockResourceLabelDao(), newMockAdapterStatusDao(), newResourceConditionMock(), generic,
+		&controlledTxRunner{},
 	)
 	if err != nil {
 		panic("newTestResourceService: " + err.Error())
@@ -298,7 +300,7 @@ func newTestResourceServiceWithLabelDao(
 	generic := &resourceGenericMock{}
 	labelDao := newMockResourceLabelDao()
 	svc, err := NewResourceService(
-		mockDao, labelDao, newMockAdapterStatusDao(), newResourceConditionMock(), generic,
+		mockDao, labelDao, newMockAdapterStatusDao(), newResourceConditionMock(), generic, &controlledTxRunner{},
 	)
 	if err != nil {
 		panic("newTestResourceServiceWithLabelDao: " + err.Error())
@@ -312,7 +314,9 @@ func newTestResourceServiceWithAdapterStatus(
 	asDao := newMockAdapterStatusDao()
 	rcDao := newResourceConditionMock()
 	generic := &resourceGenericMock{}
-	svc, err := NewResourceService(mockDao, newMockResourceLabelDao(), asDao, rcDao, generic)
+	svc, err := NewResourceService(
+		mockDao, newMockResourceLabelDao(), asDao, rcDao, generic, &controlledTxRunner{},
+	)
 	if err != nil {
 		panic("newTestResourceServiceWithAdapterStatus: " + err.Error())
 	}
@@ -325,7 +329,9 @@ func newTestResourceServiceWithConditions(
 	asDao := newMockAdapterStatusDao()
 	rcDao := newResourceConditionMock()
 	generic := &resourceGenericMock{}
-	svc, err := NewResourceService(mockDao, newMockResourceLabelDao(), asDao, rcDao, generic)
+	svc, err := NewResourceService(
+		mockDao, newMockResourceLabelDao(), asDao, rcDao, generic, &controlledTxRunner{},
+	)
 	if err != nil {
 		panic("newTestResourceServiceWithConditions: " + err.Error())
 	}
@@ -2025,11 +2031,8 @@ func TestProcessAdapterStatus_ConditionMapperError_TriggersRollback(t *testing.T
 
 	Expect(result).To(BeNil(), "result should be nil when error occurs")
 
-	// Note: In a real database transaction, returning an error from the service
-	// would trigger MarkForRollback() in the DAO layer, causing the transaction to rollback.
-	// This unit test uses mocks (no real transaction), so the mock DAO still has the data.
-	// The critical validation is: service returns error → handler marks transaction for rollback.
-	// For full rollback validation, see integration tests with testcontainers.
+	// The in-memory DAO does not model SQL rollback. Atomicity is covered by the
+	// production runner and PostgreSQL integration tests.
 }
 
 func TestProcessAdapterStatus_UnknownKind_Returns400(t *testing.T) {
