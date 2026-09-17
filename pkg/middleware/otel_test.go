@@ -3,6 +3,7 @@ package middleware
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -12,6 +13,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
+	hfl "github.com/openshift-hyperfleet/hyperfleet-logger"
 )
 
 // setupTestTracer creates an in-memory tracer for testing
@@ -24,18 +26,19 @@ func setupTestTracer() (*trace.TracerProvider, *tracetest.InMemoryExporter) {
 	return tp, exporter
 }
 
+func initTestLogger(t *testing.T) {
+	previous := slog.Default()
+	t.Cleanup(func() { slog.SetDefault(previous) })
+	slog.SetDefault(logger.NewLogger("test", logger.HandlerConfig{
+		Level: slog.LevelDebug, Format: hfl.FormatJSON, Output: httptest.NewRecorder(), Hostname: "test",
+	}))
+}
+
 // TestOTelMiddleware_SpanNameUsesRouteTemplate tests that span names use route templates
 // to prevent cardinality explosion (H3 security fix)
 func TestOTelMiddleware_SpanNameUsesRouteTemplate(t *testing.T) {
 	// Initialize logger for testing
-	logger.InitGlobalLogger(&logger.LogConfig{
-		Level:     0, // Debug
-		Format:    logger.FormatJSON,
-		Output:    httptest.NewRecorder(),
-		Component: "test",
-		Version:   "test",
-		Hostname:  "test",
-	})
+	initTestLogger(t)
 
 	tp, exporter := setupTestTracer()
 	defer func() {
@@ -125,14 +128,7 @@ func TestOTelMiddleware_SpanNameUsesRouteTemplate(t *testing.T) {
 
 // TestOTelMiddleware_TraceContextExtraction tests W3C trace context extraction
 func TestOTelMiddleware_TraceContextExtraction(t *testing.T) {
-	logger.InitGlobalLogger(&logger.LogConfig{
-		Level:     0,
-		Format:    logger.FormatJSON,
-		Output:    httptest.NewRecorder(),
-		Component: "test",
-		Version:   "test",
-		Hostname:  "test",
-	})
+	initTestLogger(t)
 
 	tp, exporter := setupTestTracer()
 	defer func() {
@@ -177,10 +173,10 @@ func TestOTelMiddleware_TraceContextExtraction(t *testing.T) {
 			testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				ctx := r.Context()
 				// Extract trace IDs from logger context
-				if traceID, ok := logger.GetTraceID(ctx); ok {
+				if traceID, ok := hfl.TraceIDFromContext(ctx); ok {
 					capturedTraceID = traceID
 				}
-				if spanID, ok := logger.GetSpanID(ctx); ok {
+				if spanID, ok := hfl.SpanIDFromContext(ctx); ok {
 					capturedSpanID = spanID
 				}
 				w.WriteHeader(http.StatusOK)
@@ -219,14 +215,7 @@ func TestOTelMiddleware_TraceContextExtraction(t *testing.T) {
 
 // TestOTelMiddleware_NoTraceContext tests middleware behavior without trace context
 func TestOTelMiddleware_NoTraceContext(t *testing.T) {
-	logger.InitGlobalLogger(&logger.LogConfig{
-		Level:     0,
-		Format:    logger.FormatJSON,
-		Output:    httptest.NewRecorder(),
-		Component: "test",
-		Version:   "test",
-		Hostname:  "test",
-	})
+	initTestLogger(t)
 
 	tp, exporter := setupTestTracer()
 	defer func() {
@@ -265,14 +254,7 @@ func TestOTelMiddleware_NoTraceContext(t *testing.T) {
 
 // TestOTelMiddleware_CardinalityPrevention demonstrates cardinality fix
 func TestOTelMiddleware_CardinalityPrevention(t *testing.T) {
-	logger.InitGlobalLogger(&logger.LogConfig{
-		Level:     0,
-		Format:    logger.FormatJSON,
-		Output:    httptest.NewRecorder(),
-		Component: "test",
-		Version:   "test",
-		Hostname:  "test",
-	})
+	initTestLogger(t)
 
 	tp, exporter := setupTestTracer()
 	defer func() {

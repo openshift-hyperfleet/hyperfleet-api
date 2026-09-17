@@ -3,6 +3,7 @@ package config
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"reflect"
 	"strings"
@@ -11,8 +12,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
-
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
 // ConfigLoader handles loading and validating application configuration
@@ -72,7 +71,6 @@ func (l *ConfigLoader) Load(ctx context.Context, cmd *cobra.Command) (*Applicati
 			"configuration unmarshal failed: %w\nThis usually means unknown/misspelled fields in config file",
 			err)
 	}
-
 	// Step 6.5: Migrate deprecated configuration before validation
 	l.migrateDeprecatedConfig(ctx, config)
 
@@ -104,7 +102,7 @@ func (l *ConfigLoader) resolveAndReadConfigFile(ctx context.Context, cmd *cobra.
 			return err
 		}
 		explicitPath = true
-		logger.With(ctx, "config_path", configPath, "source", "flag").Info("Config file specified via --config flag")
+		slog.InfoContext(ctx, "Config file specified via --config flag", "config_path", configPath, "source", "flag")
 	}
 
 	// Priority 2: HYPERFLEET_CONFIG environment variable
@@ -112,7 +110,7 @@ func (l *ConfigLoader) resolveAndReadConfigFile(ctx context.Context, cmd *cobra.
 		if envPath := os.Getenv("HYPERFLEET_CONFIG"); envPath != "" {
 			configPath = envPath
 			explicitPath = true
-			logger.With(ctx, "config_path", configPath, "source", "env").Info("Config file specified via HYPERFLEET_CONFIG")
+			slog.InfoContext(ctx, "Config file specified via HYPERFLEET_CONFIG", "config_path", configPath, "source", "env")
 		}
 	}
 
@@ -122,22 +120,24 @@ func (l *ConfigLoader) resolveAndReadConfigFile(ctx context.Context, cmd *cobra.
 		prodPath := "/etc/hyperfleet/config.yaml"
 		if _, err := os.Stat(prodPath); err == nil {
 			configPath = prodPath
-			logger.With(ctx, "config_path", configPath, "source", "default_production").
-				Info("Using production default config file")
+			slog.InfoContext(ctx,
+				"Using production default config file", "config_path", configPath, "source", "default_production",
+			)
 		} else {
 			// Try development path
 			devPath := "./configs/config.yaml"
 			if _, err := os.Stat(devPath); err == nil {
 				configPath = devPath
-				logger.With(ctx, "config_path", configPath, "source", "default_development").
-					Info("Using development default config file")
+				slog.InfoContext(ctx,
+					"Using development default config file", "config_path", configPath, "source", "default_development",
+				)
 			}
 		}
 	}
 
 	// If no config file found, continue with env vars and flags only
 	if configPath == "" {
-		logger.Info(ctx, "No config file found, using environment variables and flags only")
+		slog.InfoContext(ctx, "No config file found, using environment variables and flags only")
 		return nil
 	}
 
@@ -156,11 +156,11 @@ func (l *ConfigLoader) resolveAndReadConfigFile(ctx context.Context, cmd *cobra.
 			return fmt.Errorf("failed to read config file %s: %w", configPath, err)
 		}
 		// Just log warning if using default path
-		logger.With(ctx, "config_path", configPath).WithError(err).Warn("Failed to read default config file, continuing")
+		slog.WarnContext(ctx, "Failed to read default config file, continuing", "config_path", configPath, "error", err)
 		return nil
 	}
 
-	logger.With(ctx, "config_path", configPath).Info("Successfully loaded config file")
+	slog.InfoContext(ctx, "Successfully loaded config file", "config_path", configPath)
 	return nil
 }
 
@@ -254,8 +254,10 @@ func (l *ConfigLoader) migrateDeprecatedConfig(ctx context.Context, config *Appl
 		if tls.Enabled && tls.CertFile == "" && tls.KeyFile == "" {
 			tls.CertFile = config.Server.TLS.CertFile
 			tls.KeyFile = config.Server.TLS.KeyFile
-			logger.With(ctx, "server", name).
-				Warn("TLS enabled without cert/key - inheriting from server.tls (deprecated: set cert_file/key_file explicitly)")
+			slog.WarnContext(ctx,
+				"TLS enabled without cert/key - inheriting from server.tls (deprecated: set cert_file/key_file explicitly)",
+				"server", name,
+			)
 		}
 	}
 	propagateTLS("health", &config.Health.TLS)
@@ -263,10 +265,10 @@ func (l *ConfigLoader) migrateDeprecatedConfig(ctx context.Context, config *Appl
 
 	if l.viper.IsSet("logging.otel.enabled") {
 		if l.viper.IsSet("tracing.enabled") {
-			logger.Warn(ctx, "logging.otel.enabled is deprecated and ignored because tracing.enabled is also set")
+			slog.WarnContext(ctx, "logging.otel.enabled is deprecated and ignored because tracing.enabled is also set")
 		} else {
 			config.Tracing.Enabled = config.Logging.OTel.Enabled
-			logger.Warn(ctx, "logging.otel.enabled is deprecated, use tracing.enabled instead")
+			slog.WarnContext(ctx, "logging.otel.enabled is deprecated, use tracing.enabled instead")
 		}
 	}
 }
@@ -432,6 +434,7 @@ func (l *ConfigLoader) bindFlags(cmd *cobra.Command) {
 	l.bindPFlag("logging.output", cmd.Flags().Lookup("log-output"))
 	l.bindPFlag("logging.masking.enabled", cmd.Flags().Lookup("log-masking-enabled"))
 	l.bindPFlag("logging.masking.headers", cmd.Flags().Lookup("log-masking-sensitive-headers"))
+	// Deprecated compatibility flag; the value is accepted but has no runtime effect.
 	l.bindPFlag("logging.masking.fields", cmd.Flags().Lookup("log-masking-sensitive-fields"))
 
 	// Metrics flags: --metrics-* -> metrics.*

@@ -66,7 +66,7 @@ hyperfleet-api/
 │   ├── db/                      # Database session factory, migrations, transaction middleware
 │   ├── errors/                  # RFC 9457 Problem Details error model
 │   ├── handlers/                # HTTP handler pattern, validation and error handling
-│   ├── logger/                  # Structured logging (slog-based)
+│   ├── logger/                  # API logging integration (request ID, HTTP attrs, GORM adapter)
 │   ├── presenters/              # Response presenters (DAO models → API responses)
 │   └── services/                # Business logic layer (status aggregation, validation)
 ├── openapi/                     # API specification source

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"fmt"
+	"log/slog"
 	"net/http"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
@@ -247,7 +248,7 @@ func (h *RootResourceHandler) ListStatuses(w http.ResponseWriter, r *http.Reques
 	for _, as := range statuses {
 		presented, presErr := presenters.PresentAdapterStatus(as)
 		if presErr != nil {
-			logger.WithError(ctx, presErr).Error("Failed to present adapter status")
+			slog.ErrorContext(ctx, "Failed to present adapter status", "error", presErr)
 			handleError(r, w, errors.GeneralError("Failed to present adapter status"))
 			return
 		}
@@ -277,6 +278,7 @@ func (h *RootResourceHandler) CreateStatus(w http.ResponseWriter, r *http.Reques
 		handleError(r, w, svcErr)
 		return
 	}
+	r = r.WithContext(logger.WithAdapter(r.Context(), req.Adapter))
 
 	ctx := r.Context()
 	id := r.PathValue("id")
@@ -288,7 +290,7 @@ func (h *RootResourceHandler) CreateStatus(w http.ResponseWriter, r *http.Reques
 
 	newStatus, convErr := presenters.ConvertAdapterStatus(resource.Kind, id, &req)
 	if convErr != nil {
-		logger.WithError(ctx, convErr).Error("Failed to convert adapter status")
+		slog.ErrorContext(ctx, "Failed to convert adapter status", "error", convErr)
 		handleError(r, w, errors.GeneralError("Failed to convert adapter status"))
 		return
 	}
@@ -306,7 +308,7 @@ func (h *RootResourceHandler) CreateStatus(w http.ResponseWriter, r *http.Reques
 
 	status, presErr := presenters.PresentAdapterStatus(adapterStatus)
 	if presErr != nil {
-		logger.WithError(ctx, presErr).Error("Failed to present adapter status")
+		slog.ErrorContext(ctx, "Failed to present adapter status", "error", presErr)
 		handleError(r, w, errors.GeneralError("Failed to present adapter status"))
 		return
 	}

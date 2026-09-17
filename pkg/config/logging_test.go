@@ -21,7 +21,7 @@ func TestNewLoggingConfig_Defaults(t *testing.T) {
 	Expect(cfg.Output).To(Equal("stdout"))
 	Expect(cfg.Masking.Enabled).To(BeTrue())
 	Expect(cfg.Masking.Headers).NotTo(BeEmpty())
-	Expect(cfg.Masking.Fields).NotTo(BeEmpty())
+	Expect(cfg.Masking.Fields).NotTo(BeEmpty()) // Deprecated compatibility default.
 }
 
 // TestConfigLoader_LoggingFromEnv tests loading logging config from environment
@@ -136,39 +136,6 @@ func TestLoggingConfig_GetSensitiveHeadersList(t *testing.T) {
 			headers := cfg.GetSensitiveHeadersList()
 
 			Expect(headers).To(Equal(tt.expected))
-		})
-	}
-}
-
-// TestLoggingConfig_GetSensitiveFieldsList tests the fields array accessor
-func TestLoggingConfig_GetSensitiveFieldsList(t *testing.T) {
-	RegisterTestingT(t)
-
-	tests := []struct {
-		name     string
-		input    []string
-		expected []string
-	}{
-		{
-			name:     "standard list",
-			input:    []string{"password", "secret", "token"},
-			expected: []string{"password", "secret", "token"},
-		},
-		{
-			name:     "empty array",
-			input:    []string{},
-			expected: []string{},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			cfg := NewLoggingConfig()
-			cfg.Masking.Fields = tt.input
-
-			fields := cfg.GetSensitiveFieldsList()
-
-			Expect(fields).To(Equal(tt.expected))
 		})
 	}
 }

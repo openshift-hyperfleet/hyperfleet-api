@@ -2,11 +2,10 @@ package server
 
 import (
 	"compress/gzip"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
-
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
 // gzipResponseWriter wraps an http.ResponseWriter, transparently gzip-encoding
@@ -73,7 +72,7 @@ func CompressMiddleware(next http.Handler) http.Handler {
 		gz := gzip.NewWriter(w)
 		defer func() {
 			if err := gz.Close(); err != nil {
-				logger.WithError(r.Context(), err).Warn("failed to finalize gzip response, response may be incomplete")
+				slog.WarnContext(r.Context(), "failed to finalize gzip response, response may be incomplete", "error", err)
 			}
 		}()
 

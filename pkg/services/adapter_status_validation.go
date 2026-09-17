@@ -1,11 +1,12 @@
 package services
 
 import (
+	"context"
 	"encoding/json"
+	"log/slog"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
-	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
 // validateAndClassifyAdapterStatus performs all stateless validation and discard-rule
@@ -13,34 +14,35 @@ import (
 // aggregation should be triggered. Returns (nil, false, nil) when the update should
 // be silently discarded.
 //
-// This is the shared implementation used by ResourceService. Callers provide
-// the resource generation and a pre-built logger with entity-specific context fields.
+// This is the shared implementation used by ResourceService. The context retains
+// request correlation and adapter identity supplied by the HTTP status handler,
+// with resource context added by the service.
 func validateAndClassifyAdapterStatus(
 	resourceGeneration int32,
 	adapterStatus *api.AdapterStatus,
 	existingStatus *api.AdapterStatus,
-	log *logger.ContextLogger,
+	ctx context.Context,
 ) ([]api.AdapterCondition, bool, *errors.ServiceError) {
 	if adapterStatus.ObservedGeneration > resourceGeneration {
-		log.Debug("Discarding adapter status update: future generation")
+		slog.DebugContext(ctx, "Discarding adapter status update: future generation")
 		return nil, false, nil
 	}
 
 	if existingStatus != nil && adapterStatus.ObservedGeneration < existingStatus.ObservedGeneration {
-		log.Debug("Discarding adapter status update: stale generation")
+		slog.DebugContext(ctx, "Discarding adapter status update: stale generation")
 		return nil, false, nil
 	}
 
 	incomingObs := AdapterObservedTime(adapterStatus)
 	if incomingObs.IsZero() {
-		log.Debug("Discarding adapter status update: zero observed time")
+		slog.DebugContext(ctx, "Discarding adapter status update: zero observed time")
 		return nil, false, nil
 	}
 
 	if existingStatus != nil && adapterStatus.ObservedGeneration == existingStatus.ObservedGeneration {
 		prevObs := AdapterObservedTime(existingStatus)
 		if !prevObs.IsZero() && incomingObs.Before(prevObs) {
-			log.Debug("Discarding adapter status update: stale observed time")
+			slog.DebugContext(ctx, "Discarding adapter status update: stale observed time")
 			return nil, false, nil
 		}
 	}
@@ -79,7 +81,7 @@ func validateAndClassifyAdapterStatus(
 
 		if cond.Status != api.AdapterConditionTrue && cond.Status != api.AdapterConditionFalse {
 			if existingStatus != nil {
-				log.Debug("Discarding adapter status update: subsequent Unknown Available")
+				slog.DebugContext(ctx, "Discarding adapter status update: subsequent Unknown Available")
 				return nil, false, nil
 			}
 			triggerAggregation = false

@@ -4,6 +4,7 @@ import (
 	"context"
 	"embed"
 	"io/fs"
+	"log/slog"
 	"net/http"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
@@ -38,7 +39,7 @@ func NewOpenAPIHandler() (*OpenAPIHandler, error) {
 			err,
 		)
 	}
-	logger.Info(ctx, "Loaded fully resolved OpenAPI specification from embedded pkg/api/openapi/api/openapi.yaml")
+	slog.InfoContext(ctx, "Loaded fully resolved OpenAPI specification from embedded pkg/api/openapi/api/openapi.yaml")
 
 	// Load the OpenAPI UI HTML content
 	uiContent, err := fs.ReadFile(openapiui, "openapi-ui.html")
@@ -48,7 +49,7 @@ func NewOpenAPIHandler() (*OpenAPIHandler, error) {
 			err,
 		)
 	}
-	logger.Info(ctx, "Loaded OpenAPI UI HTML from embedded file")
+	slog.InfoContext(ctx, "Loaded OpenAPI UI HTML from embedded file")
 
 	return &OpenAPIHandler{
 		openAPIDefinitions: data,
@@ -61,11 +62,10 @@ func (h *OpenAPIHandler) GetOpenAPI(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	if _, err := w.Write(h.openAPIDefinitions); err != nil {
 		// Response already committed, can't report error
-		logger.With(r.Context(),
-			logger.HTTPPath(r.URL.Path),
+		slog.ErrorContext(r.Context(),
+			"Failed to write OpenAPI specification response", logger.HTTPPath(r.URL.Path),
 			logger.HTTPMethod(r.Method),
-			logger.HTTPStatusCode(http.StatusOK),
-		).WithError(err).Error("Failed to write OpenAPI specification response")
+			logger.HTTPStatusCode(http.StatusOK), "error", err)
 		return
 	}
 }
@@ -75,11 +75,10 @@ func (h *OpenAPIHandler) GetOpenAPIUI(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	if _, err := w.Write(h.uiContent); err != nil {
 		// Response already committed, can't report error
-		logger.With(r.Context(),
-			logger.HTTPPath(r.URL.Path),
+		slog.ErrorContext(r.Context(),
+			"Failed to write OpenAPI UI response", logger.HTTPPath(r.URL.Path),
 			logger.HTTPMethod(r.Method),
-			logger.HTTPStatusCode(http.StatusOK),
-		).WithError(err).Error("Failed to write OpenAPI UI response")
+			logger.HTTPStatusCode(http.StatusOK), "error", err)
 		return
 	}
 }

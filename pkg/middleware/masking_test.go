@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -244,7 +245,7 @@ func TestMaskBody(t *testing.T) {
 				},
 			}
 			m := NewMaskingMiddleware(cfg)
-			result := m.MaskBody([]byte(tt.body))
+			result := m.MaskBody(context.Background(), []byte(tt.body))
 
 			// For JSON objects, compare as maps to handle key ordering
 			switch {

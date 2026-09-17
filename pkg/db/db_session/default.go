@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"gorm.io/driver/postgres"
@@ -104,11 +105,10 @@ func (f *Default) Init(config *config.DatabaseConfig) {
 					err.Error(),
 				))
 			}
-			logger.With(context.Background(),
-				"retry", attempt+1,
+			slog.WarnContext(context.Background(),
+				"Database connection failed, retrying...", "retry", attempt+1,
 				"max_retries", config.Pool.ConnRetryAttempts,
-				"retry_interval", config.Pool.ConnRetryInterval,
-			).WithError(err).Warn("Database connection failed, retrying...")
+				"retry_interval", config.Pool.ConnRetryInterval, "error", err)
 			time.Sleep(config.Pool.ConnRetryInterval)
 
 			// Close the existing handle before re-opening to avoid leaking connections
@@ -132,12 +132,12 @@ func (f *Default) Init(config *config.DatabaseConfig) {
 
 		// Register database metrics GORM plugin
 		if err = db_metrics.RegisterPlugin(g2); err != nil {
-			logger.WithError(context.Background(), err).Warn("Failed to register database metrics plugin")
+			slog.WarnContext(context.Background(), "Failed to register database metrics plugin", "error", err)
 		}
 
 		// Register connection pool metrics collector
 		if err = db_metrics.RegisterPoolCollector(dbx); err != nil {
-			logger.WithError(context.Background(), err).Warn("Failed to register pool metrics collector")
+			slog.WarnContext(context.Background(), "Failed to register pool metrics collector", "error", err)
 		}
 
 		f.config = config
@@ -159,19 +159,19 @@ func (f *Default) DirectDB() *sql.DB {
 	return f.db
 }
 
-func waitForNotification(l *pq.Listener, callback func(id string)) {
-	ctx := context.Background()
+func waitForNotification(ctx context.Context, l *pq.Listener, callback func(id string)) {
 	for {
 		select {
 		case n := <-l.Notify:
-			logger.With(ctx, logger.FieldChannel, n.Channel).With(logger.FieldData, n.Extra).Info("Received data from channel")
+			slog.InfoContext(ctx, "Received data from channel",
+				logger.FieldChannel, n.Channel, logger.FieldData, n.Extra)
 			callback(n.Extra)
 			return
 		case <-time.After(10 * time.Second):
-			logger.Debug(ctx, "Received no events on channel during interval. Pinging source")
+			slog.DebugContext(ctx, "Received no events on channel during interval. Pinging source")
 			go func() {
 				if err := l.Ping(); err != nil {
-					logger.WithError(ctx, err).Debug("Ping failed")
+					slog.DebugContext(ctx, "Ping failed", "error", err)
 				}
 			}()
 			return
@@ -182,7 +182,7 @@ func waitForNotification(l *pq.Listener, callback func(id string)) {
 func newListener(ctx context.Context, connstr, channel string, callback func(id string)) {
 	plog := func(ev pq.ListenerEventType, err error) {
 		if err != nil {
-			logger.WithError(ctx, err).Error("PostgreSQL listener error")
+			slog.ErrorContext(ctx, "PostgreSQL listener error", "error", err)
 		}
 	}
 	listener := pq.NewListener(connstr, 10*time.Second, time.Minute, plog)
@@ -191,9 +191,9 @@ func newListener(ctx context.Context, connstr, channel string, callback func(id 
 		panic(err)
 	}
 
-	logger.With(ctx, logger.FieldChannel, channel).Info("Starting channeling monitor")
+	slog.InfoContext(ctx, "Starting channeling monitor", logger.FieldChannel, channel)
 	for {
-		waitForNotification(listener, callback)
+		waitForNotification(ctx, listener, callback)
 	}
 }
 

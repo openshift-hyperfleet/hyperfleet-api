@@ -3,6 +3,7 @@ package integration
 import (
 	"context"
 	"flag"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -24,7 +25,7 @@ func TestMain(m *testing.M) {
 func runTestMain(m *testing.M) int {
 	flag.Parse()
 	ctx := context.Background()
-	logger.With(ctx, "go_version", runtime.Version()).Info("Starting integration test")
+	slog.InfoContext(ctx, "Starting integration test", "go_version", runtime.Version())
 
 	// Set OpenAPI schema path for integration tests if not already set
 	// This enables schema validation middleware during tests
@@ -32,7 +33,7 @@ func runTestMain(m *testing.M) int {
 	if os.Getenv("HYPERFLEET_SERVER_OPENAPI_SCHEMA_PATH") == "" {
 		_, filename, _, ok := runtime.Caller(0)
 		if !ok {
-			logger.Warn(ctx, "Failed to determine current file path via runtime.Caller, skipping schema path setup")
+			slog.WarnContext(ctx, "Failed to determine current file path via runtime.Caller, skipping schema path setup")
 		} else {
 			integrationDir := filepath.Dir(filename)
 			testDir := filepath.Dir(integrationDir)
@@ -44,8 +45,9 @@ func runTestMain(m *testing.M) int {
 				schemaPath = filepath.Join(repoRoot, "openapi", "openapi.yaml")
 			}
 			_ = os.Setenv("HYPERFLEET_SERVER_OPENAPI_SCHEMA_PATH", schemaPath)
-			logger.With(ctx, logger.FieldSchemaPath, schemaPath).
-				Info("Set HYPERFLEET_SERVER_OPENAPI_SCHEMA_PATH for integration tests")
+			slog.InfoContext(ctx,
+				"Set HYPERFLEET_SERVER_OPENAPI_SCHEMA_PATH for integration tests", logger.FieldSchemaPath, schemaPath,
+			)
 		}
 	}
 
@@ -62,7 +64,7 @@ func runTestMain(m *testing.M) int {
 	localExit := exitCode
 	go func() {
 		time.Sleep(45 * time.Second)
-		logger.Error(ctx, "Teardown timed out after 45s, forcing exit")
+		slog.ErrorContext(ctx, "Teardown timed out after 45s, forcing exit")
 		if localExit == 0 {
 			localExit = 1
 		}
@@ -79,7 +81,7 @@ func terminateContainer(ctx context.Context, pgContainer *postgres.PostgresConta
 	termCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	if err := pgContainer.Terminate(termCtx); err != nil {
-		logger.WithError(ctx, err).Error("Failed to terminate testcontainer")
+		slog.ErrorContext(ctx, "Failed to terminate testcontainer", "error", err)
 	}
 }
 
@@ -105,19 +107,19 @@ func startTestcontainer(ctx context.Context) *postgres.PostgresContainer {
 				WithStartupTimeout(60*time.Second)),
 	)
 	if err != nil {
-		logger.WithError(ctx, err).Error("Failed to start PostgreSQL testcontainer")
+		slog.ErrorContext(ctx, "Failed to start PostgreSQL testcontainer", "error", err)
 		os.Exit(1)
 	}
 
 	host, err := pgContainer.Host(ctx)
 	if err != nil {
-		logger.WithError(ctx, err).Error("Failed to get testcontainer host")
+		slog.ErrorContext(ctx, "Failed to get testcontainer host", "error", err)
 		terminateContainer(ctx, pgContainer)
 		os.Exit(1)
 	}
 	mappedPort, err := pgContainer.MappedPort(ctx, "5432/tcp")
 	if err != nil {
-		logger.WithError(ctx, err).Error("Failed to get testcontainer mapped port")
+		slog.ErrorContext(ctx, "Failed to get testcontainer mapped port", "error", err)
 		terminateContainer(ctx, pgContainer)
 		os.Exit(1)
 	}
@@ -125,6 +127,6 @@ func startTestcontainer(ctx context.Context) *postgres.PostgresContainer {
 	os.Setenv("HYPERFLEET_DATABASE_HOST", host)
 	os.Setenv("HYPERFLEET_DATABASE_PORT", mappedPort.Port())
 
-	logger.With(ctx, "host", host, "port", mappedPort.Port()).Info("PostgreSQL testcontainer started")
+	slog.InfoContext(ctx, "PostgreSQL testcontainer started", "host", host, "port", mappedPort.Port())
 	return pgContainer
 }

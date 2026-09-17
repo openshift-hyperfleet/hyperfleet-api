@@ -4,32 +4,23 @@ package logger
 // These constants provide type safety and prevent typos when adding temporary fields to logs.
 //
 // Usage:
-//   logger.With(ctx, logger.FieldBindAddress, addr).Info("Server starting")
+//   slog.InfoContext(ctx, "Server starting", logger.FieldBindAddress, addr)
 //
-// For high-frequency fields (>10 occurrences), use helper functions instead (e.g., WithError).
+// For high-frequency fields (>10 occurrences), use the shared context helpers instead.
 
 // Server/Config related fields
 const (
 	FieldBindAddress = "bind_address"
-	FieldEnvironment = "environment"
 	FieldLogLevel    = "level"
 	FieldLogFormat   = "format"
 	FieldLogOutput   = "output"
 )
 
-// Resource related fields
-const (
-	FieldNodePoolID = "nodepool_id"
-	// Note: cluster_id, resource_type, resource_id are context fields (see context.go)
-)
-
 // Database related fields
 const (
-	FieldMigrationID = "migration_id"
 	// FieldConnectionString - WARNING: Always sanitize connection strings before logging
 	// to prevent exposing passwords. Never log raw connection strings.
 	FieldConnectionString = "connection_string"
-	FieldTable            = "table"
 	FieldChannel          = "channel"
 	FieldLockID           = "lock_id"
 	FieldLockType         = "lock_type"
@@ -39,14 +30,12 @@ const (
 
 // OpenTelemetry related fields
 const (
-	FieldOTelEnabled              = "otel_enabled"
-	FieldSamplingRate             = "sampling_rate"
-	FieldExporterEndpoint         = "exporter_endpoint"
-	FieldHyperfleetTracingEnabled = "hyperfleet_tracing_enabled"
-	FieldServiceName              = "service_name"
-	FieldProtocol                 = "protocol"
-	FieldSampler                  = "sampler"
-	FieldServiceVersion           = "service_version"
+	FieldOTelEnabled    = "otel_enabled"
+	FieldSamplingRate   = "sampling_rate"
+	FieldServiceName    = "service_name"
+	FieldProtocol       = "protocol"
+	FieldSampler        = "sampler"
+	FieldServiceVersion = "service_version"
 )
 
 // Schema related fields
@@ -56,16 +45,10 @@ const (
 
 // Generic fields
 const (
+	FieldRequestID = "request_id"
 	FieldAdapter   = "adapter"
 	FieldErrorCode = "error_code"
-	FieldFlag      = "flag"
 	FieldData      = "data"
 )
 
-// Endpoint related fields (used in handlers)
-const (
-	FieldEndpoint = "endpoint"
-)
-
 // Note: HTTP-related field constants are defined in http.go
-// Note: For error field, use WithError(ctx, err) helper function instead of FieldError constant

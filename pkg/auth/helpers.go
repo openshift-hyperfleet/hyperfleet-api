@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/response"
@@ -20,9 +21,9 @@ func handleError(ctx context.Context, w http.ResponseWriter, r *http.Request, co
 		instance = r.URL.Path
 	}
 	if err.HTTPCode >= 400 && err.HTTPCode <= 499 {
-		logger.WithError(ctx, err).Warn("Client error occurred")
+		slog.WarnContext(ctx, "Client error occurred", "error", err)
 	} else {
-		logger.WithError(ctx, err).Error("Server error occurred")
+		slog.ErrorContext(ctx, "Server error occurred", "error", err)
 	}
 
 	response.WriteProblemDetailsResponse(w, r, err.HTTPCode, err.AsProblemDetails(instance, traceID))

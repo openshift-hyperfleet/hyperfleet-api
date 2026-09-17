@@ -175,8 +175,8 @@ Logging behavior and output settings.
 | `logging.level` | string | `info` | Log level: `debug`, `info`, `warn`, `error` |
 | `logging.format` | string | `json` | Log format: `json`, `text` |
 | `logging.output` | string | `stdout` | Log output: `stdout`, `stderr` |
-| `logging.otel.enabled` | bool | `true` | Enable OpenTelemetry tracing (see [OpenTelemetry Configuration](#opentelemetry-configuration)) |
-| `logging.masking.enabled` | bool | `true` | Enable sensitive data masking in logs |
+| `logging.otel.enabled` (deprecated) | bool | `true` | Legacy OpenTelemetry setting; `tracing.enabled` is active and takes precedence when both are configured. If `tracing.enabled` is unset, this setting is used as a fallback. |
+| `logging.masking.enabled` | bool | `true` | Enable sensitive request-header masking in logs |
 
 **Example:**
 
@@ -203,7 +203,7 @@ OpenTelemetry tracing is configured via standard environment variables following
 
 | Property | Environment Variable | Type | Default | Description |
 |----------|---------------------|------|---------|-------------|
-| `logging.otel.enabled` | `HYPERFLEET_TRACING_ENABLED` | bool | `true` | Enable OpenTelemetry tracing (HyperFleet standard) |
+| `tracing.enabled` | `HYPERFLEET_TRACING_ENABLED` | bool | `true` | Enable OpenTelemetry tracing (active setting; takes precedence over deprecated `logging.otel.enabled`) |
 
 **Standard OpenTelemetry Environment Variables:**
 
@@ -477,7 +477,8 @@ Complete table of all configuration properties, their environment variables, and
 | `logging.level` | `HYPERFLEET_LOGGING_LEVEL` | string | `info` |
 | `logging.format` | `HYPERFLEET_LOGGING_FORMAT` | string | `json` |
 | `logging.output` | `HYPERFLEET_LOGGING_OUTPUT` | string | `stdout` |
-| `logging.otel.enabled` | `HYPERFLEET_TRACING_ENABLED` | bool | `true` |
+| `logging.otel.enabled` (deprecated) | `HYPERFLEET_TRACING_ENABLED` | bool | `true` |
+| `tracing.enabled` | `HYPERFLEET_TRACING_ENABLED` | bool | `true` |
 | `logging.masking.enabled` | `HYPERFLEET_LOGGING_MASKING_ENABLED` | bool | `true` |
 | `logging.masking.headers` | `HYPERFLEET_LOGGING_MASKING_HEADERS` | csv | `Authorization,Cookie` |
 | `logging.masking.fields` | `HYPERFLEET_LOGGING_MASKING_FIELDS` | csv | `password,token` |
