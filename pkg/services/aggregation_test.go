@@ -544,11 +544,43 @@ func TestComputeReconciled(t *testing.T) {
 		}
 	})
 
-	t.Run("ObservedGeneration always equals resourceGen", func(t *testing.T) {
+	t.Run("ObservedGeneration is 0 when no adapter has reported", func(t *testing.T) {
 		t.Parallel()
 		cond := computeReconciled(5, aggTRef, nil, nil, nil, map[string]adapterAvailableSnapshot{}, false)
-		if cond.ObservedGeneration != 5 {
-			t.Errorf("ObservedGeneration got %d, want 5", cond.ObservedGeneration)
+		if cond.ObservedGeneration != 0 {
+			t.Errorf("ObservedGeneration got %d, want 0", cond.ObservedGeneration)
+		}
+	})
+
+	t.Run("ObservedGeneration is max adapter gen when not fully reconciled", func(t *testing.T) {
+		t.Parallel()
+		required := []string{"a", "b"}
+		byAdapter := map[string]adapterAvailableSnapshot{
+			"a": snap(1, true, aggT1),
+			"b": snap(2, true, aggT2),
+		}
+		cond := computeReconciled(3, aggTRef, nil, nil, required, byAdapter, false)
+		if cond.Status != api.ConditionFalse {
+			t.Fatalf("got %v, want False", cond.Status)
+		}
+		if cond.ObservedGeneration != 2 {
+			t.Errorf("ObservedGeneration got %d, want 2 (max of reported gens)", cond.ObservedGeneration)
+		}
+	})
+
+	t.Run("ObservedGeneration equals resourceGen only when status is True", func(t *testing.T) {
+		t.Parallel()
+		required := []string{"a", "b"}
+		byAdapter := map[string]adapterAvailableSnapshot{
+			"a": snap(2, true, aggT1),
+			"b": snap(2, true, aggT2),
+		}
+		cond := computeReconciled(2, aggTRef, nil, nil, required, byAdapter, false)
+		if cond.Status != api.ConditionTrue {
+			t.Fatalf("got %v, want True", cond.Status)
+		}
+		if cond.ObservedGeneration != 2 {
+			t.Errorf("ObservedGeneration got %d, want 2 (resourceGen)", cond.ObservedGeneration)
 		}
 	})
 
@@ -810,6 +842,9 @@ func TestComputeLastKnownReconciled(t *testing.T) {
 		if cond.Reason == nil || *cond.Reason != reasonLKRMissingReports {
 			t.Errorf("Reason got %v, want %s", cond.Reason, reasonLKRMissingReports)
 		}
+		if cond.ObservedGeneration != 0 {
+			t.Errorf("ObservedGeneration got %d, want 0 (no adapters exist)", cond.ObservedGeneration)
+		}
 	})
 
 	t.Run("required adapter missing from byAdapter → False", func(t *testing.T) {
@@ -930,6 +965,18 @@ func TestComputeLastKnownReconciled(t *testing.T) {
 		}
 	})
 
+	t.Run("no adapter has reported: observed_generation is 0", func(t *testing.T) {
+		t.Parallel()
+		required := []string{"a", "b"}
+		cond := computeLastKnownReconciled(aggTRef, nil, required, map[string]adapterAvailableSnapshot{})
+		if cond.Status != api.ConditionFalse {
+			t.Errorf("Status got %v, want False", cond.Status)
+		}
+		if cond.ObservedGeneration != 0 {
+			t.Errorf("ObservedGeneration got %d, want 0 (none have reported)", cond.ObservedGeneration)
+		}
+	})
+
 	t.Run("False with mixed gens: observed_generation is max adapter gen", func(t *testing.T) {
 		t.Parallel()
 		// "a" False at gen 1, "b" True at gen 2 → allTrue=false → False.
@@ -1012,10 +1059,11 @@ func TestAggregateResourceStatus(t *testing.T) {
 		return b
 	}
 
-	t.Run("initial creation: req adapters, no reports → all False, observed_gen=1, times=refTime", func(t *testing.T) {
+	t.Run("initial creation: req adapters, no reports → all False, observed_gen=0, times=refTime", func(t *testing.T) {
 		t.Parallel()
 		// Doc: when resource is created at gen=1, no adapter has reported yet.
-		// observed_generation for Reconciled and LastKnownReconciled must be 1.
+		// observed_generation for Reconciled and LastKnownReconciled must be 0, since no adapter
+		// has observed the resource yet
 		// last_updated_time and last_transition_time must equal resource.last_updated_time (refTime).
 		required := []string{"a", "b"}
 		in := AggregateResourceStatusInput{
@@ -1030,11 +1078,11 @@ func TestAggregateResourceStatus(t *testing.T) {
 		if avail.Status != api.ConditionFalse {
 			t.Errorf("avail.Status got %v, want False", avail.Status)
 		}
-		if reconciled.ObservedGeneration != 1 {
-			t.Errorf("reconciled.ObservedGeneration got %d, want 1", reconciled.ObservedGeneration)
+		if reconciled.ObservedGeneration != 0 {
+			t.Errorf("reconciled.ObservedGeneration got %d, want 0", reconciled.ObservedGeneration)
 		}
-		if avail.ObservedGeneration != 1 {
-			t.Errorf("avail.ObservedGeneration got %d, want 1", avail.ObservedGeneration)
+		if avail.ObservedGeneration != 0 {
+			t.Errorf("avail.ObservedGeneration got %d, want 0", avail.ObservedGeneration)
 		}
 		if !reconciled.LastUpdatedTime.Equal(aggTRef) {
 			t.Errorf("reconciled.LastUpdatedTime got %v, want refTime=%v", reconciled.LastUpdatedTime, aggTRef)
@@ -1062,6 +1110,12 @@ func TestAggregateResourceStatus(t *testing.T) {
 		}
 		if avail.Status != api.ConditionFalse {
 			t.Errorf("avail: got %v, want False", avail.Status)
+		}
+		if reconciled.ObservedGeneration != 0 {
+			t.Errorf("reconciled.ObservedGeneration got %d, want 0 (no adapters exist)", reconciled.ObservedGeneration)
+		}
+		if avail.ObservedGeneration != 0 {
+			t.Errorf("avail.ObservedGeneration got %d, want 0 (no adapters exist)", avail.ObservedGeneration)
 		}
 	})
 
@@ -1107,6 +1161,10 @@ func TestAggregateResourceStatus(t *testing.T) {
 			}
 			if avail.Status != api.ConditionTrue {
 				t.Errorf("avail: got %v, want True (all True at same old gen)", avail.Status)
+			}
+			if reconciled.ObservedGeneration != 1 {
+				t.Errorf("reconciled.ObservedGeneration got %d, want 1 (max adapter-reported gen)",
+					reconciled.ObservedGeneration)
 			}
 		})
 

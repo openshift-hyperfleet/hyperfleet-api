@@ -79,7 +79,7 @@ PUT    /api/hyperfleet/v1/clusters/{cluster_id}/statuses
         "status": "False",
         "reason": "ReconciledMissingAdapters",
         "message": "Required adapters have not yet reported status",
-        "observed_generation": 1,
+        "observed_generation": 0,
         "created_time": "2025-01-01T00:00:00Z",
         "last_updated_time": "2025-01-01T00:00:00Z",
         "last_transition_time": "2025-01-01T00:00:00Z"
@@ -89,7 +89,7 @@ PUT    /api/hyperfleet/v1/clusters/{cluster_id}/statuses
         "status": "False",
         "reason": "AdaptersMissingReports",
         "message": "Required adapters have not yet reported status",
-        "observed_generation": 1,
+        "observed_generation": 0,
         "created_time": "2025-01-01T00:00:00Z",
         "last_updated_time": "2025-01-01T00:00:00Z",
         "last_transition_time": "2025-01-01T00:00:00Z"
@@ -319,7 +319,7 @@ Updates a cluster's `spec` and/or `labels`. Only the fields provided in the requ
         "status": "False",
         "reason": "ReconciledMissingAdapters",
         "message": "Required adapters have not yet reported status",
-        "observed_generation": 2,
+        "observed_generation": 1,
         "created_time": "2025-01-01T00:00:00Z",
         "last_updated_time": "2025-01-01T12:00:00Z",
         "last_transition_time": "2025-01-01T12:00:00Z"
@@ -469,7 +469,7 @@ PUT    /api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepool_id}/statuses
         "status": "False",
         "reason": "ReconciledMissingAdapters",
         "message": "Required adapters have not yet reported status",
-        "observed_generation": 1,
+        "observed_generation": 0,
         "created_time": "2025-01-01T00:00:00Z",
         "last_updated_time": "2025-01-01T00:00:00Z",
         "last_transition_time": "2025-01-01T00:00:00Z"
@@ -479,7 +479,7 @@ PUT    /api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepool_id}/statuses
         "status": "False",
         "reason": "AdaptersMissingReports",
         "message": "Required adapters have not yet reported status",
-        "observed_generation": 1,
+        "observed_generation": 0,
         "created_time": "2025-01-01T00:00:00Z",
         "last_updated_time": "2025-01-01T00:00:00Z",
         "last_transition_time": "2025-01-01T00:00:00Z"

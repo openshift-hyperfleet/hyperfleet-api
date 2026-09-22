@@ -336,16 +336,45 @@ func computeReconciled(
 		createdTime = prevCondition.CreatedTime
 	}
 
+	observedGen := computeReconciledObservedGeneration(resourceGen, status, requiredAdapters, snapshotsByAdapter)
+
 	return api.ResourceCondition{
 		Type:               api.ResourceConditionTypeReconciled,
 		Status:             status,
-		ObservedGeneration: resourceGen,
+		ObservedGeneration: observedGen,
 		Reason:             strPtr(reason),
 		Message:            strPtr(message),
 		CreatedTime:        createdTime,
 		LastUpdatedTime:    lastUpdated,
 		LastTransitionTime: lastTransition,
 	}
+}
+
+// computeReconciledObservedGeneration returns resourceGen when status is True, otherwise the max
+// generation any required adapter has actually reported (0 if none have reported).
+// Trusts status==True without re-checking snapshotsByAdapter, its only safe as long as callers
+// derive status the same way computeReconciled does.
+func computeReconciledObservedGeneration(
+	resourceGen int32,
+	status api.ResourceConditionStatus,
+	requiredAdapters []string,
+	snapshotsByAdapter map[string]adapterAvailableSnapshot,
+) int32 {
+	if status == api.ConditionTrue {
+		return resourceGen
+	}
+
+	maxGeneration := int32(0)
+	for _, name := range requiredAdapters {
+		snap, ok := snapshotsByAdapter[name]
+		if !ok {
+			continue
+		}
+		if snap.observedGeneration > maxGeneration {
+			maxGeneration = snap.observedGeneration
+		}
+	}
+	return maxGeneration
 }
 
 func computeReconciledLastUpdatedTime(
@@ -541,7 +570,7 @@ func computeLastKnownReconciledObservedGeneration(
 	mixed bool,
 ) int32 {
 	if len(required) == 0 {
-		return 1
+		return 0
 	}
 
 	if status == api.ConditionTrue {
@@ -551,7 +580,7 @@ func computeLastKnownReconciledObservedGeneration(
 		if prev != nil {
 			return prev.ObservedGeneration
 		}
-		return 1
+		return 0
 	}
 
 	// False
@@ -569,7 +598,7 @@ func computeLastKnownReconciledObservedGeneration(
 		if prev != nil {
 			return prev.ObservedGeneration
 		}
-		return 1
+		return 0
 	}
 	return maxG
 }

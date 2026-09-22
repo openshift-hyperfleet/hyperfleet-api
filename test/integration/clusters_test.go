@@ -182,6 +182,58 @@ func TestClusterPatch_SetReconciledFalse(t *testing.T) {
 		"Reconciled must be False after generation increment")
 }
 
+func TestClusterPatch_ReconciledObservedGeneration(t *testing.T) {
+	h, client := test.RegisterIntegration(t)
+
+	account := h.NewRandAccount()
+	ctx := h.NewAuthenticatedContext(account)
+
+	cluster, err := h.Factories.NewClusters(h.NewID())
+	Expect(err).NotTo(HaveOccurred())
+
+	// Only "validation" reports; the other required adapters never do, so Reconciled stays False
+	statusInput := newAdapterStatusRequest(
+		"validation",
+		cluster.Generation,
+		[]openapi.ConditionRequest{
+			{Type: api.AdapterConditionTypeAvailable, Status: openapi.AdapterConditionStatusTrue},
+			{Type: api.AdapterConditionTypeApplied, Status: openapi.AdapterConditionStatusTrue},
+			{Type: api.AdapterConditionTypeHealth, Status: openapi.AdapterConditionStatusTrue},
+		},
+		nil,
+	)
+	statusResp, err := client.PutClusterStatusesWithResponse(
+		ctx, cluster.ID,
+		openapi.PutClusterStatusesJSONRequestBody(statusInput), test.WithAuthToken(ctx),
+	)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(statusResp.StatusCode()).To(Equal(http.StatusCreated))
+
+	// Bump the generation via Patch
+	newLabels := map[string]string{"env": "staging"}
+	patchResp, err := client.PatchClusterByIdWithResponse(
+		ctx, cluster.ID,
+		openapi.PatchClusterByIdJSONRequestBody{Labels: &newLabels},
+		test.WithAuthToken(ctx),
+	)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(patchResp.StatusCode()).To(Equal(http.StatusOK))
+
+	updated := patchResp.JSON200
+	Expect(updated.Generation).To(Equal(cluster.Generation+1), "Generation should increment when labels change")
+
+	var reconciledCond *openapi.ResourceCondition
+	for i := range updated.Status.Conditions {
+		if updated.Status.Conditions[i].Type == api.ResourceConditionTypeReconciled {
+			reconciledCond = &updated.Status.Conditions[i]
+			break
+		}
+	}
+	Expect(reconciledCond).NotTo(BeNil(), "Expected Reconciled condition in response")
+	Expect(reconciledCond.Status).To(Equal(openapi.ResourceConditionStatusFalse), "Reconciled must be False")
+	Expect(reconciledCond.ObservedGeneration).To(Equal(cluster.Generation), "ObservedGeneration should stay at gen 1")
+}
+
 func TestClusterPaging(t *testing.T) {
 	h, client := test.RegisterIntegration(t)
 
