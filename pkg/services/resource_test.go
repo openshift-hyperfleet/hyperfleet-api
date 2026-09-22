@@ -3227,8 +3227,7 @@ func TestResourceService_Patch_ReconciledFlipsToFalse(t *testing.T) {
 	Expect(recon).ToNot(BeNil())
 	Expect(recon.Status).To(Equal(api.ConditionFalse),
 		"Reconciled must flip to False after Patch bumps generation")
-	Expect(recon.ObservedGeneration).To(Equal(int32(2)),
-		"ObservedGeneration should reflect the new resource generation")
+	Expect(recon.ObservedGeneration).To(Equal(int32(1)), "ObservedGeneration should stay at what adapter-a reported")
 }
 
 func TestResourceService_Patch_ConsecutivePatchKeepsReconciledFalse(t *testing.T) {

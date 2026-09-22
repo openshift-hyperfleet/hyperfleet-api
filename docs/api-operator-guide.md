@@ -503,18 +503,18 @@ These are API examples for a resource and resource statuses:
 When a resource is created:
 
 - Initial `generation` is 1 and aggregated conditions are evaluated
-- `observed_generation` for `Ready` and `LastKnownReconciled` aggregated conditions is 1
+- `observed_generation` for `Ready` and `LastKnownReconciled` aggregated conditions is 0 (no adapter has reported yet)
 - `last_updated_time` and `last_transition_time` for `Ready` and `LastKnownReconciled` aggregated conditions is `resource.last_updated_time`
 
 When a resource is changed:
 
 - `resource.generation` gets incremented and aggregated conditions are re-evaluated
-- `status.conditions[type==Ready].observed_generation` always follows `resource.generation`
+- `status.conditions[type==Ready].observed_generation` follows `resource.generation` only when `Ready` is `True`; otherwise it stays at the max adapter-reported generation
 - `status.conditions[type==LastKnownReconciled].observed_generation` changes when all required adapters `condition[type==Available].observed_generation==resource.generation` otherwise remains unchanged.
 
 ##### Computing `observed_generation`
 
-- For `Ready` it always matches `resource.generation`
+- For `Ready`, it matches `resource.generation` only when status is `True`; otherwise it's the max adapter-reported generation, or 0 if none have reported
 - For `LastKnownReconciled`:
   - If all required adapters have a common `observed_generation` it will match the common value
   - If required adapters have mixed `observed_generation`
