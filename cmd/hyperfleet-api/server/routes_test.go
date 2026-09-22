@@ -79,6 +79,7 @@ func TestNewRouterFromConfig_PublicVsProtectedMiddleware(t *testing.T) {
 	for _, path := range []string{
 		"/api/hyperfleet/v1/openapi",
 		"/api/hyperfleet/v1/openapi.html",
+		"/api/hyperfleet/v1/time",
 	} {
 		resetCounters()
 
