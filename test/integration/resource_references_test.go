@@ -11,6 +11,7 @@ import (
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/registry"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/services"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/util"
@@ -44,6 +45,34 @@ func registerRefTestDescriptors() {
 				{RefType: "link", TargetKind: "RefTarget", Min: 0, Max: 0},
 			},
 		})
+		registry.Register(registry.EntityDescriptor{
+			Kind:   "MultiSource",
+			Plural: "multisources",
+			References: []registry.ReferenceDescriptor{
+				{RefType: "dep", TargetKind: "RefTarget", Min: 1, Max: 0},
+			},
+		})
+		registry.Register(registry.EntityDescriptor{Kind: "RefTree", Plural: "reftrees"})
+		registry.Register(registry.EntityDescriptor{
+			Kind:           "RefChild",
+			Plural:         "refchildren",
+			ParentKind:     "RefTree",
+			OnParentDelete: registry.OnParentDeleteCascade,
+			References: []registry.ReferenceDescriptor{
+				{RefType: "peer", TargetKind: "RefChild", Min: 0, Max: 1},
+			},
+		})
+		registry.Register(registry.EntityDescriptor{
+			Kind: "RefGrandchild", Plural: "refgrandchildren", ParentKind: "RefChild",
+			OnParentDelete: registry.OnParentDeleteCascade,
+		})
+		registry.Register(registry.EntityDescriptor{
+			Kind:   "RefChildSource",
+			Plural: "refchildsources",
+			References: []registry.ReferenceDescriptor{
+				{RefType: "child", TargetKind: "RefChild", Min: 0, Max: 1},
+			},
+		})
 	})
 }
 
@@ -61,6 +90,13 @@ func newRefTestResource(kind, name string) *api.Resource {
 		CreatedBy: "test@example.com",
 		UpdatedBy: "test@example.com",
 	}
+}
+
+func newOwnedRefTestResource(kind, name, ownerKind, ownerID string) *api.Resource {
+	resource := newRefTestResource(kind, name)
+	resource.OwnerID = util.ToPtr(ownerID)
+	resource.OwnerKind = util.ToPtr(ownerKind)
+	return resource
 }
 
 // makeRefs builds a reference map with a single ref type and target(s).
@@ -342,7 +378,7 @@ func TestResourceReferences_Delete(t *testing.T) {
 				Expect(dbErr).To(BeNil(), "target should be hard-deleted from DB")
 			})
 
-			t.Run("ForceDeleteReferencedTarget_Succeeds", func(t *testing.T) {
+			t.Run("ForceDeleteReferencedRequiredTarget_Returns409", func(t *testing.T) {
 				RegisterTestingT(t)
 				svc, h := setupRefTest(t)
 
@@ -351,7 +387,7 @@ func TestResourceReferences_Delete(t *testing.T) {
 				Expect(svcErr).To(BeNil())
 
 				refs := makeRefs(p.refType, struct{ id, kind string }{target.ID, p.target})
-				_, svcErr = svc.Create(t.Context(), p.source,
+				source, svcErr := svc.Create(t.Context(), p.source,
 					newRefTestResource(p.source, suffix("source-fd")), refs)
 				Expect(svcErr).To(BeNil())
 
@@ -362,14 +398,236 @@ func TestResourceReferences_Delete(t *testing.T) {
 				markFinalizing(t, h, target.ID)
 
 				svcErr = svc.ForceDelete(t.Context(), p.target, target.ID, "force delete target")
-				Expect(svcErr).To(BeNil(), "force-delete should bypass reference restriction")
+				Expect(svcErr).NotTo(BeNil(), "force-delete should reject deleting a required reference")
+				Expect(svcErr.HTTPCode).To(Equal(409))
 
-				_, getErr := svc.Get(t.Context(), p.target, target.ID)
-				Expect(getErr).ToNot(BeNil())
-				Expect(getErr.HTTPCode).To(Equal(404), "target should be gone after force-delete")
+				retainedTarget, getErr := svc.Get(t.Context(), p.target, target.ID)
+				Expect(getErr).To(BeNil(), "target should remain after rejected force-delete")
+				Expect(retainedTarget.DeletedTime).NotTo(BeNil(), "target should remain finalizing")
+
+				source, getErr = svc.Get(t.Context(), p.source, source.ID)
+				Expect(getErr).To(BeNil())
+				Expect(source.References).To(HaveLen(1), "required reference should remain intact")
+				Expect(source.References[0].TargetID).To(Equal(target.ID))
+				Expect(source.References[0].RefType).To(Equal(p.refType))
 			})
 		})
 	}
+}
+
+func TestResourceReferences_ForceDeleteOptionalExternalReferenceSucceeds(t *testing.T) {
+	RegisterTestingT(t)
+	svc, h := setupRefTest(t)
+
+	target, svcErr := svc.Create(t.Context(), "RefTarget",
+		newRefTestResource("RefTarget", fmt.Sprintf("target-opt-delete-%s", uuid.NewString()[:8])), nil)
+	Expect(svcErr).To(BeNil())
+	refs := makeRefs("link", struct{ id, kind string }{target.ID, "RefTarget"})
+	source, svcErr := svc.Create(t.Context(), "OptSource",
+		newRefTestResource("OptSource", fmt.Sprintf("source-opt-delete-%s", uuid.NewString()[:8])), refs)
+	Expect(svcErr).To(BeNil())
+
+	_, svcErr = svc.Delete(t.Context(), "RefTarget", target.ID)
+	Expect(svcErr).NotTo(BeNil())
+	Expect(svcErr.HTTPCode).To(Equal(409))
+
+	markFinalizing(t, h, target.ID)
+	svcErr = svc.ForceDelete(t.Context(), "RefTarget", target.ID, "verify optional reference boundary")
+	Expect(svcErr).To(BeNil(), "force-delete should allow clearing an optional reference")
+	_, getErr := svc.Get(t.Context(), "RefTarget", target.ID)
+	Expect(getErr).NotTo(BeNil())
+	Expect(getErr.HTTPCode).To(Equal(404))
+
+	retrieved, getErr := svc.Get(t.Context(), "OptSource", source.ID)
+	Expect(getErr).To(BeNil())
+	Expect(retrieved.References).To(BeEmpty(), "force-delete should clear the optional reference")
+}
+
+func TestResourceReferences_ForceDeleteRetainsEnoughRequiredReferences(t *testing.T) {
+	RegisterTestingT(t)
+	svc, h := setupRefTest(t)
+
+	target1, svcErr := svc.Create(t.Context(), "RefTarget",
+		newRefTestResource("RefTarget", fmt.Sprintf("target-multi-one-%s", uuid.NewString()[:8])), nil)
+	Expect(svcErr).To(BeNil())
+	target2, svcErr := svc.Create(t.Context(), "RefTarget",
+		newRefTestResource("RefTarget", fmt.Sprintf("target-multi-two-%s", uuid.NewString()[:8])), nil)
+	Expect(svcErr).To(BeNil())
+	source, svcErr := svc.Create(t.Context(), "MultiSource",
+		newRefTestResource("MultiSource", fmt.Sprintf("source-multi-%s", uuid.NewString()[:8])),
+		makeRefs("dep",
+			struct{ id, kind string }{target1.ID, "RefTarget"},
+			struct{ id, kind string }{target2.ID, "RefTarget"}))
+	Expect(svcErr).To(BeNil())
+
+	_, svcErr = svc.Delete(t.Context(), "RefTarget", target1.ID)
+	Expect(svcErr).NotTo(BeNil())
+	Expect(svcErr.HTTPCode).To(Equal(409))
+	markFinalizing(t, h, target1.ID)
+	Expect(svc.ForceDelete(t.Context(), "RefTarget", target1.ID, "retain another required reference")).To(BeNil())
+
+	_, getErr := svc.Get(t.Context(), "RefTarget", target1.ID)
+	Expect(getErr).NotTo(BeNil())
+	Expect(getErr.HTTPCode).To(Equal(404))
+	retrieved, getErr := svc.Get(t.Context(), "MultiSource", source.ID)
+	Expect(getErr).To(BeNil())
+	Expect(retrieved.References).To(HaveLen(1))
+	Expect(retrieved.References[0].TargetID).To(Equal(target2.ID))
+	Expect(retrieved.References[0].RefType).To(Equal("dep"))
+}
+
+func TestResourceReferences_InternalSiblingReferencesDeleteWithTree(t *testing.T) {
+	RegisterTestingT(t)
+	svc, h := setupRefTest(t)
+
+	root, svcErr := svc.Create(t.Context(), "RefTree",
+		newRefTestResource("RefTree", fmt.Sprintf("tree-internal-%s", uuid.NewString()[:8])), nil)
+	Expect(svcErr).To(BeNil())
+	child1, svcErr := svc.Create(t.Context(), "RefChild",
+		newOwnedRefTestResource("RefChild", fmt.Sprintf("child-one-%s", uuid.NewString()[:8]), "RefTree", root.ID), nil)
+	Expect(svcErr).To(BeNil())
+	child2Refs := makeRefs("peer", struct{ id, kind string }{child1.ID, "RefChild"})
+	child2, svcErr := svc.Create(t.Context(), "RefChild",
+		newOwnedRefTestResource("RefChild", fmt.Sprintf("child-two-%s", uuid.NewString()[:8]), "RefTree", root.ID),
+		child2Refs)
+	Expect(svcErr).To(BeNil())
+	_, svcErr = svc.Patch(t.Context(), "RefChild", child1.ID, &api.ResourcePatch{
+		References: makeRefs("peer", struct{ id, kind string }{child2.ID, "RefChild"}),
+	})
+	Expect(svcErr).To(BeNil())
+	grandchildResource := newOwnedRefTestResource("RefGrandchild",
+		fmt.Sprintf("grandchild-%s", uuid.NewString()[:8]), "RefChild", child1.ID)
+	grandchild, svcErr := svc.Create(t.Context(), "RefGrandchild", grandchildResource, nil)
+	Expect(svcErr).To(BeNil())
+
+	markFinalizing(t, h, root.ID)
+	Expect(svc.ForceDelete(t.Context(), "RefTree", root.ID, "remove internally referenced tree")).To(BeNil())
+	Expect(checkResourceCount(t.Context(), h, []string{root.ID, child1.ID, child2.ID, grandchild.ID}, 0)).To(Succeed())
+
+	var referenceCount int64
+	Expect(h.DBFactory.New(t.Context()).Table("resource_references").
+		Where("source_id IN ?", []string{child1.ID, child2.ID}).
+		Count(&referenceCount).Error).To(Succeed())
+	Expect(referenceCount).To(BeZero())
+}
+
+func TestResourceReferences_ForceDeleteClearsOptionalDescendantReference(t *testing.T) {
+	RegisterTestingT(t)
+	svc, h := setupRefTest(t)
+
+	root, svcErr := svc.Create(t.Context(), "RefTree",
+		newRefTestResource("RefTree", fmt.Sprintf("tree-external-%s", uuid.NewString()[:8])), nil)
+	Expect(svcErr).To(BeNil())
+	child, svcErr := svc.Create(t.Context(), "RefChild",
+		newOwnedRefTestResource("RefChild", fmt.Sprintf("child-external-%s", uuid.NewString()[:8]), "RefTree", root.ID), nil)
+	Expect(svcErr).To(BeNil())
+	sourceRefs := makeRefs("child", struct{ id, kind string }{child.ID, "RefChild"})
+	source, svcErr := svc.Create(t.Context(), "RefChildSource",
+		newRefTestResource("RefChildSource", fmt.Sprintf("source-external-%s", uuid.NewString()[:8])), sourceRefs)
+	Expect(svcErr).To(BeNil())
+
+	_, svcErr = svc.Delete(t.Context(), "RefTree", root.ID)
+	Expect(svcErr).NotTo(BeNil())
+	Expect(svcErr.HTTPCode).To(Equal(409))
+	activeRoot, getErr := svc.Get(t.Context(), "RefTree", root.ID)
+	Expect(getErr).To(BeNil())
+	Expect(activeRoot.DeletedTime).To(BeNil(), "normal deletion must roll back the entire tree")
+
+	markFinalizing(t, h, root.ID)
+	svcErr = svc.ForceDelete(t.Context(), "RefTree", root.ID, "clear optional descendant reference")
+	Expect(svcErr).To(BeNil())
+	Expect(checkResourceCount(t.Context(), h, []string{root.ID, child.ID}, 0)).To(Succeed())
+	retrievedSource, getErr := svc.Get(t.Context(), "RefChildSource", source.ID)
+	Expect(getErr).To(BeNil())
+	Expect(retrievedSource.References).To(BeEmpty())
+}
+
+func TestResourceReferences_ForceDeleteClearsOutboundReferenceToExternalTarget(t *testing.T) {
+	RegisterTestingT(t)
+	svc, h := setupRefTest(t)
+
+	extRoot, svcErr := svc.Create(t.Context(), "RefTree",
+		newRefTestResource("RefTree", fmt.Sprintf("tree-ext-survivor-%s", uuid.NewString()[:8])), nil)
+	Expect(svcErr).To(BeNil())
+	extChild, svcErr := svc.Create(t.Context(), "RefChild",
+		newOwnedRefTestResource("RefChild",
+			fmt.Sprintf("child-ext-survivor-%s", uuid.NewString()[:8]), "RefTree", extRoot.ID), nil)
+	Expect(svcErr).To(BeNil())
+
+	root, svcErr := svc.Create(t.Context(), "RefTree",
+		newRefTestResource("RefTree", fmt.Sprintf("tree-outbound-%s", uuid.NewString()[:8])), nil)
+	Expect(svcErr).To(BeNil())
+	childRefs := makeRefs("peer", struct{ id, kind string }{extChild.ID, "RefChild"})
+	child, svcErr := svc.Create(t.Context(), "RefChild",
+		newOwnedRefTestResource("RefChild",
+			fmt.Sprintf("child-outbound-%s", uuid.NewString()[:8]), "RefTree", root.ID),
+		childRefs)
+	Expect(svcErr).To(BeNil())
+
+	markFinalizing(t, h, root.ID)
+	svcErr = svc.ForceDelete(t.Context(), "RefTree", root.ID, "clear outbound reference to external target")
+	Expect(svcErr).To(BeNil())
+
+	Expect(checkResourceCount(t.Context(), h, []string{root.ID, child.ID}, 0)).To(Succeed())
+
+	var refCount int64
+	Expect(h.DBFactory.New(t.Context()).Table("resource_references").
+		Where("source_id = ?", child.ID).
+		Count(&refCount).Error).To(Succeed())
+	Expect(refCount).To(BeZero(), "outbound reference row should be cascade-deleted with its source")
+
+	Expect(checkResourceCount(t.Context(), h, []string{extRoot.ID, extChild.ID}, 2)).To(Succeed())
+	survivor, getErr := svc.Get(t.Context(), "RefChild", extChild.ID)
+	Expect(getErr).To(BeNil(), "external target must survive the tree deletion")
+	Expect(survivor.DeletedTime).To(BeNil())
+}
+
+func TestResourceReferences_ConcurrentForceDeletesPreserveMin(t *testing.T) {
+	RegisterTestingT(t)
+	svc, h := setupRefTest(t)
+	first, svcErr := svc.Create(t.Context(), "RefTarget",
+		newRefTestResource("RefTarget", fmt.Sprintf("race-first-%s", uuid.NewString()[:8])), nil)
+	Expect(svcErr).To(BeNil())
+	second, svcErr := svc.Create(t.Context(), "RefTarget",
+		newRefTestResource("RefTarget", fmt.Sprintf("race-second-%s", uuid.NewString()[:8])), nil)
+	Expect(svcErr).To(BeNil())
+	source, svcErr := svc.Create(t.Context(), "MultiSource",
+		newRefTestResource("MultiSource", fmt.Sprintf("race-source-%s", uuid.NewString()[:8])),
+		makeRefs("dep", struct{ id, kind string }{first.ID, "RefTarget"},
+			struct{ id, kind string }{second.ID, "RefTarget"}))
+	Expect(svcErr).To(BeNil())
+	markFinalizing(t, h, first.ID)
+	markFinalizing(t, h, second.ID)
+
+	results := make(chan *errors.ServiceError, 2)
+	ready := make(chan struct{}, 2)
+	for _, id := range []string{first.ID, second.ID} {
+		go func(id string) {
+			ready <- struct{}{}
+			results <- svc.ForceDelete(t.Context(), "RefTarget", id, "concurrent delete")
+		}(id)
+	}
+	for range 2 {
+		<-ready
+	}
+
+	var successes, conflicts int
+	for range 2 {
+		result := <-results
+		switch {
+		case result == nil:
+			successes++
+		case result.HTTPCode == 409:
+			conflicts++
+		default:
+			t.Fatalf("unexpected concurrent deletion error: %v", result)
+		}
+	}
+	Expect(successes).To(Equal(1))
+	Expect(conflicts).To(Equal(1))
+	retrieved, getErr := svc.Get(t.Context(), "MultiSource", source.ID)
+	Expect(getErr).To(BeNil())
+	Expect(retrieved.References).To(HaveLen(1))
 }
 
 // --- List with ref_type filter ---

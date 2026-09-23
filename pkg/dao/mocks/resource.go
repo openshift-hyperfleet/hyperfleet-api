@@ -28,6 +28,10 @@ func (d *resourceDaoMock) GetForUpdate(ctx context.Context, kind, id string) (*a
 	return d.Get(ctx, kind, id)
 }
 
+func (d *resourceDaoMock) GetRowForUpdate(ctx context.Context, kind, id string) (*api.Resource, error) {
+	return d.Get(ctx, kind, id)
+}
+
 func (d *resourceDaoMock) GetByOwner(_ context.Context, kind, id, ownerID string) (*api.Resource, error) {
 	for _, r := range d.resources {
 		if r.ID == id && r.Kind == kind && r.OwnerID != nil && *r.OwnerID == ownerID {
@@ -58,6 +62,19 @@ func (d *resourceDaoMock) Delete(_ context.Context, kind, id string) error {
 		if r.ID == id && r.Kind == kind {
 			d.resources = append(d.resources[:i], d.resources[i+1:]...)
 			return nil
+		}
+	}
+	return nil
+}
+
+func (d *resourceDaoMock) DeleteIDs(ctx context.Context, ids []string) error {
+	for _, id := range ids {
+		for _, r := range append(api.ResourceList(nil), d.resources...) {
+			if r.ID == id {
+				if err := d.Delete(ctx, r.Kind, id); err != nil {
+					return err
+				}
+			}
 		}
 	}
 	return nil
@@ -114,6 +131,16 @@ func (d *resourceDaoMock) FindByKindAndOwnerForUpdate(
 	return d.FindByKindAndOwner(ctx, kind, ownerID)
 }
 
+func (d *resourceDaoMock) FindChildrenForUpdate(_ context.Context, ownerID string) (api.ResourceList, error) {
+	var result api.ResourceList
+	for _, r := range d.resources {
+		if r.OwnerID != nil && *r.OwnerID == ownerID {
+			result = append(result, r)
+		}
+	}
+	return result, nil
+}
+
 func (d *resourceDaoMock) GetByID(_ context.Context, id string) (*api.Resource, error) {
 	for _, r := range d.resources {
 		if r.ID == id {
@@ -122,6 +149,14 @@ func (d *resourceDaoMock) GetByID(_ context.Context, id string) (*api.Resource, 
 	}
 	return nil, gorm.ErrRecordNotFound
 }
+
+func (d *resourceDaoMock) FindExternalReferenceCounts(
+	_ context.Context, _, _ []string,
+) ([]dao.ExternalReferenceCount, error) {
+	return nil, nil
+}
+
+func (d *resourceDaoMock) DeleteReferencesByTargets(_ context.Context, _ []string) error { return nil }
 
 func (d *resourceDaoMock) ReplaceReferences(_ context.Context, _ string, _ []api.ResourceReference) error {
 	return nil
