@@ -14,20 +14,32 @@ import (
 type ResourceDao interface {
 	Get(ctx context.Context, kind, id string) (*api.Resource, error)
 	GetForUpdate(ctx context.Context, kind, id string) (*api.Resource, error)
+	GetRowForUpdate(ctx context.Context, kind, id string) (*api.Resource, error)
 	GetByOwner(ctx context.Context, kind, id, ownerID string) (*api.Resource, error)
 	Create(ctx context.Context, resource *api.Resource) (*api.Resource, error)
 	Save(ctx context.Context, resource *api.Resource) error
 	Delete(ctx context.Context, kind, id string) error
+	DeleteIDs(ctx context.Context, ids []string) error
 	ExistsByOwner(ctx context.Context, kind, ownerID string) (bool, error)
 	ExistsSoftDeletedByOwner(ctx context.Context, kinds []string, ownerID string) (bool, error)
 	FindByKind(ctx context.Context, kind string) (api.ResourceList, error)
 	FindByKindAndOwner(ctx context.Context, kind, ownerID string) (api.ResourceList, error)
 	FindByKindAndOwnerForUpdate(ctx context.Context, kind, ownerID string) (api.ResourceList, error)
+	FindChildrenForUpdate(ctx context.Context, ownerID string) (api.ResourceList, error)
 	GetByID(ctx context.Context, id string) (*api.Resource, error)
 	ReplaceReferences(ctx context.Context, sourceID string, refs []api.ResourceReference) error
+	FindExternalReferenceCounts(ctx context.Context, targetIDs, sourceIDs []string) ([]ExternalReferenceCount, error)
+	DeleteReferencesByTargets(ctx context.Context, targetIDs []string) error
 	FindReferencers(ctx context.Context, targetID string) ([]api.ResourceSummary, error)
 	ClearTargetReferences(ctx context.Context, targetID string) error
 	FindSourceIDsByRef(ctx context.Context, refType, targetID string) ([]string, error)
+}
+
+// ExternalReferenceCount describes a surviving source reference type affected by deletion.
+type ExternalReferenceCount struct {
+	SourceKind string
+	RefType    string
+	Remaining  int64
 }
 
 var _ ResourceDao = &sqlResourceDao{}
@@ -55,6 +67,17 @@ func (d *sqlResourceDao) GetForUpdate(ctx context.Context, kind, id string) (*ap
 	var resource api.Resource
 	if err := g2.Clauses(clause.Locking{Strength: "UPDATE"}).
 		Preload("Conditions").Preload("Labels").Preload("References").
+		Take(&resource, "kind = ? AND id = ?", kind, id).Error; err != nil {
+		return nil, err
+	}
+	return &resource, nil
+}
+
+// GetRowForUpdate locks a resource without loading its associations.
+func (d *sqlResourceDao) GetRowForUpdate(ctx context.Context, kind, id string) (*api.Resource, error) {
+	g2 := tenant.ScopeDB(d.sessionFactory.New(ctx), ctx)
+	var resource api.Resource
+	if err := g2.Clauses(clause.Locking{Strength: "UPDATE"}).
 		Take(&resource, "kind = ? AND id = ?", kind, id).Error; err != nil {
 		return nil, err
 	}
@@ -104,6 +127,15 @@ func (d *sqlResourceDao) Delete(ctx context.Context, kind, id string) error {
 		return err
 	}
 	return nil
+}
+
+// DeleteIDs removes the given resource IDs within the caller's tenant scope.
+func (d *sqlResourceDao) DeleteIDs(ctx context.Context, ids []string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	return tenant.ScopeDB(d.sessionFactory.New(ctx), ctx).
+		Omit(clause.Associations).Where("id IN ?", ids).Delete(&api.Resource{}).Error
 }
 
 func (d *sqlResourceDao) ExistsByOwner(ctx context.Context, kind, ownerID string) (bool, error) {
@@ -184,6 +216,15 @@ func (d *sqlResourceDao) FindByKindAndOwnerForUpdate(
 	return resources, nil
 }
 
+// FindChildrenForUpdate locks all owned rows in deterministic ID order.
+func (d *sqlResourceDao) FindChildrenForUpdate(ctx context.Context, ownerID string) (api.ResourceList, error) {
+	var resources api.ResourceList
+	err := tenant.ScopeDB(d.sessionFactory.New(ctx), ctx).
+		Clauses(clause.Locking{Strength: "UPDATE"}).
+		Where("owner_id = ?", ownerID).Order("id").Find(&resources).Error
+	return resources, err
+}
+
 func (d *sqlResourceDao) ReplaceReferences(
 	ctx context.Context, sourceID string, refs []api.ResourceReference,
 ) error {
@@ -235,6 +276,56 @@ func (d *sqlResourceDao) ClearTargetReferences(ctx context.Context, targetID str
 		return err
 	}
 	return nil
+}
+
+// FindExternalReferenceCounts locks surviving sources, then counts their
+// remaining references per source and type. The count is unscoped: inbound
+// target references can originate in any tenant.
+func (d *sqlResourceDao) FindExternalReferenceCounts(
+	ctx context.Context, targetIDs, sourceIDs []string,
+) ([]ExternalReferenceCount, error) {
+	if len(targetIDs) == 0 {
+		return nil, nil
+	}
+	lockQuery := d.sessionFactory.New(ctx).Model(&api.Resource{}).
+		Select("id").
+		Where("id IN (SELECT source_id FROM resource_references WHERE target_id IN ?)", targetIDs)
+	if len(sourceIDs) > 0 {
+		lockQuery = lockQuery.Where("id NOT IN ?", sourceIDs)
+	}
+	var lockedSources []api.Resource
+	if err := lockQuery.Order("id").Clauses(clause.Locking{Strength: "UPDATE"}).
+		Find(&lockedSources).Error; err != nil {
+		return nil, err
+	}
+	if len(lockedSources) == 0 {
+		return nil, nil
+	}
+
+	g2 := d.sessionFactory.New(ctx).Table("resource_references AS refs").
+		Select(`resources.kind AS source_kind, refs.ref_type,
+			COUNT(*) FILTER (WHERE refs.target_id NOT IN ?) AS remaining`, targetIDs).
+		Joins("JOIN resources ON refs.source_id = resources.id").
+		Where(`EXISTS (SELECT 1 FROM resource_references AS affected
+			WHERE affected.source_id = refs.source_id AND affected.ref_type = refs.ref_type
+			AND affected.target_id IN ?)`, targetIDs)
+	if len(sourceIDs) > 0 {
+		g2 = g2.Where("refs.source_id NOT IN ?", sourceIDs)
+	}
+	var counts []ExternalReferenceCount
+	if err := g2.Group("refs.source_id, resources.kind, refs.ref_type").
+		Scan(&counts).Error; err != nil {
+		return nil, err
+	}
+	return counts, nil
+}
+
+func (d *sqlResourceDao) DeleteReferencesByTargets(ctx context.Context, targetIDs []string) error {
+	if len(targetIDs) == 0 {
+		return nil
+	}
+	return d.sessionFactory.New(ctx).Where("target_id IN ?", targetIDs).
+		Delete(&api.ResourceReference{}).Error
 }
 
 func (d *sqlResourceDao) FindSourceIDsByRef(

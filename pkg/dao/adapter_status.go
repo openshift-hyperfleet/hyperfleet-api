@@ -15,6 +15,7 @@ type AdapterStatusDao interface {
 	Upsert(ctx context.Context, adapterStatus *api.AdapterStatus, existing *api.AdapterStatus) (*api.AdapterStatus, error)
 	Delete(ctx context.Context, id string) error
 	DeleteByResource(ctx context.Context, resourceType, resourceID string) error
+	DeleteByResourceIDs(ctx context.Context, resourceIDs []string) error
 	FindByResource(ctx context.Context, resourceType, resourceID string) (api.AdapterStatusList, error)
 	FindByResourceIDs(ctx context.Context, resourceType string, resourceIDs []string) (api.AdapterStatusList, error)
 	FindByResourcePaginated(
@@ -115,6 +116,15 @@ func (d *sqlAdapterStatusDao) DeleteByResource(ctx context.Context, resourceType
 		return err
 	}
 	return nil
+}
+
+func (d *sqlAdapterStatusDao) DeleteByResourceIDs(ctx context.Context, resourceIDs []string) error {
+	if len(resourceIDs) == 0 {
+		return nil
+	}
+	return d.sessionFactory.New(ctx).
+		Where("resource_id IN ?", resourceIDs).
+		Delete(&api.AdapterStatus{}).Error
 }
 
 func (d *sqlAdapterStatusDao) FindByResource(

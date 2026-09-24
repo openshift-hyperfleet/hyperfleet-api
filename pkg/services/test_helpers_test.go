@@ -25,9 +25,10 @@ func (r *controlledTxRunner) Do(ctx context.Context, callback func(context.Conte
 }
 
 type mockAdapterStatusDao struct {
-	statuses            map[string]*api.AdapterStatus
-	findByResourceErr   error
-	deleteByResourceErr error
+	statuses                 map[string]*api.AdapterStatus
+	findByResourceErr        error
+	deleteByResourceErr      error
+	deleteByResourceIDsCalls int
 }
 
 func newMockAdapterStatusDao() *mockAdapterStatusDao {
@@ -87,6 +88,22 @@ func (d *mockAdapterStatusDao) DeleteByResource(ctx context.Context, resourceTyp
 		}
 	}
 	return nil
+}
+
+func (d *mockAdapterStatusDao) DeleteByResourceIDs(_ context.Context, ids []string) error {
+	d.deleteByResourceIDsCalls++
+	if d.deleteByResourceErr != nil {
+		return d.deleteByResourceErr
+	}
+	for key, status := range d.statuses {
+		for _, id := range ids {
+			if status.ResourceID == id {
+				delete(d.statuses, key)
+				break
+			}
+		}
+	}
+	return d.deleteByResourceErr
 }
 
 func (d *mockAdapterStatusDao) FindByResource(

@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	. "github.com/onsi/gomega"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
@@ -49,15 +51,22 @@ func setupTestDescriptors() {
 // mockResourceDao implements dao.ResourceDao for testing.
 
 type mockResourceDao struct {
-	resources                   map[string]*api.Resource
-	createErr                   error
-	saveErr                     error
-	deleteErr                   error
-	existsSoftDeletedByOwnerErr error
-	replaceRefsErr              error
-	findReferencersResult       []api.ResourceSummary
-	lastReplacedRefs            []api.ResourceReference
-	replaceRefsCalled           bool
+	findChildrenErrorOwnerID       string
+	createErr                      error
+	saveErr                        error
+	deleteErr                      error
+	findExternalReferenceCountsErr error
+	getRowForUpdateErr             error
+	findChildrenForUpdateErr       error
+	deleteReferencesErr            error
+	existsSoftDeletedByOwnerErr    error
+	replaceRefsErr                 error
+	resources                      map[string]*api.Resource
+	findReferencersResult          []api.ResourceSummary
+	lastReplacedRefs               []api.ResourceReference
+	deleteReferencesCalls          int
+	deleteIDsCalls                 int
+	replaceRefsCalled              bool
 }
 
 func newMockResourceDao() *mockResourceDao {
@@ -74,6 +83,13 @@ func (d *mockResourceDao) Get(_ context.Context, kind, id string) (*api.Resource
 }
 
 func (d *mockResourceDao) GetForUpdate(ctx context.Context, kind, id string) (*api.Resource, error) {
+	return d.Get(ctx, kind, id)
+}
+
+func (d *mockResourceDao) GetRowForUpdate(ctx context.Context, kind, id string) (*api.Resource, error) {
+	if d.getRowForUpdateErr != nil {
+		return nil, d.getRowForUpdateErr
+	}
 	return d.Get(ctx, kind, id)
 }
 
@@ -109,6 +125,21 @@ func (d *mockResourceDao) Delete(_ context.Context, kind, id string) error {
 		return d.deleteErr
 	}
 	delete(d.resources, resourceKey(kind, id))
+	return nil
+}
+
+func (d *mockResourceDao) DeleteIDs(ctx context.Context, ids []string) error {
+	d.deleteIDsCalls++
+	for _, id := range ids {
+		for _, r := range d.resources {
+			if r.ID == id {
+				if err := d.Delete(ctx, r.Kind, id); err != nil {
+					return err
+				}
+				break
+			}
+		}
+	}
 	return nil
 }
 
@@ -166,6 +197,19 @@ func (d *mockResourceDao) FindByKindAndOwnerForUpdate(
 	return d.FindByKindAndOwner(ctx, kind, ownerID)
 }
 
+func (d *mockResourceDao) FindChildrenForUpdate(_ context.Context, ownerID string) (api.ResourceList, error) {
+	if d.findChildrenForUpdateErr != nil && ownerID == d.findChildrenErrorOwnerID {
+		return nil, d.findChildrenForUpdateErr
+	}
+	var result api.ResourceList
+	for _, r := range d.resources {
+		if r.OwnerID != nil && *r.OwnerID == ownerID {
+			result = append(result, r)
+		}
+	}
+	return result, nil
+}
+
 func (d *mockResourceDao) GetByID(_ context.Context, id string) (*api.Resource, error) {
 	for _, r := range d.resources {
 		if r.ID == id {
@@ -187,6 +231,17 @@ func (d *mockResourceDao) FindByIDs(_ context.Context, kind string, ids []string
 		}
 	}
 	return result, nil
+}
+
+func (d *mockResourceDao) FindExternalReferenceCounts(
+	_ context.Context, _, _ []string,
+) ([]dao.ExternalReferenceCount, error) {
+	return nil, d.findExternalReferenceCountsErr
+}
+
+func (d *mockResourceDao) DeleteReferencesByTargets(_ context.Context, _ []string) error {
+	d.deleteReferencesCalls++
+	return d.deleteReferencesErr
 }
 
 func (d *mockResourceDao) ReplaceReferences(_ context.Context, _ string, refs []api.ResourceReference) error {
@@ -1704,6 +1759,127 @@ func TestResourceService_Delete_CascadeParentSoftDeletedWhileChildSoftDeleted(t 
 }
 
 // --- ForceDelete ---
+
+func TestResourceService_ForceDelete_ReferenceCountErrors(t *testing.T) {
+	// The API does not request an isolation level that produces serialization failures.
+	// Keep 40001 on the existing fallback error path.
+	for _, tc := range []struct {
+		name   string
+		err    error
+		code   string
+		status int
+	}{
+		{"serialization", &pgconn.PgError{Code: "40001"}, errors.CodeInternalGeneral, http.StatusInternalServerError},
+		{"deadlock", &pgconn.PgError{Code: "40P01"}, errors.CodeConflictState, http.StatusConflict},
+		{
+			"wrapped serialization", fmt.Errorf("query: %w", &pgconn.PgError{Code: "40001"}),
+			errors.CodeInternalGeneral, http.StatusInternalServerError,
+		},
+		{
+			"wrapped deadlock", fmt.Errorf("query: %w", &pgconn.PgError{Code: "40P01"}),
+			errors.CodeConflictState, http.StatusConflict,
+		},
+		{"other SQL error", &pgconn.PgError{Code: "XX000"}, errors.CodeInternalGeneral, http.StatusInternalServerError},
+		{"other error", fmt.Errorf("query failed"), errors.CodeInternalGeneral, http.StatusInternalServerError},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			g := NewWithT(t)
+			setupTestDescriptors()
+			mockDao := newMockResourceDao()
+			mockDao.findExternalReferenceCountsErr = tc.err
+			svc, _, _ := newTestResourceService(mockDao)
+			resource := testResource("Channel", testChannelID, "stable")
+			resource.DeletedTime = new(time.Now())
+			mockDao.addResource(resource)
+
+			svcErr := svc.ForceDelete(t.Context(), "Channel", testChannelID, "stuck")
+			g.Expect(svcErr).NotTo(BeNil())
+			g.Expect(svcErr.RFC9457Code).To(Equal(tc.code))
+			g.Expect(svcErr.HTTPCode).To(Equal(tc.status))
+			g.Expect(mockDao.resources).To(HaveKey(resourceKey("Channel", testChannelID)))
+		})
+	}
+}
+
+func TestResourceService_ForceDelete_DatabaseErrors(t *testing.T) {
+	const recursiveChildLookup = "recursive child lookup"
+	for _, stage := range []string{
+		"root lookup", "child lookup", recursiveChildLookup, "reference counts",
+		"reference deletion", "adapter status deletion", "resource deletion", "transaction completion",
+	} {
+		for _, tc := range []struct {
+			name   string
+			err    error
+			code   string
+			status int
+		}{
+			{"serialization", &pgconn.PgError{Code: "40001"}, errors.CodeInternalGeneral, http.StatusInternalServerError},
+			{
+				"wrapped deadlock", fmt.Errorf("database: %w", &pgconn.PgError{Code: "40P01"}),
+				errors.CodeConflictState, http.StatusConflict,
+			},
+			{"other SQL error", &pgconn.PgError{Code: "XX000"}, errors.CodeInternalGeneral, http.StatusInternalServerError},
+			{"other error", fmt.Errorf("database failed"), errors.CodeInternalGeneral, http.StatusInternalServerError},
+		} {
+			t.Run(stage+"/"+tc.name, func(t *testing.T) {
+				g := NewWithT(t)
+				setupTestDescriptors()
+				mockDao := newMockResourceDao()
+				adapterDao := newMockAdapterStatusDao()
+				runner := &controlledTxRunner{}
+				resource := testResource("Channel", testChannelID, "stable")
+				resource.DeletedTime = new(time.Now())
+				mockDao.addResource(resource)
+				if stage == recursiveChildLookup {
+					child := testResource("Version", "v-1", "child")
+					child.OwnerID = &resource.ID
+					mockDao.addResource(child)
+				}
+				switch stage {
+				case "root lookup":
+					mockDao.getRowForUpdateErr = tc.err
+				case "child lookup":
+					mockDao.findChildrenErrorOwnerID = resource.ID
+					mockDao.findChildrenForUpdateErr = tc.err
+				case recursiveChildLookup:
+					mockDao.findChildrenErrorOwnerID = "v-1"
+					mockDao.findChildrenForUpdateErr = tc.err
+				case "reference counts":
+					mockDao.findExternalReferenceCountsErr = tc.err
+				case "reference deletion":
+					mockDao.deleteReferencesErr = tc.err
+				case "adapter status deletion":
+					adapterDao.deleteByResourceErr = tc.err
+				case "resource deletion":
+					mockDao.deleteErr = tc.err
+				case "transaction completion":
+					runner.afterCallbackErr = fmt.Errorf("db: commit transaction: %w", tc.err)
+				}
+				svc, err := NewResourceService(
+					mockDao, newMockResourceLabelDao(), adapterDao, newResourceConditionMock(),
+					&resourceGenericMock{}, runner,
+				)
+				g.Expect(err).NotTo(HaveOccurred())
+				svcErr := svc.ForceDelete(t.Context(), "Channel", testChannelID, "stuck")
+				g.Expect(svcErr).NotTo(BeNil())
+				g.Expect(svcErr.RFC9457Code).To(Equal(tc.code))
+				g.Expect(svcErr.HTTPCode).To(Equal(tc.status))
+				g.Expect(runner.calls).To(Equal(1))
+				// Later deletion steps must not run after an earlier failure.
+				if stage == "root lookup" || stage == "child lookup" || stage == recursiveChildLookup ||
+					stage == "reference counts" {
+					g.Expect(mockDao.deleteReferencesCalls).To(Equal(0))
+				}
+				if stage == "reference deletion" {
+					g.Expect(adapterDao.deleteByResourceIDsCalls).To(Equal(0))
+				}
+				if stage != "resource deletion" && stage != "transaction completion" {
+					g.Expect(mockDao.deleteIDsCalls).To(Equal(0))
+				}
+			})
+		}
+	}
+}
 
 func TestResourceService_ForceDelete_HappyPath_NoChildren(t *testing.T) {
 	RegisterTestingT(t)

@@ -2,9 +2,11 @@ package services
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -12,6 +14,7 @@ import (
 	hfl "github.com/openshift-hyperfleet/hyperfleet-logger"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/auth"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
@@ -24,6 +27,87 @@ func captureServiceLogs(t *testing.T, level slog.Level) *bytes.Buffer {
 	}))
 	t.Cleanup(func() { slog.SetDefault(previous) })
 	return &output
+}
+
+type auditResourceDao struct {
+	*mockResourceDao
+	beforeDelete func()
+}
+
+func (d *auditResourceDao) DeleteReferencesByTargets(ctx context.Context, ids []string) error {
+	d.beforeDelete()
+	return d.mockResourceDao.DeleteReferencesByTargets(ctx, ids)
+}
+
+func TestForceDelete_IntentLoggedBeforeDelete(t *testing.T) {
+	setupTestDescriptors()
+	output := captureServiceLogs(t, slog.LevelInfo)
+	resources := newMockResourceDao()
+	root := testResource("Channel", testChannelID, "stable")
+	root.DeletedTime = new(time.Now())
+	resources.addResource(root)
+	child := testResource("Version", "v-1", "child")
+	child.OwnerID = &root.ID
+	resources.addResource(child)
+	resourceDao := &auditResourceDao{mockResourceDao: resources}
+	resourceDao.beforeDelete = func() {
+		var intent map[string]any
+		if err := json.Unmarshal(bytes.TrimSpace(output.Bytes()), &intent); err != nil {
+			t.Fatalf("intent must be logged before first delete: %v (%s)", err, output.String())
+		}
+		if intent["message"] != "Force-deleting resource" || intent["caller"] != "admin@test.com" ||
+			intent["reason"] != "stuck" || intent["resource_id"] != root.ID || intent["resource_type"] != "Channel" {
+			t.Fatalf("intent missing root or attribution: %v", intent)
+		}
+		subresources, ok := intent["subresources"].([]any)
+		if !ok || len(subresources) != 1 {
+			t.Fatalf("intent missing child: %v", intent)
+		}
+		loggedChild, ok := subresources[0].(map[string]any)
+		if !ok || loggedChild["id"] != child.ID || loggedChild["kind"] != child.Kind {
+			t.Fatalf("intent missing child: %v", intent)
+		}
+	}
+	svc, err := NewResourceService(
+		resourceDao, newMockResourceLabelDao(), newMockAdapterStatusDao(), newResourceConditionMock(),
+		&resourceGenericMock{}, &controlledTxRunner{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if svcErr := svc.ForceDelete(auth.SetUsernameContext(t.Context(), "admin@test.com"),
+		"Channel", root.ID, "stuck"); svcErr != nil {
+		t.Fatal(svcErr)
+	}
+	if got := strings.Count(output.String(), `"message":"Force-deleted resource"`); got != 2 {
+		t.Fatalf("got %d success logs after deletion, want 2: %s", got, output.String())
+	}
+}
+
+func TestForceDelete_CommitFailureDoesNotLogSuccess(t *testing.T) {
+	setupTestDescriptors()
+	output := captureServiceLogs(t, slog.LevelInfo)
+	resourceDao := newMockResourceDao()
+	resource := testResource("Channel", testChannelID, "stable")
+	resource.DeletedTime = new(time.Now())
+	resourceDao.addResource(resource)
+	runner := &controlledTxRunner{afterCallbackErr: fmt.Errorf("db: commit transaction: %w", fmt.Errorf("commit failed"))}
+	svc, err := NewResourceService(
+		resourceDao, newMockResourceLabelDao(), newMockAdapterStatusDao(),
+		newResourceConditionMock(), &resourceGenericMock{}, runner,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if svcErr := svc.ForceDelete(t.Context(), "Channel", testChannelID, "stuck"); svcErr == nil {
+		t.Fatal("expected completion failure")
+	}
+	logs := output.String()
+	if !strings.Contains(logs, `"message":"Force-deleting resource"`) ||
+		!strings.Contains(logs, `"message":"Force-delete failed"`) ||
+		!strings.Contains(logs, "commit failed") || strings.Contains(logs, `"message":"Force-deleted resource"`) {
+		t.Fatalf("expected intent and commit failure, not success: %s", logs)
+	}
 }
 
 func TestProcessAdapterStatus_ConcurrentReportsRetainLogCorrelation(t *testing.T) {

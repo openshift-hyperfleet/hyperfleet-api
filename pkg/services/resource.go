@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"encoding/json"
+	stderrors "errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -979,6 +980,9 @@ func applyResourcePatch(resource *api.Resource, patch *api.ResourcePatch) error 
 	return nil
 }
 
+// ForceDelete hard-deletes a resource tree stuck in the Finalizing state,
+// bypassing adapter finalization but still refusing to drop references required
+// by surviving resources. Deadlocks return 409 so callers can retry the request.
 func (s *sqlResourceService) ForceDelete(ctx context.Context, kind, id, reason string) *errors.ServiceError {
 	trace.SpanFromContext(ctx).SetAttributes(attribute.String("hyperfleet.resource_id", id))
 	if svcErr := rejectSystemIdentityWrite(ctx); svcErr != nil {
@@ -988,70 +992,186 @@ func (s *sqlResourceService) ForceDelete(ctx context.Context, kind, id, reason s
 		return svcErr
 	}
 	trace.SpanFromContext(ctx).SetAttributes(attribute.String("hyperfleet.resource_type", registry.MustGet(kind).Plural))
-	err := s.txRunner.Do(ctx, func(ctx context.Context) error {
-		resource, err := s.resourceDao.GetForUpdate(ctx, kind, id)
-		if err != nil {
-			return handleGetError(kind, id, err)
-		}
-		if resource.DeletedTime == nil {
-			return errors.ConflictState("%s '%s' is not in Finalizing state", kind, id)
-		}
 
-		caller := actorFromContext(ctx)
-		if svcErr := s.forceDeleteResourceTree(ctx, resource, caller, reason); svcErr != nil {
+	var deleted api.ResourceList
+	err := s.txRunner.Do(ctx, func(txCtx context.Context) error {
+		resources, svcErr := s.forceDeleteTx(txCtx, kind, id, reason)
+		if svcErr != nil {
 			return svcErr
 		}
+		deleted = resources
 		return nil
 	})
-	return serviceErrorFromTransaction(err)
+	if err != nil {
+		resourceCtx := hfl.WithResourceID(hfl.WithResourceType(ctx, kind), id)
+		slog.ErrorContext(resourceCtx, "Force-delete failed",
+			"caller", actorFromContext(ctx), "reason", reason, "error", err)
+		if svcErr := forceDeleteTransactionConflict(err); svcErr != nil {
+			return svcErr
+		}
+		return serviceErrorFromTransaction(err)
+	}
+	for _, item := range deleted {
+		resourceCtx := hfl.WithResourceID(hfl.WithResourceType(ctx, item.Kind), item.ID)
+		slog.InfoContext(resourceCtx, "Force-deleted resource", "caller", actorFromContext(ctx), "reason", reason)
+	}
+	return nil
 }
 
-func (s *sqlResourceService) forceDeleteResourceTree(
-	ctx context.Context, resource *api.Resource, caller, reason string,
-) *errors.ServiceError {
-	resourceCtx := hfl.WithResourceType(ctx, resource.Kind)
-	resourceCtx = hfl.WithResourceID(resourceCtx, resource.ID)
-	children := registry.ChildrenOf(resource.Kind)
-
-	childIDs := make([]string, 0)
-	for _, child := range children {
-		items, err := s.resourceDao.FindByKindAndOwnerForUpdate(resourceCtx, child.Kind, resource.ID)
-		if err != nil {
-			slog.ErrorContext(resourceCtx, "Failed to find children for force-delete", "child_kind", child.Kind, "error", err)
-			return errors.GeneralError("Unable to find %s children for force-delete", child.Kind)
+// forceDeleteTx locks the root, requires the Finalizing state, collects and locks
+// the scoped tree, enforces remaining reference minimums, then hard-deletes the
+// tree. It runs inside the caller's transaction and maps DAO failures to terminal
+// ServiceErrors. The FOR UPDATE lock on surviving sources can rarely deadlock when
+// two cyclically-referencing resources are force-deleted at once; the victim
+// transaction rolls back and the deadlock surfaces as a 409 conflict.
+func (s *sqlResourceService) forceDeleteTx(
+	ctx context.Context, kind, id, reason string,
+) (api.ResourceList, *errors.ServiceError) {
+	resource, err := s.resourceDao.GetRowForUpdate(ctx, kind, id)
+	if err != nil {
+		if svcErr := forceDeleteTransactionConflict(err); svcErr != nil {
+			return nil, svcErr
 		}
-		for _, item := range items {
-			childIDs = append(childIDs, item.ID)
-			if svcErr := s.forceDeleteResourceTree(ctx, item, caller, reason); svcErr != nil {
-				return svcErr
+		return nil, handleGetError(kind, id, err)
+	}
+	if resource.DeletedTime == nil {
+		return nil, errors.ConflictState("%s '%s' is not in Finalizing state", kind, id)
+	}
+
+	resources, err := s.collectForceDeletionResources(ctx, resource)
+	if err != nil {
+		if svcErr := forceDeleteTransactionConflict(err); svcErr != nil {
+			return nil, svcErr
+		}
+		return nil, errors.GeneralError("force-delete failed: %s", err)
+	}
+	ids := make([]string, len(resources))
+	for i, item := range resources {
+		ids[i] = item.ID
+	}
+
+	counts, err := s.resourceDao.FindExternalReferenceCounts(ctx, ids, ids)
+	if err != nil {
+		if svcErr := forceDeleteTransactionConflict(err); svcErr != nil {
+			return nil, svcErr
+		}
+		return nil, errors.GeneralError("force-delete failed: %s", err)
+	}
+	if svcErr := validateRemainingReferenceMins(kind, resource.Name, counts); svcErr != nil {
+		return nil, svcErr
+	}
+
+	// Record intent outside the database transaction's rollback semantics, before
+	// the first destructive statement. This is not a claim of successful deletion.
+	type auditResource struct {
+		Kind string `json:"kind"`
+		ID   string `json:"id"`
+	}
+	subresources := make([]auditResource, 0, len(resources)-1)
+	for _, item := range resources[1:] {
+		subresources = append(subresources, auditResource{Kind: item.Kind, ID: item.ID})
+	}
+	resourceCtx := hfl.WithResourceID(hfl.WithResourceType(ctx, kind), id)
+	slog.InfoContext(resourceCtx, "Force-deleting resource",
+		"caller", actorFromContext(ctx), "reason", reason, "subresources", subresources)
+
+	if err := s.deleteResourceRows(ctx, ids); err != nil {
+		if svcErr := forceDeleteTransactionConflict(err); svcErr != nil {
+			return nil, svcErr
+		}
+		return nil, handleDeleteError(kind, err)
+	}
+	return resources, nil
+}
+
+func forceDeleteTransactionConflict(err error) *errors.ServiceError {
+	if sqlErr, ok := stderrors.AsType[interface {
+		error
+		SQLState() string
+	}](err); ok {
+		if sqlErr.SQLState() == "40P01" {
+			return errors.ConflictState("force-delete conflicted with a concurrent transaction; retry the request")
+		}
+	}
+	return nil
+}
+
+// deleteResourceRows removes a collected force-delete tree in FK-safe order:
+// inbound references first, then adapter statuses, then the resource rows. It
+// runs in the caller's transaction. Resource rows stay tenant-scoped via
+// DeleteIDs; the reference and adapter-status deletes are keyed by the already
+// tenant-scoped, locked IDs. The calls live in the service rather than in a
+// single resource-DAO method because adapter statuses are owned by
+// AdapterStatusDao, which the resource DAO does not delete from.
+func (s *sqlResourceService) deleteResourceRows(ctx context.Context, ids []string) error {
+	if err := s.resourceDao.DeleteReferencesByTargets(ctx, ids); err != nil {
+		return err
+	}
+	if err := s.adapterStatusDao.DeleteByResourceIDs(ctx, ids); err != nil {
+		return err
+	}
+	return s.resourceDao.DeleteIDs(ctx, ids)
+}
+
+// collectForceDeletionResources locks the complete scoped tree parent-first.
+func (s *sqlResourceService) collectForceDeletionResources(
+	ctx context.Context, root *api.Resource,
+) (api.ResourceList, error) {
+	resources := api.ResourceList{root}
+	var collect func(*api.Resource) error
+	collect = func(parent *api.Resource) error {
+		children, err := s.resourceDao.FindChildrenForUpdate(ctx, parent.ID)
+		if err != nil {
+			return err
+		}
+		for _, child := range children {
+			resources = append(resources, child)
+			if err := collect(child); err != nil {
+				return err
 			}
 		}
+		return nil
 	}
-	slog.InfoContext(resourceCtx,
-		"Force-deleting resource",
-		"caller", caller,
-		"reason", reason,
-		"child_resource_ids", childIDs,
-	)
+	if err := collect(root); err != nil {
+		return nil, err
+	}
+	return resources, nil
+}
 
-	if err := s.adapterStatusDao.DeleteByResource(resourceCtx, resource.Kind, resource.ID); err != nil {
-		return errors.GeneralError("Failed to delete adapter statuses during force-delete: %s", err)
+func validateRemainingReferenceMins(
+	kind, name string, counts []dao.ExternalReferenceCount,
+) *errors.ServiceError {
+	for _, count := range counts {
+		desc, registered := registry.Get(count.SourceKind)
+		if !registered {
+			return errors.GeneralError("unregistered reference source kind %s", count.SourceKind)
+		}
+		ref, ok := findReferenceDescriptor(desc.References, count.RefType)
+		if !ok {
+			return errors.GeneralError(
+				"unregistered reference type %s for %s", count.RefType, count.SourceKind,
+			)
+		}
+		if count.Remaining < int64(ref.Min) {
+			return errors.ConflictState(
+				"cannot delete %s %q: required references would be removed", kind, name,
+			)
+		}
 	}
-	if err := s.resourceConditionDao.DeleteByResource(resourceCtx, resource.ID); err != nil {
-		return errors.GeneralError("Failed to delete resource conditions during force-delete: %s", err)
-	}
-	// Clear inbound references before hard-deleting (FK uses ON DELETE RESTRICT).
-	// Note: referencing resources with Min>0 on this ref type will silently
-	// violate their required-reference invariant after this operation.
-	if err := s.resourceDao.ClearTargetReferences(resourceCtx, resource.ID); err != nil {
-		return errors.GeneralError("failed to clear references: %s", err)
-	}
-	slog.InfoContext(resourceCtx, "Cleared inbound references for force-delete")
-	if err := s.resourceDao.Delete(resourceCtx, resource.Kind, resource.ID); err != nil {
-		return handleDeleteError(resource.Kind, err)
-	}
-
 	return nil
+}
+
+// findReferenceDescriptor returns the descriptor for refType, or false if the
+// entity does not declare that reference type.
+func findReferenceDescriptor(
+	refs []registry.ReferenceDescriptor, refType string,
+) (registry.ReferenceDescriptor, bool) {
+	for _, ref := range refs {
+		if ref.RefType == refType {
+			return ref, true
+		}
+	}
+	return registry.ReferenceDescriptor{}, false
 }
 
 // validateReferences checks that refs satisfies the ReferenceDescriptors on the entity:
