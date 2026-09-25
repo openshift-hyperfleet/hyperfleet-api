@@ -156,11 +156,11 @@ generate-vendor: generate
 build: generate-all ## Build the hyperfleet-api binary
 	@mkdir -p bin
 	@echo "Building version: ${APP_VERSION}"
-	CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=boringcrypto ${GO} build $(GOFLAGS) -ldflags="$(LDFLAGS)" -o bin/hyperfleet-api ./cmd/hyperfleet-api
+	CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=boringcrypto GOFIPS140=off ${GO} build $(GOFLAGS) -ldflags="$(LDFLAGS)" -o bin/hyperfleet-api ./cmd/hyperfleet-api
 
 .PHONY: install
 install: generate-all ## Build and install binary to GOPATH/bin
-	CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=boringcrypto ${GO} install $(GOFLAGS) -ldflags="$(LDFLAGS)" ./cmd/hyperfleet-api
+	CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=boringcrypto GOFIPS140=off ${GO} install $(GOFLAGS) -ldflags="$(LDFLAGS)" ./cmd/hyperfleet-api
 
 # Common CLI flags for local database access
 DB_FLAGS = --db-host localhost --db-port $(db_port) --db-name $(db_name) \
@@ -194,7 +194,7 @@ run/docs: check-container-tool ## Run swagger and host the api spec
 cmds: ## Build all binaries under cmd/
 	@mkdir -p bin
 	for cmd in $$(ls cmd); do \
-		CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=boringcrypto ${GO} build \
+		CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=boringcrypto GOFIPS140=off ${GO} build \
 			$(GOFLAGS) \
 			-ldflags="$(LDFLAGS)" \
 			-o "bin/$${cmd}" \
