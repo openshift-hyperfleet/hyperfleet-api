@@ -185,10 +185,11 @@ func (s *sqlResourceService) Create(
 			created.References = refRows
 		}
 
-		// Initialize conditions for entities with required adapters, matching the
-		// old ClusterService/NodePoolService behavior.
+		// Initialize conditions for entities with required adapters (matching the
+		// old ClusterService/NodePoolService behavior) or a configured CEL condition
+		// mapper
 		desc := registry.MustGet(kind)
-		if len(desc.RequiredAdapters) > 0 {
+		if len(desc.RequiredAdapters) > 0 || s.conditionMappers[kind] != nil {
 			recomputed, svcErr := s.recomputeAndSaveResourceConditions(ctx, created, nil)
 			if svcErr != nil {
 				return svcErr
@@ -274,7 +275,7 @@ func (s *sqlResourceService) Patch(
 
 		// Recompute conditions after generation change.
 		desc := registry.MustGet(kind)
-		if len(desc.RequiredAdapters) > 0 {
+		if len(desc.RequiredAdapters) > 0 || s.conditionMappers[kind] != nil {
 			adapterStatuses, statusErr := s.adapterStatusDao.FindByResource(ctx, kind, resource.ID)
 			if statusErr != nil {
 				return errors.GeneralError("failed to get adapter statuses for condition recompute: %s", statusErr)
