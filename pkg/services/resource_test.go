@@ -3577,6 +3577,81 @@ func TestResourceService_Patch_SkipsConditionsWithoutRequiredAdapters(t *testing
 		"Patch should not seed conditions for entities without RequiredAdapters")
 }
 
+// conditionMapperRuleForSpecKey tracks resource.spec.key == "value", flippable via patch
+func conditionMapperRuleForSpecKey() registry.ConditionMappingRule {
+	return registry.ConditionMappingRule{
+		Type: "TierReady",
+		When: registry.MappingExpression{Expression: `true`},
+		Output: registry.MappingOutput{
+			Status:  registry.MappingExpression{Expression: `resource.spec.key == "value" ? "True" : "False"`},
+			Reason:  registry.MappingExpression{Expression: `"TierEvaluated"`},
+			Message: registry.MappingExpression{Expression: `"tier evaluated from spec.key"`},
+		},
+	}
+}
+
+func TestResourceService_Create_RunsConditionMapper_WithoutRequiredAdapters(t *testing.T) {
+	RegisterTestingT(t)
+	registry.Reset()
+	t.Cleanup(registry.Reset)
+	registry.Register(registry.EntityDescriptor{
+		Kind:       "Channel",
+		Plural:     "channels",
+		Conditions: []registry.ConditionMappingRule{conditionMapperRuleForSpecKey()},
+	})
+
+	mockDao := newMockResourceDao()
+	svc, _, _, rcDao := newTestResourceServiceWithConditions(mockDao)
+
+	resource := testResource("Channel", "", "stable")
+	result, svcErr := svc.Create(context.Background(), "Channel", resource, nil)
+	Expect(svcErr).To(BeNil())
+
+	conditions := rcDao.conditions[result.ID]
+	Expect(conditions).ToNot(BeEmpty(),
+		"Conditions should be seeded on Create when a condition mapper is configured, even with no RequiredAdapters")
+
+	mapped := findCondition(conditions, "TierReady")
+	Expect(mapped).ToNot(BeNil(), "mapped condition should be produced from the CEL rule")
+	Expect(mapped.Status).To(Equal(api.ConditionTrue))
+
+	recon := findCondition(conditions, api.ResourceConditionTypeReconciled)
+	Expect(recon).ToNot(BeNil())
+	Expect(recon.Status).To(Equal(api.ConditionFalse),
+		"Reconciled is always False for entities with zero RequiredAdapters")
+}
+
+func TestResourceService_Patch_RunsConditionMapper_WithoutRequiredAdapters(t *testing.T) {
+	RegisterTestingT(t)
+	registry.Reset()
+	t.Cleanup(registry.Reset)
+	registry.Register(registry.EntityDescriptor{
+		Kind:       "Channel",
+		Plural:     "channels",
+		Conditions: []registry.ConditionMappingRule{conditionMapperRuleForSpecKey()},
+	})
+
+	mockDao := newMockResourceDao()
+	svc, _, _, rcDao := newTestResourceServiceWithConditions(mockDao)
+
+	resource := testResource("Channel", "ch-1", "stable")
+	created, svcErr := svc.Create(context.Background(), "Channel", resource, nil)
+	Expect(svcErr).To(BeNil())
+
+	mapped := findCondition(rcDao.conditions[created.ID], "TierReady")
+	Expect(mapped).ToNot(BeNil())
+	Expect(mapped.Status).To(Equal(api.ConditionTrue))
+
+	patch := &api.ResourcePatch{Spec: map[string]any{"key": "other"}}
+	_, svcErr = svc.Patch(context.Background(), "Channel", "ch-1", patch)
+	Expect(svcErr).To(BeNil())
+
+	mappedAfter := findCondition(rcDao.conditions[created.ID], "TierReady")
+	Expect(mappedAfter).ToNot(BeNil())
+	Expect(mappedAfter.Status).To(Equal(api.ConditionFalse),
+		"Patch should recompute mapped conditions for entities without RequiredAdapters when a mapper is configured")
+}
+
 func TestProcessAdapterStatus_FinalizedTrue_RecomputesConditions_WhenHardDeleteBlocked(t *testing.T) {
 	RegisterTestingT(t)
 	registry.Reset()
