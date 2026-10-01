@@ -1,0 +1,62 @@
+# HYPERFLEET-1652: PR-only Slack delivery test. Remove this file before merging.
+# An authorized PR event runs a deliberately failing task and posts one TEST alert.
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  name: hyperfleet-api-slack-notification-poc
+  namespace: hyperfleet-tenant
+  annotations:
+    pipelinesascode.tekton.dev/on-cel-expression: >-
+      event == "pull_request" && target_branch == "main" && source_branch == "HYPERFLEET-1652-slack-poc"
+spec:
+  params:
+    - name: git-url
+      value: '{{source_url}}'
+    - name: revision
+      value: '{{revision}}'
+  pipelineSpec:
+    params:
+      - name: git-url
+        type: string
+      - name: revision
+        type: string
+    tasks:
+      - name: expected-test-failure
+        taskSpec:
+          steps:
+            - name: fail
+              image: registry.access.redhat.com/ubi9-minimal:latest
+              script: |
+                #!/usr/bin/env sh
+                echo 'HYPERFLEET-1652 TEST: expected failure; no image is built' >&2
+                exit 1
+    finally:
+      - name: slack-webhook-notification
+        params:
+          - name: message
+            value: |
+              HYPERFLEET-1652 TEST ONLY: expected Konflux PipelineRun failure
+              Repository: $(params.git-url)
+              Pipeline: hyperfleet-api-slack-notification-poc
+              Commit: $(params.revision)
+              Run: $(context.pipelineRun.name)
+              View run: https://konflux-ui.apps.kflux-prd-rh02.0fk9.p1.openshiftapps.com/ns/$(context.pipelineRun.namespace)/pipelinerun/$(context.pipelineRun.name)
+          - name: secret-name
+            value: hyperfleet-slack-webhook-notification-secret
+          - name: key-name
+            value: hyperfleet-slack-webhook-url
+        taskRef:
+          resolver: bundles
+          params:
+            - name: bundle
+              value: quay.io/konflux-ci/tekton-catalog/task-slack-webhook-notification:0.1@sha256:55fdfbe3b4a565aa58fc76d6209a3b69832f43373ee6e33555bb69423a8b9ceb
+            - name: name
+              value: slack-webhook-notification
+            - name: kind
+              value: Task
+        when:
+          - input: $(tasks.status)
+            operator: in
+            values: ["Failed"]
+  taskRunTemplate:
+    serviceAccountName: build-pipeline-hyperfleet-api
