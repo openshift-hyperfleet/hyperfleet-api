@@ -230,6 +230,33 @@ spec:
         operator: in
         values:
         - "false"
+    finally:
+    - name: slack-webhook-notification
+      params:
+      - name: message
+        value: |
+          :rotating_light: *Konflux build failed*
+          *Repository:* <$(params.git-url)|hyperfleet-api>
+          *Pipeline:* `hyperfleet-api-chart-on-push`
+          *Commit:* <https://github.com/openshift-hyperfleet/hyperfleet-api/commit/$(params.revision)|$(params.revision)>
+          *Failed run:* <https://konflux-ui.apps.kflux-prd-rh02.0fk9.p1.openshiftapps.com/ns/$(context.pipelineRun.namespace)/pipelinerun/$(context.pipelineRun.name)|Open in Konflux>
+      - name: secret-name
+        value: hyperfleet-slack-webhook-notification-secret
+      - name: key-name
+        value: hyperfleet-slack-webhook-url
+      taskRef:
+        resolver: bundles
+        params:
+        - name: bundle
+          value: quay.io/konflux-ci/tekton-catalog/task-slack-webhook-notification:0.1@sha256:55fdfbe3b4a565aa58fc76d6209a3b69832f43373ee6e33555bb69423a8b9ceb
+        - name: name
+          value: slack-webhook-notification
+        - name: kind
+          value: Task
+      when:
+      - input: $(tasks.status)
+        operator: in
+        values: ["Failed"]
     workspaces:
     - name: git-auth
       optional: true
