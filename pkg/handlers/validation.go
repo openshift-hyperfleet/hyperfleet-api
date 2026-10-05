@@ -24,7 +24,7 @@ const (
 	maxObservedTimeSkew = 5 * time.Minute  // tolerance for clock skew between adapter pods and API server
 	maxObservedTimeAge  = 30 * time.Minute // matches Sentinel staleness health check window
 	// dbNameMaxLen is the hard ceiling from the resources.name column (gorm:"size:100").
-	// Applied when a descriptor sets NameMaxLen = 0 (no configured limit).
+	// Descriptor-specific limits may be more restrictive, but cannot exceed this DB limit.
 	dbNameMaxLen = 100
 )
 
@@ -133,10 +133,10 @@ func validateName(i interface{}, fieldName string, field string, minLen, maxLen 
 			return errors.Validation("%s must be at least %d characters", field, minLen)
 		}
 
-		// Check maximum length (0 = no constraint beyond DB limit)
-		effectiveMax := maxLen
-		if effectiveMax == 0 {
-			effectiveMax = dbNameMaxLen
+		// Honor a stricter descriptor limit, but never allow a name that exceeds the DB column.
+		effectiveMax := dbNameMaxLen
+		if maxLen > 0 && maxLen < effectiveMax {
+			effectiveMax = maxLen
 		}
 		if len(name) > effectiveMax {
 			return errors.Validation("%s must be at most %d characters", field, effectiveMax)

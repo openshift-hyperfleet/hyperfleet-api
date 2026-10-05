@@ -1250,6 +1250,33 @@ func TestRootResourceHandler_Create_RejectsInvalidName(t *testing.T) {
 	}
 }
 
+func TestRootResourceHandler_Create_RejectsNameExceedingDBColumnLimit(t *testing.T) {
+	RegisterTestingT(t)
+	registry.Reset()
+	registry.Register(registry.EntityDescriptor{
+		Kind:       "Channel",
+		Plural:     "channels",
+		NameMinLen: 1,
+		NameMaxLen: 253,
+	})
+	t.Cleanup(registry.Reset)
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	handler, _, _ := newTestRootResourceHandler(ctrl)
+
+	name := strings.Repeat("a", 150)
+	body := fmt.Sprintf(`{"kind":"Channel","name":%q,"spec":{}}`, name)
+	req := httptest.NewRequest(http.MethodPost, "/api/hyperfleet/v1/resources", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	handler.Create(rr, req)
+
+	Expect(rr.Code).To(Equal(http.StatusBadRequest))
+	Expect(rr.Body.String()).To(ContainSubstring("name must be at most 100 characters"))
+}
+
 func TestResourceHandler_Create_ChildKindWithoutParent_Returns422(t *testing.T) {
 	RegisterTestingT(t)
 	ctrl := gomock.NewController(t)
