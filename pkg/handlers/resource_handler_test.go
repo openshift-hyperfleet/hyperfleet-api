@@ -1250,6 +1250,56 @@ func TestRootResourceHandler_Create_RejectsInvalidName(t *testing.T) {
 	}
 }
 
+func TestRootResourceHandler_Create_RejectsNameExceedingDBColumnLimit(t *testing.T) {
+	RegisterTestingT(t)
+	registry.Reset()
+	registry.Register(registry.EntityDescriptor{
+		Kind:       "Channel",
+		Plural:     "channels",
+		NameMinLen: 1,
+		NameMaxLen: 253,
+	})
+	t.Cleanup(registry.Reset)
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	handler, mockSvc, _ := newTestRootResourceHandler(ctrl)
+
+	name := strings.Repeat("a", 150)
+	body := fmt.Sprintf(`{"kind":"Channel","name":%q,"spec":{}}`, name)
+	req := httptest.NewRequest(http.MethodPost, "/api/hyperfleet/v1/resources", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	handler.Create(rr, req)
+
+	Expect(rr.Code).To(Equal(http.StatusBadRequest))
+	Expect(rr.Body.String()).To(ContainSubstring("name must be at most 100 characters"))
+
+	nameAtLimit := strings.Repeat("a", 100)
+	mockSvc.EXPECT().Create(
+		gomock.Any(), "Channel", gomock.AssignableToTypeOf(&api.Resource{}), gomock.Any(),
+	).Return(&api.Resource{
+		Meta:       api.Meta{ID: "channel-at-limit", CreatedTime: time.Now(), UpdatedTime: time.Now()},
+		Kind:       "Channel",
+		Name:       nameAtLimit,
+		Href:       "/api/hyperfleet/v1/channels/channel-at-limit",
+		Spec:       []byte(`{}`),
+		Generation: 1,
+		CreatedBy:  "system@hyperfleet.local",
+		UpdatedBy:  "system@hyperfleet.local",
+	}, nil)
+
+	body = fmt.Sprintf(`{"kind":"Channel","name":%q,"spec":{}}`, nameAtLimit)
+	req = httptest.NewRequest(http.MethodPost, "/api/hyperfleet/v1/resources", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr = httptest.NewRecorder()
+
+	handler.Create(rr, req)
+
+	Expect(rr.Code).To(Equal(http.StatusCreated))
+}
+
 func TestResourceHandler_Create_ChildKindWithoutParent_Returns422(t *testing.T) {
 	RegisterTestingT(t)
 	ctrl := gomock.NewController(t)
