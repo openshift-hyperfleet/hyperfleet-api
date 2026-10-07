@@ -8,6 +8,10 @@ import (
 // ValidateResourceName checks if a resource name meets Kubernetes naming requirements.
 // Names must be lowercase alphanumeric with hyphens, start and end with alphanumeric.
 func ValidateResourceName(name string) error {
+	if name == "" {
+		return fmt.Errorf("name cannot be empty")
+	}
+
 	if len(name) > 253 {
 		return fmt.Errorf("name too long: %d characters", len(name))
 	}
