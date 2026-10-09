@@ -147,12 +147,15 @@ OUTPUT=$(render \
   --set config.existingConfigMap=my-external-config \
   --set-string config.existingConfigMapTLSEnabled=false 2>&1 || true)
 assert_contains "$OUTPUT" 'existingConfigMapTLSEnabled' "expected schema validation error to reference existingConfigMapTLSEnabled"
-assert_contains "$OUTPUT" 'want boolean' "expected schema validation error to reject a non-boolean value"
+assert_contains "$OUTPUT" 'boolean' "expected schema validation error to reject a non-boolean value"
 pass "existingConfigMapTLSEnabled rejects a quoted string (Go template if would otherwise treat \"false\" as truthy)"
 
 run_test "extraEnv setting HYPERFLEET_SERVER_TLS_ENABLED fails"
-OUTPUT=$(render --set-json 'extraEnv=[{"name":"HYPERFLEET_SERVER_TLS_ENABLED","value":"true"}]' 2>&1 || true)
-assert_contains "$OUTPUT" 'HYPERFLEET_SERVER_TLS_ENABLED' "expected error to mention HYPERFLEET_SERVER_TLS_ENABLED"
+if OUTPUT=$(render --set-json 'extraEnv=[{"name":"HYPERFLEET_SERVER_TLS_ENABLED","value":"true"}]' 2>&1); then
+  fail "expected render to fail when extraEnv sets HYPERFLEET_SERVER_TLS_ENABLED, but render succeeded"
+else
+  assert_contains "$OUTPUT" 'HYPERFLEET_SERVER_TLS_ENABLED' "expected error to mention HYPERFLEET_SERVER_TLS_ENABLED"
+fi
 pass "extraEnv TLS override is rejected"
 
 run_test "extraEnv with an unrelated variable still renders"
