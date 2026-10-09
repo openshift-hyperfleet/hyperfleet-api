@@ -40,6 +40,12 @@ config:
   # other `config.*` values are ignored.
   existingConfigMap: ""
 
+  # -- Required (true/false) when `config.existingConfigMap` is set: declares
+  # whether that ConfigMap's config.yaml enables server TLS, since Helm can't
+  # read the mounted file's content. Deliberately has no default here --
+  # rendering fails until set explicitly. Not read when existingConfigMap is "".
+  # existingConfigMapTLSEnabled: true
+
   # -- HTTP server settings
   server:
     # -- Public hostname advertised by the API (leave empty for auto-detect)
@@ -586,7 +592,10 @@ validationSchema:
   content: ""
 
 # -- Additional environment variables injected into the API container.
-# Use sparingly — prefer `config.*` values above.
+# Use sparingly — prefer `config.*` values above. Must not set
+# HYPERFLEET_SERVER_TLS_ENABLED: rendering fails if it does, since that env
+# var would override config.server.tls.enabled at runtime without the chart
+# knowing, leaving the Service/container port advertising the wrong protocol.
 extraEnv: []
 
 # -- Extra volume mounts added to the API container

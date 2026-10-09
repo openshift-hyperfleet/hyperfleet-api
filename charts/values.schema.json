@@ -89,6 +89,10 @@
           "type": "string",
           "description": "Name of an existing ConfigMap to use instead of generating one; when set, all other config.* values are ignored"
         },
+        "existingConfigMapTLSEnabled": {
+          "type": "boolean",
+          "description": "Required when existingConfigMap is set: whether that ConfigMap's config.yaml enables server TLS"
+        },
         "server": {
           "type": "object",
           "description": "HTTP server settings",
