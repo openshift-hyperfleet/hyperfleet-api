@@ -8,9 +8,12 @@ spec:
   type: {{ .Values.service.type | default "ClusterIP" }}
   ports:
   - port: {{ .Values.ports.api | default 8000 }}
-    targetPort: http
+    targetPort: {{ include "hyperfleet-api.apiPortName" . }}
     protocol: TCP
-    name: http
+    name: {{ include "hyperfleet-api.apiPortName" . }}
+    {{- if .Values.config.server.tls.enabled }}
+    appProtocol: https
+    {{- end }}
   - port: {{ .Values.ports.health | default 8080 }}
     targetPort: health
     protocol: TCP

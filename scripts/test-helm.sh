@@ -97,6 +97,26 @@ run_test "template rendering with default values"
 render | kubeconform_validate
 pass "Default values template"
 
+run_test "template with API TLS disabled (default): http port naming unchanged"
+OUTPUT=$(render)
+assert_contains "$OUTPUT" 'name: http' "expected http container/Service port name by default"
+assert_contains "$OUTPUT" 'targetPort: http' "expected Service targetPort: http by default"
+assert_not_contains "$OUTPUT" 'name: https' "unexpected https port name with TLS disabled"
+assert_not_contains "$OUTPUT" 'appProtocol' "unexpected appProtocol with TLS disabled"
+echo "$OUTPUT" | kubeconform_validate
+pass "API TLS disabled port naming config template"
+
+run_test "template with API TLS enabled: https port naming and appProtocol"
+OUTPUT=$(render --set config.server.tls.enabled=true)
+assert_contains "$OUTPUT" 'name: https' "expected https container/Service port name with TLS enabled"
+assert_contains "$OUTPUT" 'targetPort: https' "expected Service targetPort: https with TLS enabled"
+assert_contains "$OUTPUT" 'appProtocol: https' "expected Service appProtocol: https with TLS enabled"
+if echo "$OUTPUT" | grep -qE 'name: http$'; then
+  fail "unexpected plain http port name with TLS enabled"
+fi
+echo "$OUTPUT" | kubeconform_validate
+pass "API TLS enabled port naming config template"
+
 run_test "template with external database"
 render \
   --set database.postgresql.enabled=false \

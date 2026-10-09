@@ -71,6 +71,14 @@ app.kubernetes.io/component: api
 {{- end }}
 
 {{/*
+API container/Service port name: must match the API listener's actual
+protocol so Kubernetes-aware proxies and service meshes route correctly.
+*/}}
+{{- define "hyperfleet-api.apiPortName" -}}
+{{- if .Values.config.server.tls.enabled }}https{{ else }}http{{ end }}
+{{- end }}
+
+{{/*
 Create the name of the service account to use
 */}}
 {{- define "hyperfleet-api.serviceAccountName" -}}

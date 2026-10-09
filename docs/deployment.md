@@ -185,6 +185,24 @@ See [Issuer configuration reference](authentication.md#issuer-configuration-refe
 
 ---
 
+## Configuring TLS
+
+TLS on the API listener is **disabled by default**. Enable it with `config.server.tls.*`:
+
+```bash
+helm install hyperfleet-api oci://quay.io/redhat-services-prod/hyperfleet-tenant/hyperfleet/hyperfleet-api-chart:<tag> \
+  --namespace hyperfleet-system \
+  --set config.server.tls.enabled=true \
+  --set config.server.tls.cert_file=/etc/hyperfleet/tls/tls.crt \
+  --set config.server.tls.key_file=/etc/hyperfleet/tls/tls.key
+```
+
+When `config.server.tls.enabled=true`, the chart renames the API container port and Service port from `http` to `https` and sets `appProtocol: https` on the Service, so Kubernetes-aware proxies and service meshes route to the listener as TLS instead of plaintext. **Clients must use `https://` against this Service once TLS is enabled** — a plaintext request to the `https` port fails with `Client sent an HTTP request to an HTTPS server`.
+
+If TLS instead terminates in front of the API — at an ingress or gateway — configure that ingress/gateway's backend for plain HTTP (matching `config.server.tls.enabled=false`), or use TLS passthrough/re-encryption so it still speaks TLS to the pod. Mixing the two (API TLS enabled with an ingress also terminating and re-encrypting as HTTP) reproduces the same protocol mismatch.
+
+---
+
 ## Configuring Tenant Enforcement
 
 Tenant enforcement scopes resource reads, lists, updates, and deletes to the caller's tenant. It is **disabled by default** and is **only safe behind the Envoy + Authorino gateway**, which injects the trusted tenant headers the API relies on. That trust holds only when a NetworkPolicy restricts API pod ingress to the Envoy pod, so no in-cluster workload can reach the API directly and forge tenant headers — see [ADR-0020](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/adrs/0020-envoy-authorino-api-gateway.md). See [Tenant isolation](authentication.md#tenant-isolation) for the trust model.
