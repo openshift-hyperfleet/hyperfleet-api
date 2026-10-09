@@ -196,7 +196,7 @@ helm install hyperfleet-api oci://REGISTRY/hyperfleet-api \
 | validationSchema.enabled | bool | `false` | Enable spec validation |
 | validationSchema.existingConfigMap | string | `""` | Use an existing ConfigMap (must contain an `openapi.yaml` key). When set, `validationSchema.content` is ignored. |
 | validationSchema.content | string | `""` | Inline OpenAPI 3.0 schema content. Must define spec schemas matching `spec_schema_name` for each entity (e.g. `ClusterSpec`, `NodePoolSpec`) under `components.schemas`. |
-| extraEnv | list | `[]` | Additional environment variables injected into the API container. Use sparingly — prefer `config.*` values above. |
+| extraEnv | list | `[]` | Additional environment variables injected into the API container. Use sparingly — prefer `config.*` values above. Must not set HYPERFLEET_SERVER_TLS_ENABLED: rendering fails if it does, since that env var would override config.server.tls.enabled at runtime without the chart knowing, leaving the Service/container port advertising the wrong protocol. |
 | extraVolumeMounts | list | `[]` | Extra volume mounts added to the API container |
 | extraVolumes | list | `[]` | Extra volumes added to the pod |
 

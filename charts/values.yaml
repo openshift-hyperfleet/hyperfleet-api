@@ -592,7 +592,10 @@ validationSchema:
   content: ""
 
 # -- Additional environment variables injected into the API container.
-# Use sparingly — prefer `config.*` values above.
+# Use sparingly — prefer `config.*` values above. Must not set
+# HYPERFLEET_SERVER_TLS_ENABLED: rendering fails if it does, since that env
+# var would override config.server.tls.enabled at runtime without the chart
+# knowing, leaving the Service/container port advertising the wrong protocol.
 extraEnv: []
 
 # -- Extra volume mounts added to the API container

@@ -142,6 +142,26 @@ assert_not_contains "$OUTPUT" 'appProtocol' "unexpected appProtocol with TLS dis
 echo "$OUTPUT" | kubeconform_validate
 pass "existingConfigMap with TLS disabled port naming config template"
 
+run_test "existingConfigMapTLSEnabled as a quoted string fails schema validation"
+OUTPUT=$(render \
+  --set config.existingConfigMap=my-external-config \
+  --set-string config.existingConfigMapTLSEnabled=false 2>&1 || true)
+assert_contains "$OUTPUT" 'existingConfigMapTLSEnabled' "expected schema validation error to reference existingConfigMapTLSEnabled"
+assert_contains "$OUTPUT" 'want boolean' "expected schema validation error to reject a non-boolean value"
+pass "existingConfigMapTLSEnabled rejects a quoted string (Go template if would otherwise treat \"false\" as truthy)"
+
+run_test "extraEnv setting HYPERFLEET_SERVER_TLS_ENABLED fails"
+OUTPUT=$(render --set-json 'extraEnv=[{"name":"HYPERFLEET_SERVER_TLS_ENABLED","value":"true"}]' 2>&1 || true)
+assert_contains "$OUTPUT" 'HYPERFLEET_SERVER_TLS_ENABLED' "expected error to mention HYPERFLEET_SERVER_TLS_ENABLED"
+pass "extraEnv TLS override is rejected"
+
+run_test "extraEnv with an unrelated variable still renders"
+OUTPUT=$(render --set-json 'extraEnv=[{"name":"SOME_OTHER_VAR","value":"x"}]')
+assert_contains "$OUTPUT" 'SOME_OTHER_VAR' "expected extraEnv variable to be rendered"
+assert_contains "$OUTPUT" 'name: http' "expected http port naming unaffected by unrelated extraEnv"
+echo "$OUTPUT" | kubeconform_validate
+pass "extraEnv with unrelated variable config template"
+
 run_test "template with external database"
 render \
   --set database.postgresql.enabled=false \

@@ -75,10 +75,17 @@ Whether the API listener effectively has TLS enabled. config.server.tls.enabled
 is ignored when config.existingConfigMap is set (its config.yaml is opaque to
 Helm), so that case requires the operator to declare
 config.existingConfigMapTLSEnabled explicitly instead of silently guessing and
-risking the exact protocol mismatch this chart is meant to avoid. Returns "true"
-or "".
+risking the exact protocol mismatch this chart is meant to avoid. extraEnv is
+rejected if it sets HYPERFLEET_SERVER_TLS_ENABLED, since env vars take
+precedence over the ConfigMap at runtime and could silently diverge from what
+this helper computes. Returns "true" or "".
 */}}
 {{- define "hyperfleet-api.tlsEnabled" -}}
+{{- range .Values.extraEnv -}}
+{{- if eq .name "HYPERFLEET_SERVER_TLS_ENABLED" -}}
+{{- fail "extraEnv must not set HYPERFLEET_SERVER_TLS_ENABLED -- use config.server.tls.enabled instead, so the chart advertises the matching Service/container port protocol" -}}
+{{- end -}}
+{{- end -}}
 {{- if .Values.config.existingConfigMap -}}
 {{- if not (hasKey .Values.config "existingConfigMapTLSEnabled") -}}
 {{- fail "config.existingConfigMapTLSEnabled (true/false) must be set when config.existingConfigMap is set, so the chart knows whether to advertise the API port as http or https" -}}
