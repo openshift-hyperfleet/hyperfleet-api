@@ -187,19 +187,27 @@ See [Issuer configuration reference](authentication.md#issuer-configuration-refe
 
 ## Configuring TLS
 
-TLS on the API listener is **disabled by default**. Enable it with `config.server.tls.*`:
+TLS on the API listener is **disabled by default**. Enable it with `config.server.tls.*`, and mount the certificate and key into the container with `extraVolumes`/`extraVolumeMounts` — `config.server.tls.cert_file`/`key_file` only tell the API where to read them from, they don't mount anything:
 
 ```bash
+kubectl create secret tls hyperfleet-api-tls \
+  --namespace hyperfleet-system \
+  --cert=tls.crt --key=tls.key
+
 helm install hyperfleet-api oci://quay.io/redhat-services-prod/hyperfleet-tenant/hyperfleet/hyperfleet-api-chart:<tag> \
   --namespace hyperfleet-system \
   --set config.server.tls.enabled=true \
   --set config.server.tls.cert_file=/etc/hyperfleet/tls/tls.crt \
-  --set config.server.tls.key_file=/etc/hyperfleet/tls/tls.key
+  --set config.server.tls.key_file=/etc/hyperfleet/tls/tls.key \
+  --set-json 'extraVolumes=[{"name":"tls","secret":{"secretName":"hyperfleet-api-tls"}}]' \
+  --set-json 'extraVolumeMounts=[{"name":"tls","mountPath":"/etc/hyperfleet/tls","readOnly":true}]'
 ```
 
 When `config.server.tls.enabled=true`, the chart renames the API container port and Service port from `http` to `https` and sets `appProtocol: https` on the Service, so Kubernetes-aware proxies and service meshes route to the listener as TLS instead of plaintext. **Clients must use `https://` against this Service once TLS is enabled** — a plaintext request to the `https` port fails with `Client sent an HTTP request to an HTTPS server`.
 
 If TLS instead terminates in front of the API — at an ingress or gateway — configure that ingress/gateway's backend for plain HTTP (matching `config.server.tls.enabled=false`), or use TLS passthrough/re-encryption so it still speaks TLS to the pod. Mixing the two (API TLS enabled with an ingress also terminating and re-encrypting as HTTP) reproduces the same protocol mismatch.
+
+> **Note:** When `config.existingConfigMap` is set, `config.server.tls.enabled` is ignored along with the rest of `config.*` (see [Configuring Tenant Enforcement](#configuring-tenant-enforcement)). Set `config.existingConfigMapTLSEnabled` to `true` or `false` to match that ConfigMap's actual `server.tls.enabled` — the chart fails to render until this is set explicitly, rather than guessing and risking the same protocol mismatch.
 
 ---
 

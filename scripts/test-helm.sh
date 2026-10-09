@@ -117,6 +117,31 @@ fi
 echo "$OUTPUT" | kubeconform_validate
 pass "API TLS enabled port naming config template"
 
+run_test "existingConfigMap without existingConfigMapTLSEnabled fails"
+OUTPUT=$(render --set config.existingConfigMap=my-external-config 2>&1 || true)
+assert_contains "$OUTPUT" 'existingConfigMapTLSEnabled' "expected error to mention existingConfigMapTLSEnabled"
+pass "existingConfigMap requires explicit TLS declaration"
+
+run_test "existingConfigMap with existingConfigMapTLSEnabled=true: https port naming and appProtocol"
+OUTPUT=$(render \
+  --set config.existingConfigMap=my-external-config \
+  --set config.existingConfigMapTLSEnabled=true)
+assert_contains "$OUTPUT" 'name: https' "expected https container/Service port name"
+assert_contains "$OUTPUT" 'targetPort: https' "expected Service targetPort: https"
+assert_contains "$OUTPUT" 'appProtocol: https' "expected Service appProtocol: https"
+echo "$OUTPUT" | kubeconform_validate
+pass "existingConfigMap with TLS enabled port naming config template"
+
+run_test "existingConfigMap with existingConfigMapTLSEnabled=false: http port naming unchanged"
+OUTPUT=$(render \
+  --set config.existingConfigMap=my-external-config \
+  --set config.existingConfigMapTLSEnabled=false)
+assert_contains "$OUTPUT" 'name: http' "expected http container/Service port name"
+assert_contains "$OUTPUT" 'targetPort: http' "expected Service targetPort: http"
+assert_not_contains "$OUTPUT" 'appProtocol' "unexpected appProtocol with TLS disabled"
+echo "$OUTPUT" | kubeconform_validate
+pass "existingConfigMap with TLS disabled port naming config template"
+
 run_test "template with external database"
 render \
   --set database.postgresql.enabled=false \

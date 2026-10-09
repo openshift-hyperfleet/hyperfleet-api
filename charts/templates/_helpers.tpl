@@ -71,11 +71,30 @@ app.kubernetes.io/component: api
 {{- end }}
 
 {{/*
+Whether the API listener effectively has TLS enabled. config.server.tls.enabled
+is ignored when config.existingConfigMap is set (its config.yaml is opaque to
+Helm), so that case requires the operator to declare
+config.existingConfigMapTLSEnabled explicitly instead of silently guessing and
+risking the exact protocol mismatch this chart is meant to avoid. Returns "true"
+or "".
+*/}}
+{{- define "hyperfleet-api.tlsEnabled" -}}
+{{- if .Values.config.existingConfigMap -}}
+{{- if not (hasKey .Values.config "existingConfigMapTLSEnabled") -}}
+{{- fail "config.existingConfigMapTLSEnabled (true/false) must be set when config.existingConfigMap is set, so the chart knows whether to advertise the API port as http or https" -}}
+{{- end -}}
+{{- if .Values.config.existingConfigMapTLSEnabled }}true{{ end -}}
+{{- else -}}
+{{- if .Values.config.server.tls.enabled }}true{{ end -}}
+{{- end -}}
+{{- end }}
+
+{{/*
 API container/Service port name: must match the API listener's actual
 protocol so Kubernetes-aware proxies and service meshes route correctly.
 */}}
 {{- define "hyperfleet-api.apiPortName" -}}
-{{- if .Values.config.server.tls.enabled }}https{{ else }}http{{ end }}
+{{- if (include "hyperfleet-api.tlsEnabled" .) }}https{{ else }}http{{ end -}}
 {{- end }}
 
 {{/*

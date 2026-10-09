@@ -11,7 +11,7 @@ spec:
     targetPort: {{ include "hyperfleet-api.apiPortName" . }}
     protocol: TCP
     name: {{ include "hyperfleet-api.apiPortName" . }}
-    {{- if .Values.config.server.tls.enabled }}
+    {{- if (include "hyperfleet-api.tlsEnabled" .) }}
     appProtocol: https
     {{- end }}
   - port: {{ .Values.ports.health | default 8080 }}

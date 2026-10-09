@@ -40,6 +40,12 @@ config:
   # other `config.*` values are ignored.
   existingConfigMap: ""
 
+  # -- Required (true/false) when `config.existingConfigMap` is set: declares
+  # whether that ConfigMap's config.yaml enables server TLS, since Helm can't
+  # read the mounted file's content. Deliberately has no default here --
+  # rendering fails until set explicitly. Not read when existingConfigMap is "".
+  # existingConfigMapTLSEnabled: true
+
   # -- HTTP server settings
   server:
     # -- Public hostname advertised by the API (leave empty for auto-detect)
