@@ -1,8 +1,10 @@
 .DEFAULT_GOAL := help
 
 # CGO_ENABLED=0 is not FIPS compliant. large commercial vendors and FedRAMP require FIPS compliant crypto
-# Use ?= to allow Dockerfile to override (CGO_ENABLED=0 for Alpine-based dev images)
+# Use ?= so callers can override on the command line, e.g. CGO_ENABLED=0 make build for a non-FIPS static binary
 CGO_ENABLED ?= 1
+GOEXPERIMENT ?= boringcrypto
+GOFIPS140 ?= off
 
 GO ?= go
 
@@ -156,11 +158,11 @@ generate-vendor: generate
 build: generate-all ## Build the hyperfleet-api binary
 	@mkdir -p bin
 	@echo "Building version: ${APP_VERSION}"
-	CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=boringcrypto GOFIPS140=off ${GO} build $(GOFLAGS) -ldflags="$(LDFLAGS)" -o bin/hyperfleet-api ./cmd/hyperfleet-api
+	CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) ${GO} build $(GOFLAGS) -ldflags="$(LDFLAGS)" -o bin/hyperfleet-api ./cmd/hyperfleet-api
 
 .PHONY: install
 install: generate-all ## Build and install binary to GOPATH/bin
-	CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=boringcrypto GOFIPS140=off ${GO} install $(GOFLAGS) -ldflags="$(LDFLAGS)" ./cmd/hyperfleet-api
+	CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) ${GO} install $(GOFLAGS) -ldflags="$(LDFLAGS)" ./cmd/hyperfleet-api
 
 # Common CLI flags for local database access
 DB_FLAGS = --db-host localhost --db-port $(db_port) --db-name $(db_name) \
@@ -194,7 +196,7 @@ run/docs: check-container-tool ## Run swagger and host the api spec
 cmds: ## Build all binaries under cmd/
 	@mkdir -p bin
 	for cmd in $$(ls cmd); do \
-		CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=boringcrypto GOFIPS140=off ${GO} build \
+		CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) ${GO} build \
 			$(GOFLAGS) \
 			-ldflags="$(LDFLAGS)" \
 			-o "bin/$${cmd}" \
