@@ -94,7 +94,7 @@ spec:
         args:
         - serve
         ports:
-        - name: http
+        - name: {{ include "hyperfleet-api.apiPortName" . }}
           containerPort: {{ .Values.ports.api | default 8000 }}
           protocol: TCP
         - name: health

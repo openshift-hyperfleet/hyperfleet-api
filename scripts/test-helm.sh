@@ -97,6 +97,74 @@ run_test "template rendering with default values"
 render | kubeconform_validate
 pass "Default values template"
 
+run_test "template with API TLS disabled (default): http port naming unchanged"
+OUTPUT=$(render)
+assert_contains "$OUTPUT" 'name: http' "expected http container/Service port name by default"
+assert_contains "$OUTPUT" 'targetPort: http' "expected Service targetPort: http by default"
+assert_not_contains "$OUTPUT" 'name: https' "unexpected https port name with TLS disabled"
+assert_not_contains "$OUTPUT" 'appProtocol' "unexpected appProtocol with TLS disabled"
+echo "$OUTPUT" | kubeconform_validate
+pass "API TLS disabled port naming config template"
+
+run_test "template with API TLS enabled: https port naming and appProtocol"
+OUTPUT=$(render --set config.server.tls.enabled=true)
+assert_contains "$OUTPUT" 'name: https' "expected https container/Service port name with TLS enabled"
+assert_contains "$OUTPUT" 'targetPort: https' "expected Service targetPort: https with TLS enabled"
+assert_contains "$OUTPUT" 'appProtocol: https' "expected Service appProtocol: https with TLS enabled"
+if echo "$OUTPUT" | grep -qE 'name: http$'; then
+  fail "unexpected plain http port name with TLS enabled"
+fi
+echo "$OUTPUT" | kubeconform_validate
+pass "API TLS enabled port naming config template"
+
+run_test "existingConfigMap without existingConfigMapTLSEnabled fails"
+OUTPUT=$(render --set config.existingConfigMap=my-external-config 2>&1 || true)
+assert_contains "$OUTPUT" 'existingConfigMapTLSEnabled' "expected error to mention existingConfigMapTLSEnabled"
+pass "existingConfigMap requires explicit TLS declaration"
+
+run_test "existingConfigMap with existingConfigMapTLSEnabled=true: https port naming and appProtocol"
+OUTPUT=$(render \
+  --set config.existingConfigMap=my-external-config \
+  --set config.existingConfigMapTLSEnabled=true)
+assert_contains "$OUTPUT" 'name: https' "expected https container/Service port name"
+assert_contains "$OUTPUT" 'targetPort: https' "expected Service targetPort: https"
+assert_contains "$OUTPUT" 'appProtocol: https' "expected Service appProtocol: https"
+echo "$OUTPUT" | kubeconform_validate
+pass "existingConfigMap with TLS enabled port naming config template"
+
+run_test "existingConfigMap with existingConfigMapTLSEnabled=false: http port naming unchanged"
+OUTPUT=$(render \
+  --set config.existingConfigMap=my-external-config \
+  --set config.existingConfigMapTLSEnabled=false)
+assert_contains "$OUTPUT" 'name: http' "expected http container/Service port name"
+assert_contains "$OUTPUT" 'targetPort: http' "expected Service targetPort: http"
+assert_not_contains "$OUTPUT" 'appProtocol' "unexpected appProtocol with TLS disabled"
+echo "$OUTPUT" | kubeconform_validate
+pass "existingConfigMap with TLS disabled port naming config template"
+
+run_test "existingConfigMapTLSEnabled as a quoted string fails schema validation"
+OUTPUT=$(render \
+  --set config.existingConfigMap=my-external-config \
+  --set-string config.existingConfigMapTLSEnabled=false 2>&1 || true)
+assert_contains "$OUTPUT" 'existingConfigMapTLSEnabled' "expected schema validation error to reference existingConfigMapTLSEnabled"
+assert_contains "$OUTPUT" 'boolean' "expected schema validation error to reject a non-boolean value"
+pass "existingConfigMapTLSEnabled rejects a quoted string (Go template if would otherwise treat \"false\" as truthy)"
+
+run_test "extraEnv setting HYPERFLEET_SERVER_TLS_ENABLED fails"
+if OUTPUT=$(render --set-json 'extraEnv=[{"name":"HYPERFLEET_SERVER_TLS_ENABLED","value":"true"}]' 2>&1); then
+  fail "expected render to fail when extraEnv sets HYPERFLEET_SERVER_TLS_ENABLED, but render succeeded"
+else
+  assert_contains "$OUTPUT" 'HYPERFLEET_SERVER_TLS_ENABLED' "expected error to mention HYPERFLEET_SERVER_TLS_ENABLED"
+fi
+pass "extraEnv TLS override is rejected"
+
+run_test "extraEnv with an unrelated variable still renders"
+OUTPUT=$(render --set-json 'extraEnv=[{"name":"SOME_OTHER_VAR","value":"x"}]')
+assert_contains "$OUTPUT" 'SOME_OTHER_VAR' "expected extraEnv variable to be rendered"
+assert_contains "$OUTPUT" 'name: http' "expected http port naming unaffected by unrelated extraEnv"
+echo "$OUTPUT" | kubeconform_validate
+pass "extraEnv with unrelated variable config template"
+
 run_test "template with external database"
 render \
   --set database.postgresql.enabled=false \
