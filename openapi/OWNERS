@@ -1,0 +1,7 @@
+approvers:
+- contracts-owners
+reviewers:
+- contracts-reviewers
+- contracts-owners
+labels:
+- area/contracts
