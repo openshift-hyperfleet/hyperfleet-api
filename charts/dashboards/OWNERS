@@ -1,0 +1,7 @@
+approvers:
+- observability-owners
+reviewers:
+- observability-reviewers
+- observability-owners
+labels:
+- area/observability

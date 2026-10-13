@@ -1,0 +1,7 @@
+approvers:
+- tenancy-owners
+reviewers:
+- tenancy-reviewers
+- tenancy-owners
+labels:
+- area/tenancy

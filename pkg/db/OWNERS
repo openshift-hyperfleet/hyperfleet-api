@@ -1,0 +1,8 @@
+approvers:
+- generic-model-owners
+reviewers:
+- generic-model-reviewers
+- generic-model-owners
+labels:
+- area/generic-model
+- area/search

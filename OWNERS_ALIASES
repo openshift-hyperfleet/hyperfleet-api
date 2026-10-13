@@ -1,0 +1,55 @@
+aliases:
+  api-owners:
+  - kuudori
+  - pnguyen44
+  api-reviewers:
+  - tirthct
+  - Mischulee
+  - ma-hill
+  - mliptak0
+  - ldornele
+  - rafabene
+  contracts-owners:
+  - rh-amarin
+  - mliptak0
+  - kuudori
+  - ciaranRoche
+  contracts-reviewers:
+  - pnguyen44
+  - Mischulee
+  - tirthct
+  generic-model-owners:
+  - kuudori
+  - pnguyen44
+  generic-model-reviewers:
+  - tirthct
+  - Mischulee
+  - ma-hill
+  - mliptak0
+  observability-owners:
+  - pnguyen44
+  - kuudori
+  observability-reviewers:
+  - ldornele
+  - tirthct
+  - Ruclo
+  release-owners:
+  - ma-hill
+  - kuudori
+  release-reviewers:
+  - tirthct
+  - Mischulee
+  search-reviewers:
+  - Mischulee
+  - ma-hill
+  - mliptak0
+  tech-leads:
+  - ciaranRoche
+  - rafabene
+  - rh-amarin
+  tenancy-owners:
+  - pnguyen44
+  - mliptak0
+  tenancy-reviewers:
+  - kuudori
+  - Mischulee
