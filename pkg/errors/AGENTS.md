@@ -48,7 +48,7 @@ Format: `HYPERFLEET-[CAT]-[NUM]`
 - `code` (HYPERFLEET-CAT-NUM), `timestamp`, `traceId`
 - `validationErrors` array for field-level details
 
-## Related CLAUDE.md Files
+## Related AGENTS.md Files
 
-- `pkg/handlers/CLAUDE.md` — Handlers that return these errors
-- `pkg/services/CLAUDE.md` — Services that construct these errors
+- `pkg/handlers/AGENTS.md` — Handlers that return these errors
+- `pkg/services/AGENTS.md` — Services that construct these errors

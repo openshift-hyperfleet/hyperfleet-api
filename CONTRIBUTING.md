@@ -79,7 +79,8 @@ hyperfleet-api/
 ├── docs/                        # Detailed documentation
 ├── tools/                       # Pinned tool versions (tools/go.mod)
 ├── Makefile                     # Build automation and common commands
-└── CLAUDE.md                    # AI agent context (see also subdirectory CLAUDE.md files)
+├── AGENTS.md                    # AI agent context (see also subdirectory AGENTS.md files)
+└── CLAUDE.md                    # Claude Code pointer (@AGENTS.md)
 ```
 
 ## Testing
@@ -297,4 +298,4 @@ HyperFleet API uses semantic versioning and automated releases.
 - **API Documentation**: See [docs/api-resources.md](docs/api-resources.md)
 - **Development Guide**: See [docs/development.md](docs/development.md)
 - **Search & Filtering**: See [docs/search.md](docs/search.md)
-- **CLAUDE.md**: AI agent context (main + subdirectories)
+- **AGENTS.md**: AI agent context (main + subdirectories)

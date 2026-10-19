@@ -34,8 +34,8 @@ func NewResourceService(resourceDao, resourceLabelDao, adapterStatusDao, resourc
 - `ListArguments` has Page, Size, Search, Order, Fields, Preloads
 - Default ordering: `created_time desc`
 
-## Related CLAUDE.md Files
+## Related AGENTS.md Files
 
-- `pkg/handlers/CLAUDE.md` — Handler pipeline that calls services
-- `pkg/dao/CLAUDE.md` — DAO layer that services depend on
-- `pkg/errors/CLAUDE.md` — ServiceError type returned by all methods
+- `pkg/handlers/AGENTS.md` — Handler pipeline that calls services
+- `pkg/dao/AGENTS.md` — DAO layer that services depend on
+- `pkg/errors/AGENTS.md` — ServiceError type returned by all methods

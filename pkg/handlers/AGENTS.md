@@ -109,7 +109,7 @@ writeJSONResponse(w, r, http.StatusOK, result)
 
 ## Related Files
 
-- `pkg/services/CLAUDE.md` — Service layer patterns
-- `pkg/errors/CLAUDE.md` — Error constructors and codes
+- `pkg/services/AGENTS.md` — Service layer patterns
+- `pkg/errors/AGENTS.md` — Error constructors and codes
 - `helpers.go` — `writeJSONResponse`,`decodeAndValidate`, `handleError`, `applyFieldFilter` implementations
 - `validation.go` — Validator functions (`validateKind`, `validateName`, `validateSpec`, etc.)

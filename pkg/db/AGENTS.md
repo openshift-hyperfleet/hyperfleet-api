@@ -51,7 +51,7 @@ deadlines to both reads and writes without owning transactions.
 DAOs return ordinary errors and never decide whether to roll back. Always pass the
 callback context to every DAO call, including reads and locking reads.
 
-## Related CLAUDE.md Files
+## Related AGENTS.md Files
 
-- `pkg/dao/CLAUDE.md` — DAOs that consume SessionFactory
-- `pkg/services/CLAUDE.md` — Services that depend on transactions
+- `pkg/dao/AGENTS.md` — DAOs that consume SessionFactory
+- `pkg/services/AGENTS.md` — Services that depend on transactions

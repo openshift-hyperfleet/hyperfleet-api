@@ -38,7 +38,7 @@ Return ordinary errors. The service transaction callback rolls back automaticall
 - Chain: `.Preload()`, `.OrderBy()`, `.Joins()`, `.Group()`, `.Where()`
 - Execute: `.Fetch(offset, limit, &resultList)`, `.Count(model, &total)`
 
-## Related CLAUDE.md Files
+## Related AGENTS.md Files
 
-- `pkg/services/CLAUDE.md` — Service layer that consumes DAOs
-- `pkg/db/CLAUDE.md` — SessionFactory and service-owned transactions
+- `pkg/services/AGENTS.md` — Service layer that consumes DAOs
+- `pkg/db/AGENTS.md` — SessionFactory and service-owned transactions
