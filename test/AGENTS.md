@@ -1,4 +1,4 @@
-# Claude Code Guidelines for Tests
+# test
 
 ## Unit Tests
 

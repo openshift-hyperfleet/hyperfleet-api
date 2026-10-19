@@ -1,4 +1,4 @@
-# Claude Code Guidelines for Handlers
+# pkg/handlers
 
 ## Request Processing
 

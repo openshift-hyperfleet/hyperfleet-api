@@ -1,4 +1,4 @@
-# Claude Code Guidelines for Migrations
+# pkg/db/migrations
 
 ## No Rollbacks — Fix Forward
 

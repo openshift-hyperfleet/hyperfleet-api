@@ -1,4 +1,4 @@
-# Claude Code Guidelines for Services
+# pkg/services
 
 ## Interface Pattern
 

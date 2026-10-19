@@ -1,4 +1,4 @@
-# Claude Code Guidelines for Errors
+# pkg/errors
 
 Reference: `errors.go`
 

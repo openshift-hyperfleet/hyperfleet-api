@@ -1,4 +1,4 @@
-# Claude Code Guidelines for DAOs
+# pkg/dao
 
 ## Interface Pattern
 

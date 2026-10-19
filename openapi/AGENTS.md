@@ -1,4 +1,4 @@
-# Claude Code Guidelines for OpenAPI
+# openapi
 
 See [README.md](README.md) for the full reference on how schemas are imported, generated, and used for validation.
 
