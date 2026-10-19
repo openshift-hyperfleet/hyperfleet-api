@@ -47,13 +47,13 @@ Quick feedback: `make verify-all`. Full pre-push: `make test-all`.
 | Topic | Where to look |
 |---|---|
 | OpenAPI spec & code generation | [openapi/README.md](openapi/README.md) |
-| Handler pipeline & validation | `pkg/handlers/CLAUDE.md` |
-| Service interface & status aggregation | `pkg/services/CLAUDE.md` |
-| DAO patterns & session access | `pkg/dao/CLAUDE.md` |
-| SessionFactory & transactions | `pkg/db/CLAUDE.md` |
-| Error constructors & RFC 9457 | `pkg/errors/CLAUDE.md` |
-| Test conventions & factories | `test/CLAUDE.md` |
-| Helm chart testing | `charts/CLAUDE.md` |
+| Handler pipeline & validation | `pkg/handlers/AGENTS.md` |
+| Service interface & status aggregation | `pkg/services/AGENTS.md` |
+| DAO patterns & session access | `pkg/dao/AGENTS.md` |
+| SessionFactory & transactions | `pkg/db/AGENTS.md` |
+| Error constructors & RFC 9457 | `pkg/errors/AGENTS.md` |
+| Test conventions & factories | `test/AGENTS.md` |
+| Helm chart testing | `charts/AGENTS.md` |
 | Development setup | [docs/development.md](docs/development.md) |
 | Deployment | [docs/deployment.md](docs/deployment.md) |
 | Authentication | [docs/authentication.md](docs/authentication.md) |
@@ -84,7 +84,7 @@ Quick feedback: `make verify-all`. Full pre-push: `make test-all`.
 
 - **`make generate-all` is mandatory** - build and tests fail without it; generated code is gitignored
 - **`pkg/api/openapi/` is read-only** - never hand-edit, always regenerate
-- **Service methods return `*errors.ServiceError`, not stdlib `error`** - use constructor functions from `pkg/errors/errors.go`; see `pkg/errors/CLAUDE.md` for the full reference
+- **Service methods return `*errors.ServiceError`, not stdlib `error`** - use constructor functions from `pkg/errors/errors.go`; see `pkg/errors/AGENTS.md` for the full reference
 - **`apiServer.Close()` severs in-flight requests** - always use `Shutdown(ctx)` with a drain budget; `Close()` is only the force-close fallback after `Shutdown` times out
 - **Container has no `Close()`** - lifecycle (JWT handler, session factory, OTel) is managed by `pkg/closer` in the composition root, not on `Container`
 - **Integration tests share a single testcontainer** - `test.NewHelper(t)` initializes once per process via `sync.Once`; the PostgreSQL container, API server, and JWK mock are shared across all tests in the suite
