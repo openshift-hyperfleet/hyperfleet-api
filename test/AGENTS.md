@@ -23,7 +23,7 @@ Reference: `factories/`
 - `factories.NewClusterList(name, count)` — creates multiple Cluster resources
 - `NewClusterWithStatus(f, dbFactory, id, isAvailable, isReconciled)` — Cluster resource with conditions
 - `NewClusterWithLabels(f, dbFactory, id, labels)` — Cluster resource with labels
-- ID generation: RFC4122 UUID v7 (36-char lowercase format with hyphens, time-ordered with millisecond precision)
+- ID generation: RFC 9562 UUID v7 (36-char lowercase format with hyphens, time-ordered with millisecond precision)
 - Kubernetes usage: Lowercase UUIDs are DNS-1123 compliant and can be used directly as K8s resource names
 
 ## TestMain Setup

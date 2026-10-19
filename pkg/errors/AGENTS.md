@@ -43,9 +43,9 @@ Format: `HYPERFLEET-[CAT]-[NUM]`
 
 ## RFC 9457 Problem Details
 
-`AsProblemDetails(instance, traceID)` converts to `openapi.Error` with:
+`AsProblemDetails(instance, traceID)` converts to `openapi.ProblemDetails` with:
 - `type` URI, `title`, `detail` (reason), `status` (HTTP code)
-- `code` (HYPERFLEET-CAT-NUM), `timestamp`, `traceId`
+- `code` (HYPERFLEET-CAT-NUM), `timestamp`, `traceId` (optional — omitted when empty)
 - `validationErrors` array for field-level details
 
 ## Related AGENTS.md Files
