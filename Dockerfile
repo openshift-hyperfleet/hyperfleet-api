@@ -7,9 +7,8 @@ ARG GIT_DIRTY=""
 ARG BUILD_DATE=""
 ARG APP_VERSION="0.0.0-dev"
 
-# Install make as root (UBI9 go-toolset doesn't include it), then switch back to non-root.
+# Create /build as root and hand it to the non-root build user.
 USER root
-RUN dnf install -y make && dnf clean all
 WORKDIR /build
 RUN chown 1001:0 /build
 USER 1001
