@@ -3,13 +3,13 @@ default_install_hook_types: [pre-commit, commit-msg]
 repos:
   # Secret scanning (VPN-free, open-source alternative to rh-pre-commit)
   - repo: https://github.com/leaktk/leaktk
-    rev: e62a495260dc1e396fa586e51bbe1355f6fc7d9d # v0.3.3
+    rev: c6f5a11329736a8dc1551a84603f117bd9ed498e  # frozen: v0.3.12
     hooks:
       - id: leaktk.git.pre-commit
 
   # HyperFleet code quality hooks
   - repo: https://github.com/openshift-hyperfleet/hyperfleet-hooks
-    rev: 7f5119208e5cdee3f0c688881b6a4b803095f203 # v0.2.1
+    rev: d9aab6d723c9246bd2f63a982bf1d9cf0805b3a4  # frozen: v0.3.0
     hooks:
       - id: hyperfleet-commitlint
         stages: [commit-msg]
@@ -19,7 +19,7 @@ repos:
 
   # File hygiene
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v6.0.0 # v6.0.0
+    rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c  # frozen: v6.0.0
     hooks:
       - id: trailing-whitespace
       - id: end-of-file-fixer
