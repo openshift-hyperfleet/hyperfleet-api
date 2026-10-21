@@ -135,6 +135,19 @@ func TestFixtureFlatRouteCRUD(t *testing.T) {
 			Delete(h.RestURL(fmt.Sprintf("%s/%s", crudFixturesPath, created.Id)))
 		Expect(err).NotTo(HaveOccurred())
 		Expect(resp.StatusCode()).To(Equal(http.StatusAccepted))
+
+		// The 202 body echoes the deleted resource's envelope: the service
+		// marks it deleted (deleted_time and deleted_by set) before the row
+		// leaves the database.
+		var deleted openapi.Resource
+		Expect(json.Unmarshal(resp.Body(), &deleted)).To(Succeed())
+		Expect(deleted.Id).To(Equal(created.Id))
+		Expect(deleted.Kind).To(Equal("CrudFixture"))
+		Expect(deleted.Name).To(Equal(name))
+		Expect(deleted.DeletedTime).NotTo(BeNil(), "DELETE response should carry deleted_time")
+		Expect(deleted.DeletedBy).NotTo(BeNil())
+		Expect(*deleted.DeletedBy).To(Equal(account.Email),
+			"DELETE response should carry the identity that requested deletion")
 	})
 }
 
