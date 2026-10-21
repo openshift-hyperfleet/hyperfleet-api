@@ -3,8 +3,7 @@ name: pre-commit
 on:
   pull_request:
 
-permissions:
-  contents: read
+permissions: {}
 
 concurrency:
   group: pre-commit-${{ github.ref }}
@@ -12,6 +11,8 @@ concurrency:
 
 jobs:
   pre-commit:
+    permissions:
+      contents: read
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
@@ -37,6 +38,9 @@ jobs:
 
       - name: Install pre-commit
         run: python -m pip install pre-commit==4.6.2
+
+      - name: Install Git hooks
+        run: make install-hooks
 
       - name: Generate ignored Go sources where required
         run: |
