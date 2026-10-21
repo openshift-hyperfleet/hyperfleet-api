@@ -154,7 +154,7 @@ func newCrudFixtureResource(name string) *api.Resource {
 // is refused with 409 while a different tenant may own the same name.
 func TestFixtureNameUniqueness(t *testing.T) {
 	RegisterTestingT(t)
-	_, h := setupResourceTest(t)
+	svc, h := setupResourceTest(t)
 
 	account := h.NewRandAccount()
 	ctx := h.NewAuthenticatedContext(account)
@@ -183,9 +183,12 @@ func TestFixtureNameUniqueness(t *testing.T) {
 	// contexts, mirroring TestClusterNameUniquenessIsTenantScoped: the
 	// tenant-resolution middleware is not yet wired into the HTTP path, so two
 	// HTTP callers today share the empty tenancy and legitimately conflict.
+	// The service handle is reused from the parent setup — a second
+	// setupResourceTest would ResetDB mid-test and discard the fixture created
+	// above (its empty-tenancy row does not collide with the acme/globex rows
+	// under the tenant-scoped unique index).
 	t.Run("SameNameAllowedInDifferentTenant", func(t *testing.T) {
 		RegisterTestingT(t)
-		svc, _ := setupResourceTest(t)
 
 		ctxAcme := tenant.WithTenant(context.Background(),
 			&tenant.ResolvedTenant{Dimensions: map[string]string{"org": "acme"}})
