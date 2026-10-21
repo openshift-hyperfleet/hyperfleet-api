@@ -20,3 +20,10 @@ components:
     VersionSpec:
       type: object
       description: Permissive version spec schema for integration tests.
+    CrudFixtureSpec:
+      type: object
+      description: Constrained spec schema for the CrudFixture synthetic kind.
+      required: [fixture_key]
+      properties:
+        fixture_key:
+          type: string

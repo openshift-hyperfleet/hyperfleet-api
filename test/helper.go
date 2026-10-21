@@ -106,6 +106,40 @@ func defaultTestEntities() []registry.EntityDescriptor {
 			RequiredAdapters: []string{"validation"},
 			Conditions:       probeConditionMappingRules(),
 		},
+		{
+			// HYPERFLEET-1730 fixture kinds. Generic resource behavior is tested
+			// over these synthetic kinds so the coverage does not hang off any
+			// production descriptor (see TestFixture* in test/integration).
+			//
+			// CrudFixture: flat kind with a constrained spec schema, used for the
+			// generic CRUD round trip, name uniqueness, generation handling,
+			// spec-schema rejection and adapter-less hard-delete tests. It has no
+			// required adapters, so DELETE removes the row inside the request.
+			Kind:              "CrudFixture",
+			Plural:            "crudfixtures",
+			SpecSchemaName:    "CrudFixtureSpec",
+			RequireSpecSchema: true,
+		},
+		{
+			// SoftProbe: flat kind whose required adapter forces the soft-delete
+			// path, used to prove soft-deleted visibility on get and list.
+			Kind:             "SoftProbe",
+			Plural:           "softprobes",
+			RequiredAdapters: []string{"validation"},
+		},
+		{
+			// RestrictParent/RestrictChild: parent-child pair wired with the
+			// restrict delete policy, used to prove that an active child refuses
+			// parent deletion with 409.
+			Kind:   "RestrictParent",
+			Plural: "restrictparents",
+		},
+		{
+			Kind:           "RestrictChild",
+			Plural:         "restrictchildren",
+			ParentKind:     "RestrictParent",
+			OnParentDelete: registry.OnParentDeleteRestrict,
+		},
 	}
 }
 
