@@ -42,11 +42,8 @@ jobs:
       - name: Install Git hooks
         run: make install-hooks
 
-      - name: Generate ignored Go sources where required
-        run: |
-          if grep -q '^generate-all:' Makefile; then
-            make generate-all
-          fi
+      - name: Generate API sources
+        run: make generate-all
 
       # This runs pre-commit-stage hooks; PR-title validation stays in Prow.
       - name: Run pre-commit hooks
