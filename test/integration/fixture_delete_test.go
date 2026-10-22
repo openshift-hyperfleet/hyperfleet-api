@@ -187,6 +187,10 @@ func TestFixtureDelete_RestrictPolicy(t *testing.T) {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(resp.StatusCode()).To(Equal(http.StatusAccepted),
 			"parent deletion should succeed once no children remain")
+
+		// 202 is returned on the soft-delete path too — pin that the row left the table.
+		dbErr := checkResourceCount(ctx, h, []string{parent.ID}, 0)
+		Expect(dbErr).To(BeNil(), "restrictparent should be hard-deleted once no children remain")
 	})
 }
 

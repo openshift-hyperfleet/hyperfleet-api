@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 
@@ -127,6 +128,51 @@ func TestFixtureFlatRouteCRUD(t *testing.T) {
 		Expect(json.Unmarshal(resp.Body(), &patched)).To(Succeed())
 		Expect(patched.Generation).To(Equal(int32(2)), "generation should increment after PATCH")
 		Expect(patched.Spec["fixture_key"]).To(Equal("updated"))
+
+		fetchedResp, err := rootResourceRequest(ctx).
+			Get(h.RestURL(fmt.Sprintf("%s/%s", crudFixturesPath, created.Id)))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(fetchedResp.StatusCode()).To(Equal(http.StatusOK))
+
+		var fetched openapi.Resource
+		Expect(json.Unmarshal(fetchedResp.Body(), &fetched)).To(Succeed())
+		Expect(fetched.Spec["fixture_key"]).To(Equal("updated"), "patched spec should persist across a GET")
+	})
+
+	// Own fixture so the generation count starts at 1 and does not depend on
+	// the Patch subtest above.
+	t.Run("PatchLabels", func(t *testing.T) {
+		RegisterTestingT(t)
+		labeled := createCrudFixture(t, ctx, h, fmt.Sprintf("label-fixture-%s", uuid.NewString()[:8]))
+
+		patchReq := openapi.ResourcePatchRequest{
+			Labels: &map[string]string{"crud": labeled.Id},
+		}
+		patchBody, err := json.Marshal(patchReq)
+		Expect(err).NotTo(HaveOccurred())
+
+		resp, err := rootResourceRequest(ctx).
+			SetBody(patchBody).
+			Patch(h.RestURL(fmt.Sprintf("%s/%s", crudFixturesPath, labeled.Id)))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(resp.StatusCode()).To(Equal(http.StatusOK))
+
+		var patched openapi.Resource
+		Expect(json.Unmarshal(resp.Body(), &patched)).To(Succeed())
+		Expect(patched.Generation).To(Equal(int32(2)), "labels-only PATCH should increment generation")
+		Expect(patched.Labels).NotTo(BeNil())
+		Expect((*patched.Labels)["crud"]).To(Equal(labeled.Id))
+
+		listResp, err := rootResourceRequest(ctx).
+			SetQueryParam("search", fmt.Sprintf("labels.crud='%s'", labeled.Id)).
+			Get(h.RestURL(crudFixturesPath))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(listResp.StatusCode()).To(Equal(http.StatusOK))
+
+		var list openapi.ResourceList
+		Expect(json.Unmarshal(listResp.Body(), &list)).To(Succeed())
+		Expect(list.Items).To(HaveLen(1), "label search should return exactly the labeled fixture")
+		Expect(list.Items[0].Id).To(Equal(labeled.Id))
 	})
 
 	t.Run("Delete", func(t *testing.T) {
@@ -267,6 +313,19 @@ func TestFixturePatchGeneration(t *testing.T) {
 func TestFixtureSpecSchemaValidation(t *testing.T) {
 	RegisterTestingT(t)
 	_, h := setupResourceTest(t)
+
+	// CrudFixtureSpec exists only in test/validation-schema.yaml: under another
+	// schema file the validator skips the kind and the 400s below cannot be
+	// produced (skip); under the default test schema a missing CrudFixtureSpec
+	// is broken setup and must fail loudly.
+	hasSchema := h.Container.SchemaValidator().HasSchema("crudfixtures")
+	if strings.HasSuffix(os.Getenv("HYPERFLEET_SERVER_OPENAPI_SCHEMA_PATH"), "validation-schema.yaml") {
+		if !hasSchema {
+			t.Fatalf("CrudFixtureSpec missing from the test schema - crudfixtures spec validation would be silently disabled")
+		}
+	} else if !hasSchema {
+		t.Skip("Skipping CrudFixture spec-schema validation - no CrudFixtureSpec in the configured schema")
+	}
 
 	account := h.NewRandAccount()
 	ctx := h.NewAuthenticatedContext(account)

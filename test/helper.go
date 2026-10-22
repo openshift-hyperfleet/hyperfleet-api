@@ -115,10 +115,11 @@ func defaultTestEntities() []registry.EntityDescriptor {
 			// generic CRUD round trip, name uniqueness, generation handling,
 			// spec-schema rejection and adapter-less hard-delete tests. It has no
 			// required adapters, so DELETE removes the row inside the request.
-			Kind:              "CrudFixture",
-			Plural:            "crudfixtures",
-			SpecSchemaName:    "CrudFixtureSpec",
-			RequireSpecSchema: true,
+			// CrudFixtureSpec exists only in test/validation-schema.yaml; without
+			// RequireSpecSchema a missing schema degrades to warn+skip, not panic.
+			Kind:           "CrudFixture",
+			Plural:         "crudfixtures",
+			SpecSchemaName: "CrudFixtureSpec",
 		},
 		{
 			// SoftProbe: flat kind whose required adapter forces the soft-delete
