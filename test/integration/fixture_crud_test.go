@@ -261,8 +261,8 @@ func TestFixturePatchGeneration(t *testing.T) {
 }
 
 // TestFixtureSpecSchemaValidation proves that spec-schema validation rejects an
-// invalid spec on the synthetic kind's own route: a non-object spec and a spec
-// violating the CrudFixtureSpec schema (missing required fixture_key) both
+// invalid spec on the synthetic kind's own route: a non-object spec and specs
+// violating the CrudFixtureSpec schema (missing or non-string fixture_key)
 // return 400 with the RFC 9457 problem-details shape.
 func TestFixtureSpecSchemaValidation(t *testing.T) {
 	RegisterTestingT(t)
@@ -320,6 +320,24 @@ func TestFixtureSpecSchemaValidation(t *testing.T) {
 		Expect(foundFieldError).To(BeTrue(), "error details should mention missing 'fixture_key' field")
 	})
 
+	t.Run("RejectsNonStringFixtureKey", func(t *testing.T) {
+		RegisterTestingT(t)
+		body := fmt.Sprintf(
+			`{"kind":"CrudFixture","name":"bad-key-type-%s","spec":{"fixture_key":42}}`,
+			uuid.NewString()[:8],
+		)
+		resp, err := rootResourceRequest(ctx).
+			SetBody(body).
+			Post(h.RestURL(crudFixturesPath))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(resp.StatusCode()).To(Equal(http.StatusBadRequest),
+			"spec with a non-string fixture_key must be rejected")
+
+		var problem openapi.ProblemDetails
+		Expect(json.Unmarshal(resp.Body(), &problem)).To(Succeed())
+		Expect(problem.Status).To(Equal(http.StatusBadRequest))
+	})
+
 	t.Run("PatchRejectsInvalidSpec", func(t *testing.T) {
 		RegisterTestingT(t)
 		created := createCrudFixture(t, ctx, h, fmt.Sprintf("patch-inv-%s", uuid.NewString()[:8]))
@@ -331,6 +349,23 @@ func TestFixtureSpecSchemaValidation(t *testing.T) {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(resp.StatusCode()).To(Equal(http.StatusBadRequest),
 			"PATCH with spec missing required fixture_key must be rejected")
+
+		var problem openapi.ProblemDetails
+		Expect(json.Unmarshal(resp.Body(), &problem)).To(Succeed())
+		Expect(problem.Status).To(Equal(http.StatusBadRequest))
+	})
+
+	t.Run("PatchRejectsNonStringFixtureKey", func(t *testing.T) {
+		RegisterTestingT(t)
+		created := createCrudFixture(t, ctx, h, fmt.Sprintf("patch-bad-key-%s", uuid.NewString()[:8]))
+
+		patchBody := `{"spec": {"fixture_key": 42}}`
+		resp, err := rootResourceRequest(ctx).
+			SetBody(patchBody).
+			Patch(h.RestURL(fmt.Sprintf("%s/%s", crudFixturesPath, created.Id)))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(resp.StatusCode()).To(Equal(http.StatusBadRequest),
+			"PATCH with a non-string fixture_key must be rejected")
 
 		var problem openapi.ProblemDetails
 		Expect(json.Unmarshal(resp.Body(), &problem)).To(Succeed())
