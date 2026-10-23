@@ -327,7 +327,7 @@ func TestResourceScopeListAll(t *testing.T) {
 }
 
 // TestResourceScopeDaoFindAndExistsPaths verifies DAO methods not directly exposed
-// through the service layer (FindByKind, ExistsByOwner, etc.) are tenant-scoped.
+// through the service layer (FindByKindAndOwnerForUpdate, Exists, etc.) are tenant-scoped.
 func TestResourceScopeDaoFindAndExistsPaths(t *testing.T) {
 	h, _ := test.RegisterIntegration(t)
 	svc := h.Container.ResourceService()
@@ -357,14 +357,6 @@ func TestResourceScopeDaoFindAndExistsPaths(t *testing.T) {
 		name  string
 		want  string
 	}{
-		{name: "FindByKind", want: nodePool.ID, fetch: func(ctx context.Context) ([]string, error) {
-			list, err := resourceDao.FindByKind(ctx, scopeNodePoolKind)
-			return idsOf(list), err
-		}},
-		{name: "FindByKindAndOwner", want: nodePool.ID, fetch: func(ctx context.Context) ([]string, error) {
-			list, err := resourceDao.FindByKindAndOwner(ctx, scopeNodePoolKind, cluster.ID)
-			return idsOf(list), err
-		}},
 		{name: "FindByKindAndOwnerForUpdate", want: nodePool.ID, fetch: func(ctx context.Context) ([]string, error) {
 			list, err := resourceDao.FindByKindAndOwnerForUpdate(ctx, scopeNodePoolKind, cluster.ID)
 			return idsOf(list), err
@@ -446,7 +438,7 @@ func TestResourceScopeDaoFindAndExistsPaths(t *testing.T) {
 		RegisterTestingT(t)
 		ctxDenied := tenancyCtx(map[string]string{})
 
-		list, err := resourceDao.FindByKind(ctxDenied, scopeNodePoolKind)
+		list, err := resourceDao.FindByKindAndOwnerForUpdate(ctxDenied, scopeNodePoolKind, cluster.ID)
 		Expect(err).NotTo(HaveOccurred(), "deny-all clause must not error against a real driver")
 		Expect(list).To(BeEmpty())
 

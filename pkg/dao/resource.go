@@ -26,8 +26,6 @@ type ResourceDao interface {
 	Exists(ctx context.Context, kind, id string) (bool, error)
 	ExistsByOwner(ctx context.Context, kind, ownerID string) (bool, error)
 	ExistsSoftDeletedByOwner(ctx context.Context, kinds []string, ownerID string) (bool, error)
-	FindByKind(ctx context.Context, kind string) (api.ResourceList, error)
-	FindByKindAndOwner(ctx context.Context, kind, ownerID string) (api.ResourceList, error)
 	FindByKindAndOwnerForUpdate(ctx context.Context, kind, ownerID string) (api.ResourceList, error)
 	FindChildrenForUpdate(ctx context.Context, ownerID string) (api.ResourceList, error)
 	GetByID(ctx context.Context, id string) (*api.Resource, error)
@@ -35,7 +33,6 @@ type ResourceDao interface {
 	FindExternalReferenceCounts(ctx context.Context, targetIDs, sourceIDs []string) ([]ExternalReferenceCount, error)
 	DeleteReferencesByTargets(ctx context.Context, targetIDs []string) error
 	FindReferencers(ctx context.Context, targetID string) ([]api.ResourceSummary, error)
-	ClearTargetReferences(ctx context.Context, targetID string) error
 	FindSourceIDsByRef(ctx context.Context, refType, targetID string) ([]string, error)
 }
 
@@ -56,11 +53,14 @@ func NewResourceDao(sessionFactory db.SessionFactory) ResourceDao {
 	return &sqlResourceDao{sessionFactory: sessionFactory}
 }
 
+func withAssociations(g2 *gorm.DB) *gorm.DB {
+	return g2.Preload("Conditions").Preload("Labels").Preload("References")
+}
+
 func (d *sqlResourceDao) Get(ctx context.Context, kind, id string) (*api.Resource, error) {
 	g2 := tenant.ScopeDB(d.sessionFactory.New(ctx), ctx)
 	var resource api.Resource
-	if err := g2.Preload("Conditions").Preload("Labels").Preload("References").
-		Take(&resource, "kind = ? AND id = ?", kind, id).Error; err != nil {
+	if err := withAssociations(g2).Take(&resource, "kind = ? AND id = ?", kind, id).Error; err != nil {
 		return nil, err
 	}
 	return &resource, nil
@@ -69,8 +69,7 @@ func (d *sqlResourceDao) Get(ctx context.Context, kind, id string) (*api.Resourc
 func (d *sqlResourceDao) GetForUpdate(ctx context.Context, kind, id string) (*api.Resource, error) {
 	g2 := tenant.ScopeDB(d.sessionFactory.New(ctx), ctx)
 	var resource api.Resource
-	if err := g2.Clauses(clause.Locking{Strength: "UPDATE"}).
-		Preload("Conditions").Preload("Labels").Preload("References").
+	if err := withAssociations(g2.Clauses(clause.Locking{Strength: "UPDATE"})).
 		Take(&resource, "kind = ? AND id = ?", kind, id).Error; err != nil {
 		return nil, err
 	}
@@ -94,8 +93,7 @@ func (d *sqlResourceDao) GetForUpdateByOwner(
 	ctx context.Context, kind, id, ownerKind, ownerID string,
 ) (*api.Resource, error) {
 	var resource api.Resource
-	if err := d.ownedForUpdate(ctx, kind, id, ownerKind, ownerID).
-		Preload("Conditions").Preload("Labels").Preload("References").
+	if err := withAssociations(d.ownedForUpdate(ctx, kind, id, ownerKind, ownerID)).
 		Take(&resource).Error; err != nil {
 		return nil, err
 	}
@@ -131,7 +129,7 @@ func (d *sqlResourceDao) ownedForUpdate(ctx context.Context, kind, id, ownerKind
 func (d *sqlResourceDao) GetByOwner(ctx context.Context, kind, id, ownerID string) (*api.Resource, error) {
 	g2 := tenant.ScopeDB(d.sessionFactory.New(ctx), ctx)
 	var resource api.Resource
-	if err := g2.Preload("Conditions").Preload("Labels").Preload("References").
+	if err := withAssociations(g2).
 		Take(&resource, "kind = ? AND id = ? AND owner_id = ?", kind, id, ownerID).Error; err != nil {
 		return nil, err
 	}
@@ -184,32 +182,16 @@ func (d *sqlResourceDao) DeleteIDs(ctx context.Context, ids []string) error {
 
 // Exists reports whether a resource of kind is visible to the caller, without loading it.
 func (d *sqlResourceDao) Exists(ctx context.Context, kind, id string) (bool, error) {
-	g2 := d.sessionFactory.New(ctx)
-	query := "SELECT EXISTS(SELECT 1 FROM resources WHERE kind = ? AND id = ?"
-	args := []any{kind, id}
-	if scopeClause, scopeArgs := tenant.ScopeClause(ctx); scopeClause != "" {
-		query += " AND " + scopeClause
-		args = append(args, scopeArgs...)
-	}
-	query += ")"
-	var exists bool
-	if err := g2.Raw(query, args...).Scan(&exists).Error; err != nil {
+	exists, err := d.scopedExists(ctx, "kind = ? AND id = ?", kind, id)
+	if err != nil {
 		return false, fmt.Errorf("failed to check resource existence: %w", err)
 	}
 	return exists, nil
 }
 
 func (d *sqlResourceDao) ExistsByOwner(ctx context.Context, kind, ownerID string) (bool, error) {
-	g2 := d.sessionFactory.New(ctx)
-	query := "SELECT EXISTS(SELECT 1 FROM resources WHERE kind = ? AND owner_id = ? AND deleted_time IS NULL"
-	args := []any{kind, ownerID}
-	if scopeClause, scopeArgs := tenant.ScopeClause(ctx); scopeClause != "" {
-		query += " AND " + scopeClause
-		args = append(args, scopeArgs...)
-	}
-	query += ")"
-	var exists bool
-	if err := g2.Raw(query, args...).Scan(&exists).Error; err != nil {
+	exists, err := d.scopedExists(ctx, "kind = ? AND owner_id = ? AND deleted_time IS NULL", kind, ownerID)
+	if err != nil {
 		return false, fmt.Errorf("failed to check owner existence: %w", err)
 	}
 	return exists, nil
@@ -219,59 +201,42 @@ func (d *sqlResourceDao) ExistsSoftDeletedByOwner(ctx context.Context, kinds []s
 	if len(kinds) == 0 {
 		return false, nil
 	}
-	g2 := d.sessionFactory.New(ctx)
-	query := "SELECT EXISTS(SELECT 1 FROM resources WHERE kind IN (?) AND owner_id = ? AND deleted_time IS NOT NULL"
-	args := []any{kinds, ownerID}
+	exists, err := d.scopedExists(ctx, "kind IN (?) AND owner_id = ? AND deleted_time IS NOT NULL", kinds, ownerID)
+	if err != nil {
+		return false, fmt.Errorf("failed to check soft-deleted children: %w", err)
+	}
+	return exists, nil
+}
+
+func (d *sqlResourceDao) scopedExists(ctx context.Context, where string, args ...any) (bool, error) {
+	query := "SELECT EXISTS(SELECT 1 FROM resources WHERE " + where
 	if scopeClause, scopeArgs := tenant.ScopeClause(ctx); scopeClause != "" {
 		query += " AND " + scopeClause
 		args = append(args, scopeArgs...)
 	}
 	query += ")"
 	var exists bool
-	if err := g2.Raw(query, args...).Scan(&exists).Error; err != nil {
-		return false, fmt.Errorf("failed to check soft-deleted children: %w", err)
-	}
-	return exists, nil
-}
-
-func (d *sqlResourceDao) FindByKind(ctx context.Context, kind string) (api.ResourceList, error) {
-	g2 := tenant.ScopeDB(d.sessionFactory.New(ctx), ctx)
-	var resources api.ResourceList
-	if err := g2.Preload("Labels").Preload("Conditions").Preload("References").
-		Where("kind = ?", kind).Find(&resources).Error; err != nil {
-		return nil, err
-	}
-	return resources, nil
-}
-
-func (d *sqlResourceDao) FindByKindAndOwner(ctx context.Context, kind, ownerID string) (api.ResourceList, error) {
-	g2 := tenant.ScopeDB(d.sessionFactory.New(ctx), ctx)
-	var resources api.ResourceList
-	if err := g2.Preload("Labels").Preload("Conditions").Preload("References").
-		Where("kind = ? AND owner_id = ?", kind, ownerID).Find(&resources).Error; err != nil {
-		return nil, err
-	}
-	return resources, nil
+	err := d.sessionFactory.New(ctx).Raw(query, args...).Scan(&exists).Error
+	return exists, err
 }
 
 func (d *sqlResourceDao) GetByID(ctx context.Context, id string) (*api.Resource, error) {
 	g2 := tenant.ScopeDB(d.sessionFactory.New(ctx), ctx)
 	var resource api.Resource
-	if err := g2.Preload("Conditions").Preload("Labels").Preload("References").
-		Take(&resource, "id = ?", id).Error; err != nil {
+	if err := withAssociations(g2).Take(&resource, "id = ?", id).Error; err != nil {
 		return nil, err
 	}
 	return &resource, nil
 }
 
+// FindByKindAndOwnerForUpdate locks owned rows of kind in deterministic ID order.
 func (d *sqlResourceDao) FindByKindAndOwnerForUpdate(
 	ctx context.Context, kind, ownerID string,
 ) (api.ResourceList, error) {
 	g2 := tenant.ScopeDB(d.sessionFactory.New(ctx), ctx)
 	var resources api.ResourceList
-	if err := g2.Preload("Labels").Preload("Conditions").Preload("References").
-		Clauses(clause.Locking{Strength: "UPDATE"}).
-		Where("kind = ? AND owner_id = ?", kind, ownerID).Find(&resources).Error; err != nil {
+	if err := withAssociations(g2.Clauses(clause.Locking{Strength: "UPDATE"})).
+		Where("kind = ? AND owner_id = ?", kind, ownerID).Order("id").Find(&resources).Error; err != nil {
 		return nil, err
 	}
 	return resources, nil
@@ -326,17 +291,6 @@ func (d *sqlResourceDao) FindReferencers(
 		return nil, err
 	}
 	return summaries, nil
-}
-
-// ClearTargetReferences removes all inbound references pointing at targetID.
-// Called by forceDeleteResourceTree before hard-deleting a referenced target,
-// because the target_id FK uses ON DELETE RESTRICT.
-func (d *sqlResourceDao) ClearTargetReferences(ctx context.Context, targetID string) error {
-	g2 := d.sessionFactory.New(ctx)
-	if err := g2.Where("target_id = ?", targetID).Delete(&api.ResourceReference{}).Error; err != nil {
-		return err
-	}
-	return nil
 }
 
 // FindExternalReferenceCounts locks surviving sources, then counts their

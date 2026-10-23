@@ -198,17 +198,9 @@ func (d *mockResourceDao) ExistsSoftDeletedByOwner(_ context.Context, kinds []st
 	return false, nil
 }
 
-func (d *mockResourceDao) FindByKind(_ context.Context, kind string) (api.ResourceList, error) {
-	var result api.ResourceList
-	for _, r := range d.resources {
-		if r.Kind == kind {
-			result = append(result, r)
-		}
-	}
-	return result, nil
-}
-
-func (d *mockResourceDao) FindByKindAndOwner(_ context.Context, kind, ownerID string) (api.ResourceList, error) {
+func (d *mockResourceDao) FindByKindAndOwnerForUpdate(
+	_ context.Context, kind, ownerID string,
+) (api.ResourceList, error) {
 	var result api.ResourceList
 	for _, r := range d.resources {
 		if r.Kind == kind && r.OwnerID != nil && *r.OwnerID == ownerID {
@@ -216,12 +208,6 @@ func (d *mockResourceDao) FindByKindAndOwner(_ context.Context, kind, ownerID st
 		}
 	}
 	return result, nil
-}
-
-func (d *mockResourceDao) FindByKindAndOwnerForUpdate(
-	ctx context.Context, kind, ownerID string,
-) (api.ResourceList, error) {
-	return d.FindByKindAndOwner(ctx, kind, ownerID)
 }
 
 func (d *mockResourceDao) FindChildrenForUpdate(_ context.Context, ownerID string) (api.ResourceList, error) {
@@ -282,10 +268,6 @@ func (d *mockResourceDao) ReplaceReferences(_ context.Context, _ string, refs []
 
 func (d *mockResourceDao) FindReferencers(_ context.Context, _ string) ([]api.ResourceSummary, error) {
 	return d.findReferencersResult, nil
-}
-
-func (d *mockResourceDao) ClearTargetReferences(_ context.Context, _ string) error {
-	return nil
 }
 
 func (d *mockResourceDao) FindSourceIDsByRef(_ context.Context, _, _ string) ([]string, error) {
