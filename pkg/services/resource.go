@@ -1122,7 +1122,10 @@ func (s *sqlResourceService) forceDelete(
 			svcErr = serviceErrorFromTransaction(err)
 		}
 		level := slog.LevelError
-		if svcErr.HTTPCode >= 400 && svcErr.HTTPCode <= 499 {
+		switch {
+		case svcErr.Reason == forceDeleteDeadlockReason:
+			level = slog.LevelWarn
+		case svcErr.HTTPCode >= 400 && svcErr.HTTPCode <= 499:
 			level = slog.LevelInfo
 		}
 		resourceCtx := hfl.WithResourceID(hfl.WithResourceType(ctx, kind), id)
@@ -1206,13 +1209,15 @@ func (s *sqlResourceService) forceDeleteTx(
 	return resources, nil
 }
 
+const forceDeleteDeadlockReason = "force-delete conflicted with a concurrent transaction; retry the request"
+
 func forceDeleteTransactionConflict(err error) *errors.ServiceError {
 	if sqlErr, ok := stderrors.AsType[interface {
 		error
 		SQLState() string
 	}](err); ok {
 		if sqlErr.SQLState() == "40P01" {
-			return errors.ConflictState("force-delete conflicted with a concurrent transaction; retry the request")
+			return errors.ConflictState(forceDeleteDeadlockReason)
 		}
 	}
 	return nil
