@@ -12,6 +12,7 @@ import (
 	hfl "github.com/openshift-hyperfleet/hyperfleet-logger"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"gorm.io/gorm"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/dao"
@@ -29,11 +30,14 @@ type ResourceService interface {
 	Get(ctx context.Context, kind, id string) (*api.Resource, *errors.ServiceError)
 	Create(ctx context.Context, kind string, resource *api.Resource, refs api.ReferenceMap) (*api.Resource, *errors.ServiceError) //nolint:lll
 	Patch(ctx context.Context, kind, id string, patch *api.ResourcePatch) (*api.Resource, *errors.ServiceError)
+	PatchByOwner(ctx context.Context, kind, id, ownerID string, patch *api.ResourcePatch) (*api.Resource, *errors.ServiceError) //nolint:lll
 	Delete(ctx context.Context, kind, id string) (*api.Resource, *errors.ServiceError)
+	DeleteByOwner(ctx context.Context, kind, id, ownerID string) (*api.Resource, *errors.ServiceError)
 	List(ctx context.Context, kind string, args *ListArguments) (api.ResourceList, *api.PagingMeta, *errors.ServiceError)
 	GetByOwner(ctx context.Context, kind, id, ownerID string) (*api.Resource, *errors.ServiceError)
 	ListByOwner(ctx context.Context, kind, ownerID string, args *ListArguments) (api.ResourceList, *api.PagingMeta, *errors.ServiceError) // nolint:lll
 	ForceDelete(ctx context.Context, kind, id, reason string) *errors.ServiceError
+	ForceDeleteByOwner(ctx context.Context, kind, id, ownerID, reason string) *errors.ServiceError
 	GetByID(ctx context.Context, id string) (*api.Resource, *errors.ServiceError)
 	ListAll(ctx context.Context, args *ListArguments) (api.ResourceList, *api.PagingMeta, *errors.ServiceError)
 	ProcessAdapterStatus(ctx context.Context, kind, resourceID string, adapterStatus *api.AdapterStatus) (*api.AdapterStatus, *errors.ServiceError) // nolint:lll
@@ -211,11 +215,28 @@ func (s *sqlResourceService) Create(
 func (s *sqlResourceService) Patch(
 	ctx context.Context, kind, id string, patch *api.ResourcePatch,
 ) (*api.Resource, *errors.ServiceError) {
+	return s.patch(ctx, kind, id, "", patch)
+}
+
+// PatchByOwner patches a child resource only if it belongs to ownerID, checking
+// ownership under the same row lock as the write. ownerID must be non-empty.
+func (s *sqlResourceService) PatchByOwner(
+	ctx context.Context, kind, id, ownerID string, patch *api.ResourcePatch,
+) (*api.Resource, *errors.ServiceError) {
+	if svcErr := validateOwnerID(ownerID); svcErr != nil {
+		return nil, svcErr
+	}
+	return s.patch(ctx, kind, id, ownerID, patch)
+}
+
+func (s *sqlResourceService) patch(
+	ctx context.Context, kind, id, ownerID string, patch *api.ResourcePatch,
+) (*api.Resource, *errors.ServiceError) {
 	trace.SpanFromContext(ctx).SetAttributes(attribute.String("hyperfleet.resource_id", id))
 	if svcErr := rejectSystemIdentityWrite(ctx); svcErr != nil {
 		return nil, svcErr
 	}
-	if svcErr := validateKind(kind); svcErr != nil {
+	if svcErr := validateWriteKind(kind, ownerID); svcErr != nil {
 		return nil, svcErr
 	}
 	trace.SpanFromContext(ctx).SetAttributes(attribute.String("hyperfleet.resource_type", registry.MustGet(kind).Plural))
@@ -223,8 +244,11 @@ func (s *sqlResourceService) Patch(
 	var result *api.Resource
 	var outcome *reconciliationOutcome
 	err := s.txRunner.Do(ctx, func(ctx context.Context) error {
-		resource, err := s.resourceDao.GetForUpdate(ctx, kind, id)
+		resource, err := s.getForUpdate(ctx, kind, id, ownerID)
 		if err != nil {
+			if ownerID != "" {
+				return s.handleOwnedGetError(ctx, kind, id, ownerID, err)
+			}
 			return handleGetError(kind, id, err)
 		}
 
@@ -300,11 +324,28 @@ func (s *sqlResourceService) Patch(
 
 // Resources with required adapters are soft-deleted; all others are hard-deleted.
 func (s *sqlResourceService) Delete(ctx context.Context, kind, id string) (*api.Resource, *errors.ServiceError) {
+	return s.deleteResource(ctx, kind, id, "")
+}
+
+// DeleteByOwner deletes a child resource only if it belongs to ownerID, checking
+// ownership under the same row lock as the write. ownerID must be non-empty.
+func (s *sqlResourceService) DeleteByOwner(
+	ctx context.Context, kind, id, ownerID string,
+) (*api.Resource, *errors.ServiceError) {
+	if svcErr := validateOwnerID(ownerID); svcErr != nil {
+		return nil, svcErr
+	}
+	return s.deleteResource(ctx, kind, id, ownerID)
+}
+
+func (s *sqlResourceService) deleteResource(
+	ctx context.Context, kind, id, ownerID string,
+) (*api.Resource, *errors.ServiceError) {
 	trace.SpanFromContext(ctx).SetAttributes(attribute.String("hyperfleet.resource_id", id))
 	if svcErr := rejectSystemIdentityWrite(ctx); svcErr != nil {
 		return nil, svcErr
 	}
-	if svcErr := validateKind(kind); svcErr != nil {
+	if svcErr := validateWriteKind(kind, ownerID); svcErr != nil {
 		return nil, svcErr
 	}
 	trace.SpanFromContext(ctx).SetAttributes(attribute.String("hyperfleet.resource_type", registry.MustGet(kind).Plural))
@@ -312,8 +353,11 @@ func (s *sqlResourceService) Delete(ctx context.Context, kind, id string) (*api.
 	var result *api.Resource
 	var outcomes []reconciliationOutcome
 	err := s.txRunner.Do(ctx, func(ctx context.Context) error {
-		resource, err := s.resourceDao.GetForUpdate(ctx, kind, id)
+		resource, err := s.getForUpdate(ctx, kind, id, ownerID)
 		if err != nil {
+			if ownerID != "" {
+				return s.handleOwnedGetError(ctx, kind, id, ownerID, err)
+			}
 			return handleSoftDeleteError(kind, err)
 		}
 
@@ -341,6 +385,40 @@ func (s *sqlResourceService) Delete(ctx context.Context, kind, id string) (*api.
 		metrics.RecordReconciliationStarted(outcome.kind, outcome.isDelete)
 	}
 	return result, nil
+}
+
+// getForUpdate locks id with its associations, scoped to ownerID when set.
+func (s *sqlResourceService) getForUpdate(ctx context.Context, kind, id, ownerID string) (*api.Resource, error) {
+	if ownerID == "" {
+		return s.resourceDao.GetForUpdate(ctx, kind, id)
+	}
+	return s.resourceDao.GetForUpdateByOwner(ctx, kind, id, registry.MustGet(kind).ParentKind, ownerID)
+}
+
+// getRowForUpdate is getForUpdate without loading associations.
+func (s *sqlResourceService) getRowForUpdate(ctx context.Context, kind, id, ownerID string) (*api.Resource, error) {
+	if ownerID == "" {
+		return s.resourceDao.GetRowForUpdate(ctx, kind, id)
+	}
+	return s.resourceDao.GetRowForUpdateByOwner(ctx, kind, id, registry.MustGet(kind).ParentKind, ownerID)
+}
+
+// handleOwnedGetError reports a failed owner-scoped lookup as not found against
+// the parent when the parent is missing, otherwise against the child.
+func (s *sqlResourceService) handleOwnedGetError(
+	ctx context.Context, kind, id, ownerID string, err error,
+) *errors.ServiceError {
+	if stderrors.Is(err, gorm.ErrRecordNotFound) {
+		parentKind := registry.MustGet(kind).ParentKind
+		exists, existsErr := s.resourceDao.Exists(ctx, parentKind, ownerID)
+		if existsErr != nil {
+			return handleGetError(parentKind, ownerID, existsErr)
+		}
+		if !exists {
+			return handleGetError(parentKind, ownerID, gorm.ErrRecordNotFound)
+		}
+	}
+	return handleGetError(kind, id, err)
 }
 
 // deleteResourceTree enforces child delete policies then persists bottom-up.
@@ -920,6 +998,24 @@ func validateKind(kind string) *errors.ServiceError {
 	return nil
 }
 
+// validateWriteKind also rejects owner-scoped writes to a kind with no parent.
+func validateWriteKind(kind, ownerID string) *errors.ServiceError {
+	if svcErr := validateKind(kind); svcErr != nil {
+		return svcErr
+	}
+	if ownerID != "" && registry.MustGet(kind).ParentKind == "" {
+		return errors.Validation("kind %q has no parent kind", kind)
+	}
+	return nil
+}
+
+func validateOwnerID(ownerID string) *errors.ServiceError {
+	if ownerID == "" {
+		return errors.Validation("owner_id is required")
+	}
+	return nil
+}
+
 // Name format/length validation is handled by OpenAPI spec validation middleware.
 func validateName(kind, name string) *errors.ServiceError {
 	if name == "" {
@@ -985,18 +1081,35 @@ func applyResourcePatch(resource *api.Resource, patch *api.ResourcePatch) error 
 // bypassing adapter finalization but still refusing to drop references required
 // by surviving resources. Deadlocks return 409 so callers can retry the request.
 func (s *sqlResourceService) ForceDelete(ctx context.Context, kind, id, reason string) *errors.ServiceError {
+	return s.forceDelete(ctx, kind, id, "", reason)
+}
+
+// ForceDeleteByOwner force-deletes a child resource only if it belongs to
+// ownerID, checking ownership under the same row lock as the delete. ownerID must be non-empty.
+func (s *sqlResourceService) ForceDeleteByOwner(
+	ctx context.Context, kind, id, ownerID, reason string,
+) *errors.ServiceError {
+	if svcErr := validateOwnerID(ownerID); svcErr != nil {
+		return svcErr
+	}
+	return s.forceDelete(ctx, kind, id, ownerID, reason)
+}
+
+func (s *sqlResourceService) forceDelete(
+	ctx context.Context, kind, id, ownerID, reason string,
+) *errors.ServiceError {
 	trace.SpanFromContext(ctx).SetAttributes(attribute.String("hyperfleet.resource_id", id))
 	if svcErr := rejectSystemIdentityWrite(ctx); svcErr != nil {
 		return svcErr
 	}
-	if svcErr := validateKind(kind); svcErr != nil {
+	if svcErr := validateWriteKind(kind, ownerID); svcErr != nil {
 		return svcErr
 	}
 	trace.SpanFromContext(ctx).SetAttributes(attribute.String("hyperfleet.resource_type", registry.MustGet(kind).Plural))
 
 	var deleted api.ResourceList
 	err := s.txRunner.Do(ctx, func(txCtx context.Context) error {
-		resources, svcErr := s.forceDeleteTx(txCtx, kind, id, reason)
+		resources, svcErr := s.forceDeleteTx(txCtx, kind, id, ownerID, reason)
 		if svcErr != nil {
 			return svcErr
 		}
@@ -1004,13 +1117,18 @@ func (s *sqlResourceService) ForceDelete(ctx context.Context, kind, id, reason s
 		return nil
 	})
 	if err != nil {
-		resourceCtx := hfl.WithResourceID(hfl.WithResourceType(ctx, kind), id)
-		slog.ErrorContext(resourceCtx, "Force-delete failed",
-			"caller", actorFromContext(ctx), "reason", reason, "error", err)
-		if svcErr := forceDeleteTransactionConflict(err); svcErr != nil {
-			return svcErr
+		svcErr := forceDeleteTransactionConflict(err)
+		if svcErr == nil {
+			svcErr = serviceErrorFromTransaction(err)
 		}
-		return serviceErrorFromTransaction(err)
+		level := slog.LevelError
+		if svcErr.HTTPCode >= 400 && svcErr.HTTPCode <= 499 {
+			level = slog.LevelInfo
+		}
+		resourceCtx := hfl.WithResourceID(hfl.WithResourceType(ctx, kind), id)
+		slog.Log(resourceCtx, level, "Force-delete failed",
+			"caller", actorFromContext(ctx), "reason", reason, "error", err)
+		return svcErr
 	}
 	for _, item := range deleted {
 		resourceCtx := hfl.WithResourceID(hfl.WithResourceType(ctx, item.Kind), item.ID)
@@ -1026,12 +1144,15 @@ func (s *sqlResourceService) ForceDelete(ctx context.Context, kind, id, reason s
 // two cyclically-referencing resources are force-deleted at once; the victim
 // transaction rolls back and the deadlock surfaces as a 409 conflict.
 func (s *sqlResourceService) forceDeleteTx(
-	ctx context.Context, kind, id, reason string,
+	ctx context.Context, kind, id, ownerID, reason string,
 ) (api.ResourceList, *errors.ServiceError) {
-	resource, err := s.resourceDao.GetRowForUpdate(ctx, kind, id)
+	resource, err := s.getRowForUpdate(ctx, kind, id, ownerID)
 	if err != nil {
 		if svcErr := forceDeleteTransactionConflict(err); svcErr != nil {
 			return nil, svcErr
+		}
+		if ownerID != "" {
+			return nil, s.handleOwnedGetError(ctx, kind, id, ownerID, err)
 		}
 		return nil, handleGetError(kind, id, err)
 	}

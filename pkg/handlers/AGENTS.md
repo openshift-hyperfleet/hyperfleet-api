@@ -45,16 +45,9 @@ Common validators (in `validation.go`):
 
 ## Owner Verification
 
-For nested routes, verify the child belongs to the parent:
+For nested reads, `parentIDIfExists` checks the parent, then `GetByOwner` / `ListByOwner` scope the child.
 
-```go
-if err := h.checkOwnership(r, id); err != nil {
-    handleError(r, w, err)
-    return
-}
-```
-
-This is a no-op for flat routes (no `parent_id` in path).
+For nested writes, do not pre-check ownership in the handler. Call `PatchByOwner`, `DeleteByOwner`, or `ForceDeleteByOwner`: the service checks ownership and parent existence in the same locking query as the write, inside the write transaction. A missing parent returns 404 against the parent kind; a child under another parent returns 404 against the child kind.
 
 ## Error Handling
 
@@ -71,14 +64,10 @@ Extract route parameters with r.PathValue
 
 ```go
 id := r.PathValue("id")
-// Extract parent_id
-if parentID := r.PathValue("parent_id"); parentID != "" {
-    if _, svcErr := h.resourceService.GetByOwner(ctx, h.descriptor.Kind, id, parentID); svcErr != nil {
-        handleError(r, w, svcErr)
-        return
-    }
-}
+parentID := r.PathValue("parent_id") // "" on flat routes
 ```
+
+Pass `parentID` to the owner-scoped service method rather than looking up the child first (see Owner Verification).
 
 ## Field Filtering
 

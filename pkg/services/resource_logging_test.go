@@ -110,6 +110,26 @@ func TestForceDelete_CommitFailureDoesNotLogSuccess(t *testing.T) {
 	}
 }
 
+func TestForceDelete_ClientErrorLoggedAtInfo(t *testing.T) {
+	setupTestDescriptors()
+	output := captureServiceLogs(t, slog.LevelInfo)
+	resourceDao := newMockResourceDao()
+	resourceDao.addResource(testResource("Channel", testChannelID, "stable"))
+	svc, _, _ := newTestResourceService(resourceDao)
+
+	if svcErr := svc.ForceDeleteByOwner(t.Context(), "Version", "v-1", testChannelID, "stuck"); svcErr == nil ||
+		!svcErr.Is404() {
+		t.Fatalf("expected 404, got %v", svcErr)
+	}
+	var entry map[string]any
+	if err := json.Unmarshal(bytes.TrimSpace(output.Bytes()), &entry); err != nil {
+		t.Fatalf("expected one log entry: %v (%s)", err, output.String())
+	}
+	if entry["message"] != "Force-delete failed" || entry["level"] != "info" {
+		t.Fatalf("expected force-delete 404 logged at info: %v", entry)
+	}
+}
+
 func TestProcessAdapterStatus_ConcurrentReportsRetainLogCorrelation(t *testing.T) {
 	setupAdapterStatusDescriptors()
 	mockDao := newMockResourceDao()

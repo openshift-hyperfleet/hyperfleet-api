@@ -32,6 +32,26 @@ func (d *resourceDaoMock) GetRowForUpdate(ctx context.Context, kind, id string) 
 	return d.Get(ctx, kind, id)
 }
 
+func (d *resourceDaoMock) GetForUpdateByOwner(
+	ctx context.Context, kind, id, ownerKind, ownerID string,
+) (*api.Resource, error) {
+	if _, err := d.Get(ctx, ownerKind, ownerID); err != nil {
+		return nil, err
+	}
+	return d.GetByOwner(ctx, kind, id, ownerID)
+}
+
+func (d *resourceDaoMock) GetRowForUpdateByOwner(
+	ctx context.Context, kind, id, ownerKind, ownerID string,
+) (*api.Resource, error) {
+	return d.GetForUpdateByOwner(ctx, kind, id, ownerKind, ownerID)
+}
+
+func (d *resourceDaoMock) Exists(ctx context.Context, kind, id string) (bool, error) {
+	_, err := d.Get(ctx, kind, id)
+	return err == nil, nil
+}
+
 func (d *resourceDaoMock) GetByOwner(_ context.Context, kind, id, ownerID string) (*api.Resource, error) {
 	for _, r := range d.resources {
 		if r.ID == id && r.Kind == kind && r.OwnerID != nil && *r.OwnerID == ownerID {

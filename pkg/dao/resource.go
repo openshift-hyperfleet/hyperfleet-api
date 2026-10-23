@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
@@ -15,11 +16,14 @@ type ResourceDao interface {
 	Get(ctx context.Context, kind, id string) (*api.Resource, error)
 	GetForUpdate(ctx context.Context, kind, id string) (*api.Resource, error)
 	GetRowForUpdate(ctx context.Context, kind, id string) (*api.Resource, error)
+	GetForUpdateByOwner(ctx context.Context, kind, id, ownerKind, ownerID string) (*api.Resource, error)
+	GetRowForUpdateByOwner(ctx context.Context, kind, id, ownerKind, ownerID string) (*api.Resource, error)
 	GetByOwner(ctx context.Context, kind, id, ownerID string) (*api.Resource, error)
 	Create(ctx context.Context, resource *api.Resource) (*api.Resource, error)
 	Save(ctx context.Context, resource *api.Resource) error
 	Delete(ctx context.Context, kind, id string) error
 	DeleteIDs(ctx context.Context, ids []string) error
+	Exists(ctx context.Context, kind, id string) (bool, error)
 	ExistsByOwner(ctx context.Context, kind, ownerID string) (bool, error)
 	ExistsSoftDeletedByOwner(ctx context.Context, kinds []string, ownerID string) (bool, error)
 	FindByKind(ctx context.Context, kind string) (api.ResourceList, error)
@@ -84,6 +88,46 @@ func (d *sqlResourceDao) GetRowForUpdate(ctx context.Context, kind, id string) (
 	return &resource, nil
 }
 
+// GetForUpdateByOwner locks a child resource only when it belongs to an existing
+// ownerKind parent, so ownership and parent existence cost no extra round trip.
+func (d *sqlResourceDao) GetForUpdateByOwner(
+	ctx context.Context, kind, id, ownerKind, ownerID string,
+) (*api.Resource, error) {
+	var resource api.Resource
+	if err := d.ownedForUpdate(ctx, kind, id, ownerKind, ownerID).
+		Preload("Conditions").Preload("Labels").Preload("References").
+		Take(&resource).Error; err != nil {
+		return nil, err
+	}
+	return &resource, nil
+}
+
+// GetRowForUpdateByOwner is GetForUpdateByOwner without loading associations.
+func (d *sqlResourceDao) GetRowForUpdateByOwner(
+	ctx context.Context, kind, id, ownerKind, ownerID string,
+) (*api.Resource, error) {
+	var resource api.Resource
+	if err := d.ownedForUpdate(ctx, kind, id, ownerKind, ownerID).Take(&resource).Error; err != nil {
+		return nil, err
+	}
+	return &resource, nil
+}
+
+// ownedForUpdate locks only the child row; the parent subquery is not locked.
+func (d *sqlResourceDao) ownedForUpdate(ctx context.Context, kind, id, ownerKind, ownerID string) *gorm.DB {
+	parentExists := "EXISTS (SELECT 1 FROM resources AS parent WHERE parent.id = ? AND parent.kind = ?"
+	args := []any{ownerID, ownerKind}
+	if scopeClause, scopeArgs := tenant.ScopeClause(ctx); scopeClause != "" {
+		parentExists += " AND " + scopeClause
+		args = append(args, scopeArgs...)
+	}
+	parentExists += ")"
+	return tenant.ScopeDB(d.sessionFactory.New(ctx), ctx).
+		Clauses(clause.Locking{Strength: "UPDATE"}).
+		Where("kind = ? AND id = ? AND owner_id = ?", kind, id, ownerID).
+		Where(parentExists, args...)
+}
+
 func (d *sqlResourceDao) GetByOwner(ctx context.Context, kind, id, ownerID string) (*api.Resource, error) {
 	g2 := tenant.ScopeDB(d.sessionFactory.New(ctx), ctx)
 	var resource api.Resource
@@ -136,6 +180,23 @@ func (d *sqlResourceDao) DeleteIDs(ctx context.Context, ids []string) error {
 	}
 	return tenant.ScopeDB(d.sessionFactory.New(ctx), ctx).
 		Omit(clause.Associations).Where("id IN ?", ids).Delete(&api.Resource{}).Error
+}
+
+// Exists reports whether a resource of kind is visible to the caller, without loading it.
+func (d *sqlResourceDao) Exists(ctx context.Context, kind, id string) (bool, error) {
+	g2 := d.sessionFactory.New(ctx)
+	query := "SELECT EXISTS(SELECT 1 FROM resources WHERE kind = ? AND id = ?"
+	args := []any{kind, id}
+	if scopeClause, scopeArgs := tenant.ScopeClause(ctx); scopeClause != "" {
+		query += " AND " + scopeClause
+		args = append(args, scopeArgs...)
+	}
+	query += ")"
+	var exists bool
+	if err := g2.Raw(query, args...).Scan(&exists).Error; err != nil {
+		return false, fmt.Errorf("failed to check resource existence: %w", err)
+	}
+	return exists, nil
 }
 
 func (d *sqlResourceDao) ExistsByOwner(ctx context.Context, kind, ownerID string) (bool, error) {
