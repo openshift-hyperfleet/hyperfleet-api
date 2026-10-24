@@ -531,3 +531,87 @@ func TestVersionPatch(t *testing.T) {
 			"updated_time should be later than original after patch")
 	})
 }
+
+func TestVersionWriteByOwner(t *testing.T) {
+	patch := &api.ResourcePatch{Labels: map[string]string{"patched": "true"}}
+
+	t.Run("WrongOrMissingParent", func(t *testing.T) {
+		svc, h := setupResourceTest(t)
+
+		channel := createTestChannel(t, svc)
+		version := createTestVersion(t, svc, "by-owner-guard", channel.ID)
+		otherChannel := createTestChannel(t, svc)
+		wifConfig, svcErr := svc.Create(t.Context(), "WifConfig", newWifConfigResource("wif-"+uuid.NewString()[:8]), nil)
+		Expect(svcErr).To(BeNil())
+
+		parents := []struct {
+			name       string
+			parentID   string
+			wantReason string
+		}{
+			{"child under another parent", otherChannel.ID, "Version with id='" + version.ID + "'"},
+			{"missing parent", "nonexistent-channel", "Channel with id='nonexistent-channel'"},
+			{"parent of another kind", wifConfig.ID, "Channel with id='" + wifConfig.ID + "'"},
+		}
+		for _, p := range parents {
+			t.Run(p.name, func(t *testing.T) {
+				RegisterTestingT(t)
+				_, opErr := svc.PatchByOwner(t.Context(), "Version", version.ID, p.parentID, patch)
+				Expect(opErr).ToNot(BeNil())
+				Expect(opErr.HTTPCode).To(Equal(404))
+				Expect(opErr.Reason).To(ContainSubstring(p.wantReason))
+
+				_, opErr = svc.DeleteByOwner(t.Context(), "Version", version.ID, p.parentID)
+				Expect(opErr).ToNot(BeNil())
+				Expect(opErr.HTTPCode).To(Equal(404))
+				Expect(opErr.Reason).To(ContainSubstring(p.wantReason))
+
+				opErr = svc.ForceDeleteByOwner(t.Context(), "Version", version.ID, p.parentID, "wrong parent")
+				Expect(opErr).ToNot(BeNil())
+				Expect(opErr.HTTPCode).To(Equal(404))
+				Expect(opErr.Reason).To(ContainSubstring(p.wantReason))
+			})
+		}
+
+		dbErr := checkResourceCount(t.Context(), h, []string{version.ID}, 1)
+		Expect(dbErr).To(BeNil())
+		retrieved, svcErr := svc.Get(t.Context(), "Version", version.ID)
+		Expect(svcErr).To(BeNil())
+		Expect(retrieved.Generation).To(Equal(int32(1)))
+	})
+
+	t.Run("PatchAndDeleteUnderOwner", func(t *testing.T) {
+		RegisterTestingT(t)
+		svc, h := setupResourceTest(t)
+
+		channel := createTestChannel(t, svc)
+		version := createTestVersion(t, svc, "by-owner-write", channel.ID)
+
+		patched, svcErr := svc.PatchByOwner(t.Context(), "Version", version.ID, channel.ID, patch)
+		Expect(svcErr).To(BeNil())
+		Expect(patched.Generation).To(Equal(int32(2)))
+		Expect(labelsToMap(patched.Labels)).To(Equal(patch.Labels))
+
+		deleted, svcErr := svc.DeleteByOwner(t.Context(), "Version", version.ID, channel.ID)
+		Expect(svcErr).To(BeNil())
+		Expect(deleted.DeletedTime).ToNot(BeNil())
+
+		dbErr := checkResourceCount(t.Context(), h, []string{version.ID}, 0)
+		Expect(dbErr).To(BeNil())
+	})
+
+	t.Run("ForceDeleteUnderOwner", func(t *testing.T) {
+		RegisterTestingT(t)
+		svc, h := setupResourceTest(t)
+
+		channel := createTestChannel(t, svc)
+		version := createTestVersion(t, svc, "by-owner-force", channel.ID)
+		markFinalizing(t, h, version.ID)
+
+		svcErr := svc.ForceDeleteByOwner(t.Context(), "Version", version.ID, channel.ID, "stuck")
+		Expect(svcErr).To(BeNil())
+
+		dbErr := checkResourceCount(t.Context(), h, []string{version.ID}, 0)
+		Expect(dbErr).To(BeNil())
+	})
+}

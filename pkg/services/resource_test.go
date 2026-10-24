@@ -66,6 +66,8 @@ type mockResourceDao struct {
 	lastReplacedRefs               []api.ResourceReference
 	deleteReferencesCalls          int
 	deleteIDsCalls                 int
+	getForUpdateByOwnerCalls       int
+	existsCalls                    int
 	replaceRefsCalled              bool
 }
 
@@ -91,6 +93,31 @@ func (d *mockResourceDao) GetRowForUpdate(ctx context.Context, kind, id string) 
 		return nil, d.getRowForUpdateErr
 	}
 	return d.Get(ctx, kind, id)
+}
+
+func (d *mockResourceDao) GetForUpdateByOwner(
+	ctx context.Context, kind, id, ownerKind, ownerID string,
+) (*api.Resource, error) {
+	d.getForUpdateByOwnerCalls++
+	if _, err := d.Get(ctx, ownerKind, ownerID); err != nil {
+		return nil, err
+	}
+	return d.GetByOwner(ctx, kind, id, ownerID)
+}
+
+func (d *mockResourceDao) GetRowForUpdateByOwner(
+	ctx context.Context, kind, id, ownerKind, ownerID string,
+) (*api.Resource, error) {
+	if d.getRowForUpdateErr != nil {
+		return nil, d.getRowForUpdateErr
+	}
+	return d.GetForUpdateByOwner(ctx, kind, id, ownerKind, ownerID)
+}
+
+func (d *mockResourceDao) Exists(ctx context.Context, kind, id string) (bool, error) {
+	d.existsCalls++
+	_, err := d.Get(ctx, kind, id)
+	return err == nil, nil
 }
 
 func (d *mockResourceDao) GetByOwner(_ context.Context, kind, id, ownerID string) (*api.Resource, error) {
@@ -171,17 +198,9 @@ func (d *mockResourceDao) ExistsSoftDeletedByOwner(_ context.Context, kinds []st
 	return false, nil
 }
 
-func (d *mockResourceDao) FindByKind(_ context.Context, kind string) (api.ResourceList, error) {
-	var result api.ResourceList
-	for _, r := range d.resources {
-		if r.Kind == kind {
-			result = append(result, r)
-		}
-	}
-	return result, nil
-}
-
-func (d *mockResourceDao) FindByKindAndOwner(_ context.Context, kind, ownerID string) (api.ResourceList, error) {
+func (d *mockResourceDao) FindByKindAndOwnerForUpdate(
+	_ context.Context, kind, ownerID string,
+) (api.ResourceList, error) {
 	var result api.ResourceList
 	for _, r := range d.resources {
 		if r.Kind == kind && r.OwnerID != nil && *r.OwnerID == ownerID {
@@ -189,12 +208,6 @@ func (d *mockResourceDao) FindByKindAndOwner(_ context.Context, kind, ownerID st
 		}
 	}
 	return result, nil
-}
-
-func (d *mockResourceDao) FindByKindAndOwnerForUpdate(
-	ctx context.Context, kind, ownerID string,
-) (api.ResourceList, error) {
-	return d.FindByKindAndOwner(ctx, kind, ownerID)
 }
 
 func (d *mockResourceDao) FindChildrenForUpdate(_ context.Context, ownerID string) (api.ResourceList, error) {
@@ -255,10 +268,6 @@ func (d *mockResourceDao) ReplaceReferences(_ context.Context, _ string, refs []
 
 func (d *mockResourceDao) FindReferencers(_ context.Context, _ string) ([]api.ResourceSummary, error) {
 	return d.findReferencersResult, nil
-}
-
-func (d *mockResourceDao) ClearTargetReferences(_ context.Context, _ string) error {
-	return nil
 }
 
 func (d *mockResourceDao) FindSourceIDsByRef(_ context.Context, _, _ string) ([]string, error) {
@@ -1409,6 +1418,122 @@ func TestResourceService_GetByOwner_UnknownKind(t *testing.T) {
 }
 
 // --- ListByOwner ---
+
+func TestResourceService_WriteByOwner(t *testing.T) {
+	writes := map[string]func(ctx context.Context, svc ResourceService, ownerID string) *errors.ServiceError{
+		"PatchByOwner": func(ctx context.Context, svc ResourceService, ownerID string) *errors.ServiceError {
+			patch := &api.ResourcePatch{Spec: map[string]any{"key": "new-value"}}
+			_, svcErr := svc.PatchByOwner(ctx, "Version", "v-1", ownerID, patch)
+			return svcErr
+		},
+		"DeleteByOwner": func(ctx context.Context, svc ResourceService, ownerID string) *errors.ServiceError {
+			_, svcErr := svc.DeleteByOwner(ctx, "Version", "v-1", ownerID)
+			return svcErr
+		},
+		"ForceDeleteByOwner": func(ctx context.Context, svc ResourceService, ownerID string) *errors.ServiceError {
+			return svc.ForceDeleteByOwner(ctx, "Version", "v-1", ownerID, "stuck")
+		},
+	}
+	tests := []struct {
+		name            string
+		ownerID         string
+		wantReason      string
+		wantCode        int
+		wantLookupCalls int
+	}{
+		{name: "owned child", ownerID: testChannelID, wantLookupCalls: 1},
+		{
+			name: "child under another parent", ownerID: "ch-2", wantCode: http.StatusNotFound,
+			wantReason: "Version with id='v-1'", wantLookupCalls: 1,
+		},
+		{
+			name: "missing parent", ownerID: "ch-missing", wantCode: http.StatusNotFound,
+			wantReason: "Channel with id='ch-missing'", wantLookupCalls: 1,
+		},
+		{name: "empty owner", wantCode: http.StatusBadRequest, wantReason: "owner_id is required"},
+	}
+
+	for writeName, write := range writes {
+		for _, tt := range tests {
+			t.Run(writeName+"/"+tt.name, func(t *testing.T) {
+				RegisterTestingT(t)
+				setupTestDescriptors()
+
+				mockDao := newMockResourceDao()
+				svc, _, _ := newTestResourceService(mockDao)
+				mockDao.addResource(testResource("Channel", testChannelID, "stable"))
+				mockDao.addResource(testResource("Channel", "ch-2", "fast"))
+				child := testResource("Version", "v-1", "4.17")
+				child.OwnerID = new(testChannelID)
+				if writeName == "ForceDeleteByOwner" {
+					child.DeletedTime = new(time.Now())
+				}
+				mockDao.addResource(child)
+				original := *child
+
+				svcErr := write(t.Context(), svc, tt.ownerID)
+				if tt.wantCode == 0 {
+					Expect(svcErr).To(BeNil())
+				} else {
+					Expect(svcErr).ToNot(BeNil())
+					Expect(svcErr.HTTPCode).To(Equal(tt.wantCode))
+					Expect(svcErr.Reason).To(ContainSubstring(tt.wantReason))
+					Expect(mockDao.resources[resourceKey("Version", child.ID)]).To(Equal(&original))
+				}
+				Expect(mockDao.getForUpdateByOwnerCalls).To(Equal(tt.wantLookupCalls))
+			})
+		}
+	}
+}
+
+func TestResourceService_WriteByOwner_RejectsTopLevelKind(t *testing.T) {
+	RegisterTestingT(t)
+	setupTestDescriptors()
+	mockDao := newMockResourceDao()
+	svc, _, _ := newTestResourceService(mockDao)
+	patch := &api.ResourcePatch{Spec: map[string]any{"key": "new-value"}}
+
+	_, patchErr := svc.PatchByOwner(t.Context(), "Channel", testChannelID, testParentID, patch)
+	_, deleteErr := svc.DeleteByOwner(t.Context(), "Channel", testChannelID, testParentID)
+	forceErr := svc.ForceDeleteByOwner(t.Context(), "Channel", testChannelID, testParentID, "stuck")
+
+	for _, svcErr := range []*errors.ServiceError{patchErr, deleteErr, forceErr} {
+		Expect(svcErr).ToNot(BeNil())
+		Expect(svcErr.HTTPCode).To(Equal(http.StatusBadRequest))
+		Expect(svcErr.Reason).To(ContainSubstring(`kind "Channel" has no parent kind`))
+	}
+	Expect(mockDao.getForUpdateByOwnerCalls).To(Equal(0))
+}
+
+func TestResourceService_ForceDeleteByOwner_LookupErrors(t *testing.T) {
+	tests := []struct {
+		err        error
+		name       string
+		wantCode   string
+		wantStatus int
+	}{
+		{
+			fmt.Errorf("database: %w", &pgconn.PgError{Code: "40P01"}), "deadlock",
+			errors.CodeConflictState, http.StatusConflict,
+		},
+		{fmt.Errorf("database failed"), "other error", errors.CodeInternalGeneral, http.StatusInternalServerError},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			g := NewWithT(t)
+			setupTestDescriptors()
+			mockDao := newMockResourceDao()
+			mockDao.getRowForUpdateErr = tt.err
+			svc, _, _ := newTestResourceService(mockDao)
+
+			svcErr := svc.ForceDeleteByOwner(t.Context(), "Version", "v-1", testChannelID, "stuck")
+			g.Expect(svcErr).NotTo(BeNil())
+			g.Expect(svcErr.RFC9457Code).To(Equal(tt.wantCode))
+			g.Expect(svcErr.HTTPCode).To(Equal(tt.wantStatus))
+			g.Expect(mockDao.existsCalls).To(Equal(0))
+		})
+	}
+}
 
 func TestResourceService_ListByOwner_InjectsKindAndOwnerFilter(t *testing.T) {
 	RegisterTestingT(t)

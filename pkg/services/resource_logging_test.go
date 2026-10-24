@@ -11,10 +11,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	hfl "github.com/openshift-hyperfleet/hyperfleet-logger"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/auth"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 )
 
@@ -107,6 +109,65 @@ func TestForceDelete_CommitFailureDoesNotLogSuccess(t *testing.T) {
 		!strings.Contains(logs, `"message":"Force-delete failed"`) ||
 		!strings.Contains(logs, "commit failed") || strings.Contains(logs, `"message":"Force-deleted resource"`) {
 		t.Fatalf("expected intent and commit failure, not success: %s", logs)
+	}
+}
+
+func TestForceDelete_FailureLogLevel(t *testing.T) {
+	tests := []struct {
+		forceDelete func(svc ResourceService) *errors.ServiceError
+		setup       func(dao *mockResourceDao)
+		name        string
+		wantLevel   string
+		wantStatus  int
+	}{
+		{
+			name: "missing child logs at info",
+			forceDelete: func(svc ResourceService) *errors.ServiceError {
+				return svc.ForceDeleteByOwner(t.Context(), "Version", "v-1", testChannelID, "stuck")
+			},
+			wantLevel: "info", wantStatus: 404,
+		},
+		{
+			name: "not finalizing logs at info",
+			forceDelete: func(svc ResourceService) *errors.ServiceError {
+				return svc.ForceDelete(t.Context(), "Channel", testChannelID, "stuck")
+			},
+			wantLevel: "info", wantStatus: 409,
+		},
+		{
+			name: "deadlock logs at warn",
+			setup: func(dao *mockResourceDao) {
+				dao.getRowForUpdateErr = fmt.Errorf("database: %w", &pgconn.PgError{Code: "40P01"})
+			},
+			forceDelete: func(svc ResourceService) *errors.ServiceError {
+				return svc.ForceDelete(t.Context(), "Channel", testChannelID, "stuck")
+			},
+			wantLevel: "warn", wantStatus: 409,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			setupTestDescriptors()
+			output := captureServiceLogs(t, slog.LevelInfo)
+			resourceDao := newMockResourceDao()
+			resourceDao.addResource(testResource("Channel", testChannelID, "stable"))
+			if tt.setup != nil {
+				tt.setup(resourceDao)
+			}
+			svc, _, _ := newTestResourceService(resourceDao)
+
+			svcErr := tt.forceDelete(svc)
+			if svcErr == nil || svcErr.HTTPCode != tt.wantStatus {
+				t.Fatalf("expected %d, got %v", tt.wantStatus, svcErr)
+			}
+			var entry map[string]any
+			if err := json.Unmarshal(bytes.TrimSpace(output.Bytes()), &entry); err != nil {
+				t.Fatalf("expected one log entry: %v (%s)", err, output.String())
+			}
+			if entry["message"] != "Force-delete failed" || entry["level"] != tt.wantLevel {
+				t.Fatalf("expected force-delete failure logged at %s: %v", tt.wantLevel, entry)
+			}
+		})
 	}
 }
 
