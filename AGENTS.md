@@ -58,6 +58,7 @@ Quick feedback: `make verify-all`. Full pre-push: `make test-all`.
 | Deployment | [docs/deployment.md](docs/deployment.md) |
 | Authentication | [docs/authentication.md](docs/authentication.md) |
 | Contributing | [CONTRIBUTING.md](CONTRIBUTING.md) |
+| Logging standard | [HyperFleet logging specification](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/standards/logging-specification.md) |
 
 ## Architecture Context
 
