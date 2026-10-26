@@ -166,13 +166,14 @@ func (h *ResourceHandler) Patch(w http.ResponseWriter, r *http.Request) {
 
 	id := r.PathValue("id")
 	ctx := r.Context()
-	if err := h.checkOwnership(r, id); err != nil {
-		handleError(r, w, err)
-		return
-	}
-
 	patch := convertResourcePatch(&req)
-	resource, err := h.service.Patch(ctx, h.descriptor.Kind, id, patch)
+	var resource *api.Resource
+	var err *errors.ServiceError
+	if parentID := r.PathValue("parent_id"); parentID != "" {
+		resource, err = h.service.PatchByOwner(ctx, h.descriptor.Kind, id, parentID, patch)
+	} else {
+		resource, err = h.service.Patch(ctx, h.descriptor.Kind, id, patch)
+	}
 	if err != nil {
 		handleError(r, w, err)
 		return
@@ -184,12 +185,13 @@ func (h *ResourceHandler) Patch(w http.ResponseWriter, r *http.Request) {
 func (h *ResourceHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	ctx := r.Context()
-	if err := h.checkOwnership(r, id); err != nil {
-		handleError(r, w, err)
-		return
+	var resource *api.Resource
+	var err *errors.ServiceError
+	if parentID := r.PathValue("parent_id"); parentID != "" {
+		resource, err = h.service.DeleteByOwner(ctx, h.descriptor.Kind, id, parentID)
+	} else {
+		resource, err = h.service.Delete(ctx, h.descriptor.Kind, id)
 	}
-
-	resource, err := h.service.Delete(ctx, h.descriptor.Kind, id)
 	if err != nil {
 		handleError(r, w, err)
 		return
@@ -211,32 +213,18 @@ func (h *ResourceHandler) ForceDelete(w http.ResponseWriter, r *http.Request) {
 
 	id := r.PathValue("id")
 	ctx := r.Context()
-	if err := h.checkOwnership(r, id); err != nil {
-		handleError(r, w, err)
-		return
+	var err *errors.ServiceError
+	if parentID := r.PathValue("parent_id"); parentID != "" {
+		err = h.service.ForceDeleteByOwner(ctx, h.descriptor.Kind, id, parentID, req.Reason)
+	} else {
+		err = h.service.ForceDelete(ctx, h.descriptor.Kind, id, req.Reason)
 	}
-
-	if err := h.service.ForceDelete(ctx, h.descriptor.Kind, id, req.Reason); err != nil {
+	if err != nil {
 		handleError(r, w, err)
 		return
 	}
 
 	w.WriteHeader(http.StatusNoContent)
-}
-
-// checkOwnership verifies id belongs to parent_id, checking the parent first so
-// a missing parent reports "not found" against the parent, not the child.
-func (h *ResourceHandler) checkOwnership(r *http.Request, id string) *errors.ServiceError {
-	parentID, err := h.parentIDIfExists(r)
-	if err != nil {
-		return err
-	}
-	if parentID != "" {
-		if _, err := h.service.GetByOwner(r.Context(), h.descriptor.Kind, id, parentID); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 // parentIDIfExists returns the parent_id if the parent exists, "" for flat

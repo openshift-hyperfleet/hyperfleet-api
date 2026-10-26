@@ -201,6 +201,30 @@ func TestResourceScopeParentChildHierarchy(t *testing.T) {
 	Expect(svcErr).To(BeNil())
 	Expect(idsOf(children)).To(ContainElement(nodePool.ID))
 	Expect(paging.Total).To(Equal(int64(1)))
+
+	// Cross-tenant owner-scoped writes miss on the child row.
+	labels := &api.ResourcePatch{Labels: map[string]string{"env": "test"}}
+	_, svcErr = svc.PatchByOwner(ctxB, scopeNodePoolKind, nodePool.ID, cluster.ID, labels)
+	Expect(svcErr).NotTo(BeNil())
+	Expect(svcErr.Is404()).To(BeTrue())
+
+	_, svcErr = svc.DeleteByOwner(ctxB, scopeNodePoolKind, nodePool.ID, cluster.ID)
+	Expect(svcErr).NotTo(BeNil())
+	Expect(svcErr.Is404()).To(BeTrue())
+
+	_, svcErr = svc.PatchByOwner(ctxA, scopeNodePoolKind, nodePool.ID, cluster.ID, labels)
+	Expect(svcErr).To(BeNil())
+
+	// The API cannot produce a visible child under an invisible parent, so move
+	// the parent to tenant B directly to exercise the parent's own scope check.
+	Expect(h.DBFactory.New(t.Context()).Exec(
+		"UPDATE resources SET tenancy = ? WHERE id = ?", tenant.TenancyJSON(ctxB), cluster.ID,
+	).Error).To(Succeed())
+
+	_, svcErr = svc.PatchByOwner(ctxA, scopeNodePoolKind, nodePool.ID, cluster.ID, labels)
+	Expect(svcErr).NotTo(BeNil())
+	Expect(svcErr.Is404()).To(BeTrue())
+	Expect(svcErr.Reason).To(ContainSubstring(tenancyClusterKind + " with id='" + cluster.ID + "'"))
 }
 
 // TestResourceScopeListTotalReflectsScopedCount verifies that List totals reflect
@@ -303,7 +327,7 @@ func TestResourceScopeListAll(t *testing.T) {
 }
 
 // TestResourceScopeDaoFindAndExistsPaths verifies DAO methods not directly exposed
-// through the service layer (FindByKind, ExistsByOwner, etc.) are tenant-scoped.
+// through the service layer (FindByKindAndOwnerForUpdate, Exists, etc.) are tenant-scoped.
 func TestResourceScopeDaoFindAndExistsPaths(t *testing.T) {
 	h, _ := test.RegisterIntegration(t)
 	svc := h.Container.ResourceService()
@@ -333,14 +357,6 @@ func TestResourceScopeDaoFindAndExistsPaths(t *testing.T) {
 		name  string
 		want  string
 	}{
-		{name: "FindByKind", want: nodePool.ID, fetch: func(ctx context.Context) ([]string, error) {
-			list, err := resourceDao.FindByKind(ctx, scopeNodePoolKind)
-			return idsOf(list), err
-		}},
-		{name: "FindByKindAndOwner", want: nodePool.ID, fetch: func(ctx context.Context) ([]string, error) {
-			list, err := resourceDao.FindByKindAndOwner(ctx, scopeNodePoolKind, cluster.ID)
-			return idsOf(list), err
-		}},
 		{name: "FindByKindAndOwnerForUpdate", want: nodePool.ID, fetch: func(ctx context.Context) ([]string, error) {
 			list, err := resourceDao.FindByKindAndOwnerForUpdate(ctx, scopeNodePoolKind, cluster.ID)
 			return idsOf(list), err
@@ -372,6 +388,12 @@ func TestResourceScopeDaoFindAndExistsPaths(t *testing.T) {
 		fetch func(ctx context.Context) (bool, error)
 		name  string
 	}{
+		{
+			name: "Exists",
+			fetch: func(ctx context.Context) (bool, error) {
+				return resourceDao.Exists(ctx, scopeNodePoolKind, nodePool.ID)
+			},
+		},
 		{
 			name: "ExistsByOwner",
 			fetch: func(ctx context.Context) (bool, error) {
@@ -416,7 +438,7 @@ func TestResourceScopeDaoFindAndExistsPaths(t *testing.T) {
 		RegisterTestingT(t)
 		ctxDenied := tenancyCtx(map[string]string{})
 
-		list, err := resourceDao.FindByKind(ctxDenied, scopeNodePoolKind)
+		list, err := resourceDao.FindByKindAndOwnerForUpdate(ctxDenied, scopeNodePoolKind, cluster.ID)
 		Expect(err).NotTo(HaveOccurred(), "deny-all clause must not error against a real driver")
 		Expect(list).To(BeEmpty())
 
