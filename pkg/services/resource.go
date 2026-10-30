@@ -793,11 +793,13 @@ func (s *sqlResourceService) recomputeAndSaveResourceConditions(
 
 	// During deletion, check if child resources still exist. The aggregation
 	// function uses this to prevent premature Reconciled=True on a parent
-	// whose children haven't finished their own reconciliation.
+	// whose children haven't finished their own reconciliation. Soft-deleted
+	// children count: they block hard-delete, and a Reconciled=True parent gets
+	// no Sentinel event to re-report once they are gone (HYPERFLEET-1874).
 	hasChildResources := false
 	if resource.DeletedTime != nil {
 		var err error
-		hasChildResources, err = s.hasActiveChildren(ctx, resource)
+		hasChildResources, err = s.hasChildren(ctx, resource)
 		if err != nil {
 			return nil, errors.GeneralError("Failed to check children for status aggregation: %s", err)
 		}
@@ -898,27 +900,12 @@ func (s *sqlResourceService) tryHardDeleteResource(
 
 	// Ensure no children exist (active or soft-deleted) — hard-deleting a
 	// parent with remaining children would leave orphaned resources.
-	hasActive, err := s.hasActiveChildren(ctx, resource)
+	hasChildren, err := s.hasChildren(ctx, resource)
 	if err != nil {
 		return false, errors.GeneralError("Failed to check children during hard-delete: %s", err)
 	}
-	if hasActive {
+	if hasChildren {
 		return false, nil
-	}
-
-	children := registry.ChildrenOf(resource.Kind)
-	if len(children) > 0 {
-		childKinds := make([]string, len(children))
-		for i, c := range children {
-			childKinds[i] = c.Kind
-		}
-		hasSoftDeleted, sdErr := s.resourceDao.ExistsSoftDeletedByOwner(ctx, childKinds, resource.ID)
-		if sdErr != nil {
-			return false, errors.GeneralError("Failed to check soft-deleted children during hard-delete: %s", sdErr)
-		}
-		if hasSoftDeleted {
-			return false, nil
-		}
 	}
 
 	// All checks passed — clean up associated data and hard-delete the resource.
@@ -938,12 +925,14 @@ func (s *sqlResourceService) tryHardDeleteResource(
 	return true, nil
 }
 
-// hasActiveChildren returns true if any registered child kind has at least one
-// active (non-deleted) resource owned by the given resource.
-func (s *sqlResourceService) hasActiveChildren(
+// hasChildren returns true if any registered child kind has at least one
+// resource owned by the given resource, active or soft-deleted.
+func (s *sqlResourceService) hasChildren(
 	ctx context.Context, resource *api.Resource,
 ) (bool, error) {
-	for _, child := range registry.ChildrenOf(resource.Kind) {
+	children := registry.ChildrenOf(resource.Kind)
+	childKinds := make([]string, len(children))
+	for i, child := range children {
 		exists, err := s.resourceDao.ExistsByOwner(ctx, child.Kind, resource.ID)
 		if err != nil {
 			return false, err
@@ -951,8 +940,9 @@ func (s *sqlResourceService) hasActiveChildren(
 		if exists {
 			return true, nil
 		}
+		childKinds[i] = child.Kind
 	}
-	return false, nil
+	return s.resourceDao.ExistsSoftDeletedByOwner(ctx, childKinds, resource.ID)
 }
 
 func (s *sqlResourceService) applyRefFilter(
