@@ -7,8 +7,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/golang-jwt/jwt/v5"
 	. "github.com/onsi/gomega"
 
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/auth"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
 )
 
@@ -196,4 +198,175 @@ func serve(handler http.Handler, path string, headers map[string]string) *httpte
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
 	return rr
+}
+
+// claimsTestConfig mirrors the deployed edge+api shape: claims enabled, and
+// the onprem model where the claim names differ from the tenancy keys.
+func claimsTestConfig() config.TenantConfig {
+	cfg := testConfig()
+	cfg.ClaimsEnabled = true
+	cfg.Dimensions = []config.TenantDimension{
+		{Header: "X-HyperFleet-Org", Claim: "org_id", Key: "org", Required: true},
+		{Header: "X-HyperFleet-Project", Claim: "project_id", Key: "project", Required: false},
+	}
+	return cfg
+}
+
+// serveWithToken is serve with a validated token already in the request
+// context, as the JWT middleware would have set it.
+func serveWithToken(
+	handler http.Handler, path string, headers map[string]string, claims jwt.MapClaims,
+) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodGet, path, nil)
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
+	req = req.WithContext(auth.SetJWTTokenContext(req.Context(), token))
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	return rr
+}
+
+func TestResolver_ResolveTenantClaimsMode(t *testing.T) {
+	RegisterTestingT(t)
+
+	var resolved *ResolvedTenant
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resolved = FromContext(r.Context())
+		w.WriteHeader(http.StatusOK)
+	})
+
+	t.Run("valid wristband scopes by claims and ignores forged headers", func(t *testing.T) {
+		RegisterTestingT(t)
+		resolved = nil
+		mw := NewResolver(claimsTestConfig()).ResolveTenant(next)
+		rr := serveWithToken(mw, "/api/hyperfleet/v1/clusters",
+			map[string]string{
+				"X-HyperFleet-Org":     "forged-org",
+				"X-HyperFleet-Project": "forged-project",
+				"X-HyperFleet-System":  "false",
+			},
+			jwt.MapClaims{"hf_system": "false", "org_id": "acme", "project_id": "platform"})
+		Expect(rr.Code).To(Equal(http.StatusOK))
+		Expect(resolved).NotTo(BeNil())
+		Expect(resolved.System).To(BeFalse())
+		Expect(resolved.Dimensions).To(Equal(map[string]string{"org": "acme", "project": "platform"}))
+	})
+
+	t.Run("system identity comes from the hf_system claim, not the header", func(t *testing.T) {
+		RegisterTestingT(t)
+		resolved = nil
+		mw := NewResolver(claimsTestConfig()).ResolveTenant(next)
+		rr := serveWithToken(mw, "/api/hyperfleet/v1/clusters",
+			map[string]string{"X-HyperFleet-System": "false"},
+			jwt.MapClaims{"hf_system": "true"})
+		Expect(rr.Code).To(Equal(http.StatusOK))
+		Expect(resolved).NotTo(BeNil())
+		Expect(resolved.System).To(BeTrue())
+		Expect(resolved.Dimensions).To(BeNil())
+	})
+
+	t.Run("optional claim omitted still resolves", func(t *testing.T) {
+		RegisterTestingT(t)
+		resolved = nil
+		mw := NewResolver(claimsTestConfig()).ResolveTenant(next)
+		rr := serveWithToken(mw, "/api/hyperfleet/v1/clusters", nil,
+			jwt.MapClaims{"hf_system": "false", "org_id": "acme"})
+		Expect(rr.Code).To(Equal(http.StatusOK))
+		Expect(resolved.Dimensions).To(Equal(map[string]string{"org": "acme"}))
+	})
+
+	t.Run("dimension claim defaults to the key when not configured", func(t *testing.T) {
+		RegisterTestingT(t)
+		resolved = nil
+		// oracle-style: claim name equals the key, claim left unset.
+		cfg := config.TenantConfig{
+			Enabled:       true,
+			ClaimsEnabled: true,
+			SystemHeader:  "X-HyperFleet-System",
+			Dimensions: []config.TenantDimension{
+				{Header: "X-HyperFleet-Tenancy", Key: "tenancy_ocid", Required: true},
+			},
+		}
+		mw := NewResolver(cfg).ResolveTenant(next)
+		rr := serveWithToken(mw, "/api/hyperfleet/v1/clusters", nil,
+			jwt.MapClaims{"hf_system": "false", "tenancy_ocid": "ocid1.tenancy"})
+		Expect(rr.Code).To(Equal(http.StatusOK))
+		Expect(resolved.Dimensions).To(Equal(map[string]string{"tenancy_ocid": "ocid1.tenancy"}))
+	})
+
+	t.Run("oracle OCID longer than the DNS label limit resolves from claims", func(t *testing.T) {
+		RegisterTestingT(t)
+		resolved = nil
+		// Real OCIDs run ~80 chars, past the header cap of 63.
+		cfg := config.TenantConfig{
+			Enabled:       true,
+			ClaimsEnabled: true,
+			SystemHeader:  "X-HyperFleet-System",
+			Dimensions: []config.TenantDimension{
+				{Header: "X-HyperFleet-Tenancy", Key: "tenancy_ocid", Required: true},
+			},
+		}
+		ocid := "ocid1.tenancy.oc1.." + strings.Repeat("a", 60)
+		mw := NewResolver(cfg).ResolveTenant(next)
+		rr := serveWithToken(mw, "/api/hyperfleet/v1/clusters", nil,
+			jwt.MapClaims{"hf_system": "false", "tenancy_ocid": ocid})
+		Expect(rr.Code).To(Equal(http.StatusOK))
+		Expect(resolved.Dimensions).To(Equal(map[string]string{"tenancy_ocid": ocid}))
+	})
+
+	forbiddenCases := []struct {
+		claims jwt.MapClaims
+		name   string
+	}{
+		{claims: jwt.MapClaims{"hf_system": "false", "project_id": "platform"}, name: "required claim missing"},
+		{claims: jwt.MapClaims{"hf_system": "false", "org_id": ""}, name: "required claim present but empty"},
+		{claims: jwt.MapClaims{"hf_system": "false", "org_id": "acme/<script>"},
+			name: "claim value with disallowed characters"},
+		{claims: jwt.MapClaims{"hf_system": "false", "org_id": "acme", "project_id": 123},
+			name: "optional claim with a non-string value"},
+		{claims: jwt.MapClaims{"hf_system": "false", "org_id": "acme", "project_id": ""},
+			name: "optional claim present but empty"},
+		{claims: jwt.MapClaims{"hf_system": "false", "org_id": strings.Repeat("a", maxClaimValueLen+1)},
+			name: "claim value exceeding max length"},
+		{claims: jwt.MapClaims{"hf_system": "false"}, name: "zero claims resolved"},
+	}
+	for _, tc := range forbiddenCases {
+		t.Run(tc.name+" returns 403 problem+json", func(t *testing.T) {
+			RegisterTestingT(t)
+			resolved = nil
+			mw := NewResolver(claimsTestConfig()).ResolveTenant(next)
+			rr := serveWithToken(mw, "/api/hyperfleet/v1/clusters", nil, tc.claims)
+			Expect(rr.Code).To(Equal(http.StatusForbidden))
+			Expect(resolved).To(BeNil())
+			Expect(rr.Header().Get("Content-Type")).To(ContainSubstring("application/problem+json"))
+
+			var body map[string]any
+			Expect(json.NewDecoder(rr.Body).Decode(&body)).To(Succeed())
+			Expect(body["code"]).To(Equal("HYPERFLEET-AUZ-001"))
+			Expect(body["status"]).To(BeNumerically("==", 403))
+		})
+	}
+
+	t.Run("claims enabled but no validated token falls back to headers (edge)", func(t *testing.T) {
+		RegisterTestingT(t)
+		resolved = nil
+		mw := NewResolver(claimsTestConfig()).ResolveTenant(next)
+		rr := serve(mw, "/api/hyperfleet/v1/clusters",
+			map[string]string{"X-HyperFleet-Org": "acme", "X-HyperFleet-Project": "platform"})
+		Expect(rr.Code).To(Equal(http.StatusOK))
+		Expect(resolved.Dimensions).To(Equal(map[string]string{"org": "acme", "project": "platform"}))
+	})
+
+	t.Run("claims disabled with a validated token uses headers (api mode)", func(t *testing.T) {
+		RegisterTestingT(t)
+		resolved = nil
+		mw := NewResolver(testConfig()).ResolveTenant(next)
+		rr := serveWithToken(mw, "/api/hyperfleet/v1/clusters",
+			map[string]string{"X-HyperFleet-Org": "acme"},
+			jwt.MapClaims{"email": "user@example.com"})
+		Expect(rr.Code).To(Equal(http.StatusOK))
+		Expect(resolved.Dimensions).To(Equal(map[string]string{"org": "acme"}))
+	})
 }

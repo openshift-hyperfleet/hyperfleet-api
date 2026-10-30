@@ -20,10 +20,19 @@ import (
 // before they propagate into tenancy JSON and scoped queries.
 const maxDimensionValueLen = 63
 
+// maxClaimValueLen bounds wristband claim values: Oracle OCIDs run ~80 chars,
+// past the DNS label limit. Sanity bound on signed data, not a trust boundary.
+const maxClaimValueLen = 255
+
 var dimensionValuePattern = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
 
-// Resolver resolves the caller's tenant context from trusted gateway-injected
-// request headers and fails closed when required identity is missing.
+// hfSystemClaim is the wristband claim marking machine callers (Kubernetes
+// ServiceAccounts); claims-mode counterpart of the system header.
+const hfSystemClaim = "hf_system"
+
+// Resolver resolves the caller's tenant context and fails closed when required
+// identity is missing: from the validated wristband's claims in edge+api mode
+// (ClaimsEnabled), from gateway-injected headers otherwise.
 type Resolver interface {
 	ResolveTenant(next http.Handler) http.Handler
 }
@@ -41,12 +50,11 @@ func NewResolver(cfg config.TenantConfig) Resolver {
 	return &resolver{cfg: cfg}
 }
 
-// ResolveTenant reads the system header and configured dimension headers off
-// the request. A system header value of exactly "true" (case-insensitive)
-// grants an unscoped ResolvedTenant. Otherwise, every configured dimension
-// header present on the request is collected into a tenancy map; a missing
-// required dimension, or resolving zero dimensions, rejects the request with
-// 403 before it reaches downstream handlers.
+// ResolveTenant resolves the caller's tenant context. In claims mode with a
+// validated wristband, identity comes from its claims and headers are ignored
+// (a forged header cannot scope the request); otherwise headers are read
+// (edge mode). In both paths system "true" grants an unscoped ResolvedTenant,
+// and a missing required dimension or zero dimensions rejects with 403.
 func (m *resolver) ResolveTenant(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if shouldSkipTenant(r.URL.Path) {
@@ -55,6 +63,11 @@ func (m *resolver) ResolveTenant(next http.Handler) http.Handler {
 		}
 
 		ctx := r.Context()
+
+		if m.cfg.ClaimsEnabled && auth.GetJWTTokenFromContext(ctx) != nil {
+			m.resolveFromClaims(ctx, w, r, next)
+			return
+		}
 
 		if strings.EqualFold(strings.TrimSpace(r.Header.Get(m.cfg.SystemHeader)), "true") {
 			next.ServeHTTP(w, r.WithContext(WithTenant(ctx, &ResolvedTenant{System: true})))
@@ -69,6 +82,57 @@ func (m *resolver) ResolveTenant(next http.Handler) http.Handler {
 
 		next.ServeHTTP(w, r.WithContext(WithTenant(ctx, &ResolvedTenant{Dimensions: dims})))
 	})
+}
+
+// resolveFromClaims is the claims-mode path: the wristband in ctx is the only
+// trusted tenant source, mirroring the header path with hf_system and the
+// configured dimension claims.
+func (m *resolver) resolveFromClaims(
+	ctx context.Context, w http.ResponseWriter, r *http.Request, next http.Handler,
+) {
+	if system, _ := auth.GetClaimFromContext(ctx, hfSystemClaim); strings.EqualFold(strings.TrimSpace(system), "true") {
+		next.ServeHTTP(w, r.WithContext(WithTenant(ctx, &ResolvedTenant{System: true})))
+		return
+	}
+
+	dims, err := m.resolveClaimDimensions(ctx)
+	if err != nil {
+		handleForbidden(ctx, w, r, "%s", err)
+		return
+	}
+
+	next.ServeHTTP(w, r.WithContext(WithTenant(ctx, &ResolvedTenant{Dimensions: dims})))
+}
+
+// resolveClaimDimensions is resolveDimensions over wristband claims instead
+// of headers.
+func (m *resolver) resolveClaimDimensions(ctx context.Context) (map[string]string, error) {
+	dims := make(map[string]string, len(m.cfg.Dimensions))
+	for _, d := range m.cfg.Dimensions {
+		claim := d.EffectiveClaim()
+		val, ok := auth.GetClaimFromContext(ctx, claim)
+		if !ok {
+			// Present but unusable (empty/non-string): reject even on optional
+			// dimensions, mirroring the header path's value checks.
+			if auth.ClaimPresentInContext(ctx, claim) {
+				return nil, fmt.Errorf("tenant claim %q has an unusable value", claim)
+			}
+			if d.Required {
+				return nil, fmt.Errorf("required tenant claim %q is missing", claim)
+			}
+			continue
+		}
+		if len(val) > maxClaimValueLen || !dimensionValuePattern.MatchString(val) {
+			return nil, fmt.Errorf("tenant claim %q has an invalid value", claim)
+		}
+		dims[d.Key] = val
+	}
+
+	if len(dims) == 0 {
+		return nil, fmt.Errorf("caller resolved no tenant dimensions")
+	}
+
+	return dims, nil
 }
 
 // resolveDimensions collects every configured dimension header present on the

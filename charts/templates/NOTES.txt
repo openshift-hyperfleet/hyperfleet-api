@@ -50,10 +50,13 @@ this chart's config.server.tenant.* values are ignored.
 Tenant enforcement is ENABLED.
   System bypass header: {{ .Values.config.server.tenant.system_header }}
   Dimensions: {{ range .Values.config.server.tenant.dimensions }}{{ .key }} (header: {{ .header }}, required: {{ .required | default false }}) {{ end }}
-
-Identity must arrive as trusted headers injected by the gateway (Envoy + Authorino) —
-the API never extracts tenancy from JWT claims. Only trusted gateways should set
-these headers in production.
+{{- if .Values.config.server.tenant.claims_enabled }}
+  Identity source: wristband claims (edge+api mode) — dimensions and system
+  identity are read from the validated JWT; forgeable headers are ignored.
+{{- else }}
+  Identity source: trusted headers injected by the gateway (Envoy + Authorino).
+  Only trusted gateways should set these headers in production.
+{{- end }}
 {{- end }}
 
 Documentation:

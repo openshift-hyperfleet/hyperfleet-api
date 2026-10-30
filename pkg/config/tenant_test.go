@@ -15,10 +15,31 @@ func TestTenantConfig_Validate(t *testing.T) {
 		name      string
 		expectErr string
 		config    TenantConfig
+		jwt       bool
 	}{
 		{
 			name:   "disabled tenant requires nothing",
 			config: TenantConfig{Enabled: false},
+		},
+		{
+			name: "claims enabled with jwt enabled passes",
+			jwt:  true,
+			config: TenantConfig{
+				Enabled:       true,
+				SystemHeader:  "X-HyperFleet-System",
+				ClaimsEnabled: true,
+				Dimensions:    []TenantDimension{validDimension},
+			},
+		},
+		{
+			name: "claims enabled without jwt fails",
+			config: TenantConfig{
+				Enabled:       true,
+				SystemHeader:  "X-HyperFleet-System",
+				ClaimsEnabled: true,
+				Dimensions:    []TenantDimension{validDimension},
+			},
+			expectErr: "claims_enabled requires server.jwt.enabled",
 		},
 		{
 			name: "valid config with single required dimension passes",
@@ -177,7 +198,7 @@ func TestTenantConfig_Validate(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			RegisterTestingT(t)
-			err := tc.config.Validate()
+			err := tc.config.Validate(tc.jwt)
 			if tc.expectErr != "" {
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring(tc.expectErr))

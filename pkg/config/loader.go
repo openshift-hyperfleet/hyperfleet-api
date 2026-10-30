@@ -184,7 +184,7 @@ func (l *ConfigLoader) validateConfig(config *ApplicationConfig) error {
 		if valErr := config.Server.JWT.Validate(); valErr != nil {
 			return fmt.Errorf("server JWT validation failed: %w", valErr)
 		}
-		if valErr := config.Server.Tenant.Validate(); valErr != nil {
+		if valErr := config.Server.Tenant.Validate(config.Server.JWT.Enabled); valErr != nil {
 			return fmt.Errorf("server tenant validation failed: %w", valErr)
 		}
 		if valErr := config.Health.Validate(); valErr != nil {
@@ -327,6 +327,7 @@ func (l *ConfigLoader) bindAllEnvVars() {
 	// server.jwt.configs is a list of structs — loaded from YAML config only.
 	// Viper cannot bind env vars to individual list elements.
 	l.bindEnv("server.tenant.enabled")
+	l.bindEnv("server.tenant.claims_enabled")
 	l.bindEnv("server.tenant.system_header")
 	// server.tenant.dimensions is a list of structs — loaded from YAML config only,
 	// same reason as server.jwt.configs above.

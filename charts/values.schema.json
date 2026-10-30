@@ -217,6 +217,10 @@
                   "type": "boolean",
                   "description": "Enable tenant enforcement middleware"
                 },
+                "claims_enabled": {
+                  "type": "boolean",
+                  "description": "Read tenant dimensions and system identity from the validated wristband claims instead of headers (requires jwt.enabled)"
+                },
                 "system_header": {
                   "type": "string",
                   "description": "Trusted header identifying system callers that bypass tenant scoping (required when enabled is true)",
@@ -236,6 +240,11 @@
                         "type": "string",
                         "description": "Trusted HTTP header injected by the gateway for this dimension",
                         "pattern": "^[!#$%&'*+.^_`|~0-9A-Za-z-]+$"
+                      },
+                      "claim": {
+                        "type": "string",
+                        "description": "Wristband claim this dimension is read from in claims mode; defaults to the key",
+                        "minLength": 1
                       },
                       "key": {
                         "type": "string",
