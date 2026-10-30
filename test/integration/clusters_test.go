@@ -1373,6 +1373,18 @@ func TestClusterHardDelete(t *testing.T) {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(clusterCheck.DeletedTime).NotTo(BeNil(), "Cluster should still be soft-deleted")
 
+		// The soft-deleted nodepool keeps the cluster Reconciled=False, so Sentinel
+		// keeps publishing it and an adapter re-reports after the nodepool is gone
+		// (HYPERFLEET-1874). Reconciled=True would leave it waiting ~30m.
+		getResp, err := client.GetClusterByIdWithResponse(ctx, cluster.ID, nil, test.WithAuthToken(ctx))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(getResp.StatusCode()).To(Equal(http.StatusOK))
+		reconciledCond := findResourceCondition(getResp.JSON200.Status.Conditions, api.ResourceConditionTypeReconciled)
+		Expect(reconciledCond).NotTo(BeNil(), "Expected Reconciled condition on the soft-deleted cluster")
+		Expect(reconciledCond.Status).To(Equal(openapi.ResourceConditionStatusFalse),
+			"Reconciled must stay False while a soft-deleted nodepool remains")
+		Expect(reconciledCond.Reason).To(HaveValue(Equal("ReconciledWaitingForChildren")))
+
 		// STEP 2: Report all required nodepool adapters with Finalized=True → nodepool is hard-deleted
 		nodePoolAdapters := []string{"validation", "hypershift"}
 		for _, adapter := range nodePoolAdapters {
