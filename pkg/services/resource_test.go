@@ -3913,6 +3913,60 @@ func TestProcessAdapterStatus_ChildGoneAfterCheck_StaysWaitingForChildren(t *tes
 	Expect(*recon.Reason).To(Equal(reasonReconciledWaitingForChildren))
 }
 
+// TestProcessAdapterStatus_ChildCheckError_ReturnsErrorAndKeepsParent covers a DAO
+// failure in the shared child check on a deleting parent: the report must fail
+// rather than aggregate or hard-delete on an unknown child state.
+func TestProcessAdapterStatus_ChildCheckError_ReturnsErrorAndKeepsParent(t *testing.T) {
+	RegisterTestingT(t)
+	registry.Reset()
+	registry.Register(registry.EntityDescriptor{
+		Kind:             "Parent",
+		Plural:           "parents",
+		RequiredAdapters: []string{"adapter1"},
+	})
+	registry.Register(registry.EntityDescriptor{
+		Kind:             "Child",
+		Plural:           "children",
+		ParentKind:       "Parent",
+		OnParentDelete:   registry.OnParentDeleteCascade,
+		RequiredAdapters: []string{"child-adapter"},
+	})
+
+	mockDao := newMockResourceDao()
+	svc, _, _, rcDao := newTestResourceServiceWithAdapterStatus(mockDao)
+
+	deletedAt := time.Now().UTC()
+	parent := testResource("Parent", "p-1", "parent")
+	parent.Generation = 1
+	parent.DeletedTime = &deletedAt
+	mockDao.addResource(parent)
+
+	mockDao.existsSoftDeletedByOwnerErr = gorm.ErrInvalidDB
+
+	req := &api.AdapterStatus{
+		Adapter:            "adapter1",
+		ObservedGeneration: 1,
+		LastReportTime:     time.Now().UTC(),
+		Conditions: testConditionsJSON(
+			api.AdapterCondition{Type: api.AdapterConditionTypeAvailable, Status: api.AdapterConditionFalse},
+			api.AdapterCondition{Type: api.AdapterConditionTypeApplied, Status: api.AdapterConditionFalse},
+			api.AdapterCondition{Type: api.AdapterConditionTypeHealth, Status: api.AdapterConditionTrue},
+			api.AdapterCondition{Type: api.AdapterConditionTypeFinalized, Status: api.AdapterConditionTrue},
+		),
+	}
+
+	_, svcErr := svc.ProcessAdapterStatus(context.Background(), "Parent", "p-1", req)
+	Expect(svcErr).NotTo(BeNil())
+	Expect(svcErr.RFC9457Code).To(Equal("HYPERFLEET-INT-001"))
+	Expect(svcErr.Reason).To(ContainSubstring("Failed to check children for status aggregation"))
+
+	remaining := mockDao.resources[resourceKey("Parent", "p-1")]
+	Expect(remaining).NotTo(BeNil(), "Parent must not be hard-deleted when the child check fails")
+	Expect(remaining.DeletedTime).NotTo(BeNil(), "Parent should stay soft-deleted")
+	Expect(findCondition(rcDao.conditions["p-1"], api.ResourceConditionTypeReconciled)).To(BeNil(),
+		"No aggregation should run when the child check fails")
+}
+
 // --- Condition Mapping ---
 
 func TestResourceService_ConditionMapper_IntegrationPath(t *testing.T) {

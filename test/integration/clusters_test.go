@@ -1379,13 +1379,7 @@ func TestClusterHardDelete(t *testing.T) {
 		getResp, err := client.GetClusterByIdWithResponse(ctx, cluster.ID, nil, test.WithAuthToken(ctx))
 		Expect(err).NotTo(HaveOccurred())
 		Expect(getResp.StatusCode()).To(Equal(http.StatusOK))
-		var reconciledCond *openapi.ResourceCondition
-		for i := range getResp.JSON200.Status.Conditions {
-			if getResp.JSON200.Status.Conditions[i].Type == api.ResourceConditionTypeReconciled {
-				reconciledCond = &getResp.JSON200.Status.Conditions[i]
-				break
-			}
-		}
+		reconciledCond := findResourceCondition(getResp.JSON200.Status.Conditions, api.ResourceConditionTypeReconciled)
 		Expect(reconciledCond).NotTo(BeNil(), "Expected Reconciled condition on the soft-deleted cluster")
 		Expect(reconciledCond.Status).To(Equal(openapi.ResourceConditionStatusFalse),
 			"Reconciled must stay False while a soft-deleted nodepool remains")
