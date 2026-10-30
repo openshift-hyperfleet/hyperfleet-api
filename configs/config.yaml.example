@@ -33,7 +33,8 @@ server:
   tenant:
     enabled: false                  # Enable tenant enforcement middleware
     system_header: ""               # Header marking system callers (required when enabled=true)
-    dimensions: []                  # Tenant dimension headers (header, key, required); at least one required=true if enabled
+    claims_enabled: false           # Read dimensions and system identity from wristband claims when a token was validated (edge+api)
+    dimensions: []                  # Tenant dimensions (header, claim, key, required); at least one required=true if enabled; claim defaults to key
 
 # Database Configuration
 database:

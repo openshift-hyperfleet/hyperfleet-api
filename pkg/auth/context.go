@@ -183,6 +183,23 @@ func GetIdentityFromContext(ctx context.Context, identityClaim string) (string, 
 	return "", fmt.Errorf("identity claim %q not found or empty", identityClaim)
 }
 
+// GetClaimFromContext returns the string value of the named claim from the
+// token validated by JWTHandler, if any. A missing, empty, or non-string
+// claim, or no validated token, returns ("", false).
+func GetClaimFromContext(ctx context.Context, claim string) (string, bool) {
+	userToken := GetJWTTokenFromContext(ctx)
+	if userToken == nil {
+		return "", false
+	}
+
+	claims, ok := userToken.Claims.(jwt.MapClaims)
+	if !ok {
+		return "", false
+	}
+
+	return stringClaim(claims, claim)
+}
+
 func stringClaim(claims jwt.MapClaims, key string) (string, bool) {
 	val, ok := claims[key]
 	if !ok {

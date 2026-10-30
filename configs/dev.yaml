@@ -8,12 +8,14 @@ server:
         identity_claim: email
   tenant:
     enabled: true
-    system_header: X-HyperFleet-System
+    system_header: x-hyperfleet-system
     dimensions:
-      - header: X-HyperFleet-Org
+      - header: x-tenant-org
+        claim: org_id
         key: org
         required: true
-      - header: X-HyperFleet-Project
+      - header: x-tenant-project
+        claim: project_id
         key: project
         required: false
 
