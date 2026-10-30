@@ -65,6 +65,9 @@ PAYLOAD=$(echo -n '{
   "iss":"https://test-issuer.example.com",
   "sub":"smoke-test-user",
   "email":"smoke@example.com",
+  "hf_system":"false",
+  "org_id":"dev-org",
+  "project_id":"dev-project",
   "iat":'"${NOW}"',
   "exp":'"${EXP}"'
 }' | b64url)

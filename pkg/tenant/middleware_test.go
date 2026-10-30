@@ -296,6 +296,26 @@ func TestResolver_ResolveTenantClaimsMode(t *testing.T) {
 		Expect(resolved.Dimensions).To(Equal(map[string]string{"tenancy_ocid": "ocid1.tenancy"}))
 	})
 
+	t.Run("oracle OCID longer than the DNS label limit resolves from claims", func(t *testing.T) {
+		RegisterTestingT(t)
+		resolved = nil
+		// Real OCIDs run ~80 chars, past the header cap of 63.
+		cfg := config.TenantConfig{
+			Enabled:       true,
+			ClaimsEnabled: true,
+			SystemHeader:  "X-HyperFleet-System",
+			Dimensions: []config.TenantDimension{
+				{Header: "X-HyperFleet-Tenancy", Key: "tenancy_ocid", Required: true},
+			},
+		}
+		ocid := "ocid1.tenancy.oc1.." + strings.Repeat("a", 60)
+		mw := NewResolver(cfg).ResolveTenant(next)
+		rr := serveWithToken(mw, "/api/hyperfleet/v1/clusters", nil,
+			jwt.MapClaims{"hf_system": "false", "tenancy_ocid": ocid})
+		Expect(rr.Code).To(Equal(http.StatusOK))
+		Expect(resolved.Dimensions).To(Equal(map[string]string{"tenancy_ocid": ocid}))
+	})
+
 	forbiddenCases := []struct {
 		claims jwt.MapClaims
 		name   string
@@ -304,7 +324,11 @@ func TestResolver_ResolveTenantClaimsMode(t *testing.T) {
 		{claims: jwt.MapClaims{"hf_system": "false", "org_id": ""}, name: "required claim present but empty"},
 		{claims: jwt.MapClaims{"hf_system": "false", "org_id": "acme/<script>"},
 			name: "claim value with disallowed characters"},
-		{claims: jwt.MapClaims{"hf_system": "false", "org_id": strings.Repeat("a", maxDimensionValueLen+1)},
+		{claims: jwt.MapClaims{"hf_system": "false", "org_id": "acme", "project_id": 123},
+			name: "optional claim with a non-string value"},
+		{claims: jwt.MapClaims{"hf_system": "false", "org_id": "acme", "project_id": ""},
+			name: "optional claim present but empty"},
+		{claims: jwt.MapClaims{"hf_system": "false", "org_id": strings.Repeat("a", maxClaimValueLen+1)},
 			name: "claim value exceeding max length"},
 		{claims: jwt.MapClaims{"hf_system": "false"}, name: "zero claims resolved"},
 	}

@@ -20,6 +20,10 @@ import (
 // before they propagate into tenancy JSON and scoped queries.
 const maxDimensionValueLen = 63
 
+// maxClaimValueLen bounds wristband claim values: Oracle OCIDs run ~80 chars,
+// past the DNS label limit. Sanity bound on signed data, not a trust boundary.
+const maxClaimValueLen = 255
+
 var dimensionValuePattern = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
 
 // hfSystemClaim is the wristband claim marking machine callers (Kubernetes
@@ -108,12 +112,17 @@ func (m *resolver) resolveClaimDimensions(ctx context.Context) (map[string]strin
 		claim := d.EffectiveClaim()
 		val, ok := auth.GetClaimFromContext(ctx, claim)
 		if !ok {
+			// Present but unusable (empty/non-string): reject even on optional
+			// dimensions, mirroring the header path's value checks.
+			if auth.ClaimPresentInContext(ctx, claim) {
+				return nil, fmt.Errorf("tenant claim %q has an unusable value", claim)
+			}
 			if d.Required {
 				return nil, fmt.Errorf("required tenant claim %q is missing", claim)
 			}
 			continue
 		}
-		if len(val) > maxDimensionValueLen || !dimensionValuePattern.MatchString(val) {
+		if len(val) > maxClaimValueLen || !dimensionValuePattern.MatchString(val) {
 			return nil, fmt.Errorf("tenant claim %q has an invalid value", claim)
 		}
 		dims[d.Key] = val

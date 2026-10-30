@@ -200,6 +200,23 @@ func GetClaimFromContext(ctx context.Context, claim string) (string, bool) {
 	return stringClaim(claims, claim)
 }
 
+// ClaimPresentInContext reports whether the validated token carries the named
+// claim key, even with an empty or non-string value.
+func ClaimPresentInContext(ctx context.Context, claim string) bool {
+	userToken := GetJWTTokenFromContext(ctx)
+	if userToken == nil {
+		return false
+	}
+
+	claims, ok := userToken.Claims.(jwt.MapClaims)
+	if !ok {
+		return false
+	}
+
+	_, ok = claims[claim]
+	return ok
+}
+
 func stringClaim(claims jwt.MapClaims, key string) (string, bool) {
 	val, ok := claims[key]
 	if !ok {

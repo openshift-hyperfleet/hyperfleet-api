@@ -37,16 +37,24 @@ type TenantConfig struct {
 	ClaimsEnabled bool              `mapstructure:"claims_enabled" json:"claims_enabled"`
 }
 
-// Validate enforces the tenant configuration invariants. A caller resolving zero
-// dimensions must never reach the data layer (an empty tenancy map would
-// contain-match every row), so at least one dimension must be required.
-func (c *TenantConfig) Validate() error {
+// Validate enforces the tenant configuration invariants, including that
+// claims mode requires JWT validation (jwtEnabled is server.jwt.enabled,
+// outside this struct). A caller resolving zero dimensions must never reach
+// the data layer (an empty tenancy map would contain-match every row), so at
+// least one dimension must be required.
+func (c *TenantConfig) Validate(jwtEnabled bool) error {
 	if !c.Enabled {
 		return nil
 	}
 
 	if c.SystemHeader == "" {
 		return fmt.Errorf("server.tenant.system_header is required when tenant is enabled")
+	}
+	if c.ClaimsEnabled && !jwtEnabled {
+		return fmt.Errorf(
+			"server.tenant.claims_enabled requires server.jwt.enabled: without JWT validation " +
+				"no token reaches the resolver and it silently falls back to forgeable headers",
+		)
 	}
 	if !validation.IsValidHeaderName(c.SystemHeader) {
 		return fmt.Errorf("server.tenant.system_header %q is not a valid HTTP header name", c.SystemHeader)
