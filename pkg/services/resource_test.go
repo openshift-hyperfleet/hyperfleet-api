@@ -60,6 +60,7 @@ type mockResourceDao struct {
 	findChildrenForUpdateErr       error
 	deleteReferencesErr            error
 	existsSoftDeletedByOwnerErr    error
+	afterExistsSoftDeletedByOwner  func()
 	replaceRefsErr                 error
 	resources                      map[string]*api.Resource
 	findReferencersResult          []api.ResourceSummary
@@ -190,12 +191,17 @@ func (d *mockResourceDao) ExistsSoftDeletedByOwner(_ context.Context, kinds []st
 	for _, k := range kinds {
 		kindSet[k] = true
 	}
+	exists := false
 	for _, r := range d.resources {
 		if kindSet[r.Kind] && r.OwnerID != nil && *r.OwnerID == ownerID && r.DeletedTime != nil {
-			return true, nil
+			exists = true
+			break
 		}
 	}
-	return false, nil
+	if d.afterExistsSoftDeletedByOwner != nil {
+		d.afterExistsSoftDeletedByOwner()
+	}
+	return exists, nil
 }
 
 func (d *mockResourceDao) FindByKindAndOwnerForUpdate(
@@ -3840,6 +3846,71 @@ func TestProcessAdapterStatus_FinalizedTrue_RecomputesConditions_WhenHardDeleteB
 		"Reconciled should be False (waiting for children), not absent")
 	Expect(*recon.Reason).To(ContainSubstring("Children"),
 		"Reason should indicate waiting for child resources")
+}
+
+// TestProcessAdapterStatus_ChildGoneAfterCheck_StaysWaitingForChildren covers a
+// child hard-deleted by another transaction right after the parent's child check.
+// Hard-delete and aggregation must share that one check: a second query would
+// miss the child and turn the parent Reconciled=True while it stays soft-deleted.
+func TestProcessAdapterStatus_ChildGoneAfterCheck_StaysWaitingForChildren(t *testing.T) {
+	RegisterTestingT(t)
+	registry.Reset()
+	registry.Register(registry.EntityDescriptor{
+		Kind:             "Parent",
+		Plural:           "parents",
+		RequiredAdapters: []string{"adapter1"},
+	})
+	registry.Register(registry.EntityDescriptor{
+		Kind:             "Child",
+		Plural:           "children",
+		ParentKind:       "Parent",
+		OnParentDelete:   registry.OnParentDeleteCascade,
+		RequiredAdapters: []string{"child-adapter"},
+	})
+
+	mockDao := newMockResourceDao()
+	svc, _, _, rcDao := newTestResourceServiceWithAdapterStatus(mockDao)
+
+	deletedAt := time.Now().UTC()
+	parent := testResource("Parent", "p-1", "parent")
+	parent.Generation = 1
+	parent.DeletedTime = &deletedAt
+	mockDao.addResource(parent)
+
+	childOwner := "p-1"
+	child := testResource("Child", "c-1", "child")
+	child.OwnerID = &childOwner
+	child.DeletedTime = &deletedAt
+	mockDao.addResource(child)
+
+	// The child's own hard-delete commits right after the first child check.
+	mockDao.afterExistsSoftDeletedByOwner = func() {
+		delete(mockDao.resources, resourceKey("Child", "c-1"))
+	}
+
+	req := &api.AdapterStatus{
+		Adapter:            "adapter1",
+		ObservedGeneration: 1,
+		LastReportTime:     time.Now().UTC(),
+		Conditions: testConditionsJSON(
+			api.AdapterCondition{Type: api.AdapterConditionTypeAvailable, Status: api.AdapterConditionFalse},
+			api.AdapterCondition{Type: api.AdapterConditionTypeApplied, Status: api.AdapterConditionFalse},
+			api.AdapterCondition{Type: api.AdapterConditionTypeHealth, Status: api.AdapterConditionTrue},
+			api.AdapterCondition{Type: api.AdapterConditionTypeFinalized, Status: api.AdapterConditionTrue},
+		),
+	}
+
+	_, svcErr := svc.ProcessAdapterStatus(context.Background(), "Parent", "p-1", req)
+	Expect(svcErr).To(BeNil())
+
+	_, exists := mockDao.resources[resourceKey("Parent", "p-1")]
+	Expect(exists).To(BeTrue(), "Parent should stay soft-deleted: the child was present at the check")
+
+	recon := findCondition(rcDao.conditions["p-1"], api.ResourceConditionTypeReconciled)
+	Expect(recon).ToNot(BeNil())
+	Expect(recon.Status).To(Equal(api.ConditionFalse),
+		"Reconciled must stay False so Sentinel keeps publishing the parent")
+	Expect(*recon.Reason).To(Equal(reasonReconciledWaitingForChildren))
 }
 
 // --- Condition Mapping ---

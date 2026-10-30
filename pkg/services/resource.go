@@ -731,8 +731,16 @@ func (s *sqlResourceService) ProcessAdapterStatus(
 		}
 		updatedStatuses := replaceAdapterStatusInList(allStatuses, upsertedStatus)
 
+		// One child check feeds both hard-delete and aggregation. A second query
+		// could miss a child that hard-delete saw, and turn Reconciled=True on a
+		// parent that stays soft-deleted (HYPERFLEET-1874).
+		hasChildResources, svcErr := s.childrenRemainDuringDelete(ctx, resource)
+		if svcErr != nil {
+			return svcErr
+		}
+
 		if resource.DeletedTime != nil {
-			hardDeleted, hdErr := s.tryHardDeleteResource(ctx, resource, conditions, updatedStatuses)
+			hardDeleted, hdErr := s.tryHardDeleteResource(ctx, resource, conditions, updatedStatuses, hasChildResources)
 			if hdErr != nil {
 				return hdErr
 			}
@@ -746,8 +754,8 @@ func (s *sqlResourceService) ProcessAdapterStatus(
 		if triggerAggregation || (hasMapper && (existingStatus == nil ||
 			!jsonEqual(existingStatus.Conditions, adapterStatus.Conditions) ||
 			!jsonEqual(existingStatus.Data, adapterStatus.Data))) {
-			recomputed, aggregateErr := s.recomputeAndSaveResourceConditions(
-				ctx, resource, updatedStatuses,
+			recomputed, aggregateErr := s.saveAggregatedResourceConditions(
+				ctx, resource, updatedStatuses, hasChildResources,
 			)
 			if aggregateErr != nil {
 				return aggregateErr
@@ -775,6 +783,39 @@ func (s *sqlResourceService) recomputeAndSaveResourceConditions(
 	resource *api.Resource,
 	adapterStatuses api.AdapterStatusList,
 ) (*reconciliationOutcome, *errors.ServiceError) {
+	hasChildResources, svcErr := s.childrenRemainDuringDelete(ctx, resource)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	return s.saveAggregatedResourceConditions(ctx, resource, adapterStatuses, hasChildResources)
+}
+
+// childrenRemainDuringDelete reports whether a deleting resource still has child
+// resources. The aggregation uses this to prevent premature Reconciled=True on a
+// parent whose children haven't finished their own reconciliation. Soft-deleted
+// children count: they block hard-delete, and a Reconciled=True parent gets no
+// Sentinel event to re-report once they are gone (HYPERFLEET-1874).
+func (s *sqlResourceService) childrenRemainDuringDelete(
+	ctx context.Context, resource *api.Resource,
+) (bool, *errors.ServiceError) {
+	if resource.DeletedTime == nil {
+		return false, nil
+	}
+	hasChildren, err := s.hasChildren(ctx, resource)
+	if err != nil {
+		return false, errors.GeneralError("Failed to check children for status aggregation: %s", err)
+	}
+	return hasChildren, nil
+}
+
+// saveAggregatedResourceConditions is recomputeAndSaveResourceConditions with the
+// child check already done by the caller.
+func (s *sqlResourceService) saveAggregatedResourceConditions(
+	ctx context.Context,
+	resource *api.Resource,
+	adapterStatuses api.AdapterStatusList,
+	hasChildResources bool,
+) (*reconciliationOutcome, *errors.ServiceError) {
 	desc := registry.MustGet(resource.Kind)
 
 	// Convert the GORM association ([]ResourceCondition) to JSON so it can be
@@ -790,20 +831,6 @@ func (s *sqlResourceService) recomputeAndSaveResourceConditions(
 		}
 	}
 	prevReconciledStatus := extractPrevReconciledStatus(ctx, prevConditionsJSON)
-
-	// During deletion, check if child resources still exist. The aggregation
-	// function uses this to prevent premature Reconciled=True on a parent
-	// whose children haven't finished their own reconciliation. Soft-deleted
-	// children count: they block hard-delete, and a Reconciled=True parent gets
-	// no Sentinel event to re-report once they are gone (HYPERFLEET-1874).
-	hasChildResources := false
-	if resource.DeletedTime != nil {
-		var err error
-		hasChildResources, err = s.hasChildren(ctx, resource)
-		if err != nil {
-			return nil, errors.GeneralError("Failed to check children for status aggregation: %s", err)
-		}
-	}
 
 	// Use UpdatedTime as the reference time for aggregation. Falls back to
 	// CreatedTime for resources that haven't been patched yet.
@@ -882,6 +909,7 @@ func (s *sqlResourceService) tryHardDeleteResource(
 	resource *api.Resource,
 	conditions []api.AdapterCondition,
 	allStatuses api.AdapterStatusList,
+	hasChildren bool,
 ) (bool, *errors.ServiceError) {
 	resourceCtx := hfl.WithResourceType(ctx, resource.Kind)
 	resourceCtx = hfl.WithResourceID(resourceCtx, resource.ID)
@@ -900,10 +928,6 @@ func (s *sqlResourceService) tryHardDeleteResource(
 
 	// Ensure no children exist (active or soft-deleted) — hard-deleting a
 	// parent with remaining children would leave orphaned resources.
-	hasChildren, err := s.hasChildren(ctx, resource)
-	if err != nil {
-		return false, errors.GeneralError("Failed to check children during hard-delete: %s", err)
-	}
 	if hasChildren {
 		return false, nil
 	}
