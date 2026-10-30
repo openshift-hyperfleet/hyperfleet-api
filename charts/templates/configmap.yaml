@@ -61,11 +61,15 @@ data:
 
       tenant:
         enabled: {{ .Values.config.server.tenant.enabled }}
+        claims_enabled: {{ .Values.config.server.tenant.claims_enabled | default false }}
         system_header: {{ .Values.config.server.tenant.system_header | quote }}
         {{- if .Values.config.server.tenant.dimensions }}
         dimensions:
           {{- range .Values.config.server.tenant.dimensions }}
           - header: {{ .header | quote }}
+            {{- if .claim }}
+            claim: {{ .claim | quote }}
+            {{- end }}
             key: {{ .key | quote }}
             required: {{ .required | default false }}
           {{- end }}
