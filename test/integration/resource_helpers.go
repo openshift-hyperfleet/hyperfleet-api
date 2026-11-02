@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api/openapi"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/services"
 	"github.com/openshift-hyperfleet/hyperfleet-api/test"
 )
@@ -35,6 +36,16 @@ func labelsToMap(labels []api.ResourceLabel) map[string]string {
 		m[l.Key] = l.Value
 	}
 	return m
+}
+
+// findResourceCondition returns the condition of the given type from an API response, or nil.
+func findResourceCondition(conditions []openapi.ResourceCondition, condType string) *openapi.ResourceCondition {
+	for i := range conditions {
+		if conditions[i].Type == condType {
+			return &conditions[i]
+		}
+	}
+	return nil
 }
 
 // newChannelResource creates a Channel resource struct with default spec.
