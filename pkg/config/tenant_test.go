@@ -21,6 +21,15 @@ func TestTenantConfig_Validate(t *testing.T) {
 			config: TenantConfig{Enabled: false},
 		},
 		{
+			name: "claims enabled passes",
+			config: TenantConfig{
+				Enabled:       true,
+				SystemHeader:  "X-HyperFleet-System",
+				ClaimsEnabled: true,
+				Dimensions:    []TenantDimension{validDimension},
+			},
+		},
+		{
 			name: "valid config with single required dimension passes",
 			config: TenantConfig{
 				Enabled:      true,

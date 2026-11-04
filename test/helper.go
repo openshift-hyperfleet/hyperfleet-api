@@ -420,6 +420,41 @@ func (helper *Helper) NewAuthenticatedContext(account *TestAccount) context.Cont
 	return context.WithValue(context.Background(), ContextAccessToken, tokenString)
 }
 
+// JWTHandler exposes the integration server's JWT handler so tests can chain
+// real token validation behind their own middleware.
+func (helper *Helper) JWTHandler() *auth.JWTHandler {
+	return helper.jwtHandler
+}
+
+// SignTokenWithClaims signs an arbitrary claim set with the integration JWT
+// key, adding issuer/audience/expiry/kid the way CreateJWTString does. Use it
+// for tokens carrying custom claims (e.g. wristband tenant claims).
+func (helper *Helper) SignTokenWithClaims(extra jwt.MapClaims) string {
+	helper.requireJWTIssuers()
+	claims := jwt.MapClaims{
+		"iat": time.Now().Unix(),
+		"exp": time.Now().Add(1 * time.Hour).Unix(),
+	}
+	if len(helper.AppConfig.Server.JWT.Configs) > 0 {
+		claims["iss"] = helper.AppConfig.Server.JWT.Configs[0].IssuerURL
+		if audience := helper.AppConfig.Server.JWT.Configs[0].Audience; audience != "" {
+			claims["aud"] = audience
+		}
+	}
+	for k, v := range extra {
+		claims[k] = v
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
+	token.Header["kid"] = jwkKID
+
+	signedToken, err := token.SignedString(helper.JWTPrivateKey)
+	if err != nil {
+		panic(fmt.Sprintf("test setup: unable to sign test JWT: %s", err))
+	}
+	return signedToken
+}
+
 // GetAccessTokenFromContext extracts the access token from the context
 func GetAccessTokenFromContext(ctx context.Context) string {
 	if token, ok := ctx.Value(ContextAccessToken).(string); ok {

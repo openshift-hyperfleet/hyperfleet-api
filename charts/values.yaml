@@ -91,26 +91,33 @@ config:
       #     header: "X-Custom-Auth"
 
     # -- Tenant enforcement middleware settings. Identity arrives as trusted
-    # headers injected by the gateway (Envoy + Authorino); the API never
-    # extracts JWT claims for tenancy. Different deployments declare
-    # different dimensions via values only — the chart and config loader
-    # stay the same.
+    # headers injected by the gateway (Envoy + Authorino), or from the signed
+    # wristband's claims in claims mode (edge+api). Different deployments
+    # declare different dimensions via values only — the chart and config
+    # loader stay the same.
     tenant:
       # -- Enable tenant enforcement middleware
       enabled: false
+      # -- Read tenant dimensions and system identity from the validated
+      # wristband's claims instead of headers (edge+api mode; requires
+      # jwt.enabled)
+      claims_enabled: false
       # -- Trusted header identifying system callers that bypass tenant
       # scoping (required when tenant.enabled is true)
       system_header: ""
-      # -- Tenant dimensions. Each maps a trusted gateway-injected header to
-      # a tenancy key. When `tenant.enabled: true`, at least one dimension must
-      # be present, and at least one dimension must have `required: true`.
+      # -- Tenant dimensions. Each maps a trusted gateway-injected header, and
+      # the matching wristband claim, to a tenancy key. When
+      # `tenant.enabled: true`, at least one dimension must be present, and at
+      # least one dimension must have `required: true`.
       dimensions: []
       # Example (on-prem: org/project):
       # dimensions:
       #   - header: X-HyperFleet-Org
+      #     claim: org_id
       #     key: org
       #     required: true
       #   - header: X-HyperFleet-Project
+      #     claim: project_id
       #     key: project
       #     required: false
 

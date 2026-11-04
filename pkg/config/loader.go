@@ -184,6 +184,13 @@ func (l *ConfigLoader) validateConfig(config *ApplicationConfig) error {
 		if valErr := config.Server.JWT.Validate(); valErr != nil {
 			return fmt.Errorf("server JWT validation failed: %w", valErr)
 		}
+		// Cross-section rule: claims mode is meaningless without JWT validation —
+		// no token reaches the resolver and it silently falls back to forgeable headers.
+		if config.Server.Tenant.Enabled && config.Server.Tenant.ClaimsEnabled && !config.Server.JWT.Enabled {
+			return fmt.Errorf(
+				"server tenant validation failed: server.tenant.claims_enabled requires server.jwt.enabled",
+			)
+		}
 		if valErr := config.Server.Tenant.Validate(); valErr != nil {
 			return fmt.Errorf("server tenant validation failed: %w", valErr)
 		}
@@ -327,6 +334,7 @@ func (l *ConfigLoader) bindAllEnvVars() {
 	// server.jwt.configs is a list of structs — loaded from YAML config only.
 	// Viper cannot bind env vars to individual list elements.
 	l.bindEnv("server.tenant.enabled")
+	l.bindEnv("server.tenant.claims_enabled")
 	l.bindEnv("server.tenant.system_header")
 	// server.tenant.dimensions is a list of structs — loaded from YAML config only,
 	// same reason as server.jwt.configs above.

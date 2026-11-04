@@ -8,12 +8,17 @@ server:
         identity_claim: email
   tenant:
     enabled: true
-    system_header: X-HyperFleet-System
+    # Dev runs with JWT (make run), so exercise the claims path like edge+api
+    # deployments; gen-dev-token.sh signs the matching claims.
+    claims_enabled: true
+    system_header: x-hyperfleet-system
     dimensions:
-      - header: X-HyperFleet-Org
+      - header: x-tenant-org
+        claim: org_id
         key: org
         required: true
-      - header: X-HyperFleet-Project
+      - header: x-tenant-project
+        claim: project_id
         key: project
         required: false
 

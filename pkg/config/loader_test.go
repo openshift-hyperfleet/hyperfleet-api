@@ -113,6 +113,27 @@ func TestConfigLoader_MissingRequiredField(t *testing.T) {
 	Expect(err.Error()).To(ContainSubstring("Port"))
 }
 
+// TestConfigLoader_ClaimsWithoutJWT tests the cross-section rule that claims
+// mode requires JWT validation
+func TestConfigLoader_ClaimsWithoutJWT(t *testing.T) {
+	RegisterTestingT(t)
+
+	SetMinimalTestEnv(t)
+
+	t.Setenv("HYPERFLEET_SERVER_TENANT_ENABLED", "true")
+	t.Setenv("HYPERFLEET_SERVER_TENANT_CLAIMS_ENABLED", "true")
+
+	loader := NewConfigLoader()
+	cmd := &cobra.Command{}
+	ctx := context.Background()
+
+	_, err := loader.Load(ctx, cmd)
+
+	Expect(err).To(HaveOccurred())
+	Expect(err.Error()).To(ContainSubstring("server tenant validation failed"))
+	Expect(err.Error()).To(ContainSubstring("claims_enabled requires server.jwt.enabled"))
+}
+
 // TestConfigLoader_InvalidHostname tests hostname validation
 func TestConfigLoader_InvalidHostname(t *testing.T) {
 	RegisterTestingT(t)

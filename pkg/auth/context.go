@@ -183,6 +183,46 @@ func GetIdentityFromContext(ctx context.Context, identityClaim string) (string, 
 	return "", fmt.Errorf("identity claim %q not found or empty", identityClaim)
 }
 
+// GetClaimFromContext returns the string value of the named claim from the
+// token validated by JWTHandler, if any. A missing, empty, or non-string
+// claim, or no validated token, returns ("", false).
+func GetClaimFromContext(ctx context.Context, claim string) (string, bool) {
+	userToken := GetJWTTokenFromContext(ctx)
+	if userToken == nil {
+		return "", false
+	}
+
+	claims, ok := userToken.Claims.(jwt.MapClaims)
+	if !ok {
+		return "", false
+	}
+
+	return stringClaim(claims, claim)
+}
+
+// ClaimUnusableInContext reports whether the validated token carries the named
+// claim with a non-string value. An empty string is not unusable: the gateway
+// wristband encodes an absent optional dimension as an empty claim, so callers
+// treat that like a missing claim.
+func ClaimUnusableInContext(ctx context.Context, claim string) bool {
+	userToken := GetJWTTokenFromContext(ctx)
+	if userToken == nil {
+		return false
+	}
+
+	claims, ok := userToken.Claims.(jwt.MapClaims)
+	if !ok {
+		return false
+	}
+
+	val, ok := claims[claim]
+	if !ok {
+		return false
+	}
+	_, isString := val.(string)
+	return !isString
+}
+
 func stringClaim(claims jwt.MapClaims, key string) (string, bool) {
 	val, ok := claims[key]
 	if !ok {
