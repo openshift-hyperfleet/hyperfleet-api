@@ -112,9 +112,10 @@ func (m *resolver) resolveClaimDimensions(ctx context.Context) (map[string]strin
 		claim := d.EffectiveClaim()
 		val, ok := auth.GetClaimFromContext(ctx, claim)
 		if !ok {
-			// Present but unusable (empty/non-string): reject even on optional
-			// dimensions, mirroring the header path's value checks.
-			if auth.ClaimPresentInContext(ctx, claim) {
+			// A non-string claim is garbage: reject even on optional dimensions.
+			// An empty claim is the gateway's encoding of an absent dimension,
+			// so it falls through to the missing handling below.
+			if auth.ClaimUnusableInContext(ctx, claim) {
 				return nil, fmt.Errorf("tenant claim %q has an unusable value", claim)
 			}
 			if d.Required {

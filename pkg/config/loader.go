@@ -184,7 +184,14 @@ func (l *ConfigLoader) validateConfig(config *ApplicationConfig) error {
 		if valErr := config.Server.JWT.Validate(); valErr != nil {
 			return fmt.Errorf("server JWT validation failed: %w", valErr)
 		}
-		if valErr := config.Server.Tenant.Validate(config.Server.JWT.Enabled); valErr != nil {
+		// Cross-section rule: claims mode is meaningless without JWT validation —
+		// no token reaches the resolver and it silently falls back to forgeable headers.
+		if config.Server.Tenant.Enabled && config.Server.Tenant.ClaimsEnabled && !config.Server.JWT.Enabled {
+			return fmt.Errorf(
+				"server tenant validation failed: server.tenant.claims_enabled requires server.jwt.enabled",
+			)
+		}
+		if valErr := config.Server.Tenant.Validate(); valErr != nil {
 			return fmt.Errorf("server tenant validation failed: %w", valErr)
 		}
 		if valErr := config.Health.Validate(); valErr != nil {

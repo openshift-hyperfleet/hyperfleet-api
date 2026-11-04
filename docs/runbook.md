@@ -314,8 +314,8 @@ kubectl logs deployment/hyperfleet-api -n hyperfleet-system --since=15m | grep -
 
 **Common causes:**
 
-- **All requests get 403** — the gateway (Envoy + Authorino) is not injecting the configured dimension headers, or a `required: true` dimension header is missing/empty. Verify the gateway `AuthConfig` injects the headers named in `server.tenant.dimensions[].header`.
-- **Invalid dimension value** — dimension header values must match `^[A-Za-z0-9._-]+$` and be ≤ 63 characters; other values are rejected with 403.
+- **All requests get 403** — the gateway (Envoy + Authorino) is not injecting the configured dimension headers, or a `required: true` dimension header is missing/empty. Verify the gateway `AuthConfig` injects the headers named in `server.tenant.dimensions[].header`. In claims mode (`claims_enabled: true`), check instead that the wristband carries the configured claims — including that dimensions whose claim name differs from the key set `claim` explicitly.
+- **Invalid dimension value** — dimension header values must match `^[A-Za-z0-9._-]+$` and be ≤ 63 characters (≤ 255 for wristband claims); other values are rejected with 403.
 - **System caller can't write resources** — system identities (system header value `true`) may only write `status`/`conditions`; any other resource mutation (create, update, or delete) returns 403. This is expected — route resource writes through a tenant-scoped identity.
 - **Resources "disappear" (404)** — the resource's tenancy does not contain the caller's resolved tenancy (the caller's dimensions are not a subset of the resource's). Confirm the caller's dimension headers match the tenant the resource was created under. Cross-tenant reads return 404 by design.
 

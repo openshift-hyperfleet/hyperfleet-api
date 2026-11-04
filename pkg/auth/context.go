@@ -200,9 +200,11 @@ func GetClaimFromContext(ctx context.Context, claim string) (string, bool) {
 	return stringClaim(claims, claim)
 }
 
-// ClaimPresentInContext reports whether the validated token carries the named
-// claim key, even with an empty or non-string value.
-func ClaimPresentInContext(ctx context.Context, claim string) bool {
+// ClaimUnusableInContext reports whether the validated token carries the named
+// claim with a non-string value. An empty string is not unusable: the gateway
+// wristband encodes an absent optional dimension as an empty claim, so callers
+// treat that like a missing claim.
+func ClaimUnusableInContext(ctx context.Context, claim string) bool {
 	userToken := GetJWTTokenFromContext(ctx)
 	if userToken == nil {
 		return false
@@ -213,8 +215,12 @@ func ClaimPresentInContext(ctx context.Context, claim string) bool {
 		return false
 	}
 
-	_, ok = claims[claim]
-	return ok
+	val, ok := claims[claim]
+	if !ok {
+		return false
+	}
+	_, isString := val.(string)
+	return !isString
 }
 
 func stringClaim(claims jwt.MapClaims, key string) (string, bool) {

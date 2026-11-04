@@ -305,13 +305,13 @@ After authenticating a caller, the gateway injects identity and tenant headers d
 - the caller-identity header (per-issuer `identity_header`, gateway convention `X-HyperFleet-Identity`) — only consumed when `server.jwt.enabled` is `true`; the resolver that reads it is not mounted otherwise, so with JWT disabled the API ignores this header even if tenant scoping is on
 - the tenant dimension headers (`server.tenant.dimensions[].header`, gateway convention `X-HyperFleet-Org`, `X-HyperFleet-Project`, …) — resolved independently of JWT, so these still apply when `server.jwt.enabled` is `false` and `server.tenant.enabled` is `true`
 
-The API reads whatever header names are configured; the `X-HyperFleet-*` names are the gateway's convention, not hardcoded. See [Tenant isolation](#tenant-isolation) for how these drive scoping.
+The API reads whatever header names are configured; the `X-HyperFleet-*` names are the gateway's convention, not hardcoded. In claims mode (`server.tenant.claims_enabled: true`) a validated wristband takes precedence and these headers are ignored for tenancy. See [Tenant isolation](#tenant-isolation) for how these drive scoping.
 
 ## Tenant isolation
 
-Authentication (JWT validation) and tenant isolation are separate concerns. Tenant identity arrives as trusted headers injected by a gateway (e.g. Envoy + Authorino) — the API does not extract tenant dimensions from JWT claims. This is safe only because the gateway strips client-supplied system/dimension headers, injects validated values, and blocks any direct route to the API pod — see [ADR-0020 — Envoy and Authorino as the API Authentication Gateway](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/adrs/0020-envoy-authorino-api-gateway.md).
+Authentication (JWT validation) and tenant isolation are separate concerns. Tenant identity arrives either as trusted headers injected by a gateway (e.g. Envoy + Authorino), or — in edge+api deployments with `server.tenant.claims_enabled: true` — from the claims of the signed wristband the gateway issues after authenticating the caller; in claims mode forgeable client headers are ignored. The header path is safe only because the gateway strips client-supplied system/dimension headers, injects validated values, and blocks any direct route to the API pod — see [ADR-0020 — Envoy and Authorino as the API Authentication Gateway](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/adrs/0020-envoy-authorino-api-gateway.md).
 
-When `server.tenant.enabled` is `true`, a resolver middleware reads a system header (grants an unscoped context, e.g. for internal services like Sentinel and adapters) and configured dimension headers (collected into the caller's tenancy map). A caller is treated as a system caller when the `system_header` value equals `true` (case-insensitive). A non-system caller missing a required dimension, presenting an invalid dimension value (values must match `^[A-Za-z0-9._-]+$` and be at most 63 characters), or resolving zero dimensions, is rejected with `403 Forbidden` before any database access.
+When `server.tenant.enabled` is `true`, a resolver middleware reads a system header (grants an unscoped context, e.g. for internal services like Sentinel and adapters) and configured dimension headers (collected into the caller's tenancy map). A caller is treated as a system caller when the `system_header` value equals `true` (case-insensitive); in claims mode the `hf_system` wristband claim plays that role instead. A non-system caller missing a required dimension, presenting an invalid dimension value (values must match `^[A-Za-z0-9._-]+$`, at most 63 characters from headers or 255 from claims), or resolving zero dimensions, is rejected with `403 Forbidden` before any database access.
 
 Once a tenant context is resolved, resource reads, lists, updates, and deletes are scoped to it (see [database.md](database.md#tenant-scoping)). A resource outside the caller's tenancy returns `404 Not Found`, not `403`, on read, update, and delete — this avoids leaking a cross-tenant resource's existence. System callers bypass this scoping entirely, but may only write `status`/`conditions`: any other resource mutation (create, update, or delete) from a system identity is rejected with `403 Forbidden`.
 
@@ -323,12 +323,16 @@ The tenant middleware runs after JWT validation and caller-identity resolution w
 server:
   tenant:
     enabled: true
+    claims_enabled: false                # true: read dimensions and system identity from the
+                                         # validated wristband's claims (edge+api; requires jwt.enabled)
     system_header: X-HyperFleet-System   # value "true" marks system callers that bypass scoping
     dimensions:
       - header: X-HyperFleet-Org         # trusted gateway-injected header
+        claim: org_id                    # matching wristband claim (defaults to the key)
         key: org                          # tenancy map key
         required: true
       - header: X-HyperFleet-Project
+        claim: project_id
         key: project
         required: false
 ```

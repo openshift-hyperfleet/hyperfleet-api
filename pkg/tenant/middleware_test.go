@@ -326,8 +326,6 @@ func TestResolver_ResolveTenantClaimsMode(t *testing.T) {
 			name: "claim value with disallowed characters"},
 		{claims: jwt.MapClaims{"hf_system": "false", "org_id": "acme", "project_id": 123},
 			name: "optional claim with a non-string value"},
-		{claims: jwt.MapClaims{"hf_system": "false", "org_id": "acme", "project_id": ""},
-			name: "optional claim present but empty"},
 		{claims: jwt.MapClaims{"hf_system": "false", "org_id": strings.Repeat("a", maxClaimValueLen+1)},
 			name: "claim value exceeding max length"},
 		{claims: jwt.MapClaims{"hf_system": "false"}, name: "zero claims resolved"},
@@ -348,6 +346,30 @@ func TestResolver_ResolveTenantClaimsMode(t *testing.T) {
 			Expect(body["status"]).To(BeNumerically("==", 403))
 		})
 	}
+
+	t.Run("optional claim present but empty is treated as absent (gateway wristband encoding)", func(t *testing.T) {
+		RegisterTestingT(t)
+		resolved = nil
+		mw := NewResolver(claimsTestConfig()).ResolveTenant(next)
+		rr := serveWithToken(mw, "/api/hyperfleet/v1/clusters", nil,
+			jwt.MapClaims{"hf_system": "false", "org_id": "acme", "project_id": ""})
+		Expect(rr.Code).To(Equal(http.StatusOK))
+		Expect(resolved.Dimensions).To(Equal(map[string]string{"org": "acme"}))
+	})
+
+	t.Run("dimensions without claim fall back to the key and miss a differently-named claim", func(t *testing.T) {
+		RegisterTestingT(t)
+		resolved = nil
+		cfg := claimsTestConfig()
+		cfg.Dimensions = []config.TenantDimension{
+			{Header: "X-HyperFleet-Org", Key: "org", Required: true},
+		}
+		mw := NewResolver(cfg).ResolveTenant(next)
+		rr := serveWithToken(mw, "/api/hyperfleet/v1/clusters", nil,
+			jwt.MapClaims{"hf_system": "false", "org_id": "acme"})
+		Expect(rr.Code).To(Equal(http.StatusForbidden))
+		Expect(resolved).To(BeNil())
+	})
 
 	t.Run("claims enabled but no validated token falls back to headers (edge)", func(t *testing.T) {
 		RegisterTestingT(t)

@@ -268,12 +268,13 @@ See [Caller identity for audit](authentication.md#caller-identity-for-audit) for
 
 ### Tenant Enforcement
 
-Optional per-request tenant scoping. Tenant identity is **not** taken from JWT claims — it arrives as trusted HTTP headers injected by a gateway (Envoy + Authorino). See [Tenant isolation](authentication.md#tenant-isolation) for the conceptual model and trust boundary.
+Optional per-request tenant scoping. Tenant identity arrives as trusted HTTP headers injected by a gateway (Envoy + Authorino), or — with `claims_enabled` — from the validated wristband's claims (edge+api deployments). See [Tenant isolation](authentication.md#tenant-isolation) for the conceptual model and trust boundary.
 
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
 | `server.tenant.enabled` | bool | `false` | Enable the tenant enforcement middleware |
-| `server.tenant.system_header` | string | `""` | Trusted header marking system callers (e.g. Sentinel, adapters) that bypass scoping. A caller is treated as system when this header's value equals `true` (case-insensitive). Required when `enabled` is `true`. |
+| `server.tenant.claims_enabled` | bool | `false` | Read tenant dimensions and system identity from the validated wristband's claims instead of headers (edge+api mode; requires `server.jwt.enabled`). Without a validated token, resolution falls back to headers. |
+| `server.tenant.system_header` | string | `""` | Trusted header marking system callers (e.g. Sentinel, adapters) that bypass scoping. A caller is treated as system when this header's value equals `true` (case-insensitive); in claims mode the `hf_system` claim plays that role instead. Required when `enabled` is `true`. |
 | `server.tenant.dimensions` | list | `[]` | YAML only. Tenant dimension mappings. Required (non-empty) when `enabled` is `true`, and at least one entry must have `required: true`. |
 
 Each entry in `server.tenant.dimensions` has the following fields:
@@ -281,7 +282,8 @@ Each entry in `server.tenant.dimensions` has the following fields:
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `header` | string | Yes | Trusted gateway-injected HTTP header carrying this dimension's value |
-| `key` | string | Yes | Tenancy map key the header value is stored under (drives the `tenancy @> ?` DB match) |
+| `claim` | string | No (defaults to `key`) | Wristband claim carrying this dimension's value in claims mode. Set explicitly when the claim name differs from the key (e.g. key `org`, claim `org_id`). |
+| `key` | string | Yes | Tenancy map key the dimension value is stored under (drives the `tenancy @> ?` DB match) |
 | `required` | bool | No (default `false`) | Whether a non-system caller must present this dimension |
 
 **Example:**
@@ -293,14 +295,16 @@ server:
     system_header: X-HyperFleet-System
     dimensions:
       - header: X-HyperFleet-Org
+        claim: org_id
         key: org
         required: true
       - header: X-HyperFleet-Project
+        claim: project_id
         key: project
         required: false
 ```
 
-Header values for dimensions must be at most 63 characters and match `^[A-Za-z0-9._-]+$`. A non-system caller missing a required dimension, presenting an invalid dimension value, or resolving zero dimensions is rejected with `403 Forbidden` before any database access.
+Dimension values must match `^[A-Za-z0-9._-]+$` and be at most 63 characters from headers, or 255 from wristband claims (the claims bound accommodates Oracle OCIDs, which exceed the DNS label limit). A non-system caller missing a required dimension, presenting an invalid dimension value, or resolving zero dimensions is rejected with `403 Forbidden` before any database access.
 
 </details>
 

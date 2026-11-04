@@ -42,19 +42,13 @@ type TenantConfig struct {
 // outside this struct). A caller resolving zero dimensions must never reach
 // the data layer (an empty tenancy map would contain-match every row), so at
 // least one dimension must be required.
-func (c *TenantConfig) Validate(jwtEnabled bool) error {
+func (c *TenantConfig) Validate() error {
 	if !c.Enabled {
 		return nil
 	}
 
 	if c.SystemHeader == "" {
 		return fmt.Errorf("server.tenant.system_header is required when tenant is enabled")
-	}
-	if c.ClaimsEnabled && !jwtEnabled {
-		return fmt.Errorf(
-			"server.tenant.claims_enabled requires server.jwt.enabled: without JWT validation " +
-				"no token reaches the resolver and it silently falls back to forgeable headers",
-		)
 	}
 	if !validation.IsValidHeaderName(c.SystemHeader) {
 		return fmt.Errorf("server.tenant.system_header %q is not a valid HTTP header name", c.SystemHeader)
