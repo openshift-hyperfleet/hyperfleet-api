@@ -21,6 +21,7 @@ const (
 	testReadyClusters = "NAME PORT RELEASE READY\nmy-cluster 6443 4.22 ready\n"
 	getCommand        = "get"
 	createCommand     = "create"
+	deleteCommand     = "delete"
 	clustersCommand   = "clusters"
 	kubeconfigCommand = "kubeconfig"
 )
@@ -78,7 +79,7 @@ func waitForCreate(t *testing.T, controller *CoreshiftController, name string) {
 	}
 }
 
-func TestCoreshiftReportsReadyWithKubeconfigPath(t *testing.T) {
+func TestCoreshiftRefreshesExistingClusterWithoutRedeploy(t *testing.T) {
 	RegisterTestingT(t)
 	kubeconfig := "/outside/repo/state/my-cluster.kubeconfig"
 	runner := &fakeCoreshiftRunner{run: func(args []string) (string, error) {
@@ -105,7 +106,80 @@ func TestCoreshiftReportsReadyWithKubeconfigPath(t *testing.T) {
 	} {
 		Expect(conditionStatus(report, conditionType)).To(Equal(api.AdapterConditionTrue))
 	}
-	Expect(runner.snapshot()).To(HaveLen(2))
+	Expect(runner.snapshot()).To(Equal([][]string{
+		{getCommand, clustersCommand},
+		{getCommand, kubeconfigCommand, "--name", "my-cluster"},
+	}))
+}
+
+func TestCoreshiftDeletesClusterAndReportsFinalized(t *testing.T) {
+	RegisterTestingT(t)
+	exists := true
+	runner := &fakeCoreshiftRunner{run: func(args []string) (string, error) {
+		switch strings.Join(args, " ") {
+		case getCommand + " " + clustersCommand:
+			if exists {
+				return testReadyClusters, nil
+			}
+			return "No clusters\n", nil
+		case deleteCommand + " cluster --name my-cluster":
+			exists = false
+			return "Deleted cluster my-cluster\n", nil
+		}
+		return "", fmt.Errorf("unexpected args: %v", args)
+	}}
+	controller := newTestCoreshift(runner, testOptions())
+	cluster := ClusterView{Name: "my-cluster", Generation: 4, Deleting: true}
+
+	report, err := controller.Reconcile(context.Background(), cluster)
+
+	Expect(err).ToNot(HaveOccurred())
+	Expect(report.ObservedGeneration).To(Equal(int32(4)))
+	Expect(conditionStatus(report, api.AdapterConditionTypeFinalized)).To(Equal(api.AdapterConditionTrue))
+	Expect(runner.snapshot()).To(Equal([][]string{
+		{getCommand, clustersCommand},
+		{deleteCommand, "cluster", "--name", "my-cluster"},
+		{getCommand, clustersCommand},
+	}))
+}
+
+func TestCoreshiftReportsFinalizedWhenClusterAlreadyGone(t *testing.T) {
+	RegisterTestingT(t)
+	runner := &fakeCoreshiftRunner{run: func(args []string) (string, error) {
+		Expect(strings.Join(args, " ")).To(Equal(getCommand + " " + clustersCommand))
+		return "No clusters\n", nil
+	}}
+	controller := newTestCoreshift(runner, testOptions())
+	cluster := ClusterView{Name: "my-cluster", Generation: 5, Deleting: true}
+
+	report, err := controller.Reconcile(context.Background(), cluster)
+
+	Expect(err).ToNot(HaveOccurred())
+	Expect(report.ObservedGeneration).To(Equal(int32(5)))
+	Expect(conditionStatus(report, api.AdapterConditionTypeFinalized)).To(Equal(api.AdapterConditionTrue))
+	Expect(runner.snapshot()).To(HaveLen(1))
+}
+
+func TestCoreshiftReportsPendingWhileClusterStillExists(t *testing.T) {
+	RegisterTestingT(t)
+	runner := &fakeCoreshiftRunner{run: func(args []string) (string, error) {
+		switch strings.Join(args, " ") {
+		case getCommand + " " + clustersCommand:
+			return testReadyClusters, nil
+		case deleteCommand + " cluster --name my-cluster":
+			return "Cluster my-cluster is not running\n", nil
+		}
+		return "", fmt.Errorf("unexpected args: %v", args)
+	}}
+	controller := newTestCoreshift(runner, testOptions())
+	cluster := ClusterView{Name: "my-cluster", Generation: 2, Deleting: true}
+
+	report, err := controller.Reconcile(context.Background(), cluster)
+
+	Expect(err).ToNot(HaveOccurred())
+	Expect(conditionByType(report, api.AdapterConditionTypeFinalized)).To(BeNil())
+	Expect(conditionStatus(report, api.AdapterConditionTypeAvailable)).To(Equal(api.AdapterConditionFalse))
+	Expect(conditionStatus(report, api.AdapterConditionTypeApplied)).To(Equal(api.AdapterConditionTrue))
 }
 
 func TestCoreshiftReportsPendingForExistingNotReadyCluster(t *testing.T) {
