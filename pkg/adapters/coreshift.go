@@ -82,7 +82,7 @@ func (c *CoreshiftController) Reconcile(
 	ctx context.Context, cluster ClusterView,
 ) (StatusReport, error) {
 	if cluster.Deleting {
-		return pendingReport(cluster, "Deleting", "Control plane cleanup is pending"), nil
+		return c.reconcileDelete(ctx, cluster)
 	}
 
 	failed, running := c.takeCreate(cluster.Name)
@@ -114,6 +114,43 @@ func (c *CoreshiftController) Reconcile(
 		return c.errorReport(cluster, err), err
 	}
 	return readyReport(cluster, kubeconfig), nil
+}
+
+// reconcileDelete tears the control plane down and finalizes only once it is
+// gone. Listing first keeps a repeat pass after Finalized safe: an absent
+// cluster is never deleted again.
+func (c *CoreshiftController) reconcileDelete(
+	ctx context.Context, cluster ClusterView,
+) (StatusReport, error) {
+	clusters, err := c.listClusters(ctx)
+	if err != nil {
+		return c.errorReport(cluster, err), err
+	}
+	if _, found := findCluster(clusters, cluster.Name); !found {
+		return finalizedReport(cluster), nil
+	}
+
+	deleteErr := c.deleteCluster(ctx, cluster.Name)
+
+	clusters, err = c.listClusters(ctx)
+	if err != nil {
+		return c.errorReport(cluster, err), err
+	}
+	if _, found := findCluster(clusters, cluster.Name); found {
+		if deleteErr != nil {
+			return c.errorReport(cluster, deleteErr), deleteErr
+		}
+		return pendingReport(cluster, "Deleting", "Control plane teardown is in progress"), nil
+	}
+	return finalizedReport(cluster), nil
+}
+
+func (c *CoreshiftController) deleteCluster(ctx context.Context, name string) error {
+	if _, err := c.runner.Run(ctx, "delete", "cluster", "--name", name); err != nil {
+		return fmt.Errorf("delete coreshift cluster: %s",
+			redactSecret(err.Error(), c.opts.PullSecretFile))
+	}
+	return nil
 }
 
 // takeCreate reports an in-flight create, or returns the error of one that
@@ -315,6 +352,20 @@ func readyReport(cluster ClusterView, kubeconfig string) StatusReport {
 			condition(api.AdapterConditionTypeHealth, api.AdapterConditionTrue, reason, message),
 		},
 		Data: map[string]interface{}{"kubeconfig": kubeconfig},
+	}
+}
+
+func finalizedReport(cluster ClusterView) StatusReport {
+	const reason = "Finalized"
+	const message = "Control plane has been deleted"
+	return StatusReport{
+		ObservedGeneration: cluster.Generation,
+		Conditions: []api.AdapterCondition{
+			condition(api.AdapterConditionTypeAvailable, api.AdapterConditionFalse, reason, message),
+			condition(api.AdapterConditionTypeApplied, api.AdapterConditionTrue, reason, message),
+			condition(api.AdapterConditionTypeHealth, api.AdapterConditionFalse, reason, message),
+			condition(api.AdapterConditionTypeFinalized, api.AdapterConditionTrue, reason, message),
+		},
 	}
 }
 
