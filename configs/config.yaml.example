@@ -14,7 +14,7 @@ orchestrator:
 coreshift:
   binary: coreshift
   pull_secret_file: ""
-  state_dir: ""                     # Defaults to ~/.local/state/hyperfleet/coreshift
+  # state_dir: /var/lib/hyperfleet/coreshift  # Defaults to ~/.local/state/hyperfleet/coreshift
 
 # Server Configuration
 server:

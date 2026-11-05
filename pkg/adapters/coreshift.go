@@ -56,12 +56,11 @@ type createOp struct {
 // CoreshiftController mints and inspects coreshift control planes.
 type CoreshiftController struct {
 	runner   Runner
-	opts     CoreshiftOptions
 	portFree func(int) bool
-
-	mu       sync.Mutex
 	creates  map[string]*createOp
 	reserved map[string]int
+	opts     CoreshiftOptions
+	mu       sync.Mutex
 }
 
 var _ Controller = (*CoreshiftController)(nil)
@@ -101,8 +100,8 @@ func (c *CoreshiftController) Reconcile(
 
 	row, found := findCluster(clusters, cluster.Name)
 	if !found {
-		if err := c.startCreate(ctx, cluster.Name, clusters); err != nil {
-			return c.errorReport(cluster, err), err
+		if startErr := c.startCreate(ctx, cluster.Name, clusters); startErr != nil {
+			return c.errorReport(cluster, startErr), startErr
 		}
 		return pendingReport(cluster, "Creating", "Control plane creation started"), nil
 	}

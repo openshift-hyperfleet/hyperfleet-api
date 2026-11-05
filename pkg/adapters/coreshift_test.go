@@ -16,12 +16,19 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 )
 
-const testPullSecret = "/outside/repo/pull-secret"
+const (
+	testPullSecret    = "/outside/repo/pull-secret"
+	testReadyClusters = "NAME PORT RELEASE READY\nmy-cluster 6443 4.22 ready\n"
+	getCommand        = "get"
+	createCommand     = "create"
+	clustersCommand   = "clusters"
+	kubeconfigCommand = "kubeconfig"
+)
 
 type fakeCoreshiftRunner struct {
 	run   func(args []string) (string, error)
-	mu    sync.Mutex
 	calls [][]string
+	mu    sync.Mutex
 }
 
 func (r *fakeCoreshiftRunner) Run(_ context.Context, args ...string) (string, error) {
@@ -76,9 +83,9 @@ func TestCoreshiftReportsReadyWithKubeconfigPath(t *testing.T) {
 	kubeconfig := "/outside/repo/state/my-cluster.kubeconfig"
 	runner := &fakeCoreshiftRunner{run: func(args []string) (string, error) {
 		switch strings.Join(args, " ") {
-		case "get clusters":
-			return "NAME PORT RELEASE READY\nmy-cluster 6443 4.22 ready\n", nil
-		case "get kubeconfig --name my-cluster":
+		case getCommand + " " + clustersCommand:
+			return testReadyClusters, nil
+		case getCommand + " " + kubeconfigCommand + " --name my-cluster":
 			return kubeconfig, nil
 		}
 		return "", fmt.Errorf("unexpected args: %v", args)
@@ -104,7 +111,7 @@ func TestCoreshiftReportsReadyWithKubeconfigPath(t *testing.T) {
 func TestCoreshiftReportsPendingForExistingNotReadyCluster(t *testing.T) {
 	RegisterTestingT(t)
 	runner := &fakeCoreshiftRunner{run: func(args []string) (string, error) {
-		Expect(strings.Join(args, " ")).To(Equal("get clusters"))
+		Expect(strings.Join(args, " ")).To(Equal(getCommand + " " + clustersCommand))
 		return "NAME PORT RELEASE READY\nmy-cluster 6443 4.22 not ready\n", nil
 	}}
 	controller := newTestCoreshift(runner, testOptions())
@@ -125,15 +132,15 @@ func TestCoreshiftStartsCreateOnceThenReportsReady(t *testing.T) {
 	var listReady atomic.Bool
 	runner := &fakeCoreshiftRunner{run: func(args []string) (string, error) {
 		switch args[0] {
-		case "get":
-			if args[1] == "kubeconfig" {
+		case getCommand:
+			if args[1] == kubeconfigCommand {
 				return "/outside/repo/my-cluster.kubeconfig", nil
 			}
 			if listReady.Load() {
-				return "NAME PORT RELEASE READY\nmy-cluster 6443 4.22 ready\n", nil
+				return testReadyClusters, nil
 			}
 			return "No clusters\n", nil
-		case "create":
+		case createCommand:
 			started <- append([]string(nil), args...)
 			<-release
 			return "", nil
@@ -183,9 +190,9 @@ func TestCoreshiftAllocatesNextPortWhenDefaultIsUsed(t *testing.T) {
 	release := make(chan struct{})
 	runner := &fakeCoreshiftRunner{run: func(args []string) (string, error) {
 		switch args[0] {
-		case "get":
+		case getCommand:
 			return "NAME PORT RELEASE READY\nother 6443 4.22 ready\n", nil
-		case "create":
+		case createCommand:
 			started <- append([]string(nil), args...)
 			<-release
 			return "", nil
@@ -209,9 +216,9 @@ func TestCoreshiftPersistsKubeconfigContent(t *testing.T) {
 	kubeconfig := "apiVersion: v1\nclusters: []\n"
 	runner := &fakeCoreshiftRunner{run: func(args []string) (string, error) {
 		switch strings.Join(args, " ") {
-		case "get clusters":
-			return "NAME PORT RELEASE READY\nmy-cluster 6443 4.22 ready\n", nil
-		case "get kubeconfig --name my-cluster":
+		case getCommand + " " + clustersCommand:
+			return testReadyClusters, nil
+		case getCommand + " " + kubeconfigCommand + " --name my-cluster":
 			return kubeconfig, nil
 		}
 		return "", fmt.Errorf("unexpected args: %v", args)
@@ -235,9 +242,9 @@ func TestCoreshiftReportsCreateFailureWithoutLeakingPullSecret(t *testing.T) {
 	release := make(chan struct{})
 	runner := &fakeCoreshiftRunner{run: func(args []string) (string, error) {
 		switch args[0] {
-		case "get":
+		case getCommand:
 			return "No clusters\n", nil
-		case "create":
+		case createCommand:
 			<-release
 			return "", fmt.Errorf("cannot read %s", testPullSecret)
 		}
