@@ -8,6 +8,14 @@ orchestrator:
   enabled: true
   poll_interval: 5s
 
+# Coreshift Adapter Configuration
+# Mints local podman control planes. The pull-secret path is read from
+# HYPERFLEET_CORESHIFT_PULL_SECRET_FILE and is never stored in this file.
+coreshift:
+  binary: coreshift
+  pull_secret_file: ""
+  state_dir: ""                     # Defaults to ~/.local/state/hyperfleet/coreshift
+
 # Server Configuration
 server:
   hostname: ""                      # Public hostname (optional)

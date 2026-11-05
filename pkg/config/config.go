@@ -15,6 +15,7 @@ type ApplicationConfig struct {
 	Logging      *LoggingConfig              `mapstructure:"logging" json:"logging" validate:"required"`
 	Tracing      *TracingConfig              `mapstructure:"tracing" json:"tracing" validate:"required"`
 	Orchestrator *OrchestratorConfig         `mapstructure:"orchestrator" json:"orchestrator" validate:"required"`
+	Coreshift    *CoreshiftConfig            `mapstructure:"coreshift" json:"coreshift" validate:"required"`
 	Entities     []registry.EntityDescriptor `mapstructure:"entities" json:"entities"`
 	Chains       []chains.Chain              `mapstructure:"chains" json:"chains"`
 }
@@ -41,5 +42,6 @@ func NewApplicationConfig() *ApplicationConfig {
 		Logging:      NewLoggingConfig(),
 		Tracing:      NewTracingConfig(),
 		Orchestrator: NewOrchestratorConfig(),
+		Coreshift:    NewCoreshiftConfig(),
 	}
 }

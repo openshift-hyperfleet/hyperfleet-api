@@ -3,6 +3,11 @@ orchestrator:
   enabled: true
   poll_interval: 5s
 
+# Coreshift adapter: mints local podman control planes.
+# The pull-secret path comes from HYPERFLEET_CORESHIFT_PULL_SECRET_FILE.
+coreshift:
+  binary: coreshift
+
 server:
   jwt:
     enabled: true
