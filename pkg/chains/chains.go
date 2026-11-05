@@ -52,7 +52,13 @@ func Lookup(chains []Chain, topology, platform string) ([]string, bool) {
 
 // LookupSpec reads topology and platform from a resource spec blob.
 func LookupSpec(chains []Chain, spec map[string]interface{}) ([]string, bool) {
-	topology, _ := spec["topology"].(string)
-	platform, _ := spec["platform"].(string)
+	topology, ok := spec["topology"].(string)
+	if !ok {
+		return nil, false
+	}
+	platform, ok := spec["platform"].(string)
+	if !ok {
+		return nil, false
+	}
 	return Lookup(chains, topology, platform)
 }

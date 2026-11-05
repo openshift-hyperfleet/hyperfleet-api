@@ -24,8 +24,8 @@ func TestLookup(t *testing.T) {
 
 func TestLookupSpec(t *testing.T) {
 	tests := []struct {
-		name   string
 		spec   map[string]interface{}
+		name   string
 		wantOK bool
 	}{
 		{
@@ -66,8 +66,8 @@ func TestValidate(t *testing.T) {
 
 	tests := []struct {
 		name      string
-		chains    []Chain
 		errSubstr string
+		chains    []Chain
 	}{
 		{
 			name:   "valid chain passes",
