@@ -183,6 +183,7 @@ dev-token: ## Generate a fresh JWT using the existing dev key (no server restart
 
 .PHONY: run-no-auth
 run-no-auth: db/migrate ## Run the application without auth or TLS (local dev)
+	@test -f configs/config.yaml || cp configs/config.yaml.example configs/config.yaml
 	HYPERFLEET_SERVER_JWT_ENABLED=false HYPERFLEET_SERVER_TLS_ENABLED=false ./bin/hyperfleet-api serve $(DB_FLAGS)
 
 .PHONY: run/docs
