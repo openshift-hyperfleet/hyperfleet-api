@@ -72,3 +72,6 @@ configs/dev-jwks.json
 .claude-flow/
 .mcp.json
 .swarm/
+
+# Ignore opencode local agent tooling
+.opencode/
