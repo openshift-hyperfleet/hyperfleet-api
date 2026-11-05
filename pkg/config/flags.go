@@ -96,6 +96,14 @@ func AddHealthFlags(cmd *cobra.Command) {
 	cmd.Flags().Duration("health-db-ping-timeout", defaults.DBPingTimeout, "Database ping timeout")
 }
 
+// AddOrchestratorFlags adds drift loop configuration flags.
+func AddOrchestratorFlags(cmd *cobra.Command) {
+	defaults := NewOrchestratorConfig()
+
+	cmd.Flags().Bool("orchestrator-enabled", defaults.Enabled, "Enable the in-server drift reconciliation loop")
+	cmd.Flags().Duration("orchestrator-poll-interval", defaults.PollInterval, "How often the drift loop runs")
+}
+
 // AddAllConfigFlags adds all configuration flags to the command
 // This is a convenience function that adds all flag groups
 func AddAllConfigFlags(cmd *cobra.Command) {
@@ -105,4 +113,5 @@ func AddAllConfigFlags(cmd *cobra.Command) {
 	AddLoggingFlags(cmd)
 	AddMetricsFlags(cmd)
 	AddHealthFlags(cmd)
+	AddOrchestratorFlags(cmd)
 }

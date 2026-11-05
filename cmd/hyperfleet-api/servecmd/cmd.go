@@ -155,6 +155,8 @@ func runServe(cmd *cobra.Command, args []string) (runErr error) {
 		return nil
 	})
 
+	startOrchestrator(ctx, c, cfg, ctr)
+
 	serverResults := make(chan error, 3)
 	start := func(name string, srv server.Server) {
 		go func() {

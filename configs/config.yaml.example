@@ -2,6 +2,12 @@
 # Follows HyperFleet Configuration Standard
 # Copy this to /etc/hyperfleet/config.yaml (production) or ./configs/config.yaml (development)
 
+# Orchestrator Configuration
+# In-server drift loop: polls clusters and runs their adapter chains.
+orchestrator:
+  enabled: true
+  poll_interval: 5s
+
 # Server Configuration
 server:
   hostname: ""                      # Public hostname (optional)

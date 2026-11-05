@@ -9,11 +9,17 @@ import (
 const NoopAdapterName = "noop"
 
 // NoopController proves the SPI without touching any infrastructure.
-type NoopController struct{}
+// AdapterName lets it stand in for a configured adapter until the real one lands.
+type NoopController struct {
+	AdapterName string
+}
 
 var _ Controller = NoopController{}
 
-func (NoopController) Name() string {
+func (c NoopController) Name() string {
+	if c.AdapterName != "" {
+		return c.AdapterName
+	}
 	return NoopAdapterName
 }
 

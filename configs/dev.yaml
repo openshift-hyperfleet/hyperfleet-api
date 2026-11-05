@@ -1,3 +1,8 @@
+# In-server drift loop: polls clusters and runs their adapter chains.
+orchestrator:
+  enabled: true
+  poll_interval: 5s
+
 server:
   jwt:
     enabled: true

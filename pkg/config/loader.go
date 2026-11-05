@@ -211,6 +211,9 @@ func (l *ConfigLoader) validateConfig(config *ApplicationConfig) error {
 		if valErr := config.Tracing.Validate(); valErr != nil {
 			return fmt.Errorf("tracing config validation failed: %w", valErr)
 		}
+		if valErr := config.Orchestrator.Validate(); valErr != nil {
+			return fmt.Errorf("orchestrator config validation failed: %w", valErr)
+		}
 		if valErr := chains.Validate(config.Chains, knownAdapters(config.Entities)); valErr != nil {
 			return fmt.Errorf("chain validation failed: %w", valErr)
 		}
@@ -393,6 +396,10 @@ func (l *ConfigLoader) bindAllEnvVars() {
 	l.bindEnv("health.shutdown_timeout")
 	l.bindEnv("health.db_ping_timeout")
 
+	// Orchestrator config
+	l.bindEnv("orchestrator.enabled")
+	l.bindEnv("orchestrator.poll_interval")
+
 	// Tracing config
 	l.bindEnv("tracing.enabled")
 	l.bindEnv("tracing.service_name")
@@ -460,6 +467,10 @@ func (l *ConfigLoader) bindFlags(cmd *cobra.Command) {
 		cmd.Flags().Lookup("metrics-label-metrics-inclusion-duration"))
 	l.bindPFlag("metrics.reconciliation_stuck_threshold",
 		cmd.Flags().Lookup("metrics-reconciliation-stuck-threshold"))
+
+	// Orchestrator flags: --orchestrator-* -> orchestrator.*
+	l.bindPFlag("orchestrator.enabled", cmd.Flags().Lookup("orchestrator-enabled"))
+	l.bindPFlag("orchestrator.poll_interval", cmd.Flags().Lookup("orchestrator-poll-interval"))
 
 	// Health flags: --health-* -> health.*
 	l.bindPFlag("health.host", cmd.Flags().Lookup("health-host"))
