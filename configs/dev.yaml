@@ -54,3 +54,11 @@ entities:
   - kind: WifConfig
     plural: wifconfigs
     spec_schema_name: WifConfigSpec
+
+# Adapter chains keyed by topology/platform. The PoC declares one:
+# control planes run as local podman workloads, so no placement or transport
+# adapters are needed.
+chains:
+  - topology: hosted
+    platform: coreshift
+    adapters: [coreshift]

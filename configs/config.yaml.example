@@ -194,6 +194,14 @@ entities:
     plural: wifconfigs
     spec_schema_name: WifConfigSpec
 
+# Adapter Chains
+# Selects an ordered adapter list from the cluster spec's topology and platform.
+# Adapter names must appear in an entity's required_adapters.
+chains:
+  - topology: hosted
+    platform: coreshift
+    adapters: [coreshift]
+
 # ----------------------------------------------------------------------------
 # Configuration Priority (highest to lowest):
 # 1. Command-line flags (e.g., --server-host=0.0.0.0 --server-port=8000)

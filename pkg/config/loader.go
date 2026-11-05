@@ -12,6 +12,8 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
+
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/chains"
 )
 
 // ConfigLoader handles loading and validating application configuration
@@ -208,6 +210,9 @@ func (l *ConfigLoader) validateConfig(config *ApplicationConfig) error {
 		}
 		if valErr := config.Tracing.Validate(); valErr != nil {
 			return fmt.Errorf("tracing config validation failed: %w", valErr)
+		}
+		if valErr := chains.Validate(config.Chains, knownAdapters(config.Entities)); valErr != nil {
+			return fmt.Errorf("chain validation failed: %w", valErr)
 		}
 		return nil
 	}
