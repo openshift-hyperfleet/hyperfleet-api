@@ -19,17 +19,19 @@ import (
 )
 
 const (
-	kindPod         = "Pod"
-	kindService     = "Service"
-	kindSecret      = "Secret"
-	kindStatefulSet = "StatefulSet"
+	kindPod                   = "Pod"
+	kindService               = "Service"
+	kindSecret                = "Secret"
+	kindStatefulSet           = "StatefulSet"
+	kindPersistentVolumeClaim = "PersistentVolumeClaim"
 )
 
 var etcdKindResources = map[string]schema.GroupVersionResource{
-	kindPod:         corev1.SchemeGroupVersion.WithResource("pods"),
-	kindService:     corev1.SchemeGroupVersion.WithResource("services"),
-	kindSecret:      corev1.SchemeGroupVersion.WithResource("secrets"),
-	kindStatefulSet: appsv1.SchemeGroupVersion.WithResource("statefulsets"),
+	kindPod:                   corev1.SchemeGroupVersion.WithResource("pods"),
+	kindService:               corev1.SchemeGroupVersion.WithResource("services"),
+	kindSecret:                corev1.SchemeGroupVersion.WithResource("secrets"),
+	kindStatefulSet:           appsv1.SchemeGroupVersion.WithResource("statefulsets"),
+	kindPersistentVolumeClaim: corev1.SchemeGroupVersion.WithResource("persistentvolumeclaims"),
 }
 
 // ManifestState is the observed state of one object read back from an MC.
@@ -47,6 +49,7 @@ type ManifestState struct {
 // state back. ManifestWork is the product implementation; this is the port.
 type Transport interface {
 	Apply(ctx context.Context, mc string, objects []runtime.Object) error
+	Delete(ctx context.Context, mc, kind, namespace, name string) error
 	List(ctx context.Context, mc, kind, namespace, labelSelector string) ([]ManifestState, error)
 }
 
@@ -102,6 +105,24 @@ func (t *KubeconfigTransport) Apply(ctx context.Context, mc string, objects []ru
 				return fmt.Errorf("update %s %q: %w", gvr.Resource, manifest.GetName(), err)
 			}
 		}
+	}
+	return nil
+}
+
+func (t *KubeconfigTransport) Delete(
+	ctx context.Context, mc, kind, namespace, name string,
+) error {
+	gvr, ok := etcdKindResources[kind]
+	if !ok {
+		return fmt.Errorf("unsupported manifest kind %q", kind)
+	}
+	client, err := t.clientForMC(mc)
+	if err != nil {
+		return err
+	}
+	err = client.Resource(gvr).Namespace(namespace).Delete(ctx, name, metav1.DeleteOptions{})
+	if err != nil && !apierrors.IsNotFound(err) {
+		return fmt.Errorf("delete %s %q in %q: %w", gvr.Resource, name, mc, err)
 	}
 	return nil
 }

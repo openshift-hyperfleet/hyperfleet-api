@@ -117,6 +117,22 @@ func TestKubeconfigTransportListsPodHealth(t *testing.T) {
 	Expect(healthy).ToNot(HaveKey("my-cluster-etcd-m1"))
 }
 
+func TestKubeconfigTransportDeletesIdempotently(t *testing.T) {
+	RegisterTestingT(t)
+	transport := testTransport(t, newFakeDynamicClient())
+	ctx := context.Background()
+	Expect(transport.Apply(ctx, "mc-a", []runtime.Object{testService()})).To(Succeed())
+
+	Expect(transport.Delete(ctx, "mc-a", kindService, "etcd-my-cluster", "my-cluster-etcd-m0")).
+		To(Succeed())
+	Expect(transport.Delete(ctx, "mc-a", kindService, "etcd-my-cluster", "my-cluster-etcd-m0")).
+		To(Succeed())
+
+	states, err := transport.List(ctx, "mc-a", kindService, "etcd-my-cluster", "app=etcd")
+	Expect(err).ToNot(HaveOccurred())
+	Expect(states).To(BeEmpty())
+}
+
 func TestKubeconfigTransportRejectsUnknownMC(t *testing.T) {
 	RegisterTestingT(t)
 	transport := NewKubeconfigTransport(nil)

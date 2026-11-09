@@ -45,8 +45,11 @@ func (f fakeFleet) list() ([]fleet.MC, error) {
 	return f.mcs, f.err
 }
 
+//nolint:govet // fieldalignment: test fake reads naturally in this order
 type recordingTransport struct {
 	applied map[string][]runtime.Object
+	listed  map[string][]ManifestState
+	deleted []string
 	err     error
 }
 
@@ -58,10 +61,23 @@ func (t *recordingTransport) Apply(_ context.Context, mc string, objects []runti
 	return nil
 }
 
+func (t *recordingTransport) Delete(
+	_ context.Context, mc, kind, namespace, name string,
+) error {
+	if t.err != nil {
+		return t.err
+	}
+	t.deleted = append(t.deleted, mc+"/"+kind+"/"+namespace+"/"+name)
+	return nil
+}
+
 func (t *recordingTransport) List(
-	context.Context, string, string, string, string,
+	_ context.Context, mc, kind, _, selector string,
 ) ([]ManifestState, error) {
-	return nil, nil
+	if t.err != nil {
+		return nil, t.err
+	}
+	return t.listed[mc+"/"+kind+"/"+selector], nil
 }
 
 func managedEtcdSpec() map[string]interface{} {
