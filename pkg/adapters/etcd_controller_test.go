@@ -99,10 +99,12 @@ func TestEtcdControllerMintsNothingWithTooFewMCs(t *testing.T) {
 	)
 	cluster := ClusterView{Name: "my-cluster", Generation: 1, Spec: managedEtcdSpec()}
 
-	_, err := controller.Reconcile(context.Background(), cluster)
+	report, err := controller.Reconcile(context.Background(), cluster)
 
 	Expect(err).To(MatchError(ContainSubstring("need 3, found 2")))
 	Expect(transport.applied).To(BeEmpty())
+	Expect(report.Conditions).To(HaveLen(3))
+	Expect(*report.Conditions[0].Message).To(ContainSubstring("need 3, found 2"))
 }
 
 func TestEtcdControllerDoesNothingWithoutManagedKnob(t *testing.T) {
