@@ -75,3 +75,6 @@ configs/dev-jwks.json
 
 # Ignore opencode local agent tooling
 .opencode/
+
+# Ignore local kind fleet kubeconfigs
+/.fleet/

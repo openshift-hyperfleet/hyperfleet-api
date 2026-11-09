@@ -1,0 +1,14 @@
+# kind config used by scripts/fleet.sh for the dev management clusters.
+#
+# kubeadm's default 1-minute budget for its bootstrap API calls is too
+# tight on a busy machine: the control plane can take a few minutes to
+# start serving, and kubeadm then aborts the bootstrap even though the
+# cluster would come up. Give it plenty of room.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+kubeadmConfigPatches:
+- |
+  apiVersion: kubeadm.k8s.io/v1beta4
+  kind: InitConfiguration
+  timeouts:
+    kubernetesAPICall: 10m
