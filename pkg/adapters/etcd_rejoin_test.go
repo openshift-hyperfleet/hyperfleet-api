@@ -39,10 +39,32 @@ func (f *fakeMemberClient) Add(_ context.Context, name, peerURL string) error {
 		f.calls = append(f.calls, "add-failed:"+name)
 		return fmt.Errorf("add failed")
 	}
-	id := fmt.Sprintf("id-%d", len(f.members)+1)
-	f.members[id] = EtcdMember{ID: id, Name: name}
+	f.add(name, peerURL, false)
 	f.calls = append(f.calls, "add:"+name+":"+peerURL)
 	return nil
+}
+
+func (f *fakeMemberClient) AddAsLearner(_ context.Context, name, peerURL string) error {
+	f.add(name, peerURL, true)
+	f.calls = append(f.calls, "learner:"+name+":"+peerURL)
+	return nil
+}
+
+func (f *fakeMemberClient) Promote(_ context.Context, id string) error {
+	member, ok := f.members[id]
+	if !ok {
+		return fmt.Errorf("member %s not found", id)
+	}
+	member.Learner = false
+	f.members[id] = member
+	f.calls = append(f.calls, "promote:"+id)
+	return nil
+}
+
+func (f *fakeMemberClient) add(name, peerURL string, learner bool) string {
+	id := fmt.Sprintf("id-%d", len(f.members)+1)
+	f.members[id] = EtcdMember{ID: id, Name: name, PeerURL: peerURL, Learner: learner}
+	return id
 }
 
 func TestRejoinRemovesStaleMemberAndAddsItBack(t *testing.T) {

@@ -5,17 +5,22 @@ import (
 	"fmt"
 )
 
-// EtcdMember is the membership subset needed to rejoin a member by name.
+// EtcdMember is the membership subset the adapter reads from etcd.
 type EtcdMember struct {
-	ID   string
-	Name string
+	ID      string
+	Name    string
+	PeerURL string
+	Learner bool
 }
 
-// MemberClient is the etcd membership API used by the reset-member operation.
+// MemberClient is the etcd membership API used by the reset-member and
+// replacement operations.
 type MemberClient interface {
 	List(ctx context.Context) ([]EtcdMember, error)
 	Remove(ctx context.Context, id string) error
 	Add(ctx context.Context, name, peerURL string) error
+	AddAsLearner(ctx context.Context, name, peerURL string) error
+	Promote(ctx context.Context, id string) error
 }
 
 // Rejoin removes any stale member with this name, then re-adds it. It does
