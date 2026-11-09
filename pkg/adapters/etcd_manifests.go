@@ -19,6 +19,8 @@ const (
 	etcdDataVolume = "data"
 	etcdTLSVolume  = "tls"
 	etcdStateVol   = "cluster-state"
+
+	etcdManifestsPerMember = 3
 )
 
 // RenderEtcdManifests returns the Secret, Service, and StatefulSet for every
@@ -34,19 +36,49 @@ func RenderEtcdManifests(
 		return nil, fmt.Errorf("invalid etcd storage size %q: %w", opts.StorageSize, err)
 	}
 
-	objects := make([]runtime.Object, 0, len(membership.Slots)*3)
+	objects := make([]runtime.Object, 0, len(membership.Slots)*etcdManifestsPerMember)
 	for _, slot := range membership.Slots {
-		if pki.ServerCerts[slot.MemberName].CertPEM == nil ||
-			pki.PeerCerts[slot.MemberName].CertPEM == nil {
-			return nil, fmt.Errorf("missing cert material for etcd member %q", slot.MemberName)
+		memberObjects, err := renderMemberManifests(membership, slot, pki, opts)
+		if err != nil {
+			return nil, err
 		}
-		objects = append(objects,
-			memberSecret(membership, slot, pki),
-			memberService(membership, slot),
-			memberStatefulSet(membership, slot, pki, opts),
-		)
+		objects = append(objects, memberObjects...)
 	}
 	return objects, nil
+}
+
+// RenderEtcdManifestsByMC groups each member's manifests by target MC.
+func RenderEtcdManifestsByMC(
+	membership Membership, pki *EtcdPKI, opts EtcdOptions,
+) (map[string][]runtime.Object, error) {
+	objects, err := RenderEtcdManifests(membership, pki, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	byMC := make(map[string][]runtime.Object, len(membership.Slots))
+	for index, slot := range membership.Slots {
+		start := index * etcdManifestsPerMember
+		byMC[slot.TargetMC] = append(
+			byMC[slot.TargetMC],
+			objects[start:start+etcdManifestsPerMember]...,
+		)
+	}
+	return byMC, nil
+}
+
+func renderMemberManifests(
+	membership Membership, slot MemberSlot, pki *EtcdPKI, opts EtcdOptions,
+) ([]runtime.Object, error) {
+	if pki.ServerCerts[slot.MemberName].CertPEM == nil ||
+		pki.PeerCerts[slot.MemberName].CertPEM == nil {
+		return nil, fmt.Errorf("missing cert material for etcd member %q", slot.MemberName)
+	}
+	return []runtime.Object{
+		memberSecret(membership, slot, pki),
+		memberService(membership, slot),
+		memberStatefulSet(membership, slot, pki, opts),
+	}, nil
 }
 
 func memberSecret(membership Membership, slot MemberSlot, pki *EtcdPKI) *corev1.Secret {

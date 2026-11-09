@@ -21,7 +21,9 @@ type EtcdOptions struct {
 	Image        string
 	StorageClass string
 	StorageSize  string
-	Slots        int
+	// PreferredMC is the placement target for member 0.
+	PreferredMC string
+	Slots       int
 	// Namespace overrides the per-cluster namespace derived from the name.
 	Namespace string
 }
@@ -110,10 +112,13 @@ type EtcdMemberStatus struct {
 }
 
 // EtcdStatusData is the status data contract consumed by downstream adapters.
+//
+//nolint:govet // fieldalignment: JSON contract reads naturally in this order
 type EtcdStatusData struct {
 	Endpoints    []string           `json:"endpoints"`
 	Members      []EtcdMemberStatus `json:"members"`
 	Quorum       bool               `json:"quorum"`
+	QuorumState  string             `json:"quorumState,omitempty"`
 	QuorumSize   int                `json:"quorumSize"`
 	MembersReady int                `json:"membersReady"`
 }
@@ -143,12 +148,34 @@ func (m Membership) Status(healthy map[string]bool) EtcdStatusData {
 
 // Data renders the contract as the map persisted by the StatusReporter.
 func (s EtcdStatusData) Data() map[string]interface{} {
-	return map[string]interface{}{
+	data := map[string]interface{}{
 		"endpoints":    s.Endpoints,
 		"members":      s.Members,
 		"quorum":       s.Quorum,
 		"quorumSize":   s.QuorumSize,
 		"membersReady": s.MembersReady,
+	}
+	if s.QuorumState != "" {
+		data["quorumState"] = s.QuorumState
+	}
+	return data
+}
+
+// PendingReport publishes the freshly placed membership. Quorum health is
+// reported as pending until member health observation lands.
+func (m Membership) PendingReport(cluster ClusterView) StatusReport {
+	status := m.Status(nil)
+	status.QuorumState = "Pending"
+
+	reason, message := "QuorumPending", "Etcd quorum is pending"
+	return StatusReport{
+		ObservedGeneration: cluster.Generation,
+		Conditions: []api.AdapterCondition{
+			condition(api.AdapterConditionTypeAvailable, api.AdapterConditionFalse, reason, message),
+			condition(api.AdapterConditionTypeApplied, api.AdapterConditionTrue, "Applied", "Etcd members applied"),
+			condition(api.AdapterConditionTypeHealth, api.AdapterConditionFalse, reason, message),
+		},
+		Data: status.Data(),
 	}
 }
 

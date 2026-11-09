@@ -408,6 +408,13 @@ func (l *ConfigLoader) bindAllEnvVars() {
 	l.bindEnv("coreshift.pull_secret_file")
 	l.bindEnv("coreshift.state_dir")
 
+	// Etcd adapter config
+	l.bindEnv("etcd.fleet_dir")
+	l.bindEnv("etcd.preferred_mc")
+	l.bindEnv("etcd.image")
+	l.bindEnv("etcd.storage_class")
+	l.bindEnv("etcd.storage_size")
+
 	// Tracing config
 	l.bindEnv("tracing.enabled")
 	l.bindEnv("tracing.service_name")

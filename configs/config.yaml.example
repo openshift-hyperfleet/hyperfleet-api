@@ -16,6 +16,16 @@ coreshift:
   pull_secret_file: ""
   # state_dir: /var/lib/hyperfleet/coreshift  # Defaults to ~/.local/state/hyperfleet/coreshift
 
+# Etcd Adapter Configuration
+# Places three etcd members across the kubeconfig fleet. Member 0 goes to the
+# preferred management cluster; the others spread to distinct clusters.
+etcd:
+  fleet_dir: /var/lib/hyperfleet/fleet
+  preferred_mc: ""
+  image: quay.io/openshift/origin-etcd:4.20.0
+  storage_class: ""
+  storage_size: 8Gi
+
 # Server Configuration
 server:
   hostname: ""                      # Public hostname (optional)
@@ -135,7 +145,7 @@ entities:
   - kind: Cluster
     plural: clusters
     spec_schema_name: ClusterSpec
-    required_adapters: [coreshift]
+    required_adapters: [coreshift, etcd]
 
     name_min_len: 3
     name_max_len: 53
@@ -215,6 +225,9 @@ chains:
   - topology: hosted
     platform: coreshift
     adapters: [coreshift]
+  - topology: hosted
+    platform: etcd
+    adapters: [etcd]
 
 # ----------------------------------------------------------------------------
 # Configuration Priority (highest to lowest):
