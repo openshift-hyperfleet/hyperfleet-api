@@ -8,6 +8,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
+//nolint:govet // fieldalignment: test fake reads naturally in this order
 type fakeMemberClient struct {
 	members     map[string]EtcdMember
 	calls       []string

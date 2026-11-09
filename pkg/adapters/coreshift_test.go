@@ -24,6 +24,7 @@ const (
 	deleteCommand     = "delete"
 	clustersCommand   = "clusters"
 	kubeconfigCommand = "kubeconfig"
+	noClusters        = "No clusters\n"
 )
 
 type fakeCoreshiftRunner struct {
@@ -121,7 +122,7 @@ func TestCoreshiftDeletesClusterAndReportsFinalized(t *testing.T) {
 			if exists {
 				return testReadyClusters, nil
 			}
-			return "No clusters\n", nil
+			return noClusters, nil
 		case deleteCommand + " cluster --name my-cluster":
 			exists = false
 			return "Deleted cluster my-cluster\n", nil
@@ -147,7 +148,7 @@ func TestCoreshiftReportsFinalizedWhenClusterAlreadyGone(t *testing.T) {
 	RegisterTestingT(t)
 	runner := &fakeCoreshiftRunner{run: func(args []string) (string, error) {
 		Expect(strings.Join(args, " ")).To(Equal(getCommand + " " + clustersCommand))
-		return "No clusters\n", nil
+		return noClusters, nil
 	}}
 	controller := newTestCoreshift(runner, testOptions())
 	cluster := ClusterView{Name: "my-cluster", Generation: 5, Deleting: true}
@@ -213,7 +214,7 @@ func TestCoreshiftStartsCreateOnceThenReportsReady(t *testing.T) {
 			if listReady.Load() {
 				return testReadyClusters, nil
 			}
-			return "No clusters\n", nil
+			return noClusters, nil
 		case createCommand:
 			started <- append([]string(nil), args...)
 			<-release
@@ -317,7 +318,7 @@ func TestCoreshiftReportsCreateFailureWithoutLeakingPullSecret(t *testing.T) {
 	runner := &fakeCoreshiftRunner{run: func(args []string) (string, error) {
 		switch args[0] {
 		case getCommand:
-			return "No clusters\n", nil
+			return noClusters, nil
 		case createCommand:
 			<-release
 			return "", fmt.Errorf("cannot read %s", testPullSecret)
@@ -357,5 +358,5 @@ func TestParseClustersReadsReadiness(t *testing.T) {
 		{name: "ready-one", port: 6443, ready: true},
 		{name: "booting", port: 6445, ready: false},
 	}))
-	Expect(parseClusters("No clusters\n")).To(BeEmpty())
+	Expect(parseClusters(noClusters)).To(BeEmpty())
 }

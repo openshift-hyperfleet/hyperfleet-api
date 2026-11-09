@@ -24,7 +24,7 @@ const (
 	EtcdClientCertKey = "etcd-client.crt"
 	EtcdClientKeyKey  = "etcd-client.key"
 
-	EtcdClientSecretName = "etcd-client-tls"
+	EtcdClientTLSName = "etcd-client-tls"
 )
 
 const (
@@ -40,6 +40,8 @@ type CertMaterial struct {
 
 // EtcdSecret is the Secret-shaped handoff object. Key material only travels
 // in Data, never in logs or status.
+//
+//nolint:govet // fieldalignment: field order mirrors the Secret shape
 type EtcdSecret struct {
 	Name      string
 	Namespace string
@@ -55,6 +57,8 @@ type EtcdPKI struct {
 }
 
 // EtcdPKIOptions controls cert validity and makes tests deterministic.
+//
+//nolint:govet // fieldalignment: options read naturally in this order
 type EtcdPKIOptions struct {
 	Validity time.Duration
 	Now      func() time.Time
@@ -134,7 +138,7 @@ func (p *EtcdPKI) MemberSecret(member MemberSlot) EtcdSecret {
 // ClientSecret renders the exact three-key secret the HyperShift seam expects.
 func (p *EtcdPKI) ClientSecret(namespace string) EtcdSecret {
 	return EtcdSecret{
-		Name:      EtcdClientSecretName,
+		Name:      EtcdClientTLSName,
 		Namespace: namespace,
 		Data: map[string][]byte{
 			EtcdClientCAKey:   p.CA.CertPEM,

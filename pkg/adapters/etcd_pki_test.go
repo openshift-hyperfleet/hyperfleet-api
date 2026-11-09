@@ -67,7 +67,7 @@ func TestEtcdClientSecretHasSeamKeys(t *testing.T) {
 
 	secret := pki.ClientSecret("clusters")
 
-	Expect(secret.Name).To(Equal(EtcdClientSecretName))
+	Expect(secret.Name).To(Equal(EtcdClientTLSName))
 	Expect(secret.Namespace).To(Equal("clusters"))
 	Expect(secret.Data).To(HaveLen(3))
 	Expect(secret.Data).To(HaveKey(EtcdClientCAKey))

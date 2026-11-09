@@ -33,6 +33,8 @@ var etcdKindResources = map[string]schema.GroupVersionResource{
 }
 
 // ManifestState is the observed state of one object read back from an MC.
+//
+//nolint:govet // fieldalignment: grouping beats padding for readability
 type ManifestState struct {
 	Kind      string
 	Name      string

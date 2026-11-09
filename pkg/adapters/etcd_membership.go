@@ -15,6 +15,8 @@ const (
 )
 
 // EtcdOptions configures the etcd adapter. Zero values fall back to defaults.
+//
+//nolint:govet // fieldalignment: grouping beats padding for readability
 type EtcdOptions struct {
 	Image        string
 	StorageClass string
@@ -39,6 +41,8 @@ func (o EtcdOptions) withDefaults() EtcdOptions {
 
 // MemberSlot is one stable etcd member position. TargetMC is chosen by
 // placement; EP-1 only models the slot.
+//
+//nolint:govet // fieldalignment: grouping beats padding for readability
 type MemberSlot struct {
 	Name       string
 	Index      int

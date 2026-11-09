@@ -230,7 +230,8 @@ if ! etcdctl member list >/dev/null 2>&1; then
   exit 0
 fi
 
-MEMBER_ID=$(etcdctl member list -w simple | awk -F, -v name="%[8]s" '{ gsub(/^ +| +$/, "", $3); if ($3 == name) { print $1; exit } }')
+MEMBER_ID=$(etcdctl member list -w simple | awk -F, -v name="%[8]s" \
+  '{ gsub(/^ +| +$/, "", $3); if ($3 == name) { print $1; exit } }')
 if [ -n "${MEMBER_ID}" ]; then
   etcdctl member remove "${MEMBER_ID}"
 fi
