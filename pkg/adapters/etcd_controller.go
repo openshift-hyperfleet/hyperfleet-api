@@ -15,6 +15,7 @@ type FleetLister func() ([]fleet.MC, error)
 type EtcdController struct {
 	fleet     FleetLister
 	transport Transport
+	members   MemberClient
 	opts      EtcdOptions
 }
 
@@ -23,6 +24,12 @@ var _ Controller = (*EtcdController)(nil)
 // NewEtcdController returns an etcd controller backed by the fleet view and transport.
 func NewEtcdController(fleetView FleetLister, transport Transport, opts EtcdOptions) *EtcdController {
 	return &EtcdController{fleet: fleetView, transport: transport, opts: opts}
+}
+
+// WithMembership enables live membership decisions against a quorum client.
+func (c *EtcdController) WithMembership(client MemberClient) *EtcdController {
+	c.members = client
+	return c
 }
 
 func (c *EtcdController) Name() string { return EtcdAdapterName }
@@ -61,6 +68,14 @@ func (c *EtcdController) Reconcile(
 		err = fmt.Errorf("render etcd seam: %w", err)
 		return etcdErrorReport(cluster, err), err
 	}
+	if c.members != nil {
+		report, handled, recoverErr := c.reconcileMembership(
+			ctx, cluster, membership, pki, names, &seam.Payload,
+		)
+		if handled {
+			return report, recoverErr
+		}
+	}
 	byMC, err := RenderEtcdManifestsByMC(membership, pki, c.opts)
 	if err != nil {
 		return etcdErrorReport(cluster, err), err
@@ -79,6 +94,60 @@ func (c *EtcdController) Reconcile(
 	}
 
 	return membership.PendingReport(cluster, &seam.Payload), nil
+}
+
+func (c *EtcdController) reconcileMembership(
+	ctx context.Context,
+	cluster ClusterView,
+	membership Membership,
+	pki *EtcdPKI,
+	fleetMCs []string,
+	seam *EtcdSeamPayload,
+) (StatusReport, bool, error) {
+	state, err := ObserveRecoveryState(ctx, c.transport, c.members, membership, fleetMCs)
+	if err != nil {
+		return etcdErrorReport(cluster, err), true, err
+	}
+	if len(state.Members) == 0 {
+		return StatusReport{}, false, nil
+	}
+
+	decision := DecideRecovery(state)
+	switch decision.Action {
+	case RecoveryNone, RecoveryWait, RecoveryBlocked:
+	case RecoveryPromote:
+		_, err = PromoteMember(ctx, c.members, decision.Target)
+	case RecoveryReplace:
+		slot, found := membership.SlotByMemberName(decision.Target)
+		if !found {
+			err = fmt.Errorf("etcd slot for member %q not found", decision.Target)
+			break
+		}
+		err = ReplaceMember(ctx, c.transport, c.members, slot)
+	case RecoveryRepairMCLoss:
+		membership, err = RepairMCLoss(
+			ctx, c.transport, c.members, pki, membership,
+			decision.Target, fleetMCs, c.opts,
+		)
+	}
+	if err != nil {
+		return etcdErrorReport(cluster, err), true, err
+	}
+	report := RecoveryReport(cluster, decision)
+	status := membership.Status(healthyMembers(state))
+	status.Seam = seam
+	report.Data = status.Data()
+	return report, true, nil
+}
+
+func healthyMembers(state RecoveryState) map[string]bool {
+	healthy := make(map[string]bool, len(state.Members))
+	for _, member := range state.Members {
+		if member.Healthy {
+			healthy[member.Name] = true
+		}
+	}
+	return healthy
 }
 
 func etcdManaged(spec map[string]interface{}) bool {

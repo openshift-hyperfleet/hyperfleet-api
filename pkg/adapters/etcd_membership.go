@@ -93,6 +93,16 @@ func etcdURL(name, namespace string, port int) string {
 	return "https://" + name + "." + namespace + ".svc:" + strconv.Itoa(port)
 }
 
+// SlotByMemberName finds the stable slot with this etcd member name.
+func (m Membership) SlotByMemberName(name string) (MemberSlot, bool) {
+	for _, slot := range m.Slots {
+		if slot.MemberName == name {
+			return slot, true
+		}
+	}
+	return MemberSlot{}, false
+}
+
 // Endpoints returns every member's client URL.
 func (m Membership) Endpoints() []string {
 	endpoints := make([]string, 0, len(m.Slots))
