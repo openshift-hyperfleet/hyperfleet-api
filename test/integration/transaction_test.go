@@ -88,6 +88,7 @@ func TestResourceServiceCreateRollsBackWhenLabelPersistenceFails(t *testing.T) {
 		h.Container.ResourceConditionDao(),
 		h.Container.GenericService(),
 		h.Container.TxRunner(),
+		nil,
 	)
 	Expect(err).NotTo(HaveOccurred())
 

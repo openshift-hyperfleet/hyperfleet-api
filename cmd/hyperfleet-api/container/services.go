@@ -13,6 +13,7 @@ func (c *Container) ResourceService() services.ResourceService {
 			c.ResourceConditionDao(),
 			c.GenericService(),
 			c.TxRunner(),
+			c.cfg.Chains,
 		)
 		if err != nil {
 			panic("failed to create resource service: " + err.Error())

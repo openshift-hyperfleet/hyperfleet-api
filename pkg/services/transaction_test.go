@@ -85,6 +85,7 @@ func TestResourceServiceCreateUsesRunnerContextAndHandlesCommitFailure(t *testin
 		newResourceConditionMock(),
 		&resourceGenericMock{},
 		runner,
+		nil,
 	)
 	if err != nil {
 		t.Fatalf("NewResourceService() error = %v", err)
@@ -116,6 +117,7 @@ func TestResourceServiceCreateInvalidInputSkipsTransaction(t *testing.T) {
 		newResourceConditionMock(),
 		&resourceGenericMock{},
 		runner,
+		nil,
 	)
 	if err != nil {
 		t.Fatalf("NewResourceService() error = %v", err)
@@ -194,6 +196,7 @@ func newTransactionTestResourceService(runner *controlledTxRunner) ResourceServi
 		newResourceConditionMock(),
 		&resourceGenericMock{},
 		runner,
+		nil,
 	)
 	if err != nil {
 		panic("newTransactionTestResourceService: " + err.Error())

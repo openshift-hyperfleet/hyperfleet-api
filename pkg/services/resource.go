@@ -15,6 +15,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/chains"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/dao"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/db"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
@@ -50,6 +51,7 @@ func NewResourceService(
 	resourceConditionDao dao.ResourceConditionDao,
 	generic GenericService,
 	transactionRunner db.TxRunner,
+	chainConfig []chains.Chain,
 ) (ResourceService, error) {
 	mappers, err := buildConditionMappers(registry.All())
 	if err != nil {
@@ -63,6 +65,7 @@ func NewResourceService(
 		generic:              generic,
 		txRunner:             transactionRunner,
 		conditionMappers:     mappers,
+		chains:               chainConfig,
 	}, nil
 }
 
@@ -90,6 +93,22 @@ type sqlResourceService struct {
 	generic              GenericService
 	txRunner             db.TxRunner
 	conditionMappers     map[string]*ConditionMapper // Indexed by Kind (e.g., "Cluster", "NodePool")
+	chains               []chains.Chain
+}
+
+// requiredAdapters returns the gating set for a resource. A cluster is gated by
+// the adapter list of its declared chain; everything else uses the entity-level
+// list, which also remains the valid-names source for startup chain validation.
+func (s *sqlResourceService) requiredAdapters(resource *api.Resource) []string {
+	if resource.Kind == api.ResourceTypeCluster && len(s.chains) > 0 {
+		var spec map[string]interface{}
+		if err := json.Unmarshal(resource.Spec, &spec); err == nil {
+			if adapters, ok := chains.LookupSpec(s.chains, spec); ok {
+				return adapters
+			}
+		}
+	}
+	return registry.MustGet(resource.Kind).RequiredAdapters
 }
 
 // Get returns a single resource by kind and ID. Returns 404 if not found.
@@ -517,10 +536,8 @@ func (s *sqlResourceService) deleteResourceTree(
 func (s *sqlResourceService) shouldSoftDelete(
 	ctx context.Context, resource *api.Resource, children []registry.EntityDescriptor,
 ) (bool, *errors.ServiceError) {
-	desc := registry.MustGet(resource.Kind)
-
-	// Reason 1: Resource has RequiredAdapters
-	if len(desc.RequiredAdapters) > 0 {
+	// Reason 1: Resource has required adapters
+	if len(s.requiredAdapters(resource)) > 0 {
 		return true, nil
 	}
 
@@ -816,8 +833,6 @@ func (s *sqlResourceService) saveAggregatedResourceConditions(
 	adapterStatuses api.AdapterStatusList,
 	hasChildResources bool,
 ) (*reconciliationOutcome, *errors.ServiceError) {
-	desc := registry.MustGet(resource.Kind)
-
 	// Convert the GORM association ([]ResourceCondition) to JSON so it can be
 	// passed to AggregateResourceStatus via PrevConditionsJSON. This is needed
 	// because the aggregation function uses the previous conditions to preserve
@@ -845,7 +860,7 @@ func (s *sqlResourceService) saveAggregatedResourceConditions(
 			RefTime:            refTime,
 			DeletedTime:        resource.DeletedTime,
 			PrevConditionsJSON: prevConditionsJSON,
-			RequiredAdapters:   desc.RequiredAdapters,
+			RequiredAdapters:   s.requiredAdapters(resource),
 			AdapterStatuses:    adapterStatuses,
 			HasChildResources:  hasChildResources,
 		},
@@ -921,8 +936,7 @@ func (s *sqlResourceService) tryHardDeleteResource(
 
 	// Check that ALL required adapters (not just this one) have reported
 	// Finalized=True at the current generation.
-	desc := registry.MustGet(resource.Kind)
-	if !allAdaptersFinalized(desc.RequiredAdapters, allStatuses, resource.Generation) {
+	if !allAdaptersFinalized(s.requiredAdapters(resource), allStatuses, resource.Generation) {
 		return false, nil
 	}
 

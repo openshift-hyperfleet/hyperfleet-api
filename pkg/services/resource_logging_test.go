@@ -73,6 +73,7 @@ func TestForceDelete_IntentLoggedBeforeDelete(t *testing.T) {
 	svc, err := NewResourceService(
 		resourceDao, newMockResourceLabelDao(), newMockAdapterStatusDao(), newResourceConditionMock(),
 		&resourceGenericMock{}, &controlledTxRunner{},
+		nil,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -97,6 +98,7 @@ func TestForceDelete_CommitFailureDoesNotLogSuccess(t *testing.T) {
 	svc, err := NewResourceService(
 		resourceDao, newMockResourceLabelDao(), newMockAdapterStatusDao(),
 		newResourceConditionMock(), &resourceGenericMock{}, runner,
+		nil,
 	)
 	if err != nil {
 		t.Fatal(err)

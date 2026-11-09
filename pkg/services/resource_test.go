@@ -357,6 +357,7 @@ func newTestResourceService(mockDao *mockResourceDao) (ResourceService, *mockRes
 		mockDao,
 		newMockResourceLabelDao(), newMockAdapterStatusDao(), newResourceConditionMock(), generic,
 		&controlledTxRunner{},
+		nil,
 	)
 	if err != nil {
 		panic("newTestResourceService: " + err.Error())
@@ -371,6 +372,7 @@ func newTestResourceServiceWithLabelDao(
 	labelDao := newMockResourceLabelDao()
 	svc, err := NewResourceService(
 		mockDao, labelDao, newMockAdapterStatusDao(), newResourceConditionMock(), generic, &controlledTxRunner{},
+		nil,
 	)
 	if err != nil {
 		panic("newTestResourceServiceWithLabelDao: " + err.Error())
@@ -386,6 +388,7 @@ func newTestResourceServiceWithAdapterStatus(
 	generic := &resourceGenericMock{}
 	svc, err := NewResourceService(
 		mockDao, newMockResourceLabelDao(), asDao, rcDao, generic, &controlledTxRunner{},
+		nil,
 	)
 	if err != nil {
 		panic("newTestResourceServiceWithAdapterStatus: " + err.Error())
@@ -401,6 +404,7 @@ func newTestResourceServiceWithConditions(
 	generic := &resourceGenericMock{}
 	svc, err := NewResourceService(
 		mockDao, newMockResourceLabelDao(), asDao, rcDao, generic, &controlledTxRunner{},
+		nil,
 	)
 	if err != nil {
 		panic("newTestResourceServiceWithConditions: " + err.Error())
@@ -1989,6 +1993,7 @@ func TestResourceService_ForceDelete_DatabaseErrors(t *testing.T) {
 				svc, err := NewResourceService(
 					mockDao, newMockResourceLabelDao(), adapterDao, newResourceConditionMock(),
 					&resourceGenericMock{}, runner,
+					nil,
 				)
 				g.Expect(err).NotTo(HaveOccurred())
 				svcErr := svc.ForceDelete(t.Context(), "Channel", testChannelID, "stuck")
