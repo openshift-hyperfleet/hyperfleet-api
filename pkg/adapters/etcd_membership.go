@@ -121,6 +121,7 @@ type EtcdStatusData struct {
 	QuorumState  string             `json:"quorumState,omitempty"`
 	QuorumSize   int                `json:"quorumSize"`
 	MembersReady int                `json:"membersReady"`
+	Seam         *EtcdSeamPayload   `json:"seam,omitempty"`
 }
 
 // Status builds the status contract from observed member health.
@@ -158,14 +159,18 @@ func (s EtcdStatusData) Data() map[string]interface{} {
 	if s.QuorumState != "" {
 		data["quorumState"] = s.QuorumState
 	}
+	if s.Seam != nil {
+		data["seam"] = s.Seam
+	}
 	return data
 }
 
 // PendingReport publishes the freshly placed membership. Quorum health is
 // reported as pending until member health observation lands.
-func (m Membership) PendingReport(cluster ClusterView) StatusReport {
+func (m Membership) PendingReport(cluster ClusterView, seam *EtcdSeamPayload) StatusReport {
 	status := m.Status(nil)
 	status.QuorumState = "Pending"
+	status.Seam = seam
 
 	reason, message := "QuorumPending", "Etcd quorum is pending"
 	return StatusReport{

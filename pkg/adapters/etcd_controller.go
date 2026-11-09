@@ -55,6 +55,12 @@ func (c *EtcdController) Reconcile(
 		err = fmt.Errorf("mint etcd PKI: %w", err)
 		return etcdErrorReport(cluster, err), err
 	}
+	// The PoC uses the cluster name as the HostedCluster namespace.
+	seam, err := RenderEtcdSeam(membership.Status(nil), pki, cluster.Name)
+	if err != nil {
+		err = fmt.Errorf("render etcd seam: %w", err)
+		return etcdErrorReport(cluster, err), err
+	}
 	byMC, err := RenderEtcdManifestsByMC(membership, pki, c.opts)
 	if err != nil {
 		return etcdErrorReport(cluster, err), err
@@ -72,7 +78,7 @@ func (c *EtcdController) Reconcile(
 		applied[slot.TargetMC] = true
 	}
 
-	return membership.PendingReport(cluster), nil
+	return membership.PendingReport(cluster, &seam.Payload), nil
 }
 
 func etcdManaged(spec map[string]interface{}) bool {
