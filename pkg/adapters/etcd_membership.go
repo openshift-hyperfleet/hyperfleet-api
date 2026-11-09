@@ -28,7 +28,7 @@ type EtcdOptions struct {
 
 func (o EtcdOptions) withDefaults() EtcdOptions {
 	if o.Image == "" {
-		o.Image = "quay.io/coreos/etcd:v3.5.20"
+		o.Image = "quay.io/openshift/origin-etcd:4.20.0"
 	}
 	if o.StorageSize == "" {
 		o.StorageSize = "8Gi"

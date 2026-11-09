@@ -83,7 +83,7 @@ func TestRenderEtcdManifestsCreatesStableMemberResources(t *testing.T) {
 
 	Expect(sts.Spec.Template.Spec.Containers).To(HaveLen(1))
 	etcd := sts.Spec.Template.Spec.Containers[0]
-	Expect(etcd.Image).To(Equal("quay.io/coreos/etcd:v3.5.20"))
+	Expect(etcd.Image).To(Equal("quay.io/openshift/origin-etcd:4.20.0"))
 	command := etcd.Args[0]
 	Expect(command).To(ContainSubstring("--client-cert-auth"))
 	Expect(command).To(ContainSubstring("--peer-client-cert-auth"))
