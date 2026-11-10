@@ -17,6 +17,7 @@ type ApplicationConfig struct {
 	Orchestrator *OrchestratorConfig         `mapstructure:"orchestrator" json:"orchestrator" validate:"required"`
 	Coreshift    *CoreshiftConfig            `mapstructure:"coreshift" json:"coreshift" validate:"required"`
 	Etcd         *EtcdConfig                 `mapstructure:"etcd" json:"etcd" validate:"required"`
+	HCP          *HCPConfig                  `mapstructure:"hcp" json:"hcp" validate:"required"`
 	Entities     []registry.EntityDescriptor `mapstructure:"entities" json:"entities"`
 	Chains       []chains.Chain              `mapstructure:"chains" json:"chains"`
 }
@@ -45,5 +46,6 @@ func NewApplicationConfig() *ApplicationConfig {
 		Orchestrator: NewOrchestratorConfig(),
 		Coreshift:    NewCoreshiftConfig(),
 		Etcd:         NewEtcdConfig(),
+		HCP:          NewHCPConfig(),
 	}
 }

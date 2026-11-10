@@ -13,6 +13,10 @@ etcd:
   fleet_dir: .fleet
   preferred_mc: etcd-mc-0
 
+# HCP adapter: nested coreshift control plane on a management cluster.
+hcp:
+  image: localhost/coreshift:latest
+
 server:
   jwt:
     enabled: true
@@ -41,7 +45,7 @@ entities:
   - kind: Cluster
     plural: clusters
     spec_schema_name: ClusterSpec
-    required_adapters: [coreshift, etcd]
+    required_adapters: [coreshift, etcd, hcp]
     name_min_len: 3
     name_max_len: 53
     require_spec_schema: true
@@ -78,3 +82,6 @@ chains:
   - topology: hosted
     platform: etcd
     adapters: [etcd]
+  - topology: hosted
+    platform: hcp
+    adapters: [etcd, hcp]

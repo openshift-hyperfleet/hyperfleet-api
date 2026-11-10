@@ -40,6 +40,8 @@ cmd_up() {
         if [[ ! -s "$FLEET_DIR/$name.kubeconfig" ]]; then
             kind get kubeconfig --name "$name" > "$FLEET_DIR/$name.kubeconfig"
         fi
+        # Nested control planes exceed kind's default 2048 pids cap.
+        podman update --pids-limit 8192 "$name-control-plane"
     done
     echo "fleet directory: $FLEET_DIR"
 }

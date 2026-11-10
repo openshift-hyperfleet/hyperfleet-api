@@ -2,12 +2,16 @@ package servecmd
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"log/slog"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/container"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/adapters"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/closer"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/dao"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/fleet"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/orchestrator"
 )
@@ -30,9 +34,11 @@ func startOrchestrator(
 		PullSecretFile: cfg.Coreshift.PullSecretFile,
 		StateDir:       cfg.Coreshift.StateDir,
 	})
+	fleetView := func() ([]fleet.MC, error) { return fleet.List(cfg.Etcd.FleetDir) }
+	transport := adapters.NewKubeconfigTransport(fleetKubeconfigs(ctx, cfg.Etcd.FleetDir))
 	etcd := adapters.NewEtcdController(
-		func() ([]fleet.MC, error) { return fleet.List(cfg.Etcd.FleetDir) },
-		adapters.NewKubeconfigTransport(fleetKubeconfigs(ctx, cfg.Etcd.FleetDir)),
+		fleetView,
+		transport,
 		adapters.EtcdOptions{
 			Image:        cfg.Etcd.Image,
 			StorageClass: cfg.Etcd.StorageClass,
@@ -41,10 +47,21 @@ func startOrchestrator(
 			StateDir:     cfg.Etcd.StateDir,
 		},
 	).WithLiveMembership()
+	hcp := adapters.NewHCPController(
+		fleetView,
+		transport,
+		adapterStatusData(ctr.AdapterStatusDao()),
+		adapters.HCPOptions{
+			Image:          cfg.HCP.Image,
+			PullSecretFile: cfg.Coreshift.PullSecretFile,
+			PreferredMC:    cfg.Etcd.PreferredMC,
+		},
+	)
 	registry := adapters.NewRegistry(map[string]adapters.Factory{
 		adapters.NoopAdapterName: func() adapters.Controller { return adapters.NoopController{} },
 		coreshiftAdapterName:     func() adapters.Controller { return coreshift },
 		adapters.EtcdAdapterName: func() adapters.Controller { return etcd },
+		adapters.HCPAdapterName:  func() adapters.Controller { return hcp },
 	})
 	executor := adapters.NewExecutor(registry, adapters.NewServiceReporter(ctr.ResourceService()))
 	loop := orchestrator.NewLoop(
@@ -67,6 +84,28 @@ func startOrchestrator(
 	}()
 
 	slog.InfoContext(ctx, "Orchestrator loop started", "poll_interval", cfg.Orchestrator.PollInterval)
+}
+
+func adapterStatusData(statusDao dao.AdapterStatusDao) adapters.StatusDataReader {
+	return func(
+		ctx context.Context, cluster adapters.ClusterView, adapter string,
+	) (map[string]interface{}, error) {
+		statuses, err := statusDao.FindByResource(ctx, api.ResourceTypeCluster, cluster.ID)
+		if err != nil {
+			return nil, fmt.Errorf("list adapter statuses: %w", err)
+		}
+		for _, status := range statuses {
+			if status.Adapter != adapter || len(status.Data) == 0 {
+				continue
+			}
+			var data map[string]interface{}
+			if err := json.Unmarshal(status.Data, &data); err != nil {
+				return nil, fmt.Errorf("decode %s status data: %w", adapter, err)
+			}
+			return data, nil
+		}
+		return nil, nil
+	}
 }
 
 func fleetKubeconfigs(ctx context.Context, dir string) map[string]string {

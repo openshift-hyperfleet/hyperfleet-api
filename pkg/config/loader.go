@@ -217,6 +217,9 @@ func (l *ConfigLoader) validateConfig(config *ApplicationConfig) error {
 		if valErr := config.Coreshift.Validate(); valErr != nil {
 			return fmt.Errorf("coreshift config validation failed: %w", valErr)
 		}
+		if valErr := config.HCP.Validate(); valErr != nil {
+			return fmt.Errorf("hcp config validation failed: %w", valErr)
+		}
 		if valErr := chains.Validate(config.Chains, knownAdapters(config.Entities)); valErr != nil {
 			return fmt.Errorf("chain validation failed: %w", valErr)
 		}
@@ -416,6 +419,9 @@ func (l *ConfigLoader) bindAllEnvVars() {
 	l.bindEnv("etcd.storage_class")
 	l.bindEnv("etcd.storage_size")
 	l.bindEnv("etcd.state_dir")
+
+	// HCP adapter config
+	l.bindEnv("hcp.image")
 
 	// Tracing config
 	l.bindEnv("tracing.enabled")

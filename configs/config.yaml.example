@@ -26,6 +26,12 @@ etcd:
   storage_class: ""
   storage_size: 8Gi
 
+# HCP Adapter Configuration
+# Runs a nested coreshift control plane as one pod on a management cluster.
+# The image is minted on the host and loaded into each MC by the demo harness.
+hcp:
+  image: localhost/coreshift:latest
+
 # Server Configuration
 server:
   hostname: ""                      # Public hostname (optional)
@@ -145,7 +151,7 @@ entities:
   - kind: Cluster
     plural: clusters
     spec_schema_name: ClusterSpec
-    required_adapters: [coreshift, etcd]
+    required_adapters: [coreshift, etcd, hcp]
 
     name_min_len: 3
     name_max_len: 53
@@ -228,6 +234,9 @@ chains:
   - topology: hosted
     platform: etcd
     adapters: [etcd]
+  - topology: hosted
+    platform: hcp
+    adapters: [etcd, hcp]
 
 # ----------------------------------------------------------------------------
 # Configuration Priority (highest to lowest):
