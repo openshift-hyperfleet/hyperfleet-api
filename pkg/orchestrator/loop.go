@@ -37,6 +37,7 @@ type Loop struct {
 	now          func() time.Time
 	chainConfig  []chains.Chain
 	pollInterval time.Duration
+	maxAge       time.Duration
 }
 
 // NewLoop returns a loop that polls every pollInterval.
@@ -51,8 +52,17 @@ func NewLoop(
 		executor:     executor,
 		chainConfig:  chainConfig,
 		pollInterval: pollInterval,
+		maxAge:       reconcileMaxAge,
 		now:          time.Now,
 	}
+}
+
+// WithMaxAge overrides how long a healthy report is trusted before a recheck.
+func (l *Loop) WithMaxAge(maxAge time.Duration) *Loop {
+	if maxAge > 0 {
+		l.maxAge = maxAge
+	}
+	return l
 }
 
 // Run ticks immediately, then on every poll interval until ctx is canceled.
@@ -107,7 +117,7 @@ func (l *Loop) reconcile(ctx context.Context, cluster *api.Resource, now time.Ti
 	if !ok {
 		return nil
 	}
-	if !NeedsReconcile(cluster, now, reconcileDebounce, reconcileMaxAge) {
+	if !NeedsReconcile(cluster, now, reconcileDebounce, l.maxAge) {
 		return nil
 	}
 

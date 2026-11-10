@@ -38,8 +38,9 @@ func startOrchestrator(
 			StorageClass: cfg.Etcd.StorageClass,
 			StorageSize:  cfg.Etcd.StorageSize,
 			PreferredMC:  cfg.Etcd.PreferredMC,
+			StateDir:     cfg.Etcd.StateDir,
 		},
-	)
+	).WithLiveMembership()
 	registry := adapters.NewRegistry(map[string]adapters.Factory{
 		adapters.NoopAdapterName: func() adapters.Controller { return adapters.NoopController{} },
 		coreshiftAdapterName:     func() adapters.Controller { return coreshift },
@@ -51,7 +52,7 @@ func startOrchestrator(
 		executor,
 		cfg.Chains,
 		cfg.Orchestrator.PollInterval,
-	)
+	).WithMaxAge(cfg.Orchestrator.MaxAge)
 
 	loopCtx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})

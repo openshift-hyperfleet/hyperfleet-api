@@ -402,6 +402,7 @@ func (l *ConfigLoader) bindAllEnvVars() {
 	// Orchestrator config
 	l.bindEnv("orchestrator.enabled")
 	l.bindEnv("orchestrator.poll_interval")
+	l.bindEnv("orchestrator.max_age")
 
 	// Coreshift adapter config
 	l.bindEnv("coreshift.binary")
@@ -414,6 +415,7 @@ func (l *ConfigLoader) bindAllEnvVars() {
 	l.bindEnv("etcd.image")
 	l.bindEnv("etcd.storage_class")
 	l.bindEnv("etcd.storage_size")
+	l.bindEnv("etcd.state_dir")
 
 	// Tracing config
 	l.bindEnv("tracing.enabled")
