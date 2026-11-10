@@ -2,6 +2,7 @@ package adapters
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	. "github.com/onsi/gomega"
@@ -127,5 +128,40 @@ func TestRemoveMemberRefusesToDropQuorum(t *testing.T) {
 	_, err := RemoveMember(context.Background(), client, "m0")
 
 	Expect(err).To(MatchError(ContainSubstring("quorum would be lost")))
+	Expect(client.calls).To(BeEmpty())
+}
+
+func TestReleaseMembershipRemovesLearnersAndStopsAtTheQuorumFence(t *testing.T) {
+	RegisterTestingT(t)
+	membership := NewMembership("my-cluster", []string{"mc-a", "mc-b", "mc-c"}, EtcdOptions{})
+	client := &fakeMemberClient{members: map[string]EtcdMember{
+		"id-1": learner("id-1", "my-cluster-etcd-m0"),
+		"id-2": learner("id-2", "my-cluster-etcd-m1"),
+		"id-3": voter("id-3", "my-cluster-etcd-m2"),
+	}}
+
+	Expect(ReleaseMembership(context.Background(), client, membership)).To(Succeed())
+
+	Expect(client.calls).To(Equal([]string{"remove:id-1", "remove:id-2"}))
+	Expect(client.members).To(HaveLen(1))
+}
+
+func TestReleaseMembershipRemovesVotersOnlyWhileQuorumHolds(t *testing.T) {
+	RegisterTestingT(t)
+	membership := NewMembership("my-cluster", []string{"mc-a", "mc-b", "mc-c"}, EtcdOptions{})
+	client := threeVoters()
+
+	Expect(ReleaseMembership(context.Background(), client, membership)).To(Succeed())
+
+	Expect(client.calls).To(Equal([]string{"remove:id-1"}))
+	Expect(client.members).To(HaveLen(2))
+}
+
+func TestReleaseMembershipIgnoresUnreachableEtcd(t *testing.T) {
+	RegisterTestingT(t)
+	membership := NewMembership("my-cluster", []string{"mc-a", "mc-b", "mc-c"}, EtcdOptions{})
+	client := &fakeMemberClient{listErr: fmt.Errorf("connection refused")}
+
+	Expect(ReleaseMembership(context.Background(), client, membership)).To(Succeed())
 	Expect(client.calls).To(BeEmpty())
 }
