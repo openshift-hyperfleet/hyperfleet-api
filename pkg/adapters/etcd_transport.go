@@ -108,6 +108,11 @@ func (t *KubeconfigTransport) Apply(ctx context.Context, mc string, objects []ru
 		case getErr != nil:
 			return fmt.Errorf("get %s %q: %w", gvr.Resource, manifest.GetName(), getErr)
 		default:
+			// A bound PVC has an immutable spec; the claim is created once
+			// and reused for the life of the workload.
+			if gvr.Resource == "persistentvolumeclaims" {
+				continue
+			}
 			manifest.SetResourceVersion(existing.GetResourceVersion())
 			if _, err = resource.Update(ctx, manifest, metav1.UpdateOptions{}); err != nil {
 				return fmt.Errorf("update %s %q: %w", gvr.Resource, manifest.GetName(), err)

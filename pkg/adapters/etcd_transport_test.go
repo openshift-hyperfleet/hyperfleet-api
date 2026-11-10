@@ -73,6 +73,31 @@ func TestKubeconfigTransportAppliesAndUpdates(t *testing.T) {
 	Expect(verbs).To(Equal([]string{"get", "create", "get", "update", "list"}))
 }
 
+func TestKubeconfigTransportLeavesExistingPVCsAlone(t *testing.T) {
+	RegisterTestingT(t)
+	client := newFakeDynamicClient()
+	transport := testTransport(t, client)
+	claim := &corev1.PersistentVolumeClaim{
+		TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: kindPersistentVolumeClaim},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "hcp-state",
+			Namespace: "hcp-my-cluster",
+		},
+	}
+	ctx := context.Background()
+
+	Expect(transport.Apply(ctx, "mc-a", []runtime.Object{claim})).To(Succeed())
+	storageClass := "standard"
+	claim.Spec.StorageClassName = &storageClass
+	Expect(transport.Apply(ctx, "mc-a", []runtime.Object{claim})).To(Succeed())
+
+	verbs := make([]string, 0, len(client.Actions()))
+	for _, action := range client.Actions() {
+		verbs = append(verbs, action.GetVerb())
+	}
+	Expect(verbs).To(Equal([]string{"get", "create", "get"}))
+}
+
 func TestKubeconfigTransportListsPodHealth(t *testing.T) {
 	RegisterTestingT(t)
 	pod := &unstructured.Unstructured{Object: map[string]interface{}{
