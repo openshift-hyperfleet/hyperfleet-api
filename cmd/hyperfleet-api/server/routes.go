@@ -3,6 +3,7 @@ package server
 import (
 	"fmt"
 
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/fleet"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/handlers"
 )
 
@@ -21,6 +22,8 @@ func NewRouterFromConfig(
 	protectedAPIMiddleware []Middleware,
 	authMiddleware []Middleware,
 	registrars []RouteRegistrar,
+	fleetLister func() ([]fleet.MC, error),
+	serviceClusterName string,
 ) (*Router, error) {
 	metadataHandler := handlers.NewMetadataHandler()
 
@@ -54,6 +57,10 @@ func NewRouterFromConfig(
 		return nil, fmt.Errorf("unable to create PoC dashboard handler: %w", err)
 	}
 	apiV1Router.HandleFunc("GET /poc-dashboard", pocDashboardHandler.GetPocDashboard)
+
+	//  /api/hyperfleet/v1/poc-fleet
+	pocFleetHandler := handlers.NewPocFleetHandler(fleetLister, serviceClusterName)
+	apiV1Router.HandleFunc("GET /poc-fleet", pocFleetHandler.GetPocFleet)
 
 	// authMiddleware must be outermost so unauthenticated requests are rejected
 	// before protectedAPIMiddleware runs schema validation or reaches mutation services.

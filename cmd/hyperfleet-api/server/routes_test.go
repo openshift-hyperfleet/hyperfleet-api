@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	. "github.com/onsi/gomega"
+
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/fleet"
 )
 
 // TestNewRouterFromConfig_PublicVsProtectedMiddleware guards the middleware layering:
@@ -60,6 +62,8 @@ func TestNewRouterFromConfig_PublicVsProtectedMiddleware(t *testing.T) {
 		[]Middleware{countingProtectedAPIMiddleware},
 		[]Middleware{gatingAuthMiddleware},
 		[]RouteRegistrar{registrar},
+		func() ([]fleet.MC, error) { return nil, nil },
+		"test-clm",
 	)
 	Expect(err).NotTo(HaveOccurred())
 
@@ -80,6 +84,7 @@ func TestNewRouterFromConfig_PublicVsProtectedMiddleware(t *testing.T) {
 		"/api/hyperfleet/v1/openapi",
 		"/api/hyperfleet/v1/openapi.html",
 		"/api/hyperfleet/v1/poc-dashboard",
+		"/api/hyperfleet/v1/poc-fleet",
 	} {
 		resetCounters()
 

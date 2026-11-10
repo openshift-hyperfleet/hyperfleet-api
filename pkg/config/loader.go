@@ -335,6 +335,7 @@ func (l *ConfigLoader) bindPFlag(key string, flag *pflag.Flag) {
 // This is required for Viper's Unmarshal() to work with env vars (AutomaticEnv only works with Get* methods)
 func (l *ConfigLoader) bindAllEnvVars() {
 	// Server config
+	l.bindEnv("server.name")
 	l.bindEnv("server.hostname")
 	l.bindEnv("server.host")
 	l.bindEnv("server.port")
@@ -445,6 +446,7 @@ func (l *ConfigLoader) bindFlags(cmd *cobra.Command) {
 	// This is handled separately in resolveAndReadConfigFile()
 
 	// Server flags: --server-* -> server.*
+	l.bindPFlag("server.name", cmd.Flags().Lookup("server-name"))
 	l.bindPFlag("server.hostname", cmd.Flags().Lookup("server-hostname"))
 	l.bindPFlag("server.host", cmd.Flags().Lookup("server-host"))
 	l.bindPFlag("server.port", cmd.Flags().Lookup("server-port"))

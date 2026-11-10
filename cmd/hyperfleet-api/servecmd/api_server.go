@@ -7,6 +7,7 @@ import (
 	requestlogging "github.com/openshift-hyperfleet/hyperfleet-api/cmd/hyperfleet-api/server/logging"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/auth"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
+	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/fleet"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/logger"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/middleware"
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/services"
@@ -65,8 +66,10 @@ func BuildAPIServer(
 		server.NewEntityRouteRegistrar(resourceService, adapterStatusService, schemaValidator),
 	}
 
+	fleetLister := func() ([]fleet.MC, error) { return fleet.List(cfg.Etcd.FleetDir) }
 	router, err := server.NewRouterFromConfig(
 		mainMiddleware, apiMiddleware, protectedAPIMiddleware, authMiddleware, registrars,
+		fleetLister, cfg.Server.Name,
 	)
 	if err != nil {
 		return nil, err

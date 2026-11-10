@@ -18,6 +18,7 @@ func AddConfigFlag(cmd *cobra.Command) {
 func AddServerFlags(cmd *cobra.Command) {
 	defaults := NewServerConfig()
 
+	cmd.Flags().String("server-name", defaults.Name, "Server identity shown by the PoC dashboard")
 	cmd.Flags().String("server-hostname", defaults.Hostname, "Server's public hostname")
 	cmd.Flags().String("server-host", defaults.Host, "Server bind host")
 	cmd.Flags().Int("server-port", defaults.Port, "Server bind port")

@@ -15,6 +15,7 @@ import (
 // ServerConfig holds HTTP/HTTPS server configuration
 // Follows HyperFleet Configuration Standard
 type ServerConfig struct {
+	Name              string         `mapstructure:"name" json:"name" validate:"required"`
 	Hostname          string         `mapstructure:"hostname" json:"hostname" validate:"omitempty,hostname|ip"`
 	Host              string         `mapstructure:"host" json:"host" validate:"required,hostname|ip"`
 	OpenAPISchemaPath string         `mapstructure:"openapi_schema_path" json:"openapi_schema_path"`
@@ -178,6 +179,7 @@ func requireHTTPSURL(rawURL string) error {
 // These defaults can be overridden by config file, env vars, or CLI flags
 func NewServerConfig() *ServerConfig {
 	return &ServerConfig{
+		Name:              "clm-local",
 		Hostname:          "",
 		Host:              "localhost",
 		Port:              8000,

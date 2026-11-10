@@ -34,6 +34,7 @@ hcp:
 
 # Server Configuration
 server:
+  name: "clm-local"                 # Server identity shown by the PoC dashboard
   hostname: ""                      # Public hostname (optional)
   host: "0.0.0.0"                   # Server bind host (use "localhost" for local dev, "0.0.0.0" for containers/K8s)
   port: 8000                        # Server bind port
