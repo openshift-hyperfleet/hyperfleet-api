@@ -9,6 +9,7 @@ This document describes authentication mechanisms for the HyperFleet API.
 - [Development with JWT (Google Cloud)](#development-with-jwt-google-cloud)
 - [Production Mode (JWT Auth)](#production-mode-jwt-auth)
   - [Issuer configuration reference](#issuer-configuration-reference)
+  - [JWKS refresh and key rotation](#jwks-refresh-and-key-rotation)
   - [Creating a service account token](#creating-a-service-account-token)
 - [Caller identity for audit](#caller-identity-for-audit)
 - [Gateway authentication (Envoy and Authorino)](#gateway-authentication-envoy-and-authorino)
@@ -218,6 +219,10 @@ server:
         identity_claim_pattern: ""
         identity_header: ""
 ```
+
+### JWKS refresh and key rotation
+
+The API refreshes the JWKS behind `jwk_cert_url` every 5 minutes. A token whose `kid` header is not in the cached key set also triggers one refresh, rate limited to a burst of 3 and one refresh every 30 seconds per issuer. Requests that would wait longer than 2 seconds for that refresh fail immediately. A token whose `kid` is still unknown after the refresh is rejected with `401`. With several issuers, a token is only checked against the keys of the issuer named in its `iss` claim, so it never causes another issuer's JWKS to be fetched or refreshed. This lets a signing key rotation on the identity provider take effect without restarting the API. Keys removed from the JWKS stop being accepted at the next refresh.
 
 ### Creating a service account token
 

@@ -16,28 +16,50 @@ import (
 	"github.com/MicahParks/jwkset"
 	"github.com/MicahParks/keyfunc/v3"
 	"github.com/golang-jwt/jwt/v5"
+	"golang.org/x/time/rate"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
 	hferrors "github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 )
 
 const (
-	defaultSigningAlgorithm    = "RS256"
-	defaultLeeway              = 30 * time.Second
-	defaultHTTPClientTimeout   = 30 * time.Second
-	defaultJWKSRefreshInterval = time.Hour
+	defaultSigningAlgorithm  = "RS256"
+	defaultLeeway            = 30 * time.Second
+	defaultHTTPClientTimeout = 30 * time.Second
+
+	// jwksRefreshInterval bounds how long an idle replica trusts a revoked key.
+	jwksRefreshInterval = 5 * time.Minute
+	// unknownKIDRefreshEvery and unknownKIDRefreshBurst rate-limit JWKS refreshes triggered by an unknown kid.
+	unknownKIDRefreshEvery = 30 * time.Second
+	unknownKIDRefreshBurst = 3
+	// unknownKIDWaitMax caps how long a request may wait for an unknown-kid refresh before failing with 401.
+	unknownKIDWaitMax = 2 * time.Second
 )
 
 type JWTHandlerConfig struct {
 	Issuers []config.JWTIssuerConfig
 }
 
-// issuerValidator holds the pre-built keyfunc and parser for a single JWT issuer.
+// issuerValidator holds the pre-built key lookup and parser for a single JWT issuer.
 type issuerValidator struct {
-	keyfunc   keyfunc.Keyfunc
+	keyFn     jwt.Keyfunc
 	parser    *jwt.Parser
 	header    string
 	issuerCfg config.JWTIssuerConfig
+}
+
+// issuerKeyFunc refuses to look up a key for a token that names a different issuer. Issuers can share one
+// header and are tried in order, so without this a valid token for one issuer would make every issuer tried
+// before it fetch or refresh its JWKS. The claims are already decoded when the key lookup runs; the token's
+// issuer is compared exactly, as jwt.WithIssuer does, and is deliberately left out of the error.
+func issuerKeyFunc(issuerURL string, next jwt.Keyfunc) jwt.Keyfunc {
+	return func(token *jwt.Token) (any, error) {
+		iss, err := token.Claims.GetIssuer()
+		if err != nil || iss != issuerURL {
+			return nil, fmt.Errorf("%w: token issuer does not match %q", jwt.ErrTokenInvalidIssuer, issuerURL)
+		}
+		return next(token)
+	}
 }
 
 func NewJWTHandler(ctx context.Context, cfg JWTHandlerConfig) (*JWTHandler, error) {
@@ -74,7 +96,7 @@ func NewJWTHandler(ctx context.Context, cfg JWTHandlerConfig) (*JWTHandler, erro
 		}
 
 		validators = append(validators, issuerValidator{
-			keyfunc:   kf,
+			keyFn:     issuerKeyFunc(issuer.IssuerURL, kf.Keyfunc),
 			parser:    jwt.NewParser(parserOpts...),
 			header:    issuer.Header,
 			issuerCfg: issuer,
@@ -121,7 +143,7 @@ func (h *JWTHandler) matchValidator(r *http.Request) (*jwt.Token, config.JWTIssu
 			continue
 		}
 
-		token, err := v.parser.Parse(parts[1], v.keyfunc.Keyfunc)
+		token, err := v.parser.Parse(parts[1], v.keyFn)
 		if err != nil {
 			if !errors.Is(lastErr, jwt.ErrTokenExpired) {
 				lastErr = err
@@ -196,9 +218,18 @@ func buildFileOnlyKeyfunc(issuer config.JWTIssuerConfig) (keyfunc.Keyfunc, error
 	return kf, nil
 }
 
+// newUnknownKIDLimiter returns a fresh limiter so that issuers never share a refresh budget.
+func newUnknownKIDLimiter() *rate.Limiter {
+	return rate.NewLimiter(rate.Every(unknownKIDRefreshEvery), unknownKIDRefreshBurst)
+}
+
 func buildURLOnlyKeyfunc(ctx context.Context, issuer config.JWTIssuerConfig) (keyfunc.Keyfunc, error) {
 	if issuer.JWKCertCAFile == "" {
-		kf, err := keyfunc.NewDefaultCtx(ctx, []string{issuer.JWKCertURL})
+		kf, err := keyfunc.NewDefaultOverrideCtx(ctx, []string{issuer.JWKCertURL}, keyfunc.Override{
+			RefreshInterval:   jwksRefreshInterval,
+			RefreshUnknownKID: newUnknownKIDLimiter(),
+			RateLimitWaitMax:  unknownKIDWaitMax,
+		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to create JWKS client from URL %q: %w", issuer.JWKCertURL, err)
 		}
@@ -213,6 +244,8 @@ func buildURLOnlyKeyfunc(ctx context.Context, issuer config.JWTIssuerConfig) (ke
 		HTTPURLs: map[string]jwkset.Storage{
 			issuer.JWKCertURL: urlStorage,
 		},
+		RateLimitWaitMax:  unknownKIDWaitMax,
+		RefreshUnknownKID: newUnknownKIDLimiter(),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create HTTP JWKS client: %w", err)
@@ -250,6 +283,8 @@ func buildCombinedKeyfunc(ctx context.Context, issuer config.JWTIssuerConfig) (k
 		HTTPURLs: map[string]jwkset.Storage{
 			issuer.JWKCertURL: urlStorage,
 		},
+		RateLimitWaitMax:  unknownKIDWaitMax,
+		RefreshUnknownKID: newUnknownKIDLimiter(),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create HTTP JWKS client: %w", err)
@@ -280,7 +315,7 @@ func newStorageWithCA(ctx context.Context, jwkURL, caFile string) (jwkset.Storag
 				"failed to refresh JWKS from URL with custom CA", "url", jwkURL, "ca_file", caFile, "error", err,
 			)
 		},
-		RefreshInterval: defaultJWKSRefreshInterval,
+		RefreshInterval: jwksRefreshInterval,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create JWKS storage from URL %q with CA %q: %w", jwkURL, caFile, err)
