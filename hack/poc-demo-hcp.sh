@@ -16,7 +16,7 @@ set -euo pipefail
 
 REPO_ROOT=$(cd "$(dirname "$0")/.." && pwd)
 CLUSTER=${CLM_POC_HCP_CLUSTER:-demo}
-FLEET_MCS=${FLEET_MCS:-"etcd-mc-0 etcd-mc-1 etcd-mc-2 etcd-mc-3"}
+FLEET_MCS=${FLEET_MCS:-"mc-0 mc-1 mc-2 mc-3"}
 FLEET_DIR=${FLEET_DIR:-$REPO_ROOT/.fleet}
 CONTAINER_FLEET=${CONTAINER_FLEET:-$REPO_ROOT/.fleet-container}
 STATE_DIR=${STATE_DIR:-$FLEET_DIR/etcd-state}
@@ -244,7 +244,7 @@ run_server() {
 		-e HYPERFLEET_ORCHESTRATOR_MAX_AGE=30s \
 		-e HYPERFLEET_ETCD_FLEET_DIR=/fleet \
 		-e HYPERFLEET_ETCD_STATE_DIR=/state \
-		-e HYPERFLEET_ETCD_PREFERRED_MC=etcd-mc-0 \
+		-e HYPERFLEET_ETCD_PREFERRED_MC=mc-0 \
 		-e HYPERFLEET_HCP_IMAGE="$image" \
 		-e HYPERFLEET_CORESHIFT_PULL_SECRET_FILE=/pull-secret \
 		--entrypoint /hyperfleet-api -d "$IMAGE" serve --config /configs/dev.yaml \
@@ -401,11 +401,11 @@ echo "    created namespace $DATA_NAMESPACE and configmap $DATA_CONFIGMAP"
 echo "    oc get ns -> $pre_kill_ns namespaces"
 oc --kubeconfig "$ADMIN_KUBECONFIG" get ns | sed 's/^/    /'
 
-echo "==> Killing etcd-mc-0 with both workloads"
+echo "==> Killing mc-0 with both workloads"
 stop_forward
 kill_ns=$(date +%s%N)
-kind delete cluster --name etcd-mc-0 >/dev/null 2>&1
-rm -f "$FLEET_DIR/etcd-mc-0.kubeconfig" "$CONTAINER_FLEET/etcd-mc-0.kubeconfig"
+kind delete cluster --name mc-0 >/dev/null 2>&1
+rm -f "$FLEET_DIR/mc-0.kubeconfig" "$CONTAINER_FLEET/mc-0.kubeconfig"
 
 echo "==> Watching quorum hold, member replacement, and re-home"
 quorum_hold_secs=""
@@ -429,10 +429,10 @@ while (( SECONDS < deadline )); do
 		echo "    quorum held on $members_ready members at +${quorum_hold_secs}s"
 	fi
 	if [[ -z $repair_secs ]] &&
-		[[ $(etcd_member_mc "$etcd_data" "$member0") == etcd-mc-3 ]] &&
+		[[ $(etcd_member_mc "$etcd_data" "$member0") == mc-3 ]] &&
 		[[ $(etcd_member_healthy "$etcd_data" "$member0") == true ]]; then
 		repair_secs=$(( ( $(date +%s%N) - kill_ns ) / 1000000000 ))
-		echo "    $member0 replaced on etcd-mc-3 at +${repair_secs}s"
+		echo "    $member0 replaced on mc-3 at +${repair_secs}s"
 	fi
 	hcp_mc=$(jq -r '.mc // ""' <<<"$hcp_data")
 	if [[ -z $rehome_seen_secs && -n $hcp_mc && $hcp_mc != "$member0_mc" ]]; then

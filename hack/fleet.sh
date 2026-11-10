@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Dev-fleet harness: manages the three local kind management clusters
-# (etcd-mc-0, etcd-mc-1, etcd-mc-2) that the etcd-manager PoC runs
-# against, exporting their kubeconfigs into the fleet directory (one
+# Dev-fleet harness: manages the four local kind management clusters
+# (mc-0, mc-1, mc-2, mc-3) that the etcd-manager PoC runs against,
+# exporting their kubeconfigs into the fleet directory (one
 # <name>.kubeconfig file per cluster).
 #
 # Usage: hack/fleet.sh {up|down|status}
@@ -13,7 +13,7 @@ set -euo pipefail
 REPO_ROOT=$(cd "$(dirname "$0")/.." && pwd)
 FLEET_DIR=${FLEET_DIR:-$REPO_ROOT/.fleet}
 KIND_CONFIG=$REPO_ROOT/hack/kind-config.yaml
-read -r -a MCS <<< "${FLEET_MCS:-etcd-mc-0 etcd-mc-1 etcd-mc-2}"
+read -r -a MCS <<< "${FLEET_MCS:-mc-0 mc-1 mc-2 mc-3}"
 
 cd "$REPO_ROOT"
 export KIND_EXPERIMENTAL_PROVIDER=podman

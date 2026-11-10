@@ -23,7 +23,7 @@ fi
 
 REPO_ROOT=$(cd "$(dirname "$0")/.." && pwd)
 CLUSTER=${CLM_POC_ETCD_CLUSTER:-etcd-kill-$(date +%Y%m%d%H%M%S)}
-FLEET_MCS=${FLEET_MCS:-"etcd-mc-0 etcd-mc-1 etcd-mc-2 etcd-mc-3"}
+FLEET_MCS=${FLEET_MCS:-"mc-0 mc-1 mc-2 mc-3"}
 FLEET_DIR=${FLEET_DIR:-$REPO_ROOT/.fleet}
 CONTAINER_FLEET=${CONTAINER_FLEET:-$REPO_ROOT/.fleet-container}
 STATE_DIR=${STATE_DIR:-$FLEET_DIR/etcd-state}
@@ -106,7 +106,7 @@ run_server() {
 		-e HYPERFLEET_ORCHESTRATOR_MAX_AGE=30s \
 		-e HYPERFLEET_ETCD_FLEET_DIR=/fleet \
 		-e HYPERFLEET_ETCD_STATE_DIR=/state \
-		-e HYPERFLEET_ETCD_PREFERRED_MC=etcd-mc-0 \
+		-e HYPERFLEET_ETCD_PREFERRED_MC=mc-0 \
 		--entrypoint /hyperfleet-api -d "$IMAGE" serve --config /configs/dev.yaml \
 		--db-host "$PSQL" --db-port 5432 --db-name hyperfleet \
 		--db-username hyperfleet --db-password foobar-bizz-buzz >/dev/null
@@ -154,7 +154,7 @@ done
 [[ $(jq -r '.membersReady // 0' <<<"$data") -ge 3 ]] || fail "members did not become ready"
 endpoints=$(jq -r '.endpoints | join(",")' <<<"$data")
 MEMBER_ENDPOINTS=$endpoints
-members=$(member_list etcd-mc-0 "$CLUSTER-etcd-m0-0")
+members=$(member_list mc-0 "$CLUSTER-etcd-m0-0")
 [[ $(grep -c '| *started *|' <<<"$members" || true) -ge 3 ]] ||
 	fail "initial member list is not three started members: $members"
 formation_secs=$(( $(date +%s) - formation_start ))
@@ -162,7 +162,7 @@ formation_secs=$(( $(date +%s) - formation_start ))
 echo "==> Extracting the SAN-less client cert for the stand-in"
 mkdir -p "$TMP/certs"
 for key in ca.crt etcd-client.crt etcd-client.key; do
-	kubectl --kubeconfig "$FLEET_DIR/etcd-mc-1.kubeconfig" -n "$ns" \
+	kubectl --kubeconfig "$FLEET_DIR/mc-1.kubeconfig" -n "$ns" \
 		get secret "$CLUSTER-etcd-m1-tls" -o go-template="{{index .data \"$key\"}}" |
 		base64 -d > "$TMP/certs/$key"
 done
@@ -178,17 +178,17 @@ sleep 5
 podman logs "$STANDIN" > "$TMP/client-start.log" 2>&1 || true
 grep -q '^OK' "$TMP/client-start.log" || fail "client stand-in wrote nothing"
 
-echo "==> Killing etcd-mc-0 (member 0)"
+echo "==> Killing mc-0 (member 0)"
 kill_ns=$(date +%s%N)
-kind delete cluster --name etcd-mc-0 >/dev/null
-rm -f "$FLEET_DIR/etcd-mc-0.kubeconfig" "$CONTAINER_FLEET/etcd-mc-0.kubeconfig"
+kind delete cluster --name mc-0 >/dev/null
+rm -f "$FLEET_DIR/mc-0.kubeconfig" "$CONTAINER_FLEET/mc-0.kubeconfig"
 
-echo "==> Waiting for the replacement on etcd-mc-3"
+echo "==> Waiting for the replacement on mc-3"
 phase=""
 for _ in $(seq 1 300); do
-	phase=$(kubectl --kubeconfig "$FLEET_DIR/etcd-mc-3.kubeconfig" -n "$ns" \
+	phase=$(kubectl --kubeconfig "$FLEET_DIR/mc-3.kubeconfig" -n "$ns" \
 		get pod "$CLUSTER-etcd-m0-0" -o jsonpath='{.status.phase}' 2>/dev/null || true)
-	if members=$(member_list etcd-mc-1 "$CLUSTER-etcd-m1-0" 2>/dev/null); then
+	if members=$(member_list mc-1 "$CLUSTER-etcd-m1-0" 2>/dev/null); then
 		started=$(grep -c '| *started *|' <<<"$members" || true)
 		if [[ $started -ge 3 && $phase == Running ]] &&
 			grep -q "$CLUSTER-etcd-m0" <<<"$members"; then
@@ -199,7 +199,7 @@ for _ in $(seq 1 300); do
 done
 [[ $(grep -c '| *started *|' <<<"$members" || true) -ge 3 ]] ||
 	fail "replacement did not start: $members"
-[[ $phase == Running ]] || fail "replacement pod is not running on etcd-mc-3"
+[[ $phase == Running ]] || fail "replacement pod is not running on mc-3"
 repair_ns=$(date +%s%N)
 repair_secs=$(( (repair_ns - kill_ns) / 1000000000 ))
 
@@ -228,22 +228,22 @@ echo "==> Degraded mode: CLM down, member pod and storage lost"
 podman stop "$SERVER" >/dev/null
 degraded_start=$(date +%s)
 old_m1_id=$(grep "$CLUSTER-etcd-m1" <<<"$members" | awk -F'|' '{gsub(/ /, "", $2); print $2}')
-kubectl --kubeconfig "$FLEET_DIR/etcd-mc-1.kubeconfig" -n "$ns" \
+kubectl --kubeconfig "$FLEET_DIR/mc-1.kubeconfig" -n "$ns" \
 	scale statefulset "$CLUSTER-etcd-m1" --replicas=0 >/dev/null
 for _ in $(seq 1 60); do
-	[[ -z $(kubectl --kubeconfig "$FLEET_DIR/etcd-mc-1.kubeconfig" -n "$ns" \
+	[[ -z $(kubectl --kubeconfig "$FLEET_DIR/mc-1.kubeconfig" -n "$ns" \
 		get pods -l "$(printf 'etcd.hyperfleet.io/member=m1')" -o name 2>/dev/null) ]] && break
 	sleep 1
 done
-kubectl --kubeconfig "$FLEET_DIR/etcd-mc-1.kubeconfig" -n "$ns" \
+kubectl --kubeconfig "$FLEET_DIR/mc-1.kubeconfig" -n "$ns" \
 	delete pvc "data-$CLUSTER-etcd-m1-0" --wait=true >/dev/null
-kubectl --kubeconfig "$FLEET_DIR/etcd-mc-1.kubeconfig" -n "$ns" \
+kubectl --kubeconfig "$FLEET_DIR/mc-1.kubeconfig" -n "$ns" \
 	scale statefulset "$CLUSTER-etcd-m1" --replicas=1 >/dev/null
 phase=""
 for _ in $(seq 1 180); do
-	phase=$(kubectl --kubeconfig "$FLEET_DIR/etcd-mc-1.kubeconfig" -n "$ns" \
+	phase=$(kubectl --kubeconfig "$FLEET_DIR/mc-1.kubeconfig" -n "$ns" \
 		get pod "$CLUSTER-etcd-m1-0" -o jsonpath='{.status.phase}' 2>/dev/null || true)
-	if members=$(member_list etcd-mc-2 "$CLUSTER-etcd-m2-0" 2>/dev/null); then
+	if members=$(member_list mc-2 "$CLUSTER-etcd-m2-0" 2>/dev/null); then
 		m1_line=$(grep "$CLUSTER-etcd-m1" <<<"$members" || true)
 		if [[ $phase == Running && -n $m1_line && $m1_line != *"$old_m1_id"* ]] &&
 			[[ $(grep -c '| *started *|' <<<"$members" || true) -ge 3 ]]; then
@@ -271,7 +271,7 @@ done
 [[ ${status:-} == Healthy ]] || fail "status did not converge after restart"
 
 echo "==> Snapshot and restore drill"
-snapshot_out=$(kubectl --kubeconfig "$FLEET_DIR/etcd-mc-2.kubeconfig" -n "$ns" \
+snapshot_out=$(kubectl --kubeconfig "$FLEET_DIR/mc-2.kubeconfig" -n "$ns" \
 	exec "$CLUSTER-etcd-m2-0" -c etcd -- sh -c '
 	set -e
 	export ETCDCTL_API=3 ETCDCTL_CACERT=/etc/etcd/tls/ca.crt ETCDCTL_CERT=/etc/etcd/tls/etcd-client.crt ETCDCTL_KEY=/etc/etcd/tls/etcd-client.key ETCDCTL_ENDPOINTS=https://'"$CLUSTER"'-etcd-m2.etcd-'"$CLUSTER"'.svc:2379

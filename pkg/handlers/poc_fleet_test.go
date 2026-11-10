@@ -16,7 +16,7 @@ import (
 func TestPocFleetHandlerListsManagementClusters(t *testing.T) {
 	RegisterTestingT(t)
 	handler := NewPocFleetHandler(func() ([]fleet.MC, error) {
-		return []fleet.MC{{Name: "etcd-mc-1"}, {Name: "etcd-mc-0"}}, nil
+		return []fleet.MC{{Name: "mc-1"}, {Name: "mc-0"}}, nil
 	}, "clm-test")
 
 	recorder := httptest.NewRecorder()
@@ -27,7 +27,7 @@ func TestPocFleetHandlerListsManagementClusters(t *testing.T) {
 	Expect(json.Unmarshal(recorder.Body.Bytes(), &response)).To(Succeed())
 	Expect(response.ServiceCluster.Name).To(Equal("clm-test"))
 	Expect(response.ServiceCluster.Version).To(Equal(api.Version))
-	Expect(response.MCs).To(Equal([]string{"etcd-mc-1", "etcd-mc-0"}))
+	Expect(response.MCs).To(Equal([]string{"mc-1", "mc-0"}))
 }
 
 func TestPocFleetHandlerEmptyFleetReturnsEmptyList(t *testing.T) {

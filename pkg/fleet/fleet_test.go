@@ -11,8 +11,8 @@ import (
 func TestListReadsKubeconfigFiles(t *testing.T) {
 	RegisterTestingT(t)
 	dir := t.TempDir()
-	writeFile(t, filepath.Join(dir, "etcd-mc-1.kubeconfig"))
-	writeFile(t, filepath.Join(dir, "etcd-mc-0.kubeconfig"))
+	writeFile(t, filepath.Join(dir, "mc-1.kubeconfig"))
+	writeFile(t, filepath.Join(dir, "mc-0.kubeconfig"))
 	writeFile(t, filepath.Join(dir, "notes.txt"))
 	Expect(os.Mkdir(filepath.Join(dir, "nested.kubeconfig"), 0o755)).To(Succeed())
 
@@ -20,16 +20,16 @@ func TestListReadsKubeconfigFiles(t *testing.T) {
 
 	Expect(err).ToNot(HaveOccurred())
 	Expect(clusters).To(Equal([]MC{
-		{Name: "etcd-mc-0", Kubeconfig: filepath.Join(dir, "etcd-mc-0.kubeconfig")},
-		{Name: "etcd-mc-1", Kubeconfig: filepath.Join(dir, "etcd-mc-1.kubeconfig")},
+		{Name: "mc-0", Kubeconfig: filepath.Join(dir, "mc-0.kubeconfig")},
+		{Name: "mc-1", Kubeconfig: filepath.Join(dir, "mc-1.kubeconfig")},
 	}))
 }
 
 func TestListReflectsCurrentDirectoryContents(t *testing.T) {
 	RegisterTestingT(t)
 	dir := t.TempDir()
-	first := filepath.Join(dir, "etcd-mc-0.kubeconfig")
-	second := filepath.Join(dir, "etcd-mc-1.kubeconfig")
+	first := filepath.Join(dir, "mc-0.kubeconfig")
+	second := filepath.Join(dir, "mc-1.kubeconfig")
 	writeFile(t, first)
 
 	clusters, err := List(dir)
@@ -45,7 +45,7 @@ func TestListReflectsCurrentDirectoryContents(t *testing.T) {
 	clusters, err = List(dir)
 	Expect(err).ToNot(HaveOccurred())
 	Expect(clusters).To(HaveLen(1))
-	Expect(clusters[0].Name).To(Equal("etcd-mc-1"))
+	Expect(clusters[0].Name).To(Equal("mc-1"))
 }
 
 func TestListRejectsMissingDirectory(t *testing.T) {

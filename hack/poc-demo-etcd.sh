@@ -16,7 +16,7 @@ CLUSTER=${CLM_POC_DEMO_CLUSTER:-demo}
 CP_NAME=${CLM_POC_DEMO_CP_NAME:-demo-cp}
 CP_CONTAINER=coreshift-$CP_NAME
 CP_PORT=${CLM_POC_DEMO_CP_PORT:-6443}
-FLEET_MCS=${FLEET_MCS:-"etcd-mc-0 etcd-mc-1 etcd-mc-2 etcd-mc-3"}
+FLEET_MCS=${FLEET_MCS:-"mc-0 mc-1 mc-2 mc-3"}
 FLEET_DIR=${FLEET_DIR:-$REPO_ROOT/.fleet}
 CONTAINER_FLEET=${CONTAINER_FLEET:-$REPO_ROOT/.fleet-container}
 STATE_DIR=${STATE_DIR:-$FLEET_DIR/etcd-state}
@@ -149,7 +149,7 @@ run_server() {
 		-e HYPERFLEET_ORCHESTRATOR_MAX_AGE=30s \
 		-e HYPERFLEET_ETCD_FLEET_DIR=/fleet \
 		-e HYPERFLEET_ETCD_STATE_DIR=/state \
-		-e HYPERFLEET_ETCD_PREFERRED_MC=etcd-mc-0 \
+		-e HYPERFLEET_ETCD_PREFERRED_MC=mc-0 \
 		--entrypoint /hyperfleet-api -d "$IMAGE" serve --config /configs/dev.yaml \
 		--db-host "$PSQL" --db-port 5432 --db-name hyperfleet \
 		--db-username hyperfleet --db-password foobar-bizz-buzz >/dev/null
@@ -222,7 +222,7 @@ echo "    quorum ready in ${formation_secs}s: $endpoints"
 echo "==> Extracting client material from a member secret"
 mkdir -p "$TMP/certs"
 for key in ca.crt etcd-client.crt etcd-client.key; do
-	kubectl --kubeconfig "$FLEET_DIR/etcd-mc-1.kubeconfig" -n "$NS" \
+	kubectl --kubeconfig "$FLEET_DIR/mc-1.kubeconfig" -n "$NS" \
 		get secret "$CLUSTER-etcd-m1-tls" -o go-template="{{index .data \"$key\"}}" |
 		base64 -d > "$TMP/certs/$key"
 done
@@ -283,7 +283,7 @@ echo "    kubectl get ns -> $ns_count namespaces"
 kubectl --kubeconfig "$kubeconfig" get ns | sed 's/^/    /'
 echo
 
-echo "==> Killing etcd-mc-0 (member 0) while kubectl keeps polling"
+echo "==> Killing mc-0 (member 0) while kubectl keeps polling"
 (
 	while true; do
 		if kubectl --kubeconfig "$kubeconfig" get ns --request-timeout=5s \
@@ -304,16 +304,16 @@ grep -q '^OK' "$KUBECTL_LOG" 2>/dev/null ||
 	fail "kubectl was not healthy before the kill"
 
 kill_ns=$(date +%s%N)
-kind delete cluster --name etcd-mc-0 >/dev/null
-rm -f "$FLEET_DIR/etcd-mc-0.kubeconfig" "$CONTAINER_FLEET/etcd-mc-0.kubeconfig"
+kind delete cluster --name mc-0 >/dev/null
+rm -f "$FLEET_DIR/mc-0.kubeconfig" "$CONTAINER_FLEET/mc-0.kubeconfig"
 
-echo "==> Waiting for the replacement on etcd-mc-3"
+echo "==> Waiting for the replacement on mc-3"
 phase=""
 members=""
 for _ in $(seq 1 300); do
-	phase=$(kubectl --kubeconfig "$FLEET_DIR/etcd-mc-3.kubeconfig" -n "$NS" \
+	phase=$(kubectl --kubeconfig "$FLEET_DIR/mc-3.kubeconfig" -n "$NS" \
 		get pod "$CLUSTER-etcd-m0-0" -o jsonpath='{.status.phase}' 2>/dev/null || true)
-	if members=$(member_list etcd-mc-1 "$CLUSTER-etcd-m1-0" 2>/dev/null); then
+	if members=$(member_list mc-1 "$CLUSTER-etcd-m1-0" 2>/dev/null); then
 		started=$(grep -c '| *started *|' <<<"$members" || true)
 		if [[ $started -ge 3 && $phase == Running ]] &&
 			grep -q "$CLUSTER-etcd-m0" <<<"$members"; then
@@ -325,12 +325,12 @@ done
 if [[ $(grep -c '| *started *|' <<<"$members" || true) -lt 3 ]]; then
 	if [[ $phase == Running ]]; then
 		echo "    replacement reset log:" >&2
-		kubectl --kubeconfig "$FLEET_DIR/etcd-mc-3.kubeconfig" -n "$NS" \
+		kubectl --kubeconfig "$FLEET_DIR/mc-3.kubeconfig" -n "$NS" \
 			logs "$CLUSTER-etcd-m0-0" -c reset-member 2>&1 | tail -n 3 >&2 || true
 	fi
 	fail "replacement did not join the etcd cluster: $members"
 fi
-[[ $phase == Running ]] || fail "replacement pod is not running on etcd-mc-3"
+[[ $phase == Running ]] || fail "replacement pod is not running on mc-3"
 repair_end=$(date +%s%N)
 repair_secs=$(( (repair_end - kill_ns) / 1000000000 ))
 sleep 3

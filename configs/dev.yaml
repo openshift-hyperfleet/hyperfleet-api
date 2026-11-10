@@ -11,7 +11,7 @@ coreshift:
 # Etcd adapter: places members across the local kind fleet.
 etcd:
   fleet_dir: .fleet
-  preferred_mc: etcd-mc-0
+  preferred_mc: mc-0
 
 # HCP adapter: nested coreshift control plane on a management cluster.
 hcp:
