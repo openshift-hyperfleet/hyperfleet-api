@@ -108,6 +108,51 @@
       padding-top: 10px;
       border-top: 1px dashed var(--border);
     }
+    .fleet {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+    .fleet-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .fleet-head h2 { margin: 0; font-size: 18px; }
+    .fleet-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-start; }
+    .fleet-service, .fleet-mc {
+      min-width: 200px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px;
+      background: var(--card);
+    }
+    .fleet-service { border-color: #b8d4c2; background: #f7fbf8; }
+    .fleet-mc.dead { border-style: dashed; background: #fafafa; opacity: 0.7; }
+    .fleet-mc.dead .mc-name { color: var(--bad-fg); }
+    .fleet-workloads { display: grid; gap: 4px; margin-top: 6px; }
+    .workload {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      overflow-wrap: anywhere;
+    }
+    .workload::before {
+      content: "";
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex: none;
+    }
+    .workload.ok::before { background: var(--ok-fg); }
+    .workload.bad::before { background: var(--bad-fg); }
+    .cluster-tag { margin-left: auto; color: var(--muted); font-size: 11px; }
     .mcs { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 8px; }
     .mc {
       min-width: 180px;
@@ -246,6 +291,89 @@
       return html;
     }
 
+    function fleetWorkloads(views) {
+      const members = [];
+      const controlPlanes = [];
+      for (const view of views) {
+        const cluster = (view.cluster && (view.cluster.name || view.cluster.id)) || "cluster";
+        for (const status of view.statuses) {
+          const data = status.data || {};
+          if (Array.isArray(data.members)) {
+            for (const member of data.members) {
+              members.push({ mc: member.mc || "unknown", member: member, cluster: cluster });
+            }
+          }
+          if (status.adapter === "hcp" && data.mc) {
+            controlPlanes.push({
+              mc: data.mc,
+              pod: data.pod,
+              ready: data.ready === true,
+              cluster: cluster,
+            });
+          }
+        }
+      }
+      return { members: members, controlPlanes: controlPlanes };
+    }
+
+    function fleetWorkload(label, healthy, cluster) {
+      return '<div class="workload ' + (healthy ? "ok" : "bad") + '">' +
+        "<span>" + esc(label) + "</span>" +
+        '<span class="cluster-tag">' + esc(cluster || "cluster") + "</span></div>";
+    }
+
+    function fleetMC(name, workloads, live) {
+      const members = workloads.members.filter(function(entry) { return entry.mc === name; });
+      const controlPlanes = workloads.controlPlanes.filter(function(entry) { return entry.mc === name; });
+      const dead = !live;
+
+      let html = '<div class="fleet-mc' + (dead ? " dead" : "") + '">';
+      html += '<div class="mc-name">' + esc(name) +
+        (dead ? ' <span class="pill danger">lost</span>' : "") + "</div>";
+      html += '<div class="fleet-workloads">';
+      for (const entry of members) {
+        const member = entry.member;
+        const label = member.clientURL || member.name || "member";
+        html += fleetWorkload(label, !dead && member.healthy === true, entry.cluster);
+      }
+      for (const entry of controlPlanes) {
+        const ready = !dead && entry.ready;
+        const label = (entry.pod || "control plane") + (ready ? " (ready)" : " (not ready)");
+        html += fleetWorkload(label, ready, entry.cluster);
+      }
+      if (!members.length && !controlPlanes.length) {
+        html += '<span class="muted">no workloads</span>';
+      }
+      html += "</div></div>";
+      return html;
+    }
+
+    function fleetView(fleet, views, fleetError) {
+      const workloads = fleetWorkloads(views);
+      const fleetMCs = (fleet && fleet.mcs) || [];
+      const liveMCs = new Set(fleetMCs);
+      const names = new Set(fleetMCs);
+      for (const entry of workloads.members) names.add(entry.mc);
+      for (const entry of workloads.controlPlanes) names.add(entry.mc);
+      const service = (fleet && fleet.serviceCluster) || {};
+
+      let html = '<section class="fleet">';
+      html += '<div class="fleet-head"><h2>Fleet map</h2>';
+      if (fleetError) html += '<span class="pill danger">fleet: ' + esc(fleetError) + "</span>";
+      html += "</div><div class=\"fleet-row\">";
+      html += '<div class="fleet-service"><div class="mc-name">CLM service</div>' +
+        "<div>" + esc(service.name || "unknown") + "</div>" +
+        '<div class="muted">' + esc(service.version || "unknown version") + "</div></div>";
+      for (const name of Array.from(names).sort()) {
+        html += fleetMC(name, workloads, fleet ? liveMCs.has(name) : true);
+      }
+      if (!names.size) {
+        html += '<span class="muted">No management clusters discovered.</span>';
+      }
+      html += "</div></section>";
+      return html;
+    }
+
     function adapterPanel(status, statusesError) {
       const conditions = status.conditions || [];
       const data = status.data || {};
@@ -304,13 +432,15 @@
       return html;
     }
 
-    function render(views) {
+    function render(views, fleet, fleetError) {
       const root = document.getElementById("root");
+      let html = fleetView(fleet, views, fleetError);
       if (!views.length) {
-        root.innerHTML = '<div class="empty">No clusters yet. POST a cluster to begin.</div>';
-        return;
+        html += '<div class="empty">No clusters yet. POST a cluster to begin.</div>';
+      } else {
+        html += views.map(clusterView).join("");
       }
-      root.innerHTML = views.map(clusterView).join("");
+      root.innerHTML = html;
     }
 
     function setConnection(online, message) {
@@ -334,8 +464,16 @@
           }
           views.push(view);
         }
-        render(views);
-        setConnection(true, "live - " + clusters.length + " cluster(s)");
+        let fleet = null;
+        let fleetError = "";
+        try {
+          fleet = await getJSON(API + "/poc-fleet");
+        } catch (err) {
+          fleetError = err.message;
+        }
+        render(views, fleet, fleetError);
+        const mcCount = (fleet && fleet.mcs && fleet.mcs.length) || 0;
+        setConnection(true, "live - " + clusters.length + " cluster(s), " + mcCount + " MC(s)");
       } catch (err) {
         setConnection(false, "offline - " + err.message);
       }
