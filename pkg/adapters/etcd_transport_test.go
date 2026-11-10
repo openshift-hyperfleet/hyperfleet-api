@@ -172,3 +172,40 @@ func TestKubeconfigTransportResolvesNodeInternalIP(t *testing.T) {
 	Expect(err).ToNot(HaveOccurred())
 	Expect(address).To(Equal("10.89.0.42"))
 }
+
+func TestKubeconfigTransportReportsStatefulSetRolloutReadiness(t *testing.T) {
+	RegisterTestingT(t)
+	statefulSet := func(name string, generation int64, status map[string]interface{}) *unstructured.Unstructured {
+		return &unstructured.Unstructured{Object: map[string]interface{}{
+			"apiVersion": "apps/v1",
+			"kind":       kindStatefulSet,
+			"metadata": map[string]interface{}{
+				"name":       name,
+				"namespace":  "etcd-my-cluster",
+				"generation": generation,
+				"labels":     map[string]interface{}{"app": "etcd"},
+			},
+			"spec":   map[string]interface{}{"replicas": int64(1)},
+			"status": status,
+		}}
+	}
+	ready := statefulSet("my-cluster-etcd-m0", 2, map[string]interface{}{
+		"observedGeneration": int64(2),
+		"readyReplicas":      int64(1),
+		"updatedReplicas":    int64(1),
+	})
+	restarting := statefulSet("my-cluster-etcd-m1", 3, map[string]interface{}{
+		"observedGeneration": int64(2),
+		"readyReplicas":      int64(1),
+		"updatedReplicas":    int64(0),
+	})
+	transport := testTransport(t, newFakeDynamicClient(ready, restarting))
+
+	states, err := transport.List(
+		context.Background(), "mc-a", kindStatefulSet, "etcd-my-cluster", "app=etcd",
+	)
+	Expect(err).ToNot(HaveOccurred())
+	Expect(states).To(HaveLen(2))
+	Expect(states[0].Ready).To(BeTrue())
+	Expect(states[1].Ready).To(BeFalse())
+}

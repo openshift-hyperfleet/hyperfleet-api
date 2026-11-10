@@ -276,8 +276,32 @@ func manifestReady(object *unstructured.Unstructured) bool {
 			}
 		}
 	case kindStatefulSet:
-		ready, found, err := unstructured.NestedInt64(object.Object, "status", "readyReplicas")
-		return err == nil && found && ready > 0
+		return statefulSetReady(object)
 	}
 	return false
+}
+
+func statefulSetReady(object *unstructured.Unstructured) bool {
+	if generation := object.GetGeneration(); generation > 0 {
+		observed, found, err := unstructured.NestedInt64(
+			object.Object, "status", "observedGeneration",
+		)
+		if err != nil || !found || observed < generation {
+			return false
+		}
+	}
+	wanted, found, err := unstructured.NestedInt64(object.Object, "spec", "replicas")
+	if err != nil || !found {
+		wanted = 1
+	}
+	ready, hasReady, err := unstructured.NestedInt64(
+		object.Object, "status", "readyReplicas",
+	)
+	if err != nil || !hasReady {
+		return false
+	}
+	updated, hasUpdated, err := unstructured.NestedInt64(
+		object.Object, "status", "updatedReplicas",
+	)
+	return err == nil && hasUpdated && ready >= wanted && updated >= wanted
 }

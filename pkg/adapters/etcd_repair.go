@@ -4,8 +4,14 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"time"
 
 	"k8s.io/apimachinery/pkg/runtime"
+)
+
+const (
+	repairSurvivorTimeout = 2 * time.Minute
+	repairSurvivorPoll    = time.Second
 )
 
 // ReplaceMember deletes the failing member's pod and data, removes its stale
@@ -42,9 +48,9 @@ func ReplaceMember(
 }
 
 // RepairMCLoss removes the dead member, updates its slot to a healthy MC with
-// no surviving member, and re-renders that member's manifests. The dead member
-// is removed before the replacement reaches the transport; promotion is left to
-// a later fenced pass.
+// no surviving member, and re-renders that member's manifests. Survivors are
+// rolled first and must be Ready before the replacement starts; promotion is
+// left to a later fenced pass.
 func RepairMCLoss(
 	ctx context.Context,
 	transport Transport,
@@ -78,16 +84,10 @@ func RepairMCLoss(
 	if err := pki.RemintMember(updated.Slots[index]); err != nil {
 		return membership, fmt.Errorf("re-mint etcd certs for %q: %w", deadMember, err)
 	}
-	objects, err := renderMemberManifests(updated, updated.Slots[index], pki, opts)
-	if err != nil {
-		return membership, err
-	}
-	objects = append([]runtime.Object{memberNamespace(updated)}, objects...)
-	if err := transport.Apply(ctx, replacement, objects); err != nil {
-		return membership, fmt.Errorf("apply etcd replacement to %s: %w", replacement, err)
-	}
 	// Every member's initial-cluster must reflect the new slot address, or a
-	// later restart of a survivor fails etcd's peer URL validation.
+	// later restart of a survivor fails etcd's peer URL validation. Apply the
+	// survivors first and wait for quorum before the replacement starts, so a
+	// restarting survivor can never race the replacement into a fresh cluster.
 	for i, slot := range updated.Slots {
 		if i == index {
 			continue
@@ -101,7 +101,60 @@ func RepairMCLoss(
 			return membership, fmt.Errorf("apply updated etcd member to %s: %w", slot.TargetMC, err)
 		}
 	}
+	if err := waitForSurvivorsReady(ctx, transport, updated, index); err != nil {
+		return membership, err
+	}
+	objects, err := renderMemberManifests(updated, updated.Slots[index], pki, opts)
+	if err != nil {
+		return membership, err
+	}
+	objects = append([]runtime.Object{memberNamespace(updated)}, objects...)
+	if err := transport.Apply(ctx, replacement, objects); err != nil {
+		return membership, fmt.Errorf("apply etcd replacement to %s: %w", replacement, err)
+	}
 	return updated, nil
+}
+
+func waitForSurvivorsReady(
+	ctx context.Context, transport Transport, membership Membership, skip int,
+) error {
+	deadline := time.Now().Add(repairSurvivorTimeout)
+	for {
+		ready, err := survivorsReady(ctx, transport, membership, skip)
+		if err != nil {
+			return err
+		}
+		if ready {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("surviving etcd members not ready within %s", repairSurvivorTimeout)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(repairSurvivorPoll):
+		}
+	}
+}
+
+func survivorsReady(
+	ctx context.Context, transport Transport, membership Membership, skip int,
+) (bool, error) {
+	for index, slot := range membership.Slots {
+		if index == skip {
+			continue
+		}
+		selector := EtcdMemberLabel + "=" + slot.Name
+		sets, err := transport.List(ctx, slot.TargetMC, kindStatefulSet, slot.Namespace, selector)
+		if err != nil {
+			return false, fmt.Errorf("list etcd statefulsets on %s: %w", slot.TargetMC, err)
+		}
+		if len(sets) == 0 || !sets[0].Ready {
+			return false, nil
+		}
+	}
+	return true, nil
 }
 
 func slotIndex(membership Membership, memberName string) int {
