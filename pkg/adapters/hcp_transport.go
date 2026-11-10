@@ -47,8 +47,11 @@ func (t *KubeconfigTransport) ReadSecret(
 		return nil, fmt.Errorf("get secret %q in %q: %w", name, mc, err)
 	}
 	encoded, found, err := unstructured.NestedStringMap(secret.Object, "data")
-	if err != nil || !found {
+	if err != nil {
 		return nil, fmt.Errorf("read secret %q data in %q: %w", name, mc, err)
+	}
+	if !found {
+		return nil, fmt.Errorf("secret %q in %q has no data", name, mc)
 	}
 	data := make(map[string][]byte, len(encoded))
 	for key, value := range encoded {
