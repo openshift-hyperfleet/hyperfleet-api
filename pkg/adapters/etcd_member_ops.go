@@ -68,6 +68,42 @@ func RemoveMember(
 	return true, nil
 }
 
+// ReleaseMembership removes a deleted cluster's members from etcd. Voters the
+// quorum fence protects are left for workload deletion to take down. An
+// unreachable etcd has no membership left to release, so it is not an error.
+func ReleaseMembership(
+	ctx context.Context, client MemberClient, membership Membership,
+) error {
+	members, err := client.List(ctx)
+	if err != nil {
+		return nil
+	}
+	for _, slot := range membership.Slots {
+		member := memberFromRef(members, slot.MemberName)
+		if member == nil {
+			continue
+		}
+		if !member.Learner && !safeToRemoveVoter(members) {
+			continue
+		}
+		if err := client.Remove(ctx, member.ID); err != nil {
+			return fmt.Errorf("release etcd member %q: %w", slot.MemberName, err)
+		}
+		members = withoutMember(members, member.ID)
+	}
+	return nil
+}
+
+func withoutMember(members []EtcdMember, id string) []EtcdMember {
+	remaining := make([]EtcdMember, 0, len(members))
+	for _, member := range members {
+		if member.ID != id {
+			remaining = append(remaining, member)
+		}
+	}
+	return remaining
+}
+
 func findMember(
 	ctx context.Context, client MemberClient, ref string,
 ) (*EtcdMember, error) {

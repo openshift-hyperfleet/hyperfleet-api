@@ -56,6 +56,17 @@ func loadEtcdState(dir, cluster string) (*etcdState, error) {
 	return &state, nil
 }
 
+func removeEtcdState(dir, cluster string) error {
+	if dir == "" {
+		return nil
+	}
+	path := filepath.Join(dir, cluster+".json")
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove etcd state %q: %w", path, err)
+	}
+	return nil
+}
+
 func saveEtcdState(dir string, state etcdState) error {
 	if dir == "" {
 		return nil

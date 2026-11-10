@@ -54,6 +54,9 @@ func (c *EtcdController) Name() string { return EtcdAdapterName }
 func (c *EtcdController) Reconcile(
 	ctx context.Context, cluster ClusterView,
 ) (StatusReport, error) {
+	if cluster.Deleting {
+		return c.reconcileDelete(ctx, cluster)
+	}
 	if !etcdManaged(cluster.Spec) {
 		return notManagedReport(cluster), nil
 	}
@@ -142,6 +145,154 @@ func (c *EtcdController) Reconcile(
 	}
 
 	return membership.PendingReport(cluster, &seam.Payload), nil
+}
+
+// reconcileDelete tears the etcd cluster down and finalizes only once its
+// workloads are gone. A missing state file means nothing was ever minted, so a
+// repeat pass after Finalized is safe.
+func (c *EtcdController) reconcileDelete(
+	ctx context.Context, cluster ClusterView,
+) (StatusReport, error) {
+	state, err := c.loadState(cluster.Name)
+	if err != nil {
+		return etcdTeardownErrorReport(cluster, err), err
+	}
+	if state == nil || len(state.Membership.Slots) == 0 {
+		return etcdFinalizedReport(cluster), nil
+	}
+
+	membership := state.Membership
+	pki := state.pki()
+	if releaseErr := c.releaseMembership(ctx, membership, pki); releaseErr != nil {
+		return etcdTeardownErrorReport(cluster, releaseErr), releaseErr
+	}
+	if deleteErr := c.deleteManifests(ctx, membership, pki); deleteErr != nil {
+		return etcdTeardownErrorReport(cluster, deleteErr), deleteErr
+	}
+	gone, goneErr := c.manifestsGone(ctx, membership, pki)
+	if goneErr != nil {
+		return etcdTeardownErrorReport(cluster, goneErr), goneErr
+	}
+	if !gone {
+		return etcdDeletingReport(cluster), nil
+	}
+	if forgetErr := c.forgetState(cluster.Name); forgetErr != nil {
+		return etcdTeardownErrorReport(cluster, forgetErr), forgetErr
+	}
+	return etcdFinalizedReport(cluster), nil
+}
+
+func (c *EtcdController) loadState(cluster string) (*etcdState, error) {
+	if state, ok := c.states[cluster]; ok {
+		return state, nil
+	}
+	state, err := loadEtcdState(c.opts.StateDir, cluster)
+	if err != nil {
+		return nil, err
+	}
+	if state != nil {
+		c.states[cluster] = state
+	}
+	return state, nil
+}
+
+func (c *EtcdController) forgetState(cluster string) error {
+	delete(c.states, cluster)
+	return removeEtcdState(c.opts.StateDir, cluster)
+}
+
+func (c *EtcdController) releaseMembership(
+	ctx context.Context, membership Membership, pki *EtcdPKI,
+) error {
+	client, closeClient, err := c.memberClient(membership, pki)
+	if err != nil {
+		return err
+	}
+	defer closeClient()
+	if client == nil {
+		return nil
+	}
+	return ReleaseMembership(ctx, client, membership)
+}
+
+func (c *EtcdController) memberClient(
+	membership Membership, pki *EtcdPKI,
+) (MemberClient, func(), error) {
+	if c.members != nil {
+		return c.members, func() {}, nil
+	}
+	if !c.live {
+		return nil, func() {}, nil
+	}
+	client, err := NewClientV3(membership.Endpoints(), pki)
+	if err != nil {
+		return nil, func() {}, fmt.Errorf("connect to etcd: %w", err)
+	}
+	return client, func() { _ = client.Close() }, nil
+}
+
+type memberObject struct {
+	kind string
+	name string
+}
+
+func memberTeardownObjects(slot MemberSlot, pki *EtcdPKI) []memberObject {
+	return []memberObject{
+		{kind: kindStatefulSet, name: slot.MemberName},
+		{kind: kindService, name: slot.MemberName},
+		{kind: kindPersistentVolumeClaim, name: etcdDataVolume + "-" + slot.MemberName},
+		{kind: kindSecret, name: pki.MemberSecret(slot).Name},
+	}
+}
+
+func (c *EtcdController) deleteManifests(
+	ctx context.Context, membership Membership, pki *EtcdPKI,
+) error {
+	for _, slot := range membership.Slots {
+		for _, object := range memberTeardownObjects(slot, pki) {
+			err := c.transport.Delete(
+				ctx, slot.TargetMC, object.kind, slot.Namespace, object.name,
+			)
+			if err != nil {
+				return fmt.Errorf(
+					"delete etcd %s %q: %w", object.kind, object.name, err,
+				)
+			}
+		}
+	}
+	return nil
+}
+
+func (c *EtcdController) manifestsGone(
+	ctx context.Context, membership Membership, pki *EtcdPKI,
+) (bool, error) {
+	for _, slot := range membership.Slots {
+		for _, object := range memberTeardownObjects(slot, pki) {
+			found, err := objectExists(ctx, c.transport, slot.TargetMC, slot.Namespace, object)
+			if err != nil {
+				return false, err
+			}
+			if found {
+				return false, nil
+			}
+		}
+	}
+	return true, nil
+}
+
+func objectExists(
+	ctx context.Context, transport Transport, mc, namespace string, object memberObject,
+) (bool, error) {
+	states, err := transport.List(ctx, mc, object.kind, namespace, "")
+	if err != nil {
+		return false, fmt.Errorf("list etcd %s in %q: %w", object.kind, mc, err)
+	}
+	for _, state := range states {
+		if state.Name == object.name {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (c *EtcdController) ensureState(
@@ -283,6 +434,46 @@ func etcdManaged(spec map[string]interface{}) bool {
 	}
 	managed, ok := etcd["managed"].(string)
 	return ok && managed == "clm"
+}
+
+func etcdDeletingReport(cluster ClusterView) StatusReport {
+	const reason = "Deleting"
+	const message = "Etcd teardown is in progress"
+	return StatusReport{
+		ObservedGeneration: cluster.Generation,
+		Conditions: []api.AdapterCondition{
+			condition(api.AdapterConditionTypeAvailable, api.AdapterConditionFalse, reason, message),
+			condition(api.AdapterConditionTypeApplied, api.AdapterConditionTrue, reason, message),
+			condition(api.AdapterConditionTypeHealth, api.AdapterConditionFalse, reason, message),
+		},
+	}
+}
+
+func etcdFinalizedReport(cluster ClusterView) StatusReport {
+	const reason = "Finalized"
+	const message = "Etcd members have been removed"
+	return StatusReport{
+		ObservedGeneration: cluster.Generation,
+		Conditions: []api.AdapterCondition{
+			condition(api.AdapterConditionTypeAvailable, api.AdapterConditionFalse, reason, message),
+			condition(api.AdapterConditionTypeApplied, api.AdapterConditionTrue, reason, message),
+			condition(api.AdapterConditionTypeHealth, api.AdapterConditionFalse, reason, message),
+			condition(api.AdapterConditionTypeFinalized, api.AdapterConditionTrue, reason, message),
+		},
+	}
+}
+
+func etcdTeardownErrorReport(cluster ClusterView, err error) StatusReport {
+	const reason = "TeardownFailed"
+	message := err.Error()
+	return StatusReport{
+		ObservedGeneration: cluster.Generation,
+		Conditions: []api.AdapterCondition{
+			condition(api.AdapterConditionTypeAvailable, api.AdapterConditionFalse, reason, message),
+			condition(api.AdapterConditionTypeApplied, api.AdapterConditionFalse, reason, message),
+			condition(api.AdapterConditionTypeHealth, api.AdapterConditionFalse, reason, message),
+		},
+	}
 }
 
 func etcdErrorReport(cluster ClusterView, err error) StatusReport {
