@@ -78,3 +78,6 @@ configs/dev-jwks.json
 
 # Ignore local kind fleet kubeconfigs
 /.fleet/
+
+# Ignore container-facing kind kubeconfigs and live etcd cert state
+/.fleet-container/

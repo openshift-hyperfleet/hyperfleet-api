@@ -13,7 +13,7 @@ set -euo pipefail
 REPO_ROOT=$(cd "$(dirname "$0")/.." && pwd)
 FLEET_DIR=${FLEET_DIR:-$REPO_ROOT/.fleet}
 KIND_CONFIG=$REPO_ROOT/hack/kind-config.yaml
-MCS=(etcd-mc-0 etcd-mc-1 etcd-mc-2)
+read -r -a MCS <<< "${FLEET_MCS:-etcd-mc-0 etcd-mc-1 etcd-mc-2}"
 
 cd "$REPO_ROOT"
 export KIND_EXPERIMENTAL_PROVIDER=podman
