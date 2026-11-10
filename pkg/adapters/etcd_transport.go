@@ -19,6 +19,7 @@ import (
 )
 
 const (
+	kindNamespace             = "Namespace"
 	kindPod                   = "Pod"
 	kindService               = "Service"
 	kindSecret                = "Secret"
@@ -27,6 +28,7 @@ const (
 )
 
 var etcdKindResources = map[string]schema.GroupVersionResource{
+	kindNamespace:             corev1.SchemeGroupVersion.WithResource("namespaces"),
 	kindPod:                   corev1.SchemeGroupVersion.WithResource("pods"),
 	kindService:               corev1.SchemeGroupVersion.WithResource("services"),
 	kindSecret:                corev1.SchemeGroupVersion.WithResource("secrets"),
@@ -51,6 +53,12 @@ type Transport interface {
 	Apply(ctx context.Context, mc string, objects []runtime.Object) error
 	Delete(ctx context.Context, mc, kind, namespace, name string) error
 	List(ctx context.Context, mc, kind, namespace, labelSelector string) ([]ManifestState, error)
+}
+
+// NodeAddresser resolves a management cluster's routable node address. The PoC
+// uses it to build cross-cluster etcd URLs; production uses fabric DNS instead.
+type NodeAddresser interface {
+	NodeAddress(ctx context.Context, mc string) (string, error)
 }
 
 // KubeconfigTransport talks to each MC through a kubeconfig path.
@@ -158,6 +166,36 @@ func (t *KubeconfigTransport) List(
 	}
 	sort.Slice(states, func(i, j int) bool { return states[i].Name < states[j].Name })
 	return states, nil
+}
+
+// NodeAddress returns the first InternalIP reported by the MC's node.
+func (t *KubeconfigTransport) NodeAddress(ctx context.Context, mc string) (string, error) {
+	client, err := t.clientForMC(mc)
+	if err != nil {
+		return "", err
+	}
+	nodes, err := client.Resource(corev1.SchemeGroupVersion.WithResource("nodes")).
+		List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return "", fmt.Errorf("list nodes in %q: %w", mc, err)
+	}
+	for _, node := range nodes.Items {
+		addresses, found, err := unstructured.NestedSlice(node.Object, "status", "addresses")
+		if err != nil || !found {
+			continue
+		}
+		for _, item := range addresses {
+			address, ok := item.(map[string]interface{})
+			if !ok || address["type"] != "InternalIP" {
+				continue
+			}
+			ip, ok := address["address"].(string)
+			if ok && ip != "" {
+				return ip, nil
+			}
+		}
+	}
+	return "", fmt.Errorf("management cluster %q has no node InternalIP", mc)
 }
 
 // ObservedHealth maps ready member pods back to their slot member names.

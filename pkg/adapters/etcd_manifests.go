@@ -81,6 +81,16 @@ func renderMemberManifests(
 	}, nil
 }
 
+func memberNamespace(membership Membership) *corev1.Namespace {
+	return &corev1.Namespace{
+		TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: kindNamespace},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   membership.Namespace,
+			Labels: map[string]string{"app.kubernetes.io/instance": membership.ClusterName},
+		},
+	}
+}
+
 func memberSecret(membership Membership, slot MemberSlot, pki *EtcdPKI) *corev1.Secret {
 	material := pki.MemberSecret(slot)
 	return &corev1.Secret{
@@ -97,6 +107,26 @@ func memberSecret(membership Membership, slot MemberSlot, pki *EtcdPKI) *corev1.
 
 func memberService(membership Membership, slot MemberSlot) *corev1.Service {
 	labels := memberLabels(membership, slot)
+	spec := corev1.ServiceSpec{
+		Selector: labels,
+		Ports: []corev1.ServicePort{
+			{
+				Name:       "client",
+				Port:       etcdClientPort,
+				TargetPort: intstr.FromInt32(etcdClientPort),
+			},
+			{
+				Name:       "peer",
+				Port:       etcdPeerPort,
+				TargetPort: intstr.FromInt32(etcdPeerPort),
+			},
+		},
+	}
+	if slot.NodeIP != "" {
+		spec.Type = corev1.ServiceTypeNodePort
+		spec.Ports[0].NodePort = slot.ClientNodePort
+		spec.Ports[1].NodePort = slot.PeerNodePort
+	}
 	return &corev1.Service{
 		TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: kindService},
 		ObjectMeta: metav1.ObjectMeta{
@@ -104,21 +134,7 @@ func memberService(membership Membership, slot MemberSlot) *corev1.Service {
 			Namespace: slot.Namespace,
 			Labels:    labels,
 		},
-		Spec: corev1.ServiceSpec{
-			Selector: labels,
-			Ports: []corev1.ServicePort{
-				{
-					Name:       "client",
-					Port:       etcdClientPort,
-					TargetPort: intstr.FromInt32(etcdClientPort),
-				},
-				{
-					Name:       "peer",
-					Port:       etcdPeerPort,
-					TargetPort: intstr.FromInt32(etcdPeerPort),
-				},
-			},
-		},
+		Spec: spec,
 	}
 }
 
@@ -201,10 +217,11 @@ func etcdContainer(
 		"--cert-file=" + etcdTLSDir + "/" + EtcdServerCertKey,
 		"--key-file=" + etcdTLSDir + "/" + EtcdServerKeyKey,
 		"--peer-client-cert-auth",
+		"--experimental-peer-skip-client-san-verification",
 		"--peer-trusted-ca-file=" + etcdTLSDir + "/" + EtcdCACertKey,
 		"--peer-cert-file=" + etcdTLSDir + "/" + EtcdPeerCertKey,
 		"--peer-key-file=" + etcdTLSDir + "/" + EtcdPeerKeyKey,
-		"--tls-min-version=1.2",
+		"--tls-min-version=TLS1.2",
 	}
 	command := "ETCD_INITIAL_CLUSTER_STATE=$(cat " + etcdStateDir + "/state) exec etcd " +
 		strings.Join(args, " ")
@@ -247,8 +264,8 @@ func rejoinScript(membership Membership, slot MemberSlot) string {
 set -eu
 export ETCDCTL_API=3
 export ETCDCTL_CACERT=%[1]s/%[2]s
-export ETCDCTL_CERT=%[1]s/%[3]s
-export ETCDCTL_KEY=%[1]s/%[4]s
+export ETCDCTL_CERT=%[1]s/%[10]s
+export ETCDCTL_KEY=%[1]s/%[11]s
 export ETCDCTL_ENDPOINTS=%[5]s
 
 echo new > %[6]s/state
@@ -262,8 +279,9 @@ if ! etcdctl member list >/dev/null 2>&1; then
   exit 0
 fi
 
-MEMBER_ID=$(etcdctl member list -w simple | awk -F, -v name="%[8]s" \
-  '{ gsub(/^ +| +$/, "", $3); if ($3 == name) { print $1; exit } }')
+MEMBER_ID=$(etcdctl member list -w simple | awk -F, -v name="%[8]s" -v peer="%[9]s" \
+  '{ gsub(/^ +| +$/, "", $3); gsub(/^ +| +$/, "", $4); \
+     if ($3 == name || $4 == peer) { print $1; exit } }')
 if [ -n "${MEMBER_ID}" ]; then
   etcdctl member remove "${MEMBER_ID}"
 fi
@@ -272,7 +290,7 @@ echo existing > %[6]s/state
 `,
 		etcdTLSDir, EtcdCACertKey, EtcdServerCertKey, EtcdServerKeyKey,
 		strings.Join(membership.Endpoints(), ","), etcdStateDir, etcdDataDir,
-		slot.MemberName, slot.PeerURL,
+		slot.MemberName, slot.PeerURL, EtcdClientCertKey, EtcdClientKeyKey,
 	)
 }
 

@@ -86,10 +86,42 @@ func TestEtcdMemberSecretCarriesMemberCerts(t *testing.T) {
 
 	Expect(secret.Name).To(Equal("my-cluster-etcd-m0-tls"))
 	Expect(secret.Namespace).To(Equal(membership.Namespace))
-	Expect(secret.Data).To(HaveLen(5))
+	Expect(secret.Data).To(HaveLen(7))
 	for _, key := range []string{
 		EtcdCACertKey, EtcdServerCertKey, EtcdServerKeyKey, EtcdPeerCertKey, EtcdPeerKeyKey,
+		EtcdClientCertKey, EtcdClientKeyKey,
 	} {
 		Expect(secret.Data[key]).ToNot(BeEmpty(), key)
 	}
+}
+
+func TestMintEtcdPKIIncludesFabricNodeAddresses(t *testing.T) {
+	RegisterTestingT(t)
+	membership := NewMembership("my-cluster", []string{"mc-a", "mc-b", "mc-c"}, EtcdOptions{
+		NodeIPs: map[string]string{"mc-a": "10.89.0.10", "mc-b": "10.89.0.11", "mc-c": "10.89.0.12"},
+	})
+
+	pki, err := MintEtcdPKI("my-cluster", membership.Slots, EtcdPKIOptions{})
+	Expect(err).ToNot(HaveOccurred())
+
+	server := parseCert(t, pki.ServerCerts[membership.Slots[1].MemberName])
+	Expect(server.IPAddresses[1].String()).To(Equal("10.89.0.11"))
+	peer := parseCert(t, pki.PeerCerts[membership.Slots[1].MemberName])
+	Expect(peer.IPAddresses[1].String()).To(Equal("10.89.0.11"))
+}
+
+func TestRemintMemberKeepsTheCAAndAddsTheNewAddress(t *testing.T) {
+	RegisterTestingT(t)
+	membership := NewMembership("my-cluster", []string{"mc-a", "mc-b", "mc-c"}, EtcdOptions{})
+	pki, err := MintEtcdPKI("my-cluster", membership.Slots, EtcdPKIOptions{})
+	Expect(err).ToNot(HaveOccurred())
+
+	replacement := membership.Slots[0]
+	applyNodeAddress(&replacement, "10.89.0.30")
+	Expect(pki.RemintMember(replacement)).To(Succeed())
+
+	ca := parseCert(t, pki.CA)
+	server := parseCert(t, pki.ServerCerts[replacement.MemberName])
+	Expect(server.CheckSignatureFrom(ca)).To(Succeed())
+	Expect(server.IPAddresses[1].String()).To(Equal("10.89.0.30"))
 }

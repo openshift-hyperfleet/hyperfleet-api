@@ -75,7 +75,7 @@ func TestRepairMCLossRemovesDeadMemberAndRetargetsSlot(t *testing.T) {
 	Expect(updated.Slots[2].TargetMC).To(Equal("mc-d"))
 	Expect(client.calls).To(Equal([]string{"remove:id-3"}))
 	Expect(client.members).To(HaveLen(2))
-	Expect(transport.applied["mc-d"]).To(HaveLen(etcdManifestsPerMember))
+	Expect(transport.applied["mc-d"]).To(HaveLen(etcdManifestsPerMember + 1))
 	Expect(findObject(transport.applied["mc-d"], kindStatefulSet, "my-cluster-etcd-m2")).
 		ToNot(BeNil())
 	for _, call := range client.calls {

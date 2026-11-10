@@ -106,3 +106,31 @@ func TestEtcdReportPublishesStatusThroughReporter(t *testing.T) {
 	Expect(data.Endpoints).To(HaveLen(3))
 	Expect(data.Members).To(HaveLen(3))
 }
+
+func TestEtcdMembershipUsesFabricNodePortAddresses(t *testing.T) {
+	RegisterTestingT(t)
+
+	membership := NewMembership("my-cluster", []string{"mc-a", "mc-b", "mc-c"}, EtcdOptions{
+		NodeIPs: map[string]string{"mc-a": "10.89.0.10", "mc-b": "10.89.0.11", "mc-c": "10.89.0.12"},
+	})
+
+	Expect(membership.Slots[0].NodeIP).To(Equal("10.89.0.10"))
+	Expect(membership.Slots[0].ClientNodePort).To(Equal(int32(30379)))
+	Expect(membership.Slots[0].PeerNodePort).To(Equal(int32(30380)))
+	Expect(membership.Slots[0].ClientURL).To(Equal("https://10.89.0.10:30379"))
+	Expect(membership.Slots[0].PeerURL).To(Equal("https://10.89.0.10:30380"))
+	Expect(membership.Slots[1].ClientURL).To(Equal("https://10.89.0.11:31379"))
+}
+
+func TestEtcdMembershipRefreshesNodeAddressesWithoutMovingSlots(t *testing.T) {
+	RegisterTestingT(t)
+	membership := NewMembership("my-cluster", []string{"mc-a", "mc-b", "mc-c"}, EtcdOptions{})
+
+	updated := membership.WithNodeAddresses(map[string]string{"mc-b": "10.89.0.21"})
+
+	Expect(updated.Slots[0].TargetMC).To(Equal("mc-a"))
+	Expect(updated.Slots[0].ClientURL).To(ContainSubstring("svc:2379"))
+	Expect(updated.Slots[1].TargetMC).To(Equal("mc-b"))
+	Expect(updated.Slots[1].ClientURL).To(Equal("https://10.89.0.21:31379"))
+	Expect(membership.Slots[1].ClientURL).To(ContainSubstring("svc:2379"))
+}

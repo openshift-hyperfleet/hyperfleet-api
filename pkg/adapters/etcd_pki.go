@@ -131,6 +131,8 @@ func (p *EtcdPKI) MemberSecret(member MemberSlot) EtcdSecret {
 			EtcdServerKeyKey:  server.KeyPEM,
 			EtcdPeerCertKey:   peer.CertPEM,
 			EtcdPeerKeyKey:    peer.KeyPEM,
+			EtcdClientCertKey: p.Client.CertPEM,
+			EtcdClientKeyKey:  p.Client.KeyPEM,
 		},
 	}
 }
@@ -195,14 +197,67 @@ func signMemberCert(
 	ca *x509.Certificate, caKey *ecdsa.PrivateKey, member MemberSlot,
 	now time.Time, validity time.Duration, commonName string, usages []x509.ExtKeyUsage,
 ) (CertMaterial, error) {
+	ips := []net.IP{net.ParseIP("127.0.0.1")}
+	if member.NodeIP != "" {
+		if ip := net.ParseIP(member.NodeIP); ip != nil {
+			ips = append(ips, ip)
+		}
+	}
 	return signCert(ca, caKey, certTemplate{
 		commonName: commonName,
 		notBefore:  now,
 		notAfter:   now.Add(validity),
 		usages:     usages,
 		dnsNames:   memberDNSNames(member),
-		ips:        []net.IP{net.ParseIP("127.0.0.1")},
+		ips:        ips,
 	})
+}
+
+// RemintMember signs fresh server and peer certs for one slot with the
+// existing CA. Used when a member is replaced on a different fabric address.
+func (p *EtcdPKI) RemintMember(member MemberSlot) error {
+	caCert, caKey, err := parseCA(p.CA)
+	if err != nil {
+		return err
+	}
+	now := time.Now()
+	server, err := signMemberCert(caCert, caKey, member, now, defaultCertValidity,
+		member.MemberName, []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth})
+	if err != nil {
+		return err
+	}
+	peer, err := signMemberCert(caCert, caKey, member, now, defaultCertValidity,
+		member.MemberName+"-peer", []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth})
+	if err != nil {
+		return err
+	}
+	p.ServerCerts[member.MemberName] = server
+	p.PeerCerts[member.MemberName] = peer
+	return nil
+}
+
+func parseCA(material CertMaterial) (*x509.Certificate, *ecdsa.PrivateKey, error) {
+	certBlock, _ := pem.Decode(material.CertPEM)
+	if certBlock == nil {
+		return nil, nil, fmt.Errorf("decode etcd CA certificate")
+	}
+	cert, err := x509.ParseCertificate(certBlock.Bytes)
+	if err != nil {
+		return nil, nil, fmt.Errorf("parse etcd CA certificate: %w", err)
+	}
+	keyBlock, _ := pem.Decode(material.KeyPEM)
+	if keyBlock == nil {
+		return nil, nil, fmt.Errorf("decode etcd CA key")
+	}
+	key, err := x509.ParsePKCS8PrivateKey(keyBlock.Bytes)
+	if err != nil {
+		return nil, nil, fmt.Errorf("parse etcd CA key: %w", err)
+	}
+	ecdsaKey, ok := key.(*ecdsa.PrivateKey)
+	if !ok {
+		return nil, nil, fmt.Errorf("etcd CA key is not ECDSA")
+	}
+	return cert, ecdsaKey, nil
 }
 
 func signCert(ca *x509.Certificate, caKey *ecdsa.PrivateKey, tmpl certTemplate) (CertMaterial, error) {

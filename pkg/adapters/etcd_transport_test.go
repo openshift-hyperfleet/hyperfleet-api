@@ -16,10 +16,11 @@ import (
 
 func newFakeDynamicClient(objects ...runtime.Object) *dynamicfake.FakeDynamicClient {
 	listKinds := map[schema.GroupVersionResource]string{
-		etcdKindResources[kindPod]:         "PodList",
-		etcdKindResources[kindService]:     "ServiceList",
-		etcdKindResources[kindSecret]:      "SecretList",
-		etcdKindResources[kindStatefulSet]: "StatefulSetList",
+		etcdKindResources[kindPod]:                      "PodList",
+		etcdKindResources[kindService]:                  "ServiceList",
+		etcdKindResources[kindSecret]:                   "SecretList",
+		etcdKindResources[kindStatefulSet]:              "StatefulSetList",
+		corev1.SchemeGroupVersion.WithResource("nodes"): "NodeList",
 	}
 	return dynamicfake.NewSimpleDynamicClientWithCustomListKinds(
 		runtime.NewScheme(), listKinds, objects...,
@@ -149,4 +150,25 @@ func TestKubeconfigTransportRejectsUnknownKind(t *testing.T) {
 	_, err := transport.List(context.Background(), "mc-a", "Unknown", "", "")
 
 	Expect(err).To(MatchError(ContainSubstring("unsupported manifest kind")))
+}
+
+func TestKubeconfigTransportResolvesNodeInternalIP(t *testing.T) {
+	RegisterTestingT(t)
+	node := &unstructured.Unstructured{Object: map[string]interface{}{
+		"apiVersion": "v1",
+		"kind":       "Node",
+		"metadata":   map[string]interface{}{"name": "control-plane"},
+		"status": map[string]interface{}{
+			"addresses": []interface{}{
+				map[string]interface{}{"type": "Hostname", "address": "control-plane"},
+				map[string]interface{}{"type": "InternalIP", "address": "10.89.0.42"},
+			},
+		},
+	}}
+	transport := testTransport(t, newFakeDynamicClient(node))
+
+	address, err := transport.NodeAddress(context.Background(), "mc-a")
+
+	Expect(err).ToNot(HaveOccurred())
+	Expect(address).To(Equal("10.89.0.42"))
 }

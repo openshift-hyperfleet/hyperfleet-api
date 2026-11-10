@@ -1,6 +1,7 @@
 package adapters
 
 import (
+	"net"
 	"strconv"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/api"
@@ -26,6 +27,11 @@ type EtcdOptions struct {
 	Slots       int
 	// Namespace overrides the per-cluster namespace derived from the name.
 	Namespace string
+	// NodeIPs maps management clusters to a routable node address. When set,
+	// slots use that address with a fixed NodePort instead of per-MC DNS.
+	NodeIPs map[string]string
+	// StateDir persists each cluster's membership and cert material.
+	StateDir string
 }
 
 func (o EtcdOptions) withDefaults() EtcdOptions {
@@ -46,13 +52,16 @@ func (o EtcdOptions) withDefaults() EtcdOptions {
 //
 //nolint:govet // fieldalignment: grouping beats padding for readability
 type MemberSlot struct {
-	Name       string
-	Index      int
-	TargetMC   string
-	Namespace  string
-	ClientURL  string
-	PeerURL    string
-	MemberName string
+	Name           string
+	Index          int
+	TargetMC       string
+	Namespace      string
+	ClientURL      string
+	PeerURL        string
+	MemberName     string
+	NodeIP         string
+	ClientNodePort int32
+	PeerNodePort   int32
 }
 
 // Membership is the desired etcd member set for one cluster.
@@ -84,9 +93,39 @@ func NewMembership(cluster string, targetMCs []string, opts EtcdOptions) Members
 		}
 		slot.ClientURL = etcdURL(slot.MemberName, namespace, etcdClientPort)
 		slot.PeerURL = etcdURL(slot.MemberName, namespace, etcdPeerPort)
+		if ip := opts.NodeIPs[slot.TargetMC]; ip != "" {
+			applyNodeAddress(&slot, ip)
+		}
 		membership.Slots = append(membership.Slots, slot)
 	}
 	return membership
+}
+
+// applyNodeAddress switches a slot from in-cluster DNS to the PoC fabric
+// address: a node IP plus a stable NodePort per slot.
+func applyNodeAddress(slot *MemberSlot, ip string) {
+	slot.NodeIP = ip
+	slot.ClientNodePort, slot.PeerNodePort = slotNodePorts(slot.Index)
+	slot.ClientURL = "https://" + net.JoinHostPort(ip, strconv.Itoa(int(slot.ClientNodePort)))
+	slot.PeerURL = "https://" + net.JoinHostPort(ip, strconv.Itoa(int(slot.PeerNodePort)))
+}
+
+func slotNodePorts(index int) (int32, int32) {
+	base := int32(30300 + index*1000)
+	return base + 79, base + 80
+}
+
+// WithNodeAddresses refreshes routable addresses without changing placement.
+// Slots whose management cluster has no address keep their existing URL.
+func (m Membership) WithNodeAddresses(nodeIPs map[string]string) Membership {
+	updated := m
+	updated.Slots = append([]MemberSlot(nil), m.Slots...)
+	for index := range updated.Slots {
+		if ip := nodeIPs[updated.Slots[index].TargetMC]; ip != "" {
+			applyNodeAddress(&updated.Slots[index], ip)
+		}
+	}
+	return updated
 }
 
 func etcdURL(name, namespace string, port int) string {

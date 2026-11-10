@@ -52,7 +52,7 @@ func TestRenderEtcdManifestsCreatesStableMemberResources(t *testing.T) {
 
 	secret, ok := findObject(objects, kindSecret, "my-cluster-etcd-m0-tls").(*corev1.Secret)
 	Expect(ok).To(BeTrue())
-	Expect(secret.Data).To(HaveLen(5))
+	Expect(secret.Data).To(HaveLen(7))
 
 	service, ok := findObject(objects, kindService, "my-cluster-etcd-m0").(*corev1.Service)
 	Expect(ok).To(BeTrue())
@@ -121,4 +121,28 @@ func TestRenderEtcdManifestsRejectsMissingCertMaterial(t *testing.T) {
 	_, err := RenderEtcdManifests(membership, &EtcdPKI{}, EtcdOptions{})
 
 	Expect(err).To(MatchError(ContainSubstring("missing cert material")))
+}
+
+func TestRenderEtcdManifestsUsesNodePortServicesOnTheFabric(t *testing.T) {
+	RegisterTestingT(t)
+	membership := NewMembership("my-cluster", []string{"mc-a", "mc-b", "mc-c"}, EtcdOptions{
+		NodeIPs: map[string]string{"mc-a": "10.89.0.10", "mc-b": "10.89.0.11", "mc-c": "10.89.0.12"},
+	})
+	pki := testPKI(t, membership)
+
+	objects, err := RenderEtcdManifests(membership, pki, EtcdOptions{})
+	Expect(err).ToNot(HaveOccurred())
+
+	service, ok := findObject(objects, kindService, "my-cluster-etcd-m0").(*corev1.Service)
+	Expect(ok).To(BeTrue())
+	Expect(service.Spec.Type).To(Equal(corev1.ServiceTypeNodePort))
+	Expect(service.Spec.Ports[0].NodePort).To(Equal(int32(30379)))
+	Expect(service.Spec.Ports[1].NodePort).To(Equal(int32(30380)))
+
+	sts, ok := findObject(objects, kindStatefulSet, "my-cluster-etcd-m0").(*appsv1.StatefulSet)
+	Expect(ok).To(BeTrue())
+	Expect(sts.Spec.Template.Spec.Containers[0].Args[0]).
+		To(ContainSubstring("--advertise-client-urls=https://10.89.0.10:30379"))
+	Expect(sts.Spec.Template.Spec.Containers[0].Args[0]).
+		To(ContainSubstring("--initial-cluster=my-cluster-etcd-m0=https://10.89.0.10:30380"))
 }

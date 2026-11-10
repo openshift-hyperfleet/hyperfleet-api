@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"sort"
+
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 // ReplaceMember deletes the failing member's pod and data, removes its stale
@@ -70,12 +72,34 @@ func RepairMCLoss(
 	updated := membership
 	updated.Slots = append([]MemberSlot(nil), membership.Slots...)
 	updated.Slots[index].TargetMC = replacement
+	if ip := opts.NodeIPs[replacement]; ip != "" {
+		applyNodeAddress(&updated.Slots[index], ip)
+	}
+	if err := pki.RemintMember(updated.Slots[index]); err != nil {
+		return membership, fmt.Errorf("re-mint etcd certs for %q: %w", deadMember, err)
+	}
 	objects, err := renderMemberManifests(updated, updated.Slots[index], pki, opts)
 	if err != nil {
 		return membership, err
 	}
+	objects = append([]runtime.Object{memberNamespace(updated)}, objects...)
 	if err := transport.Apply(ctx, replacement, objects); err != nil {
 		return membership, fmt.Errorf("apply etcd replacement to %s: %w", replacement, err)
+	}
+	// Every member's initial-cluster must reflect the new slot address, or a
+	// later restart of a survivor fails etcd's peer URL validation.
+	for i, slot := range updated.Slots {
+		if i == index {
+			continue
+		}
+		memberObjects, err := renderMemberManifests(updated, slot, pki, opts)
+		if err != nil {
+			return membership, err
+		}
+		memberObjects = append([]runtime.Object{memberNamespace(updated)}, memberObjects...)
+		if err := transport.Apply(ctx, slot.TargetMC, memberObjects); err != nil {
+			return membership, fmt.Errorf("apply updated etcd member to %s: %w", slot.TargetMC, err)
+		}
 	}
 	return updated, nil
 }
