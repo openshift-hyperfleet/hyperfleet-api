@@ -48,6 +48,13 @@ func NewRouterFromConfig(
 	apiV1Router.HandleFunc("GET /openapi.html", openapiHandler.GetOpenAPIUI)
 	apiV1Router.HandleFunc("GET /openapi", openapiHandler.GetOpenAPI)
 
+	//  /api/hyperfleet/v1/poc-dashboard
+	pocDashboardHandler, err := handlers.NewPocDashboardHandler()
+	if err != nil {
+		return nil, fmt.Errorf("unable to create PoC dashboard handler: %w", err)
+	}
+	apiV1Router.HandleFunc("GET /poc-dashboard", pocDashboardHandler.GetPocDashboard)
+
 	// authMiddleware must be outermost so unauthenticated requests are rejected
 	// before protectedAPIMiddleware runs schema validation or reaches mutation services.
 	protectedRouter := apiV1Router.Group()

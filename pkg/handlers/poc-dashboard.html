@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CLM PoC dashboard</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f4f5f7;
+      --card: #ffffff;
+      --text: #202124;
+      --muted: #5f6368;
+      --border: #d7dae0;
+      --ok-bg: #e6f4ea;
+      --ok-fg: #137333;
+      --bad-bg: #fce8e6;
+      --bad-fg: #a50e0e;
+      --unknown-bg: #fef7e0;
+      --unknown-fg: #8a5a00;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 24px;
+      background: var(--bg);
+      color: var(--text);
+      font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    header { margin-bottom: 20px; }
+    h1 { margin: 0; font-size: 22px; }
+    .subtitle { margin: 4px 0 0; color: var(--muted); }
+    .conn {
+      display: inline-block;
+      margin-top: 10px;
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .conn.online { background: var(--ok-bg); color: var(--ok-fg); }
+    .conn.offline { background: var(--bad-bg); color: var(--bad-fg); }
+    .cluster {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+    .cluster-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .cluster-head h2 { margin: 0; font-size: 18px; }
+    .pill {
+      padding: 2px 8px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .pill.danger { background: var(--bad-bg); border-color: var(--bad-bg); color: var(--bad-fg); }
+    .badges { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+    .badge {
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .badge.ok { background: var(--ok-bg); color: var(--ok-fg); }
+    .badge.bad { background: var(--bad-bg); color: var(--bad-fg); }
+    .badge.unknown { background: var(--unknown-bg); color: var(--unknown-fg); }
+    .badge.neutral { background: #eef0f3; color: var(--muted); }
+    .adapters { display: grid; gap: 10px; }
+    .adapter {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      background: #fbfbfc;
+    }
+    .adapter-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+    .adapter-head h3 { margin: 0; font-size: 15px; }
+    .muted { color: var(--muted); font-size: 12px; }
+    .detail {
+      margin: 4px 0;
+      color: var(--muted);
+      overflow-wrap: anywhere;
+    }
+    .detail.danger { color: var(--bad-fg); }
+    code {
+      background: #eef0f3;
+      padding: 1px 5px;
+      border-radius: 4px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+    }
+    .etcd {
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px dashed var(--border);
+    }
+    .mcs { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 8px; }
+    .mc {
+      min-width: 180px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px;
+      background: var(--card);
+    }
+    .mc-name { font-weight: 600; margin-bottom: 6px; }
+    .members { display: grid; gap: 4px; }
+    .member { font-size: 12px; overflow-wrap: anywhere; }
+    .member::before {
+      content: "";
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      margin-right: 6px;
+      border-radius: 50%;
+      vertical-align: middle;
+    }
+    .member.ok::before { background: var(--ok-fg); }
+    .member.bad::before { background: var(--bad-fg); }
+    ul { margin: 4px 0; padding-left: 20px; }
+    .empty {
+      background: var(--card);
+      border: 1px dashed var(--border);
+      border-radius: 10px;
+      padding: 40px;
+      text-align: center;
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>CLM PoC dashboard</h1>
+    <p class="subtitle">PoC demo view, not a product console.</p>
+    <span id="connection" class="conn offline">connecting...</span>
+  </header>
+  <main id="root"><div class="empty">Waiting for the first poll...</div></main>
+  <script>
+    const API = "/api/hyperfleet/v1";
+    const POLL_MS = 1000;
+
+    function esc(value) {
+      return String(value == null ? "" : value).replace(/[&<>"']/g, function (ch) {
+        return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch];
+      });
+    }
+
+    function statusClass(status) {
+      if (status === "True") return "ok";
+      if (status === "False") return "bad";
+      return "unknown";
+    }
+
+    function fmtTime(value) {
+      if (!value) return "-";
+      const date = new Date(value);
+      if (isNaN(date.getTime())) return String(value);
+      return date.toLocaleTimeString();
+    }
+
+    async function getJSON(path) {
+      const response = await fetch(path, { headers: { Accept: "application/json" } });
+      if (!response.ok) throw new Error(path + " -> HTTP " + response.status);
+      return response.json();
+    }
+
+    function conditionBadge(condition) {
+      const title = [condition.reason, condition.message].filter(Boolean).join(": ");
+      const titleAttr = title ? ' title="' + esc(title) + '"' : "";
+      return '<span class="badge ' + statusClass(condition.status) + '"' + titleAttr + ">" +
+        esc(condition.type) + ": " + esc(condition.status) + "</span>";
+    }
+
+    function seamText(seam) {
+      const parts = [];
+      if (seam.managementType) parts.push("management " + seam.managementType);
+      if (Array.isArray(seam.endpoints)) {
+        parts.push(seam.endpoints.length + (seam.endpoints.length === 1 ? " endpoint" : " endpoints"));
+      } else if (seam.endpoint) {
+        parts.push("endpoint " + seam.endpoint);
+      }
+      if (seam.tls && seam.tls.clientSecret && seam.tls.clientSecret.name) {
+        parts.push("client secret " + seam.tls.clientSecret.name);
+      }
+      return parts.join(", ");
+    }
+
+    function etcdView(data) {
+      let html = '<div class="etcd">';
+      html += '<div class="badges">';
+      if (typeof data.quorum === "boolean") {
+        html += '<span class="badge ' + (data.quorum ? "ok" : "bad") + '">' +
+          (data.quorum ? "quorum ok" : "no quorum") + "</span>";
+      }
+      if (data.quorumState) {
+        html += '<span class="badge unknown">' + esc(data.quorumState) + "</span>";
+      }
+      if (data.membersReady != null && data.quorumSize != null) {
+        html += '<span class="badge neutral">' + esc(data.membersReady) + " / " +
+          esc(data.quorumSize) + " ready</span>";
+      }
+      html += "</div>";
+
+      const groups = new Map();
+      for (const member of data.members) {
+        const mc = member.mc || "unknown";
+        if (!groups.has(mc)) groups.set(mc, []);
+        groups.get(mc).push(member);
+      }
+      html += '<div class="mcs">';
+      for (const [mc, members] of groups) {
+        html += '<div class="mc"><div class="mc-name">' + esc(mc) + '</div><div class="members">';
+        for (const member of members) {
+          const label = member.clientURL || member.name || "member";
+          html += '<span class="member ' + (member.healthy ? "ok" : "bad") + '" title="' +
+            esc(member.name || "") + '">' + esc(label) + "</span>";
+        }
+        html += "</div></div>";
+      }
+      html += "</div>";
+
+      if (Array.isArray(data.endpoints) && data.endpoints.length) {
+        html += '<div class="detail">endpoints<ul>';
+        for (const endpoint of data.endpoints) {
+          html += "<li><code>" + esc(endpoint) + "</code></li>";
+        }
+        html += "</ul></div>";
+      }
+      if (data.seam) {
+        html += '<div class="detail">seam ' + esc(seamText(data.seam)) + "</div>";
+      }
+      html += "</div>";
+      return html;
+    }
+
+    function adapterPanel(status, statusesError) {
+      const conditions = status.conditions || [];
+      const data = status.data || {};
+      let html = '<article class="adapter">';
+      html += '<div class="adapter-head"><h3>' + esc(status.adapter) + "</h3>" +
+        '<span class="muted">observed generation ' + esc(status.observed_generation) + "</span>" +
+        '<span class="muted">last report ' + esc(fmtTime(status.last_report_time)) + "</span></div>";
+
+      html += '<div class="badges">' + conditions.map(conditionBadge).join("") + "</div>";
+      for (const condition of conditions) {
+        if (condition.reason || condition.message) {
+          html += '<div class="detail"><b>' + esc(condition.type) + "</b> " +
+            esc([condition.reason, condition.message].filter(Boolean).join(": ")) + "</div>";
+        }
+      }
+
+      if (Array.isArray(data.members)) html += etcdView(data);
+      if (data.kubeconfig) {
+        html += '<div class="detail">kubeconfig <code>' + esc(data.kubeconfig) + "</code></div>";
+      }
+      if (statusesError) {
+        html += '<div class="detail danger">statuses unavailable: ' + esc(statusesError) + "</div>";
+      }
+      html += "</article>";
+      return html;
+    }
+
+    function clusterView(view) {
+      const cluster = view.cluster;
+      const spec = cluster.spec || {};
+      const conditions = (cluster.status && cluster.status.conditions) || [];
+      const summary = [spec.topology, spec.platform].filter(Boolean).join(" / ");
+
+      let html = '<section class="cluster">';
+      html += '<div class="cluster-head"><h2>' + esc(cluster.name) + "</h2>" +
+        '<span class="pill">' + esc(cluster.kind) + "</span>" +
+        '<span class="pill">generation ' + esc(cluster.generation) + "</span>";
+      if (summary) html += '<span class="pill">' + esc(summary) + "</span>";
+      if (cluster.deleted_time) {
+        html += '<span class="pill danger">finalizing since ' + esc(fmtTime(cluster.deleted_time)) + "</span>";
+      }
+      html += "</div>";
+
+      html += '<div class="badges">' + conditions.map(conditionBadge).join("") + "</div>";
+
+      html += '<div class="adapters">';
+      if (view.statuses.length) {
+        for (const status of view.statuses) {
+          html += adapterPanel(status, view.statusesError);
+        }
+      } else {
+        html += '<div class="detail">No adapter statuses yet.' +
+          (view.statusesError ? " " + esc(view.statusesError) : "") + "</div>";
+      }
+      html += "</div></section>";
+      return html;
+    }
+
+    function render(views) {
+      const root = document.getElementById("root");
+      if (!views.length) {
+        root.innerHTML = '<div class="empty">No clusters yet. POST a cluster to begin.</div>';
+        return;
+      }
+      root.innerHTML = views.map(clusterView).join("");
+    }
+
+    function setConnection(online, message) {
+      const connection = document.getElementById("connection");
+      connection.textContent = message;
+      connection.className = "conn " + (online ? "online" : "offline");
+    }
+
+    async function poll() {
+      try {
+        const list = await getJSON(API + "/clusters");
+        const clusters = list.items || [];
+        const views = [];
+        for (const cluster of clusters) {
+          const view = { cluster: cluster, statuses: [], statusesError: "" };
+          try {
+            const statuses = await getJSON(API + "/clusters/" + encodeURIComponent(cluster.id) + "/statuses");
+            view.statuses = statuses.items || [];
+          } catch (err) {
+            view.statusesError = err.message;
+          }
+          views.push(view);
+        }
+        render(views);
+        setConnection(true, "live - " + clusters.length + " cluster(s)");
+      } catch (err) {
+        setConnection(false, "offline - " + err.message);
+      }
+      setTimeout(poll, POLL_MS);
+    }
+
+    poll();
+  </script>
+</body>
+</html>
