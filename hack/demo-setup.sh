@@ -21,6 +21,27 @@ for bin in go podman curl jq; do
 done
 (( missing == 0 )) || exit 1
 
+# Remove containers left by the kill-test and poc-demo scripts so this run
+# never reuses another fleet's database or server.
+mapfile -t leftovers < <(podman ps -a --format '{{.Names}}' |
+	grep -E '^clm-.*-(psql|server|client)$' || true)
+if (( ${#leftovers[@]} > 0 )); then
+	echo "Removing leftover demo containers: ${leftovers[*]}"
+	podman rm -f "${leftovers[@]}" >/dev/null 2>&1 || true
+fi
+
+# Kill whatever still holds the API port (a server from a prior demo).
+API_PORT=${BASE_URL##*:}
+if command -v fuser >/dev/null 2>&1; then
+	fuser -k "${API_PORT}/tcp" >/dev/null 2>&1 || true
+elif command -v lsof >/dev/null 2>&1; then
+	lsof -ti "tcp:${API_PORT}" | xargs -r kill >/dev/null 2>&1 || true
+elif command -v ss >/dev/null 2>&1; then
+	ss -ltnp "sport = :${API_PORT}" 2>/dev/null |
+		grep -o 'pid=[0-9]*' | cut -d= -f2 | sort -u |
+		xargs -r kill >/dev/null 2>&1 || true
+fi
+
 if [[ ! -f pkg/api/openapi/openapi.gen.go ]]; then
 	echo "Generated code is missing; running make generate-all..."
 	make generate-all
