@@ -1,6 +1,10 @@
 package adapters
 
 import (
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	. "github.com/onsi/gomega"
@@ -78,6 +82,8 @@ func TestRenderEtcdManifestsCreatesStableMemberResources(t *testing.T) {
 	script := init.Args[0]
 	Expect(script).To(ContainSubstring("member remove"))
 	Expect(script).To(ContainSubstring("member add"))
+	Expect(script).To(ContainSubstring("while ! etcdctl member list"))
+	Expect(script).To(ContainSubstring("deadline=$(( $(date +%s) + 60 ))"))
 	Expect(script).To(ContainSubstring("/var/lib/data/member/snap/db"))
 	Expect(script).To(ContainSubstring(membership.Slots[2].ClientURL))
 
@@ -145,4 +151,67 @@ func TestRenderEtcdManifestsUsesNodePortServicesOnTheFabric(t *testing.T) {
 		To(ContainSubstring("--advertise-client-urls=https://10.89.0.10:30379"))
 	Expect(sts.Spec.Template.Spec.Containers[0].Args[0]).
 		To(ContainSubstring("--initial-cluster=my-cluster-etcd-m0=https://10.89.0.10:30380"))
+}
+
+func TestRejoinScriptJoinsAReachableCluster(t *testing.T) {
+	RegisterTestingT(t)
+	membership := testMembership(t)
+
+	output, calls, state := runRejoinScript(t, membership, true)
+
+	Expect(output).ToNot(ContainSubstring("starting a new cluster"))
+	Expect(calls).To(ContainSubstring("member add my-cluster-etcd-m0"))
+	Expect(state).To(Equal("existing\n"))
+}
+
+func TestRejoinScriptBootstrapsWhenTheWaitExpires(t *testing.T) {
+	RegisterTestingT(t)
+	membership := testMembership(t)
+
+	output, calls, state := runRejoinScript(t, membership, false)
+
+	Expect(output).To(ContainSubstring("starting a new cluster"))
+	Expect(calls).ToNot(ContainSubstring("member add"))
+	Expect(state).To(Equal("new\n"))
+}
+
+func runRejoinScript(t *testing.T, membership Membership, reachable bool) (string, string, string) {
+	t.Helper()
+	dir := t.TempDir()
+	for _, sub := range []string{"data", "tls", "state", "bin"} {
+		Expect(os.MkdirAll(filepath.Join(dir, sub), 0o755)).To(Succeed())
+	}
+	script := strings.NewReplacer(
+		etcdDataDir, filepath.Join(dir, "data"),
+		etcdTLSDir, filepath.Join(dir, "tls"),
+		etcdStateDir, filepath.Join(dir, "state"),
+	).Replace(rejoinScript(membership, membership.Slots[0]))
+	if !reachable {
+		script = strings.Replace(script, " + 60 ))", " + 0 ))", 1)
+	}
+
+	calls := filepath.Join(dir, "calls")
+	stub := "#!/bin/sh\necho \"$*\" >> " + calls + "\n"
+	exitCode := "0"
+	if reachable {
+		stub += "if [ \"$1 $2 $3\" = \"member list -w\" ]; then " +
+			"echo \"old, started, my-cluster-etcd-m0, " +
+			"https://my-cluster-etcd-m0:2380, https://my-cluster-etcd-m0:2379, false\"; fi\n"
+	} else {
+		exitCode = "1"
+	}
+	stub += "exit " + exitCode + "\n"
+	stubPath := filepath.Join(dir, "bin", "etcdctl")
+	Expect(os.WriteFile(stubPath, []byte(stub), 0o755)).To(Succeed())
+
+	cmd := exec.Command("/bin/sh", "-c", script)
+	cmd.Env = append(os.Environ(), "PATH="+filepath.Join(dir, "bin")+":"+os.Getenv("PATH"))
+	out, err := cmd.CombinedOutput()
+	Expect(err).ToNot(HaveOccurred())
+
+	callLog, err := os.ReadFile(calls)
+	Expect(err).ToNot(HaveOccurred())
+	state, err := os.ReadFile(filepath.Join(dir, "state", "state"))
+	Expect(err).ToNot(HaveOccurred())
+	return string(out), string(callLog), string(state)
 }

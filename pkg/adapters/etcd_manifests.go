@@ -21,6 +21,7 @@ const (
 	etcdStateVol   = "cluster-state"
 
 	etcdManifestsPerMember = 3
+	rejoinWaitSeconds      = 60
 )
 
 // RenderEtcdManifests returns the Secret, Service, and StatefulSet for every
@@ -274,10 +275,15 @@ if [ -f %[7]s/member/snap/db ]; then
   exit 0
 fi
 
-if ! etcdctl member list >/dev/null 2>&1; then
-  echo "etcd cluster is not reachable, starting a new cluster"
-  exit 0
-fi
+# A joining member must not race ahead of the quorum it is joining.
+deadline=$(( $(date +%%s) + %[12]d ))
+while ! etcdctl member list >/dev/null 2>&1; do
+  if [ "$(date +%%s)" -ge "$deadline" ]; then
+    echo "etcd cluster is not reachable, starting a new cluster"
+    exit 0
+  fi
+  sleep 2
+done
 
 MEMBER_ID=$(etcdctl member list -w simple | awk -F, -v name="%[8]s" -v peer="%[9]s" \
   '{ gsub(/^ +| +$/, "", $3); gsub(/^ +| +$/, "", $4); \
@@ -291,6 +297,7 @@ echo existing > %[6]s/state
 		etcdTLSDir, EtcdCACertKey, EtcdServerCertKey, EtcdServerKeyKey,
 		strings.Join(membership.Endpoints(), ","), etcdStateDir, etcdDataDir,
 		slot.MemberName, slot.PeerURL, EtcdClientCertKey, EtcdClientKeyKey,
+		rejoinWaitSeconds,
 	)
 }
 
