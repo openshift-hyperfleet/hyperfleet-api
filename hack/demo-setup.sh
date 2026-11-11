@@ -60,6 +60,10 @@ if curl -fsS --max-time 2 -o /dev/null "${API}/clusters?size=1"; then
 	echo "API server already running at ${BASE_URL}; reusing it."
 else
 	echo "Starting the API server (log: ${SERVER_LOG})..."
+	# configs/config.yaml carries production paths; pin the demo fleet explicitly.
+	export HYPERFLEET_ETCD_FLEET_DIR="$REPO_ROOT/.fleet"
+	export HYPERFLEET_ETCD_STATE_DIR="$REPO_ROOT/.fleet/etcd-state"
+	export HYPERFLEET_ETCD_PREFERRED_MC=mc-0
 	setsid make run-no-auth >"${SERVER_LOG}" 2>&1 &
 	server_pid=$!
 	echo "$server_pid" >"${SERVER_PID_FILE}"
