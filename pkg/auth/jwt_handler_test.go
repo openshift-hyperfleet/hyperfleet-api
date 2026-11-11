@@ -856,33 +856,71 @@ func TestJWTHandler_UnknownKIDRefresh(t *testing.T) {
 }
 
 func TestJWTHandler_CombinedKeyfuncUnknownKIDRefresh(t *testing.T) {
+	cases := []struct {
+		name   string
+		withCA bool
+	}{
+		{"with CA", true},
+		{"without CA", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			RegisterTestingT(t)
+
+			fileKey := genRSAKey(t)
+			urlKey := genRSAKey(t)
+			rotatedKey := genRSAKey(t)
+			srv := newMutableJWKSServer(t, tc.withCA, map[string]*rsa.PublicKey{"kid-url": &urlKey.PublicKey})
+			issuerCfg := config.JWTIssuerConfig{
+				IssuerURL:   "https://test-issuer.example.com",
+				JWKCertURL:  srv.URL,
+				JWKCertFile: writeJWKSFile(t, &fileKey.PublicKey),
+			}
+			if tc.withCA {
+				issuerCfg.JWKCertCAFile = writeTLSCAFile(t, srv.Server)
+			}
+
+			h, err := NewJWTHandler(t.Context(), JWTHandlerConfig{Issuers: []config.JWTIssuerConfig{issuerCfg}})
+			Expect(err).NotTo(HaveOccurred())
+			t.Cleanup(func() {
+				_ = h.Close()
+				srv.Close()
+			})
+			mw := h.Middleware(okHandler())
+
+			// The URL is fetched when the handler is created, not only once a token needs it.
+			Expect(srv.requests.Load()).To(BeNumerically(">=", 1), "the JWKS URL must be fetched at startup")
+			Expect(serveToken(mw, signTokenWithKID(t, urlKey, "kid-url", issuerClaims())).Code).To(Equal(http.StatusOK))
+
+			// A key published later is picked up through the unknown-kid refresh.
+			srv.setKeys(map[string]*rsa.PublicKey{"kid-rotated": &rotatedKey.PublicKey})
+			Expect(serveToken(mw, signTokenWithKID(t, rotatedKey, "kid-rotated", issuerClaims())).Code).To(Equal(http.StatusOK))
+
+			// The file key stays valid whatever the URL publishes.
+			Expect(serveToken(mw, signToken(t, fileKey, issuerClaims())).Code).To(Equal(http.StatusOK))
+		})
+	}
+}
+
+// An issuer that is unreachable at startup must not stop the API from starting in combined mode, as in URL-only
+// mode, and the file keys must keep working.
+func TestJWTHandler_CombinedKeyfuncUnreachableURLAtStartup(t *testing.T) {
 	RegisterTestingT(t)
 
 	fileKey := genRSAKey(t)
-	urlKey := genRSAKey(t)
-	tlsKey := genRSAKey(t)
-	srv := newMutableJWKSServer(t, true, map[string]*rsa.PublicKey{})
-	caFile := writeTLSCAFile(t, srv.Server)
-	jwksFile := writeJWKSFile(t, &fileKey.PublicKey)
+	down := httptest.NewServer(http.NotFoundHandler())
+	deadURL := down.URL
+	down.Close()
 
-	h, err := NewJWTHandler(t.Context(), JWTHandlerConfig{
-		Issuers: []config.JWTIssuerConfig{{
-			IssuerURL:     "https://test-issuer.example.com",
-			JWKCertURL:    srv.URL,
-			JWKCertFile:   jwksFile,
-			JWKCertCAFile: caFile,
-		}},
-	})
+	h, err := NewJWTHandler(t.Context(), JWTHandlerConfig{Issuers: []config.JWTIssuerConfig{{
+		IssuerURL:   "https://test-issuer.example.com",
+		JWKCertURL:  deadURL,
+		JWKCertFile: writeJWKSFile(t, &fileKey.PublicKey),
+	}}})
 	Expect(err).NotTo(HaveOccurred())
-	t.Cleanup(func() { _ = h.Close(); srv.Close() })
-	mw := h.Middleware(okHandler())
+	t.Cleanup(func() { _ = h.Close() })
 
-	srv.setKeys(map[string]*rsa.PublicKey{"kid-url": &urlKey.PublicKey})
-	Expect(serveToken(mw, signTokenWithKID(t, urlKey, "kid-url", issuerClaims())).Code).To(Equal(http.StatusOK))
-
-	srv.setKeys(map[string]*rsa.PublicKey{"kid-tls": &tlsKey.PublicKey})
-	Expect(serveToken(mw, signTokenWithKID(t, tlsKey, "kid-tls", issuerClaims())).Code).To(Equal(http.StatusOK))
-	Expect(serveToken(mw, signToken(t, fileKey, issuerClaims())).Code).To(Equal(http.StatusOK))
+	Expect(serveToken(h.Middleware(okHandler()), signToken(t, fileKey, issuerClaims())).Code).To(Equal(http.StatusOK))
 }
 
 // Issuers can share one header and are tried in order. A token must only ever make its own issuer look up
@@ -974,6 +1012,17 @@ func TestJWTHandler_IssuerScopedKeyLookup(t *testing.T) {
 
 		Expect(rr.Code).To(Equal(http.StatusUnauthorized))
 		Expect(problemCode(rr)).To(Equal("HYPERFLEET-AUT-003"))
+	})
+
+	t.Run("an unconfigured issuer is invalid even when the token is expired", func(t *testing.T) {
+		RegisterTestingT(t)
+		_, _, keyB, mw := setup(t)
+
+		tok := signTokenWithKID(t, keyB, "kid-b", claimsFor("https://unconfigured.example.com", time.Now().Add(-time.Hour)))
+		rr := serveToken(mw, tok)
+
+		Expect(rr.Code).To(Equal(http.StatusUnauthorized))
+		Expect(problemCode(rr)).To(Equal("HYPERFLEET-AUT-002"))
 	})
 
 	t.Run("a new kid still refreshes only the issuer named in the token", func(t *testing.T) {

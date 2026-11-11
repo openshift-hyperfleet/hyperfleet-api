@@ -222,7 +222,15 @@ server:
 
 ### JWKS refresh and key rotation
 
-The API refreshes the JWKS behind `jwk_cert_url` every 5 minutes. A token whose `kid` header is not in the cached key set also triggers one refresh, rate limited to a burst of 3 and one refresh every 30 seconds per issuer. Requests that would wait longer than 2 seconds for that refresh fail immediately. A token whose `kid` is still unknown after the refresh is rejected with `401`. With several issuers, a token is only checked against the keys of the issuer named in its `iss` claim, so it never causes another issuer's JWKS to be fetched or refreshed. This lets a signing key rotation on the identity provider take effect without restarting the API. Keys removed from the JWKS stop being accepted at the next refresh.
+How the API keeps each issuer's keys up to date, so that a signing-key rotation on the identity provider takes effect without restarting the API:
+
+- **Periodic refresh:** the JWKS behind `jwk_cert_url` is re-fetched every 5 minutes. A key removed from the JWKS stops being accepted at the next refresh.
+- **Unknown `kid`:** a token whose `kid` header is not in the cached key set triggers one refresh of that issuer's JWKS. Refreshes are rate limited per issuer: a burst of 3, then one per 30 seconds.
+- **Time limit:** the 2-second limit covers both the wait for a refresh slot and the refresh request itself. When no slot is free the request fails immediately with `401`. A refresh that takes longer than 2 seconds is abandoned and logged, and the key is picked up by the next periodic refresh.
+- **Still unknown:** a token whose `kid` is still unknown after the refresh is rejected with `401`.
+- **One issuer per token:** a token is only checked against the keys of the issuer named in its `iss` claim, so it never causes another issuer's JWKS to be fetched or refreshed. A token whose `iss` matches no configured issuer is rejected as invalid credentials, whatever its expiry.
+- **File keys:** with `jwk_cert_file` alone, the keys are read once at startup and never refreshed; changing them needs a restart. With both `jwk_cert_file` and `jwk_cert_url`, the file keys always stay valid and the URL keys follow the rules above.
+- **CA file:** `jwk_cert_ca_file` is read once at startup. Replacing the CA needs a restart.
 
 ### Creating a service account token
 
