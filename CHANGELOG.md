@@ -34,6 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- JWT JWKS refresh interval reduced from 1 hour to 5 minutes; a token with an unknown `kid` now triggers a rate-limited JWKS refresh (burst 3, one per 30 seconds per issuer; concurrent requests with the same `kid` share one refresh) so signing key rotations take effect without a restart, and tokens still unknown after refresh are rejected with 401; a token is only checked against the keys of the issuer named in its `iss` claim, so it never triggers a JWKS fetch or refresh on another configured issuer; a token naming an unconfigured issuer is rejected as invalid credentials, whatever its expiry ([#422](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/422))
+- The JWKS refresh-failure log line is now `failed to refresh JWKS from URL` (it no longer says `with custom CA`) and also covers file + URL issuers without a CA file. A JWKS URL can carry credentials, so the log lines about fetching it no longer include it: this line and `JWKS client configured with custom CA` carry the `issuer` instead of the `url`, and a failed fetch is logged without the request URL ([#422](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/422))
 - Replaced magic strings for resource types and condition types with constants from `pkg/api/status_types.go` across service, handler, presenter, and factory files; separated condition type constants into `AdapterConditionType*` (for `adapter.conditions`) and `ResourceConditionType*` (for `resource.status.conditions`) to clarify usage context ([#172](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/172))
 - OpenAPI schema is now consumed from the `hyperfleet-api-spec` Go module (`v1.0.12`) for code generation; `openapi/openapi.yaml` is extracted during `make generate` and is no longer tracked in git ([#155](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/155))
 - Replaced OCM SDK authentication handler with standalone JWT middleware, removing `ocm-sdk-go` dependency and its transitive dependencies (`glog`, `bluemonday`, `json-iterator`) ([#120](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/120))
@@ -53,6 +55,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- JWT issuers configured with both `jwk_cert_file` and `jwk_cert_url` but no `jwk_cert_ca_file` now fetch and refresh the JWKS URL; previously the URL was silently ignored and only the file keys were used ([#422](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/422))
 - Restricted `order` query parameter to only allow specific whitelisted fields ([#244](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/244))
 - Validated adapter status conditions in handler layer ([#88](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/88))
 - Removed org prefix from image.repository default ([#86](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/86))

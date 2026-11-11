@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -16,28 +17,63 @@ import (
 	"github.com/MicahParks/jwkset"
 	"github.com/MicahParks/keyfunc/v3"
 	"github.com/golang-jwt/jwt/v5"
+	"golang.org/x/sync/singleflight"
+	"golang.org/x/time/rate"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
 	hferrors "github.com/openshift-hyperfleet/hyperfleet-api/pkg/errors"
 )
 
 const (
-	defaultSigningAlgorithm    = "RS256"
-	defaultLeeway              = 30 * time.Second
-	defaultHTTPClientTimeout   = 30 * time.Second
-	defaultJWKSRefreshInterval = time.Hour
+	defaultSigningAlgorithm  = "RS256"
+	defaultLeeway            = 30 * time.Second
+	defaultHTTPClientTimeout = 30 * time.Second
+
+	// jwksRefreshInterval is how often each JWKS is re-fetched
+	jwksRefreshInterval = 5 * time.Minute
+	// unknownKIDRefreshEvery and unknownKIDRefreshBurst rate-limit JWKS refreshes triggered by an unknown kid.
+	unknownKIDRefreshEvery = 30 * time.Second
+	unknownKIDRefreshBurst = 3
+	// unknownKIDWaitMax is the time limit of an unknown-kid refresh. It covers both the wait for a refresh slot and
+	// the refresh request itself.
+	unknownKIDWaitMax = 5 * time.Second
 )
 
 type JWTHandlerConfig struct {
 	Issuers []config.JWTIssuerConfig
 }
 
-// issuerValidator holds the pre-built keyfunc and parser for a single JWT issuer.
+// issuerValidator holds the pre-built key lookup and parser for a single JWT issuer.
 type issuerValidator struct {
-	keyfunc   keyfunc.Keyfunc
+	keyFn     jwt.Keyfunc
 	parser    *jwt.Parser
 	header    string
 	issuerCfg config.JWTIssuerConfig
+}
+
+// issuerKeyFunc refuses to look up a key for a token that names a different issuer. Issuers can share one
+// header and are tried in order, so without this a valid token for one issuer would make every issuer tried
+// before it fetch or refresh its JWKS. The claims are already decoded when the key lookup runs; the token's
+// issuer is compared exactly, as jwt.WithIssuer does.
+//
+// Concurrent lookups of the same kid share one call to next. The JWKS library gives every caller that misses the
+// cache its own refresh and fails the ones that find the refresh budget empty, even though the key is about to
+// arrive. Sharing means a burst of first requests with a new kid causes one fetch and all of them get the key.
+func issuerKeyFunc(issuerURL string, next jwt.Keyfunc) jwt.Keyfunc {
+	var inflight singleflight.Group
+	return func(token *jwt.Token) (any, error) {
+		iss, err := token.Claims.GetIssuer()
+		if err != nil || iss != issuerURL {
+			return nil, fmt.Errorf("%w: token issuer is not the one this validator accepts", jwt.ErrTokenInvalidIssuer)
+		}
+		kid, kidOK := token.Header["kid"].(string)
+		alg, algOK := token.Header["alg"].(string)
+		if !kidOK || !algOK || kid == "" {
+			return next(token) // the library rejects it with its own error
+		}
+		key, err, _ := inflight.Do(kid+"\x00"+alg, func() (any, error) { return next(token) })
+		return key, err
+	}
 }
 
 func NewJWTHandler(ctx context.Context, cfg JWTHandlerConfig) (*JWTHandler, error) {
@@ -74,7 +110,7 @@ func NewJWTHandler(ctx context.Context, cfg JWTHandlerConfig) (*JWTHandler, erro
 		}
 
 		validators = append(validators, issuerValidator{
-			keyfunc:   kf,
+			keyFn:     issuerKeyFunc(issuer.IssuerURL, kf.Keyfunc),
 			parser:    jwt.NewParser(parserOpts...),
 			header:    issuer.Header,
 			issuerCfg: issuer,
@@ -121,7 +157,7 @@ func (h *JWTHandler) matchValidator(r *http.Request) (*jwt.Token, config.JWTIssu
 			continue
 		}
 
-		token, err := v.parser.Parse(parts[1], v.keyfunc.Keyfunc)
+		token, err := v.parser.Parse(parts[1], v.keyFn)
 		if err != nil {
 			if !errors.Is(lastErr, jwt.ErrTokenExpired) {
 				lastErr = err
@@ -196,16 +232,30 @@ func buildFileOnlyKeyfunc(issuer config.JWTIssuerConfig) (keyfunc.Keyfunc, error
 	return kf, nil
 }
 
+// newUnknownKIDLimiter returns a fresh limiter so that issuers never share a refresh budget.
+func newUnknownKIDLimiter() *rate.Limiter {
+	return rate.NewLimiter(rate.Every(unknownKIDRefreshEvery), unknownKIDRefreshBurst)
+}
+
 func buildURLOnlyKeyfunc(ctx context.Context, issuer config.JWTIssuerConfig) (keyfunc.Keyfunc, error) {
 	if issuer.JWKCertCAFile == "" {
-		kf, err := keyfunc.NewDefaultCtx(ctx, []string{issuer.JWKCertURL})
+		kf, err := keyfunc.NewDefaultOverrideCtx(ctx, []string{issuer.JWKCertURL}, keyfunc.Override{
+			RefreshInterval: jwksRefreshInterval,
+			RefreshErrorHandlerFunc: func(string) func(context.Context, error) {
+				return func(ctx context.Context, err error) {
+					logRefreshFailure(ctx, err, "issuer", issuer.IssuerURL)
+				}
+			},
+			RefreshUnknownKID: newUnknownKIDLimiter(),
+			RateLimitWaitMax:  unknownKIDWaitMax,
+		})
 		if err != nil {
-			return nil, fmt.Errorf("failed to create JWKS client from URL %q: %w", issuer.JWKCertURL, err)
+			return nil, fmt.Errorf("failed to create JWKS client from URL: %w", err)
 		}
 		return kf, nil
 	}
 
-	urlStorage, err := newStorageWithCA(ctx, issuer.JWKCertURL, issuer.JWKCertCAFile)
+	urlStorage, err := newStorageWithCA(ctx, issuer.IssuerURL, issuer.JWKCertURL, issuer.JWKCertCAFile)
 	if err != nil {
 		return nil, err
 	}
@@ -213,6 +263,8 @@ func buildURLOnlyKeyfunc(ctx context.Context, issuer config.JWTIssuerConfig) (ke
 		HTTPURLs: map[string]jwkset.Storage{
 			issuer.JWKCertURL: urlStorage,
 		},
+		RateLimitWaitMax:  unknownKIDWaitMax,
+		RefreshUnknownKID: newUnknownKIDLimiter(),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create HTTP JWKS client: %w", err)
@@ -222,11 +274,13 @@ func buildURLOnlyKeyfunc(ctx context.Context, issuer config.JWTIssuerConfig) (ke
 		Storage: httpStorage,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to create JWKS keyfunc from URL %q with CA: %w", issuer.JWKCertURL, err)
+		return nil, fmt.Errorf("failed to create JWKS keyfunc from URL with CA: %w", err)
 	}
 	return kf, nil
 }
 
+// buildCombinedKeyfunc serves keys from both the JWKS file and the JWKS URL. The file keys are checked first and are
+// never replaced by a refresh; the URL keys follow the same refresh rules as a URL-only issuer.
 func buildCombinedKeyfunc(ctx context.Context, issuer config.JWTIssuerConfig) (keyfunc.Keyfunc, error) {
 	data, err := os.ReadFile(issuer.JWKCertFile)
 	if err != nil {
@@ -237,11 +291,17 @@ func buildCombinedKeyfunc(ctx context.Context, issuer config.JWTIssuerConfig) (k
 		return nil, fmt.Errorf("failed to parse JWKS file: %w", err)
 	}
 
-	urlStorage := jwkset.Storage(jwkset.NewMemoryStorage())
+	// The URL needs an HTTP-backed store with or without a CA file. A plain in-memory store would never fetch it.
+	var urlStorage jwkset.Storage
 	if issuer.JWKCertCAFile != "" {
-		urlStorage, err = newStorageWithCA(ctx, issuer.JWKCertURL, issuer.JWKCertCAFile)
+		urlStorage, err = newStorageWithCA(ctx, issuer.IssuerURL, issuer.JWKCertURL, issuer.JWKCertCAFile)
 		if err != nil {
 			return nil, err
+		}
+	} else {
+		urlStorage, err = newHTTPStorage(ctx, issuer.JWKCertURL, nil, "issuer", issuer.IssuerURL)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create JWKS storage from URL: %w", err)
 		}
 	}
 
@@ -250,6 +310,8 @@ func buildCombinedKeyfunc(ctx context.Context, issuer config.JWTIssuerConfig) (k
 		HTTPURLs: map[string]jwkset.Storage{
 			issuer.JWKCertURL: urlStorage,
 		},
+		RateLimitWaitMax:  unknownKIDWaitMax,
+		RefreshUnknownKID: newUnknownKIDLimiter(),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create HTTP JWKS client: %w", err)
@@ -265,27 +327,43 @@ func buildCombinedKeyfunc(ctx context.Context, issuer config.JWTIssuerConfig) (k
 	return kf, nil
 }
 
-func newStorageWithCA(ctx context.Context, jwkURL, caFile string) (jwkset.Storage, error) {
+// newStorageWithCA builds the HTTP-backed key store for a JWKS URL whose certificate is issued by the CA in caFile.
+func newStorageWithCA(ctx context.Context, issuerURL, jwkURL, caFile string) (jwkset.Storage, error) {
 	httpClient, err := buildHTTPClientWithCA(caFile)
 	if err != nil {
 		return nil, err
 	}
-	slog.InfoContext(ctx, "JWKS client configured with custom CA", "url", jwkURL, "ca_file", caFile)
-	storage, err := jwkset.NewStorageFromHTTP(jwkURL, jwkset.HTTPClientStorageOptions{
-		Client:                    httpClient,
+	slog.InfoContext(ctx, "JWKS client configured with custom CA", "issuer", issuerURL, "ca_file", caFile)
+	storage, err := newHTTPStorage(ctx, jwkURL, httpClient, "issuer", issuerURL, "ca_file", caFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create JWKS storage with CA %q: %w", caFile, err)
+	}
+	return storage, nil
+}
+
+// logRefreshFailure logs a failed JWKS fetch without the JWKS URL. net/http puts the request URL, user name and
+// query included, into the error of a transport failure, so only the cause is logged.
+func logRefreshFailure(ctx context.Context, err error, attrs ...any) {
+	var urlErr *url.Error
+	if errors.As(err, &urlErr) {
+		err = urlErr.Err
+	}
+	slog.ErrorContext(ctx, "failed to refresh JWKS from URL", append([]any{"error", err}, attrs...)...)
+}
+
+// newHTTPStorage builds the key store for one JWKS URL. It fetches the JWKS at creation, tolerating a failed first
+// fetch so an unreachable issuer does not stop the API from starting, then refreshes it in the background. A nil
+// client uses the library default. logAttrs are added to the log line written when a refresh fails.
+func newHTTPStorage(ctx context.Context, jwkURL string, client *http.Client, logAttrs ...any) (jwkset.Storage, error) {
+	return jwkset.NewStorageFromHTTP(jwkURL, jwkset.HTTPClientStorageOptions{
+		Client:                    client,
 		Ctx:                       ctx,
 		NoErrorReturnFirstHTTPReq: true,
 		RefreshErrorHandler: func(ctx context.Context, err error) {
-			slog.ErrorContext(ctx,
-				"failed to refresh JWKS from URL with custom CA", "url", jwkURL, "ca_file", caFile, "error", err,
-			)
+			logRefreshFailure(ctx, err, logAttrs...)
 		},
-		RefreshInterval: defaultJWKSRefreshInterval,
+		RefreshInterval: jwksRefreshInterval,
 	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create JWKS storage from URL %q with CA %q: %w", jwkURL, caFile, err)
-	}
-	return storage, nil
 }
 
 func buildHTTPClientWithCA(caFile string) (*http.Client, error) {

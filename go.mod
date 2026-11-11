@@ -37,6 +37,7 @@ require (
 	go.opentelemetry.io/otel/sdk v1.47.0
 	go.opentelemetry.io/otel/trace v1.47.0
 	go.uber.org/mock v0.6.0
+	golang.org/x/time v0.15.0
 	gopkg.in/resty.v1 v1.12.0
 	gorm.io/datatypes v1.2.7
 	gorm.io/driver/postgres v1.6.2
@@ -57,7 +58,6 @@ require (
 	go.opentelemetry.io/otel/log v1.47.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/exp v0.0.0-20240823005443-9b4947da3948 // indirect
-	golang.org/x/time v0.15.0 // indirect
 )
 
 require (
@@ -134,7 +134,7 @@ require (
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/crypto v0.58.0 // indirect
 	golang.org/x/net v0.60.0 // indirect
-	golang.org/x/sync v0.24.0 // indirect
+	golang.org/x/sync v0.24.0
 	golang.org/x/sys v0.49.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260928230214-8a89bd6388cc // indirect
