@@ -1040,6 +1040,92 @@ func TestJWTHandler_IssuerScopedKeyLookup(t *testing.T) {
 	})
 }
 
+// A burst of first requests carrying the same kid must share one JWKS fetch, also when the IdP is slow. On its own
+// the JWKS library gives every request its own fetch and rejects the ones that find the refresh budget empty, even
+// though the key is about to arrive.
+func TestJWTHandler_ConcurrentRequestsShareOneRefresh(t *testing.T) {
+	const requests = 10
+	cases := []struct {
+		name   string
+		withCA bool
+	}{
+		{"with CA", true},
+		{"without CA", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name+"/new kid published", func(t *testing.T) {
+			RegisterTestingT(t)
+			keyA := genRSAKey(t)
+			keyB := genRSAKey(t)
+			srv, h := newRotatingHandler(t, tc.withCA, map[string]*rsa.PublicKey{"kid-a": &keyA.PublicKey})
+			mw := h.Middleware(okHandler())
+			srv.setKeys(map[string]*rsa.PublicKey{"kid-a": &keyA.PublicKey, "kid-b": &keyB.PublicKey})
+			srv.setDelay(time.Second)
+			baseline := srv.requests.Load()
+
+			codes := serveConcurrently(mw, signTokenWithKID(t, keyB, "kid-b", issuerClaims()), requests)
+
+			for _, code := range codes {
+				Expect(code).To(Equal(http.StatusOK))
+			}
+			Expect(srv.requests.Load() - baseline).To(Equal(int64(1)))
+		})
+
+		t.Run(tc.name+"/unknown kid never published", func(t *testing.T) {
+			RegisterTestingT(t)
+			keyA := genRSAKey(t)
+			srv, h := newRotatingHandler(t, tc.withCA, map[string]*rsa.PublicKey{"kid-a": &keyA.PublicKey})
+			mw := h.Middleware(okHandler())
+			srv.setDelay(500 * time.Millisecond)
+			baseline := srv.requests.Load()
+
+			codes := serveConcurrently(mw, signTokenWithKID(t, keyA, "kid-unknown", issuerClaims()), requests)
+
+			for _, code := range codes {
+				Expect(code).To(Equal(http.StatusUnauthorized))
+			}
+			Expect(srv.requests.Load() - baseline).To(Equal(int64(1)))
+		})
+	}
+}
+
+// Lookups are shared per kid only: a request with a known kid must neither wait for, nor take the key of, a slow
+// refresh that another kid started.
+func TestJWTHandler_SlowRefreshDoesNotBlockOtherKIDs(t *testing.T) {
+	cases := []struct {
+		name   string
+		withCA bool
+	}{
+		{"with CA", true},
+		{"without CA", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			RegisterTestingT(t)
+			keyA := genRSAKey(t)
+			keyB := genRSAKey(t)
+			srv, h := newRotatingHandler(t, tc.withCA, map[string]*rsa.PublicKey{"kid-a": &keyA.PublicKey})
+			mw := h.Middleware(okHandler())
+			srv.setKeys(map[string]*rsa.PublicKey{"kid-a": &keyA.PublicKey, "kid-b": &keyB.PublicKey})
+			srv.setDelay(time.Second)
+			baseline := srv.requests.Load()
+
+			newKid := make(chan int, 1)
+			go func() { newKid <- serveToken(mw, signTokenWithKID(t, keyB, "kid-b", issuerClaims())).Code }()
+			Eventually(func() int64 { return srv.requests.Load() - baseline }).Should(BeNumerically(">=", 1),
+				"the refresh for the new kid must be in flight")
+
+			start := time.Now()
+			code := serveToken(mw, signTokenWithKID(t, keyA, "kid-a", issuerClaims())).Code
+			elapsed := time.Since(start)
+
+			Expect(code).To(Equal(http.StatusOK))
+			Expect(elapsed).To(BeNumerically("<", 500*time.Millisecond), "a known kid must not wait for another kid's refresh")
+			Expect(<-newKid).To(Equal(http.StatusOK))
+		})
+	}
+}
+
 // --- helpers ---
 
 func signToken(t *testing.T, key *rsa.PrivateKey, claims jwt.MapClaims) string {
@@ -1064,6 +1150,24 @@ func serve(handler http.Handler, path, authHeader string) *httptest.ResponseReco
 
 func serveToken(handler http.Handler, token string) *httptest.ResponseRecorder {
 	return serve(handler, "/protected", "Bearer "+token)
+}
+
+// serveConcurrently sends the same bearer token n times at once and returns the status codes.
+func serveConcurrently(handler http.Handler, token string, n int) []int {
+	codes := make([]int, n)
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	for i := range n {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			codes[i] = serveToken(handler, token).Code
+		}()
+	}
+	close(start)
+	wg.Wait()
+	return codes
 }
 
 func serveWithHeader(handler http.Handler, path, headerName, headerValue string) *httptest.ResponseRecorder {
@@ -1171,6 +1275,7 @@ type mutableJWKSServer struct {
 	keys     map[string]*rsa.PublicKey
 	mu       sync.Mutex
 	requests atomic.Int64
+	delay    atomic.Int64 // nanoseconds every response is held back
 }
 
 func newMutableJWKSServer(t *testing.T, useTLS bool, keys map[string]*rsa.PublicKey) *mutableJWKSServer {
@@ -1184,6 +1289,10 @@ func newMutableJWKSServer(t *testing.T, useTLS bool, keys map[string]*rsa.Public
 	return s
 }
 
+func (s *mutableJWKSServer) setDelay(d time.Duration) {
+	s.delay.Store(int64(d))
+}
+
 func (s *mutableJWKSServer) setKeys(keys map[string]*rsa.PublicKey) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -1192,6 +1301,13 @@ func (s *mutableJWKSServer) setKeys(keys map[string]*rsa.PublicKey) {
 
 func (s *mutableJWKSServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.requests.Add(1)
+	if d := time.Duration(s.delay.Load()); d > 0 {
+		select {
+		case <-time.After(d):
+		case <-r.Context().Done():
+			return
+		}
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	keys := make([]json.RawMessage, 0, len(s.keys))

@@ -16,6 +16,7 @@ import (
 	"github.com/MicahParks/jwkset"
 	"github.com/MicahParks/keyfunc/v3"
 	"github.com/golang-jwt/jwt/v5"
+	"golang.org/x/sync/singleflight"
 	"golang.org/x/time/rate"
 
 	"github.com/openshift-hyperfleet/hyperfleet-api/pkg/config"
@@ -54,13 +55,24 @@ type issuerValidator struct {
 // before it fetch or refresh its JWKS. The claims are already decoded when the key lookup runs; the token's
 // issuer is compared exactly, as jwt.WithIssuer does. The error names neither issuer: it is logged, and an issuer
 // URL can embed credentials.
+//
+// Concurrent lookups of the same kid share one call to next. The JWKS library gives every caller that misses the
+// cache its own refresh and fails the ones that find the refresh budget empty, even though the key is about to
+// arrive. Sharing means a burst of first requests with a new kid causes one fetch and all of them get the key.
 func issuerKeyFunc(issuerURL string, next jwt.Keyfunc) jwt.Keyfunc {
+	var inflight singleflight.Group
 	return func(token *jwt.Token) (any, error) {
 		iss, err := token.Claims.GetIssuer()
 		if err != nil || iss != issuerURL {
 			return nil, fmt.Errorf("%w: token issuer is not the one this validator accepts", jwt.ErrTokenInvalidIssuer)
 		}
-		return next(token)
+		kid, kidOK := token.Header["kid"].(string)
+		alg, algOK := token.Header["alg"].(string)
+		if !kidOK || !algOK || kid == "" {
+			return next(token) // the library rejects it with its own error
+		}
+		key, err, _ := inflight.Do(kid+"\x00"+alg, func() (any, error) { return next(token) })
+		return key, err
 	}
 }
 
