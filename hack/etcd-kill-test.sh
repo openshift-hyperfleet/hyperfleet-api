@@ -33,6 +33,9 @@ PSQL=clm-etcd-kill-psql
 SERVER=clm-etcd-kill-server
 STANDIN=clm-etcd-kill-client
 IMAGE=registry.access.redhat.com/ubi9/ubi-minimal
+
+source "$REPO_ROOT/hack/takeover-api-port.sh"
+
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"; podman rm -f "$STANDIN" >/dev/null 2>&1 || true' EXIT
 
@@ -119,6 +122,7 @@ podman run --rm --network kind \
 	--db-host "$PSQL" --db-port 5432 --db-name hyperfleet \
 	--db-username hyperfleet --db-password foobar-bizz-buzz >/dev/null
 rm -f "$STATE_DIR/$CLUSTER.json"
+takeover_api_port
 run_server
 for _ in $(seq 1 60); do
 	[[ $(curl -sS -o /dev/null -w '%{http_code}' "$API/clusters?size=1" 2>/dev/null) == 200 ]] && break

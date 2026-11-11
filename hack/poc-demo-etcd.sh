@@ -32,6 +32,8 @@ DELETE_TIMEOUT=${CLM_POC_DELETE_TIMEOUT:-600}
 NS="etcd-$CLUSTER"
 MEMBER_ENDPOINTS=""
 
+source "$REPO_ROOT/hack/takeover-api-port.sh"
+
 TMP=$(mktemp -d)
 CP_LOG=$TMP/coreshift-create.log
 KUBECTL_LOG=$TMP/kubectl-loop.log
@@ -161,6 +163,7 @@ podman run --rm --network kind \
 	--entrypoint /hyperfleet-api "$IMAGE" migrate --config /configs/dev.yaml \
 	--db-host "$PSQL" --db-port 5432 --db-name hyperfleet \
 	--db-username hyperfleet --db-password foobar-bizz-buzz >/dev/null
+takeover_api_port
 run_server
 for _ in $(seq 1 60); do
 	[[ $(curl -sS -o /dev/null -w '%{http_code}' "$API/clusters?size=1" 2>/dev/null) == 200 ]] && break

@@ -38,6 +38,8 @@ CP_TIMEOUT=${CLM_POC_CP_TIMEOUT:-1800}
 REHOME_TIMEOUT=${CLM_POC_REHOME_TIMEOUT:-1800}
 DELETE_TIMEOUT=${CLM_POC_DELETE_TIMEOUT:-900}
 
+source "$REPO_ROOT/hack/takeover-api-port.sh"
+
 TMP=$(mktemp -d)
 MINT_STATE=$TMP/mint-state
 MINT_NAME=clm-mint-$$
@@ -258,6 +260,7 @@ podman run --rm --network kind \
 	--entrypoint /hyperfleet-api "$IMAGE" migrate --config /configs/dev.yaml \
 	--db-host "$PSQL" --db-port 5432 --db-name hyperfleet \
 	--db-username hyperfleet --db-password foobar-bizz-buzz >/dev/null
+takeover_api_port
 run_server
 for _ in $(seq 1 60); do
 	[[ $(curl -sS -o /dev/null -w '%{http_code}' "$API/clusters?size=1" 2>/dev/null) == 200 ]] && break
