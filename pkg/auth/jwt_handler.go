@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -239,17 +240,22 @@ func newUnknownKIDLimiter() *rate.Limiter {
 func buildURLOnlyKeyfunc(ctx context.Context, issuer config.JWTIssuerConfig) (keyfunc.Keyfunc, error) {
 	if issuer.JWKCertCAFile == "" {
 		kf, err := keyfunc.NewDefaultOverrideCtx(ctx, []string{issuer.JWKCertURL}, keyfunc.Override{
-			RefreshInterval:   jwksRefreshInterval,
+			RefreshInterval: jwksRefreshInterval,
+			RefreshErrorHandlerFunc: func(string) func(context.Context, error) {
+				return func(ctx context.Context, err error) {
+					logRefreshFailure(ctx, err, "issuer", issuer.IssuerURL)
+				}
+			},
 			RefreshUnknownKID: newUnknownKIDLimiter(),
 			RateLimitWaitMax:  unknownKIDWaitMax,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("failed to create JWKS client from URL %q: %w", issuer.JWKCertURL, err)
+			return nil, fmt.Errorf("failed to create JWKS client from URL: %w", err)
 		}
 		return kf, nil
 	}
 
-	urlStorage, err := newStorageWithCA(ctx, issuer.JWKCertURL, issuer.JWKCertCAFile)
+	urlStorage, err := newStorageWithCA(ctx, issuer.IssuerURL, issuer.JWKCertURL, issuer.JWKCertCAFile)
 	if err != nil {
 		return nil, err
 	}
@@ -268,7 +274,7 @@ func buildURLOnlyKeyfunc(ctx context.Context, issuer config.JWTIssuerConfig) (ke
 		Storage: httpStorage,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to create JWKS keyfunc from URL %q with CA: %w", issuer.JWKCertURL, err)
+		return nil, fmt.Errorf("failed to create JWKS keyfunc from URL with CA: %w", err)
 	}
 	return kf, nil
 }
@@ -288,14 +294,14 @@ func buildCombinedKeyfunc(ctx context.Context, issuer config.JWTIssuerConfig) (k
 	// The URL needs an HTTP-backed store with or without a CA file. A plain in-memory store would never fetch it.
 	var urlStorage jwkset.Storage
 	if issuer.JWKCertCAFile != "" {
-		urlStorage, err = newStorageWithCA(ctx, issuer.JWKCertURL, issuer.JWKCertCAFile)
+		urlStorage, err = newStorageWithCA(ctx, issuer.IssuerURL, issuer.JWKCertURL, issuer.JWKCertCAFile)
 		if err != nil {
 			return nil, err
 		}
 	} else {
-		urlStorage, err = newHTTPStorage(ctx, issuer.JWKCertURL, nil)
+		urlStorage, err = newHTTPStorage(ctx, issuer.JWKCertURL, nil, "issuer", issuer.IssuerURL)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create JWKS storage from URL %q: %w", issuer.JWKCertURL, err)
+			return nil, fmt.Errorf("failed to create JWKS storage from URL: %w", err)
 		}
 	}
 
@@ -322,17 +328,27 @@ func buildCombinedKeyfunc(ctx context.Context, issuer config.JWTIssuerConfig) (k
 }
 
 // newStorageWithCA builds the HTTP-backed key store for a JWKS URL whose certificate is issued by the CA in caFile.
-func newStorageWithCA(ctx context.Context, jwkURL, caFile string) (jwkset.Storage, error) {
+func newStorageWithCA(ctx context.Context, issuerURL, jwkURL, caFile string) (jwkset.Storage, error) {
 	httpClient, err := buildHTTPClientWithCA(caFile)
 	if err != nil {
 		return nil, err
 	}
-	slog.InfoContext(ctx, "JWKS client configured with custom CA", "url", jwkURL, "ca_file", caFile)
-	storage, err := newHTTPStorage(ctx, jwkURL, httpClient, "ca_file", caFile)
+	slog.InfoContext(ctx, "JWKS client configured with custom CA", "issuer", issuerURL, "ca_file", caFile)
+	storage, err := newHTTPStorage(ctx, jwkURL, httpClient, "issuer", issuerURL, "ca_file", caFile)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create JWKS storage from URL %q with CA %q: %w", jwkURL, caFile, err)
+		return nil, fmt.Errorf("failed to create JWKS storage with CA %q: %w", caFile, err)
 	}
 	return storage, nil
+}
+
+// logRefreshFailure logs a failed JWKS fetch without the JWKS URL. net/http puts the request URL, user name and
+// query included, into the error of a transport failure, so only the cause is logged.
+func logRefreshFailure(ctx context.Context, err error, attrs ...any) {
+	var urlErr *url.Error
+	if errors.As(err, &urlErr) {
+		err = urlErr.Err
+	}
+	slog.ErrorContext(ctx, "failed to refresh JWKS from URL", append([]any{"error", err}, attrs...)...)
 }
 
 // newHTTPStorage builds the key store for one JWKS URL. It fetches the JWKS at creation, tolerating a failed first
@@ -344,8 +360,7 @@ func newHTTPStorage(ctx context.Context, jwkURL string, client *http.Client, log
 		Ctx:                       ctx,
 		NoErrorReturnFirstHTTPReq: true,
 		RefreshErrorHandler: func(ctx context.Context, err error) {
-			attrs := append([]any{"url", jwkURL, "error", err}, logAttrs...)
-			slog.ErrorContext(ctx, "failed to refresh JWKS from URL", attrs...)
+			logRefreshFailure(ctx, err, logAttrs...)
 		},
 		RefreshInterval: jwksRefreshInterval,
 	})

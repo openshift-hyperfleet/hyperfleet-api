@@ -1,15 +1,18 @@
 package auth
 
 import (
+	"bytes"
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -1187,7 +1190,90 @@ func TestJWTHandler_SlowIdP(t *testing.T) {
 	}
 }
 
+// A JWKS URL can carry credentials: user info or a token in the query. Whatever the log line is about, the URL must
+// not reach the logs, neither as an attribute nor inside an error text. net/http puts the URL in the error of a
+// transport failure, so this covers the cause as well as the attributes. The issuer names the failing source instead.
+func TestJWTHandler_JWKSURLNotLogged(t *testing.T) {
+	const (
+		user, password, queryToken = "svc-user", "s3cret", "abc123"
+		issuerURL                  = "https://test-issuer.example.com"
+	)
+	cases := []struct {
+		name     string
+		withFile bool
+		withCA   bool
+	}{
+		{"URL only", false, false},
+		{"URL only with CA", false, true},
+		{"file + URL", true, false},
+		{"file + URL with CA", true, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			g := NewWithT(t)
+			logs := captureLogs(t)
+			keyA := genRSAKey(t)
+			keyB := genRSAKey(t)
+			srv := newMutableJWKSServer(t, tc.withCA, map[string]*rsa.PublicKey{"kid-a": &keyA.PublicKey})
+			cfg := config.JWTIssuerConfig{
+				IssuerURL:  issuerURL,
+				JWKCertURL: strings.Replace(srv.URL, "://", "://"+user+":"+password+"@", 1) + "/jwks?token=" + queryToken,
+			}
+			if tc.withFile {
+				cfg.JWKCertFile = writeJWKSFile(t, &keyA.PublicKey)
+			}
+			if tc.withCA {
+				cfg.JWKCertCAFile = writeTLSCAFile(t, srv.Server)
+			}
+			h, err := NewJWTHandler(t.Context(), JWTHandlerConfig{Issuers: []config.JWTIssuerConfig{cfg}})
+			g.Expect(err).NotTo(HaveOccurred())
+			t.Cleanup(func() { _ = h.Close() })
+
+			// The IdP goes away, so the refresh that an unknown kid triggers fails with a transport error.
+			srv.Close()
+			code := serveToken(h.Middleware(okHandler()), signTokenWithKID(t, keyB, "kid-b", issuerClaims())).Code
+			g.Expect(code).To(Equal(http.StatusUnauthorized))
+
+			out := logs.String()
+			g.Expect(out).To(ContainSubstring("failed to refresh JWKS from URL"), "the failed refresh must be logged")
+			g.Expect(out).To(ContainSubstring(issuerURL), "the log must name the issuer")
+			for _, secret := range []string{user, password, queryToken, "/jwks"} {
+				g.Expect(out).NotTo(ContainSubstring(secret))
+			}
+		})
+	}
+}
+
 // --- helpers ---
+
+// lockedBuffer collects log output that refresh goroutines may write concurrently with the test.
+type lockedBuffer struct {
+	buf bytes.Buffer
+	mu  sync.Mutex
+}
+
+func (b *lockedBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *lockedBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+// captureLogs redirects the default logger into a buffer until the test ends. Tests that use it must not run in
+// parallel.
+func captureLogs(t *testing.T) *lockedBuffer {
+	t.Helper()
+	logs := &lockedBuffer{}
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(logs, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+	return logs
+}
 
 func signToken(t *testing.T, key *rsa.PrivateKey, claims jwt.MapClaims) string {
 	t.Helper()
