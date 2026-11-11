@@ -35,7 +35,7 @@ const (
 	unknownKIDRefreshBurst = 3
 	// unknownKIDWaitMax is the time limit of an unknown-kid refresh. It covers both the wait for a refresh slot and
 	// the refresh request itself.
-	unknownKIDWaitMax = 2 * time.Second
+	unknownKIDWaitMax = 5 * time.Second
 )
 
 type JWTHandlerConfig struct {

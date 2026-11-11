@@ -1126,6 +1126,66 @@ func TestJWTHandler_SlowRefreshDoesNotBlockOtherKIDs(t *testing.T) {
 	}
 }
 
+// A slow IdP must not break a rotation as long as it answers within the time limit of an unknown-kid refresh, and
+// one that is slower than the limit must fail the request at the limit instead of holding it. The delays are
+// derived from the limit, so the test follows it when it changes.
+func TestJWTHandler_SlowIdP(t *testing.T) {
+	cases := []struct {
+		name   string
+		withCA bool
+	}{
+		{"with CA", true},
+		{"without CA", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name+"/answers within the limit", func(t *testing.T) {
+			t.Parallel()
+			g := NewWithT(t)
+			keyA := genRSAKey(t)
+			keyB := genRSAKey(t)
+			srv, h := newRotatingHandler(t, tc.withCA, map[string]*rsa.PublicKey{"kid-a": &keyA.PublicKey})
+			mw := h.Middleware(okHandler())
+			srv.setKeys(map[string]*rsa.PublicKey{"kid-a": &keyA.PublicKey, "kid-b": &keyB.PublicKey})
+			delay := unknownKIDWaitMax / 2
+			srv.setDelay(delay)
+
+			start := time.Now()
+			code := serveToken(mw, signTokenWithKID(t, keyB, "kid-b", issuerClaims())).Code
+			elapsed := time.Since(start)
+
+			g.Expect(code).To(Equal(http.StatusOK))
+			g.Expect(elapsed).To(BeNumerically(">=", delay), "the request must have waited for the slow IdP")
+			g.Expect(elapsed).To(BeNumerically("<", unknownKIDWaitMax))
+		})
+
+		t.Run(tc.name+"/slower than the limit", func(t *testing.T) {
+			t.Parallel()
+			g := NewWithT(t)
+			keyA := genRSAKey(t)
+			keyB := genRSAKey(t)
+			srv, h := newRotatingHandler(t, tc.withCA, map[string]*rsa.PublicKey{"kid-a": &keyA.PublicKey})
+			mw := h.Middleware(okHandler())
+			srv.setKeys(map[string]*rsa.PublicKey{"kid-a": &keyA.PublicKey, "kid-b": &keyB.PublicKey})
+			srv.setDelay(unknownKIDWaitMax + 3*time.Second)
+			baseline := srv.requests.Load()
+			newKid := signTokenWithKID(t, keyB, "kid-b", issuerClaims())
+
+			start := time.Now()
+			code := serveToken(mw, newKid).Code
+			elapsed := time.Since(start)
+
+			g.Expect(code).To(Equal(http.StatusUnauthorized))
+			g.Expect(srv.requests.Load()-baseline).To(BeNumerically(">=", 1), "a refresh must have been attempted")
+			g.Expect(elapsed).To(BeNumerically("<", unknownKIDWaitMax+time.Second), "the request must not wait for the IdP")
+
+			// The cache survived, and the handler is not stuck: the same token works once the IdP is fast again.
+			g.Expect(serveToken(mw, signTokenWithKID(t, keyA, "kid-a", issuerClaims())).Code).To(Equal(http.StatusOK))
+			srv.setDelay(0)
+			g.Expect(serveToken(mw, newKid).Code).To(Equal(http.StatusOK))
+		})
+	}
+}
+
 // --- helpers ---
 
 func signToken(t *testing.T, key *rsa.PrivateKey, claims jwt.MapClaims) string {
