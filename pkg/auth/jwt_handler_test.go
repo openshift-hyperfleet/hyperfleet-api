@@ -902,8 +902,9 @@ func TestJWTHandler_CombinedKeyfuncUnknownKIDRefresh(t *testing.T) {
 	}
 }
 
-// An issuer that is unreachable at startup must not stop the API from starting in combined mode, as in URL-only
-// mode, and the file keys must keep working.
+// An issuer whose URL refuses connections at startup must not stop the API from starting in combined mode, as in
+// URL-only mode, and the file keys must keep working. A URL that stalls instead of refusing delays startup until
+// the HTTP timeout; that is not covered here.
 func TestJWTHandler_CombinedKeyfuncUnreachableURLAtStartup(t *testing.T) {
 	RegisterTestingT(t)
 
@@ -1329,7 +1330,8 @@ func newRotatingHandler(t *testing.T, withCA bool, keys map[string]*rsa.PublicKe
 	return srv, h
 }
 
-// mutableJWKSServer serves the current kid -> public key set and counts every request it receives.
+// mutableJWKSServer serves the current kid -> public key set, counts every request it receives, and can hold its
+// responses back with setDelay.
 type mutableJWKSServer struct {
 	*httptest.Server
 	keys     map[string]*rsa.PublicKey

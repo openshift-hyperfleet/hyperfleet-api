@@ -53,8 +53,7 @@ type issuerValidator struct {
 // issuerKeyFunc refuses to look up a key for a token that names a different issuer. Issuers can share one
 // header and are tried in order, so without this a valid token for one issuer would make every issuer tried
 // before it fetch or refresh its JWKS. The claims are already decoded when the key lookup runs; the token's
-// issuer is compared exactly, as jwt.WithIssuer does. The error names neither issuer: it is logged, and an issuer
-// URL can embed credentials.
+// issuer is compared exactly, as jwt.WithIssuer does.
 //
 // Concurrent lookups of the same kid share one call to next. The JWKS library gives every caller that misses the
 // cache its own refresh and fails the ones that find the refresh budget empty, even though the key is about to

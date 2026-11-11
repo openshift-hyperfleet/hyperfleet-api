@@ -226,11 +226,12 @@ How the API keeps each issuer's keys up to date, so that a signing-key rotation 
 
 - **Periodic refresh:** the JWKS behind `jwk_cert_url` is re-fetched every 5 minutes. A key removed from the JWKS stops being accepted at the next refresh.
 - **Unknown `kid`:** a token whose `kid` header is not in the cached key set triggers one refresh of that issuer's JWKS. Refreshes are rate limited per issuer: a burst of 3, then one per 30 seconds. Concurrent requests carrying the same unknown `kid` share that one refresh.
-- **Time limit:** the 5-second limit covers both the wait for a refresh slot and the refresh request itself. When no slot is free the request fails immediately with `401`. A refresh that takes longer than 5 seconds is abandoned and logged, and the key is picked up by the next periodic refresh.
+- **Time limit:** the 5-second limit covers both the wait for a refresh slot and the refresh request itself. If the next slot is more than 5 seconds away, the request fails immediately with `401`. A refresh that takes longer than 5 seconds is abandoned and logged, and the key is picked up by the next periodic refresh.
 - **Still unknown:** a token whose `kid` is still unknown after the refresh is rejected with `401`.
 - **One issuer per token:** a token is only checked against the keys of the issuer named in its `iss` claim, so it never causes another issuer's JWKS to be fetched or refreshed. A token whose `iss` matches no configured issuer is rejected as invalid credentials, whatever its expiry.
 - **File keys:** with `jwk_cert_file` alone, the keys are read once at startup and never refreshed; changing them needs a restart. With both `jwk_cert_file` and `jwk_cert_url`, the file keys always stay valid and the URL keys follow the rules above.
 - **CA file:** `jwk_cert_ca_file` is read once at startup. Replacing the CA needs a restart.
+- **Startup:** each URL is fetched once when the API starts. An unreachable URL does not stop the API from starting, and its keys arrive with the next refresh. A URL that accepts the connection but never answers delays startup until the HTTP timeout: 30 seconds with `jwk_cert_ca_file`, 60 seconds without.
 
 ### Creating a service account token
 
