@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Tear down what demo-stage started: delete the cluster record through the
 # API and wait for finalize, stop the detached port-forward, and remove the
-# demo server and database containers. Safe to run again if pieces are gone.
+# demo server and database containers.
+# Idempotent: missing records, files, and containers are reported and skipped;
+# a second run from a cold state exits 0.
 set -euo pipefail
 
 source "$(dirname "$0")/demo-lib.sh"

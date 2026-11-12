@@ -3,6 +3,8 @@
 # only does the machinery: fleet, image, postgres, server, clean start. The
 # cluster creation, port-forward, kill, and cleanup are typed on stage from
 # the card printed at the end.
+# Safe to re-run: reuses the fleet, image, database, and a responding server,
+# then clean-starts any existing hosted cluster record.
 set -euo pipefail
 
 source "$(dirname "$0")/demo-lib.sh"

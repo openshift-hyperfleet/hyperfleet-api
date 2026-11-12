@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # One-command PoC demo bring-up: database, API server, kind fleet, dashboard.
+# Safe to re-run: reuses a responding server and the existing database,
+# container, and fleet; a stale pid file is cleaned before starting.
 # Usage: hack/demo-setup.sh
 set -euo pipefail
 
@@ -21,44 +23,62 @@ for bin in go podman curl jq; do
 done
 (( missing == 0 )) || exit 1
 
-# Remove containers left by the kill-test and poc-demo scripts so this run
-# never reuses another fleet's database or server.
-mapfile -t leftovers < <(podman ps -a --format '{{.Names}}' |
-	grep -E '^clm-.*-(psql|server|client)$' || true)
-if (( ${#leftovers[@]} > 0 )); then
-	echo "Removing leftover demo containers: ${leftovers[*]}"
-	podman rm -f "${leftovers[@]}" >/dev/null 2>&1 || true
-fi
-
-# Kill whatever still holds the API port (a server from a prior demo).
-API_PORT=${BASE_URL##*:}
-if command -v fuser >/dev/null 2>&1; then
-	fuser -k "${API_PORT}/tcp" >/dev/null 2>&1 || true
-elif command -v lsof >/dev/null 2>&1; then
-	lsof -ti "tcp:${API_PORT}" | xargs -r kill >/dev/null 2>&1 || true
-elif command -v ss >/dev/null 2>&1; then
-	ss -ltnp "sport = :${API_PORT}" 2>/dev/null |
-		grep -o 'pid=[0-9]*' | cut -d= -f2 | sort -u |
-		xargs -r kill >/dev/null 2>&1 || true
-fi
-
-if [[ ! -f pkg/api/openapi/openapi.gen.go ]]; then
-	echo "Generated code is missing; running make generate-all..."
-	make generate-all
-fi
-
-if podman container exists psql-hyperfleet; then
-	echo "Database container 'psql-hyperfleet' already exists; reusing it."
-	podman start psql-hyperfleet >/dev/null 2>&1 || true
-else
-	echo "Starting the local PostgreSQL container..."
-	make db/setup
-fi
-
+# Drop a pid file left by a server that is no longer running.
 server_pid=""
+if [[ -f $SERVER_PID_FILE ]]; then
+	pid=$(<"$SERVER_PID_FILE")
+	if [[ -n $pid ]] && kill -0 "$pid" 2>/dev/null; then
+		server_pid=$pid
+	else
+		rm -f "$SERVER_PID_FILE"
+	fi
+fi
+
 if curl -fsS --max-time 2 -o /dev/null "${API}/clusters?size=1"; then
 	echo "API server already running at ${BASE_URL}; reusing it."
 else
+	if [[ -n $server_pid ]]; then
+		kill -- "-$server_pid" 2>/dev/null || kill "$server_pid" 2>/dev/null || true
+		rm -f "$SERVER_PID_FILE"
+		server_pid=""
+	fi
+
+	# Remove containers left by the kill-test and poc-demo scripts so this run
+	# never reuses another fleet's database or server.
+	mapfile -t leftovers < <(podman ps -a --format '{{.Names}}' |
+		grep -E '^clm-.*-(psql|server|client)$' || true)
+	if (( ${#leftovers[@]} > 0 )); then
+		echo "Removing leftover demo containers: ${leftovers[*]}"
+		podman rm -f "${leftovers[@]}" >/dev/null 2>&1 || true
+	fi
+
+	# Kill whatever still holds the API port (a server from a prior demo).
+	API_PORT=${BASE_URL##*:}
+	if command -v fuser >/dev/null 2>&1; then
+		fuser -k "${API_PORT}/tcp" >/dev/null 2>&1 || true
+	elif command -v lsof >/dev/null 2>&1; then
+		lsof -ti "tcp:${API_PORT}" | xargs -r kill >/dev/null 2>&1 || true
+	elif command -v ss >/dev/null 2>&1; then
+		ss -ltnp "sport = :${API_PORT}" 2>/dev/null |
+			grep -o 'pid=[0-9]*' | cut -d= -f2 | sort -u |
+			xargs -r kill >/dev/null 2>&1 || true
+	fi
+
+	if [[ ! -f pkg/api/openapi/openapi.gen.go ]]; then
+		echo "Generated code is missing; running make generate-all..."
+		make generate-all
+	fi
+
+	if podman container exists psql-hyperfleet; then
+		echo "Database container 'psql-hyperfleet' already exists; reusing it."
+		if [[ $(podman inspect psql-hyperfleet --format '{{.State.Running}}') != true ]]; then
+			podman start psql-hyperfleet >/dev/null 2>&1 || true
+		fi
+	else
+		echo "Starting the local PostgreSQL container..."
+		make db/setup
+	fi
+
 	echo "Starting the API server (log: ${SERVER_LOG})..."
 	# configs/config.yaml carries production paths; pin the demo fleet explicitly.
 	export HYPERFLEET_ETCD_FLEET_DIR="$REPO_ROOT/.fleet"
