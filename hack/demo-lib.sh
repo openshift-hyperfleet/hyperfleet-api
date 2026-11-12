@@ -239,7 +239,7 @@ demo_cleanup() {
 
 demo_preflight() {
 	require_commands go podman kubectl oc curl jq base64 awk make
-	PULL_SECRET=${HYPERFLEET_CORESHIFT_PULL_SECRET_FILE:-}
+	PULL_SECRET=${HYPERFLEET_CORESHIFT_PULL_SECRET_FILE:-../pull-secret}
 	[[ -n $PULL_SECRET ]] ||
 		fail "HYPERFLEET_CORESHIFT_PULL_SECRET_FILE is not set; export the pull-secret path"
 	[[ -r $PULL_SECRET ]] ||
