@@ -109,6 +109,7 @@ See [docs/search.md](docs/search.md) for search and filtering documentation.
 - **[docs/continuous-delivery-migration.md](docs/continuous-delivery-migration.md)** - CD migration guide
 - **[docs/dao.md](docs/dao.md)** - Data access patterns
 - **[docs/testcontainers.md](docs/testcontainers.md)** - Testcontainers usage
+- **[CLM PoC](docs/poc/README.md)** - Proof-of-concept branch: live evidence, demo runbook, and design documents
 
 ## License
 
