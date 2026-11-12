@@ -26,15 +26,27 @@ Measured results:
 
 ## Demo runbook
 
+The demo is typed live; scripts only prepare the stage.
+
 ```bash
-hack/demo-setup.sh
-hack/demo-populate.sh
-hack/demo-kill-mc.sh mc-0
-hack/demo-teardown.sh
+./hack/demo-stage.sh
 ```
 
-`demo-populate.sh` fills the fleet map and prints the controls card.
-`demo-kill-mc.sh mc-0` is the on-stage kill.
+`demo-stage.sh` brings up the fleet, image, database, and server, then prints
+the on-stage card with the actual commands and values: API URL, cluster name,
+namespaces, deployment, and kubeconfig paths. The flow is:
+
+1. POST the cluster and keep its id.
+2. Watch the conditions, etcd pods, and control plane pods.
+3. When `Reconciled=True`, port-forward `deployment/hcp` in `hcp-demo` and
+   copy its admin kubeconfig out of the state volume.
+4. Kill `mc-0` directly with kind and remove both kubeconfigs.
+5. Watch recovery on `mc-3`, re-forward, re-copy the fresh admin kubeconfig,
+   and prove the data survived.
+6. DELETE the cluster and run `./hack/demo-teardown.sh`.
+
+If you would rather not type the kill, `./hack/demo-kill-mc.sh mc-0` performs
+the same deletion.
 
 The hcp demo additionally needs `CORESHIFT_BIN` and
 `HYPERFLEET_CORESHIFT_PULL_SECRET_FILE`.
