@@ -2,6 +2,7 @@
 # Stops demo-setup's host server so a demo script can publish its own API
 # server on the same port. Fails when something else holds the port.
 #
+# Idempotent: no holder is a no-op; a stale demo-setup pid file is removed.
 # Callers must set API_PORT before sourcing this file.
 
 DEMO_SERVER_PID_FILE=${CLM_POC_SERVER_PID_FILE:-/tmp/clm-poc-demo-server.pid}

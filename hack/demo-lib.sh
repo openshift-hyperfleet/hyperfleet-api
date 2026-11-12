@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Shared machinery for the hosted-control-plane demo scripts. Source this
 # file; it defines configuration and functions, then each script runs only
-# the phases it needs. The pull secret is handed to coreshift by path and
-# never enters the repo, logs, or status payloads.
+# the phases it needs. Helpers are check-then-act: they reuse a running
+# container, a loaded image, or an existing cluster instead of recreating it.
+# The pull secret is handed to coreshift by path and never enters the repo,
+# logs, or status payloads.
 
 DEMO_LIB_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 REPO_ROOT=${REPO_ROOT:-$DEMO_LIB_ROOT}
@@ -32,6 +34,7 @@ HCP_KUBECONFIG=${CLM_POC_HCP_KUBECONFIG:-$FLEET_DIR/$CLUSTER-hcp.kubeconfig}
 FORWARD_PID_FILE=${CLM_POC_HCP_FORWARD_PID_FILE:-/tmp/clm-poc-hcp-port-forward.pid}
 FORWARD_LOG=${CLM_POC_HCP_FORWARD_LOG:-/tmp/clm-poc-hcp-port-forward.log}
 DEMO_DETACHED_FORWARD=${DEMO_DETACHED_FORWARD:-false}
+MINT_IMAGE_FILE=${CLM_POC_MINT_IMAGE_FILE:-$FLEET_DIR/coreshift-image}
 
 export KIND_EXPERIMENTAL_PROVIDER=podman
 
@@ -76,6 +79,19 @@ http() {
 		args+=(-H 'Content-Type: application/json' --data "$data")
 	fi
 	curl "${args[@]}"
+}
+
+api_ready() {
+	[[ $(curl -sS -o /dev/null -w '%{http_code}' "$API/clusters?size=1" 2>/dev/null) == 200 ]]
+}
+
+wait_api_ready() {
+	local tries=${1:-60}
+	for _ in $(seq 1 "$tries"); do
+		api_ready && return 0
+		sleep 1
+	done
+	return 1
 }
 
 wait_for_deletion() {
@@ -192,7 +208,9 @@ demo_forget_mc() {
 
 demo_delete_mc() {
 	local mc=$1
-	kind delete cluster --name "$mc" >/dev/null 2>&1
+	if podman container exists "$mc-control-plane" >/dev/null 2>&1; then
+		kind delete cluster --name "$mc" >/dev/null 2>&1
+	fi
 	demo_forget_mc "$mc"
 }
 
@@ -252,7 +270,15 @@ demo_ensure_fleet() {
 }
 
 demo_mint_image() {
-	echo "==> Minting the coreshift image (throwaway create, state discarded)"
+	echo "==> Ensuring the coreshift image"
+	local cached=""
+	[[ -s $MINT_IMAGE_FILE ]] && cached=$(<"$MINT_IMAGE_FILE")
+	if [[ -n $cached ]] && podman image exists "$cached"; then
+		MINTED_IMAGE=$cached
+		echo "    reusing $MINTED_IMAGE"
+		return 0
+	fi
+	echo "    minting (throwaway create, state discarded)"
 	mkdir -p "$MINT_STATE"
 	local mint_log=$TMP/mint.log
 	local mint_container=coreshift-$MINT_NAME
@@ -283,21 +309,30 @@ demo_mint_image() {
 		fail "unexpected coreshift image ref: $MINTED_IMAGE"
 	podman image exists "$MINTED_IMAGE" ||
 		fail "minted image is not in the podman store: $MINTED_IMAGE"
+	echo "$MINTED_IMAGE" > "$MINT_IMAGE_FILE"
 	echo "    image: $MINTED_IMAGE"
 }
 
 demo_load_image() {
-	echo "==> Loading the image into all four management clusters"
+	echo "==> Loading the image into the management clusters that lack it"
 	local mc
 	for mc in $FLEET_MCS; do
-		kind load docker-image "$MINTED_IMAGE" --name "$mc" >/dev/null
+		if podman exec "$mc-control-plane" crictl inspecti "$MINTED_IMAGE" \
+			>/dev/null 2>&1; then
+			echo "    $mc: already loaded"
+		else
+			echo "    $mc: loading"
+			kind load docker-image "$MINTED_IMAGE" --name "$mc" >/dev/null
+		fi
 	done
 }
 
 demo_start_postgres() {
 	echo "==> Starting postgres and the no-auth server on the kind network"
 	if podman container exists "$PSQL" >/dev/null 2>&1; then
-		podman start "$PSQL" >/dev/null 2>&1 || true
+		if [[ $(podman inspect "$PSQL" --format '{{.State.Running}}' 2>/dev/null) != true ]]; then
+			podman start "$PSQL" >/dev/null 2>&1 || true
+		fi
 	else
 		podman run -d --name "$PSQL" --network kind \
 			-e POSTGRES_DB=hyperfleet -e POSTGRES_USER=hyperfleet \
@@ -315,7 +350,16 @@ demo_start_postgres() {
 }
 
 demo_start_server() {
-	podman rm -f "$SERVER" >/dev/null 2>&1 || true
+	if podman container exists "$SERVER" >/dev/null 2>&1; then
+		if [[ $(podman inspect "$SERVER" --format '{{.State.Running}}' 2>/dev/null) == true ]]; then
+			if wait_api_ready 60; then
+				echo "    reusing the running server container"
+				return 0
+			fi
+		fi
+		podman rm -f "$SERVER" >/dev/null 2>&1 || true
+	fi
+	echo "    starting the server container"
 	podman run --rm --network kind \
 		-v "$REPO_ROOT/bin/hyperfleet-api:/hyperfleet-api:ro,Z" \
 		-v "$REPO_ROOT/configs:/configs:ro,Z" \
@@ -345,12 +389,7 @@ demo_start_server() {
 		--entrypoint /hyperfleet-api -d "$IMAGE" serve --config /configs/dev.yaml \
 		--db-host "$PSQL" --db-port 5432 --db-name hyperfleet \
 		--db-username hyperfleet --db-password foobar-bizz-buzz >/dev/null
-	for _ in $(seq 1 60); do
-		[[ $(curl -sS -o /dev/null -w '%{http_code}' "$API/clusters?size=1" 2>/dev/null) == 200 ]] && break
-		sleep 1
-	done
-	[[ $(curl -sS -o /dev/null -w '%{http_code}' "$API/clusters?size=1") == 200 ]] ||
-		fail "server did not become ready"
+	wait_api_ready 60 || fail "server did not become ready"
 }
 
 demo_clean_start() {

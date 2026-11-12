@@ -6,6 +6,9 @@
 #
 # Usage: hack/fleet.sh {up|down|status}
 #
+# Idempotent: up skips existing clusters, down tolerates missing ones, and
+# status is read-only.
+#
 # kind runs on podman and is resolved through the pinned tools module
 # (tools/go.mod); it is never installed or downloaded separately.
 set -euo pipefail
@@ -29,7 +32,7 @@ cluster_exists() {
 
 cmd_up() {
     mkdir -p "$FLEET_DIR"
-    local name
+    local name pids_limit
     for name in "${MCS[@]}"; do
         if cluster_exists "$name"; then
             echo "$name: cluster already exists"
@@ -41,7 +44,11 @@ cmd_up() {
             kind get kubeconfig --name "$name" > "$FLEET_DIR/$name.kubeconfig"
         fi
         # Nested control planes exceed kind's default 2048 pids cap.
-        podman update --pids-limit 8192 "$name-control-plane"
+        pids_limit=$(podman inspect "$name-control-plane" \
+            --format '{{.HostConfig.PidsLimit}}' 2>/dev/null || true)
+        if [[ $pids_limit != 8192 ]]; then
+            podman update --pids-limit 8192 "$name-control-plane" >/dev/null
+        fi
     done
     echo "fleet directory: $FLEET_DIR"
 }
