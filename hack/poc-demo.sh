@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Live PoC demo: create a cluster, wait for coreshift, check `oc get ns`,
 # then delete it and wait for the control plane to disappear.
+# Re-runnable: finalizes earlier poc-demo cluster records before creating a
+# new one, so a mid-run failure is recovered by running it again.
 set -euo pipefail
 
 API=${CLM_POC_API_URL:-http://localhost:8000/api/hyperfleet/v1}
@@ -40,10 +42,34 @@ http() {
 	curl "${args[@]}"
 }
 
+wait_for_deletion() {
+	local id=$1 start=$SECONDS code
+	while (( SECONDS - start < DELETE_TIMEOUT )); do
+		code=$(http GET "/clusters/$id")
+		[[ $code == 404 ]] && return 0
+		sleep 2
+	done
+	return 1
+}
+
 code=$(curl -sS --max-time 5 -o /dev/null -w '%{http_code}' "$API/clusters?size=1") ||
 	fail "server is not reachable at $API; start it with 'make run-no-auth'"
 [[ $code == 200 ]] ||
 	fail "server at $API returned HTTP $code; the demo needs the no-auth local server"
+
+echo "==> Finalizing earlier poc-demo clusters"
+code=$(http GET "/clusters?size=100")
+[[ $code == 200 ]] || fail "list clusters returned HTTP $code: $(<"$TMP/body")"
+mapfile -t old_ids < <(jq -r --arg name "$NAME" '.items[]? |
+	select(.name == $name or ((.name // "") | startswith("poc-demo-"))) | .id' "$TMP/body")
+for old in "${old_ids[@]}"; do
+	echo "    finalizing $old"
+	code=$(http DELETE "/clusters/$old")
+	[[ $code == 202 || $code == 404 ]] ||
+		fail "delete cluster $old returned HTTP $code: $(<"$TMP/body")"
+	wait_for_deletion "$old" ||
+		fail "cluster $old did not finish deleting within ${DELETE_TIMEOUT}s"
+done
 
 echo "Demo cluster: $NAME"
 echo

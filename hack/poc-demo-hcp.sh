@@ -6,6 +6,9 @@
 # on the spare, and the control plane re-homes cold. Its data lives in the
 # fleet etcd, so kubectl resumes with everything intact.
 #
+# Safe to re-run: clean-start finalizes any earlier hosted cluster, the fleet
+# and loaded image are reused, and mc-0 is recreated if a prior run killed it.
+#
 # Fabric note (PoC substitution): all kind clusters share podman's "kind"
 # bridge, so etcd members advertise https://<nodeIP>:<NodePort> and the
 # nested pod reaches them over that bridge. The coreshift image is minted

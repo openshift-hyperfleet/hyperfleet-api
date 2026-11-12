@@ -12,6 +12,10 @@
 # network; their transport kubeconfigs point at https://<nodeIP>:6443.
 # Production keeps the design's fabric DNS plus per-MC Services.
 #
+# Re-runnable: finalizes leftover etcd cluster records, removes leftover
+# containers, and recreates mc-0 before starting a new run. The kill, rejoin,
+# and restore phases must complete once started.
+#
 # Live cert material lives in .fleet/ (gitignored); never commit it.
 set -euo pipefail
 
@@ -33,6 +37,7 @@ PSQL=clm-etcd-kill-psql
 SERVER=clm-etcd-kill-server
 STANDIN=clm-etcd-kill-client
 IMAGE=registry.access.redhat.com/ubi9/ubi-minimal
+DELETE_TIMEOUT=${CLM_POC_DELETE_TIMEOUT:-600}
 
 source "$REPO_ROOT/hack/takeover-api-port.sh"
 
@@ -67,19 +72,8 @@ for mc in $FLEET_MCS; do
 		"$FLEET_DIR/$mc.kubeconfig" > "$CONTAINER_FLEET/$mc.kubeconfig"
 done
 
-echo "==> Cleaning stale etcd namespaces"
-ns="etcd-$CLUSTER"
-for mc in $FLEET_MCS; do
-	stale_names=$(kubectl --kubeconfig "$FLEET_DIR/$mc.kubeconfig" get ns -o name 2>/dev/null |
-		grep '^namespace/etcd-' | cut -d/ -f2 || true)
-	for stale in $stale_names; do
-		kubectl --kubeconfig "$FLEET_DIR/$mc.kubeconfig" delete ns "$stale" \
-			--ignore-not-found --wait=true >/dev/null 2>&1 || true
-	done
-done
-
 echo "==> Starting postgres and the no-auth server"
-podman rm -f "$PSQL" "$SERVER" >/dev/null 2>&1 || true
+podman rm -f "$PSQL" "$SERVER" "$STANDIN" >/dev/null 2>&1 || true
 podman run -d --name "$PSQL" --network kind \
 	-e POSTGRES_DB=hyperfleet -e POSTGRES_USER=hyperfleet \
 	-e POSTGRES_PASSWORD=foobar-bizz-buzz docker.io/library/postgres:14.24 >/dev/null
@@ -130,6 +124,36 @@ for _ in $(seq 1 60); do
 done
 [[ $(curl -sS -o /dev/null -w '%{http_code}' "$API/clusters?size=1") == 200 ]] ||
 	fail "server did not become ready"
+
+echo "==> Finalizing leftover etcd clusters"
+ns="etcd-$CLUSTER"
+code=$(curl -sS -o "$TMP/body" -w '%{http_code}' "$API/clusters?size=100")
+[[ $code == 200 ]] || fail "list clusters returned HTTP $code: $(<"$TMP/body")"
+mapfile -t old_ids < <(jq -r '.items[]? | select((.spec.platform // "") == "etcd") | .id' "$TMP/body")
+for old in "${old_ids[@]}"; do
+	echo "    finalizing $old"
+	code=$(curl -sS -o "$TMP/body" -w '%{http_code}' -X DELETE "$API/clusters/$old")
+	[[ $code == 202 || $code == 404 ]] ||
+		fail "delete cluster $old returned HTTP $code: $(<"$TMP/body")"
+	start=$SECONDS
+	while (( SECONDS - start < DELETE_TIMEOUT )); do
+		code=$(curl -sS -o /dev/null -w '%{http_code}' "$API/clusters/$old" 2>/dev/null || true)
+		[[ $code == 404 ]] && break
+		sleep 2
+	done
+	[[ $code == 404 ]] ||
+		fail "cluster $old did not finish deleting within ${DELETE_TIMEOUT}s"
+done
+
+echo "==> Cleaning stale etcd namespaces"
+for mc in $FLEET_MCS; do
+	stale_names=$(kubectl --kubeconfig "$FLEET_DIR/$mc.kubeconfig" get ns -o name 2>/dev/null |
+		grep '^namespace/etcd-' | cut -d/ -f2 || true)
+	for stale in $stale_names; do
+		kubectl --kubeconfig "$FLEET_DIR/$mc.kubeconfig" delete ns "$stale" \
+			--ignore-not-found --wait=true >/dev/null 2>&1 || true
+	done
+done
 
 echo "==> Creating cluster $CLUSTER"
 body=$(curl -sS -X POST "$API/clusters" -H 'Content-Type: application/json' \

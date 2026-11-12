@@ -9,6 +9,10 @@
 # bridge and is attached to the kind bridge so the apiserver can reach
 # those node IPs. Cert material lives in a temp dir; the pull secret is
 # only ever handed to coreshift by path.
+#
+# Re-runnable: deletes stale etcd cluster records and containers first, and
+# recreates mc-0 if a prior run killed it. The kill/repair phase itself must
+# run to completion once started.
 set -euo pipefail
 
 REPO_ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -105,6 +109,7 @@ fi
 grep -q -- '--external-etcd-endpoints' "$TMP/coreshift-help" ||
 	fail "coreshift at $CORESHIFT_BIN has no external-etcd flags; rebuild it"
 "$CORESHIFT_BIN" delete cluster --name "$CP_NAME" >/dev/null 2>&1 || true
+podman rm -f "$CP_CONTAINER" >/dev/null 2>&1 || true
 
 echo "==> Ensuring four management clusters (reusing existing)"
 FLEET_MCS="$FLEET_MCS" FLEET_DIR="$FLEET_DIR" hack/fleet.sh up >/dev/null
