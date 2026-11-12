@@ -66,6 +66,9 @@ secrets
 # Generated dev JWKS (created by make run / gen-dev-token.sh)
 configs/dev-jwks.json
 
+# Generated local config (bootstrapped by make run-no-auth)
+configs/config.yaml
+
 # Ignore Claude Code local configuration (but track shared settings)
 .claude/*
 !.claude/settings.json
