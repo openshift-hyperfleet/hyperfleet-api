@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tear down what demo-populate started: delete the cluster record through the
+# Tear down what demo-stage started: delete the cluster record through the
 # API and wait for finalize, stop the detached port-forward, and remove the
 # demo server and database containers. Safe to run again if pieces are gone.
 set -euo pipefail
