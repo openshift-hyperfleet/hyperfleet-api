@@ -236,15 +236,20 @@ ci-test-unit: install ## Run unit tests with JSON output
 # The FIPS build of the released binary is unchanged: build, install and the
 # Dockerfile gate still use GOEXPERIMENT=boringcrypto.
 # See https://redhat.atlassian.net/browse/HYPERFLEET-1940
+#
+# The value is noboringcrypto and not empty on purpose: an empty GOEXPERIMENT
+# falls back to the value saved with "go env -w", where boringcrypto may be set,
+# while "noboringcrypto" explicitly overrides it.
+TEST_GOEXPERIMENT := noboringcrypto
 
 .PHONY: test-integration
-test-integration: GOEXPERIMENT :=
+test-integration: GOEXPERIMENT := $(TEST_GOEXPERIMENT)
 test-integration: install ## Run integration tests
 	TESTCONTAINERS_RYUK_DISABLED=true $(call gotool,gotestsum) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) \
 			./test/integration
 
 .PHONY: ci-test-integration
-ci-test-integration: GOEXPERIMENT :=
+ci-test-integration: GOEXPERIMENT := $(TEST_GOEXPERIMENT)
 ci-test-integration: install ## Run integration tests with JSON output
 	TESTCONTAINERS_RYUK_DISABLED=true $(call gotool,gotestsum) --jsonfile-timing-events=$(integration_test_json_output) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) \
 			./test/integration
