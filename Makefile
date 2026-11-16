@@ -218,24 +218,24 @@ clean: ## Delete temporary generated files
 
 .PHONY: test
 test: install ## Run unit tests
-	GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) $(call gotool,gotestsum) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -v $(TESTFLAGS) \
+	CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) $(call gotool,gotestsum) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -v $(TESTFLAGS) \
 		./pkg/... \
 		./cmd/...
 
 .PHONY: ci-test-unit
 ci-test-unit: install ## Run unit tests with JSON output
-	GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) $(call gotool,gotestsum) --jsonfile-timing-events=$(unit_test_json_output) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -v $(TESTFLAGS) \
+	CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) $(call gotool,gotestsum) --jsonfile-timing-events=$(unit_test_json_output) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -v $(TESTFLAGS) \
 		./pkg/... \
 		./cmd/...
 
 .PHONY: test-integration
 test-integration: install ## Run integration tests
-	TESTCONTAINERS_RYUK_DISABLED=true GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) $(call gotool,gotestsum) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) \
+	TESTCONTAINERS_RYUK_DISABLED=true CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) $(call gotool,gotestsum) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) \
 			./test/integration
 
 .PHONY: ci-test-integration
 ci-test-integration: install ## Run integration tests with JSON output
-	TESTCONTAINERS_RYUK_DISABLED=true GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) $(call gotool,gotestsum) --jsonfile-timing-events=$(integration_test_json_output) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) \
+	TESTCONTAINERS_RYUK_DISABLED=true CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) $(call gotool,gotestsum) --jsonfile-timing-events=$(integration_test_json_output) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) \
 			./test/integration
 
 .PHONY: test-all
