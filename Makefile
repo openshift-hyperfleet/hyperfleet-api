@@ -226,12 +226,25 @@ ci-test-unit: install ## Run unit tests with JSON output
 		./pkg/... \
 		./cmd/...
 
+# The integration suite exercises API and database behavior, not the FIPS build
+# mode of the released image, so its test binary is built without
+# GOEXPERIMENT=boringcrypto (pass GOEXPERIMENT=boringcrypto on the command line
+# to force it). Some builder images carry a Go whose
+# crypto/internal/boring/boring.go imports crypto/internal/boring/syso while the
+# package itself is stripped (BoringSSL replaced by the system OpenSSL), so any
+# boringcrypto build fails inside the standard library before the suite starts.
+# The FIPS build of the released binary is unchanged: build, install and the
+# Dockerfile gate still use GOEXPERIMENT=boringcrypto.
+# See https://redhat.atlassian.net/browse/HYPERFLEET-1940
+
 .PHONY: test-integration
+test-integration: GOEXPERIMENT :=
 test-integration: install ## Run integration tests
 	TESTCONTAINERS_RYUK_DISABLED=true $(call gotool,gotestsum) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) \
 			./test/integration
 
 .PHONY: ci-test-integration
+ci-test-integration: GOEXPERIMENT :=
 ci-test-integration: install ## Run integration tests with JSON output
 	TESTCONTAINERS_RYUK_DISABLED=true $(call gotool,gotestsum) --jsonfile-timing-events=$(integration_test_json_output) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) \
 			./test/integration

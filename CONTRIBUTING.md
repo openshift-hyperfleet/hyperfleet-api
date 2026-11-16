@@ -115,6 +115,12 @@ make ci-test-integration
 
 Integration tests use testcontainers to create isolated PostgreSQL instances. No manual database setup required.
 
+The integration suite does not build with `GOEXPERIMENT=boringcrypto`: it tests API and database behavior, not the FIPS build mode of the released image, and some builder images ship a Go that cannot compile `crypto/internal/boring` (see [HYPERFLEET-1940](https://redhat.atlassian.net/browse/HYPERFLEET-1940)). To run the suite against the FIPS toolchain anyway, pass the flag explicitly:
+
+```bash
+make test-integration GOEXPERIMENT=boringcrypto
+```
+
 ### Linting and Quality Checks
 
 ```bash
