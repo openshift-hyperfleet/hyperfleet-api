@@ -4,7 +4,7 @@
 
 HyperFleet API is a **stateless REST API** serving as the pure CRUD data layer for HyperFleet cluster lifecycle management. It persists clusters, node pools, and adapter statuses to PostgreSQL - no business logic, no events. Sentinel handles orchestration; adapters execute and report back.
 
-- **Language**: Go 1.26+ with FIPS crypto (`CGO_ENABLED=1 GOEXPERIMENT=boringcrypto`)
+- **Language**: Go 1.26+ with native FIPS crypto (`GOFIPS140=v1.0.0`)
 - **Database**: PostgreSQL 14.2 with GORM ORM
 - **API Spec**: TypeSpec -> `hyperfleet-api-spec` Go module -> oapi-codegen -> Go models
 - **Architecture**: Container-based dependency injection, config-driven route registration, service-owned mutation transactions
@@ -77,7 +77,7 @@ Quick feedback: `make verify-all`. Full pre-push: `make test-all`.
 - **Never edit** files in `pkg/api/openapi/` or `*_mock.go` - regenerate with `make generate-all`
 - **Never set** `status.phase` manually - calculated from adapter conditions
 - **Never create** direct DB connections - use `SessionFactory.New(ctx)` for transaction participation
-- **FIPS required**: build with `CGO_ENABLED=1 GOEXPERIMENT=boringcrypto`
+- **FIPS required**: build with `CGO_ENABLED=1 GOEXPERIMENT=noboringcrypto GOFIPS140=v1.0.0`
 - **Spec source of truth**: `hyperfleet-api-spec` Go module; update `go.mod` to change spec versions - see [openapi/README.md](openapi/README.md)
 - **Tool versions** pinned in `tools/go.mod` - don't manually install oapi-codegen or golangci-lint
 

@@ -1,10 +1,12 @@
 .DEFAULT_GOAL := help
 
-# CGO_ENABLED=0 is not FIPS compliant. large commercial vendors and FedRAMP require FIPS compliant crypto
-# Use ?= so callers can override on the command line, e.g. CGO_ENABLED=0 make build for a non-FIPS static binary
+# Keep CGO enabled for the supported production image; GOFIPS140 selects
+# Go's native, validated FIPS 140-3 module and enables FIPS mode by default.
+# Explicitly disable the incompatible BoringCrypto experiment, even when
+# it was persisted in the toolchain with "go env -w".
 CGO_ENABLED ?= 1
-GOEXPERIMENT ?= boringcrypto
-GOFIPS140 ?= off
+GOEXPERIMENT ?= noboringcrypto
+GOFIPS140 ?= v1.0.0
 
 GO ?= go
 
@@ -216,24 +218,24 @@ clean: ## Delete temporary generated files
 
 .PHONY: test
 test: install ## Run unit tests
-	$(call gotool,gotestsum) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -v $(TESTFLAGS) \
+	GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) $(call gotool,gotestsum) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -v $(TESTFLAGS) \
 		./pkg/... \
 		./cmd/...
 
 .PHONY: ci-test-unit
 ci-test-unit: install ## Run unit tests with JSON output
-	$(call gotool,gotestsum) --jsonfile-timing-events=$(unit_test_json_output) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -v $(TESTFLAGS) \
+	GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) $(call gotool,gotestsum) --jsonfile-timing-events=$(unit_test_json_output) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -v $(TESTFLAGS) \
 		./pkg/... \
 		./cmd/...
 
 .PHONY: test-integration
 test-integration: install ## Run integration tests
-	TESTCONTAINERS_RYUK_DISABLED=true $(call gotool,gotestsum) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) \
+	TESTCONTAINERS_RYUK_DISABLED=true GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) $(call gotool,gotestsum) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) \
 			./test/integration
 
 .PHONY: ci-test-integration
 ci-test-integration: install ## Run integration tests with JSON output
-	TESTCONTAINERS_RYUK_DISABLED=true $(call gotool,gotestsum) --jsonfile-timing-events=$(integration_test_json_output) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) \
+	TESTCONTAINERS_RYUK_DISABLED=true GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) $(call gotool,gotestsum) --jsonfile-timing-events=$(integration_test_json_output) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) \
 			./test/integration
 
 .PHONY: test-all
