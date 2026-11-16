@@ -43,7 +43,8 @@ make run-no-auth
 
 - **Critical**: Run `make generate-all` before any other commands. Generated code is not in git.
 - Tool versions are pinned in `tools/go.mod` using Go 1.24+ tool directives
-- Production builds and the test suite use Go's native FIPS 140-3 module (`GOFIPS140=v1.0.0`). `GOEXPERIMENT=noboringcrypto` disables the incompatible legacy BoringCrypto experiment, including when it was saved with `go env -w`. The Dockerfile verifies the selected module with `go version -m`.
+- Production builds and the test suite use Go's native FIPS 140-3 module (`GOFIPS140=v1.0.0`). `GOEXPERIMENT=noboringcrypto` keeps builds compatible with toolchains where the legacy BoringCrypto experiment was saved with `go env -w`; without the negation, Go rejects the incompatible combination rather than silently falling back to non-FIPS cryptography. The Dockerfile verifies the selected module with `go version -m`.
+- FIPS production deployments must not set `GODEBUG=fips140=off`, including within a comma-separated value. This override disables FIPS without changing the binary's build info. Deployment review must check runtime overrides; the image check does not enforce the runtime mode, and this requirement does not add a startup rejection.
 - Local development runs without authentication by default (`make run-no-auth`)
 - `make install-hooks` installs pre-commit hooks configured in `.pre-commit-config.yaml` for commit message and code quality validation on every commit
 - Integration tests automatically create isolated PostgreSQL containers via testcontainers
@@ -52,7 +53,7 @@ make run-no-auth
 
 Overview of key directories and their purpose.
 
-```
+```text
 hyperfleet-api/
 ├── cmd/hyperfleet-api/          # Application entry point and CLI commands
 │   ├── main.go                  # Server start, migrate, version commands
@@ -259,7 +260,7 @@ Follow the HyperFleet commit message format and refer to the [architecture repos
 
 **Example:**
 
-```
+```text
 HYPERFLEET-123 - fix: handle nil pointer in status aggregation
 
 Add null check before accessing adapter status conditions.
