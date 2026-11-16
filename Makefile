@@ -7,6 +7,8 @@
 CGO_ENABLED ?= 1
 GOEXPERIMENT ?= noboringcrypto
 GOFIPS140 ?= v1.0.0
+# generate-all invokes Go tools before build or test; they need these settings too.
+export GOEXPERIMENT GOFIPS140
 
 GO ?= go
 
