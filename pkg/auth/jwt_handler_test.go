@@ -837,21 +837,7 @@ func TestJWTHandler_UnknownKIDRefresh(t *testing.T) {
 			srv.setKeys(map[string]*rsa.PublicKey{"kid-a": &keyA.PublicKey, "kid-b": &keyB.PublicKey})
 			tok := signTokenWithKID(t, keyB, "kid-b", issuerClaims())
 
-			n := unknownKIDRefreshBurst
-			codes := make([]int, n)
-			start := make(chan struct{})
-			var wg sync.WaitGroup
-			for i := range n {
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
-					<-start
-					codes[i] = serveToken(mw, tok).Code
-				}()
-			}
-			close(start)
-			wg.Wait()
-			for _, code := range codes {
+			for _, code := range serveConcurrently(mw, tok, unknownKIDRefreshBurst) {
 				Expect(code).To(Equal(http.StatusOK))
 			}
 		})
@@ -1190,15 +1176,17 @@ func TestJWTHandler_SlowIdP(t *testing.T) {
 	}
 }
 
-// A JWKS URL can carry credentials: user info or a token in the query. Whatever the log line is about, the URL must
-// not reach the logs, neither as an attribute nor inside an error text. net/http puts the URL in the error of a
-// transport failure, so this covers the cause as well as the attributes. The issuer names the failing source instead.
+// A JWKS URL can carry credentials: user info or a token in the query. Whatever the log line is about, neither the
+// URL nor any text taken from the request or the response may reach the logs. net/http puts the request URL into the
+// error of a transport failure, and the server's own Location header into the error of a malformed redirect. The
+// issuer names the failing source instead, and its own URL is logged without credentials.
 func TestJWTHandler_JWKSURLNotLogged(t *testing.T) {
 	const (
 		user, password, queryToken = "svc-user", "s3cret", "abc123"
-		issuerURL                  = "https://test-issuer.example.com"
+		issuerURL                  = "https://idp-user:idp-pass@test-issuer.example.com/realm?token=idp-token#idp-frag"
+		loggedIssuer               = "https://test-issuer.example.com/realm"
 	)
-	cases := []struct {
+	paths := []struct {
 		name     string
 		withFile bool
 		withCA   bool
@@ -1208,39 +1196,77 @@ func TestJWTHandler_JWKSURLNotLogged(t *testing.T) {
 		{"file + URL", true, false},
 		{"file + URL with CA", true, true},
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			g := NewWithT(t)
-			logs := captureLogs(t)
-			keyA := genRSAKey(t)
-			keyB := genRSAKey(t)
-			srv := newMutableJWKSServer(t, tc.withCA, map[string]*rsa.PublicKey{"kid-a": &keyA.PublicKey})
-			cfg := config.JWTIssuerConfig{
-				IssuerURL:  issuerURL,
-				JWKCertURL: strings.Replace(srv.URL, "://", "://"+user+":"+password+"@", 1) + "/jwks?token=" + queryToken,
-			}
-			if tc.withFile {
-				cfg.JWKCertFile = writeJWKSFile(t, &keyA.PublicKey)
-			}
-			if tc.withCA {
-				cfg.JWKCertCAFile = writeTLSCAFile(t, srv.Server)
-			}
-			h, err := NewJWTHandler(t.Context(), JWTHandlerConfig{Issuers: []config.JWTIssuerConfig{cfg}})
-			g.Expect(err).NotTo(HaveOccurred())
-			t.Cleanup(func() { _ = h.Close() })
+	failures := []struct {
+		handler http.HandlerFunc
+		name    string
+		refuse  bool
+	}{
+		{name: "connection refused", refuse: true, handler: http.NotFound},
+		{name: "malformed redirect", handler: func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Location", "http://"+user+":"+password+"@[bad/jwks?token="+queryToken)
+			w.WriteHeader(http.StatusFound)
+		}},
+	}
+	keyA := genRSAKey(t)
+	keyB := genRSAKey(t)
+	for _, path := range paths {
+		for _, failure := range failures {
+			t.Run(path.name+"/"+failure.name, func(t *testing.T) {
+				g := NewWithT(t)
+				logs := captureLogs(t)
+				newServer := httptest.NewServer
+				if path.withCA {
+					newServer = httptest.NewTLSServer
+				}
+				srv := newServer(failure.handler)
+				t.Cleanup(srv.Close)
+				cfg := config.JWTIssuerConfig{
+					IssuerURL:  issuerURL,
+					JWKCertURL: strings.Replace(srv.URL, "://", "://"+user+":"+password+"@", 1) + "/jwks?token=" + queryToken,
+				}
+				if path.withFile {
+					cfg.JWKCertFile = writeJWKSFile(t, &keyA.PublicKey)
+				}
+				if path.withCA {
+					cfg.JWKCertCAFile = writeTLSCAFile(t, srv)
+				}
+				if failure.refuse {
+					srv.Close()
+				}
+				h, err := NewJWTHandler(t.Context(), JWTHandlerConfig{Issuers: []config.JWTIssuerConfig{cfg}})
+				g.Expect(err).NotTo(HaveOccurred())
+				t.Cleanup(func() { _ = h.Close() })
 
-			// The IdP goes away, so the refresh that an unknown kid triggers fails with a transport error.
-			srv.Close()
-			code := serveToken(h.Middleware(okHandler()), signTokenWithKID(t, keyB, "kid-b", issuerClaims())).Code
-			g.Expect(code).To(Equal(http.StatusUnauthorized))
+				// The refresh that an unknown kid triggers fails the same way as the first fetch at startup.
+				claims := issuerClaims()
+				claims["iss"] = issuerURL
+				code := serveToken(h.Middleware(okHandler()), signTokenWithKID(t, keyB, "kid-b", claims)).Code
+				g.Expect(code).To(Equal(http.StatusUnauthorized))
 
-			out := logs.String()
-			g.Expect(out).To(ContainSubstring("failed to refresh JWKS from URL"), "the failed refresh must be logged")
-			g.Expect(out).To(ContainSubstring(issuerURL), "the log must name the issuer")
-			for _, secret := range []string{user, password, queryToken, "/jwks"} {
-				g.Expect(out).NotTo(ContainSubstring(secret))
-			}
-		})
+				out := logs.String()
+				g.Expect(out).To(ContainSubstring("failed to refresh JWKS from URL"), "the failed refresh must be logged")
+				g.Expect(out).To(ContainSubstring(loggedIssuer), "the log must name the issuer")
+				for _, secret := range []string{user, password, queryToken, "/jwks", "Location",
+					"idp-user", "idp-pass", "idp-token", "idp-frag"} {
+					g.Expect(out).NotTo(ContainSubstring(secret))
+				}
+			})
+		}
+	}
+}
+
+func TestRedactURL(t *testing.T) {
+	cases := map[string]string{
+		"https://idp.example.com/realm":                             "https://idp.example.com/realm",
+		"https://user:pass@idp.example.com:8443/realm?token=t#frag": "https://idp.example.com:8443/realm",
+		"https://token@idp.example.com":                             "https://idp.example.com",
+		"https://user:pass@[bad":                                    config.RedactedValue,
+	}
+	for in, want := range cases {
+		got := redactURL(in)
+		if got != want {
+			t.Errorf("redactURL(%q) = %q, want %q", in, got, want)
+		}
 	}
 }
 

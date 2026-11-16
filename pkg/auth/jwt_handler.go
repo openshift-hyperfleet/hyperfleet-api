@@ -37,6 +37,9 @@ const (
 	// unknownKIDWaitMax is the time limit of an unknown-kid refresh. It covers both the wait for a refresh slot and
 	// the refresh request itself.
 	unknownKIDWaitMax = 5 * time.Second
+
+	// refreshFailedMsg is the error that is logged when a JWKS refresh fails.
+	refreshFailedMsg = "failed to refresh JWKS from URL"
 )
 
 type JWTHandlerConfig struct {
@@ -96,7 +99,7 @@ func NewJWTHandler(ctx context.Context, cfg JWTHandlerConfig) (*JWTHandler, erro
 		kf, err := buildKeyfunc(ctx, issuer)
 		if err != nil {
 			cancel()
-			return nil, fmt.Errorf("failed to build JWKS keyfunc for issuer %d (%s): %w", i, issuer.IssuerURL, err)
+			return nil, fmt.Errorf("failed to build JWKS keyfunc for issuer %d (%s): %w", i, redactURL(issuer.IssuerURL), err)
 		}
 
 		parserOpts := []jwt.ParserOption{
@@ -242,8 +245,8 @@ func buildURLOnlyKeyfunc(ctx context.Context, issuer config.JWTIssuerConfig) (ke
 		kf, err := keyfunc.NewDefaultOverrideCtx(ctx, []string{issuer.JWKCertURL}, keyfunc.Override{
 			RefreshInterval: jwksRefreshInterval,
 			RefreshErrorHandlerFunc: func(string) func(context.Context, error) {
-				return func(ctx context.Context, err error) {
-					logRefreshFailure(ctx, err, "issuer", issuer.IssuerURL)
+				return func(ctx context.Context, _ error) {
+					slog.ErrorContext(ctx, refreshFailedMsg, "issuer", redactURL(issuer.IssuerURL))
 				}
 			},
 			RefreshUnknownKID: newUnknownKIDLimiter(),
@@ -299,7 +302,7 @@ func buildCombinedKeyfunc(ctx context.Context, issuer config.JWTIssuerConfig) (k
 			return nil, err
 		}
 	} else {
-		urlStorage, err = newHTTPStorage(ctx, issuer.JWKCertURL, nil, "issuer", issuer.IssuerURL)
+		urlStorage, err = newHTTPStorage(ctx, issuer.JWKCertURL, nil, "issuer", redactURL(issuer.IssuerURL))
 		if err != nil {
 			return nil, fmt.Errorf("failed to create JWKS storage from URL: %w", err)
 		}
@@ -333,6 +336,7 @@ func newStorageWithCA(ctx context.Context, issuerURL, jwkURL, caFile string) (jw
 	if err != nil {
 		return nil, err
 	}
+	issuerURL = redactURL(issuerURL)
 	slog.InfoContext(ctx, "JWKS client configured with custom CA", "issuer", issuerURL, "ca_file", caFile)
 	storage, err := newHTTPStorage(ctx, jwkURL, httpClient, "issuer", issuerURL, "ca_file", caFile)
 	if err != nil {
@@ -341,14 +345,14 @@ func newStorageWithCA(ctx context.Context, issuerURL, jwkURL, caFile string) (jw
 	return storage, nil
 }
 
-// logRefreshFailure logs a failed JWKS fetch without the JWKS URL. net/http puts the request URL, user name and
-// query included, into the error of a transport failure, so only the cause is logged.
-func logRefreshFailure(ctx context.Context, err error, attrs ...any) {
-	var urlErr *url.Error
-	if errors.As(err, &urlErr) {
-		err = urlErr.Err
+// redactURL strips the user info, query and fragment of a URL, which can carry credentials, so it is safe to log.
+func redactURL(rawURL string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return config.RedactedValue
 	}
-	slog.ErrorContext(ctx, "failed to refresh JWKS from URL", append([]any{"error", err}, attrs...)...)
+	u.User, u.RawQuery, u.Fragment = nil, "", ""
+	return u.String()
 }
 
 // newHTTPStorage builds the key store for one JWKS URL. It fetches the JWKS at creation, tolerating a failed first
@@ -359,8 +363,8 @@ func newHTTPStorage(ctx context.Context, jwkURL string, client *http.Client, log
 		Client:                    client,
 		Ctx:                       ctx,
 		NoErrorReturnFirstHTTPReq: true,
-		RefreshErrorHandler: func(ctx context.Context, err error) {
-			logRefreshFailure(ctx, err, logAttrs...)
+		RefreshErrorHandler: func(ctx context.Context, _ error) {
+			slog.ErrorContext(ctx, refreshFailedMsg, logAttrs...)
 		},
 		RefreshInterval: jwksRefreshInterval,
 	})
