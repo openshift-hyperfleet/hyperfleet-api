@@ -35,6 +35,7 @@ RUN --mount=type=cache,target=/opt/app-root/src/go/pkg/mod,uid=1001 \
 # flags (see container-image-standard.md)
 RUN go version -m /build/bin/hyperfleet-api | grep -q "CGO_ENABLED=1" || { echo "FIPS check FAILED: missing CGO_ENABLED=1"; exit 1; }
 RUN go version -m /build/bin/hyperfleet-api | grep -Eq 'GOFIPS140=v1[.]0[.]0(-[[:xdigit:]]+)?$' || { echo "FIPS check FAILED: missing GOFIPS140=v1.0.0"; exit 1; }
+RUN go version -m /build/bin/hyperfleet-api | grep -Eq 'DefaultGODEBUG=([^,]*,)*fips140=on(,|$)' || { echo "FIPS check FAILED: FIPS mode is not enabled by default"; exit 1; }
 
 # Runtime stage
 FROM ${BASE_IMAGE}
