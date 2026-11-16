@@ -245,13 +245,13 @@ TEST_GOEXPERIMENT := noboringcrypto
 .PHONY: test-integration
 test-integration: GOEXPERIMENT := $(TEST_GOEXPERIMENT)
 test-integration: install ## Run integration tests
-	TESTCONTAINERS_RYUK_DISABLED=true $(call gotool,gotestsum) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) \
+	TESTCONTAINERS_RYUK_DISABLED=true GOEXPERIMENT=$(GOEXPERIMENT) $(call gotool,gotestsum) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) \
 			./test/integration
 
 .PHONY: ci-test-integration
 ci-test-integration: GOEXPERIMENT := $(TEST_GOEXPERIMENT)
 ci-test-integration: install ## Run integration tests with JSON output
-	TESTCONTAINERS_RYUK_DISABLED=true $(call gotool,gotestsum) --jsonfile-timing-events=$(integration_test_json_output) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) \
+	TESTCONTAINERS_RYUK_DISABLED=true GOEXPERIMENT=$(GOEXPERIMENT) $(call gotool,gotestsum) --jsonfile-timing-events=$(integration_test_json_output) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) \
 			./test/integration
 
 .PHONY: test-all
