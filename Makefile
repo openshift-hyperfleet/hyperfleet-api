@@ -2,8 +2,9 @@
 
 # Keep CGO enabled for the supported production image; GOFIPS140 selects
 # Go's native, validated FIPS 140-3 module and enables FIPS mode by default.
-# Explicitly disable the incompatible BoringCrypto experiment, even when
-# it was persisted in the toolchain with "go env -w".
+# Go rejects an active BoringCrypto experiment when GOFIPS140 is set, so
+# noboringcrypto is not a FIPS guard: it keeps builds working on machines
+# where the legacy experiment was persisted with "go env -w".
 CGO_ENABLED ?= 1
 GOEXPERIMENT ?= noboringcrypto
 GOFIPS140 ?= v1.0.0
