@@ -52,7 +52,8 @@ GOFLAGS ?= -trimpath
 # value is set, so those toolchains must build with Go's native backend.
 ifneq (,$(findstring Red Hat,$(shell $(GO) version 2>/dev/null)))
 # A second -tags flag replaces the first, so merge with any caller-supplied list.
-GOFLAGS_CALLER_TAGS := $(strip $(patsubst -tags=%,%,$(filter -tags=%,$(GOFLAGS))))
+# Repeated -tags options keep the last list, so merge into that one.
+GOFLAGS_CALLER_TAGS := $(patsubst -tags=%,%,$(lastword $(filter -tags=%,$(GOFLAGS))))
 ifeq (,$(GOFLAGS_CALLER_TAGS))
 override GOFLAGS += -tags=no_openssl
 else
