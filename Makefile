@@ -8,6 +8,10 @@
 # guard: it keeps builds working where the legacy experiment was persisted
 # with "go env -w".
 CGO_ENABLED ?= 1
+# An empty value falls back to a persisted `go env -w CGO_ENABLED`, so pin it.
+ifeq ($(strip $(CGO_ENABLED)),)
+override CGO_ENABLED := 1
+endif
 GOEXPERIMENT ?= noboringcrypto
 GOFIPS140 ?= v1.0.0
 # generate-all invokes Go tools before build or test; they need these settings too.
