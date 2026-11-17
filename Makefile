@@ -47,8 +47,10 @@ GOFLAGS ?= -trimpath
 # That backend aborts at startup on FIPS-enabled hosts once a fips140 GODEBUG
 # value is set, so those toolchains must build with Go's native backend.
 ifneq (,$(findstring Red Hat,$(shell $(GO) version 2>/dev/null)))
-GOFLAGS += -tags=no_openssl
+# override keeps the tag when GOFLAGS is passed on the make command line.
+override GOFLAGS += -tags=no_openssl
 endif
+export GOFLAGS
 LDFLAGS := -s -w \
            -X github.com/openshift-hyperfleet/hyperfleet-api/pkg/api.Version=$(APP_VERSION) \
            -X github.com/openshift-hyperfleet/hyperfleet-api/pkg/api.Commit=$(GIT_SHA) \
