@@ -43,6 +43,12 @@ BUILD_DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 
 # Go build flags
 GOFLAGS ?= -trimpath
+# Red Hat Go toolsets use the OpenSSL crypto backend by default on linux+cgo.
+# That backend aborts at startup on FIPS-enabled hosts once a fips140 GODEBUG
+# value is set, so those toolchains must build with Go's native backend.
+ifneq (,$(findstring Red Hat,$(shell $(GO) version 2>/dev/null)))
+GOFLAGS += -tags no_openssl
+endif
 LDFLAGS := -s -w \
            -X github.com/openshift-hyperfleet/hyperfleet-api/pkg/api.Version=$(APP_VERSION) \
            -X github.com/openshift-hyperfleet/hyperfleet-api/pkg/api.Commit=$(GIT_SHA) \
