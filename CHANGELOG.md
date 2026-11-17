@@ -50,6 +50,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 
 - OCM SDK dependency (`ocm-sdk-go`), OCM client (`pkg/client/ocm/`), OCM configuration (`pkg/config/ocm.go`), OCM logger bridge (`pkg/logger/ocm_bridge.go`), and OCM authorization mocks ([#120](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/120))
+- Accidentally committed OCM sample binary `serve` at the repository root and the unreferenced `img.png`; `/serve` is now gitignored alongside `/bin/` ([#426](https://github.com/openshift-hyperfleet/hyperfleet-api/pull/426))
 
 ### Fixed
 
