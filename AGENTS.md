@@ -77,7 +77,7 @@ Quick feedback: `make verify-all`. Full pre-push: `make test-all`.
 - **Never edit** files in `pkg/api/openapi/` or `*_mock.go` - regenerate with `make generate-all`
 - **Never set** `status.phase` manually - calculated from adapter conditions
 - **Never create** direct DB connections - use `SessionFactory.New(ctx)` for transaction participation
-- **FIPS required**: build with `CGO_ENABLED=1 GOEXPERIMENT=noboringcrypto GOFIPS140=v1.0.0`
+- **FIPS required** in the container image: keep `cmd/hyperfleet-api/fips.go`, the FIPS build settings in the Dockerfile, and the FIPS checks after them
 - **Spec source of truth**: `hyperfleet-api-spec` Go module; update `go.mod` to change spec versions - see [openapi/README.md](openapi/README.md)
 - **Tool versions** pinned in `tools/go.mod` - don't manually install oapi-codegen or golangci-lint
 

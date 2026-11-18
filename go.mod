@@ -2,8 +2,6 @@ module github.com/openshift-hyperfleet/hyperfleet-api
 
 go 1.26.0
 
-godebug fips140=on
-
 require (
 	cel.dev/cel-go v0.32.0
 	github.com/DATA-DOG/go-sqlmock v1.5.2
