@@ -44,6 +44,7 @@ make run-no-auth
 - **Critical**: Run `make generate-all` before any other commands. Generated code is not in git.
 - Tool versions are pinned in `tools/go.mod` using Go 1.24+ tool directives
 - FIPS mode is on only in the container image. Local builds and tests run without it. The Dockerfile builds the binary with `GOFIPS140=v1.0.0` and the `fips` and `no_openssl` tags, and then checks it. The comments in the `Dockerfile` and in `cmd/hyperfleet-api/fips.go` explain each part.
+- Do not disable TLS 1.2 EMS enforcement with `fips140ems=0` in the environment, module/workspace defaults, or main-package directives. The compiled-default check rejects that override; the runtime FIPS-mode guard alone does not detect it.
 - Local development runs without authentication by default (`make run-no-auth`)
 - `make install-hooks` installs pre-commit hooks configured in `.pre-commit-config.yaml` for commit message and code quality validation on every commit
 - Integration tests automatically create isolated PostgreSQL containers via testcontainers
