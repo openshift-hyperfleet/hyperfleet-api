@@ -45,7 +45,19 @@ make run-no-auth
 - Tool versions are pinned in `tools/go.mod` using Go 1.24+ tool directives
 - Production builds and the test suite select Go's native FIPS 140-3 module (`GOFIPS140=v1.0.0`). The `godebug fips140=on` directive in `go.mod` enables FIPS mode by default, including on the Red Hat Go toolset (which does not enable it merely by selecting the module). `GOEXPERIMENT=noboringcrypto` keeps builds compatible with toolchains where the legacy experiment was saved with `go env -w`. The Dockerfile checks both the selected module and `DefaultGODEBUG=fips140=on`.
 
-  Red Hat Go toolsets use an OpenSSL crypto backend by default on Linux with cgo, and that backend aborts at startup on FIPS-enabled hosts once a `fips140` GODEBUG value is set. The Makefile therefore merges `-tags=no_openssl` into `GOFLAGS` on those toolchains to select Go's native backend, and the Dockerfile rejects a binary whose build info does not record the tag. When a `go.work` file is active, Go ignores the `godebug` directive in `go.mod`, so tests need `GOWORK=off` unless the workspace declares `godebug fips140=on`.
+  Red Hat Go toolsets use an OpenSSL backend by default on Linux with cgo.
+  That backend aborts on FIPS-enabled hosts when `fips140` GODEBUG is set.
+  Make defaults to `no_openssl` for builds and tests on every Go toolchain;
+  the tag is harmless on upstream Go, so no vendor detection is needed.
+  Tests receive tags separately, without production-only `-trimpath`.
+  Make exports CGO and FIPS settings once for all recipes and tools.
+  Overrides replace the defaults; callers own the complete replacement,
+  including `no_openssl` in `GOFLAGS` and `GO_TEST_TAGS` when changing tags.
+  Empty overrides are not normalized.
+  The Dockerfile checks the exact `no_openssl` token.
+  Make enforces `GOWORK=off` to honor `go.mod`'s FIPS default.
+  Direct Go commands need `GOWORK=off` too unless the workspace declares
+  `godebug fips140=on`.
 - FIPS production deployments must not disable that compiled default via `GODEBUG=fips140=off` or `GODEBUG=fips140=` (including within comma-separated values), a `godebug` directive in `go.work`, or a `//go:debug` directive in the main package. The Dockerfile checks the compiled default, not runtime overrides; an entirely empty or unset `GODEBUG` preserves the compiled default.
 - Local development runs without authentication by default (`make run-no-auth`)
 - `make install-hooks` installs pre-commit hooks configured in `.pre-commit-config.yaml` for commit message and code quality validation on every commit

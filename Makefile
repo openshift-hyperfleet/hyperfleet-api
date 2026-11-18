@@ -1,30 +1,16 @@
 .DEFAULT_GOAL := help
 
-# Keep CGO enabled for the supported production image. GOFIPS140 selects
-# Go's native, validated FIPS 140-3 module; the godebug fips140=on directive
-# in go.mod enables FIPS mode by default, because the Red Hat Go toolset does
-# not enable it merely by selecting the module. Go rejects an active
-# BoringCrypto experiment when GOFIPS140 is set, so noboringcrypto is not a
-# guard: it keeps builds working where the legacy experiment was persisted
-# with "go env -w".
+# Use native FIPS even when boringcrypto was persisted with go env -w.
+# go.mod's godebug fips140=on enables FIPS mode on Red Hat Go too.
 CGO_ENABLED ?= 1
-# An empty value falls back to a persisted `go env -w CGO_ENABLED`, so pin it.
-ifeq ($(strip $(CGO_ENABLED)),)
-override CGO_ENABLED := 1
-endif
 GOEXPERIMENT ?= noboringcrypto
 GOFIPS140 ?= v1.0.0
-# An empty value falls back to the persisted `go env -w` setting, so pin both.
-ifeq ($(strip $(GOEXPERIMENT)),)
-override GOEXPERIMENT := noboringcrypto
-endif
-ifeq ($(strip $(GOFIPS140)),)
-override GOFIPS140 := v1.0.0
-endif
-# generate-all invokes Go tools before build or test; they need these settings too.
-export GOEXPERIMENT GOFIPS140
+export CGO_ENABLED GOEXPERIMENT GOFIPS140
 
 GO ?= go
+# Honor this module's godebug directive, not an enclosing workspace's defaults.
+override GOWORK := off
+export GOWORK
 
 # Invoke a pinned tool: $(call gotool,name)
 # All tools share tools/go.mod with Go 1.24+ tool directives.
@@ -53,20 +39,9 @@ APP_VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo 
 BUILD_DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 
 # Go build flags
-GOFLAGS ?= -trimpath
-# Red Hat Go toolsets use the OpenSSL crypto backend by default on linux+cgo.
-# That backend aborts at startup on FIPS-enabled hosts once a fips140 GODEBUG
-# value is set, so those toolchains must build with Go's native backend.
-ifneq (,$(findstring Red Hat,$(shell $(GO) version 2>/dev/null)))
-# A second -tags flag replaces the first, so merge with any caller-supplied list.
-# Repeated -tags options keep the last list, so merge into that one.
-GOFLAGS_CALLER_TAGS := $(patsubst -tags=%,%,$(lastword $(filter -tags=%,$(GOFLAGS))))
-ifeq (,$(GOFLAGS_CALLER_TAGS))
-override GOFLAGS += -tags=no_openssl
-else
-override GOFLAGS := $(filter-out -tags=%,$(GOFLAGS)) -tags=$(GOFLAGS_CALLER_TAGS),no_openssl
-endif
-endif
+GOFLAGS ?= -trimpath -tags=no_openssl
+# Keep the backend tag in tests without exporting production-only -trimpath.
+GO_TEST_TAGS ?= no_openssl
 LDFLAGS := -s -w \
            -X github.com/openshift-hyperfleet/hyperfleet-api/pkg/api.Version=$(APP_VERSION) \
            -X github.com/openshift-hyperfleet/hyperfleet-api/pkg/api.Commit=$(GIT_SHA) \
@@ -189,11 +164,11 @@ generate-vendor: generate
 build: generate-all ## Build the hyperfleet-api binary
 	@mkdir -p bin
 	@echo "Building version: ${APP_VERSION}"
-	CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) ${GO} build $(GOFLAGS) -ldflags="$(LDFLAGS)" -o bin/hyperfleet-api ./cmd/hyperfleet-api
+	${GO} build $(GOFLAGS) -ldflags="$(LDFLAGS)" -o bin/hyperfleet-api ./cmd/hyperfleet-api
 
 .PHONY: install
 install: generate-all ## Build and install binary to GOPATH/bin
-	CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) ${GO} install $(GOFLAGS) -ldflags="$(LDFLAGS)" ./cmd/hyperfleet-api
+	${GO} install $(GOFLAGS) -ldflags="$(LDFLAGS)" ./cmd/hyperfleet-api
 
 # Common CLI flags for local database access
 DB_FLAGS = --db-host localhost --db-port $(db_port) --db-name $(db_name) \
@@ -227,7 +202,7 @@ run/docs: check-container-tool ## Run swagger and host the api spec
 cmds: ## Build all binaries under cmd/
 	@mkdir -p bin
 	for cmd in $$(ls cmd); do \
-		CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) ${GO} build \
+		${GO} build \
 			$(GOFLAGS) \
 			-ldflags="$(LDFLAGS)" \
 			-o "bin/$${cmd}" \
@@ -247,24 +222,24 @@ clean: ## Delete temporary generated files
 
 .PHONY: test
 test: install ## Run unit tests
-	CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) $(call gotool,gotestsum) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -v $(TESTFLAGS) \
+	$(call gotool,gotestsum) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -v $(TESTFLAGS) -tags="$(GO_TEST_TAGS)" \
 		./pkg/... \
 		./cmd/...
 
 .PHONY: ci-test-unit
 ci-test-unit: install ## Run unit tests with JSON output
-	CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) $(call gotool,gotestsum) --jsonfile-timing-events=$(unit_test_json_output) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -v $(TESTFLAGS) \
+	$(call gotool,gotestsum) --jsonfile-timing-events=$(unit_test_json_output) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -v $(TESTFLAGS) -tags="$(GO_TEST_TAGS)" \
 		./pkg/... \
 		./cmd/...
 
 .PHONY: test-integration
 test-integration: install ## Run integration tests
-	TESTCONTAINERS_RYUK_DISABLED=true CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) $(call gotool,gotestsum) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) \
+	TESTCONTAINERS_RYUK_DISABLED=true $(call gotool,gotestsum) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) -tags="$(GO_TEST_TAGS)" \
 			./test/integration
 
 .PHONY: ci-test-integration
 ci-test-integration: install ## Run integration tests with JSON output
-	TESTCONTAINERS_RYUK_DISABLED=true CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) $(call gotool,gotestsum) --jsonfile-timing-events=$(integration_test_json_output) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) \
+	TESTCONTAINERS_RYUK_DISABLED=true $(call gotool,gotestsum) --jsonfile-timing-events=$(integration_test_json_output) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) -tags="$(GO_TEST_TAGS)" \
 			./test/integration
 
 .PHONY: test-all
