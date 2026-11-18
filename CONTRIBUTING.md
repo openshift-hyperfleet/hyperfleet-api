@@ -54,6 +54,9 @@ make run-no-auth
   Overrides replace the defaults; callers own the complete replacement,
   including `no_openssl` in `GOFLAGS` and `GO_TEST_TAGS` when changing tags.
   Empty overrides are not normalized.
+  Set test tags with `GO_TEST_TAGS=netgo,no_openssl`, not `TESTFLAGS`.
+  The four unit/CI/integration targets reject `-tags` in `TESTFLAGS` rather
+  than silently replacing it; other flags such as `-count=1` remain supported.
   The Dockerfile checks the exact `no_openssl` token.
   Make enforces `GOWORK=off` to honor `go.mod`'s FIPS default.
   Direct Go commands need `GOWORK=off` too unless the workspace declares

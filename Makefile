@@ -220,25 +220,33 @@ clean: ## Delete temporary generated files
 
 ##@ Testing
 
+.PHONY: check-test-flags
+check-test-flags:
+	@for flag in $(TESTFLAGS); do \
+		case "$$flag" in \
+			-tags|--tags|-tags=*|--tags=*) echo "Use GO_TEST_TAGS=netgo,no_openssl instead of -tags in TESTFLAGS" >&2; exit 1 ;; \
+		esac; \
+	done
+
 .PHONY: test
-test: install ## Run unit tests
+test: check-test-flags install ## Run unit tests
 	$(call gotool,gotestsum) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -v $(TESTFLAGS) -tags="$(GO_TEST_TAGS)" \
 		./pkg/... \
 		./cmd/...
 
 .PHONY: ci-test-unit
-ci-test-unit: install ## Run unit tests with JSON output
+ci-test-unit: check-test-flags install ## Run unit tests with JSON output
 	$(call gotool,gotestsum) --jsonfile-timing-events=$(unit_test_json_output) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -v $(TESTFLAGS) -tags="$(GO_TEST_TAGS)" \
 		./pkg/... \
 		./cmd/...
 
 .PHONY: test-integration
-test-integration: install ## Run integration tests
+test-integration: check-test-flags install ## Run integration tests
 	TESTCONTAINERS_RYUK_DISABLED=true $(call gotool,gotestsum) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) -tags="$(GO_TEST_TAGS)" \
 			./test/integration
 
 .PHONY: ci-test-integration
-ci-test-integration: install ## Run integration tests with JSON output
+ci-test-integration: check-test-flags install ## Run integration tests with JSON output
 	TESTCONTAINERS_RYUK_DISABLED=true $(call gotool,gotestsum) --jsonfile-timing-events=$(integration_test_json_output) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) -tags="$(GO_TEST_TAGS)" \
 			./test/integration
 
