@@ -37,7 +37,10 @@ RUN --mount=type=cache,target=/opt/app-root/src/go/pkg/mod,uid=1001 \
 
 # Stop the build if the binary is not FIPS-ready. GOLANG_FIPS=1 makes Red Hat Go act as on a FIPS node.
 RUN go version -m /build/bin/hyperfleet-api | grep -Eq 'GOFIPS140=v1[.]0[.]0(-[[:xdigit:]]+)?$' || { echo "FIPS check FAILED: missing GOFIPS140=v1.0.0"; exit 1; }
-RUN go version -m /build/bin/hyperfleet-api | grep -Eq 'DefaultGODEBUG=(.*,)?fips140=on(,|$)' || { echo "FIPS check FAILED: fips140=on is not compiled in"; exit 1; }
+RUN go version -m /build/bin/hyperfleet-api \
+    | grep -E '^[[:space:]]*build[[:space:]]+DefaultGODEBUG=([^,]*,)*fips140=on(,|$)' \
+    | grep -Ev 'DefaultGODEBUG=([^,]*,)*fips140ems=0(,|$)' \
+    || { echo "FIPS check FAILED: require fips140=on without fips140ems=0"; exit 1; }
 RUN GOLANG_FIPS=1 /build/bin/hyperfleet-api --help >/dev/null || { echo "FIPS check FAILED: binary does not start in FIPS mode"; exit 1; }
 
 # Runtime stage
