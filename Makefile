@@ -1,12 +1,16 @@
 .DEFAULT_GOAL := help
 
-# CGO_ENABLED=0 is not FIPS compliant. large commercial vendors and FedRAMP require FIPS compliant crypto
-# Use ?= so callers can override on the command line, e.g. CGO_ENABLED=0 make build for a non-FIPS static binary
+# Use native FIPS even when boringcrypto was persisted with go env -w.
+# go.mod's godebug fips140=on enables FIPS mode on Red Hat Go too.
 CGO_ENABLED ?= 1
-GOEXPERIMENT ?= boringcrypto
-GOFIPS140 ?= off
+GOEXPERIMENT ?= noboringcrypto
+GOFIPS140 ?= v1.0.0
+export CGO_ENABLED GOEXPERIMENT GOFIPS140
 
 GO ?= go
+# Honor this module's godebug directive, not an enclosing workspace's defaults.
+override GOWORK := off
+export GOWORK
 
 # Invoke a pinned tool: $(call gotool,name)
 # All tools share tools/go.mod with Go 1.24+ tool directives.
@@ -35,7 +39,10 @@ APP_VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo 
 BUILD_DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 
 # Go build flags
-GOFLAGS ?= -trimpath
+GOFLAGS ?= -trimpath -tags=no_openssl
+# Keep the backend tag in tests without exporting production-only -trimpath.
+GO_TEST_TAGS ?= no_openssl
+export GO_TEST_TAGS
 LDFLAGS := -s -w \
            -X github.com/openshift-hyperfleet/hyperfleet-api/pkg/api.Version=$(APP_VERSION) \
            -X github.com/openshift-hyperfleet/hyperfleet-api/pkg/api.Commit=$(GIT_SHA) \
@@ -158,11 +165,11 @@ generate-vendor: generate
 build: generate-all ## Build the hyperfleet-api binary
 	@mkdir -p bin
 	@echo "Building version: ${APP_VERSION}"
-	CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) ${GO} build $(GOFLAGS) -ldflags="$(LDFLAGS)" -o bin/hyperfleet-api ./cmd/hyperfleet-api
+	${GO} build $(GOFLAGS) -ldflags="$(LDFLAGS)" -o bin/hyperfleet-api ./cmd/hyperfleet-api
 
 .PHONY: install
 install: generate-all ## Build and install binary to GOPATH/bin
-	CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) ${GO} install $(GOFLAGS) -ldflags="$(LDFLAGS)" ./cmd/hyperfleet-api
+	${GO} install $(GOFLAGS) -ldflags="$(LDFLAGS)" ./cmd/hyperfleet-api
 
 # Common CLI flags for local database access
 DB_FLAGS = --db-host localhost --db-port $(db_port) --db-name $(db_name) \
@@ -196,7 +203,7 @@ run/docs: check-container-tool ## Run swagger and host the api spec
 cmds: ## Build all binaries under cmd/
 	@mkdir -p bin
 	for cmd in $$(ls cmd); do \
-		CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) ${GO} build \
+		${GO} build \
 			$(GOFLAGS) \
 			-ldflags="$(LDFLAGS)" \
 			-o "bin/$${cmd}" \
@@ -214,26 +221,34 @@ clean: ## Delete temporary generated files
 
 ##@ Testing
 
+.PHONY: check-test-flags
+check-test-flags:
+	@for flag in $(TESTFLAGS); do \
+		case "$$flag" in \
+			-tags|--tags|-tags=*|--tags=*) echo "Use GO_TEST_TAGS=netgo,no_openssl instead of -tags in TESTFLAGS" >&2; exit 1 ;; \
+		esac; \
+	done
+
 .PHONY: test
-test: install ## Run unit tests
-	$(call gotool,gotestsum) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -v $(TESTFLAGS) \
+test: check-test-flags install ## Run unit tests
+	$(call gotool,gotestsum) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -v $(TESTFLAGS) -tags="$${GO_TEST_TAGS}" \
 		./pkg/... \
 		./cmd/...
 
 .PHONY: ci-test-unit
-ci-test-unit: install ## Run unit tests with JSON output
-	$(call gotool,gotestsum) --jsonfile-timing-events=$(unit_test_json_output) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -v $(TESTFLAGS) \
+ci-test-unit: check-test-flags install ## Run unit tests with JSON output
+	$(call gotool,gotestsum) --jsonfile-timing-events=$(unit_test_json_output) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -v $(TESTFLAGS) -tags="$${GO_TEST_TAGS}" \
 		./pkg/... \
 		./cmd/...
 
 .PHONY: test-integration
-test-integration: install ## Run integration tests
-	TESTCONTAINERS_RYUK_DISABLED=true $(call gotool,gotestsum) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) \
+test-integration: check-test-flags install ## Run integration tests
+	TESTCONTAINERS_RYUK_DISABLED=true $(call gotool,gotestsum) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) -tags="$${GO_TEST_TAGS}" \
 			./test/integration
 
 .PHONY: ci-test-integration
-ci-test-integration: install ## Run integration tests with JSON output
-	TESTCONTAINERS_RYUK_DISABLED=true $(call gotool,gotestsum) --jsonfile-timing-events=$(integration_test_json_output) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) \
+ci-test-integration: check-test-flags install ## Run integration tests with JSON output
+	TESTCONTAINERS_RYUK_DISABLED=true $(call gotool,gotestsum) --jsonfile-timing-events=$(integration_test_json_output) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) -tags="$${GO_TEST_TAGS}" \
 			./test/integration
 
 .PHONY: test-all

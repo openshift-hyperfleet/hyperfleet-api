@@ -43,7 +43,36 @@ make run-no-auth
 
 - **Critical**: Run `make generate-all` before any other commands. Generated code is not in git.
 - Tool versions are pinned in `tools/go.mod` using Go 1.24+ tool directives
-- The build uses FIPS-compliant crypto: `CGO_ENABLED=1 GOEXPERIMENT=boringcrypto`
+- Production builds and the test suite select Go's native FIPS 140-3 module (`GOFIPS140=v1.0.0`). The `godebug fips140=on` directive in `go.mod` enables FIPS mode by default, including on the Red Hat Go toolset (which does not enable it merely by selecting the module). `GOEXPERIMENT=noboringcrypto` keeps builds compatible with toolchains where the legacy experiment was saved with `go env -w`. The Dockerfile checks both the selected module and `DefaultGODEBUG=fips140=on`.
+
+  Red Hat Go toolsets use an OpenSSL backend by default on Linux with cgo.
+  That backend aborts on FIPS-enabled hosts when `fips140` GODEBUG is set.
+  Make defaults to `no_openssl` for builds and tests on every Go toolchain;
+  the tag is harmless on upstream Go, so no vendor detection is needed.
+  Tests receive tags separately, without production-only `-trimpath`.
+  Make exports CGO and FIPS settings once for all recipes and tools.
+  Overrides replace the defaults; callers own the complete replacement,
+  including `no_openssl` in `GOFLAGS` and `GO_TEST_TAGS` when changing tags.
+  Empty overrides are not normalized.
+  Set test tags with `GO_TEST_TAGS=netgo,no_openssl`, not `TESTFLAGS`.
+  The four unit/CI/integration targets reject `-tags` in `TESTFLAGS` rather
+  than silently replacing it; other flags such as `-count=1` remain supported.
+  The Dockerfile checks the exact `no_openssl` token.
+  Make enforces `GOWORK=off` to honor `go.mod`'s FIPS default.
+  Prefer Make; direct Go commands do not inherit its defaults. After generation,
+  configure the same settings and include the native backend tag explicitly:
+
+  ```bash
+  export CGO_ENABLED=1 GOEXPERIMENT=noboringcrypto GOFIPS140=v1.0.0 GOWORK=off
+  # Compile check only; make build produces the service executable.
+  go build -trimpath -tags=no_openssl ./...
+  go test -tags=no_openssl ./...
+  ```
+
+  Do not set `fips140ems=0` through `GODEBUG`, `godebug` in `go.mod`/`go.work`,
+  or `//go:debug` in the main package: it disables TLS 1.2 EMS enforcement.
+  The Dockerfile rejects this compiled override even alongside `fips140=on`.
+- FIPS production deployments must not disable that compiled default via `GODEBUG=fips140=off` or `GODEBUG=fips140=` (including within comma-separated values), a `godebug` directive in `go.work`, or a `//go:debug` directive in the main package. The Dockerfile checks the compiled default, not runtime overrides; an entirely empty or unset `GODEBUG` preserves the compiled default.
 - Local development runs without authentication by default (`make run-no-auth`)
 - `make install-hooks` installs pre-commit hooks configured in `.pre-commit-config.yaml` for commit message and code quality validation on every commit
 - Integration tests automatically create isolated PostgreSQL containers via testcontainers
@@ -52,7 +81,7 @@ make run-no-auth
 
 Overview of key directories and their purpose.
 
-```
+```text
 hyperfleet-api/
 ├── cmd/hyperfleet-api/          # Application entry point and CLI commands
 │   ├── main.go                  # Server start, migrate, version commands
@@ -259,7 +288,7 @@ Follow the HyperFleet commit message format and refer to the [architecture repos
 
 **Example:**
 
-```
+```text
 HYPERFLEET-123 - fix: handle nil pointer in status aggregation
 
 Add null check before accessing adapter status conditions.
