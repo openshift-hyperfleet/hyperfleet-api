@@ -59,8 +59,18 @@ make run-no-auth
   than silently replacing it; other flags such as `-count=1` remain supported.
   The Dockerfile checks the exact `no_openssl` token.
   Make enforces `GOWORK=off` to honor `go.mod`'s FIPS default.
-  Direct Go commands need `GOWORK=off` too unless the workspace declares
-  `godebug fips140=on`.
+  Prefer Make; direct Go commands do not inherit its defaults. After generation,
+  configure the same settings and include the native backend tag explicitly:
+
+  ```bash
+  export CGO_ENABLED=1 GOEXPERIMENT=noboringcrypto GOFIPS140=v1.0.0 GOWORK=off
+  go build -trimpath -tags=no_openssl ./...
+  go test -tags=no_openssl ./...
+  ```
+
+  Do not set `fips140ems=0` through `GODEBUG`, `godebug` in `go.mod`/`go.work`,
+  or `//go:debug` in the main package: it disables TLS 1.2 EMS enforcement.
+  The Dockerfile rejects this compiled override even alongside `fips140=on`.
 - FIPS production deployments must not disable that compiled default via `GODEBUG=fips140=off` or `GODEBUG=fips140=` (including within comma-separated values), a `godebug` directive in `go.work`, or a `//go:debug` directive in the main package. The Dockerfile checks the compiled default, not runtime overrides; an entirely empty or unset `GODEBUG` preserves the compiled default.
 - Local development runs without authentication by default (`make run-no-auth`)
 - `make install-hooks` installs pre-commit hooks configured in `.pre-commit-config.yaml` for commit message and code quality validation on every commit

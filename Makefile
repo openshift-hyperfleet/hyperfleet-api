@@ -42,6 +42,7 @@ BUILD_DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 GOFLAGS ?= -trimpath -tags=no_openssl
 # Keep the backend tag in tests without exporting production-only -trimpath.
 GO_TEST_TAGS ?= no_openssl
+export GO_TEST_TAGS
 LDFLAGS := -s -w \
            -X github.com/openshift-hyperfleet/hyperfleet-api/pkg/api.Version=$(APP_VERSION) \
            -X github.com/openshift-hyperfleet/hyperfleet-api/pkg/api.Commit=$(GIT_SHA) \
@@ -230,24 +231,24 @@ check-test-flags:
 
 .PHONY: test
 test: check-test-flags install ## Run unit tests
-	$(call gotool,gotestsum) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -v $(TESTFLAGS) -tags="$(GO_TEST_TAGS)" \
+	$(call gotool,gotestsum) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -v $(TESTFLAGS) -tags="$${GO_TEST_TAGS}" \
 		./pkg/... \
 		./cmd/...
 
 .PHONY: ci-test-unit
 ci-test-unit: check-test-flags install ## Run unit tests with JSON output
-	$(call gotool,gotestsum) --jsonfile-timing-events=$(unit_test_json_output) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -v $(TESTFLAGS) -tags="$(GO_TEST_TAGS)" \
+	$(call gotool,gotestsum) --jsonfile-timing-events=$(unit_test_json_output) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -v $(TESTFLAGS) -tags="$${GO_TEST_TAGS}" \
 		./pkg/... \
 		./cmd/...
 
 .PHONY: test-integration
 test-integration: check-test-flags install ## Run integration tests
-	TESTCONTAINERS_RYUK_DISABLED=true $(call gotool,gotestsum) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) -tags="$(GO_TEST_TAGS)" \
+	TESTCONTAINERS_RYUK_DISABLED=true $(call gotool,gotestsum) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) -tags="$${GO_TEST_TAGS}" \
 			./test/integration
 
 .PHONY: ci-test-integration
 ci-test-integration: check-test-flags install ## Run integration tests with JSON output
-	TESTCONTAINERS_RYUK_DISABLED=true $(call gotool,gotestsum) --jsonfile-timing-events=$(integration_test_json_output) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) -tags="$(GO_TEST_TAGS)" \
+	TESTCONTAINERS_RYUK_DISABLED=true $(call gotool,gotestsum) --jsonfile-timing-events=$(integration_test_json_output) --format $(TEST_SUMMARY_FORMAT) -- -p 1 -ldflags -s -v -timeout 1h $(TESTFLAGS) -tags="$${GO_TEST_TAGS}" \
 			./test/integration
 
 .PHONY: test-all
