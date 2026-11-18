@@ -36,6 +36,8 @@ coverage-integration-filtered.out
 
 # Ignore built binaries
 /bin/
+# Legacy OCM sample binary; never part of this project
+/serve
 
 # Ignore generated templates
 /templates/*-template.json
