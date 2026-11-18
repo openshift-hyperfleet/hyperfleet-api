@@ -64,6 +64,7 @@ make run-no-auth
 
   ```bash
   export CGO_ENABLED=1 GOEXPERIMENT=noboringcrypto GOFIPS140=v1.0.0 GOWORK=off
+  # Compile check only; make build produces the service executable.
   go build -trimpath -tags=no_openssl ./...
   go test -tags=no_openssl ./...
   ```
