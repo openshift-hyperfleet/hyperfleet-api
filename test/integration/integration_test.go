@@ -98,7 +98,7 @@ func startTestcontainer(ctx context.Context) *postgres.PostgresContainer {
 	dbPass := envOrDefault("HYPERFLEET_DATABASE_PASSWORD", "test")
 
 	pgContainer, err := postgres.Run(ctx,
-		"postgres:14.23",
+		"postgres:14.25",
 		postgres.WithDatabase(dbName),
 		postgres.WithUsername(dbUser),
 		postgres.WithPassword(dbPass),
