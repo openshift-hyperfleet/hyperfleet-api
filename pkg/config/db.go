@@ -30,7 +30,7 @@ type DatabaseConfig struct {
 	HostFile     string     `mapstructure:"host_file" json:"host_file"`
 	Name         string     `mapstructure:"name" json:"name" validate:"required"`
 	NameFile     string     `mapstructure:"name_file" json:"name_file"`
-	Username     string     `mapstructure:"username" json:"-"`
+	Username     string     `mapstructure:"username" json:"-" validate:"required"`
 	UsernameFile string     `mapstructure:"username_file" json:"username_file"`
 	Password     string     `mapstructure:"password" json:"-"`
 	PasswordFile string     `mapstructure:"password_file" json:"password_file"`
@@ -142,11 +142,13 @@ func (c *DatabaseConfig) ResolveFileOverrides() error {
 // Includes defaults from HYPERFLEET-694 for connection pool management
 func NewDatabaseConfig() *DatabaseConfig {
 	return &DatabaseConfig{
-		Dialect:  "postgres",
-		Host:     "localhost",
-		Port:     5432,
-		Name:     "hyperfleet",
-		Username: "hyperfleet",
+		Dialect: "postgres",
+		Host:    "localhost",
+		Port:    5432,
+		Name:    "hyperfleet",
+		// Username has no default: it names a real database role, so it must be
+		// supplied by the config file, HYPERFLEET_DATABASE_USERNAME, the
+		// _FILE variant, or the --db-username flag.
 		Password: "",
 		Debug:    false,
 		SSL: SSLConfig{

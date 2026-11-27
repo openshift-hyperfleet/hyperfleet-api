@@ -113,6 +113,25 @@ func TestConfigLoader_MissingRequiredField(t *testing.T) {
 	Expect(err.Error()).To(ContainSubstring("Port"))
 }
 
+// TestConfigLoader_MissingDatabaseUsername tests that the database username has
+// no default and must be configured explicitly.
+func TestConfigLoader_MissingDatabaseUsername(t *testing.T) {
+	RegisterTestingT(t)
+
+	SetMinimalTestEnv(t)
+	t.Setenv("HYPERFLEET_DATABASE_USERNAME", "")
+
+	loader := NewConfigLoader()
+	cmd := &cobra.Command{}
+	ctx := context.Background()
+
+	_, err := loader.Load(ctx, cmd)
+
+	Expect(err).To(HaveOccurred())
+	Expect(err.Error()).To(ContainSubstring("Configuration validation failed"))
+	Expect(err.Error()).To(ContainSubstring("Username"))
+}
+
 // TestConfigLoader_ClaimsWithoutJWT tests the cross-section rule that claims
 // mode requires JWT validation
 func TestConfigLoader_ClaimsWithoutJWT(t *testing.T) {

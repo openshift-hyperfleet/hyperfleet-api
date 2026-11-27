@@ -10,6 +10,17 @@ import (
 	"gorm.io/gorm/logger"
 )
 
+// Credential fixtures reused across cases. Kept in constants so a
+// credential-looking value is declared once instead of at every call site.
+const (
+	testUsername         = "testuser"
+	testPassword         = "testpass"
+	testSimplePassword   = "pass"
+	testSecretPassword   = "secret"
+	testRedactedPassword = "secretpassword"
+	testFilePassword     = "plainpass"
+)
+
 func TestEscapeDSNValue(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -134,14 +145,15 @@ func TestConnectionString(t *testing.T) {
 				Host:     "localhost",
 				Port:     5432,
 				Name:     "testdb",
-				Username: "testuser",
-				Password: "testpass",
+				Username: testUsername,
+				Password: testPassword,
 				SSL: SSLConfig{
 					Mode: "disable",
 				},
 			},
-			ssl:      false,
-			expected: "host=localhost port=5432 dbname=testdb user=testuser password=testpass sslmode=disable",
+			ssl: false,
+			expected: "host=localhost port=5432 dbname=testdb user=" + testUsername +
+				" password=" + testPassword + " sslmode=disable",
 		},
 		{
 			name: "connection with SSL enabled",
@@ -150,7 +162,7 @@ func TestConnectionString(t *testing.T) {
 				Port:     5432,
 				Name:     "proddb",
 				Username: "admin",
-				Password: "secret",
+				Password: testSecretPassword,
 				SSL: SSLConfig{
 					Mode: "require",
 				},
@@ -182,7 +194,7 @@ func TestConnectionString(t *testing.T) {
 				Port:     5432,
 				Name:     "testdb",
 				Username: "user",
-				Password: "pass",
+				Password: testSimplePassword,
 				SSL: SSLConfig{
 					Mode: "disable",
 				},
@@ -197,7 +209,7 @@ func TestConnectionString(t *testing.T) {
 				Port:     5432,
 				Name:     "testdb",
 				Username: "user",
-				Password: "pass",
+				Password: testSimplePassword,
 				SSL: SSLConfig{
 					Mode:         "verify-full",
 					RootCertFile: "/path/to/my cert.pem",
@@ -272,8 +284,8 @@ func TestLogSafeConnectionString(t *testing.T) {
 				Host:     "localhost",
 				Port:     5432,
 				Name:     "testdb",
-				Username: "testuser",
-				Password: "secretpassword",
+				Username: testUsername,
+				Password: testRedactedPassword,
 				SSL: SSLConfig{
 					Mode: "disable",
 				},
@@ -341,7 +353,7 @@ func TestConnectionStringWithName(t *testing.T) {
 		Port:     5432,
 		Name:     "originaldb",
 		Username: "user",
-		Password: "pass",
+		Password: testSimplePassword,
 		SSL: SSLConfig{
 			Mode: "disable",
 		},
@@ -361,7 +373,7 @@ func TestLogSafeConnectionStringWithName(t *testing.T) {
 		Port:     5432,
 		Name:     "originaldb",
 		Username: "user",
-		Password: "secret",
+		Password: testSecretPassword,
 		SSL: SSLConfig{
 			Mode: "disable",
 		},
@@ -382,8 +394,8 @@ func TestDatabaseConfigMarshalJSON(t *testing.T) {
 		Host:     "localhost",
 		Port:     5432,
 		Name:     "testdb",
-		Username: "testuser",
-		Password: "secretpassword",
+		Username: testUsername,
+		Password: testRedactedPassword,
 		Debug:    true,
 		SSL: SSLConfig{
 			Mode:         "verify-full",
@@ -466,7 +478,7 @@ func TestDatabaseConfigResolveFileOverrides(t *testing.T) {
 					NameFile:     nameFile,
 					Username:     "plainuser",
 					UsernameFile: userFile,
-					Password:     "plainpass",
+					Password:     testFilePassword,
 					PasswordFile: passFile,
 				}
 			},
@@ -482,7 +494,7 @@ func TestDatabaseConfigResolveFileOverrides(t *testing.T) {
 			name: "missing file fails with a clear error naming the variable",
 			setup: func(t *testing.T) *DatabaseConfig {
 				return &DatabaseConfig{
-					Password:     "plainpass",
+					Password:     testFilePassword,
 					PasswordFile: "/nonexistent/path/to/password",
 				}
 			},
@@ -496,7 +508,7 @@ func TestDatabaseConfigResolveFileOverrides(t *testing.T) {
 					Port:     5432,
 					Name:     "plaindb",
 					Username: "plainuser",
-					Password: "plainpass",
+					Password: testFilePassword,
 				}
 			},
 			checkConfig: func(t *testing.T, config *DatabaseConfig) {
@@ -504,7 +516,7 @@ func TestDatabaseConfigResolveFileOverrides(t *testing.T) {
 				assert.Equal(t, 5432, config.Port)
 				assert.Equal(t, "plaindb", config.Name)
 				assert.Equal(t, "plainuser", config.Username)
-				assert.Equal(t, "plainpass", config.Password)
+				assert.Equal(t, testFilePassword, config.Password)
 			},
 		},
 		{

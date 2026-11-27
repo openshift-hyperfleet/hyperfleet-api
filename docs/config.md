@@ -128,7 +128,7 @@ PostgreSQL database connection settings.
 | `database.port_file` | string | `""` | Path to a file containing the database port (overrides `database.port` when set) |
 | `database.name` | string | `hyperfleet` | Database name |
 | `database.name_file` | string | `""` | Path to a file containing the database name (overrides `database.name` when set) |
-| `database.username` | string | `hyperfleet` | Database username |
+| `database.username` | string | `""` (required) | Database username |
 | `database.username_file` | string | `""` | Path to a file containing the database username (overrides `database.username` when set) |
 | `database.password` | string | `""` | Database password (**use env var with secretKeyRef for Kubernetes**) |
 | `database.password_file` | string | `""` | Path to a file containing the database password (overrides `database.password` when set) |
@@ -463,7 +463,7 @@ Complete table of all configuration properties, their environment variables, and
 | `database.port_file` | `HYPERFLEET_DATABASE_PORT_FILE` | string | `""` |
 | `database.name` | `HYPERFLEET_DATABASE_NAME` | string | `hyperfleet` |
 | `database.name_file` | `HYPERFLEET_DATABASE_NAME_FILE` | string | `""` |
-| `database.username` | `HYPERFLEET_DATABASE_USERNAME` | string | `hyperfleet` |
+| `database.username` | `HYPERFLEET_DATABASE_USERNAME` | string | `""` (required) |
 | `database.username_file` | `HYPERFLEET_DATABASE_USERNAME_FILE` | string | `""` |
 | `database.password` | `HYPERFLEET_DATABASE_PASSWORD` | string | `""` |
 | `database.password_file` | `HYPERFLEET_DATABASE_PASSWORD_FILE` | string | `""` |
