@@ -76,7 +76,7 @@ If none are found, the application continues normally using environment variable
 export HYPERFLEET_DATABASE_HOST=localhost
 export HYPERFLEET_DATABASE_PORT=5432
 export HYPERFLEET_DATABASE_NAME=hyperfleet
-export HYPERFLEET_DATABASE_USER=hyperfleet
+export HYPERFLEET_DATABASE_USERNAME=hyperfleet
 export HYPERFLEET_DATABASE_PASSWORD=hyperfleet-dev-password
 export HYPERFLEET_LOGGING_LEVEL=debug
 export HYPERFLEET_SERVER_PORT=8000
@@ -101,7 +101,7 @@ Point the config or environment variables to your PostgreSQL instance:
 export HYPERFLEET_DATABASE_HOST=my-postgres-host.example.com
 export HYPERFLEET_DATABASE_PORT=5432
 export HYPERFLEET_DATABASE_NAME=hyperfleet
-export HYPERFLEET_DATABASE_USER=hyperfleet
+export HYPERFLEET_DATABASE_USERNAME=hyperfleet
 export HYPERFLEET_DATABASE_PASSWORD=my-password
 export HYPERFLEET_DATABASE_SSL_MODE=require   # for remote databases
 ```

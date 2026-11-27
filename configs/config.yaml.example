@@ -45,7 +45,7 @@ database:
   port_file: ""                     # Path to a file containing the database port (overrides port if set)
   name: hyperfleet                  # Database name
   name_file: ""                     # Path to a file containing the database name (overrides name if set)
-  username: hyperfleet              # Database username
+  username: hyperfleet              # Database username (required, no default)
   username_file: ""                 # Path to a file containing the database username (overrides username if set)
   password: ""                      # Database password (use env var HYPERFLEET_DATABASE_PASSWORD instead)
   password_file: ""                 # Path to a file containing the database password (overrides password if set)

@@ -113,6 +113,44 @@ func TestConfigLoader_MissingRequiredField(t *testing.T) {
 	Expect(err.Error()).To(ContainSubstring("Port"))
 }
 
+// TestConfigLoader_MissingDatabaseUsername tests that the database username has
+// no default and must be configured explicitly.
+func TestConfigLoader_MissingDatabaseUsername(t *testing.T) {
+	RegisterTestingT(t)
+
+	SetMinimalTestEnv(t)
+	t.Setenv("HYPERFLEET_DATABASE_USERNAME", "")
+
+	loader := NewConfigLoader()
+	cmd := &cobra.Command{}
+	ctx := context.Background()
+
+	_, err := loader.Load(ctx, cmd)
+
+	Expect(err).To(HaveOccurred())
+	Expect(err.Error()).To(ContainSubstring("Configuration validation failed"))
+	Expect(err.Error()).To(ContainSubstring("Username"))
+}
+
+// TestConfigLoader_DatabaseUsernameFromFile tests that username_file alone
+// satisfies the required username, because file overrides resolve before
+// validation in Load().
+func TestConfigLoader_DatabaseUsernameFromFile(t *testing.T) {
+	RegisterTestingT(t)
+
+	SetMinimalTestEnv(t)
+	t.Setenv("HYPERFLEET_DATABASE_USERNAME", "")
+
+	userFile := filepath.Join(t.TempDir(), "db-username")
+	Expect(os.WriteFile(userFile, []byte("fileuser\n"), 0600)).To(Succeed())
+	t.Setenv("HYPERFLEET_DATABASE_USERNAME_FILE", userFile)
+
+	cfg, err := NewConfigLoader().Load(context.Background(), &cobra.Command{})
+
+	Expect(err).NotTo(HaveOccurred())
+	Expect(cfg.Database.Username).To(Equal("fileuser"))
+}
+
 // TestConfigLoader_ClaimsWithoutJWT tests the cross-section rule that claims
 // mode requires JWT validation
 func TestConfigLoader_ClaimsWithoutJWT(t *testing.T) {
